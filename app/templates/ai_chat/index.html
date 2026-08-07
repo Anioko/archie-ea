@@ -813,7 +813,14 @@ x-cloak>
 
             <!-- Floating Document Upload Panel - Positioned outside input area -->
             <div id="document-upload-panel" class="hidden fixed bottom-24 right-6 w-[420px] max-h-[600px] overflow-y-auto bg-background border rounded-lg shadow-xl z-50 p-4">
-                {% from 'ai_chat/document_upload.html' import ai_chat_document_upload %}
+                {# `with context` is load-bearing, not decoration. Jinja's `from ...
+                   import` does NOT pass the caller's context, so csp_nonce — a
+                   context-processor variable — was undefined inside the macro. The
+                   CspNonceExtension rewrites the macro's two <script> tags to carry
+                   nonce="{{ csp_nonce }}", which rendered as nonce="" and was refused
+                   under script-src 'strict-dynamic'. The document-upload panel's
+                   JavaScript therefore never loaded at all. #}
+                {% from 'ai_chat/document_upload.html' import ai_chat_document_upload with context %}
                 {{ ai_chat_document_upload() }}
             </div>
 

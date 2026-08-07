@@ -41,7 +41,18 @@ TABS = ("context", "query", "alerts", "history")
 
 # Console noise that is not the page's doing. Kept deliberately short — every
 # entry added here is a class of error this test stops seeing.
-IGNORED_CONSOLE = ("favicon",)
+IGNORED_CONSOLE = (
+    "favicon",
+    # GET /ai-chat/api/health/llm answers 503 by design when no LLM provider is
+    # configured (legacy_compat.py:169-179), which is the state of any CI box
+    # without API keys. The browser logs every failed resource load as a console
+    # error, so this is environmental, not a defect.
+    #
+    # It is not simply swallowed: test_the_degraded_provider_banner_is_shown
+    # asserts the UI surfaces that 503 to the user, so the condition is proven
+    # handled rather than hidden.
+    "503 (service unavailable)",
+)
 
 
 def _login(page, base, email):
@@ -91,17 +102,36 @@ def page(browser):
     ctx.close()
 
 
+# Errors whose stack names another document. Clearing the lists after login is
+# not enough on its own: an Alpine x-intersect handler on /dashboard/overview
+# (the login redirect target) starts a fetch that rejects *after* we have
+# navigated away, so it lands in this page's bucket with the dashboard's stack
+# still attached. Filtering on provenance rather than timing keeps the assertion
+# about /ai-chat without blinding it to anything /ai-chat does.
+#
+# `layered diagram fetch failed` is a real defect — on /dashboard/overview, which
+# this branch does not touch. Recorded in docs/known-issues, not silenced here.
+FOREIGN_DOCUMENTS = ("/dashboard/overview",)
+
+
 def _js_errors(page):
-    """Every JavaScript error the page has produced so far, filtered for noise."""
+    """Every JavaScript error this page produced, filtered for noise and origin."""
     return [
         err for err in (page.console_errors + page.page_errors)
         if not any(ignored in err.lower() for ignored in IGNORED_CONSOLE)
+        and not any(doc in err for doc in FOREIGN_DOCUMENTS)
     ]
 
 
 def _open_chat(page, live_server, seeded):
     """Sign in as the enterprise architect and land on a settled /ai-chat."""
     _login(page, live_server, seeded["emails"]["enterprise_architect"])
+    # Signing in redirects through /dashboard/overview, whose own console errors
+    # would otherwise be charged to /ai-chat — the listener is attached once, at
+    # page creation, and never resets itself. Scope the assertion to the page
+    # under test so a failure here names this page and not the login journey.
+    page.console_errors.clear()
+    page.page_errors.clear()
     response = page.goto(live_server + "/ai-chat", wait_until="domcontentloaded",
                          timeout=PAGE_TIMEOUT)
     status = response.status if response else 0
@@ -214,3 +244,22 @@ def test_pressing_enter_sends_the_message_to_the_server(page, live_server, seede
         "%d JavaScript error(s) while sending a message:\n  - %s\n\n"
         "A failing provider must render an error in the transcript, not throw."
         % (len(errors), "\n  - ".join(errors[:8])))
+
+
+def test_the_degraded_provider_banner_is_shown(page, live_server, seeded):
+    """A 503 from the health probe must reach the user, not just the console.
+
+    IGNORED_CONSOLE tolerates that 503 because a CI box has no LLM keys. This
+    test is the other half of that bargain: the condition is only ignorable
+    because the UI is proven to surface it.
+    """
+    _open_chat(page, live_server, seeded)
+
+    # The banner polls on init and every 60s; it is x-show'd off while healthy.
+    page.wait_for_timeout(1500)
+    banner = page.locator("[role=alert]", has_text="AI provider")
+    assert banner.count() >= 1, (
+        "No LLM provider is configured, /ai-chat/api/health/llm answered 503, and "
+        "the user was told nothing. A silent degraded assistant is worse than an "
+        "absent one: answers still appear, and nothing says they are unavailable."
+    )
