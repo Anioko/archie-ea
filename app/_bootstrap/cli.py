@@ -211,6 +211,13 @@ def init_cli(app):
         app.logger.warning(f"⚠️  Failed to register value-stream ArchiMate backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_archimate_layer_casing import init_app as init_layer_casing
+        init_layer_casing(app)
+        app.logger.info("✅ ArchiMate layer-casing backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register ArchiMate layer-casing backfill CLI: {e}")
+
+    try:
         from app.commands.backfill_principle_org import init_app as init_principle_org
         init_principle_org(app)
         app.logger.info("✅ Principle tenancy backfill CLI command registered")
