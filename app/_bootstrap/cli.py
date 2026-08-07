@@ -70,6 +70,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ArchiMate backfill CLI: {e}")
 
+    # Demo tenant relationship seeder
+    try:
+        from app.commands import seed_demo_mappings
+        seed_demo_mappings.init_app(app)
+        app.logger.info("✅ Demo mapping seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register demo mapping seed CLI: {e}")
+
     # BIZBOK Strategy & Motivation backfill CLI command
     try:
         from scripts.backfill_strategy_motivation_elements import init_app as init_strat_backfill

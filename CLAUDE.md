@@ -41,7 +41,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-All 18 gates, in registry order (`scripts/verify.py`, `build_gates`):
+All 19 gates, in registry order (`scripts/verify.py`, `build_gates`):
 
 | Gate | Catches | Kind |
 |---|---|---|
@@ -54,6 +54,7 @@ All 18 gates, in registry order (`scripts/verify.py`, `build_gates`):
 | `air-gap` | a UI asset loaded from a public CDN | ratchet @ 0 |
 | `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 98 |
 | `template-syntax` | a Jinja template that does not parse (500s every page using it) | must be 0 |
+| `template-references` | an `include`/`extends` target that does not exist (TemplateNotFound at render) | must be 0 |
 | `fabricated-data` | invented data reaching the UI (see below) | must be 0 |
 | `deployed-deps` | installed packages below the pinned floors | must be 0 |
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |

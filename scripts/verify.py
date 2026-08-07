@@ -254,6 +254,32 @@ def gate_template_syntax() -> Result:
     return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_template_references() -> Result:
+    """Every `{% include %}` / `{% extends %}` target exists. Gated at ZERO.
+
+    `template-syntax` proves a template parses; it cannot see whether the files
+    that template pulls in are present, because Jinja resolves include/extends
+    at render time. A missing partial is therefore invisible until someone opens
+    the page, and then it is a TemplateNotFound 500 rather than a gap in the
+    layout.
+
+    Found three cases in one sweep. `auth/register.html` and
+    `admin/security.html` both extended `base.html`, which does not exist — the
+    base lives at `layouts/base.html`; each survived only because the blueprint
+    rendering it is not currently registered. `applications/detail.html`
+    included nine partials of which one existed, and was rendered by no route at
+    all, so the per-application ArchiMate layer UI inside it had never worked.
+    """
+    proc = _run([sys.executable, "scripts/check_template_references.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("template-references", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_template_references.py to list them"
+    return Result("template-references", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_null_filters() -> Result:
     """No `|default(...)` feeds a filter that calls len(). Gated at ZERO.
 
@@ -619,6 +645,11 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("template-syntax", "every Jinja template parses", "zero",
              gate_template_syntax,
              remediation="see the reported line; Jinja does not nest {# #} comments",
+             tags=["static", "ui"]),
+        Gate("template-references", "every include/extends target exists", "zero",
+             gate_template_references,
+             remediation="create the missing partial, correct the path, or delete the "
+                         "dead reference; run scripts/check_template_references.py",
              tags=["static", "ui"]),
         Gate("null-filters", "default() never feeds a len()-calling filter", "zero",
              gate_null_filters,
