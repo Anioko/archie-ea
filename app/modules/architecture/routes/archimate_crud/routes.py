@@ -21,7 +21,12 @@ from sqlalchemy import or_
 from app import db
 from . import archimate_crud
 from .services.ai_generation_service import AIGenerationService
-from .services.field_configs import get_element_config, create_empty_form_data
+from .services.field_configs import (
+    create_empty_form_data,
+    get_all_element_types,
+    get_element_config,
+    get_element_field_names,
+)
 
 # Application Layer imports
 from app.models.application_layer import (
@@ -272,6 +277,14 @@ LAYER_CONFIG = {
 }
 
 
+# JSON-serialisable typed field configs for every element type that has one,
+# keyed by element_type. Handed to the dashboard template so the create modal
+# can render typed fields instead of just name/description — see field_configs.py.
+ELEMENT_FIELD_CONFIGS = {
+    et: get_element_config(et).to_dict() for et in get_all_element_types()
+}
+
+
 def _validated_layer_filter(layer, element_type):
     """Narrow a requested (layer, element_type) pair to what the registry knows.
 
@@ -380,6 +393,7 @@ def dashboard():
         layer_config=LAYER_CONFIG,
         initial_layer=initial_layer,
         initial_element_type=initial_element_type,
+        element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
 
 
@@ -663,6 +677,7 @@ def list_elements(layer, element_type):
         # default tab, showing a different layer than the URL asked for.
         initial_layer=initial_layer,
         initial_element_type=initial_element_type,
+        element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
 
 
@@ -699,7 +714,7 @@ def create_element(layer, element_type):
                 element.description = data.get("description", "").strip()
 
             # Set layer-specific fields based on model
-            _set_model_fields(element, data, model_class)
+            _set_model_fields(element, data, model_class, element_type)
 
             # Auto-create ArchiMateElement if not provided
             if not element.archimate_element_id:
@@ -758,6 +773,7 @@ def create_element(layer, element_type):
                 layer_config=LAYER_CONFIG,
                 field_config=get_element_config(element_type),
                 form_data=create_empty_form_data(element_type),
+                element_field_configs=ELEMENT_FIELD_CONFIGS,
             )
 
     return render_template(
@@ -767,6 +783,7 @@ def create_element(layer, element_type):
         layer_config=LAYER_CONFIG,
         field_config=get_element_config(element_type),
         form_data=create_empty_form_data(element_type),
+        element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
 
 
@@ -851,7 +868,7 @@ def update_element(layer, element_type, element_id):
 
             if not _from_ae:
                 # Update layer-specific fields only for dedicated model instances
-                _set_model_fields(element, data, model_class)
+                _set_model_fields(element, data, model_class, element_type)
 
                 # Update ArchiMateElement if linked
                 if getattr(element, "archimate_element_id", None):
@@ -904,6 +921,7 @@ def update_element(layer, element_type, element_id):
         element_type=element_type,
         element=element,
         layer_config=LAYER_CONFIG,
+        element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
 
 
@@ -1246,8 +1264,21 @@ def api_element_patch(element_id):
 
 
 
-def _set_model_fields(element, data, model_class):
-    """Set model-specific fields from data"""
+def _set_model_fields(element, data, model_class, element_type=None):
+    """Set model-specific fields from data.
+
+    Applied fields come from two merged sources: the legacy ``field_mappings``
+    table below, and (when ``element_type`` is given) the typed field names
+    declared in ``services/field_configs.py`` for that type — the same config
+    the create-modal renders fields from, so a field the UI can show is also a
+    field this will persist. Either way a field is only ever set when the
+    model actually declares the attribute (``hasattr``) and the caller
+    actually posted it (``field in data``): an unknown/renamed field name in
+    the payload is silently ignored here, never a 500. Shared verbatim by
+    both create (POST /<layer>/<element_type>/new) and update
+    (POST /<layer>/<element_type>/<id>/edit) so typed fields behave the same
+    on both paths.
+    """
     # Common fields
     common_fields = ["description", "status", "operational_status"]
     for field in common_fields:
@@ -1315,12 +1346,15 @@ def _set_model_fields(element, data, model_class):
         Product: ["product_type", "product_category", "target_market", "pricing_model"],
     }
 
-    if model_class in field_mappings:
-        for field in field_mappings[model_class]:
-            if (
-                hasattr(element, field) and field in data
-            ):  # model-safety-ok: polymorphic ArchiMate elements
-                setattr(element, field, data[field])
+    allowed_fields = set(field_mappings.get(model_class, []))
+    if element_type:
+        allowed_fields.update(get_element_field_names(element_type))
+
+    for field in allowed_fields:
+        if (
+            hasattr(element, field) and field in data
+        ):  # model-safety-ok: polymorphic ArchiMate elements
+            setattr(element, field, data[field])
 
 
 def _get_element_relationships(element, element_id):
