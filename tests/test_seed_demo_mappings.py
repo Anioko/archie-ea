@@ -103,6 +103,28 @@ def test_seeding_stays_inside_the_organisation_it_is_given(
     assert _mapping_count(db_session, populated.id) == 0
 
 
+def test_cli_command_runs_with_a_tenant_context(app, db_session, tenant_with_entities):
+    """The command must establish the tenant, not just pass the id along.
+
+    Writing an ApplicationCapabilityMapping fires the ArchiMate relationship
+    sync, which inserts into `archimate_relationships` — NOT NULL
+    organization_id, defaulted from `g.current_org_id`. Invoked from a bare CLI
+    there is no request context, so on a database with more than one
+    organisation the default resolves to None and the entire seed aborts on the
+    constraint. That is exactly how this failed against production, and the
+    function-level tests could not see it because they never went through the
+    command.
+    """
+    org = tenant_with_entities("seed-cli")
+
+    result = app.test_cli_runner().invoke(args=["seed-demo-mappings", "--org-id", str(org.id)])
+
+    assert result.exit_code == 0, (
+        f"command failed: {result.output}\n{result.exception!r}"
+    )
+    assert "linked" in result.output
+
+
 def test_unknown_names_are_skipped_not_invented(db_session, make_org):
     """An org with none of the named entities gets no rows and no new entities."""
     from app.models.application_portfolio import ApplicationComponent
@@ -121,10 +143,26 @@ def test_unknown_names_are_skipped_not_invented(db_session, make_org):
     assert apps == 0, "the seeder created an application that did not exist"
 
 
-def test_dry_run_changes_nothing(db_session, tenant_with_entities):
+def test_dry_run_writes_nothing_but_still_reports_what_it_would_do(
+    db_session, tenant_with_entities
+):
+    """A preview that reports zero is worse than no preview.
+
+    The first version of this test asserted the *reported count* was 0, which
+    passed against a dry run that zeroed its own counters — so the command
+    printed "would link 0" for a tenant it would have linked dozens of mappings
+    into. The count must reflect the work; only the database must be untouched.
+    """
     org = tenant_with_entities("seed-dryrun")
 
     stats = seed_demo_mappings(org.id, dry_run=True)
 
-    assert stats["app_capability_created"] == 0
-    assert _mapping_count(db_session, org.id) == 0
+    assert _mapping_count(db_session, org.id) == 0, "dry run wrote rows"
+    assert stats["app_capability_created"] > 0, (
+        "dry run reported no work for a tenant it would have seeded"
+    )
+
+    applied = seed_demo_mappings(org.id)
+    assert applied["app_capability_created"] == stats["app_capability_created"], (
+        "the dry run's preview did not match what the real run actually did"
+    )
