@@ -342,6 +342,22 @@ class TestingConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = False
 
+    # Brute-force protection is a production control; under test it throttles the
+    # suite instead of an attacker. /account/login is capped at 10 POSTs per
+    # minute keyed on IP, and every smoke test signs in from 127.0.0.1 — so as
+    # the suite grows it is structurally guaranteed to refuse its own logins.
+    #
+    # It did. A full single-process run failed 31 tests and errored 9 more, every
+    # one of them a sign-in refused with "Rate limit exceeded: 10 per 1m", across
+    # the authorisation matrix, the archetype journeys and the AI chat journey.
+    # The archetype that lost varied by timing, which made it read as a race.
+    #
+    # tests/test_rate_limiting.py covers the limiter directly, below this switch,
+    # and asserts the login route still carries the decorator — so disabling it
+    # here costs no coverage of the control. It only stops the control from
+    # deciding the outcome of tests that are not about it.
+    RATE_LIMITING_ENABLED = False
+
     # PostgreSQL REQUIRED for tests (matches production behavior)
     # SQLite is NOT supported - tests must use PostgreSQL for consistency
     SQLALCHEMY_DATABASE_URI = os.environ.get(
