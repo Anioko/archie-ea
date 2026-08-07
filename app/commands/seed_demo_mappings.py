@@ -211,9 +211,12 @@ def seed_demo_mappings(org_id, dry_run=False):
             existing_stage_caps.add((stage.id, capability.id))
 
     if dry_run:
+        # Discard anything pending, but KEEP the counts: the whole point of a
+        # dry run is to report what would change. Zeroing them here made the
+        # command print "would link 0" for a tenant it would in fact have linked
+        # 46 mappings into — a preview that is worse than no preview, because it
+        # reads as "nothing to do".
         db.session.rollback()
-        stats["app_capability_created"] = 0
-        stats["stage_capability_created"] = 0
     else:
         db.session.commit()
     return stats
@@ -233,7 +236,20 @@ def seed_demo_mappings_command(org_id, dry_run):
         raise click.ClickException(f"No organization with id={org_id}.")
 
     click.echo(f"  organisation {org_id} ({org.name})")
-    stats = seed_demo_mappings(org_id, dry_run=dry_run)
+
+    # Run inside a request context carrying the tenant. Writing an
+    # ApplicationCapabilityMapping fires the ArchiMate relationship sync, which
+    # inserts into `archimate_relationships` — a NOT NULL organization_id whose
+    # column default reads `g.current_org_id`. From a bare CLI there is no
+    # request context and no g, so with more than one organisation present the
+    # default returns None and the whole seed aborts on the constraint.
+    # The lookups in seed_demo_mappings still name the organisation explicitly;
+    # this context is for the listeners downstream, not a substitute for them.
+    from flask import current_app, g
+
+    with current_app.test_request_context("/"):
+        g.current_org_id = org_id
+        stats = seed_demo_mappings(org_id, dry_run=dry_run)
     verb = "would link" if dry_run else "linked"
     click.echo(
         f"  {verb} {stats['app_capability_created']} application-capability and "
