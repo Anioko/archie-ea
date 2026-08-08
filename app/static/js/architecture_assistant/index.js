@@ -1556,7 +1556,7 @@ let ArchAssistant = {
                     work_package_template: 'auto'
                 };
                 try {
-                    await fetch('/api/roadmap/gaps/convert', {
+                    await fetch('/capability-map/api/roadmap/gaps/convert', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(gapPayload)
