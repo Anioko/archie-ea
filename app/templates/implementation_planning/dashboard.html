@@ -23,7 +23,11 @@
             <h1 class="text-4xl font-bold text-foreground mb-3">Implementation Planning</h1>
             <p class="text-lg text-muted-foreground max-w-3xl mx-auto">Enterprise Architecture Migration & Implementation Roadmap</p>
         </div>
-        
+
+        {# A failed load must be visible on the page, not only in a toast that
+           has already faded by the time the user reads the roadmap. #}
+        <div x-show="loadError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="loadError"></div>
+
         <!-- Main Content -->
         <div class="space-y-6">
             <!-- ArchiMate Gantt Widget Section -->
@@ -120,59 +124,80 @@ function implementationPlanningDashboard() {
             gaps: true,
             deliverables: false
         },
+        // null, not 0: a count that never loaded renders as an em dash, whereas
+        // a 0 would be indistinguishable from a measured zero.
         stats: {
-            work_packages: 0,
-            in_progress: 0,
-            completed: 0,
-            critical_gaps: 0
+            work_packages: null,
+            in_progress: null,
+            completed: null,
+            critical_gaps: null
         },
         workPackages: [],
         criticalGaps: [],
         recentWorkPackages: [],
-        
+        loadError: '',
+
         init() {
             this.loadDashboardData();
         },
-        
+
         loadDashboardData() {
+            this.loadError = '';
+            // fetch does not reject on 4xx/5xx — an error page would otherwise
+            // be parsed as a legitimately empty roadmap.
+            const jsonOrThrow = (response) => {
+                if (!response.ok) throw new Error('request failed: ' + response.status);
+                return response.json();
+            };
+            // Four requests failing at once is one outage: report it once.
+            const reportFailure = () => {
+                if (this.loadError) return;
+                this.loadError = 'Some implementation planning data could not be loaded — figures shown as — are unknown, not zero.';
+                Platform.toast.error('Could not load implementation planning data.');
+            };
+
             // Load statistics
             fetch('/implementation/api/dashboard-stats')
-                .then(response => response.json())
+                .then(jsonOrThrow)
                 .then(data => {
                     this.stats = data.stats;
                 })
-                .catch(error => {
-                    console.error('Error loading stats:', error);
+                .catch(() => {
+                    this.stats = { work_packages: null, in_progress: null, completed: null, critical_gaps: null };
+                    reportFailure();
                 });
-            
+
             // Load work packages
             fetch('/implementation/api/work-packages')
-                .then(response => response.json())
+                .then(jsonOrThrow)
                 .then(data => {
                     this.workPackages = data.work_packages || [];
                 })
-                .catch(error => {
-                    console.error('Error loading work packages:', error);
+                .catch(() => {
+                    this.workPackages = [];
+                    reportFailure();
                 });
-            
+
             // Load critical gaps
             fetch('/implementation/api/gaps?priority=critical&limit=5')
-                .then(response => response.json())
+                .then(jsonOrThrow)
                 .then(data => {
                     this.criticalGaps = data.gaps || [];
                 })
-                .catch(error => {
-                    console.error('Error loading gaps:', error);
+                .catch(() => {
+                    this.criticalGaps = [];
+                    reportFailure();
                 });
-            
+
             // Load recent work packages
             fetch('/implementation/api/work-packages?limit=5&sort=updated_at')
-                .then(response => response.json())
+                .then(jsonOrThrow)
                 .then(data => {
                     this.recentWorkPackages = data.work_packages || [];
                 })
-                .catch(error => {
-                    console.error('Error loading recent work packages:', error);
+                .catch(() => {
+                    this.recentWorkPackages = [];
+                    reportFailure();
                 });
         },
         

@@ -186,6 +186,8 @@
                 if (res.ok || res.status === 204) {
                     this.relRows = this.relRows.filter(r => r.id !== relId);
                 } else {
+                    // Parses the error BODY only; a non-JSON error page is expected here.
+                    // The failure itself is reported on the line below.
                     const data = await res.json().catch(() => ({}));
                     this.relError = data.error || 'Failed to delete';
                 }

@@ -601,7 +601,13 @@ async function processManualImport() {
 // Import history
 function loadImportHistory() {
   fetch('/applications/import-history')
-    .then(response => response.json())
+    .then(response => {
+      // fetch does not reject on 4xx/5xx. Without this the failure surfaced only
+      // as a JSON parse error into an empty catch, and the table kept whatever
+      // was in it — most often nothing, which reads as "nothing was ever imported".
+      if (!response.ok) { throw new Error('HTTP ' + response.status); }
+      return response.json();
+    })
     .then(data => {
       const tbody = document.getElementById('import-history-tbody');
       safeHTML(tbody, '');
@@ -635,6 +641,13 @@ function loadImportHistory() {
       }
     })
     .catch(error => {
+      // Distinct from the "No import history" empty state above: no rows are
+      // invented, but the user must not read a failed load as an empty log.
+      const tbody = document.getElementById('import-history-tbody');
+      if (tbody) {
+        safeHTML(tbody, '<tr><td colspan="8" class="px-4 py-3 text-sm text-destructive text-center">Import history could not be loaded. This is not an empty history.</td></tr>');
+      }
+      Platform.toast.error('Could not load the import history: ' + (error.message || 'request failed') + '.');
     });
 }
 

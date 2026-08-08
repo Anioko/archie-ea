@@ -312,9 +312,15 @@ document.addEventListener('alpine:init', () => {
 });
 document.addEventListener('DOMContentLoaded', function () {
   fetch('/api/vendors/ranking')
-    .then(r => r.ok ? r.json() : null)
+    .then(r => {
+      // fetch does not reject on 4xx/5xx. Without this the score column would
+      // silently stay at an em dash on every row, reading as "never scored"
+      // rather than "scores could not be loaded".
+      if (!r.ok) throw new Error('vendor ranking request failed: ' + r.status);
+      return r.json();
+    })
     .then(data => {
-      if (!data || !data.success) return;
+      if (!data.success) throw new Error(data.error || 'vendor ranking unavailable');
       const scores = {};
       (data.ranking || []).forEach(v => {
         if (v.vendor_option_id) scores[v.vendor_option_id] = v.total_score;
@@ -323,7 +329,11 @@ document.addEventListener('DOMContentLoaded', function () {
         Alpine.store('vendorScores', scores);
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      // The store stays empty — no invented scores — and the user is told why
+      // the column is blank.
+      Platform.toast.error('Could not load vendor scores — the score column is unknown, not unscored.');
+    });
 });
 </script>
 {% endblock %}

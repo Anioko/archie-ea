@@ -174,14 +174,20 @@
                         credentials: 'same-origin',
                         headers: { 'Accept': 'application/json' }
                     });
-                    if (!resp.ok) return null;
+                    // Returning null on a non-ok response opened the preview panel
+                    // empty, which reads as "accepting this suggestion would infer
+                    // nothing" — a statement about the model, not about the request.
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     let json = await resp.json();
                     let data = (json.success && json.data) ? json.data : json;
                     if (!this._inferencePreviewCache) this._inferencePreviewCache = {};
                     this._inferencePreviewCache[elementType] = data;
                     return data;
                 } catch (e) {
-                    console.warn('[KAN-003] Inference preview fetch failed:', e);
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Could not load the inference preview: ' + (e.message || 'request failed') + '.');
+                    }
+                    // Not cached: a failure must not be remembered as "nothing inferred".
                     return null;
                 }
             },
@@ -197,6 +203,9 @@
                 }
                 // Fetch and attach preview data
                 let preview = await this.fetchInferencePreview(s.element_type);
+                // Leave the card collapsed on failure rather than expanding an empty
+                // panel; fetchInferencePreview has already told the user why.
+                if (preview === null) return;
                 this.aiSuggestions[idx] = Object.assign({}, s, {
                     _previewExpanded: true,
                     _previewData: preview

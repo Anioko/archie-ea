@@ -86,28 +86,49 @@ function loadContext(mode, contextId) {
         : `{{ url_for("code_generation.get_architecture_context", view_id=0) }}`.replace('/0', `/${contextId}`);
 
     fetch(endpoint)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                displayContext(data, mode);
-            }
+        .then(response => {
+            // fetch does not reject on 4xx/5xx — without this the failure would
+            // fall through to `data.success` being undefined and render nothing.
+            if (!response.ok) throw new Error('context request failed: ' + response.status);
+            return response.json();
         })
-        .catch(error => {
-            console.error('Failed to load context:', error);
+        .then(data => {
+            if (!data.success) throw new Error(data.error || 'context unavailable');
+            displayContext(data, mode);
+        })
+        .catch(() => {
+            renderLoadFailure('contextContainer', 'Could not load the selected context.');
+            Platform.toast.error('Could not load the selected context.');
         });
 }
 
 function loadTemplates() {
     fetch('{{ url_for("code_generation.list_templates") }}')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                displayTemplates(data.templates);
-            }
+        .then(response => {
+            if (!response.ok) throw new Error('templates request failed: ' + response.status);
+            return response.json();
         })
-        .catch(error => {
-            console.error('Failed to load templates:', error);
+        .then(data => {
+            if (!data.success) throw new Error(data.error || 'templates unavailable');
+            displayTemplates(data.templates);
+        })
+        .catch(() => {
+            // Leave the list empty but say so: an empty picker would otherwise
+            // read as "this project has no templates".
+            renderLoadFailure('templateList', 'Could not load code generation templates.');
+            Platform.toast.error('Could not load code generation templates.');
         });
+}
+
+// A load failure must not be mistaken for an empty result.
+function renderLoadFailure(containerId, message) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.textContent = '';
+    const el = document.createElement('div');
+    el.className = 'rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive';
+    el.textContent = message;
+    container.appendChild(el);
 }
 
 function displayContext(data, mode) {

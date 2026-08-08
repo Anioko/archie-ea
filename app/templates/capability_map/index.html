@@ -135,8 +135,10 @@
     </div>
 
         <!-- ArchiMate Relationship Health Panel (BPP-012) -->
-        <div x-data="{ rhExpanded: false, rhLoaded: false, rhData: {total_elements:0,total_relationships:0,zero_relationship_count:0,average_per_element:0,by_layer:[]} }"
-             x-init="fetch('/capability-map/api/archimate/relationship-health').then(r=>r.json()).then(d=>{rhData=d;rhLoaded=true}).catch(()=>{})"
+        {# Counters start null, not 0: an unloaded figure renders as an em dash,
+           because a 0 here is indistinguishable from a measured zero. #}
+        <div x-data="{ rhExpanded: false, rhLoaded: false, rhError: '', rhData: {total_elements:null,total_relationships:null,zero_relationship_count:null,average_per_element:null,by_layer:[]} }"
+             x-init="fetch('/capability-map/api/archimate/relationship-health').then(r=>{if(!r.ok)throw new Error('relationship health request failed: '+r.status);return r.json()}).then(d=>{rhData=d;rhLoaded=true}).catch(()=>{rhError='Could not load ArchiMate relationship health.';Platform.toast.error(rhError)})"
              class="mb-4">
             <div class="rounded-lg border border-input bg-card">
                 <div class="p-3 flex items-center justify-between cursor-pointer" @click="rhExpanded=!rhExpanded">
@@ -154,11 +156,12 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform" :class="rhExpanded?'rotate-180':''" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                 </div>
                 <div x-show="rhExpanded" x-cloak class="px-3 pb-3 border-t">
+                    <div x-show="rhError" x-cloak class="mt-3 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="rhError"></div>
                     <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_elements"></div><div class="text-[10px] text-muted-foreground">Elements</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_relationships"></div><div class="text-[10px] text-muted-foreground">Relationships</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'text-destructive':'text-amber-600'" x-text="rhData.zero_relationship_count"></div><div class="text-[10px] text-muted-foreground">Unconnected</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.average_per_element"></div><div class="text-[10px] text-muted-foreground">Avg Rels/El</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_elements ?? '—'"></div><div class="text-[10px] text-muted-foreground">Elements</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_relationships ?? '—'"></div><div class="text-[10px] text-muted-foreground">Relationships</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'text-destructive':'text-amber-600'" x-text="rhData.zero_relationship_count ?? '—'"></div><div class="text-[10px] text-muted-foreground">Unconnected</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.average_per_element ?? '—'"></div><div class="text-[10px] text-muted-foreground">Avg Rels/El</div></div>
                     </div>
                     <div class="space-y-1">
                         <template x-for="l in rhData.by_layer" :key="l.layer">

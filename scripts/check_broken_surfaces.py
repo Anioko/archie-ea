@@ -158,7 +158,8 @@ def scan() -> dict[str, list[str]]:
     resolves, _n = _route_matcher()
     out: dict[str, list[str]] = {k: [] for k in
                                 ("dead-link", "dead-fetch", "swallowed",
-                                 "form-no-action", "forbidden-ui", "orphan-page")}
+                                 "form-no-action", "forbidden-ui", "orphan-page",
+                                 "silent-empty")}
 
     html = sorted(TEMPLATES.rglob("*.html"))
     js = sorted(STATIC_JS.rglob("*.js"))
@@ -173,6 +174,51 @@ def scan() -> dict[str, list[str]]:
     swallow_re = re.compile(
         r"catch\s*\([^)]*\)\s*\{\s*(?:/\*[^{}]*?\*/\s*)?"
         r"(?:console\.\w+\([^;{}]*\);?\s*)?\}")
+    # The statement form above is only half of it. A promise chain's handler is
+    # an EXPRESSION — .catch(() => {}) and .catch(function () {}) — and this
+    # class was blind to all of them, so the gate read zero while 13 fully
+    # silent catches shipped. Same defect, different syntax.
+    swallow_expr_re = re.compile(
+        r"\.catch\(\s*(?:\([^)]*\)|\w+)\s*=>\s*\{\s*(?:/\*[^{}]*?\*/\s*)?"
+        r"(?:console\.\w+\([^;{}]*\);?\s*)?\}\s*\)"
+        r"|"
+        r"\.catch\(\s*function\s*\([^)]*\)\s*\{\s*(?:/\*[^{}]*?\*/\s*)?"
+        r"(?:console\.\w+\([^;{}]*\);?\s*)?\}\s*\)")
+    # ── silent-empty ────────────────────────────────────────────────────────
+    # The `swallowed` classes above find handlers that do NOTHING. This finds
+    # handlers that do something worse: hand back [] / {} / null / 0, which the
+    # UI then renders as data. An empty list is a legitimate answer on most
+    # screens - "no results", "nothing blocking this retirement" - so a 500
+    # reads to the user as a fact about their portfolio.
+    _EMPTY = r"(?:\[\s*\]|\{\s*\}|null|0|''|\"\")"
+    silent_empty_res = [
+        re.compile(r"catch\s*\([^)]*\)\s*\{[^{}]{0,200}?\breturn\s+" + _EMPTY + r"\s*;?\s*\}", re.S),
+        re.compile(r"\.catch\(\s*(?:\([^)]*\)|\w+)\s*=>\s*\(?" + _EMPTY + r"\)?\s*\)"),
+        re.compile(r"\.catch\(\s*function\s*\([^)]*\)\s*\{\s*return\s+" + _EMPTY + r"\s*;?\s*\}\s*\)", re.S),
+        re.compile(r"if\s*\(\s*![\w.]*\.?ok\s*\)\s*(?:\{\s*)?return\s+" + _EMPTY + r"\s*;?", re.S),
+        re.compile(r"\.ok\s*\?[^;:]{0,80}:\s*" + _EMPTY),
+    ]
+    # If the failure is reported anywhere near the handler, it is not silent.
+    # This is what separates `resp.json().catch(() => ({}))` - parsing an error
+    # BODY before toasting err.error, which is correct - from a load path that
+    # swallows the error and returns an empty list.
+    # swallow-ok is deliberately NOT in this alternation: a marker is matched
+    # precisely by _swallow_ok() against the handler itself. Folding it in here
+    # would let a marker anywhere in a 600-character window silence an
+    # unrelated finding further down the same function.
+    # Assignment to ANY identifier ending in Error/error counts as reporting.
+    # \berror\b missed the common case: suggestionsError, relError, loadError
+    # and this.errorMsg are how these components record a failure for the
+    # template to render, and every one of them was reported as silent.
+    reports_re = re.compile(
+        r"toast|throw\b|console\.(error|warn)|"
+        r"[A-Za-z_$]*[Ee]rror[A-Za-z_$]*\s*[=:]|"
+        # Consuming the server's own error message - `err.error || 'Request
+        # failed.'` - is the failure being surfaced, even when it lands
+        # somewhere with no "error" in its name. The chat panel assigns it to
+        # assistantMsg.content, which no identifier pattern can recognise.
+        r"\.error\s*\|\|", re.I)
+
     forbidden_re = re.compile(r"(?<![\w.])(alert|confirm)\s*\(")
     # A DEFINITION named alert/confirm is the replacement for the native call,
     # not an instance of it. Both remaining findings were the cure, not the
@@ -236,12 +282,43 @@ def scan() -> dict[str, list[str]]:
         # which the `sri` gate would then fail — the fix and the gate would be
         # in direct conflict.
         if "/static/js/vendor/" not in rel(path):
-            for m in swallow_re.finditer(raw):
-                if _swallow_ok(raw, m.start()):
-                    continue
-                out["swallowed"].append(
-                    "%s:%d: swallowed: catch block tells neither the user nor the logs"
-                    % (rel(path), line_of(text, m.start())))
+            seen_lines = set()
+            for pat in (swallow_re, swallow_expr_re):
+                for m in pat.finditer(raw):
+                    if _swallow_ok(raw, m.start()):
+                        continue
+                    ln = line_of(text, m.start())
+                    if ln in seen_lines:
+                        continue          # both forms can match one construct
+                    seen_lines.add(ln)
+                    out["swallowed"].append(
+                        "%s:%d: swallowed: catch block tells neither the user nor the logs"
+                        % (rel(path), ln))
+        # Network paths only. A JSON.parse of our own server-rendered data
+        # attribute failing is a different thing and legitimately silent.
+        if "/static/js/vendor/" not in rel(path) and "fetch(" in raw:
+            se_lines = set()
+            for pat in silent_empty_res:
+                # Match against the comment-BLANKED copy. Unlike `swallowed` -
+                # where a comment inside a catch is documented intent and must
+                # be read - a comment merely QUOTING `r.ok ? r.json() : {}` to
+                # explain the anti-pattern is not an instance of it, and was
+                # being reported as one. Offsets are preserved, so line numbers
+                # and the marker lookup below stay correct.
+                for m in pat.finditer(text):
+                    if _swallow_ok(raw, m.start()):
+                        continue
+                    ctx = text[max(0, m.start() - 300):m.end() + 300]
+                    if reports_re.search(ctx):
+                        continue
+                    ln = line_of(text, m.start())
+                    if ln in se_lines:
+                        continue
+                    se_lines.add(ln)
+                    out["silent-empty"].append(
+                        "%s:%d: silent-empty: a failed request returns an empty value the "
+                        "UI renders as data" % (rel(path), ln))
+
         for m in forbidden_re.finditer(text):
             if definition_re.match(text, m.start()):
                 continue

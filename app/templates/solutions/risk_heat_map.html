@@ -363,6 +363,8 @@ function riskHeatMap(solutionId, initialRisks) {
                     body: JSON.stringify(payload),
                 });
                 if (!res.ok) {
+                    // Parses the error BODY only; a non-JSON error page is expected here.
+                    // The failure itself is reported on the line below.
                     const body = await res.json().catch(() => ({}));
                     this.formError = body.error || 'Failed to create risk';
                     return;

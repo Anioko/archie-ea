@@ -125,7 +125,7 @@ document.addEventListener('alpine:init', () => {
                     field_name: suggestion.field_name,
                     new_value: suggestion.suggested_value,
                 }),
-            }).catch(() => {});
+            }).catch(() => { /* swallow-ok: acceptance counter for analytics only — the service itself documents "actual field update is handled by frontend", and that update is the dispatched event below, which does not depend on this call. Losing a tally must not interrupt the architect mid-form. */ });
 
             // Dispatch event for journey component to apply the value
             window.dispatchEvent(new CustomEvent('copilot-accepted', {

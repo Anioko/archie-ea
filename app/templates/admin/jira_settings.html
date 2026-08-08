@@ -570,19 +570,37 @@
     });
 
     // Kanban push status polling
+    let kanbanStatusFailing = false;
     function refreshKanbanStatus() {
+        const el = (id) => document.getElementById(id);
         fetch('{{ url_for("admin.jira_kanban_push_status") }}', {
             headers: {'X-Requested-With': 'XMLHttpRequest'},
         })
-        .then(r => r.json())
+        .then(r => {
+            // fetch does not reject on 4xx/5xx.
+            if (!r.ok) throw new Error('kanban push status request failed: ' + r.status);
+            return r.json();
+        })
         .then(data => {
-            const ks = (data.success && data.kanban_status) ? data.kanban_status : {};
-            const el = (id) => document.getElementById(id);
+            if (!data.success || !data.kanban_status) throw new Error(data.message || 'kanban status unavailable');
+            const ks = data.kanban_status;
             if (el('kps-pushed')) el('kps-pushed').textContent = ks.pushed !== undefined ? ks.pushed : '—';
             if (el('kps-pending')) el('kps-pending').textContent = ks.pending !== undefined ? ks.pending : '—';
             if (el('kps-failed')) el('kps-failed').textContent = ks.failed !== undefined ? ks.failed : '—';
+            kanbanStatusFailing = false;
         })
-        .catch(() => {});
+        .catch(() => {
+            // Blank the counters rather than leaving the last good poll on
+            // screen: "unknown" must not be readable as a current figure.
+            ['kps-pushed', 'kps-pending', 'kps-failed'].forEach(id => {
+                if (el(id)) el(id).textContent = '—';
+            });
+            // Polls every 5s: one toast per outage, not one per tick.
+            if (!kanbanStatusFailing) {
+                kanbanStatusFailing = true;
+                Platform.toast.error('Could not load Kanban push status.');
+            }
+        });
     }
 
     // Push Kanban Tasks button
@@ -688,7 +706,9 @@
     });
 
     // Poll push status
+    let pushStatusFailing = false;
     function refreshPushStatus() {
+        const el = (id) => document.getElementById(id);
         fetch('{{ url_for("admin.jira_push_status") }}', {
             headers: {'X-Requested-With': 'XMLHttpRequest'},
         })
@@ -698,12 +718,14 @@
         })
         .then(data => {
             const ps = data.push_status || {};
-            const el = (id) => document.getElementById(id);
-            if (el('ps-total')) el('ps-total').textContent = ps.total_tracked || 0;
-            if (el('ps-pushed')) el('ps-pushed').textContent = ps.pushed || 0;
-            if (el('ps-pending')) el('ps-pending').textContent = ps.pending || 0;
-            if (el('ps-drift')) el('ps-drift').textContent = ps.drift_detected || 0;
-            if (el('ps-failed')) el('ps-failed').textContent = ps.failed || 0;
+            // `?? '—'`, not `|| 0`: a counter the server did not send is
+            // unknown, and a 0 there is indistinguishable from a real zero.
+            if (el('ps-total')) el('ps-total').textContent = ps.total_tracked ?? '—';
+            if (el('ps-pushed')) el('ps-pushed').textContent = ps.pushed ?? '—';
+            if (el('ps-pending')) el('ps-pending').textContent = ps.pending ?? '—';
+            if (el('ps-drift')) el('ps-drift').textContent = ps.drift_detected ?? '—';
+            if (el('ps-failed')) el('ps-failed').textContent = ps.failed ?? '—';
+            pushStatusFailing = false;
 
             const job = data.latest_job;
             const ind = el('job-indicator');
@@ -731,7 +753,24 @@
             if (job.error) detail += ' | Error: ' + job.error;
             if (det) det.textContent = detail;
         })
-        .catch(() => {});
+        .catch(() => {
+            ['ps-total', 'ps-pushed', 'ps-pending', 'ps-drift', 'ps-failed'].forEach(id => {
+                if (el(id)) el(id).textContent = '—';
+            });
+            const ind = el('job-indicator');
+            const txt = el('job-text');
+            const det = el('job-details');
+            // Distinct from "No push jobs yet" — a failed status read must not
+            // be mistaken for a confirmed absence of jobs.
+            if (ind) ind.className = 'h-3 w-3 rounded-full bg-destructive';
+            if (txt) txt.textContent = 'status unavailable';
+            if (det) det.textContent = '';
+            // Polls every 5s: one toast per outage, not one per tick.
+            if (!pushStatusFailing) {
+                pushStatusFailing = true;
+                Platform.toast.error('Could not load Jira push status.');
+            }
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function() {

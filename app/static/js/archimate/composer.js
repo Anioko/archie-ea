@@ -2386,9 +2386,9 @@ function composerApp() {
             /* ── Wave 10: Load quality score for solution ── */
             if (self.solutionId) {
                 fetch('/api/solutions/' + self.solutionId + '/quality-score', { credentials: 'same-origin' })
-                    .then(function(r) { return r.ok ? r.json() : null; })
+                    .then(function(r) { return r.ok ? r.json() : null; /* swallow-ok: unrequested enrichment fetched on canvas open; qualityScore stays null so the toolbar badge (x-if="qualityScore") is simply absent — it never shows a made-up percentage — and the user has no action to take */ })
                     .then(function(data) { if (data) self.qualityScore = data; })
-                    .catch(function() { /* swallow-ok: optional quality-score enrichment that no template renders; a failure changes nothing the user can see */ });
+                    .catch(function() { /* swallow-ok: same unrequested enrichment; a network failure while opening the canvas must not interrupt the modelling task with a toast about a badge */ });
             }
 
             /* ── Check for saved viewpoint_id in URL ── */
@@ -3559,7 +3559,7 @@ function composerApp() {
             fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/relationship-health', {
                 headers: { 'X-CSRFToken': (document.cookie.match(/csrf_token=([^;]+)/) || [])[1] || '' },
             })
-            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(r) { return r.ok ? r.json() : null; /* swallow-ok: unsolicited background staleness advisory; on failure the review panel just does not open, the viewpoint itself is unaffected, and the user was never told the check would run */ })
             .then(function(data) {
                 if (!data || !data.stale_relationships || !data.stale_relationships.length) return;
                 let dismissed = sessionStorage.getItem('ent111_dismissed_vp' + self.currentSavedVpId);
@@ -5642,7 +5642,11 @@ function composerApp() {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
-            }).catch(function() { /* silent — localStorage is fallback */ _toast('error', 'Failed to sync viewpoint state'); });
+            })
+            /* A non-ok PUT never rejected, so a 403 or 500 left the properties
+               looking saved when only the local cache had them. */
+            .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } })
+            .catch(function() { _toast('error', 'Failed to save custom properties to the server — they are only in this browser.'); });
         },
 
         /** CMP-043: Load custom properties from server API for a real DB element. */
@@ -5651,7 +5655,10 @@ function composerApp() {
             let id = parseInt(elementId, 10);
             if (!id || id <= 0) return;
             fetch('/archimate/api/elements/' + id + '/properties')
-                .then(function(r) { return r.ok ? r.json() : null; })
+                /* `r.ok ? r.json() : null` fell through to `if (!data) return`, so a
+                   failed load left the stale localStorage copy on screen as though
+                   it were what the server holds. The catch below already toasts. */
+                .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
                 .then(function(data) {
                     if (!data) return;
                     /* Convert {key: value} dict to [{key, value}] array */
@@ -5663,7 +5670,7 @@ function composerApp() {
                     self.customProperties = Object.assign({}, self.customProperties);
                     self._saveCustomPropsToStorage();
                 })
-                .catch(function() { /* silent */ _toast('error', 'Failed to load custom properties'); });
+                .catch(function() { _toast('error', 'Failed to load custom properties from the server; any shown here are a local cache.'); });
         },
 
         getCustomProps: function(elementId) {

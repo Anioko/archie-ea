@@ -204,6 +204,8 @@ function processStepEditor(solutionId) {
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
           body: JSON.stringify({ steps }),
         });
+        // Parses the error BODY only; a non-JSON error page is expected here.
+        // The failure itself is reported on the line below.
         const body = await r.json().catch(() => ({}));
         if (!r.ok) {
           el._saveError = body.error || 'Save failed';

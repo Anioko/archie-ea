@@ -70,10 +70,12 @@
 
     <!-- Statistics Overview -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {{ metrics_card(title='Total Imports', value='0', value_id='total-imports', icon='upload') }}
-        {{ metrics_card(title='Applications Created', value='0', value_id='total-created', icon='plus-circle', value_class='text-success') }}
-        {{ metrics_card(title='Applications Updated', value='0', value_id='total-updated', icon='refresh-cw', value_class='text-primary') }}
-        {{ metrics_card(title='Failed Records', value='0', value_id='total-failed', icon='x-circle', value_class='text-destructive') }}
+        {# Em dash, not 0: nothing has been counted yet, and a 0 here would be
+           indistinguishable from a real "no imports". #}
+        {{ metrics_card(title='Total Imports', value='—', value_id='total-imports', icon='upload') }}
+        {{ metrics_card(title='Applications Created', value='—', value_id='total-created', icon='plus-circle', value_class='text-success') }}
+        {{ metrics_card(title='Applications Updated', value='—', value_id='total-updated', icon='refresh-cw', value_class='text-primary') }}
+        {{ metrics_card(title='Failed Records', value='—', value_id='total-failed', icon='x-circle', value_class='text-destructive') }}
     </div>
 
     <!-- Filter Controls -->
@@ -124,6 +126,13 @@
     <div id="empty-state" class="text-center py-8 hidden">
         <i data-lucide="history" class="h-10 w-10 text-muted-foreground" aria-hidden="true"></i>
         <p class="mt-2 text-muted-foreground">No import history found</p>
+    </div>
+
+    <!-- Error State — deliberately distinct from the empty state above, so a
+         failed load can never be read as "you have never imported anything". -->
+    <div id="error-state" class="text-center py-8 hidden">
+        <i data-lucide="alert-triangle" class="h-10 w-10 text-destructive" aria-hidden="true"></i>
+        <p class="mt-2 text-destructive" id="error-state-message">Could not load import history.</p>
     </div>
 </div>
 
@@ -198,23 +207,43 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadImportHistory() {
+    document.getElementById('error-state').classList.add('hidden');
     fetch('/api/import-history')
-        .then(response => response.json())
+        .then(response => {
+            // fetch does not reject on 4xx/5xx; without this a 500 would be
+            // parsed as an empty history and shown as "No import history found".
+            if (!response.ok) throw new Error('import history request failed: ' + response.status);
+            return response.json();
+        })
         .then(data => {
-            if (data.success) {
-                importHistory = data.jobs;
-                displayImportHistory();
-                updateStatistics();
-            } else {
-                console.error('Failed to load import history:', data.error);
-            }
+            if (!data.success) throw new Error(data.error || 'import history unavailable');
+            importHistory = data.jobs || [];
+            displayImportHistory();
+            updateStatistics();
         })
         .catch(error => {
-            console.error('Error loading import history:', error);
+            showLoadError(error);
         })
         .finally(() => {
             document.getElementById('loading').classList.add('hidden');
         });
+}
+
+// Never fall back to an empty list here: the history stays empty on screen but
+// is labelled as a failure, and the counters go to em dashes rather than 0.
+function showLoadError(error) {
+    importHistory = [];
+    document.getElementById('import-history-list').textContent = '';
+    document.getElementById('empty-state').classList.add('hidden');
+    const errorState = document.getElementById('error-state');
+    const message = document.getElementById('error-state-message');
+    if (message) message.textContent = 'Could not load import history: ' + (error && error.message ? error.message : 'unknown error');
+    if (errorState) errorState.classList.remove('hidden');
+    ['total-imports', 'total-created', 'total-updated', 'total-failed'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '—';
+    });
+    Platform.toast.error('Could not load import history.');
 }
 
 function displayImportHistory() {
