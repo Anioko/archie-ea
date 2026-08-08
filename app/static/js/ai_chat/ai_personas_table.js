@@ -16,8 +16,10 @@
 
     document.addEventListener('alpine:init', function () {
         Alpine.data('aiPersonasTable', function () {
-            return Object.assign(
-                {},
+            // Platform.dataTable.extend, not Object.assign: the mixin's computed
+            // getters (selectedCount, hasSelection, allPageSelected,
+            // hasActiveFilters) are non-enumerable and Object.assign drops them.
+            return Platform.dataTable.extend(
                 Platform.dataTable.mixin({
                     apiUrl: '/ai-chat/api/prompt-templates',
                     perPage: 25,

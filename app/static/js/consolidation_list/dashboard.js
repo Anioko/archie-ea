@@ -33,23 +33,30 @@ let STATUS_COLORS = {
 // ── Register Alpine component ────────────────────────────────────────
 document.addEventListener('alpine:init', function() {
     Alpine.data('consolidationTable', function() {
-        return Object.assign(
-            {},
-            Platform.dataTable.mixin({
-                apiUrl: '/consolidation-list/api/entries',
-                perPage: 25,
-                itemsKey: 'entries',
-                storageKey: 'consolidation',
-                detailUrl: '/consolidation-list/api/entry/{id}/detail',
-                onResponse: function(data) {
-                    this.summary = data.summary || {};
-                    // Store pagination info from API response
-                    if (data.pagination) {
-                        this.totalItems = data.pagination.total || 0;
-                    }
+        // Platform.dataTable.mixin() exposes selectedCount / hasSelection /
+        // allPageSelected / hasActiveFilters as accessor properties added via
+        // Object.defineProperty (see components/data_table.js), which default
+        // to non-enumerable. A plain Object.assign({}, mixin, pageSpecific)
+        // silently drops non-enumerable properties, so those getters never
+        // made it onto this component — every x-text/x-show referencing them
+        // threw "not defined" once Alpine tried to read them off `this`.
+        // Object.getOwnPropertyDescriptors + defineProperties copies the
+        // descriptors (including get/set) instead of just the current value.
+        let base = Platform.dataTable.mixin({
+            apiUrl: '/consolidation-list/api/entries',
+            perPage: 25,
+            itemsKey: 'entries',
+            storageKey: 'consolidation',
+            detailUrl: '/consolidation-list/api/entry/{id}/detail',
+            onResponse: function(data) {
+                this.summary = data.summary || {};
+                // Store pagination info from API response
+                if (data.pagination) {
+                    this.totalItems = data.pagination.total || 0;
                 }
-            }),
-            {
+            }
+        });
+        let pageSpecific = {
                 // ── Page-specific state ──────────────────────────────
                 summary: {},
                 groupBy: '',
@@ -472,8 +479,11 @@ document.addEventListener('alpine:init', function() {
                     this.missingFilter = '';
                     this.setFilter('missing', '');
                 }
-            }
-        );
+            };
+        let result = {};
+        Object.defineProperties(result, Object.getOwnPropertyDescriptors(base));
+        Object.defineProperties(result, Object.getOwnPropertyDescriptors(pageSpecific));
+        return result;
     });
 });
 

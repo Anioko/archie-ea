@@ -19,20 +19,31 @@
                      x-text="Math.round(health.overall_score || 0)"></div>
                 <p class="text-sm text-muted-foreground mt-1">Repository Health Score</p>
             </div>
-            <template x-for="test in (health.tests || [])" :key="test.name">
+            {# /api/health-scorecard returns `tests` as an OBJECT keyed by test id
+               (element_coverage, lifecycle_status, …), and each test carries
+               pass / metric / detail — there is no `name` and no `score`.
+               Iterating it as an array with :key="test.name" gave all seven rows
+               the key `undefined`, which Alpine reported as "Duplicate key on
+               x-for" and then died on inside its reconciler
+               ("Cannot read properties of undefined (reading 'after')") — an
+               uncaught error on every visit to this page, because the panel's
+               x-init fetches on mount whether or not it is open. The sibling
+               health_scorecard.html reads the same endpoint by key. #}
+            <template x-for="[testId, test] in Object.entries(health.tests || {})" :key="testId">
                 <div class="rounded-md border border-border p-3">
                     <div class="flex items-center justify-between">
-                        <span class="text-sm font-medium" x-text="test.name"></span>
+                        <span class="text-sm font-medium" x-text="testId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></span>
                         <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
                               :class="test.pass ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'"
                               x-text="test.pass ? 'PASS' : 'FAIL'"></span>
                     </div>
                     <p class="text-xs text-muted-foreground mt-1" x-text="test.detail || ''"></p>
-                    <div class="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div class="h-full rounded-full transition-all"
-                             :class="test.pass ? 'bg-emerald-500' : 'bg-destructive'"
-                             :style="'width: ' + (test.score || 0) + '%'"></div>
-                    </div>
+                    {# `metric` is the measured value the endpoint actually returns.
+                       The bar that used to sit here drew its width from `test.score`,
+                       which this payload has never contained — so it rendered 0% for
+                       every test, reading as "nothing is healthy" rather than as a
+                       missing field. #}
+                    <p class="text-xs font-medium text-foreground mt-1" x-text="test.metric || ''"></p>
                 </div>
             </template>
         </div>

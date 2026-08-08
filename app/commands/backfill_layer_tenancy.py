@@ -36,6 +36,29 @@ from flask.cli import with_appcontext
 from app import db
 
 
+# Tables whose tenant can be READ from a row they already reference rather than
+# guessed. Each statement fills organization_id only where it is NULL, so it is
+# idempotent and can never move a row between tenants.
+#
+# vendor_product_capabilities records how well a vendor product covers a business
+# capability. The capability is tenant-owned, so the assessment belongs to that
+# capability's organisation — every production row resolves this way, which is
+# strictly better than the refuse-to-guess fallback (they would otherwise all be
+# assigned to one operator-chosen org).
+# tenancy-ok: this backfill is what gives the column its values; it derives the
+# tenant from the joined row rather than assuming one.
+_DERIVABLE_ORG = {
+    "vendor_product_capabilities": """
+        UPDATE vendor_product_capabilities v
+           SET organization_id = b.organization_id
+          FROM business_capability b
+         WHERE v.business_capability_id = b.id
+           AND v.organization_id IS NULL
+           AND b.organization_id IS NOT NULL
+    """,
+}
+
+
 def _resolve_org_id(conn, explicit):
     from sqlalchemy import text
 
@@ -109,6 +132,13 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             conn.execute(text(f'ALTER TABLE "{t}" ADD COLUMN IF NOT EXISTS organization_id INTEGER'))
             click.echo(f"  + {t}: added organization_id")
             col = {"nullable": True}
+
+        # A table that can state its own tenant does so first, so those rows
+        # never reach the guess-based orphan pass below.
+        if not dry_run and t in _DERIVABLE_ORG:
+            derived = conn.execute(text(_DERIVABLE_ORG[t])).rowcount
+            if derived:
+                click.echo(f"  + {t}: derived org for {derived} row(s) from the linked entity")
 
         orphans = conn.execute(
             text(f'SELECT count(*) FROM "{t}" WHERE organization_id IS NULL')
