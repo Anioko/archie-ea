@@ -391,7 +391,14 @@
                            : sev === 'high' ? 'text-warning-emphasis'
                            : 'text-muted-foreground';
                 return '<button type="button" class="js-briefing-item w-full text-left rounded-lg border ' +
-                         'border-border bg-background px-3 py-2 hover:border-primary hover:bg-accent ' +
+                         /* No hover:bg-accent: --muted-foreground scores 4.42 on --accent
+                            versus 4.76 on --background, so tinting the row on hover
+                            pushed the detail line under WCAG AA (axe measured 4.41,
+                            expected 4.5). The border carries the affordance. The same
+                            pattern fails anywhere hover:bg-accent sits under
+                            text-muted-foreground, and only while hovering — which is
+                            why no screenshot would ever show it. */
+                         'border-border bg-background px-3 py-2 hover:border-primary ' +
                          'transition-colors focus-visible:outline-none focus-visible:ring-2 ' +
                          'focus-visible:ring-ring" data-index="' + i + '">' +
                          '<div class="flex items-start gap-2">' +
