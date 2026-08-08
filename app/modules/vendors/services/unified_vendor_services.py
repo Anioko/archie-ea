@@ -18,17 +18,13 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import text
-from sqlalchemy.orm import joinedload
 
-from app import create_app, db
+from app import db
 from app.models import BusinessCapability, TechnologyStack, VendorOption
-from app.models.models import ArchiMateElement
 from app.models.vendor import VendorProductCapability
 from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 from app.models.vendor_stack_template import VendorStackTemplate
 from app.modules.vendors.v2.services import IntelligentTechnologyAnalyzer, TechnologyStackAnalyzer
-from config import config as Config
 
 logger = logging.getLogger(__name__)
 
@@ -905,7 +901,7 @@ class VendorResearchService:
         """Perform LLM-based vendor research."""
         try:
             # Use technology stack analyzer for basic analysis
-            tech_analysis = self.tech_analyzer.analyze_technology_stack(tech_stack.stack_data)
+            self.tech_analyzer.analyze_technology_stack(tech_stack.stack_data)
 
             # Use intelligent analyzer for deeper insights
             intelligent_analysis = self.intelligent_analyzer.analyze_technology(
@@ -1035,7 +1031,6 @@ class UnifiedVendorServices:
 
     def get_products(self, vendor_id=None, category=None, capability=None):
         """Get vendor products with optional filtering by vendor, category, or capability."""
-        from app import db
         from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 
         query = VendorProduct.query.join(VendorOrganization)

@@ -24,6 +24,30 @@ STARTUP_GRACE_SECONDS=600
 
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >> "$LOG"; }
 
+# Notification. The watchdog restarts a wedged container and records everything it
+# does, but until now it told nobody: production could crash-loop, fail its backup
+# freshness check, or be restarted at 03:00, and the only trace was a log file
+# on the box that had the problem.
+#
+# Inert until ALERT_WEBHOOK is set, because a destination is a decision this script
+# cannot make — there is no SMTP configured anywhere (the email worker was disabled
+# on 2026-07-30 for exactly that reason) and no chat webhook in the repo. Set one in
+# /etc/archie-alerts.env and every WARNING and ACTION below starts being delivered
+# with no further change:
+#
+#     echo 'ALERT_WEBHOOK=https://hooks.slack.com/services/...' > /etc/archie-alerts.env
+#
+# Slack and Teams both accept {"text": "..."}. Failures are swallowed: an alerting
+# problem must never stop the watchdog from doing its actual job.
+[ -f /etc/archie-alerts.env ] && . /etc/archie-alerts.env
+alert() {
+    [ -n "${ALERT_WEBHOOK:-}" ] || return 0
+    body=$(printf '{"text":"[archie %s] %s"}' "$(hostname)" "$(echo "$*" | tr -d '"' | head -c 400)")
+    curl -sS -m 10 -X POST -H 'Content-Type: application/json'          -d "$body" "$ALERT_WEBHOOK" >/dev/null 2>&1 || true
+}
+
+log_and_alert() { log "$*"; alert "$*"; }
+
 mkdir -p "$STATE_DIR"
 [ -f "$FAIL_FILE" ] || echo 0 > "$FAIL_FILE"
 [ -f "$LAST_ACTION_FILE" ] || echo 0 > "$LAST_ACTION_FILE"
@@ -39,7 +63,7 @@ current_restarts=$(docker inspect -f '{{.RestartCount}}' "$CONTAINER" 2>/dev/nul
 if [ -n "$current_restarts" ]; then
     previous_restarts=$(cat "$RESTART_FILE" 2>/dev/null || echo "$current_restarts")
     if [ "$current_restarts" -gt "$previous_restarts" ]; then
-        log "WARNING: $CONTAINER is crash-looping - Docker restart count rose $previous_restarts -> $current_restarts. This is a boot failure, not a wedge; restarting it will not help. Check: docker logs $CONTAINER --tail 40"
+        log_and_alert "WARNING: $CONTAINER is crash-looping - Docker restart count rose $previous_restarts -> $current_restarts. This is a boot failure, not a wedge; restarting it will not help. Check: docker logs $CONTAINER --tail 40"
     fi
     echo "$current_restarts" > "$RESTART_FILE"
 fi
@@ -54,13 +78,13 @@ if [ -f "$BACKUP_MARKER" ]; then
     if [ "$age" -gt "$BACKUP_MAX_AGE" ]; then
         # once an hour, not every 60s
         if [ ! -f "$STATE_DIR/backup_warned" ] || [ $(( $(date +%s) - $(stat -c %Y "$STATE_DIR/backup_warned") )) -gt 3600 ]; then
-            log "WARNING: last successful database backup was $((age/3600))h ago (threshold $((BACKUP_MAX_AGE/3600))h)"
+            log_and_alert "WARNING: last successful database backup was $((age/3600))h ago (threshold $((BACKUP_MAX_AGE/3600))h)"
             touch "$STATE_DIR/backup_warned"
         fi
     fi
 else
     if [ ! -f "$STATE_DIR/backup_warned" ]; then
-        log "WARNING: no successful database backup has ever been recorded"
+        log_and_alert "WARNING: no successful database backup has ever been recorded"
         touch "$STATE_DIR/backup_warned"
     fi
 fi
@@ -101,7 +125,7 @@ if [ $(( now - last )) -lt "$COOLDOWN_SECONDS" ]; then
     exit 0
 fi
 
-log "ACTION: restarting $CONTAINER after $fails consecutive failures"
+log_and_alert "ACTION: restarting $CONTAINER after $fails consecutive failures"
 # Capture forensics BEFORE destroying the evidence. On 30 Jul 2026 the restart
 # was issued without a dump, so the code path that wedged all 8 request threads
 # is still unknown. py-spy runs on the host and can introspect the containerised

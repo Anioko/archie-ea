@@ -17,7 +17,6 @@ from app import db
 from app.models.application_portfolio import ApplicationComponent
 from app.models.batch_import import BatchImportApplication, BatchImportJob
 from app.modules.import_batch.v2.services.duplicate_detection_utils_v2 import (
-    DuplicateDetectionConfig,
     DuplicateDetectionUtils,
 )
 from app.modules.import_batch.v2.services.import_validation.import_validator_v2 import ImportValidator

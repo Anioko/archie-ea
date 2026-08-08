@@ -23,7 +23,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from app import db
 
@@ -225,7 +225,7 @@ class GenomePerfectorService:
             sm = mod.get("state_machine") or mod.get("state_machines", {})
             # Check if any entity name suggests status
             for ent in (entities if isinstance(entities, list) else []):
-                ent_name = ent if isinstance(ent, str) else (ent.get("name", "") if isinstance(ent, dict) else "")
+                ent if isinstance(ent, str) else (ent.get("name", "") if isinstance(ent, dict) else "")
                 # Heuristic: most domain entities benefit from state machines
                 status_entities += 1
                 if sm:

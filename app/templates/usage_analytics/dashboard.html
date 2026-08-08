@@ -175,7 +175,7 @@ async function loadAnalyticsData() {
             let triageClass = 'bg-muted text-foreground';
             if (users === 0) {
                 triage = 'DELETE';
-                triageClass = 'bg-destructive/10 text-red-800';
+                triageClass = 'bg-destructive/10 text-destructive-emphasis';
             } else if (users < 10) {
                 triage = 'DEFER';
                 triageClass = 'bg-amber-500/10 text-yellow-800';
@@ -228,6 +228,7 @@ async function loadAnalyticsData() {
 
     } catch (error) {
         console.error('Failed to load analytics data:', error);
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load usage analytics data.');
     }
 }
 </script>

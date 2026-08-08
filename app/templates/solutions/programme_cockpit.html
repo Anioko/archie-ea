@@ -423,7 +423,10 @@
                         method: 'POST',
                         headers: { 'X-CSRFToken': this._csrf() },
                     });
-                    if (r.ok) { await this.load(); }
+                    if (!r.ok) throw new Error('Snapshot failed: ' + r.status);
+                    await this.load();
+                } catch (e) {
+                    if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Snapshot failed');
                 } finally { this.busy = false; }
             },
         };

@@ -33,6 +33,10 @@
     <div id="cap-coverage-empty" class="hidden px-4 py-3 text-xs text-muted-foreground italic">
       No capability mappings yet. Link applications to auto-import their capabilities.
     </div>
+
+    <div id="cap-coverage-error" class="hidden px-4 py-3 text-xs text-destructive">
+      Capability coverage failed to load. Reload the page to try again.
+    </div>
   </div>
 </div>
 
@@ -43,6 +47,7 @@
   const empty = document.getElementById('cap-coverage-empty');
   const total = document.getElementById('cap-coverage-total');
   const gap   = document.getElementById('cap-coverage-gap');
+  const error = document.getElementById('cap-coverage-error');
 
   fetch('/solutions/{{ solution.id }}/capability-coverage')
     .then(function(r) { return r.json(); })
@@ -92,8 +97,10 @@
 
       panel.classList.remove('hidden');
     })
-    .catch(function() {
-      /* silently omit panel on error */
+    .catch(function(err) {
+      console.error('[cap-coverage] failed to load capability coverage:', err);
+      panel.classList.remove('hidden');
+      error.classList.remove('hidden');
     });
 })();
 </script>

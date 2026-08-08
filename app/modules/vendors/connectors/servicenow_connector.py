@@ -30,7 +30,6 @@ from flask import current_app
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
-from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import VendorOrganization
 
 logger = logging.getLogger(__name__)

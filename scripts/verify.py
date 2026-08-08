@@ -1,412 +1,993 @@
-#!/usr/bin/env python3
-"""Run every quality gate that can run here. The executable form of the protocol.
+#!/usr/bin/env python
+"""Archie verification runner — one command, every gate.
 
-CLAUDE.md tells contributors to run this before claiming work is complete, and
-documents its flags and its gate table. The file did not exist, so the project's
-documented primary gate could not be run at all - which is worse than not having
-one, because everyone believes it is being enforced.
+    python scripts/verify.py                # run every gate that can run here
+    python scripts/verify.py --json         # machine-readable result
+    python scripts/verify.py --gate compile # run one gate
+    python scripts/verify.py --require-db   # turn DB-dependent SKIPs into failures (CI)
+    python scripts/verify.py --update-baseline   # re-measure ratchets (see below)
 
-    python scripts/verify.py                  # every gate that can run here
-    python scripts/verify.py --json           # machine-readable
-    python scripts/verify.py --gate lint-core # one gate
-    python scripts/verify.py --tag static     # fast static gates only
-    python scripts/verify.py --require-db     # fail instead of skipping DB gates (CI)
-    python scripts/verify.py --update-baseline
+Why this exists
+---------------
+``app/templates/macros/ZERO_TOLERANCE_PROTOCOL.md`` asks every agent to verify its
+work against a mandatory protocol. A protocol document cannot enforce itself: at
+the time this runner was written the repository had 8 test files and a CI lint step
+reading ``ruff check . || true`` inside ``continue-on-error: true``. This script is
+the executable form of that protocol — the thing you can actually run, and that CI
+can actually fail on.
 
-Three outcomes, and the difference matters:
+Gate kinds
+----------
+``zero``     the measurement must be exactly 0. Used only where the tree is
+             already clean, so the gate can never be satisfied by regression.
+``ratchet``  the measurement must not exceed a recorded baseline. This is how a
+             tree with 4482 known lint findings and 1255 known token violations
+             gets a meaningful gate today instead of after a multi-month cleanup:
+             the number is allowed to fall, never to rise.
+``command``  a subprocess that must exit 0.
 
-    PASS  the gate ran and was satisfied
-    FAIL  the gate ran and was not
-    SKIP  the gate could not run (no database, no Node toolchain, tool absent)
+Ratchets are stored in ``verification_baseline.json``. Lowering a baseline is
+routine — run ``--update-baseline`` after a cleanup. *Raising* one is a deliberate
+act that shows up in review as a changed number, which is the point.
 
-A SKIP is never a pass. It is printed in the summary and counted separately so
-it cannot be mistaken for one - a gate that quietly skips is how a project ends
-up believing it is covered.
-
-Several gates are RATCHETS: they compare a measurement against
-verification_baseline.json and fail only when it gets worse. The tree carries
-known debt, so the honest gate is "no worse", not "clean". Lowering a baseline
-after a cleanup is routine; raising one is a regression that needs justifying.
+Skips are loud
+--------------
+A gate that cannot run reports SKIP with a reason and is listed in the summary. It
+never counts as a pass. CI passes ``--require-db`` so that a missing database
+fails the build rather than quietly shrinking the gate set.
 """
+
+from __future__ import annotations
+
 import argparse
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from urllib.parse import urlparse
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BASELINE_PATH = os.path.join(ROOT, "verification_baseline.json")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+BASELINE_PATH = REPO_ROOT / "verification_baseline.json"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
 
+@dataclass
 class Result:
-    def __init__(self, status, detail="", measured=None, baseline=None):
-        self.status = status
-        self.detail = detail
-        self.measured = measured
-        self.baseline = baseline
+    name: str
+    status: str
+    detail: str = ""
+    measured: int | None = None
+    baseline: int | None = None
+    duration_s: float = 0.0
+    remediation: str = ""
 
 
-def _run(cmd, timeout=600):
-    """Run a command, returning (returncode, stdout+stderr)."""
+@dataclass
+class Gate:
+    name: str
+    description: str
+    kind: str                      # zero | ratchet | command
+    runner: object
+    needs_db: bool = False
+    remediation: str = ""
+    tags: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------- helpers
+
+
+def _run(cmd: list[str], timeout: int = 900) -> subprocess.CompletedProcess:
+    """Run *cmd* capturing output, decoding defensively.
+
+    ``text=True`` alone decodes the child's output with the *parent's* locale
+    encoding — cp1252 on a default Windows console — regardless of the child's
+    PYTHONIOENCODING. Several commands here print non-cp1252 characters (the check
+    marks in ``manage.py init_db``, for one), which raised UnicodeDecodeError inside
+    subprocess's reader thread and left ``proc.stdout`` as None. Pinning utf-8 with
+    errors="replace" makes a gate's *output* incapable of breaking the gate.
+    """
+    proc = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        timeout=timeout,
+        encoding="utf-8",
+        errors="replace",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    # Normalise so callers can concatenate without a None check.
+    proc.stdout = proc.stdout or ""
+    proc.stderr = proc.stderr or ""
+    return proc
+
+
+def _ruff_count(select: str | None = None) -> tuple[int, str]:
+    """Count ruff findings under the repo's pinned ruff.toml."""
+    cmd = [sys.executable, "-m", "ruff", "check", ".", "--output-format", "concise"]
+    if select:
+        cmd += ["--select", select]
+    proc = _run(cmd)
+    if "error:" in proc.stderr.lower() and "Rule" in proc.stderr:
+        raise RuntimeError(f"ruff rejected the selection: {proc.stderr.strip()[:200]}")
+    lines = [ln for ln in proc.stdout.splitlines() if re.search(r":\d+:\d+:", ln)]
+    sample = "\n".join(f"    {ln}" for ln in lines[:5])
+    return len(lines), sample
+
+
+def database_available() -> tuple[bool, str]:
+    """TCP-probe the configured database. Cheap and dependency-free."""
+    url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL") or ""
+    if not url:
+        return False, "neither TEST_DATABASE_URL nor DATABASE_URL is set"
     try:
-        proc = subprocess.run(
-            cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout,
-            encoding="utf-8", errors="replace",
+        parsed = urlparse(url)
+        host, port = parsed.hostname or "127.0.0.1", parsed.port or 5432
+    except Exception as exc:  # noqa: BLE001
+        return False, f"could not parse database URL: {exc}"
+    sock = socket.socket()
+    sock.settimeout(2.0)
+    try:
+        sock.connect((host, port))
+        return True, f"{host}:{port} reachable"
+    except OSError as exc:
+        return False, f"{host}:{port} unreachable ({exc.__class__.__name__})"
+    finally:
+        sock.close()
+
+
+# ---------------------------------------------------------------- gate runners
+
+
+def gate_compile() -> Result:
+    """The honest Python equivalent of a compile step: bytecode-compile everything.
+
+    This is the strongest *ahead-of-time* guarantee the language offers. It proves
+    every module is syntactically valid; it cannot prove a name exists (see the
+    undefined-names gate) or that a template endpoint resolves (see boot-health).
+    """
+    proc = _run([sys.executable, "-m", "compileall", "-q", "app", "config.py", "manage.py", "create_admin.py"])
+    if proc.returncode == 0:
+        return Result("compile", PASS, "all modules compile")
+    return Result("compile", FAIL, (proc.stdout + proc.stderr).strip()[:2000])
+
+
+def gate_undefined_names(baseline: int) -> Result:
+    """Ruff F821 — compiler-grade name resolution. Gated at ZERO.
+
+    This is the closest thing to a compiler's symbol check available for Python,
+    and it found real defects: 296 findings across 68 files when introduced,
+    including entire route handlers that raised NameError on every request.
+
+    All 296 are now resolved, so the gate is a hard zero rather than a ratchet —
+    there is no remaining debt for a ratchet to protect. The `baseline` argument is
+    kept for signature symmetry with the other gates but is deliberately ignored;
+    any new undefined name fails the build.
+    """
+    count, sample = _ruff_count("F821")
+    return Result("undefined-names", PASS if count == 0 else FAIL, sample, count, 0)
+
+
+def gate_redefinitions(baseline: int) -> Result:
+    """Ruff F811 — a name bound twice, where Python silently keeps the last one.
+
+    Gated at ZERO. All 73 findings are resolved, and they were not cosmetic: they
+    included two different implementations of analyze_file_data_for_preview (the
+    older one dead), two OverviewForm classes with different base classes, a
+    duplicated __repr__ that referenced fields its class did not have, and a `db`
+    loop variable shadowing the SQLAlchemy session. `baseline` is retained for
+    signature symmetry and deliberately ignored.
+    """
+    count, sample = _ruff_count("F811")
+    return Result("redefinitions", PASS if count == 0 else FAIL, sample, count, 0)
+
+
+def gate_undefined_exports() -> Result:
+    """F822 — names in __all__ that do not exist. Already 0; locked at 0."""
+    count, sample = _ruff_count("F822")
+    return Result("undefined-exports", PASS if count == 0 else FAIL, sample, count, 0)
+
+
+def gate_lint_core(baseline: int) -> Result:
+    """Full pinned correctness set (F, E4, E7, E9). Gated at ZERO.
+
+    Went from 4482 findings to zero. Four rules are disabled in ruff.toml with
+    recorded evidence — E711/E712 because rewriting SQLAlchemy `== None` / `== True`
+    silently deletes the predicate from the query, and E402 because reordering
+    imports reintroduced a circular import and stopped the app booting. Everything
+    else was fixed rather than suppressed. `baseline` is kept for signature symmetry
+    and ignored.
+    """
+    count, sample = _ruff_count(None)
+    return Result("lint-core", PASS if count == 0 else FAIL, sample, count, 0)
+
+
+def gate_design_tokens(baseline: int) -> Result:
+    """DESIGN.md's colour-token rule, which nothing enforced before this."""
+    proc = _run([sys.executable, "scripts/check_design_tokens.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("design-tokens", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("design-tokens", PASS if count <= baseline else FAIL, "", count, baseline)
+
+
+def gate_air_gap(baseline: int) -> Result:
+    """No UI assets loaded from the public internet.
+
+    Archie is being prepared for deployment inside an enterprise network, where
+    public CDNs are blocked or proxied. Every external script is a page that breaks
+    on a managed workstation. Also a privacy control: each request leaks the
+    referring URL and client IP to a third party.
+    """
+    proc = _run([sys.executable, "scripts/check_external_origins.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("air-gap", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
+
+
+def gate_template_syntax() -> Result:
+    """Every Jinja template parses. Gated at ZERO.
+
+    A template that does not parse is not a degraded page — it is a 500 on every
+    route that renders it, and on every route that renders a macro it defines.
+    Nothing else catches it: `compile` covers Python only, and boot-health
+    resolves endpoints without rendering bodies.
+
+    Added after `{# … #}` was inserted inside an existing `{# … #}` block in
+    components/dropdown_menu.html. Jinja has no nested comments, so the inner
+    `#}` closed the outer block early and 17 lines became live template code.
+    """
+    proc = _run([sys.executable, "scripts/check_template_syntax.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("template-syntax", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_template_syntax.py to list them"
+    return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_broken_surfaces(baseline: int) -> Result:
+    """Front-end surfaces resolved against the real route table. RATCHET.
+
+    Boots the app, takes its url_map, and resolves what the templates and
+    scripts actually point at. Nothing else does this: every other gate proves a
+    page renders, none proves the things ON it go anywhere.
+
+      dead-link      href to a path no route serves
+      dead-fetch     fetch() to a path no route serves — the whole Market
+                     Intelligence page called four endpoints that do not exist
+      swallowed      catch blocks that tell neither the user nor the logs
+      form-no-action <form> with no action and no submit handler: Enter reloads
+                     the page and discards everything typed
+      forbidden-ui   alert()/confirm(), which DESIGN.md forbids
+
+    A ratchet rather than zero because `swallowed` carries several hundred
+    pre-existing cases and some are legitimate. Triage is real work; letting the
+    number grow while it happens is not acceptable, so this is "no worse".
+
+    The count is only trustworthy because the checker was corrected five times
+    against sampled findings: <path:> converters match slashes, Platform.fetch
+    already handles !ok, chains branching on data.success already report
+    failure, comments describing the pattern are not instances of it, and a
+    concatenated URL's first literal is a prefix, not the whole path. That last
+    one alone accounted for 163 phantom findings.
+    """
+    # The checker sets FLASK_CONFIG=testing itself (it has to boot the app to
+    # read url_map), so no env plumbing is needed here.
+    proc = _run([sys.executable, "scripts/check_broken_surfaces.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("broken-surfaces", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_broken_surfaces.py to list them"
+    return Result("broken-surfaces", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
+def gate_dead_interactions() -> Result:
+    """No control that looks like it works and does nothing. Gated at ZERO.
+
+    Four classes, none visible to any other gate — the template compiles, the
+    route returns 200, and the button is present and correctly styled:
+
+      silent-fetch  `if (r.ok) {...}` with no else. fetch does not reject on
+                    4xx/5xx, so a 500, a 403 or a rejected CSRF token falls
+                    through and the handler returns having done nothing. The
+                    user clicks, the button spins, and nothing happens.
+      silent-then   fetch().then() that never inspects status, so the error body
+                    is parsed as a result and the success path runs anyway.
+      dead-handler  @click="foo()" where foo is defined nowhere the page loads.
+      dead-action   data-action="x" with no consumer; the click is dropped.
+
+    Added after a user reported clicking a button on /solutions/briefings/2 and
+    nothing happening. It was one of 97 instances of the same pattern. Three of
+    them were worse than dead: addCapability() pushed a fabricated record into
+    the list when its POST failed, saveContext() reported success before five
+    later saves whose failures were invisible, and a failed team-member DELETE
+    still reloaded the page so the member appeared gone.
+
+    Platform.fetch (app/static/js/core/03-fetch.js) is deliberately EXCLUDED:
+    it already checks !response.ok, extracts the server's message and toasts it.
+    The bug is bypassing that wrapper, not using it.
+    """
+    proc = _run([sys.executable, "scripts/check_dead_interactions.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("dead-interactions", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_dead_interactions.py to list them"
+    return Result("dead-interactions", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_macro_import_context() -> Result:
+    """A macro holding a <script> is imported `with context`. Gated at ZERO.
+
+    Jinja's `from x import m` / `import x as m` do not pass the caller's context.
+    CspNonceExtension rewrites every template-authored <script> to carry
+    nonce="{{ csp_nonce }}", and csp_nonce comes from a context processor - so in a
+    context-less import it is undefined, renders as nonce="", and the CSP
+    (script-src 'self' 'nonce-...' 'strict-dynamic') refuses the script outright.
+    strict-dynamic means there is no origin fallback.
+
+    Nothing else sees it. The template compiles, the route returns 200, and the
+    JavaScript never runs. One sweep found 14 live sites shipping dead JS - the AI
+    chat's document-upload panel, the page-guide drawer included by
+    layouts/admin_base.html (so every admin page), the roadmap and gantt widgets,
+    the LLM recommendation panels on four strategic pages, and the
+    password-strength meter on every account form.
+
+    It was found by loading a page in a browser. This gate is so the next one is
+    found in 3 seconds instead.
+    """
+    proc = _run([sys.executable, "scripts/check_macro_import_context.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("macro-import-context", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_macro_import_context.py to list them"
+    return Result("macro-import-context", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_template_references() -> Result:
+    """Every `{% include %}` / `{% extends %}` target exists. Gated at ZERO.
+
+    `template-syntax` proves a template parses; it cannot see whether the files
+    that template pulls in are present, because Jinja resolves include/extends
+    at render time. A missing partial is therefore invisible until someone opens
+    the page, and then it is a TemplateNotFound 500 rather than a gap in the
+    layout.
+
+    Found three cases in one sweep. `auth/register.html` and
+    `admin/security.html` both extended `base.html`, which does not exist — the
+    base lives at `layouts/base.html`; each survived only because the blueprint
+    rendering it is not currently registered. `applications/detail.html`
+    included nine partials of which one existed, and was rendered by no route at
+    all, so the per-application ArchiMate layer UI inside it had never worked.
+    """
+    proc = _run([sys.executable, "scripts/check_template_references.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("template-references", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_template_references.py to list them"
+    return Result("template-references", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_null_filters() -> Result:
+    """No `|default(...)` feeds a filter that calls len(). Gated at ZERO.
+
+    Jinja's `default` replaces an *undefined* value, not a `None` one, and every
+    nullable column arrives as None. So `description|default('-')|truncate(100)`
+    passes None to `truncate`, which raises "object of type 'NoneType' has no
+    len()" and aborts the entire render, not just that field.
+
+    Found in production: one capability with a NULL description blanked
+    /enterprise/capability-map/capabilities. The route's own `except` re-rendered
+    the same template with an empty list, so it returned 200 showing "Error
+    loading capabilities" and no rows while the capabilities existed - a reader
+    cannot tell that from an empty portfolio. Nine templates carried the pattern,
+    including capability health, plateaus, gap analysis and technology roadmap.
+
+    Fix is the boolean second argument: default('x', true).
+    """
+    proc = _run([sys.executable, "scripts/check_null_filters.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("null-filters", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_null_filters.py to list them"
+    return Result("null-filters", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_fabricated_data() -> Result:
+    """No invented data can reach the UI. Gated at ZERO.
+
+    Archie is a system of record, so a screen that fabricates a plausible value
+    when the real one is missing is worse than one that shows nothing — the user
+    cannot tell the two apart, and acts on it. This caught a governance dashboard
+    that invented the customer's architecture principles on API failure, a Gantt
+    chart that rendered ~$855k of imaginary work packages, and a settings page
+    that reported a backup as created when none was written.
+
+    Escape hatch is 'fabricated-ok: <reason>' on or above the flagged line.
+    """
+    proc = _run([sys.executable, "scripts/check_fabricated_data.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("fabricated-data", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_fabricated_data.py to list them"
+    return Result("fabricated-data", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_sri() -> Result:
+    """Every same-origin integrity= hash matches the file it guards. Gated at ZERO.
+
+    A stale SRI hash does not degrade — the browser REFUSES to execute the asset.
+    The failure is a dead page with a console error, invisible to any server-side
+    test. This repository has already shipped that bug twice.
+
+    Vendoring makes it easy: repointing a src from a CDN to a local copy is safe
+    only if the bytes are identical, and consolidating a version (alpinejs@3 to
+    @3.14.3) silently invalidates the hash. Neither vendor-integrity (files vs the
+    manifest) nor air-gap (external origins) relates a template's declared hash to
+    the file its src resolves to, which is why both passed while two hashes on this
+    branch were wrong.
+    """
+    proc = _run([sys.executable, "scripts/check_sri.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("sri", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count:
+        detail = _run([sys.executable, "scripts/check_sri.py"]).stdout[-1200:]
+    return Result("sri", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_raw_sql_tenancy(baseline: int) -> Result:
+    """Raw SQL reading a tenant-scoped table with no organization predicate.
+
+    A ratchet, not a hard zero. do_orm_execute rewrites ORM statements only, so
+    raw text() goes to the database as written, and the convention that grew up
+    instead was a `# tenant-filtered` comment. That comment has been wrong twice:
+    ten queries in business_capability_management_routes.py returned every
+    organisation's rows, and the dashboard's capability-coverage metric counted
+    every organisation's mappings before dividing by one organisation's total.
+
+    A clean run does NOT prove tenancy. It proves the one mechanically detectable
+    failure — no predicate at all — is absent. The common "scoped via parent FK"
+    case needs the value followed back through the caller, which no regex can do.
+    """
+    proc = _run([sys.executable, "scripts/check_raw_sql_tenancy.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("raw-sql-tenancy", FAIL, f"could not parse: {proc.stdout!r}")
+    detail = ""
+    if count > baseline:
+        detail = _run([sys.executable, "scripts/check_raw_sql_tenancy.py"]).stdout[-1500:]
+    return Result("raw-sql-tenancy", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_deployed_deps() -> Result:
+    """Installed packages satisfy the floors requirements.txt pins. Gated at ZERO.
+
+    dependency-cves reads requirements.txt, which measures intent. It reported 62
+    advisories resolved and stayed green for weeks while production ran every one
+    of them: deploy.sh recreated the container from an existing image and never
+    rebuilt, so the running image was six weeks older than the pins. Nothing
+    compared the two, so nothing could notice.
+
+    This checks the environment this runs in. Locally that is the dev virtualenv;
+    `--remote` points it at the production container, which is what CI or a
+    post-deploy step should use.
+    """
+    proc = _run([sys.executable, "scripts/check_deployed_deps.py"])
+    output = (proc.stdout + proc.stderr).strip()
+    match = re.search(r"^(\d+) of (\d+) pinned", output, re.M)
+    count = int(match.group(1)) if match else (0 if proc.returncode == 0 else -1)
+    if count < 0:
+        return Result("deployed-deps", FAIL, output[-800:])
+    return Result("deployed-deps", PASS if count == 0 else FAIL, output[-800:], count, 0)
+
+
+def _vendored_tailwind_cli() -> Path | None:
+    """The pinned standalone CLI, or None. scripts/build_css.py falls back to
+    `npx tailwindcss@3`; this deliberately does not, because the point here is
+    reproducibility against the committed file, not merely producing CSS."""
+    for name in ("tailwindcss.exe", "tailwindcss"):
+        candidate = REPO_ROOT / "scripts" / "bin" / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def gate_css_build() -> Result:
+    """The committed tailwind-output.css matches what a rebuild produces.
+
+    CSS ships pre-built so a fresh clone renders without a Node toolchain. The
+    cost is that editing a template's classes and not rebuilding leaves the two
+    out of sync, and the failure is silent and one-directional: a class that is
+    not in the built CSS renders as NOTHING. No request fails, no test notices.
+
+    This gate exists because that is exactly what happened while migrating the
+    red status badges to the destructive token — the classes involved already
+    existed, so nothing broke, but the committed CSS still carried dead rules for
+    the removed ones and no gate could see the drift.
+
+    SKIPs when the Tailwind CLI is absent, which is the common case on a fresh
+    clone: the binary is gitignored at scripts/bin/tailwindcss[.exe]. A SKIP is
+    printed in the summary and never counts as a pass.
+
+    Also SKIPs when only the npm fallback (`npx tailwindcss@3`) is available,
+    because that comparison is not reproducible and its failures are false.
+    Autoprefixer's output depends on caniuse-lite, which the standalone binary
+    bundles and npm resolves fresh - CI proved it by emitting "Browserslist:
+    caniuse-lite is outdated" and then producing a byte-different file of the
+    same size. A byte-comparison gate across two toolchains that legitimately
+    disagree can only ever be red, and a permanently-red gate is one people
+    learn to ignore. Enforced where the toolchain is fixed (developer machines
+    and pre-commit); loudly skipped where it is not.
+    """
+    if not _vendored_tailwind_cli():
+        return Result("css-build", SKIP,
+                      "no vendored Tailwind CLI at scripts/bin/tailwindcss[.exe]; "
+                      "an npm-resolved Tailwind is not byte-reproducible against "
+                      "the committed build (caniuse-lite floats), so this cannot "
+                      "be verified here")
+
+    proc = _run([sys.executable, "scripts/build_css.py", "--check"])
+    output = proc.stdout + proc.stderr
+    if "Tailwind CLI unavailable" in output or "SKIP" in output:
+        return Result("css-build", SKIP,
+                      "Tailwind CLI not installed (scripts/bin/tailwindcss[.exe]); "
+                      "cannot verify the committed CSS")
+    if proc.returncode == 0:
+        return Result("css-build", PASS, "committed CSS matches a rebuild")
+    return Result("css-build", FAIL, output.strip()[-800:])
+
+
+def gate_vendor_integrity() -> Result:
+    """Vendored assets match their recorded provenance.
+
+    The air-gap gate proves nothing external is *referenced*; this proves the local
+    copies are the upstream bytes we recorded and not something modified in place.
+    Also catches the manifest drifting out of step with the pinned URL list, which
+    is easy to do when refreshing one library by hand.
+    """
+    proc = _run([sys.executable, "scripts/vendor_assets.py", "--verify"])
+    output = (proc.stdout + proc.stderr).strip()
+    return Result("vendor-integrity", PASS if proc.returncode == 0 else FAIL,
+                  output[-1500:])
+
+
+DEPENDENCY_AUDIT = os.path.join("scripts", "ci", "dependency_audit.py")
+DEPENDENCY_BASELINE = os.path.join("scripts", "ci", "dependency_baseline.json")
+
+
+def gate_dependency_cves() -> Result:
+    """No NEW known CVEs in the production dependency set.
+
+    This is the scan an enterprise security review runs before granting network
+    admission, so it is better to run it ourselves first. Scoped to
+    requirements.txt deliberately: test tooling is not shipped, so a CVE in pytest
+    is not part of the deployed attack surface.
+
+    Delegates to scripts/ci/dependency_audit.py rather than calling pip-audit
+    itself, so this gate and the CI `dependency-audit` job cannot reach different
+    verdicts on the same tree. They did, and it mattered: this gate was
+    zero-tolerance while that job ratchets against dependency_baseline.json, so the
+    two WeasyPrint advisories requirements.txt accepts *on purpose* (WeasyPrint 68
+    needs pydyf>=0.11, which 500'd PDF export) failed here and passed there. The
+    effect was that `python scripts/verify.py` could never go green — and a gate
+    that is red on every run is a gate everyone learns to ignore, which is exactly
+    the failure mode the ratchets elsewhere in this file exist to avoid.
+
+    Accepted risk now lives in one reviewable file. Anything not recorded there
+    still fails, and the accepted count is reported on success so a green run
+    never reads as "no vulnerabilities".
+    """
+    proc = _run([sys.executable, DEPENDENCY_AUDIT], timeout=600)
+    output = (proc.stdout + proc.stderr).strip()
+
+    if "urlopen error" in output or "Temporary failure in name resolution" in output:
+        return Result("dependency-cves", SKIP, "no network access to the advisory database")
+    if proc.returncode == 2:
+        # pip-audit could not resolve requirements.txt. That is a real problem, not
+        # a scanner hiccup: it means the file cannot be installed as written.
+        return Result("dependency-cves", FAIL,
+                      "pip-audit could not run:\n" + output[-1200:],
+                      remediation="fix the conflicting pins in requirements.txt")
+    if proc.returncode != 0:
+        _, marker, detail = output.partition("NEW advisories not in the baseline:")
+        return Result("dependency-cves", FAIL, (detail if marker else output).strip()[:1200],
+                      remediation="bump the affected package (watch for a blocking upper "
+                                  "bound), or accept it deliberately with "
+                                  "scripts/ci/dependency_audit.py --update-baseline "
+                                  "and say why in the pull request")
+
+    accepted = 0
+    try:
+        with open(DEPENDENCY_BASELINE, encoding="utf-8") as fh:
+            accepted = sum(len(v) for v in json.load(fh).get("accepted", {}).values())
+    except (OSError, ValueError):
+        pass
+
+    # Report what was actually FOUND against requirements.txt, not the size of the
+    # baseline file. They differ: the baseline also records pytest, which ADR 0005
+    # moved out of requirements.txt, so it is no longer in the audited set at all.
+    # Showing the baseline size as the measurement would overstate live debt and
+    # hide the fact that an entry is ready to be dropped.
+    found = accepted
+    match = re.search(r"dependency audit: \d+ package\(s\), (\d+) advisories total", output)
+    if match:
+        found = int(match.group(1))
+
+    detail = "no new vulnerabilities"
+    if found:
+        detail += (f"; {found} accepted in the baseline — real, unremediated risk a "
+                   f"security review will ask about (scripts/ci/dependency_baseline.json)")
+    if found < accepted:
+        detail += (f"; {accepted - found} baselined advisor"
+                   f"{'y is' if accepted - found == 1 else 'ies are'} no longer present — "
+                   f"run scripts/ci/dependency_audit.py --update-baseline to lock that in")
+    return Result("dependency-cves", PASS, detail, found, accepted)
+
+
+def gate_boot_health() -> Result:
+    """Boot + wiring. Database-free by design — see tests/test_boot_health.py."""
+    proc = _run([sys.executable, "-m", "pytest", "tests/test_boot_health.py", "-q", "-p", "no:cacheprovider"])
+    tail = (proc.stdout + proc.stderr).strip().splitlines()[-15:]
+    return Result("boot-health", PASS if proc.returncode == 0 else FAIL, "\n".join(tail))
+
+
+def gate_schema_drift() -> Result:
+    """No column or table drift between the ORM models and the live database.
+
+    ``reconcile-schema`` reports drift in its output, not its exit code, and always
+    prints the summary line ``reconcile-schema: N column(s) would add.`` — so the
+    count has to be parsed. Matching the phrase alone is a false positive, because
+    the summary contains it even when N is 0.
+    """
+    proc = _run([sys.executable, "-m", "flask", "--app", "manage", "reconcile-schema", "--dry-run"])
+    output = (proc.stdout + proc.stderr).strip()
+    if proc.returncode != 0:
+        return Result("schema-drift", FAIL, output[-2000:])
+
+    summary = re.search(r"reconcile-schema:\s+(\d+)\s+column\(s\)", output)
+    if not summary:
+        # No parseable summary means the check did not actually run to completion.
+        # Report that rather than inferring success from the absence of bad news.
+        return Result("schema-drift", FAIL,
+                      "could not find the 'reconcile-schema: N column(s)' summary line:\n"
+                      + output[-1500:])
+
+    drifted_columns = int(summary.group(1))
+    absent_tables = 0
+    tables = re.search(r"(\d+)\s+table\(s\)\s+absent", output)
+    if tables:
+        absent_tables = int(tables.group(1))
+
+    # Reverse drift: columns the DATABASE has that the models do not, NOT NULL and
+    # undefaulted. This gate previously reported clean against a database whose
+    # value_streams.organization_id was NOT NULL while the model omitted the column
+    # entirely, so every INSERT failed — the check only ever ran model -> database.
+    blocking = 0
+    rev = re.search(r"(\d+)\s+column\(s\) present in the DATABASE", output)
+    if rev:
+        blocking = int(rev.group(1))
+
+    if drifted_columns or absent_tables or blocking:
+        detail_lines = [
+            ln for ln in output.splitlines()
+            if ln.startswith(("  + ", "  ! ")) or "table(s) absent" in ln
+            or "present in the DATABASE" in ln
+        ][:20]
+        return Result(
+            "schema-drift", FAIL,
+            f"{drifted_columns} drifted column(s), {absent_tables} absent table(s), "
+            f"{blocking} model-missing NOT NULL column(s):\n" + "\n".join(detail_lines),
+            measured=drifted_columns + absent_tables + blocking, baseline=0,
+            remediation=(
+                "run: flask --app manage init-db && flask --app manage reconcile-schema; "
+                "for model-missing columns, declare them on the model instead"
+            ),
         )
-        return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
-    except FileNotFoundError:
-        return None, "tool not installed"
-    except subprocess.TimeoutExpired:
-        return None, "timed out after %ss" % timeout
+    return Result("schema-drift", PASS, "no drift detected", measured=0, baseline=0)
 
 
-def _ruff_count(select):
-    """How many findings ruff reports for a rule selection."""
-    code, out = _run([sys.executable, "-m", "ruff", "check", ".",
-                      "--select", select, "--output-format", "concise",
-                      "--exclude", "migrations,node_modules,.git"])
-    if code is None:
-        return None, out
-    findings = [ln for ln in out.splitlines() if re.match(r"^[^\s].*:\d+:\d+:", ln)]
-    return len(findings), out
+def gate_tests() -> Result:
+    """Behavioural regression. Runs smoke in its own process, as CI does.
 
+    tests/ and tests/smoke/ cannot share a pytest process. Both conftest trees
+    build a Flask app, and the second registration is rejected -
 
-def _load_baseline():
-    if not os.path.exists(BASELINE_PATH):
-        return {}
-    with open(BASELINE_PATH, encoding="utf-8") as handle:
-        return json.load(handle).get("gates", {})
+        The setup method 'route' can no longer be called on the blueprint
+        'codegen'. It has already been registered at least once
 
+    - which leaves the smoke live_server on a degraded app whose login POST
+    never responds. Every archetype sign-in then times out after 90s: 31
+    failures and 9 errors, reproducible in BOTH collection orders, while each
+    suite passes cleanly on its own.
 
-def _ratchet(name, measured, baseline, unit, output=""):
-    """Fail only when a measurement gets worse than its recorded baseline."""
-    if measured is None:
-        return Result(SKIP, output.strip()[:120] or "could not measure")
-    allowed = baseline.get(name)
-    if allowed is None:
-        return Result(PASS, "%d %s (no baseline recorded yet)" % (measured, unit),
-                      measured, None)
-    if measured > allowed:
-        return Result(FAIL,
-                      "%d %s, baseline allows %d — %d new" %
-                      (measured, unit, allowed, measured - allowed), measured, allowed)
-    note = "%d %s (baseline %d)" % (measured, unit, allowed)
-    if measured < allowed:
-        note += " — improved, run --update-baseline to lock it in"
-    return Result(PASS, note, measured, allowed)
+    CI does not hit this, by accident rather than design: its `tests` job never
+    runs `playwright install`, so the browser fixture skips and takes the smoke
+    tests with it. Only the `smoke` job has a browser, and it runs
+    `pytest tests/smoke` on its own. Locally a browser IS present, so the
+    collision is real here and invisible there.
 
-
-# ---------------------------------------------------------------------------
-# Gates
-# ---------------------------------------------------------------------------
-
-def gate_compile(baseline):
-    """Every module must at least parse. A syntax error is not a style opinion.
-
-    Compiles in memory rather than via compileall. compileall writes a .pyc,
-    and on Windows that raises FileNotFoundError for deep paths - reported
-    identically to a syntax error. The first version of this gate failed 8
-    modules that ast.parse accepts perfectly well, which is precisely the
-    false positive CLAUDE.md warns about. Syntax is a property of the source,
-    not of whether the filesystem would accept a bytecode file next to it.
+    Two invocations rather than --ignore, so a local run still covers smoke
+    instead of quietly dropping the only browser tests in the repo.
     """
-    failures = []
-    for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, "app")):
-        dirnames[:] = [d for d in dirnames if d not in ("__pycache__", "node_modules")]
-        for filename in filenames:
-            if not filename.endswith(".py"):
-                continue
-            path = os.path.join(dirpath, filename)
-            try:
-                source = open(path, encoding="utf-8", errors="replace").read()
-                compile(source, path, "exec")
-            except SyntaxError as exc:
-                failures.append("%s:%s" % (os.path.relpath(path, ROOT), exc.lineno))
-    if failures:
-        return Result(FAIL, "%d module(s) have syntax errors: %s"
-                      % (len(failures), ", ".join(failures[:5])))
-    return Result(PASS, "all modules compile")
+    parts = [
+        ("unit+integration", ["-p", "no:cacheprovider",
+                              "--ignore=tests/test_boot_health.py",
+                              "--ignore=tests/smoke"]),
+        ("smoke", ["-p", "no:cacheprovider", "tests/smoke"]),
+    ]
+    summaries, failed = [], []
+    for label, args in parts:
+        proc = _run([sys.executable, "-m", "pytest", "-q"] + args)
+        tail = (proc.stdout + proc.stderr).strip().splitlines()[-12:]
+        summaries.append("[%s] %s" % (label, tail[-1] if tail else "no output"))
+        if proc.returncode != 0:
+            failed.append(label)
+            summaries.extend("    " + line for line in tail)
+    return Result("tests", PASS if not failed else FAIL, "\n".join(summaries))
 
 
-def gate_undefined_names(baseline):
-    """ruff F821 — the closest thing to a compiler catching a NameError."""
-    count, out = _ruff_count("F821")
-    return _ratchet("undefined-names", count, baseline, "undefined name(s)", out)
+# ---------------------------------------------------------------- registry
 
 
-def gate_redefinitions(baseline):
-    """ruff F811 — a shadowed definition silently discards the earlier one."""
-    count, out = _ruff_count("F811")
-    return _ratchet("redefinitions", count, baseline, "redefinition(s)", out)
+def build_gates(baseline: dict) -> list[Gate]:
+    return [
+        Gate("compile", "Every module bytecode-compiles", "command", gate_compile,
+             remediation="fix the reported SyntaxError", tags=["static", "fast"]),
+        Gate("undefined-exports", "No __all__ entry names a missing symbol", "zero",
+             gate_undefined_exports, remediation="remove the stale __all__ entry",
+             tags=["static", "fast"]),
+        Gate("undefined-names", "No new undefined names (ruff F821)", "ratchet",
+             lambda: gate_undefined_names(baseline["undefined_names"]),
+             remediation="add the missing import, or fix the typo", tags=["static", "fast"]),
+        Gate("redefinitions", "No new redefinitions (ruff F811)", "ratchet",
+             lambda: gate_redefinitions(baseline["redefinitions"]),
+             remediation="delete the shadowed definition", tags=["static", "fast"]),
+        Gate("lint-core", "No new correctness lint findings", "ratchet",
+             lambda: gate_lint_core(baseline["lint_core"]),
+             remediation="run: python -m ruff check . --fix", tags=["static", "fast"]),
+        Gate("design-tokens", "No new raw Tailwind colours (DESIGN.md)", "ratchet",
+             lambda: gate_design_tokens(baseline["design_tokens"]),
+             remediation="use semantic tokens; see the table in DESIGN.md",
+             tags=["static", "ui"]),
+        Gate("air-gap", "No UI assets loaded from public CDNs", "ratchet",
+             lambda: gate_air_gap(baseline["air_gap"]),
+             remediation="vendor the asset into app/static/ and use url_for('static', ...)",
+             tags=["static", "ui", "airgap"]),
+        Gate("raw-sql-tenancy", "raw SQL on tenant tables without an org predicate",
+             "ratchet", lambda: gate_raw_sql_tenancy(baseline["raw_sql_tenancy"]),
+             remediation="scope the query, or append 'tenancy-ok: <reason>'",
+             tags=["static", "security"]),
+        Gate("template-syntax", "every Jinja template parses", "zero",
+             gate_template_syntax,
+             remediation="see the reported line; Jinja does not nest {# #} comments",
+             tags=["static", "ui"]),
+        Gate("template-references", "every include/extends target exists", "zero",
+             gate_template_references,
+             remediation="create the missing partial, correct the path, or delete the "
+                         "dead reference; run scripts/check_template_references.py",
+             tags=["static", "ui"]),
+        Gate("broken-surfaces", "front-end targets resolve to real routes", "ratchet",
+             lambda: gate_broken_surfaces(baseline.get("broken_surfaces", 479)),
+             remediation="run scripts/check_broken_surfaces.py; repoint the URL, "
+                         "remove the dead control, or report the failure to the user",
+             tags=["static", "ui"]),
+        Gate("dead-interactions", "no control that silently does nothing", "zero",
+             gate_dead_interactions,
+             remediation="run scripts/check_dead_interactions.py; use `if (!r.ok) throw` "
+                         "and report the failure to the user, or switch to Platform.fetch",
+             tags=["static", "ui"]),
+        Gate("macro-import-context", "script-bearing macros imported with context", "zero",
+             gate_macro_import_context,
+             remediation="append ` with context` to the import; run "
+                         "scripts/check_macro_import_context.py",
+             tags=["static", "ui"]),
+        Gate("null-filters", "default() never feeds a len()-calling filter", "zero",
+             gate_null_filters,
+             remediation="add the boolean argument: default('x', true) - plain "
+                         "default() replaces undefined, not None",
+             tags=["static", "ui"]),
+        Gate("fabricated-data", "no invented data can reach the UI", "zero",
+             gate_fabricated_data,
+             remediation="render an explicit empty/error state instead of inventing data; "
+                         "if genuinely fine, append 'fabricated-ok: <reason>'",
+             tags=["static", "ui"]),
+        # NOT tagged "static": it compares requirements.txt against what is
+        # actually importable, so it needs the app's dependencies installed. The
+        # static-gates CI job deliberately installs only ruff and pip-audit, where
+        # this reported 81 of 85 pins "not installed" - a true statement about an
+        # environment the gate was never meant to judge. It runs in the
+        # boot-health job, which does install requirements.txt.
+        Gate("deployed-deps", "installed packages satisfy the pinned floors", "zero",
+             gate_deployed_deps,
+             remediation="rebuild the image (deploy.sh builds) or pip install -r requirements.txt",
+             tags=["deps", "security"]),
+        Gate("css-build", "committed tailwind-output.css matches a rebuild", "command",
+             gate_css_build,
+             remediation="python scripts/build_css.py   and commit the result",
+             tags=["static", "ui"]),
+        Gate("sri", "Subresource Integrity hashes match their files", "zero",
+             gate_sri,
+             remediation="recompute the hash for the file the tag actually loads",
+             tags=["static", "ui", "airgap", "security"]),
+        Gate("vendor-integrity", "Vendored assets match their manifest", "command",
+             gate_vendor_integrity,
+             remediation="run: python scripts/vendor_assets.py",
+             tags=["static", "ui", "airgap", "security"]),
+        Gate("dependency-cves", "No NEW known CVEs in shipped dependencies", "ratchet",
+             gate_dependency_cves,
+             remediation="bump the affected package (watch for blocking upper bounds)",
+             tags=["deps", "security"]),
+        Gate("boot-health", "App boots; every url_for endpoint resolves", "command",
+             gate_boot_health,
+             remediation="see the failure message in tests/test_boot_health.py",
+             tags=["runtime"]),
+        Gate("schema-drift", "Live DB matches the ORM models", "command",
+             gate_schema_drift, needs_db=True,
+             remediation="run: flask --app manage reconcile-schema", tags=["runtime", "db"]),
+        Gate("tests", "Test suite passes", "command", gate_tests, needs_db=True,
+             remediation="fix the failing test", tags=["runtime", "db"]),
+    ]
 
 
-def gate_lint_core(baseline):
-    """ruff F,E4,E7,E9 — correctness lint, not style."""
-    count, out = _ruff_count("F,E4,E7,E9")
-    return _ratchet("lint-core", count, baseline, "finding(s)", out)
+DEFAULT_BASELINE = {
+    "undefined_names": 296,
+    "redefinitions": 73,
+    "lint_core": 4482,
+    "design_tokens": 1255,
+    "air_gap": 78,
+}
 
 
-def gate_undefined_exports(baseline):
-    """__all__ naming a symbol the module does not define.
-
-    An import * then fails at runtime, far from the cause.
-    """
-    import ast
-
-    offenders = []
-    for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, "app")):
-        dirnames[:] = [d for d in dirnames if d not in ("__pycache__", "node_modules")]
-        for filename in filenames:
-            if not filename.endswith(".py"):
-                continue
-            path = os.path.join(dirpath, filename)
-            try:
-                tree = ast.parse(open(path, encoding="utf-8", errors="replace").read())
-            except SyntaxError:
-                continue  # gate_compile owns that
-            exported, defined = [], set()
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    defined.add(node.name)
-                elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-                    defined.add(node.id)
-                elif isinstance(node, (ast.Import, ast.ImportFrom)):
-                    for alias in node.names:
-                        defined.add(alias.asname or alias.name.split(".")[0])
-                elif isinstance(node, ast.Assign):
-                    for target in node.targets:
-                        if isinstance(target, ast.Name) and target.id == "__all__":
-                            if isinstance(node.value, (ast.List, ast.Tuple)):
-                                exported = [e.value for e in node.value.elts
-                                            if isinstance(e, ast.Constant)
-                                            and isinstance(e.value, str)]
-            missing = [name for name in exported if name not in defined]
-            if missing:
-                offenders.append("%s: %s" % (os.path.relpath(path, ROOT),
-                                             ", ".join(missing[:4])))
-    if offenders:
-        return Result(FAIL, "%d module(s) export undefined names: %s"
-                      % (len(offenders), "; ".join(offenders[:3])))
-    return Result(PASS, "no __all__ names a missing symbol")
+def load_baseline() -> dict:
+    if BASELINE_PATH.exists():
+        data = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+        return {**DEFAULT_BASELINE, **data.get("ratchets", {})}
+    return dict(DEFAULT_BASELINE)
 
 
-def gate_design_tokens(baseline):
-    """Raw Tailwind colour classes, which DESIGN.md replaces with tokens.
-
-    bg-blue-500 hard-codes a colour that cannot follow the theme; bg-primary
-    does. This is the tree's largest known debt, so it is a ratchet.
-    """
-    pattern = re.compile(
-        r"\b(?:bg|text|border|ring|from|to|via)-"
-        r"(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|"
-        r"emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-"
-        r"\d{2,3}\b")
-    count = 0
-    templates = os.path.join(ROOT, "app", "templates")
-    for dirpath, _dirnames, filenames in os.walk(templates):
-        for filename in filenames:
-            if not filename.endswith(".html"):
-                continue
-            text = open(os.path.join(dirpath, filename),
-                        encoding="utf-8", errors="replace").read()
-            count += len(pattern.findall(text))
-    return _ratchet("design-tokens", count, baseline, "raw colour use(s)")
+def save_baseline(ratchets: dict, note: str) -> None:
+    BASELINE_PATH.write_text(
+        json.dumps(
+            {
+                "_comment": (
+                    "Ratchet baselines for scripts/verify.py. Lowering a number is routine "
+                    "(run --update-baseline after a cleanup). Raising one is a deliberate "
+                    "regression and must be justified in review."
+                ),
+                "_note": note,
+                "ratchets": ratchets,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
-def gate_native_dialogs(baseline):
-    """alert()/confirm() in templates. Absolute: the count is zero."""
-    code, out = _run([sys.executable, "-m", "pytest",
-                      "tests/test_no_native_dialogs.py", "-q", "--no-header"], timeout=300)
-    if code is None:
-        return Result(SKIP, out.strip()[:120])
-    return Result(PASS if code == 0 else FAIL,
-                  "no native browser dialogs" if code == 0
-                  else out.strip().splitlines()[-1][:160])
+# ---------------------------------------------------------------- main
 
 
-def gate_sri(baseline):
-    """integrity= hashes must match the files they guard.
-
-    A stale hash means the browser silently refuses the script and a feature
-    disappears with nothing in the server log.
-    """
-    test = os.path.join(ROOT, "tests", "test_subresource_integrity.py")
-    if not os.path.exists(test):
-        return Result(SKIP, "tests/test_subresource_integrity.py not present")
-    code, out = _run([sys.executable, "-m", "pytest", test, "-q", "--no-header"], timeout=300)
-    if code is None:
-        return Result(SKIP, out.strip()[:120])
-    return Result(PASS if code == 0 else FAIL,
-                  "every integrity hash matches" if code == 0
-                  else out.strip().splitlines()[-1][:160])
-
-
-def gate_boot_health(baseline):
-    """The app must build and every url_for target must exist.
-
-    Blueprints register non-fatally, so a broken import silently removes a
-    feature - and any template linking to it then 500s every page that renders
-    the sidebar.
-    """
-    if not os.environ.get("TEST_DATABASE_URL") and not os.environ.get("DATABASE_URL"):
-        return Result(SKIP, "no TEST_DATABASE_URL/DATABASE_URL — cannot build the app")
-    code, out = _run([sys.executable, "-c", (
-        "import os;os.environ.setdefault('SECRET_KEY','x'*32);"
-        "from app import create_app;a=create_app('testing');"
-        "n=len(list(a.url_map.iter_rules()));"
-        "print('ROUTES',n);"
-        "print('BLUEPRINTS',len(a.blueprints))"
-    )], timeout=600)
-    if code is None:
-        return Result(SKIP, out.strip()[:120])
-    if code != 0:
-        tail = [ln for ln in out.strip().splitlines() if ln.strip()][-1:] or ["failed"]
-        return Result(FAIL, "app did not build: %s" % tail[0][:150])
-    routes = re.search(r"ROUTES (\d+)", out)
-    blueprints = re.search(r"BLUEPRINTS (\d+)", out)
-    measured = int(routes.group(1)) if routes else 0
-    allowed = baseline.get("boot-health")
-    if allowed and measured < allowed * 0.95:
-        return Result(FAIL, "%d routes registered, baseline %d — a blueprint "
-                            "failed to import" % (measured, allowed), measured, allowed)
-    return Result(PASS, "app builds; %s routes, %s blueprints"
-                  % (measured, blueprints.group(1) if blueprints else "?"),
-                  measured, allowed)
-
-
-def gate_schema_drift(baseline):
-    """Models versus the live database. Needs a database."""
-    if not os.environ.get("TEST_DATABASE_URL") and not os.environ.get("DATABASE_URL"):
-        return Result(SKIP, "no database configured")
-    code, out = _run([sys.executable, "-m", "flask", "--app", "manage",
-                      "reconcile-schema", "--dry-run"], timeout=600)
-    if code is None:
-        return Result(SKIP, out.strip()[:120])
-    if code != 0:
-        return Result(FAIL, "reconcile-schema --dry-run failed")
-    match = re.search(r"(\d+) column\(s\)", out)
-    drift = int(match.group(1)) if match else 0
-    if drift:
-        return Result(FAIL, "%d column(s) declared by models and missing from the "
-                            "database — run flask reconcile-schema" % drift, drift)
-    return Result(PASS, "models and database agree", 0)
-
-
-def gate_tests(baseline):
-    """The behavioural suite. Needs a database."""
-    if not os.environ.get("TEST_DATABASE_URL"):
-        return Result(SKIP, "no TEST_DATABASE_URL — pytest reads that, not DATABASE_URL")
-    code, out = _run([sys.executable, "-m", "pytest", "tests/", "-q", "--no-header",
-                      "--ignore=tests/smoke", "-p", "no:randomly"], timeout=1800)
-    if code is None:
-        return Result(SKIP, out.strip()[:120])
-    summary = [ln for ln in out.strip().splitlines() if "passed" in ln or "failed" in ln]
-    detail = summary[-1].strip()[:150] if summary else "no summary"
-    return Result(PASS if code == 0 else FAIL, detail)
-
-
-GATES = [
-    # (name, function, tags)
-    ("compile", gate_compile, {"static", "fast"}),
-    ("undefined-exports", gate_undefined_exports, {"static", "fast"}),
-    ("undefined-names", gate_undefined_names, {"static", "fast"}),
-    ("redefinitions", gate_redefinitions, {"static", "fast"}),
-    ("lint-core", gate_lint_core, {"static", "fast"}),
-    ("design-tokens", gate_design_tokens, {"static", "fast"}),
-    ("native-dialogs", gate_native_dialogs, {"static"}),
-    ("sri", gate_sri, {"static"}),
-    ("boot-health", gate_boot_health, {"runtime"}),
-    ("schema-drift", gate_schema_drift, {"runtime", "db"}),
-    ("tests", gate_tests, {"runtime", "db"}),
-]
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--json", action="store_true", help="machine-readable output")
-    parser.add_argument("--gate", help="run a single gate by name")
-    parser.add_argument("--tag", help="run only gates with this tag (static, fast, runtime, db)")
+    parser.add_argument("--gate", action="append", help="run only this gate (repeatable)")
+    parser.add_argument("--tag", action="append", help="run only gates with this tag")
     parser.add_argument("--require-db", action="store_true",
-                        help="treat a skipped database gate as a failure (what CI does)")
+                        help="fail DB-dependent gates instead of skipping (use in CI)")
     parser.add_argument("--update-baseline", action="store_true",
-                        help="record current measurements as the accepted baseline")
-    args = parser.parse_args()
+                        help="re-measure ratchets and write verification_baseline.json")
+    args = parser.parse_args(argv)
 
-    baseline = _load_baseline()
-    selected = [g for g in GATES
-                if (not args.gate or g[0] == args.gate)
-                and (not args.tag or args.tag in g[2])]
-    if args.gate and not selected:
-        print("No such gate: %s\nAvailable: %s"
-              % (args.gate, ", ".join(g[0] for g in GATES)), file=sys.stderr)
-        return 2
+    os.chdir(REPO_ROOT)
+    baseline = load_baseline()
+    gates = build_gates(baseline)
 
-    results, started = {}, time.time()
-    if not args.json:
-        print()
-    for name, function, _tags in selected:
-        if not args.json:
-            print("  %-20s running..." % name, end="\r", flush=True)
+    if args.gate:
+        wanted = set(args.gate)
+        unknown = wanted - {g.name for g in gates}
+        if unknown:
+            parser.error(f"unknown gate(s): {', '.join(sorted(unknown))}")
+        gates = [g for g in gates if g.name in wanted]
+    if args.tag:
+        gates = [g for g in gates if set(args.tag) & set(g.tags)]
+
+    db_ok, db_reason = database_available()
+    results: list[Result] = []
+
+    for gate in gates:
+        if gate.needs_db and not db_ok:
+            if args.require_db:
+                results.append(Result(gate.name, FAIL,
+                                      f"database required but unavailable: {db_reason}",
+                                      remediation="start PostgreSQL and set TEST_DATABASE_URL"))
+            else:
+                results.append(Result(gate.name, SKIP, f"no database: {db_reason}",
+                                      remediation="start PostgreSQL and set TEST_DATABASE_URL"))
+            continue
+        started = time.time()
         try:
-            result = function(baseline)
-        except Exception as exc:  # noqa: BLE001 — a broken gate must not hide the rest
-            result = Result(FAIL, "gate raised %s: %s" % (type(exc).__name__, str(exc)[:100]))
-        if result.status == SKIP and args.require_db:
-            result = Result(FAIL, "skipped, and --require-db was set: " + result.detail)
-        results[name] = result
-        if not args.json:
-            mark = {PASS: "PASS", FAIL: "FAIL", SKIP: "SKIP"}[result.status]
-            print("  %-20s %-4s  %s" % (name, mark, result.detail))
-
-    failed = [n for n, r in results.items() if r.status == FAIL]
-    skipped = [n for n, r in results.items() if r.status == SKIP]
-    elapsed = round(time.time() - started, 1)
+            result = gate.runner()
+        except subprocess.TimeoutExpired:
+            result = Result(gate.name, FAIL, "timed out")
+        except Exception as exc:  # noqa: BLE001 — a broken gate must report, not crash the run
+            result = Result(gate.name, FAIL, f"{exc.__class__.__name__}: {exc}")
+        result.duration_s = round(time.time() - started, 1)
+        if result.status == FAIL and not result.remediation:
+            result.remediation = gate.remediation
+        results.append(result)
 
     if args.update_baseline:
-        recorded = {n: r.measured for n, r in results.items() if r.measured is not None}
-        existing = _load_baseline()
-        existing.update(recorded)
-        with open(BASELINE_PATH, "w", encoding="utf-8") as handle:
-            json.dump({
-                "_comment": "Accepted measurements for the ratchet gates in "
-                            "scripts/verify.py. Every number here is real debt that "
-                            "has not been paid off, not a statement that the tree is "
-                            "clean. Lowering one after a cleanup is routine; raising "
-                            "one is a regression that needs justifying in review.",
-                "gates": existing,
-            }, handle, indent=1, sort_keys=True)
-            handle.write("\n")
-        if not args.json:
-            print("\n  baseline written: %d measurement(s)" % len(recorded))
+        measured = {r.name.replace("-", "_"): r.measured for r in results if r.measured is not None}
+        new = {**baseline, **{k: v for k, v in measured.items() if k in baseline}}
+        lowered = {k: (baseline[k], new[k]) for k in new if new[k] < baseline.get(k, new[k])}
+        save_baseline(new, f"updated {time.strftime('%Y-%m-%d')}")
+        print(f"baseline written to {BASELINE_PATH.name}")
+        for key, (old, cur) in lowered.items():
+            print(f"  lowered {key}: {old} -> {cur}")
+        return 0
+
+    failed = [r for r in results if r.status == FAIL]
+    skipped = [r for r in results if r.status == SKIP]
 
     if args.json:
         print(json.dumps({
             "ok": not failed,
-            "elapsed_seconds": elapsed,
-            "failed": failed,
-            "skipped": skipped,
-            "gates": {n: {"status": r.status, "detail": r.detail,
-                          "measured": r.measured, "baseline": r.baseline}
-                      for n, r in results.items()},
+            "database_available": db_ok,
+            "database_detail": db_reason,
+            "summary": {"pass": len(results) - len(failed) - len(skipped),
+                        "fail": len(failed), "skip": len(skipped)},
+            "gates": [r.__dict__ for r in results],
         }, indent=2))
-    else:
-        print()
-        if skipped:
-            print("  %d gate(s) SKIPPED and therefore unverified: %s"
-                  % (len(skipped), ", ".join(skipped)))
-            print("  A skip is not a pass. CI runs with --require-db so these fail there.")
-        if failed:
-            print("  FAILED: %s  (%ss)" % (", ".join(failed), elapsed))
-        else:
-            print("  All %d gate(s) that could run passed (%ss)."
-                  % (len(results) - len(skipped), elapsed))
-        print()
+        return 1 if failed else 0
 
+    width = max(len(r.name) for r in results) if results else 10
+    print("\nArchie verification")
+    print("-" * (width + 46))
+    for r in results:
+        mark = {PASS: "ok  ", FAIL: "FAIL", SKIP: "skip"}[r.status]
+        measure = ""
+        if r.measured is not None:
+            arrow = "<=" if r.status == PASS else ">"
+            measure = f"  [{r.measured} {arrow} {r.baseline}]"
+        print(f"  {mark}  {r.name:<{width}}  {r.duration_s:>5.1f}s{measure}")
+    print("-" * (width + 46))
+
+    for r in failed:
+        print(f"\nFAIL: {r.name}")
+        if r.detail:
+            print("\n".join(f"    {ln}" for ln in r.detail.splitlines()[:20]))
+        if r.remediation:
+            print(f"    -> {r.remediation}")
+
+    if skipped:
+        print(f"\n{len(skipped)} gate(s) skipped and therefore NOT verified:")
+        for r in skipped:
+            print(f"    {r.name}: {r.detail}")
+        print("    CI runs with --require-db so these cannot be silently skipped there.")
+
+    print(f"\n{len(results) - len(failed) - len(skipped)} passed, {len(failed)} failed, {len(skipped)} skipped")
     return 1 if failed else 0
 
 

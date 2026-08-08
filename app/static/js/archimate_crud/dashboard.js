@@ -17,6 +17,7 @@ document.addEventListener('alpine:init', function() {
             totalCount: 0,
             layerCounts: {},
             layerConfig: APP_CONFIG.layerConfig || {},
+            fieldConfigs: APP_CONFIG.fieldConfigs || {},
 
             // Card filter and grouping
             cardFilter: '',
@@ -111,6 +112,16 @@ document.addEventListener('alpine:init', function() {
                 return Array.from(new Set(arr));
             },
 
+            get currentTypeFields() {
+                // Typed fields for whichever element type the modal is currently
+                // showing — the selected type when creating, the existing
+                // element's type when editing. A type with no config (most of
+                // them, still) returns [] and the modal stays name+description only.
+                let et = this.formData.element_type;
+                let cfg = et ? this.fieldConfigs[et] : null;
+                return (cfg && Array.isArray(cfg.fields)) ? cfg.fields : [];
+            },
+
             get elementGroups() {
                 let filtered = Array.isArray(this.elements) ? this.elements : [];
                 if (this.cardFilter === 'orphaned') {
@@ -186,9 +197,21 @@ document.addEventListener('alpine:init', function() {
 
             init() {
                 var self = this;
-                let urlLayer = new URLSearchParams(window.location.search).get('layer');
-                if (urlLayer && this.layerConfig[urlLayer]) {
-                    this.activeTab = urlLayer;
+                let params = new URLSearchParams(window.location.search);
+                // The By-Layer navigation lands here with a layer and an element
+                // type. The query string wins over the server-rendered defaults so
+                // a bookmarked ?layer=… keeps working; both are re-checked against
+                // layerConfig, because an unrecognised value must not become an
+                // active filter that matches nothing.
+                let wantLayer = params.get('layer') || APP_CONFIG.initialLayer || null;
+                if (wantLayer && this.layerConfig[wantLayer]) {
+                    this.activeTab = wantLayer;
+                } else {
+                    wantLayer = null;
+                }
+                let wantType = params.get('element_type') || APP_CONFIG.initialElementType || null;
+                if (wantType && this.currentLayerTypes.indexOf(wantType) >= 0) {
+                    this.typeFilter = wantType;
                 }
                 let urlPanel = new URLSearchParams(window.location.search).get('panel');
                 if (urlPanel === 'health') {
@@ -199,7 +222,7 @@ document.addEventListener('alpine:init', function() {
                     // Default tab 'motivation' is usually empty; if the user didn't pick
                     // a layer, land on the most-populated one so a populated estate does
                     // not render as all-zero cards.
-                    if (!urlLayer) {
+                    if (!wantLayer) {
                         var best = Object.entries(self.layerCounts || {})
                             .sort(function(a, b){ return (b[1]||0) - (a[1]||0); })[0];
                         if (best && best[1] > 0 && best[0] !== self.activeTab) {
@@ -224,6 +247,7 @@ document.addEventListener('alpine:init', function() {
 
             async loadElements() {
                 this.loading = true;
+                this.loadError = null;
                 try {
                     let params = new URLSearchParams({
                         page: this.currentPage,
@@ -244,12 +268,23 @@ document.addEventListener('alpine:init', function() {
                         '/architecture/api/layer/' + this.activeTab + '/elements?' + params,
                         { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
                     );
+                    // fetch() does not reject on 4xx/5xx. Without this the error
+                    // page body failed JSON.parse (or worse, parsed into an object
+                    // with no .elements) and the table rendered its "no elements"
+                    // empty state — indistinguishable from a layer that is genuinely
+                    // empty, which is the exact thing a system of record must not do.
+                    if (!resp.ok) throw new Error('Server returned ' + resp.status + ' loading ' + this.activeTab + ' elements');
                     let data = await resp.json();
-                    this.elements = data.elements;
+                    this.elements = data.elements || [];
                     this.pagination = data.pagination;
-                    this.layerCounts[this.activeTab] = data.pagination.total;
+                    this.layerCounts[this.activeTab] = (data.pagination && data.pagination.total);
                 } catch (err) {
-                    console.error('Failed to load elements:', err);
+                    // The template already renders an error state + Retry button on
+                    // `loadError` (dashboard.html); nothing ever set it until now.
+                    this.loadError = err.message || 'Could not load elements for this layer';
+                    this.elements = [];
+                    this.layerCounts[this.activeTab] = null;   // unknown, not zero
+                    if (window.Platform && Platform.toast) Platform.toast.error(this.loadError);
                 } finally {
                     this.loading = false;
                     this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
@@ -259,6 +294,7 @@ document.addEventListener('alpine:init', function() {
             async loadAllLayerCounts() {
                 let self = this;
                 let layerKeys = Object.keys(this.layerConfig);
+                let uncounted = [];
                 // Use the fast /count endpoint to avoid loading all rows into Python.
                 // Falls back to the elements endpoint if count endpoint is unavailable.
                 for (let i = 0; i < layerKeys.length; i++) {
@@ -280,19 +316,37 @@ document.addEventListener('alpine:init', function() {
                             let d2 = await r2.json();
                             self.layerCounts[layerKey] = (d2.pagination && d2.pagination.total) || 0;
                         }
-                        self.totalCount = Object.values(self.layerCounts).reduce(function(a, b) { return a + b; }, 0);
+                        self.totalCount = Object.values(self.layerCounts).reduce(function(a, b) { return a + (b || 0); }, 0);
                     } catch (e) {
-                        console.warn('Layer count failed for', layerKey, e);
-                        self.layerCounts[layerKey] = 0;
+                        // null, never 0: a fabricated zero is indistinguishable from
+                        // a layer that really has no elements. The tab badge renders
+                        // null as an em dash.
+                        self.layerCounts[layerKey] = null;
+                        uncounted.push(layerKey);
                     }
+                }
+                // One toast for the whole sweep — six per-layer toasts would be worse
+                // than the failure they report.
+                if (uncounted.length && window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not count elements for: ' + uncounted.join(', ')
+                        + '. Those tabs show a dash instead of a total.');
                 }
             },
 
             async loadViewpoints() {
                 try {
                     let resp = await fetch('/api/archimate/viewpoints', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (!resp.ok) throw new Error('Server returned ' + resp.status);
                     this.availableViewpoints = await resp.json();
-                } catch (e) { console.warn('Could not load viewpoints', e); }
+                } catch (e) {
+                    // The Viewpoint <select> keeps only its hardcoded "All Elements"
+                    // option when this fails, which looks exactly like a tenant that
+                    // has no viewpoints configured. Say so instead.
+                    this.availableViewpoints = {};
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Could not load viewpoints — the viewpoint filter is unavailable');
+                    }
+                }
             },
 
             applyViewpoint() {
@@ -392,6 +446,28 @@ document.addEventListener('alpine:init', function() {
                 this.validating = false;
             },
 
+            // Typed field values for the currently-selected type, defaulted to ''
+            // so Alpine's x-model has something reactive to bind before the user
+            // types (and so a field left untouched still posts as '' rather than
+            // being absent, matching create_empty_form_data on the server side).
+            typedFieldDefaults(elementType, source) {
+                let cfg = elementType ? this.fieldConfigs[elementType] : null;
+                let fields = (cfg && Array.isArray(cfg.fields)) ? cfg.fields : [];
+                let out = {};
+                for (let i = 0; i < fields.length; i++) {
+                    let name = fields[i].name;
+                    out[name] = (source && source[name] !== undefined) ? source[name] : '';
+                }
+                return out;
+            },
+            resetTypedFields() {
+                // Called when the Element Type select changes: drop any typed
+                // values entered for the previous type and seed defaults for the
+                // newly selected one.
+                let base = { element_type: this.formData.element_type, name: this.formData.name, description: this.formData.description };
+                Object.assign(base, this.typedFieldDefaults(this.formData.element_type));
+                this.formData = base;
+            },
             openCreateModal() {
                 this.editingElement = null;
                 this.formData = { element_type: '', name: '', description: '' };
@@ -407,6 +483,7 @@ document.addEventListener('alpine:init', function() {
                     name: el.name,
                     description: el.description || '',
                 };
+                Object.assign(this.formData, this.typedFieldDefaults(el.element_type, el));
                 this.formError = '';
                 if (window.Platform && window.Platform.modal) {
                     window.Platform.modal.open('archimate-form-modal');
@@ -430,13 +507,18 @@ document.addEventListener('alpine:init', function() {
                     } else {
                         url = '/architecture/' + this.activeTab + '/' + this.formData.element_type + '/new';
                     }
+                    let payload = {
+                        name: this.formData.name,
+                        description: this.formData.description,
+                    };
+                    // Include typed fields for the selected type (if any) so the
+                    // server's _set_model_fields can persist them alongside
+                    // name/description; a type with no config contributes none.
+                    Object.assign(payload, this.typedFieldDefaults(this.formData.element_type, this.formData));
                     let resp = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: this.formData.name,
-                            description: this.formData.description,
-                        }),
+                        body: JSON.stringify(payload),
                     });
                     let data = await resp.json();
                     if (data.success) {

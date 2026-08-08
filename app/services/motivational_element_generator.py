@@ -10,17 +10,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.models import (
-    ConstraintType,
-    DriverType,
-    RequirementType,
-    SolutionAssessment,
-    SolutionConstraint,
-    SolutionDriver,
-    SolutionGoal,
-    SolutionPrinciple,
-    SolutionRequirement,
-)
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)

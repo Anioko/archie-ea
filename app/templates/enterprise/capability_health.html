@@ -32,7 +32,7 @@
                     {{ cap.strategic_importance|default('Normal')|title }}
                 </span>
             </div>
-            <p class="text-sm text-muted-foreground mb-4">{{ cap.description|default('No description')|truncate(100) }}</p>
+            <p class="text-sm text-muted-foreground mb-4">{{ cap.description|default('No description', true)|truncate(100) }}</p>
             <div class="space-y-2">
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Maturity</span>

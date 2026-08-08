@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 from .. import db
 from ..models.application_portfolio import ApplicationComponent
-from ..models.models import ArchiMateElement
 from app.utils.deprecation import deprecated_route
 from . import application_mgmt
 
@@ -138,10 +137,10 @@ def get_matching_reason(application, vendor_product, method):
             return f"Name similarity between '{app_name}' and '{vendor_name}'"
 
     elif method == "capability":
-        return f"Capability overlap between application and vendor product offerings"
+        return "Capability overlap between application and vendor product offerings"
 
     elif method == "ai":
-        return f"AI-powered semantic analysis indicates strong relationship"
+        return "AI-powered semantic analysis indicates strong relationship"
 
     return "Matching based on available data"
 
@@ -164,9 +163,7 @@ def find_duplicate_applications():
     Returns:
         JSON with duplicate groups, similarity scores, and consolidation recommendations.
     """
-    import asyncio
 
-    from sqlalchemy import and_, func, or_
 
     from ..models.application_consolidation import ApplicationSimilarityAnalysis
     from ..models.application_layer import ApplicationComponent
@@ -426,7 +423,6 @@ def analyze_application_similarity():
     Returns:
         JSON with analysis results and statistics
     """
-    import asyncio
 
     from ..services.application_similarity_service import ApplicationSimilarityService
     from ..services.llm_service import LLMService
@@ -460,7 +456,7 @@ def analyze_application_similarity():
         # Run analysis using shared event loop utility
         from app.services.core.async_utils import get_or_create_event_loop
 
-        loop = get_or_create_event_loop()
+        get_or_create_event_loop()
         results = similarity_service.analyze_portfolio(
             application_ids=application_ids,
             provider=provider,
@@ -621,7 +617,6 @@ def match_applications_to_vendors():
         from ..models.vendor.vendor_organization import (
             VendorOrganization,
             VendorProduct,
-            application_vendor_products,
         )
 
         # Get all applications
@@ -719,7 +714,6 @@ def confirm_vendor_matches():
         from ..models.models import ArchiMateElement
         from ..models.vendor.vendor_organization import (
             VendorProduct,
-            application_vendor_products,
         )
 
         confirmed_count = 0
@@ -837,7 +831,6 @@ def analyze_import_stream():
     import json
     import time
 
-    from flask import Response, stream_with_context
 
     def generate():
         try:

@@ -13,9 +13,8 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from app import db
-from app.models import APISettings, LLMInteraction
+from app.models import APISettings
 from app.models.application_consolidation import (
-    ApplicationConsolidationRecommendation,
     ApplicationSimilarityAnalysis,
 )
 from app.models.application_layer import ApplicationComponent
@@ -819,7 +818,7 @@ BE REALISTIC about consolidation complexity and savings. Don't recommend consoli
         capability_id = gap.get("capability_id")
         capability_name = gap.get("capability_name", "")
         gap_type = gap.get("gap_type", "unknown")
-        domain = gap.get("domain", "")
+        gap.get("domain", "")
 
         logger.info(f"Finding reuse candidates for gap: {capability_name} ({gap_type})")
 

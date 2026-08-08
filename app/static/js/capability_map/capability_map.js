@@ -82,6 +82,7 @@
                 }
             } catch (error) {
                 console.error('Error loading applications for ACM mapping:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to load applications for mapping');
             }
         }
 
@@ -328,7 +329,10 @@
             panel.classList.remove('translate-x-full');
 
             fetch('/capability-map/api/capability/' + capabilityId + '/applications')
-                .then(r => r.json())
+                .then(r => {
+                    if (!r.ok) throw new Error('capability applications request failed: ' + r.status);
+                    return r.json();
+                })
                 .then(data => {
                     let html = '';
                     const cap = data.capability || {};
@@ -833,7 +837,10 @@
         function openProcessMappingModal(processId, processName, processCode, processType) {
             // Check if user is authenticated before opening modal
             fetch('/capability-map/api/check-auth')
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) throw new Error('check-auth request failed: ' + response.status);
+                    return response.json();
+                })
                 .then(data => {
                     if (data.authenticated) {
                         // User is authenticated, proceed with modal
@@ -1225,6 +1232,7 @@
                 if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
             } catch (error) {
                 console.error('Error loading business domains:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to load business domains');
             }
         }
 
@@ -1306,6 +1314,7 @@
                 if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
             } catch (error) {
                 console.error('Error loading manufacturing domains:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to load manufacturing domains');
             }
         }
 
@@ -1352,6 +1361,7 @@
                 if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
             } catch (error) {
                 console.error('Error loading process categories:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to load process categories');
             }
         }
 

@@ -35,17 +35,17 @@
             <!-- Active Strategic Decision -->
             <div class="bg-card border border-border rounded-lg overflow-hidden">
                 <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-3">
-                    <i data-lucide="shield" class="w-5 h-5 text-primary dark:text-purple-400" aria-hidden="true"></i>
+                    <i data-lucide="shield" class="w-5 h-5 text-primary" aria-hidden="true"></i>
                     <h2 class="text-base font-semibold text-foreground">Active Strategic Decision</h2>
                 </div>
                 <div class="p-6">
                     <template x-if="data && data.active_strategic_decision">
                         <div class="space-y-3">
                             <div class="flex flex-wrap items-start gap-3">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                     Strategic
                                 </span>
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-green-800"
                                       x-text="data.active_strategic_decision.status ? data.active_strategic_decision.status.replace(/_/g, ' ') : 'Unknown'">
                                 </span>
                             </div>
@@ -78,7 +78,7 @@
             <!-- Active Tactical Decisions -->
             <div class="bg-card border border-border rounded-lg overflow-hidden">
                 <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-3">
-                    <i data-lucide="layers" class="w-5 h-5 text-primary dark:text-blue-400" aria-hidden="true"></i>
+                    <i data-lucide="layers" class="w-5 h-5 text-primary" aria-hidden="true"></i>
                     <h2 class="text-base font-semibold text-foreground">Active Tactical Decisions</h2>
                     <span class="ml-auto text-xs text-muted-foreground" x-text="data && data.active_tactical_decisions ? data.active_tactical_decisions.length + ' decision(s)' : ''"></span>
                 </div>
@@ -87,12 +87,12 @@
                         <div class="space-y-3">
                             <template x-for="d in data.active_tactical_decisions" :key="d.id">
                                 <div class="flex flex-wrap items-center gap-3 border border-border rounded-md px-4 py-3 bg-muted/10 hover:bg-muted/30 transition-colors">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary/90 dark:bg-primary/20 dark:text-primary/80">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary/90">
                                         Tactical
                                     </span>
                                     <span class="text-xs font-mono text-muted-foreground" x-text="d.decision_id || ''"></span>
                                     <span class="font-medium text-foreground flex-1" x-text="d.title"></span>
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-green-800"
                                           x-text="d.status ? d.status.replace(/_/g, ' ') : 'Unknown'">
                                     </span>
                                     <span class="text-xs text-muted-foreground" x-text="d.authority_level ? d.authority_level.replace(/_/g, ' ') : '—'"></span>
@@ -112,7 +112,7 @@
             <!-- Open Change Requests -->
             <div class="bg-card border border-border rounded-lg overflow-hidden">
                 <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-3">
-                    <i data-lucide="git-pull-request" class="w-5 h-5 text-amber-600 dark:text-amber-400" aria-hidden="true"></i>
+                    <i data-lucide="git-pull-request" class="w-5 h-5 text-amber-600" aria-hidden="true"></i>
                     <h2 class="text-base font-semibold text-foreground">Open Change Requests</h2>
                 </div>
                 <template x-if="data && data.open_change_requests && data.open_change_requests.length > 0">
@@ -138,7 +138,7 @@
                                         </td>
                                         <td class="px-4 py-3 text-muted-foreground" x-text="cr.trigger_type ? cr.trigger_type.replace(/_/g, ' ') : '—'"></td>
                                         <td class="px-4 py-3">
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"
                                                   x-text="cr.status ? cr.status.replace(/_/g, ' ') : 'Open'">
                                             </span>
                                         </td>

@@ -29,27 +29,21 @@ Usage:
     service.fulfill_condition(condition_id=1, evidence="...")
 """
 
-import json  # dead-code-ok
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
 from flask import current_app
-from sqlalchemy import and_, func, or_  # dead-code-ok
+from sqlalchemy import func  # dead-code-ok
 
 from .. import db
-from ..models.archimate_metamodel import ArchiMateRelationshipRule, MetamodelViolation  # dead-code-ok
+from ..models.archimate_metamodel import MetamodelViolation  # dead-code-ok
 from ..models.architecture_review_board import (  # dead-code-ok
-    DEFAULT_WORKFLOW_STAGES,
     ARBReviewItem,
     ARBReviewStatus,
     ARBWorkflowStage,
-    ArchitectureReviewBoard,
-    ReviewType,
-    TOGAFPhase,
     create_default_workflow_stages,
 )
-from ..models.models import ArchiMateElement, ArchiMateRelationship  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -1933,8 +1927,6 @@ class ARBWorkflowService:
             "blocking_approval": blocking,
         }
 
-        return analytics  # dead-code-ok
-
     def _validate_probe_answers(
         self,
         probe_questions: List[Dict],
@@ -2017,7 +2009,6 @@ class ARBWorkflowService:
         Returns:
             List of probe questions with expected answers
         """
-        import random
         import hashlib
 
         probes = []

@@ -27,17 +27,15 @@ import json
 import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from sqlalchemy import and_, func, or_
 
 from app import db
-from app.models.application_portfolio import ApplicationComponent
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
-from app.models.unified_capability import BusinessDomain, UnifiedCapability
+from app.models.unified_capability import UnifiedCapability
 
 logger = logging.getLogger(__name__)
 

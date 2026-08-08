@@ -4,7 +4,6 @@ Wraps all file operations with automatic policy checking
 """
 
 import logging
-import os
 from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -13,7 +12,6 @@ from app.utils.policy_aware_tools import safe_create_file, safe_delete_file, saf
 from app.utils.policy_enforcer import (
     PolicySeverity,
     PolicyViolation,
-    block_if_violation,
     validate_operation,
 )
 
@@ -320,7 +318,7 @@ def get_policy_compliance_report() -> Dict[str, Any]:
                     v
                     for v in policy_tool_wrapper.violation_history
                     if any(
-                        viol.rule.severity in [PolicySeverity.CRITICAL, PolicySeverity.TERMINATION]
+                        violation.rule.severity in [PolicySeverity.CRITICAL, PolicySeverity.TERMINATION]
                         for violation in v["violations"]
                     )
                 ]
@@ -330,7 +328,7 @@ def get_policy_compliance_report() -> Dict[str, Any]:
                     v
                     for v in policy_tool_wrapper.violation_history
                     if any(
-                        viol.rule.rule.severity == PolicySeverity.WARNING
+                        violation.rule.severity == PolicySeverity.WARNING
                         for violation in v["violations"]
                     )
                 ]

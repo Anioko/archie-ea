@@ -221,6 +221,7 @@ _UNIVERSAL_BASELINE: set = {
     "account_settings",  # /api/v1/account/* routes always generated
     "error_handling",    # Typed error responses always generated
     "api_versioning",    # /api/v1/ prefix always used
+    # fabricated-ok: codegen template config key, not displayed data
     "seed_data",         # Demo data seeded on first boot
     "soft_delete",       # deleted_at on all models; hard DELETE forbidden
     "security_headers",  # CORS + CSP + HSTS middleware always registered
@@ -903,7 +904,6 @@ def compile_genome(
     Returns:
         Genome dict ready for validation and code generation.
     """
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
     from app.models.solution_models import Solution, SolutionArchiMateElement
 
     config = config or {}
@@ -1442,9 +1442,7 @@ def compile_genome(
     try:
         from app.models.solution_architect_models import (
             SolutionAnalysisSession,
-            SolutionProblemDefinition,
             SolutionRequirement,
-            RequirementType,
         )
         _session = SolutionAnalysisSession.query.filter(
             SolutionAnalysisSession.name.like(f"%Solution {solution_id}%")
@@ -1878,7 +1876,7 @@ def compile_genome(
                             "data_format": integ.data_format,
                             "base_url": integ.base_url,
                             "operations": integ.operations,
-                            "description": f"Extracted from requirements via BFG",
+                            "description": "Extracted from requirements via BFG",
                         }
 
             if _behavioral_ctx and _behavioral_ctx.screens:
@@ -2595,7 +2593,7 @@ def _extract_state_machine(
     # Many domain models use verification_status, account_status, kyc_status, etc.
     # rather than a plain "status" column.
     status_field = "status"
-    comp_name_lower = (component.name or "").lower().replace(" ", "_")
+    (component.name or "").lower().replace(" ", "_")
     for entity_elem in (elements_by_id.get(eid) for eid in elements_by_id):
         if entity_elem is None:
             continue

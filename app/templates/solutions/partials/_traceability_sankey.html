@@ -117,7 +117,7 @@
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-sky-500/10 text-sky-700 border border-sky-500/30 capitalize" x-text="selectedNode.status"></span>
               </template>
               <template x-if="selectedNode.priority">
-                <span :class="{'bg-red-500/10 text-red-700 border-red-500/30': selectedNode.priority==='High','bg-amber-500/10 text-amber-700 border-amber-500/30': selectedNode.priority==='Medium','bg-muted text-muted-foreground border-border': selectedNode.priority==='Low'}"
+                <span :class="{'bg-destructive/10 text-destructive-emphasis border-destructive/30': selectedNode.priority==='High','bg-amber-500/10 text-amber-700 border-amber-500/30': selectedNode.priority==='Medium','bg-muted text-muted-foreground border-border': selectedNode.priority==='Low'}"
                       class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border" x-text="selectedNode.priority + ' priority'"></span>
               </template>
               <template x-if="selectedNode.dependency_level">
@@ -137,7 +137,7 @@
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-700 border border-purple-500/30">&#x2728; AI derived</span>
               </template>
               <template x-if="selectedNode.critical_path">
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-red-700 border border-red-500/30">&#x26A0; Critical path</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">&#x26A0; Critical path</span>
               </template>
             </div>
             <div class="border-t border-border pt-2.5">

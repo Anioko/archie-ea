@@ -14,7 +14,6 @@ from difflib import SequenceMatcher
 from flask import (  # dead-code-ok
     Blueprint,
     current_app,
-    flash,
     jsonify,
     redirect,
     render_template,
@@ -27,7 +26,6 @@ from app import db
 from app.core.compat import mark_blueprint_guardrailed
 from app.core.decorators import timed_route
 from app.models.application_duplicate_detection import (  # dead-code-ok
-    DuplicateAnalysis,
     DuplicateDetectionRun,
     DuplicateGroup,
 )
@@ -826,13 +824,17 @@ def api_group_merge_preview(group_id):
                 primary_val = get_field_val(primary, field_name)
                 dup_val = get_field_val(dup_app, field_name)
                 if primary_val == dup_val:
-                    status = "match"; fields_matching += 1
+                    status = "match"
+                    fields_matching += 1
                 elif primary_val and not dup_val:
-                    status = "primary_only"; fields_missing += 1
+                    status = "primary_only"
+                    fields_missing += 1
                 elif not primary_val and dup_val:
-                    status = "duplicate_only"; fields_missing += 1
+                    status = "duplicate_only"
+                    fields_missing += 1
                 else:
-                    status = "conflict"; fields_conflicting += 1
+                    status = "conflict"
+                    fields_conflicting += 1
                 if status == "conflict":
                     p_len = len(str(primary_val)) if primary_val else 0
                     d_len = len(str(dup_val)) if dup_val else 0
@@ -1033,7 +1035,7 @@ def api_detection_runs():
 def run_detection():
     """Run duplicate detection from the enterprise dashboard."""
     try:
-        data = request.get_json() or {}
+        request.get_json() or {}
         result = unified_service.run_duplicate_detection()
         if result.get("success"):
             return jsonify(result), 200

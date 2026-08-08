@@ -84,6 +84,7 @@
 let apqcTreeData = [];
 let selectedAPQCProcess = null;
 let apqcExpandedNodes = new Set();
+let _apqcSearchErrorShown = false;
 
 function escapeHtml(str) {
   if (str == null) return '';
@@ -107,6 +108,8 @@ document.addEventListener('click', function(e) {
     let params = JSON.parse(trigger.getAttribute('data-params'));
     toggleAPQCNode(params[0], params[1], params[2]);
   } catch(err) {
+    // This is a document-level delegated click handler, so it must not throw
+    // for every other click on the page over one malformed node's data-params.
     console.error('[apqc-tree-browser] toggleAPQCNode parse error', err);
   }
 });
@@ -251,8 +254,14 @@ async function searchAPQCProcesses(query) {
 
       document.getElementById('apqc-tree-content').innerHTML = renderAPQCTree(searchResults);
     }
+    _apqcSearchErrorShown = false;
   } catch (error) {
     console.error('APQC search error:', error);
+    // Fires on every keystroke — toast once per outage, not on every retry.
+    if (!_apqcSearchErrorShown) {
+      _apqcSearchErrorShown = true;
+      if (window.Platform && Platform.toast) Platform.toast.error('APQC search failed.');
+    }
   }
 }
 

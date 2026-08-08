@@ -30,7 +30,7 @@ import os
 import time
 from typing import Any, Callable, Optional, Type
 
-from flask import jsonify, request
+from flask import request
 
 logger = logging.getLogger(__name__)
 
@@ -166,13 +166,12 @@ def guarded_route(
 
             start = time.monotonic()
 
-            from flask import abort, g
+            from flask import g
             from flask_login import current_user
 
             from app.core.api import api_error
 
             if feature_flag:
-                from app.core.auth.decorators import require_feature as _ff_check
 
                 try:
                     from app.models.feature_flags import FeatureFlag

@@ -5,7 +5,7 @@
   <div>
     <div class="flex items-center gap-3">
       <h2 class="text-lg font-semibold text-foreground">Quality Baseline</h2>
-      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-500/10 text-primary border border-blue-500/30">TOGAF Phase A</span>
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30">TOGAF Phase A</span>
     </div>
     <p class="text-sm text-muted-foreground mt-1">
       Define the operational capabilities your solution must satisfy. Mandatory domains (1–6) are required to proceed to ARB. Recommended domains (7–12) improve solution completeness.
@@ -361,7 +361,7 @@
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
             :class="qbDomainComplete('performance') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">7</span>
           <span>Performance</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'performance' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -402,7 +402,7 @@
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
             :class="qbDomainComplete('deployment_release') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">8</span>
           <span>Deployment &amp; Release</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'deployment_release' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -455,7 +455,7 @@
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
             :class="qbDomainComplete('compliance_audit') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">9</span>
           <span>Compliance &amp; Audit</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'compliance_audit' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -495,7 +495,7 @@
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
             :class="qbDomainComplete('operational_support') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">10</span>
           <span>Operational Support</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'operational_support' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -535,7 +535,7 @@
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
             :class="qbDomainComplete('testing_quality') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">11</span>
           <span>Testing &amp; Quality</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'testing_quality' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -574,7 +574,7 @@
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
             :class="qbDomainComplete('cost_sustainability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">12</span>
           <span>Cost &amp; Sustainability</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'cost_sustainability' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>

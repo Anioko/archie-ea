@@ -197,14 +197,14 @@ def comprehensive_auto_map():
         ai_service = get_ai_import_service()
 
         # NEW: Support preview mode - analyze without saving
-        preview_mode = data.get("preview_mode", False)
+        data.get("preview_mode", False)
 
         # NEW: Support vendor ArchiMate cloning (P0 CRITICAL FIX)
-        clone_vendor_archimate = data.get("clone_vendor_archimate", True)
+        data.get("clone_vendor_archimate", True)
 
         # Perform bulk AI analysis
-        application_ids = data.get("application_ids", None)
-        layer_targets = data.get("layer_targets", None)
+        _application_ids = data.get("application_ids", None)
+        _layer_targets = data.get("layer_targets", None)
         # bulk_ai_analyze only accepts max_applications and confidence_threshold.
         # Passing application_ids / generation_mode / layer_targets raised
         # TypeError on every request, so this endpoint always 500'd. The service
@@ -403,7 +403,6 @@ def comprehensive_auto_map_stream():
     application_ids = data.get("application_ids", None)
     generation_mode = data.get("generation_mode", "standard")
     layer_targets = data.get("layer_targets", None)
-    user_email = current_user.email if current_user.is_authenticated else "system"
 
     def generate_progress():
         try:

@@ -191,7 +191,7 @@ document.getElementById('btn-test-auth').addEventListener('click', function () {
         let ok = data.status === 'ok';
         resultEl.textContent = data.message;
         resultEl.className = 'px-4 sm:px-6 pb-4 text-sm ' +
-            (ok ? 'text-emerald-600 dark:text-green-400' : 'text-destructive');
+            (ok ? 'text-emerald-600' : 'text-destructive');
     })
     .catch(function () {
         resultEl.textContent = 'Request failed — check the browser console.';

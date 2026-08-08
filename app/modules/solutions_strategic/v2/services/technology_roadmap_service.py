@@ -9,12 +9,10 @@ Plans and manages technology evolution and modernization:
 - Technology investment planning
 """
 
-from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List
 
-from sqlalchemy import and_, func, or_
 
-from app import db
 from .decorators import transactional
 
 
@@ -159,8 +157,8 @@ class TechnologyRoadmapService:
 
         # Databases
         if any(
-            db in tech_lower
-            for db in ["mysql", "postgresql", "oracle", "sql server", "mongodb", "redis"]
+            db_name in tech_lower
+            for db_name in ["mysql", "postgresql", "oracle", "sql server", "mongodb", "redis"]
         ):
             return "Database"
 

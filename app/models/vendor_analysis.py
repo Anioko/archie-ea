@@ -174,7 +174,7 @@ class OptionsAnalysis(db.Model):
         total_vendors = len(self.vendor_options)
         if total_vendors == 0:
             has_name = bool(self.name)
-            has_weights = bool(self.criteria_weights)
+            bool(self.criteria_weights)
             return 10 if has_name else 0
 
         completed_vendors = len(

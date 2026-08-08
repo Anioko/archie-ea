@@ -163,11 +163,19 @@ def traceability_chain():
             if ids:
                 element_ids_by_layer[layer_key] = ids
     element_solutions_by_layer = get_element_solution_map_by_layer(element_ids_by_layer)
-    # JSON: { "layer": { "element_id": [solutions] } } for template lookup by selected.layer + selected.id
-    element_solutions_json = json.dumps({
+    # { "layer": { "element_id": [solutions] } } for template lookup by
+    # selected.layer + selected.id.
+    #
+    # Passed as a dict and serialised in the template with |tojson, NOT with
+    # json.dumps + |safe. json.dumps does not escape "<" or "/", and this payload
+    # carries user-controlled solution names, so a solution named
+    # "</script><script>..." closed the surrounding <script> block and executed -
+    # stored XSS against every viewer of the traceability chain. Flask's |tojson
+    # escapes <, > and & for exactly this context.
+    element_solutions_json = {
         layer: {str(eid): sols for eid, sols in by_id.items()}
         for layer, by_id in element_solutions_by_layer.items()
-    })
+    }
 
     # GLB-057: Solutions list for filter dropdown
     from app.models.solution_models import Solution
@@ -2740,7 +2748,7 @@ def api_composer_generate_contextual():
     viewpoint_type = (data.get("viewpoint_type") or "").strip()
     business_domain = (data.get("business_domain") or "").strip() or None
     solution_id = data.get("solution_id")
-    options = data.get("options") or {}
+    data.get("options") or {}
 
     if phase not in _PHASE_ELEMENT_MAP:
         return jsonify({"error": "phase must be one of: A, B, C, D"}), 400
@@ -3780,7 +3788,7 @@ def api_composer_explain():
             "across {} layer{}: {}.".format(
                 el_count, rel_count,
                 len(layers_present), "s" if len(layers_present) != 1 else "",
-                ", ".join(_LAYER_DISPLAY.get(l, l) for l in layers_present),
+                ", ".join(_LAYER_DISPLAY.get(item, item) for item in layers_present),
             )
         )
 
@@ -5877,13 +5885,12 @@ def api_import_document():
             extracted_data, interaction = loop.run_until_complete(
                 analysis_service._analyze_text_file(file_path, None, "architecture")
             )
-            interactions = [interaction] if interaction else []
 
         # Normalize element types
         from app.services.archimate.element_type_normalizer import ElementTypeNormalizer
         normalizer = ElementTypeNormalizer()
         elements = normalizer.normalize_elements(extracted_data.get("elements", []))
-        relationships = extracted_data.get("relationships", [])
+        extracted_data.get("relationships", [])
 
         if not elements:
             metadata = extracted_data.get("metadata", {})
@@ -6081,7 +6088,6 @@ def api_composer_element_metrics():
     from app.models.archimate_core import ArchiMateElement
     from app.models.application_portfolio import ApplicationComponent
     from app.models.business_capabilities import BusinessCapability
-    from app.models.solution_archimate_element import SolutionArchiMateElement
 
     raw_ids = request.args.get("element_ids", "")
     if not raw_ids:

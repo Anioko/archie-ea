@@ -841,6 +841,9 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (e) {
                     console.warn('[BIZBOK] viewpoint diagram load failed:', e);
+                    container.innerHTML = '<div class="flex items-center justify-center h-full text-destructive text-sm">' +
+                        '<div class="text-center"><p>Diagram failed to load.</p>' +
+                        '<p class="mt-1 text-xs text-muted-foreground">Reload the page to try again.</p></div></div>';
                 }
             },
 
@@ -1126,6 +1129,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] advance error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Phase advance failed');
                 }
             },
 
@@ -1234,9 +1238,16 @@ document.addEventListener('alpine:init', function () {
                 this.activityLoading = true;
                 try {
                     let resp = await fetch(this.apiBase + '/activity', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                    // fetch does not reject on 4xx/5xx: without this, a failed load
+                    // rendered the same "no activity yet" panel a brand-new
+                    // solution shows, and the user could not tell them apart.
+                    if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
                     let data = await resp.json();
                     this.activityList = (data && data.activities) || [];
-                } catch (e) { this.activityList = []; }
+                } catch (e) {
+                    this.activityList = [];
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load the activity trail: ' + (e.message || 'request failed'));
+                }
                 this.activityLoading = false;
             },
 
@@ -1244,9 +1255,15 @@ document.addEventListener('alpine:init', function () {
                 this.gapsLoading = true;
                 try {
                     let resp = await fetch(this.apiBase + '/gaps', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                    // An empty gap list reads as "no gaps" — a governance
+                    // statement. It must never be what a failed request looks like.
+                    if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
                     let data = await resp.json();
                     this.gaps = (data && data.gaps) || [];
-                } catch (e) { this.gaps = []; }
+                } catch (e) {
+                    this.gaps = [];
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load gaps: ' + (e.message || 'request failed') + '. This list is empty because the load failed, not because there are no gaps.');
+                }
                 this.gapsLoading = false;
             },
 
@@ -1254,9 +1271,15 @@ document.addEventListener('alpine:init', function () {
             async loadLinkedRequirements() {
                 try {
                     let resp = await fetch(this.apiBase + '/all-requirements', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                    // Same trap: "no requirements linked" is a claim about the
+                    // solution, not an acceptable rendering of a failed request.
+                    if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
                     let data = await resp.json();
                     this.linkedRequirements = (data && data.items) || [];
-                } catch (e) { this.linkedRequirements = []; }
+                } catch (e) {
+                    this.linkedRequirements = [];
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load linked requirements: ' + (e.message || 'request failed'));
+                }
             },
 
             get traceabilityPreviewRows() {
@@ -1390,7 +1413,10 @@ document.addEventListener('alpine:init', function () {
                         this.advancedTco = data;
                         this.advancedTcoLoaded = true;
                     }
-                } catch(e) { console.warn('Advanced TCO fetch failed', e); }
+                } catch(e) {
+                    console.warn('Advanced TCO fetch failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load advanced TCO');
+                }
                 finally { this.advancedTcoLoading = false; }
             },
 
@@ -1403,14 +1429,14 @@ document.addEventListener('alpine:init', function () {
                         credentials: 'same-origin',
                         headers: { 'Accept': 'application/json' }
                     });
-                    if (resp.ok) {
-                        let data = await resp.json();
-                        if (data.suggestion) {
-                            this.costForecasts = data;
-                        }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let data = await resp.json();
+                    if (data.suggestion) {
+                        this.costForecasts = data;
                     }
                 } catch (e) {
                     console.warn('[solutionDetail] Cost forecasts fetch failed:', e);
+                    Platform.toast.error('Failed to load cost forecasts. Please try again.');
                 } finally {
                     this.costForecastsLoading = false;
                     this.costForecastsLoaded = true;
@@ -1431,7 +1457,10 @@ document.addEventListener('alpine:init', function () {
                         this.complianceGap = data;
                         this.complianceGapLoaded = true;
                     }
-                } catch(e) { console.warn('Compliance gap fetch failed', e); }
+                } catch(e) {
+                    console.warn('Compliance gap fetch failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load compliance gap analysis');
+                }
                 finally { this.complianceGapLoading = false; }
             },
 
@@ -1447,7 +1476,10 @@ document.addEventListener('alpine:init', function () {
                         this.versionHistory = data.versions;
                         this.versionHistoryLoaded = true;
                     }
-                } catch(e) { console.warn('Version history fetch failed', e); }
+                } catch(e) {
+                    console.warn('Version history fetch failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load version history');
+                }
                 finally { this.versionHistoryLoading = false; }
             },
 
@@ -1465,7 +1497,10 @@ document.addEventListener('alpine:init', function () {
                         this.completenessReport = data;
                         this.completenessLoaded = true;
                     }
-                } catch(e) { console.warn('Completeness check failed', e); }
+                } catch(e) {
+                    console.warn('Completeness check failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load completeness report');
+                }
                 finally { this.completenessLoading = false; }
             },
 
@@ -1540,17 +1575,17 @@ document.addEventListener('alpine:init', function () {
                     let headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
                     if (csrfMeta) headers['X-CSRFToken'] = csrfMeta.content;
                     let resp = await fetch(url, { method: method, headers: headers, body: JSON.stringify(body) });
-                    if (resp.ok) {
-                        // Remove from suggestions list
-                        if (this.suggestionsData) {
-                            let catKey = entityType === 'application' ? 'applications' :
-                                         entityType === 'capability' ? 'capabilities' :
-                                         entityType === 'vendor_product' ? 'vendors' : 'archimate';
-                            this.suggestionsData[catKey] = (this.suggestionsData[catKey] || []).filter(s => s.id !== entityId);
-                        }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    // Remove from suggestions list
+                    if (this.suggestionsData) {
+                        let catKey = entityType === 'application' ? 'applications' :
+                                     entityType === 'capability' ? 'capabilities' :
+                                     entityType === 'vendor_product' ? 'vendors' : 'archimate';
+                        this.suggestionsData[catKey] = (this.suggestionsData[catKey] || []).filter(s => s.id !== entityId);
                     }
                 } catch(e) {
                     console.warn('Failed to link suggestion', e);
+                    Platform.toast.error('Failed to link suggestion. Please try again.');
                 } finally {
                     delete this.suggestionsLinking[key];
                     this.suggestionsLinking = { ...this.suggestionsLinking };
@@ -1580,7 +1615,10 @@ document.addEventListener('alpine:init', function () {
                         this.solDeliverablePhases = active;
                         this.solDeliverablesLoaded = true;
                     }
-                } catch(e) { console.warn('Solution deliverables fetch failed', e); }
+                } catch(e) {
+                    console.warn('Solution deliverables fetch failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load deliverable checklist');
+                }
                 finally { this.solDeliverablesLoading = false; }
             },
 
@@ -1609,7 +1647,10 @@ document.addEventListener('alpine:init', function () {
                         for (let j = 0; j < items.length; j++) { if (items[j].checked) count++; }
                         this.solDeliverableData[phaseKey].checked = count;
                     }
-                } catch(e) { console.warn('Toggle deliverable failed', e); }
+                } catch(e) {
+                    console.warn('Toggle deliverable failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to save checklist change — please try again');
+                }
             },
 
             async init() {
@@ -1704,12 +1745,12 @@ document.addEventListener('alpine:init', function () {
                 this.relatedSolutionsLoading = true;
                 try {
                     let resp = await fetch(base + '/related-solutions', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
-                    if (resp.ok) {
-                        let data = await resp.json();
-                        this.relatedSolutions = Array.isArray(data.related) ? data.related : [];
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let data = await resp.json();
+                    this.relatedSolutions = Array.isArray(data.related) ? data.related : [];
                 } catch (e) {
                     console.error('[solutionDetail] related solutions load error:', e);
+                    Platform.toast.error('Failed to load related solutions. Please try again.');
                 } finally {
                     this.relatedSolutionsLoading = false;
                     this.relatedSolutionsLoaded = true;
@@ -1776,16 +1817,22 @@ document.addEventListener('alpine:init', function () {
             },
 
             // GUIDED WIZARD methods (Fix 4: persist step in sessionStorage)
+            // The wizard-step sessionStorage calls below are deliberately
+            // best-effort: sessionStorage throws in private/incognito mode
+            // or when disabled by policy. Losing step persistence just means
+            // the wizard reopens at step 1 next time — never worth an error
+            // toast or blocking the wizard's own in-memory navigation, which
+            // already advanced above.
             wizardNext() {
                 if (this.wizardStep < 4) {
                     this.wizardStep++;
-                    try { sessionStorage.setItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId, this.wizardStep); } catch(e) {}
+                    try { sessionStorage.setItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId, this.wizardStep); } catch(e) { /* swallow-ok: sessionStorage throws in private mode; the wizard already moved on screen and only loses its restore point */ }
                 }
             },
             wizardPrev() {
                 if (this.wizardStep > 1) {
                     this.wizardStep--;
-                    try { sessionStorage.setItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId, this.wizardStep); } catch(e) {}
+                    try { sessionStorage.setItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId, this.wizardStep); } catch(e) { /* swallow-ok: sessionStorage throws in private mode; the wizard already moved on screen and only loses its restore point */ }
                 }
             },
             wizardDismiss() {
@@ -1794,16 +1841,16 @@ document.addEventListener('alpine:init', function () {
                 try {
                     sessionStorage.setItem('wizard_dismissed_' + window.__SOLUTION_CONFIG__.solutionId, '1');
                     sessionStorage.removeItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId);
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: sessionStorage throws in private mode; the wizard is already dismissed in memory and only fails to stay dismissed after a reload */ }
             },
             wizardShouldShow() {
                 if (this.wizardDismissed) return false;
-                try { if (sessionStorage.getItem('wizard_dismissed_' + window.__SOLUTION_CONFIG__.solutionId)) return false; } catch(e) {}
+                try { if (sessionStorage.getItem('wizard_dismissed_' + window.__SOLUTION_CONFIG__.solutionId)) return false; } catch(e) { /* swallow-ok: sessionStorage read; unreadable storage means the wizard shows, which is the safe default and not an error */ }
                 // Restore wizard step from sessionStorage (Fix 4)
                 try {
                     const savedStep = sessionStorage.getItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId);
                     if (savedStep) this.wizardStep = parseInt(savedStep, 10) || 1;
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: sessionStorage read; the wizard opens at step 1, which is a working state and nothing the user needs to be warned about */ }
                 return this.maturityScore < 50;
             },
 
@@ -1944,12 +1991,12 @@ document.addEventListener('alpine:init', function () {
             async loadScratchpad() {
                 try {
                     let resp = await fetch(base + '/scratchpad', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
-                    if (resp.ok) {
-                        let data = await resp.json();
-                        this.scratchpadItems = Array.isArray(data.items) ? data.items : [];
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let data = await resp.json();
+                    this.scratchpadItems = Array.isArray(data.items) ? data.items : [];
                 } catch (e) {
                     console.error('[solutionDetail] scratchpad load error:', e);
+                    Platform.toast.error('Failed to load scratchpad. Please try again.');
                 }
             },
             async promoteScratchpadItem(itemId) {
@@ -1958,11 +2005,11 @@ document.addEventListener('alpine:init', function () {
                         method: 'POST', credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
                     });
-                    if (resp.ok) {
-                        this.scratchpadItems = this.scratchpadItems.filter(function(i) { return i.id !== itemId; });
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.scratchpadItems = this.scratchpadItems.filter(function(i) { return i.id !== itemId; });
                 } catch (e) {
                     console.error('[solutionDetail] scratchpad promote error:', e);
+                    Platform.toast.error('Failed to promote scratchpad item. Please try again.');
                 }
             },
             async discardScratchpadItem(itemId) {
@@ -1971,11 +2018,11 @@ document.addEventListener('alpine:init', function () {
                         method: 'DELETE', credentials: 'same-origin',
                         headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
                     });
-                    if (resp.ok) {
-                        this.scratchpadItems = this.scratchpadItems.filter(function(i) { return i.id !== itemId; });
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.scratchpadItems = this.scratchpadItems.filter(function(i) { return i.id !== itemId; });
                 } catch (e) {
                     console.error('[solutionDetail] scratchpad discard error:', e);
+                    Platform.toast.error('Failed to discard scratchpad item. Please try again.');
                 }
             },
             _initSectionObserver() {
@@ -2056,19 +2103,19 @@ document.addEventListener('alpine:init', function () {
                 this.wfDefinitionsLoading = true;
                 try {
                     let r = await fetch('/api/ea-workflows/definitions', { credentials: 'same-origin' });
-                    if (r.ok) {
-                        let data = await r.json();
-                        // Filter to solution-context workflows only
-                        let solutionWorkflows = ['VENDOR_SELECTION', 'COMPLIANCE_SCAN', 'ARCHITECTURE_REVIEW',
-                            'GAP_REMEDIATION', 'ADM_PHASE_A_VISION', 'ADM_PRELIMINARY'];
-                        let all = data.definitions || [];
-                        this.wfDefinitions = all.filter(function(d) {
-                            return solutionWorkflows.indexOf(d.workflow_code) !== -1 || d.category === 'solution';
-                        });
-                        if (!this.wfDefinitions.length) this.wfDefinitions = all.slice(0, 6);
-                    }
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    let data = await r.json();
+                    // Filter to solution-context workflows only
+                    let solutionWorkflows = ['VENDOR_SELECTION', 'COMPLIANCE_SCAN', 'ARCHITECTURE_REVIEW',
+                        'GAP_REMEDIATION', 'ADM_PHASE_A_VISION', 'ADM_PRELIMINARY'];
+                    let all = data.definitions || [];
+                    this.wfDefinitions = all.filter(function(d) {
+                        return solutionWorkflows.indexOf(d.workflow_code) !== -1 || d.category === 'solution';
+                    });
+                    if (!this.wfDefinitions.length) this.wfDefinitions = all.slice(0, 6);
                 } catch (e) {
                     console.warn('[WF-01] workflow definitions fetch failed:', e);
+                    Platform.toast.error('Failed to load workflow definitions. Please try again.');
                 }
                 this.wfDefinitionsLoaded = true;
                 this.wfDefinitionsLoading = false;
@@ -2117,11 +2164,13 @@ document.addEventListener('alpine:init', function () {
                 this.capabilityMappingsLoading = true;
                 try {
                     let r = await fetch(this.apiBase + '/capabilities', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
-                    if (r.ok) {
-                        let data = await r.json();
-                        this.capabilityMappings = (data && data.data) || [];
-                    }
-                } catch (e) { console.warn('[ENT-060] capability mappings fetch failed:', e); }
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    let data = await r.json();
+                    this.capabilityMappings = (data && data.data) || [];
+                } catch (e) {
+                    console.warn('[ENT-060] capability mappings fetch failed:', e);
+                    Platform.toast.error('Failed to load capability mappings. Please try again.');
+                }
                 this.capabilityMappingsLoaded = true;
                 this.capabilityMappingsLoading = false;
                 if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
@@ -2136,10 +2185,12 @@ document.addEventListener('alpine:init', function () {
                         credentials: 'same-origin',
                         headers: { 'X-CSRFToken': csrfToken }
                     });
-                    if (r.ok) {
-                        this.capabilityMappings = this.capabilityMappings.filter(function(m) { return m.id !== mappingId; });
-                    }
-                } catch (e) { console.error('[ENT-060] delete capability mapping failed:', e); }
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    this.capabilityMappings = this.capabilityMappings.filter(function(m) { return m.id !== mappingId; });
+                } catch (e) {
+                    console.error('[ENT-060] delete capability mapping failed:', e);
+                    Platform.toast.error('Failed to remove capability mapping. Please try again.');
+                }
             },
 
             // SAD-13: Lessons Learned panel
@@ -2150,11 +2201,13 @@ document.addEventListener('alpine:init', function () {
                 this.lessonsLoading = true;
                 try {
                     let r = await fetch('/api/solutions/' + sid + '/backtest-results', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
-                    if (r.ok) {
-                        let d = await r.json();
-                        this.lessonsLearned = d.lessons_learned || d.results || d.backtests || [];
-                    }
-                } catch (e) { console.warn('[SAD-13] lessons learned fetch failed:', e); }
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    let d = await r.json();
+                    this.lessonsLearned = d.lessons_learned || d.results || d.backtests || [];
+                } catch (e) {
+                    console.warn('[SAD-13] lessons learned fetch failed:', e);
+                    Platform.toast.error('Failed to load lessons learned. Please try again.');
+                }
                 this.lessonsLoaded = true;
                 this.lessonsLoading = false;
                 if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
@@ -2233,6 +2286,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] condition toggle error:', err);
+                    Platform.toast.error('Failed to toggle condition.');
                 }
                 this.togglingCondition = -1;
             },
@@ -2285,6 +2339,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] load comments error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load comments');
                 }
                 this.commentLoading[section] = false;
             },
@@ -2307,6 +2362,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] add comment error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to post comment — please try again');
                 }
                 this.commentPosting[section] = false;
             },
@@ -2349,6 +2405,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] readiness check error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to check ARB readiness');
                 }
                 this.checkingReadiness = false;
             },
@@ -2462,21 +2519,21 @@ document.addEventListener('alpine:init', function () {
                     let resp = await fetch(this.apiBase + '/archimate-elements', {
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        let json = await resp.json();
-                        // API returns elements grouped by layer — flatten to array with layer field
-                        let flat = [];
-                        let layerDict = json.elements || {};
-                        Object.entries(layerDict).forEach(function(entry) {
-                            let layer = entry[0], items = entry[1];
-                            (items || []).forEach(function(el) {
-                                flat.push(Object.assign({}, el, { layer: layer }));
-                            });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let json = await resp.json();
+                    // API returns elements grouped by layer — flatten to array with layer field
+                    let flat = [];
+                    let layerDict = json.elements || {};
+                    Object.entries(layerDict).forEach(function(entry) {
+                        let layer = entry[0], items = entry[1];
+                        (items || []).forEach(function(el) {
+                            flat.push(Object.assign({}, el, { layer: layer }));
                         });
-                        this.linkedArchimateElements = flat;
-                    }
+                    });
+                    this.linkedArchimateElements = flat;
                 } catch (e) {
                     console.warn('[solutionDetail] loadLinkedArchimateElements error:', e);
+                    Platform.toast.error('Failed to load linked ArchiMate elements. Please try again.');
                 } finally {
                     this.linkedArchimateLoading = false;
                 }
@@ -2489,13 +2546,13 @@ document.addEventListener('alpine:init', function () {
                         method: 'DELETE',
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        this.linkedArchimateElements = this.linkedArchimateElements.filter(
-                            function(e) { return e.mapping_id !== mappingId; }
-                        );
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.linkedArchimateElements = this.linkedArchimateElements.filter(
+                        function(e) { return e.mapping_id !== mappingId; }
+                    );
                 } catch (e) {
                     console.warn('[solutionDetail] removeLinkedArchimateElement error:', e);
+                    Platform.toast.error('Failed to remove ArchiMate element. Please try again.');
                 }
             },
 
@@ -2544,8 +2601,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(e.id) === -1;
                             });
                             self.archimatePickerOpen = self.archimatePickerResults.length > 0;
+                            self._archimateSearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] archimate search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] archimate search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._archimateSearchErrorShown) {
+                                self._archimateSearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('ArchiMate element search failed');
+                            }
+                        })
                         .finally(function() { self.archimatePickerLoading = false; });
                 }, 300);
             },
@@ -2564,15 +2630,15 @@ document.addEventListener('alpine:init', function () {
                             }]
                         })
                     });
-                    if (resp.ok) {
-                        await this.loadLinkedArchimateElements();
-                        this.archimatePickerQuery = '';
-                        this.archimatePickerResults = [];
-                        this.archimatePickerOpen = false;
-                        if (window.__archieToast) window.__archieToast('Linked: ' + (element.name || 'ArchiMate element'));
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    await this.loadLinkedArchimateElements();
+                    this.archimatePickerQuery = '';
+                    this.archimatePickerResults = [];
+                    this.archimatePickerOpen = false;
+                    if (window.__archieToast) window.__archieToast('Linked: ' + (element.name || 'ArchiMate element'));
                 } catch (e) {
                     console.warn('[picker] addArchimateElement error:', e);
+                    Platform.toast.error('Failed to link ArchiMate element. Please try again.');
                 }
             },
 
@@ -2583,12 +2649,12 @@ document.addEventListener('alpine:init', function () {
                     let resp = await fetch(this.apiBase + '/capabilities', {
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        let json = await resp.json();
-                        this.linkedCapabilities = json.capabilities || json.data || [];
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let json = await resp.json();
+                    this.linkedCapabilities = json.capabilities || json.data || [];
                 } catch (e) {
                     console.warn('[picker] loadLinkedCapabilities error:', e);
+                    Platform.toast.error('Failed to load linked capabilities. Please try again.');
                 } finally {
                     this.linkedCapabilitiesLoading = false;
                 }
@@ -2613,8 +2679,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(c.id) === -1;
                             });
                             self.capabilityPickerOpen = true;
+                            self._capabilitySearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] capability search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] capability search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._capabilitySearchErrorShown) {
+                                self._capabilitySearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('Capability search failed');
+                            }
+                        })
                         .finally(function() { self.capabilityPickerLoading = false; });
                 }, 300);
             },
@@ -2627,19 +2702,19 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                         body: JSON.stringify({ capability_id: cap.id, capability_name: cap.name })
                     });
-                    if (resp.ok) {
-                        await this.loadLinkedCapabilities();
-                        if (!this.capTreeVisible) {
-                            /* Legacy flat picker: clear search */
-                            this.capabilityPickerQuery = '';
-                            this.capabilityPickerResults = [];
-                            this.capabilityPickerOpen = false;
-                        }
-                        /* Tree picker stays open — linked state updates reactively */
-                        if (window.__archieToast) window.__archieToast('Linked: ' + (cap.name || 'Capability'));
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    await this.loadLinkedCapabilities();
+                    if (!this.capTreeVisible) {
+                        /* Legacy flat picker: clear search */
+                        this.capabilityPickerQuery = '';
+                        this.capabilityPickerResults = [];
+                        this.capabilityPickerOpen = false;
                     }
+                    /* Tree picker stays open — linked state updates reactively */
+                    if (window.__archieToast) window.__archieToast('Linked: ' + (cap.name || 'Capability'));
                 } catch (e) {
                     console.warn('[picker] addCapability error:', e);
+                    Platform.toast.error('Failed to link capability. Please try again.');
                 }
             },
 
@@ -2650,11 +2725,11 @@ document.addEventListener('alpine:init', function () {
                         method: 'DELETE',
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        this.linkedCapabilities = this.linkedCapabilities.filter(function(c) { return (c.id || c.capability_id) !== capId; });
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.linkedCapabilities = this.linkedCapabilities.filter(function(c) { return (c.id || c.capability_id) !== capId; });
                 } catch (e) {
                     console.warn('[picker] removeCapability error:', e);
+                    Platform.toast.error('Failed to remove capability. Please try again.');
                 }
             },
 
@@ -2667,16 +2742,16 @@ document.addEventListener('alpine:init', function () {
                         url += '?domain=' + encodeURIComponent(this.capTreeDomainFilter);
                     }
                     let resp = await fetch(url, { headers: { 'X-CSRFToken': this.csrfToken } });
-                    if (resp.ok) {
-                        let data = await resp.json();
-                        this.capTreeAll = data.capabilities || [];
-                        if (!this.capTreeDomainFilter && data.domains) {
-                            this.capTreeDomains = data.domains;
-                        }
-                        this.filterCapabilityTree();
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let data = await resp.json();
+                    this.capTreeAll = data.capabilities || [];
+                    if (!this.capTreeDomainFilter && data.domains) {
+                        this.capTreeDomains = data.domains;
                     }
+                    this.filterCapabilityTree();
                 } catch (e) {
                     console.warn('[picker] loadCapabilityTree error:', e);
+                    Platform.toast.error('Failed to load capability tree. Please try again.');
                 } finally {
                     this.capTreeLoading = false;
                 }
@@ -2764,12 +2839,12 @@ document.addEventListener('alpine:init', function () {
                     let resp = await fetch(this.apiBase + '/linked-vendor-products', {
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        let json = await resp.json();
-                        this.linkedVendorProducts = json.products || json.data || [];
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let json = await resp.json();
+                    this.linkedVendorProducts = json.products || json.data || [];
                 } catch (e) {
                     console.warn('[picker] loadLinkedVendorProducts error:', e);
+                    Platform.toast.error('Failed to load linked vendor products. Please try again.');
                 } finally {
                     this.linkedVendorProductsLoading = false;
                 }
@@ -2794,8 +2869,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(p.id) === -1;
                             });
                             self.vendorProductPickerOpen = true;
+                            self._vendorProductSearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] vendor product search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] vendor product search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._vendorProductSearchErrorShown) {
+                                self._vendorProductSearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('Vendor product search failed');
+                            }
+                        })
                         .finally(function() { self.vendorProductPickerLoading = false; });
                 }, 300);
             },
@@ -2807,15 +2891,15 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                         body: JSON.stringify({ vendor_product_id: product.id })
                     });
-                    if (resp.ok) {
-                        await this.loadLinkedVendorProducts();
-                        this.vendorProductPickerQuery = '';
-                        this.vendorProductPickerResults = [];
-                        this.vendorProductPickerOpen = false;
-                        if (window.__archieToast) window.__archieToast('Linked: ' + (product.name || 'Vendor product'));
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    await this.loadLinkedVendorProducts();
+                    this.vendorProductPickerQuery = '';
+                    this.vendorProductPickerResults = [];
+                    this.vendorProductPickerOpen = false;
+                    if (window.__archieToast) window.__archieToast('Linked: ' + (product.name || 'Vendor product'));
                 } catch (e) {
                     console.warn('[picker] addVendorProduct error:', e);
+                    Platform.toast.error('Failed to link vendor product. Please try again.');
                 }
             },
 
@@ -2826,11 +2910,11 @@ document.addEventListener('alpine:init', function () {
                         method: 'DELETE',
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        this.linkedVendorProducts = this.linkedVendorProducts.filter(function(p) { return (p.id || p.product_id) !== productId; });
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.linkedVendorProducts = this.linkedVendorProducts.filter(function(p) { return (p.id || p.product_id) !== productId; });
                 } catch (e) {
                     console.warn('[picker] removeVendorProduct error:', e);
+                    Platform.toast.error('Failed to remove vendor product. Please try again.');
                 }
             },
 
@@ -2841,12 +2925,12 @@ document.addEventListener('alpine:init', function () {
                     let resp = await fetch(this.apiBase + '/linked-apqc-processes', {
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        let json = await resp.json();
-                        this.linkedAPQCProcesses = json.processes || json.data || [];
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let json = await resp.json();
+                    this.linkedAPQCProcesses = json.processes || json.data || [];
                 } catch (e) {
                     console.warn('[picker] loadLinkedAPQCProcesses error:', e);
+                    Platform.toast.error('Failed to load linked APQC processes. Please try again.');
                 } finally {
                     this.linkedAPQCLoading = false;
                 }
@@ -2871,8 +2955,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(p.process_id || p.id) === -1;
                             });
                             self.apqcPickerOpen = true;
+                            self._apqcSearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] APQC search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] APQC search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._apqcSearchErrorShown) {
+                                self._apqcSearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('APQC process search failed');
+                            }
+                        })
                         .finally(function() { self.apqcPickerLoading = false; });
                 }, 300);
             },
@@ -2884,15 +2977,15 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                         body: JSON.stringify({ apqc_process_id: process.process_id || process.id })
                     });
-                    if (resp.ok) {
-                        await this.loadLinkedAPQCProcesses();
-                        this.apqcPickerQuery = '';
-                        this.apqcPickerResults = [];
-                        this.apqcPickerOpen = false;
-                        if (window.__archieToast) window.__archieToast('Linked: ' + (process.process_name || process.name || 'APQC process'));
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    await this.loadLinkedAPQCProcesses();
+                    this.apqcPickerQuery = '';
+                    this.apqcPickerResults = [];
+                    this.apqcPickerOpen = false;
+                    if (window.__archieToast) window.__archieToast('Linked: ' + (process.process_name || process.name || 'APQC process'));
                 } catch (e) {
                     console.warn('[picker] addAPQCProcess error:', e);
+                    Platform.toast.error('Failed to link APQC process. Please try again.');
                 }
             },
 
@@ -2903,11 +2996,11 @@ document.addEventListener('alpine:init', function () {
                         method: 'DELETE',
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        this.linkedAPQCProcesses = this.linkedAPQCProcesses.filter(function(p) { return (p.process_id || p.id) !== processId; });
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.linkedAPQCProcesses = this.linkedAPQCProcesses.filter(function(p) { return (p.process_id || p.id) !== processId; });
                 } catch (e) {
                     console.warn('[picker] removeAPQCProcess error:', e);
+                    Platform.toast.error('Failed to remove APQC process. Please try again.');
                 }
             },
 
@@ -2918,12 +3011,12 @@ document.addEventListener('alpine:init', function () {
                     const resp = await fetch(this.apiBase + '/linked-applications', {
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        const json = await resp.json();
-                        this.linkedApplications = json.applications || json.data || [];
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const json = await resp.json();
+                    this.linkedApplications = json.applications || json.data || [];
                 } catch (e) {
                     console.warn('[picker] loadLinkedApplications error:', e);
+                    Platform.toast.error('Failed to load linked applications. Please try again.');
                 } finally {
                     this.linkedAppsLoading = false;
                 }
@@ -2949,8 +3042,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(a.id) === -1;
                             });
                             self.appPickerOpen = true;
+                            self._appSearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] app search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] app search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._appSearchErrorShown) {
+                                self._appSearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('Application search failed');
+                            }
+                        })
                         .finally(function() { self.appPickerLoading = false; });
                 }, 300);
             },
@@ -2962,15 +3064,15 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                         body: JSON.stringify({ application_id: app.id })
                     });
-                    if (resp.ok) {
-                        await this.loadLinkedApplications();
-                        this.appPickerQuery = '';
-                        this.appPickerResults = [];
-                        this.appPickerOpen = false;
-                        if (window.__archieToast) window.__archieToast('Linked: ' + (app.name || 'Application'));
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    await this.loadLinkedApplications();
+                    this.appPickerQuery = '';
+                    this.appPickerResults = [];
+                    this.appPickerOpen = false;
+                    if (window.__archieToast) window.__archieToast('Linked: ' + (app.name || 'Application'));
                 } catch (e) {
                     console.warn('[picker] addApplication error:', e);
+                    Platform.toast.error('Failed to link application. Please try again.');
                 }
             },
 
@@ -2981,11 +3083,11 @@ document.addEventListener('alpine:init', function () {
                         method: 'DELETE',
                         headers: { 'X-CSRFToken': this.csrfToken }
                     });
-                    if (resp.ok) {
-                        this.linkedApplications = this.linkedApplications.filter(function(a) { return (a.id || a.app_id) !== appId; });
-                    }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.linkedApplications = this.linkedApplications.filter(function(a) { return (a.id || a.app_id) !== appId; });
                 } catch (e) {
                     console.warn('[picker] removeApplication error:', e);
+                    Platform.toast.error('Failed to remove application. Please try again.');
                 }
             },
 
@@ -3060,6 +3162,7 @@ document.addEventListener('alpine:init', function () {
                     this.loaded = true;
                 } catch (err) {
                     console.error('[phaseHReview] load error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load Phase H review data');
                 }
                 this.loading = false;
             },
@@ -3219,11 +3322,13 @@ document.addEventListener('alpine:init', function () {
                 this.strategicRiskLoading = true;
                 try {
                     let resp = await fetch('/strategic/api/risk-analysis', { credentials: 'same-origin' });
-                    if (resp.ok) {
-                        this.strategicRiskAnalysis = await resp.json();
-                        this.strategicRiskLoaded = true;
-                    }
-                } catch(e) { console.warn('[FRAG-005] risk-analysis fetch failed', e); }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.strategicRiskAnalysis = await resp.json();
+                    this.strategicRiskLoaded = true;
+                } catch(e) {
+                    console.warn('[FRAG-005] risk-analysis fetch failed', e);
+                    Platform.toast.error('Failed to load strategic risk analysis. Please try again.');
+                }
                 this.strategicRiskLoading = false;
             },
             async loadStrategicInvestment() {
@@ -3231,11 +3336,13 @@ document.addEventListener('alpine:init', function () {
                 this.strategicInvestmentLoading = true;
                 try {
                     let resp = await fetch('/strategic/api/investment-analysis', { credentials: 'same-origin' });
-                    if (resp.ok) {
-                        this.strategicInvestment = await resp.json();
-                        this.strategicInvestmentLoaded = true;
-                    }
-                } catch(e) { console.warn('[FRAG-005] investment-analysis fetch failed', e); }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.strategicInvestment = await resp.json();
+                    this.strategicInvestmentLoaded = true;
+                } catch(e) {
+                    console.warn('[FRAG-005] investment-analysis fetch failed', e);
+                    Platform.toast.error('Failed to load strategic investment analysis. Please try again.');
+                }
                 this.strategicInvestmentLoading = false;
             },
             async loadStrategicDependency() {
@@ -3243,11 +3350,13 @@ document.addEventListener('alpine:init', function () {
                 this.strategicDependencyLoading = true;
                 try {
                     let resp = await fetch('/strategic/api/dependency-analysis', { credentials: 'same-origin' });
-                    if (resp.ok) {
-                        this.strategicDependency = await resp.json();
-                        this.strategicDependencyLoaded = true;
-                    }
-                } catch(e) { console.warn('[FRAG-005] dependency-analysis fetch failed', e); }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.strategicDependency = await resp.json();
+                    this.strategicDependencyLoaded = true;
+                } catch(e) {
+                    console.warn('[FRAG-005] dependency-analysis fetch failed', e);
+                    Platform.toast.error('Failed to load strategic dependency analysis. Please try again.');
+                }
                 this.strategicDependencyLoading = false;
             },
             async loadStrategicTechnology() {
@@ -3255,11 +3364,13 @@ document.addEventListener('alpine:init', function () {
                 this.strategicTechnologyLoading = true;
                 try {
                     let resp = await fetch('/strategic/api/technology-analysis', { credentials: 'same-origin' });
-                    if (resp.ok) {
-                        this.strategicTechnology = await resp.json();
-                        this.strategicTechnologyLoaded = true;
-                    }
-                } catch(e) { console.warn('[FRAG-005] technology-analysis fetch failed', e); }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    this.strategicTechnology = await resp.json();
+                    this.strategicTechnologyLoaded = true;
+                } catch(e) {
+                    console.warn('[FRAG-005] technology-analysis fetch failed', e);
+                    Platform.toast.error('Failed to load strategic technology analysis. Please try again.');
+                }
                 this.strategicTechnologyLoading = false;
             },
             riskLevelBadge(level) {

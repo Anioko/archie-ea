@@ -29,7 +29,6 @@ Caching Strategy:
 - Cache hit/miss metrics
 """
 
-import asyncio  # dead-code-ok
 import hashlib
 import json
 import logging
@@ -38,9 +37,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
-from flask import current_app  # dead-code-ok
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -53,7 +51,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker  # dead-code-ok
+from sqlalchemy.orm import relationship  # dead-code-ok
 
 from app import db
 from app.services.llm_cache import get_cache as get_llm_cache
@@ -283,9 +281,9 @@ class LLMRouter:
                 # Make request
                 provider_start = datetime.utcnow()
                 response = await self._call_provider(provider, context)
-                provider_time = int(
+                (int(
                     (datetime.utcnow() - provider_start).total_seconds() * 1000
-                )
+                ))
 
                 # Cache successful response
                 await self._cache_response(
@@ -373,7 +371,7 @@ class LLMRouter:
         defaults = {
             LLMProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
             LLMProvider.OPENAI: "gpt-4o-mini",
-            LLMProvider.GEMINI: "gemini-1.5-flash",
+            LLMProvider.GEMINI: "gemini-2.0-flash",
             LLMProvider.DEEPSEEK: "deepseek-chat",
             LLMProvider.OPENROUTER: "deepseek/deepseek-chat",
             LLMProvider.AZURE: "gpt-4o",

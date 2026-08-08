@@ -159,7 +159,6 @@ class PartialFeaturesAnalytics:
             '/ai-gap-detection': 'ai_gap_detection_routes',
             '/batch-import-view': 'batch_import_view_routes',
             '/consolidation-list': 'consolidation_list_routes',
-            '/enterprise-api': 'enterprise_api_routes',
             '/options-analysis': 'options_analysis_api',
             '/security-api': 'security_api',
             '/streaming-import': 'streaming_import_routes',

@@ -275,7 +275,7 @@ function archiMateImport() {
         'Motivation': 'bg-pink-500/10 text-pink-600 border border-pink-500/30',
         'Implementation & Migration': 'bg-orange-500/10 text-orange-600 border border-orange-500/30',
       };
-      return map[layer] || 'bg-muted/50/10 text-muted-foreground border border-gray-500/30';
+      return map[layer] || 'bg-muted/50/10 text-muted-foreground border border-muted-foreground/30';
     },
 
     statusBadgeClass(status) {
@@ -284,7 +284,7 @@ function archiMateImport() {
         'exists': 'bg-primary/10 text-primary border border-primary/30',
         'conflict': 'bg-amber-500/10 text-amber-600 border border-amber-500/30',
       };
-      return map[status] || 'bg-muted/50/10 text-muted-foreground border border-gray-500/30';
+      return map[status] || 'bg-muted/50/10 text-muted-foreground border border-muted-foreground/30';
     },
 
     statusLabel(status) {

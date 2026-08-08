@@ -37,7 +37,6 @@ _SLUG_ALIASES: dict[str, str] = {
     "ubuntu": "ubuntu",
     "debian": "debian",
     "centos": "centos",
-    "kubernetes": "kubernetes",
     "k8s": "kubernetes",
     "postgresql": "postgresql",
     "postgres": "postgresql",

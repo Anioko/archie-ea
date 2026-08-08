@@ -46,6 +46,9 @@
                 vendorMixins = vendorSuggestionsMixin();
             }
         } catch (e) {
+            // Optional feature probe: vendor_suggestions.js may not be loaded on every
+            // page that includes this journey. Degrading to {} is deliberate — the
+            // journey works fully without vendor suggestions.
             console.warn('[Journey] vendorSuggestionsMixin unavailable:', e);
         }
         return Object.assign({}, vendorMixins, {
@@ -115,6 +118,12 @@
 
             // Step 8b: Rules (properties referenced by _step8b_rules.html)
             ruleSuggestions: [],
+            // The panel had no way to distinguish "still fetching" from "none
+            // exist" from "the fetch failed" — all three rendered the literal
+            // string "Loading suggestions...", so a hard failure looked like a
+            // request permanently in flight. These two make the states distinct.
+            ruleSuggestionsLoading: false,
+            ruleSuggestionsError: null,
             activeRules: [],
             nlRuleInput: '',
             nlRuleLoading: false,
@@ -338,7 +347,17 @@
                             self.hasGeneratedFiles = true;
                             self.codegenResult = { files: data.files, file_count: data.files.length, source: 'prior' };
                         }
-                    }).catch(function () { /* ignore — codegen may not exist yet */ });
+                    }).catch(function (e) {
+                        // 404 IS the "nothing generated yet" answer from this endpoint,
+                        // so that one really is nothing to report. Any other status means
+                        // we could not tell — and hasGeneratedFiles stays false, hiding the
+                        // Step 7 deploy panel exactly as if no code existed.
+                        if (e && e.status === 404) return;
+                        Platform.toast.error(
+                            'Could not check whether code was already generated for this solution. ' +
+                            'The deploy panel stays hidden even if generated code exists — reload to retry.'
+                        );
+                    });
 
                 // Load any existing structured intake data
                 self.loadStructuredIntake();
@@ -1098,7 +1117,15 @@
                             self.structuredIntakeSaved = true;
                         }
                     })
-                    .catch(function () { /* No existing intake — that's fine */ });
+                    .catch(function (e) {
+                        // "No existing intake" is not this branch — the endpoint answers
+                        // 200 with an empty structure the first time through. A throw means
+                        // the saved intake could not be read, and the blank form the user is
+                        // looking at will overwrite it the moment they save.
+                        self.error = 'Could not load your saved requirements intake: '
+                            + ((e && e.message) || 'request failed')
+                            + '. The form below is blank because it could not be read, not because it is empty — reload before saving.';
+                    });
             },
 
             // ── Step 1: Clarify ─────────────────────────────────────────
@@ -1404,7 +1431,10 @@
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({entities: selectedEntities})
-                        }).catch(function (e) { console.warn('Entity linking failed:', e); });
+                        }).catch(function (e) {
+                            console.warn('Entity linking failed:', e);
+                            Platform.toast.error('Some selected items could not be linked to this solution.');
+                        });
                     }
                 }).catch(function (e) {
                     console.error('Clarify answers failed:', e);
@@ -1756,7 +1786,10 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: proposalIds })
-                    }).catch(function (e) { console.warn('[Journey] batch-reject failed:', e); });
+                    }).catch(function (e) {
+                        console.warn('[Journey] batch-reject failed:', e);
+                        Platform.toast.error('Rejecting these elements did not save — please retry.');
+                    });
                 }
             },
 
@@ -1775,7 +1808,10 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: allIds })
-                    }).catch(function (e) { console.warn('[Journey] batch-accept all failed:', e); });
+                    }).catch(function (e) {
+                        console.warn('[Journey] batch-accept all failed:', e);
+                        Platform.toast.error('Accepting these elements did not save — please retry.');
+                    });
                 }
             },
 
@@ -1795,7 +1831,10 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: allIds })
-                    }).catch(function (e) { console.warn('[Journey] batch-reject failed:', e); });
+                    }).catch(function (e) {
+                        console.warn('[Journey] batch-reject failed:', e);
+                        Platform.toast.error('Rejecting these elements did not save — please retry.');
+                    });
                 }
             },
 
@@ -1974,7 +2013,11 @@
                             if (fresh && fresh.domains && fresh.domains[code]) {
                                 self.domainsData[code] = fresh.domains[code];
                             }
-                        }).catch(function () {});
+                        }).catch(function () {
+                            // The properties were saved above — this only refreshes the
+                            // local view, so a failure here just leaves it stale.
+                            self.copilotMessage += ' (Could not refresh the view — reload the page to see the new values.)';
+                        });
                 }).catch(function (e) {
                     self._domainPropGenerating[code] = false;
                     self.copilotMessage = 'Property generation failed: ' + (e.message || 'Unknown');
@@ -2006,7 +2049,11 @@
                             if (fresh && fresh.domains && fresh.domains[code]) {
                                 self.domainsData[code] = fresh.domains[code];
                             }
-                        }).catch(function () {});
+                        }).catch(function () {
+                            // The defaults were saved above — this only refreshes the
+                            // local view, so a failure here just leaves it stale.
+                            self.copilotMessage += ' (Could not refresh the view — reload the page to see the new values.)';
+                        });
                 }).catch(function (e) {
                     self._domainDefaultApplying[code] = false;
                     self.copilotMessage = 'Fill defaults failed: ' + (e.message || 'Unknown');
@@ -2145,7 +2192,10 @@
                         updated[archimateType] = data.properties || [];
                         self.propertyTemplates = updated;
                     })
-                    .catch(function (e) { console.error('Failed to load property templates:', e); });
+                    .catch(function (e) {
+                        console.error('Failed to load property templates:', e);
+                        Platform.toast.error('Could not load property templates for this element.');
+                    });
             },
 
             getElementProperties: function (code, elementId) {
@@ -2250,7 +2300,10 @@
                             return b;
                         });
                     })
-                    .catch(function () {});
+                    .catch(function (e) {
+                        console.error('[Journey] Failed to refresh domain completeness:', e);
+                        Platform.toast.error('Could not refresh completeness status — try reloading the page.');
+                    });
             },
 
             // ── Step 6: Validate ────────────────────────────────────────
@@ -2303,8 +2356,16 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(state)
+                    }).then(function () {
+                        self._autosaveFailWarned = false;
                     }).catch(function (e) {
                         console.error('Auto-save failed:', e);
+                        // Debounced and called on every state change — toast once until
+                        // a save succeeds again, rather than spamming on every keystroke.
+                        if (!self._autosaveFailWarned) {
+                            self._autosaveFailWarned = true;
+                            Platform.toast.error('Your progress could not be auto-saved. Changes may be lost if you leave this page.');
+                        }
                     });
                 }, 500);
             },
@@ -2319,6 +2380,7 @@
                         self._applyState(state);
                     } catch (e) {
                         console.error('Failed to parse inline state:', e);
+                        Platform.toast.error('Could not restore your previous progress on this page.');
                     }
                 }
                 // Load architecture + proposals from DB
@@ -2424,6 +2486,7 @@
                     })
                     .catch(function (e) {
                         console.error('Failed to load domains from DB:', e);
+                        Platform.toast.error('Could not load domain data — try reloading the page.');
                     });
             },
 
@@ -2447,6 +2510,7 @@
                     })
                     .catch(function (e) {
                         console.error('Failed to load promoted elements:', e);
+                        Platform.toast.error('Could not load elements for this solution.');
                     })
                     .then(function () {
                         self.architectureLoading = false;
@@ -2473,7 +2537,13 @@
                             headers: { 'Content-Type': 'application/json' }
                         }).then(function (costData) {
                             self.reasoningCostSummary = costData;
-                        }).catch(function () { /* cost estimation is non-fatal */ });
+                        }).catch(function () {
+                            // reasoningCostSummary stays null, so Step 3 and the Step 6
+                            // review render "—" for annual operating cost and 5-year TCO.
+                            // That is the right glyph, but it reads as "no cost data on
+                            // these applications" rather than "we could not work it out".
+                            Platform.toast.error('Cost estimation failed — the cost figures on this step show "—" because they could not be calculated, not because the applications have no cost data.');
+                        });
                     }
                 }).catch(function (e) {
                     console.warn('[Journey] Landscape mapping unavailable:', e.message || e);
@@ -2625,6 +2695,9 @@
 
             // ── Cross-Domain Chain Check ──────────────────────────────────
 
+            // Advisory only — surfaces an informational copilot message when the backend
+            // finds cross-domain dependencies. Nothing depends on this succeeding, so a
+            // failure is deliberately silent rather than interrupting element entry.
             checkCrossDomainForElement: function (domain, archimateType, elementName) {
                 let self = this;
                 _fetch(API_BASE + '/' + self.solutionId + '/cross-domain-check', {
@@ -2642,7 +2715,7 @@
                         const recommended = deps.filter(function (d) { return d.severity === 'recommended'; });
                         self.copilotMessage = deps.length + ' cross-domain dependencies found (' + required.length + ' required, ' + recommended.length + ' recommended).';
                     }
-                }).catch(function () {});
+                }).catch(function () { /* swallow-ok: advisory copilot hint fired on every element the user types; nothing is written and nothing downstream reads it, so a toast per keystroke would be noise with no action behind it */ });
             },
 
             // ── Element name lookup (for relationship display) ──────────
@@ -2682,7 +2755,7 @@
                         self.stepWarningsDismissed[step] = false;
                     }
                 })
-                .catch(function () { /* non-fatal */ });
+                .catch(function () { /* swallow-ok: TRAC-001 chain-health probe fires on every step transition and only ever adds an advisory amber banner; it writes nothing, and an error toast on each navigation would train the user to ignore toasts */ });
             },
 
             _autoLoadStepData: function (step) {
@@ -3000,8 +3073,14 @@
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ codegenCaps: self.codegenCaps })
+                }).then(function () {
+                    self._saveCapsFailWarned = false;
                 }).catch(function (e) {
                     console.warn('[Journey] saveCapabilities failed:', e);
+                    if (!self._saveCapsFailWarned) {
+                        self._saveCapsFailWarned = true;
+                        Platform.toast.error('Your capability settings did not save — please retry.');
+                    }
                 });
             },
 
@@ -3026,8 +3105,16 @@
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ properties: props })
+                    }).then(function () {
+                        self._saveRoadmapPropFailWarned = false;
                     }).catch(function (e) {
                         console.warn('[Journey] saveRoadmapProp failed:', e);
+                        // Debounced per-field, can fire often while a user edits several
+                        // properties in a row — toast once until a save succeeds again.
+                        if (!self._saveRoadmapPropFailWarned) {
+                            self._saveRoadmapPropFailWarned = true;
+                            Platform.toast.error('This property did not save — please retry.');
+                        }
                     });
                 }, 400);
             },
@@ -3179,6 +3266,7 @@
                 })
                 .catch(function (e) {
                     console.warn('Component spec inference failed (non-blocking):', e.message || e);
+                    Platform.toast.error('Could not auto-generate component specs — you can add them manually.');
                 })
                 .then(function () {
                     self.specInferenceLoading = false;
@@ -3209,6 +3297,7 @@
                 })
                 .catch(function (e) {
                     console.warn('Integration contract suggestion failed (non-blocking):', e.message || e);
+                    Platform.toast.error('Could not auto-generate integration contracts — you can add them manually.');
                 })
                 .then(function () {
                     self.specInferenceLoading = false;
@@ -3234,6 +3323,7 @@
                 })
                 .catch(function (e) {
                     console.warn('Deployment spec suggestion failed (non-blocking):', e.message || e);
+                    Platform.toast.error('Could not auto-generate deployment specs — you can add them manually.');
                 })
                 .then(function () {
                     self.specInferenceLoading = false;
@@ -3421,7 +3511,14 @@
                     _fetch(API_BASE + '/' + self.solutionId + '/reasoning/run-inference', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
-                    }).catch(function () { /* non-fatal */ });
+                    }).catch(function (e) {
+                        // This PERSISTS inferred ArchiMate relationships. Swallowed, the
+                        // architecture the user reviews on the next step is simply missing
+                        // them, with nothing to distinguish that from "none were inferred".
+                        Platform.toast.error('Relationship inference failed: '
+                            + ((e && e.message) || 'request failed')
+                            + '. Inferred relationships are missing from your architecture — re-run this step.');
+                    });
 
                     // Cost estimation — non-fatal: if it fails the pipeline continues without cost data
                     return _fetch(API_BASE + '/' + self.solutionId + '/reasoning/estimate-costs', {
@@ -3706,12 +3803,25 @@
 
             loadRuleSuggestions: function () {
                 let self = this;
+                self.ruleSuggestionsLoading = true;
+                self.ruleSuggestionsError = null;
                 _fetch('/solutions/' + this.solutionId + '/codegen/rules/suggest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 }).then(function (data) {
                     self.ruleSuggestions = data.suggestions || [];
-                }).catch(function () { /* non-critical */ });
+                    self.ruleSuggestionsLoading = false;
+                }).catch(function (e) {
+                    // Leave the list empty rather than inventing a suggestion, and
+                    // record WHY it is empty so the panel can say so. Previously the
+                    // only empty state was the string "Loading suggestions...", so a
+                    // hard failure read as a request still in flight, forever.
+                    self.ruleSuggestions = [];
+                    self.ruleSuggestionsLoading = false;
+                    self.ruleSuggestionsError = (e && e.message) || 'request failed';
+                    Platform.toast.error('Could not load rule suggestions: '
+                        + self.ruleSuggestionsError);
+                });
             },
 
             applyRuleTemplate: function (suggestion) {
@@ -3783,6 +3893,7 @@
 
             recordVerdict: function (scenario, verdict) {
                 let self = this;
+                const previousVerdict = scenario.verdict;
                 scenario.verdict = verdict;
 
                 _fetch('/solutions/' + this.solutionId + '/codegen/test/record-result', {
@@ -3802,7 +3913,15 @@
                         else if (s.verdict === 'partial') partial++;
                     });
                     self.testSummary = { total: self.testScenarios.length, pass: pass, fail: fail, partial: partial };
-                }).catch(function () { /* verdict saved locally even if API fails */ });
+                }).catch(function (e) {
+                    // The verdict badge was flipped optimistically above. Leaving it
+                    // flipped after the write failed is the bug: the user saw the
+                    // scenario marked pass/fail and had no way to know the test result
+                    // was never recorded. Put it back and say so.
+                    scenario.verdict = previousVerdict;
+                    Platform.toast.error('Could not record the "' + verdict + '" verdict for this scenario: '
+                        + ((e && e.message) || 'request failed') + '. Nothing was saved — try again.');
+                });
             },
 
             autoFix: function (scenario) {

@@ -15,7 +15,6 @@ from typing import Dict, List, Optional
 
 from app import db
 from app.models.architecture_decisions import ArchitectureDecision
-from app.models.user import User
 
 logger = logging.getLogger(__name__)
 

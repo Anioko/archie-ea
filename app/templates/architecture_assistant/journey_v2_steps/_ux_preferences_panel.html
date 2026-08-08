@@ -104,7 +104,7 @@
                                         <span class="text-[10px] text-muted-foreground font-mono w-28 pt-0.5 shrink-0" x-text="field"></span>
                                         <div class="flex flex-wrap gap-1">
                                             <template x-for="val in (meta.detected_values || [])" :key="val">
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20"
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-primary border border-info/20"
                                                       x-text="val"></span>
                                             </template>
                                             <span x-show="!meta.detected_values || meta.detected_values.length === 0"
@@ -185,7 +185,7 @@
 
             {# ── Error / success feedback ── #}
             <div x-show="saveError" x-cloak
-                 class="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3">
+                 class="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
                 <svg class="h-4 w-4 text-destructive shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                 </svg>
@@ -288,7 +288,7 @@ function uxPreferences(solutionId) {
                 });
                 if (!resp.ok) {
                     let errData = {};
-                    try { errData = await resp.json(); } catch(_) {}
+                    try { errData = await resp.json(); } catch(_) { /* swallow-ok: the error body need not be JSON; the throw below still surfaces the HTTP status through saveError, so a parse failure must not mask the save failure */ }
                     throw new Error(errData.error || errData.message || 'Save failed (HTTP ' + resp.status + ')');
                 }
                 this.saved = true;

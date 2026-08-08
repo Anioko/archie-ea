@@ -8,7 +8,7 @@ Provides routes for managing business capability lists, taxonomy,
 and organization separate from maturity management.
 """
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -19,14 +19,41 @@ from app.utils.business_capability_classifier import BusinessCapabilityClassifie
 business_capability_management = Blueprint("business_capability_management", __name__)
 
 
+def _org_scope(prefix: str = "WHERE"):
+    """Return (clause, params) scoping a raw-SQL query to the current tenant.
+
+    business_capability is a TenantMixin table, but do_orm_execute only rewrites
+    ORM statements — raw `text()` goes straight to the database unfiltered. Every
+    query in this module was written with an empty placeholder (`_org_filter = ""`)
+    and a `# tenant-filtered` comment beside it, so it read as scoped while
+    returning every organisation's capabilities.
+
+    None means no tenant context (CLI, system tasks). That returns an empty
+    clause, matching the ORM listener's own no-op behaviour rather than inventing
+    a stricter rule for raw SQL than the ORM applies.
+    """
+    from app.middleware.tenant_context import current_org_id
+
+    org = current_org_id()
+    if org is None:
+        return "", {}
+    return f"{prefix} organization_id = :org", {"org": org}
+
+
 @business_capability_management.route("/capabilities")
 @login_required
 def capabilities_overview():
     """Main overview of all business capabilities"""
 
     try:
-        # Get all capabilities
-        _org_params = {}
+        # Get all capabilities. The execute was stripped, leaving `capabilities`
+        # unbound at the classification loop below.
+        _org_filter, _org_params = _org_scope()
+        capabilities = db.session.execute(
+            text(f"SELECT id, name, description, category, business_domain "
+                 f"FROM business_capability {_org_filter} ORDER BY name"),
+            _org_params,
+        ).fetchall()
 
         # Classify capabilities by business grouping
         classified_capabilities = {}
@@ -60,7 +87,7 @@ def capabilities_overview():
             classified_count=classified_count,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capabilities overview. Please try again.", "error")
         return render_template(
             "business_capability/overview.html",
@@ -89,6 +116,25 @@ def groupings_overview():
                 "keyword2": f"%{grouping_data['name'].split()[0].lower()}%",
                 "keyword3": f"%{grouping_data['icon']}%",
             }
+            # The counting query was stripped; `count` was unbound. _grp_params
+            # still carries the three keyword patterns it was written for.
+            # The OR-chain must be bracketed before the tenant predicate is
+            # appended: `A OR B OR C AND org=:org` binds AND tighter than OR and
+            # would leak every organisation matching keyword1 or keyword2.
+            _grp_org_clause, _grp_org = _org_scope(prefix="AND")
+            _grp_params.update(_grp_org)
+            count = db.session.execute(
+                text(
+                    f"""
+                SELECT COUNT(*) FROM business_capability
+                WHERE (LOWER(COALESCE(name, '')) LIKE :keyword1
+                   OR LOWER(COALESCE(name, '')) LIKE :keyword2
+                   OR LOWER(COALESCE(description, '')) LIKE :keyword3){_grp_org_clause}
+            """
+                ),
+                _grp_params,
+            ).scalar() or 0
+
             grouping_stats[grouping_key] = {
                 "count": count,
                 "subcategories": grouping_data["subcategories"],
@@ -100,7 +146,7 @@ def groupings_overview():
             grouping_stats=grouping_stats,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading groupings overview. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))
 
@@ -120,9 +166,13 @@ def grouping_detail(grouping_key):
                 url_for("capability_map.simple_view")
             )
 
-        # Get capabilities in this grouping
-        _org_filter2 = ""
-        _org_params2 = {}
+        # Get capabilities in this grouping. Execute was stripped; `all_capabilities`
+        # was unbound at the filter loop below.
+        _org_filter2, _org_params2 = _org_scope()
+        all_capabilities = db.session.execute(  # tenant-filtered
+            text(f"""SELECT id, name, description, category, business_domain FROM business_capability {_org_filter2} ORDER BY name"""),
+            _org_params2,
+        ).fetchall()
 
         # Filter and classify capabilities for this grouping
         grouping_capabilities = []
@@ -153,7 +203,7 @@ def grouping_detail(grouping_key):
             total_capabilities=len(grouping_capabilities),
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading grouping detail. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))
 
@@ -164,9 +214,13 @@ def capability_taxonomy():
     """Capability taxonomy and hierarchy view"""
 
     try:
-        # Get all capabilities with their classifications
-        _org_filter3 = ""
-        _org_params3 = {}
+        # Get all capabilities with their classifications. Execute was stripped;
+        # `capabilities` was unbound at the organise loop below.
+        _org_filter3, _org_params3 = _org_scope()
+        capabilities = db.session.execute(  # tenant-filtered
+            text(f"""SELECT id, name, description, category, business_domain FROM business_capability {_org_filter3} ORDER BY name"""),
+            _org_params3,
+        ).fetchall()
 
         # Organize by capability type and level
         capability_types = BusinessCapabilityClassifier.get_capability_types()
@@ -216,7 +270,7 @@ def capability_taxonomy():
             capability_levels=capability_levels,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capability taxonomy. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))
 
@@ -307,7 +361,7 @@ def search_capabilities():
             selected_importance=strategic_importance,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error searching capabilities. Please try again.", "error")
         return render_template(
             "business_capability/overview.html",
@@ -326,8 +380,17 @@ def capability_detail(capability_id):
     try:
         # Get capability details
         _detail_params = {"capability_id": capability_id}
-        _org_clause_d = ""
+        _org_clause_d, _org_params_d = _org_scope(prefix="AND")
+        _detail_params.update(_org_params_d)
 
+        # Execute was stripped; `result` was unbound on every request.
+        result = db.session.execute(  # tenant-filtered
+            text(
+                f"""SELECT id, name, description, category, business_domain FROM business_capability
+                WHERE id = :capability_id{_org_clause_d}"""
+            ),
+            _detail_params,
+        )
         capability = result.fetchone()
 
         if not capability:
@@ -349,7 +412,10 @@ def capability_detail(capability_id):
                 "keyword1": f"%{classification['grouping_key']}%",
                 "keyword2": f"%{classification['subcategory_key']}%",
             }
-            _org_clause_r = ""
+            # No org clause is built here: the related-capabilities query itself
+            # was stripped from this handler and never restored, so _rel_params
+            # feeds nothing. Scoping a query that does not exist would just be
+            # another unused name. related_capabilities stays [].
 
         return render_template(
             "business_capability/overview.html",
@@ -358,7 +424,7 @@ def capability_detail(capability_id):
             related_capabilities=related_capabilities,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capability detail. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))
 
@@ -369,12 +435,44 @@ def capability_analytics():
     """Analytics and insights for business capabilities"""
 
     try:
-        # Get capability distribution analytics
-        _org_filter_a = ""
-        _org_params_a = {}
+        # Get capability distribution analytics. Both this aggregate and the domain
+        # distribution below had their executes stripped, leaving `overall_stats` and
+        # `domain_distribution` unbound in the render_template call.
+        _org_filter_a, _org_params_a = _org_scope()
+        _overall_row = db.session.execute(  # tenant-filtered
+            text(
+                f"""
+            SELECT COUNT(*) AS total_capabilities,
+                   COUNT(DISTINCT business_domain) AS total_domains,
+                   COUNT(DISTINCT category) AS total_categories
+            FROM business_capability
+            {_org_filter_a}
+        """
+            ),
+            _org_params_a,
+        ).mappings().first()
+        overall_stats = dict(_overall_row) if _overall_row else {}
 
         # Get domain distribution
-        _org_and_a = ""
+        # Both analytics queries already carry `WHERE <col> IS NOT NULL`, so the
+        # tenant predicate has to append with AND. Missed on the first pass over
+        # this file — _org_filter_a was fixed and this one was not — and found by
+        # scripts/check_raw_sql_tenancy.py rather than by re-reading the file.
+        _org_and_a, _org_and_params_a = _org_scope(prefix="AND")
+        _org_params_a = {**_org_params_a, **_org_and_params_a}
+        domain_distribution = db.session.execute(  # tenant-filtered
+            text(
+                f"""
+            SELECT business_domain, COUNT(*) as count
+            FROM business_capability
+            WHERE business_domain IS NOT NULL{_org_and_a}
+            GROUP BY business_domain
+            ORDER BY count DESC
+            LIMIT 20
+        """
+            ),
+            _org_params_a,
+        ).fetchall()
 
         # Get category distribution
         result = db.session.execute(  # tenant-filtered
@@ -393,7 +491,6 @@ def capability_analytics():
         category_distribution = result.fetchall()
 
         # Get business grouping distribution
-        all_capabilities = []
         result = db.session.execute(  # tenant-filtered
             text(
                 f"""
@@ -430,6 +527,6 @@ def capability_analytics():
             grouping_distribution=grouping_distribution,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capability analytics. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))

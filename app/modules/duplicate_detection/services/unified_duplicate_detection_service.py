@@ -10,7 +10,6 @@ Phase 2: Service consolidation (2 → 1) with full preservation
 """
 
 import hashlib
-import json  # dead-code-ok
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -1462,7 +1461,7 @@ unified_duplicate_bp = Blueprint("unified_duplicate", __name__, url_prefix="/dup
 def status():
     """Get status of unified duplicate detection service."""
     try:
-        service = UnifiedDuplicateDetectionService()
+        UnifiedDuplicateDetectionService()
         return {
             "status": "active",
             "service": "unified_duplicate_detection",

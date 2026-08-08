@@ -1,6 +1,6 @@
 """Unmapped Capabilities Analysis Routes"""
 
-from flask import flash, g, jsonify, render_template, request  # dead-code-ok
+from flask import flash, jsonify, render_template  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -104,7 +104,7 @@ def unmapped_capabilities():
             priority_breakdown=priority_breakdown,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading unmapped capabilities. Please try again.", "error")
         return render_template(
             "capability_analysis/unmapped_capabilities.html",
@@ -164,5 +164,5 @@ def export_unmapped_capabilities():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500

@@ -113,7 +113,7 @@
                                                 <div class="font-medium text-foreground" x-text="app.application_name"></div>
                                                 <div class="mt-1 flex flex-wrap gap-1.5">
                                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs"
-                                                          :class="(app.coverage_percentage || 0) >= 70 ? 'bg-emerald-500/10 text-emerald-600' : (app.coverage_percentage || 0) >= 40 ? 'bg-amber-500/10 text-amber-600' : 'bg-red-500/10 text-destructive'"
+                                                          :class="(app.coverage_percentage || 0) >= 70 ? 'bg-emerald-500/10 text-emerald-600' : (app.coverage_percentage || 0) >= 40 ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'"
                                                           x-text="(app.coverage_percentage || 0) + '% coverage'"></span>
                                                     <span x-show="app.support_level" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-xs" x-text="app.support_level"></span>
                                                 </div>
@@ -159,9 +159,9 @@
                                     <div class="mt-2 space-y-1">
                                         <template x-for="gap in domain.gaps" :key="gap.id || gap.name">
                                             <div class="text-xs text-muted-foreground flex items-center gap-1.5">
-                                                <span class="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0"></span>
+                                                <span class="w-1.5 h-1.5 rounded-full bg-destructive flex-shrink-0"></span>
                                                 <span x-text="gap.name"></span>
-                                                <span x-show="gap.severity" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-red-500/10 text-destructive text-xs" x-text="gap.severity"></span>
+                                                <span x-show="gap.severity" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-destructive/10 text-destructive text-xs" x-text="gap.severity"></span>
                                             </div>
                                         </template>
                                     </div>
@@ -199,7 +199,7 @@
                     <div class="flex flex-wrap gap-2">
                         <template x-for="iq in analysisData.input_quality_report" :key="iq.application_id">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-                                  :class="iq.data_freshness_tier === 'fresh' ? 'bg-emerald-500/10 text-emerald-600' : iq.data_freshness_tier === 'stale' ? 'bg-amber-500/10 text-amber-600' : 'bg-red-500/10 text-destructive'">
+                                  :class="iq.data_freshness_tier === 'fresh' ? 'bg-emerald-500/10 text-emerald-600' : iq.data_freshness_tier === 'stale' ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'">
                                 <span x-text="iq.application_name"></span>
                                 <span x-text="iq.completeness_score + '%'"></span>
                             </span>
@@ -293,12 +293,12 @@ function capabilityDesignPanel() {
         async loadCapabilities() {
             try {
                 const resp = await fetch(`/solutions/capabilities/search?q=${encodeURIComponent(this.capSearch)}&limit=50`);
-                if (resp.ok) {
-                    const data = await resp.json();
-                    this.availableCapabilities = data.capabilities || data.results || data || [];
-                }
+                if (!resp.ok) throw new Error('Capability search failed: ' + resp.status);
+                const data = await resp.json();
+                this.availableCapabilities = data.capabilities || data.results || data || [];
             } catch (e) {
                 console.error('Failed to load capabilities:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capabilities');
             }
         },
 
@@ -319,23 +319,17 @@ function capabilityDesignPanel() {
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
                     body: JSON.stringify({capability_id: cap.id})
                 });
-                if (resp.ok) {
-                    const result = await resp.json();
-                    this.selectedCapabilities.push({
-                        mapping_id: result.mapping_id || Date.now(),
-                        capability_id: cap.id,
-                        capability_name: cap.name,
-                    });
-                    this.loadAnalysis();
-                }
-            } catch (e) {
-                console.error('Failed to add capability:', e);
-                // Add locally even if API fails
+                if (!resp.ok) throw new Error('Failed to add capability: ' + resp.status);
+                const result = await resp.json();
                 this.selectedCapabilities.push({
-                    mapping_id: Date.now(),
+                    mapping_id: result.mapping_id || Date.now(),
                     capability_id: cap.id,
                     capability_name: cap.name,
                 });
+                this.loadAnalysis();
+            } catch (e) {
+                console.error('Failed to add capability:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to add capability');
             }
         },
 
@@ -356,12 +350,12 @@ function capabilityDesignPanel() {
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
                     body: JSON.stringify({problem_description: this.problemText})
                 });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    this.discoveredCapabilities = data.suggestions || [];
-                }
+                if (!resp.ok) throw new Error('Capability discovery failed: ' + resp.status);
+                const data = await resp.json();
+                this.discoveredCapabilities = data.suggestions || [];
             } catch (e) {
                 console.error('Failed to discover capabilities:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to discover capabilities');
             } finally {
                 this.discovering = false;
             }
@@ -375,15 +369,15 @@ function capabilityDesignPanel() {
             this.analysisLoading = true;
             try {
                 const resp = await fetch(`/solutions/${solutionId}/capability-analysis`);
-                if (resp.ok) {
-                    this.analysisData = await resp.json();
-                    // Sync selected capabilities from server
-                    if (this.analysisData.selected_capabilities) {
-                        this.selectedCapabilities = this.analysisData.selected_capabilities;
-                    }
+                if (!resp.ok) throw new Error('Failed to load capability analysis: ' + resp.status);
+                this.analysisData = await resp.json();
+                // Sync selected capabilities from server
+                if (this.analysisData.selected_capabilities) {
+                    this.selectedCapabilities = this.analysisData.selected_capabilities;
                 }
             } catch (e) {
                 console.error('Failed to load analysis:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capability analysis');
             } finally {
                 this.analysisLoading = false;
             }

@@ -19,7 +19,7 @@ if not db_url:
     db_password = os.getenv("DB_PASSWORD", "postgres")
     db_url = f"postgresql://{db_user}:{db_password}@{db_host}/{db_name}"
 
-print(f"Connecting to database...")
+print("Connecting to database...")
 engine = create_engine(db_url)
 
 with engine.connect() as conn:

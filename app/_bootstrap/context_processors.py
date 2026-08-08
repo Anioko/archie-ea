@@ -4,12 +4,63 @@ Context processors — global template variables.
 
 import flask
 
+_EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabilities": 0}
+
+# Keyed by organisation id. Previously one shared dict with no tenant in the
+# key, so the first organisation to render a page served its numbers to every
+# other organisation for the whole TTL.
+_nav_counts_cache: dict = {}
+_NAV_COUNTS_TTL = 300
+
+
+def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
+    """Sidebar entity counts for one organisation, cached per tenant.
+
+    Scoping is explicit. ``db.session.query(db.func.count(Model.id))`` is a
+    COLUMN query, and the tenant isolation in this codebase is
+    ``with_loader_criteria``, which only applies to ENTITY queries — so these
+    counts were never filtered for anyone. A browser walk showed a tenant with
+    14 applications being told it had 38, the total across every organisation.
+
+    ``VendorOrganization`` has no organization_id column at all, so its count is
+    global by construction; that matches what the vendor list itself shows and
+    is called out here rather than silently scoped to something it isn't.
+    """
+    import time
+
+    from app import db
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.vendor.vendor_organization import VendorOrganization
+
+    now = time.time()
+    hit = _nav_counts_cache.get(org_id)
+    if hit is not None and now - hit["timestamp"] < ttl:
+        return dict(hit["data"])
+
+    def _scoped(model):
+        q = db.session.query(db.func.count(model.id))
+        if org_id is not None:
+            q = q.filter(model.organization_id == org_id)
+        return q.scalar() or 0
+
+    counts = {
+        "applications": _scoped(ApplicationComponent),
+        "elements": _scoped(ArchiMateElement),
+        "capabilities": _scoped(BusinessCapability),
+        # Not tenant-scoped anywhere in the product — see docstring.
+        "vendors": db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0,
+    }
+    _nav_counts_cache[org_id] = {"data": dict(counts), "timestamp": now}
+    return counts
+
 
 def init_context_processors(app):
     """Register all context processors for Jinja templates."""
 
     _dashboard_categories_cache = {"data": None, "timestamp": 0}
-    _applications_cache = {"data": None, "timestamp": 0}
+    _applications_cache: dict = {}  # keyed by organisation id — see inject_applications
     _cache_ttl = 300  # 5 minutes
 
     @app.context_processor
@@ -156,12 +207,18 @@ def init_context_processors(app):
         except Exception:
             return {"applications": [], "vendors": []}
 
+        # Keyed by tenant. The query below IS tenant-filtered (entity query, so
+        # with_loader_criteria applies), but the RESULT was cached in a single
+        # module-level dict — so one organisation's application and vendor rows
+        # were served to every other organisation for the TTL. Same defect class
+        # as the nav counts, with real rows rather than numbers.
+        from flask import g, has_request_context
+
+        _org_key = getattr(g, "current_org_id", None) if has_request_context() else None
         current_time = time.time()
-        if (
-            _applications_cache["data"] is not None
-            and current_time - _applications_cache["timestamp"] < _cache_ttl
-        ):
-            return _applications_cache["data"]
+        _hit = _applications_cache.get(_org_key)
+        if _hit is not None and current_time - _hit["timestamp"] < _cache_ttl:
+            return _hit["data"]
 
         try:
             from app.models.application_portfolio import ApplicationComponent
@@ -177,8 +234,7 @@ def init_context_processors(app):
                 vendors = []
 
             result = {"applications": applications, "vendors": vendors}
-            _applications_cache["data"] = result
-            _applications_cache["timestamp"] = current_time
+            _applications_cache[_org_key] = {"data": result, "timestamp": current_time}
             return result
         except (OperationalError, ProgrammingError):
             db.session.rollback()
@@ -193,51 +249,22 @@ def init_context_processors(app):
         """Make flask object available to all templates to fix flash messaging issues"""
         return {"flask": flask}
 
-    _nav_counts_cache = {"data": None, "timestamp": 0}
-
     @app.context_processor
     def inject_nav_counts():
         """Live entity counts for sidebar navigation labels.
 
         Replaces hardcoded counts that go stale (sidebar said 358 vendors
-        while the dashboard card said 17). Cached for 5 minutes — these
-        render on every page.
+        while the dashboard card said 17). Cached for 5 minutes per tenant —
+        these render on every page.
         """
-        import time
+        from flask import g, has_request_context
 
-        now = time.time()
-        if (
-            _nav_counts_cache["data"] is not None
-            and now - _nav_counts_cache["timestamp"] < _cache_ttl
-        ):
-            return {"nav_counts": _nav_counts_cache["data"]}
-
-        counts = {"applications": 0, "vendors": 0, "elements": 0, "capabilities": 0}
+        org_id = getattr(g, "current_org_id", None) if has_request_context() else None
         try:
-            from app import db
-            from app.models.application_portfolio import ApplicationComponent
-            from app.models.archimate_core import ArchiMateElement
-            from app.models.business_capabilities import BusinessCapability
-            from app.models.vendor.vendor_organization import VendorOrganization
-
-            counts["applications"] = (
-                db.session.query(db.func.count(ApplicationComponent.id)).scalar() or 0
-            )
-            counts["vendors"] = (
-                db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0
-            )
-            counts["elements"] = (
-                db.session.query(db.func.count(ArchiMateElement.id)).scalar() or 0
-            )
-            counts["capabilities"] = (
-                db.session.query(db.func.count(BusinessCapability.id)).scalar() or 0
-            )
-            _nav_counts_cache["data"] = counts
-            _nav_counts_cache["timestamp"] = now
-        except Exception as e:
+            return {"nav_counts": compute_nav_counts(org_id)}
+        except Exception as e:  # noqa: BLE001 — a sidebar label can't 500 a page
             app.logger.warning(f"nav counts unavailable: {e}")
-
-        return {"nav_counts": counts}
+            return {"nav_counts": dict(_EMPTY_NAV_COUNTS)}
 
     @app.context_processor
     def inject_feature_flags():

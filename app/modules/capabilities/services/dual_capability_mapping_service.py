@@ -13,9 +13,8 @@ Provides utilities for:
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy import or_
 
 from app.models import BusinessCapability, TechnicalCapability, UnifiedCapability, db
 

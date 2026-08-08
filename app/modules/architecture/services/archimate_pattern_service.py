@@ -7,7 +7,7 @@ Includes both rule-based pattern detection and AI-powered pattern analysis.
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 
@@ -259,7 +259,7 @@ class ArchiMatePatternService:
             relationship_type_counts[rel.type] += 1
 
         total_elements = len(elements)
-        total_relationships = len(relationships)
+        len(relationships)
 
         # Pattern-specific detection logic
         if pattern_id == "layered_architecture":
@@ -481,9 +481,9 @@ class ArchiMatePatternService:
 
         elif pattern_id == "strangler_fig":
             # Look for implementation/migration elements
-            has_migration = any(
+            (any(
                 layer_counts.get(layer, 0) > 0 for layer in ["implementation", "migration"]
-            )
+            ))
 
             migration_elements = (
                 element_type_counts.get("WorkPackage", 0)

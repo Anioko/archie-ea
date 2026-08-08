@@ -4,10 +4,9 @@ Audit Service
 Convenience functions for creating audit logs.
 """
 
-from flask import request, g
+from flask import request
 from flask_login import current_user
 
-from app import db
 from app.models.audit_log import AuditLog
 
 

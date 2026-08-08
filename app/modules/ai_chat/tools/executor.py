@@ -10,11 +10,9 @@ Design decisions:
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from app import db
 
-from .registry import TOOL_SCHEMA_BY_NAME
 from .resolver import EntityResolver
 
 logger = logging.getLogger(__name__)
@@ -33,6 +31,52 @@ class ToolExecutor:
         self.user_id = user_id
         self._resolver = EntityResolver()
         self._org_id = None  # cached lazily
+
+    @staticmethod
+    def _coverage(rows, total, noun):
+        """Result fields that state how much of the matching set is being shown.
+
+        Every read tool used to return `"count": len(rows)` with a message of the
+        form "Found N application(s)" - where N was the LIMIT, not the number of
+        matches. Ask "how many applications are in production?" against a
+        5,000-application estate and the model was handed `{"count": 15,
+        "message": "Found 15 application(s)."}`, with nothing to indicate the
+        other 4,985 existed. It then answered "15", truthfully reporting what it
+        was told and inventing a fact about the customer's portfolio.
+
+        That is the exact failure CLAUDE.md's "never invent data" rule targets,
+        and the fabricated-data gate cannot see it: the gate inspects templates
+        and view code, not tool-result strings assembled server-side.
+
+        `total` is None when the caller genuinely cannot count the matching set
+        cheaply - the fields then say so rather than implying completeness.
+        """
+        returned = len(rows)
+        if total is None:
+            return {
+                "count": returned,
+                "returned": returned,
+                "total": None,
+                "truncated": None,
+                "message": (
+                    f"Showing {returned} {noun}. The total number of matches was "
+                    f"not determined - do not report this as a total."
+                ),
+            }
+        truncated = total > returned
+        return {
+            "count": returned,
+            "returned": returned,
+            "total": total,
+            "truncated": truncated,
+            "message": (
+                f"Showing {returned} of {total} matching {noun}. "
+                f"Report {total} as the total, not {returned}; "
+                f"narrow the query to see different ones."
+                if truncated
+                else f"Found {returned} {noun} - this is the complete set."
+            ),
+        }
 
     def _get_organization_id(self) -> int:
         """Return the organization_id for the current user (cached after first call)."""
@@ -370,7 +414,6 @@ class ToolExecutor:
 
     def _tool_query_capability_gaps(self, args: dict) -> dict:
         from app.models.business_capabilities import BusinessCapability
-        from app.models.solution_models import SolutionCapabilityMapping
 
         max_maturity = args.get("max_maturity", 2)
         domain_filter = args.get("business_domain")
@@ -382,6 +425,7 @@ class ToolExecutor:
         if domain_filter:
             q = q.filter(BusinessCapability.business_domain.ilike(f"%{domain_filter}%"))
 
+        total = q.count()
         caps = q.order_by(BusinessCapability.current_maturity_level.asc()).limit(limit).all()
 
         rows = []
@@ -397,14 +441,14 @@ class ToolExecutor:
                 "supporting_apps": app_count,
             })
 
+        scope = (
+            f"capabilities with maturity <= {max_maturity}"
+            + (f" in '{domain_filter}'" if domain_filter else "")
+        )
         return {
             "success": True,
             "result": rows,
-            "count": len(rows),
-            "message": (
-                f"Found {len(rows)} capabilities with maturity ≤ {max_maturity}"
-                + (f" in '{domain_filter}'" if domain_filter else "") + "."
-            ),
+            **self._coverage(rows, total, scope),
         }
 
     # ------------------------------------------------------------------ #
@@ -439,6 +483,9 @@ class ToolExecutor:
                 ]
                 q = q.filter(ApplicationComponent.id.in_(cap_ids))
 
+        # Count the matching set BEFORE applying the limit, so the model can be
+        # told what it is not seeing.
+        total = q.count()
         apps = q.limit(limit).all()
         rows = [
             {
@@ -452,8 +499,7 @@ class ToolExecutor:
         return {
             "success": True,
             "result": rows,
-            "count": len(rows),
-            "message": f"Found {len(rows)} application(s).",
+            **self._coverage(rows, total, "application(s)"),
         }
 
 
@@ -964,9 +1010,14 @@ class ToolExecutor:
         if not query_text.strip():
             return {"success": False, "error": "problem_description is required"}
 
-        caps = BusinessCapability.query.filter(
-            BusinessCapability.name.isnot(None)
-        ).limit(600).all()
+        # The candidate pool is capped at 600 with no ORDER BY, so on a larger
+        # capability model this searches an arbitrary subset. Count the real
+        # total so the answer can say which, rather than implying the search
+        # covered everything.
+        _cap_q = BusinessCapability.query.filter(BusinessCapability.name.isnot(None))
+        total_capabilities = _cap_q.count()
+        CANDIDATE_POOL = 600
+        caps = _cap_q.limit(CANDIDATE_POOL).all()
 
         if not caps:
             return {"success": False, "error": "No capabilities found in platform"}
@@ -1038,14 +1089,26 @@ class ToolExecutor:
                 })
             method = "keyword"
 
+        searched = len(caps)
+        pool_note = (
+            f" Ranked against {searched} of {total_capabilities} capabilities"
+            f" ({method} search) - the remainder was not examined."
+            if total_capabilities > searched
+            else f" Ranked against all {searched} capabilities ({method} search)."
+        )
         return {
             "success": True,
             "result": rows,
-            "count": len(rows),
             "search_method": method,
+            "capabilities_searched": searched,
+            "capabilities_total": total_capabilities,
+            # total=None: these are the top matches by relevance, not "all
+            # matching rows", so there is no meaningful total to report.
+            **self._coverage(rows, None, "relevant capabilities"),
             "message": (
-                f"Found {len(rows)} capabilities relevant to your problem ({method} search). "
-                "Use link_capability_to_solution to attach the relevant ones."
+                f"Top {len(rows)} capabilities by relevance to the problem."
+                + pool_note
+                + " Use link_capability_to_solution to attach the relevant ones."
             ),
         }
 
@@ -1073,9 +1136,9 @@ class ToolExecutor:
             }
 
         cap_id = cap_r["id"]
-        mappings = ApplicationCapabilityMapping.query.filter_by(
-            business_capability_id=cap_id
-        ).limit(30).all()
+        _map_q = ApplicationCapabilityMapping.query.filter_by(business_capability_id=cap_id)
+        total_mapped = _map_q.count()
+        mappings = _map_q.limit(30).all()
 
         if not mappings:
             return {
@@ -1105,15 +1168,18 @@ class ToolExecutor:
                 "owner_team": getattr(a, "owner_team", None),
             })
 
+        coverage = self._coverage(
+            rows, total_mapped, f"application(s) mapped to '{cap_r.get('name', cap_name)}'"
+        )
         return {
             "success": True,
             "result": rows,
-            "count": len(rows),
             "capability_id": cap_id,
             "capability_name": cap_r.get("name", cap_name),
+            **coverage,
             "message": (
-                f"Found {len(rows)} application(s) mapped to '{cap_r.get('name', cap_name)}'. "
-                "Use link_application_to_solution to attach relevant ones to your solution."
+                coverage["message"]
+                + " Use link_application_to_solution to attach relevant ones to your solution."
             ),
         }
 
@@ -1146,6 +1212,7 @@ class ToolExecutor:
                 )
             )
 
+        total = q.count()
         caps = q.order_by(
             TechnicalCapability.acm_domain,
             TechnicalCapability.level_number,
@@ -1173,15 +1240,22 @@ class ToolExecutor:
             })
 
         gaps = [r for r in rows if r["is_gap"]]
+        coverage = self._coverage(
+            rows,
+            total,
+            "technical capabilities" + (f" in domain '{domain}'" if domain else ""),
+        )
         return {
             "success": True,
             "result": rows,
-            "count": len(rows),
+            **coverage,
             "gaps_count": len(gaps),
+            # gaps_count counts only the rows shown, so say so when truncated -
+            # otherwise it reads as the gap count for the whole domain.
+            "gaps_count_scope": "shown rows only" if coverage["truncated"] else "complete",
             "message": (
-                f"Found {len(rows)} technical capabilities "
-                + (f"in domain '{domain}'" if domain else "")
-                + f". {len(gaps)} have zero app coverage (gaps). "
+                coverage["message"]
+                + f" {len(gaps)} of the {len(rows)} shown have zero app coverage (gaps). "
                 "Use create_archimate_element (type=Node/SystemSoftware/TechnologyService) "
                 "to model technology components that address these gaps."
             ),
@@ -1270,11 +1344,9 @@ class ToolExecutor:
         if fmt == "ddl":
             result = SchemaInferenceService.infer_from_ddl(input_text)
             count = result.get("table_count", 0)
-            key = "table_count"
         else:
             result = SchemaInferenceService.infer_from_openapi(input_text)
             count = result.get("schema_count", 0)
-            key = "schema_count"
 
         if result.get("success"):
             result["message"] = (
@@ -1349,13 +1421,13 @@ class ToolExecutor:
         if args.get("element_type"):
             q = q.filter(ArchiMateElement.type == args["element_type"])
 
+        total = q.count()
         elements = q.limit(limit).all()
         rows = [{"id": e.id, "name": e.name, "type": e.type, "layer": e.layer} for e in elements]
         return {
             "success": True,
             "result": rows,
-            "count": len(rows),
-            "message": f"Found {len(rows)} ArchiMate element(s).",
+            **self._coverage(rows, total, "ArchiMate element(s)"),
         }
 
 

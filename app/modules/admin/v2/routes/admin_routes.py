@@ -273,7 +273,8 @@ def index():
     except Exception:
         health["db"] = "error"
     try:
-        import redis as _redis, os as _os
+        import redis as _redis
+        import os as _os
         _r = _redis.from_url(_os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
         _r.ping()
     except Exception:
@@ -720,7 +721,7 @@ def test_api_settings(settings_id):
     try:
         result = test_api_key(settings.api_key, settings.api_provider)
         flash(f"API test successful: {result}", "success")
-    except Exception as e:
+    except Exception:
         flash("API test failed. Please try again.", "error")
 
     return redirect(url_for("admin.api_settings"))
@@ -748,7 +749,7 @@ def preview_env_keys():
 
     default_models = {
         "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
+        "anthropic": "claude-opus-5",
         "gemini": "gemini-2.0-flash-exp",
         "deepseek": "deepseek-chat",
         "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -840,7 +841,7 @@ def load_env_keys():
 
     default_models = {
         "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
+        "anthropic": "claude-opus-5",
         "gemini": "gemini-2.0-flash-exp",
         "deepseek": "deepseek-chat",
         "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -1139,7 +1140,7 @@ def feature_flag_new():
             flash(f"Feature flag '{feature.name}' created successfully", "success")
             return redirect(url_for("admin.feature_flags"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error creating feature flag. Please try again.", "error")
 
@@ -1189,7 +1190,7 @@ def feature_flag_edit(id):
             flash(f"Feature flag '{feature.name}' updated successfully", "success")
             return redirect(url_for("admin.feature_flags"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error updating feature flag. Please try again.", "error")
 
@@ -1225,7 +1226,7 @@ def feature_flag_toggle(id):
                 "message": f"Feature {status}",
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -1243,7 +1244,7 @@ def feature_flag_delete(id):
         db.session.delete(feature)
         db.session.commit()
         flash(f"Feature flag '{feature.name}' deleted successfully", "success")
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error deleting feature flag. Please try again.", "error")
 
@@ -1289,7 +1290,7 @@ def feature_flags_discover_sidebar():
             parser_data=parser.to_dict(),
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error parsing sidebar. Please try again.", "error")
         return redirect(url_for("admin.feature_flags"))
 
@@ -1366,7 +1367,7 @@ def feature_flags_create_from_sidebar():
         flash(message, "success")
         return redirect(url_for("admin.feature_flags"))
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error creating feature flags. Please try again.", "error")
         return redirect(url_for("admin.feature_flags_discover_sidebar"))
@@ -1727,7 +1728,7 @@ def trigger_abacus_sync():
             "info",
         )
 
-    except Exception as e:
+    except Exception:
         flash("Failed to create sync job. Please try again.", "error")
 
     return redirect(url_for("admin.abacus_settings"))
@@ -1810,7 +1811,7 @@ def cancel_abacus_job(job_id):
 @admin_required
 def clear_stale_abacus_jobs():
     """Force-clear sync jobs stuck in_progress for more than 1 hour."""
-    from app.models import Job  # noqa: local import to match pattern
+    from app.models import Job  # local import to match pattern
 
     cutoff = datetime.utcnow() - timedelta(hours=1)
     stale_jobs = Job.query.filter(
@@ -2208,7 +2209,6 @@ def sso_settings():
             from app.auth.sso import sso_service
 
             sso_users = User.query.filter(User.sso_provider.isnot(None)).all()
-            updated = 0
             for user in sso_users:
                 # Re-evaluate via sso_service which now reads DB mappings.
                 # We pass the user's stored external groups claim if available;
@@ -2352,7 +2352,7 @@ def jira_settings():
     # Any non-empty JIRA_BASE_URL indicates env-based config; JIRA_API_TOKEN may load at boot
     env_jira_url = os.environ.get("JIRA_BASE_URL", "").strip()
     env_jira_user = os.environ.get("JIRA_USERNAME", "").strip()
-    env_jira_token = os.environ.get("JIRA_API_TOKEN", "").strip()
+    os.environ.get("JIRA_API_TOKEN", "").strip()
     env_jira_project = os.environ.get("JIRA_PROJECT_KEY", "").strip()
     # Fallback: check if the connector can initialize (handles .env loading internally)
     env_configured = bool(env_jira_url and env_jira_user and env_jira_project)
@@ -3496,7 +3496,6 @@ def report_builder():
     apps = []
     total = 0
     lifecycle_options = []
-    vendor_options = []
 
     try:
         from app.models.application_portfolio import ApplicationComponent
@@ -3540,7 +3539,6 @@ def report_builder():
                 ApplicationComponent.lifecycle_status
             ).all() if r[0]
         ]
-        vendor_options = []  # Populated from VendorOrganization if needed
 
         if export_csv:
             import csv
@@ -4126,7 +4124,7 @@ def export_portfolio_pptx():
 
     try:
         from pptx import Presentation
-        from pptx.util import Inches, Pt, Emu
+        from pptx.util import Inches, Pt, Emu  # noqa: F401 — availability probe: the import IS the test
         from pptx.dml.color import RGBColor
         from pptx.enum.text import PP_ALIGN
     except ImportError:
@@ -4149,10 +4147,10 @@ def export_portfolio_pptx():
 
     BRAND_BLUE = RGBColor(0x1E, 0x3A, 0x5F)
     ACCENT_BLUE = RGBColor(0x3B, 0x82, 0xF6)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    DARK = RGBColor(0x1A, 0x1A, 0x2E)
+    RGBColor(0xFF, 0xFF, 0xFF)
+    RGBColor(0x1A, 0x1A, 0x2E)
     GRAY = RGBColor(0x6B, 0x72, 0x80)
-    HEADER_BG = RGBColor(0xF1, 0xF5, 0xF9)
+    RGBColor(0xF1, 0xF5, 0xF9)
 
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -5211,6 +5209,7 @@ def salesforce_integration():
 @admin_bp_v2.route("/integrations/salesforce/save", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_save_credentials():
     """POST /admin/integrations/salesforce/save — persist credentials."""
     from app.modules.solutions_strategic.v2.services.salesforce_discovery_service import (
@@ -5229,6 +5228,7 @@ def salesforce_save_credentials():
 @admin_bp_v2.route("/integrations/salesforce/test", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_test_connection():
     """POST /admin/integrations/salesforce/test — test credentials."""
     from app.modules.solutions_strategic.v2.services.salesforce_discovery_service import (
@@ -5247,6 +5247,7 @@ def salesforce_test_connection():
 @admin_bp_v2.route("/integrations/salesforce/discover", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_discover():
     """POST /admin/integrations/salesforce/discover — list org apps + packages."""
     from app.models.application_portfolio import ApplicationComponent
@@ -5278,6 +5279,7 @@ def salesforce_discover():
 @admin_bp_v2.route("/integrations/salesforce/import", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_import():
     """POST /admin/integrations/salesforce/import — import selected app_ids
     with optional programme_initiative_id baseline linkage."""
@@ -5337,6 +5339,7 @@ def power_platform_integration():
 @admin_bp_v2.route("/integrations/power-platform/save", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_save_credentials():
     """POST /admin/integrations/power-platform/save — persist credentials to api_settings."""
     from app.models.models import APISettings
@@ -5361,6 +5364,7 @@ def power_platform_save_credentials():
 @admin_bp_v2.route("/integrations/power-platform/test", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_test_connection():
     """POST /admin/integrations/power-platform/test — test credentials."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -5381,6 +5385,7 @@ def power_platform_test_connection():
 @admin_bp_v2.route("/integrations/power-platform/discover", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_discover():
     """POST /admin/integrations/power-platform/discover — trigger discovery, return app list."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -5414,6 +5419,7 @@ def power_platform_discover():
 @admin_bp_v2.route("/integrations/power-platform/import", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_import():
     """POST /admin/integrations/power-platform/import — import selected app_ids."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (

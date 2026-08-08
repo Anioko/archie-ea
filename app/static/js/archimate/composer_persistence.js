@@ -329,7 +329,10 @@ let ComposerPersistence = (function() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify(payload),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) { throw new Error('save viewpoint request failed: ' + r.status); }
+                    return r.json();
+                })
                 .then(function(data) {
                     if (data.id) {
                         // Server materialized imported items into real model rows —
@@ -420,7 +423,7 @@ let ComposerPersistence = (function() {
                 });
                 self.viewpointTabs = all.slice(0, 5);
             })
-            .catch(function() { /* non-critical — tabs stay empty on error */ });
+            .catch(function() { /* swallow-ok: the tab strip is a convenience shortcut; loadSavedViewpoints() fetches the same endpoint for the primary list and toasts its own failure, so reporting here would double-toast */ });
         },
 
         loadSavedViewpoint: function(vpId, vpName) {
@@ -541,7 +544,10 @@ let ComposerPersistence = (function() {
                 self.layerZoneCells = [];
                 self.layerZonesActive = false;
                 let ext = null;
-                try { if (data.description) ext = JSON.parse(data.description); } catch (e) {}
+                /* description is plain free text on older viewpoints (pre-canvas-ext) — a
+                   parse failure there is expected, not an error, so ext just stays null and
+                   the optional swimlane/annotation/property restores below are skipped. */
+                try { if (data.description) ext = JSON.parse(data.description); } catch (e) { /* swallow-ok: description is plain free text on pre-canvas-extension viewpoints, so a parse failure is the expected legacy case rather than an error */ }
                 if (ext && ext._canvas_ext && Array.isArray(ext.swimlanes) && ext.swimlanes.length) {
                     ext.swimlanes.forEach(function(sz) {
                         let zone = createLayerZone(sz.layer, sz.x, sz.y, sz.width || 1400, sz.height || 160);
@@ -642,14 +648,17 @@ let ComposerPersistence = (function() {
 
         discardAutosave: function() {
             let key = 'composer_autosave_' + (this.solutionId || 'scratch');
-            try { localStorage.removeItem(key); } catch(_) {}
+            /* Best-effort cleanup — if storage is unavailable there was nothing
+               persisted to discard in the first place. */
+            try { localStorage.removeItem(key); } catch(_) { /* swallow-ok: discarding an autosave that storage could not have held in the first place */ }
             this._pendingAutosaveRestore = null;
             this._showAutosavePrompt = false;
         },
 
         _clearAutosave: function() {
             let key = 'composer_autosave_' + (this.solutionId || 'scratch');
-            try { localStorage.removeItem(key); } catch(_) {}
+            /* Best-effort cleanup — see discardAutosave() above. */
+            try { localStorage.removeItem(key); } catch(_) { /* swallow-ok: clearing an autosave that storage could not have held in the first place */ }
         },
 
         exportPng: function() {
@@ -2172,12 +2181,14 @@ let ComposerPersistence = (function() {
                 self.mode = 'view';
                 self.customProperties = {};
                 if (snapData.description) {
+                    /* Same legacy-format caveat as loadSavedViewpoint() — plain-text
+                       descriptions on older snapshots are expected to fail JSON.parse. */
                     try {
                         let ext = JSON.parse(snapData.description);
                         if (ext && ext._canvas_ext && ext.custom_properties) {
                             self.customProperties = ext.custom_properties;
                         }
-                    } catch (e) {}
+                    } catch (e) { /* swallow-ok: same legacy plain-text description case as loadSavedViewpoint; custom properties stay empty */ }
                 }
                 _applySavedImportedPresentation(self, cellMap, elementMap);
                 UndoStack.resume();
@@ -2610,7 +2621,7 @@ let ComposerPersistence = (function() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#22c55e', 'stroke-width': 3 } } }
                         });
-                    } catch(e) { /* safe */ }
+                    } catch(e) { /* swallow-ok: cosmetic diff outline; the NEW and REMOVED badges and the diff summary line carry the same information */ }
                     self._addDiffBadge(cell, 'NEW', '#22c55e');
                 } else if (movedIds[eid] || movedIds[String(eid)]) {
                     /* Moved: blue highlight + displacement arrow */
@@ -2618,7 +2629,7 @@ let ComposerPersistence = (function() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#3b82f6', 'stroke-width': 3, 'stroke-dasharray': '6,3' } } }
                         });
-                    } catch(e) { /* safe */ }
+                    } catch(e) { /* swallow-ok: cosmetic diff outline; the NEW and REMOVED badges and the diff summary line carry the same information */ }
                     let moveInfo = movedMap[eid] || movedMap[String(eid)];
                     if (moveInfo) {
                         self._addDisplacementArrow(cell, moveInfo.dx, moveInfo.dy);
@@ -2630,7 +2641,7 @@ let ComposerPersistence = (function() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#ef4444', 'stroke-width': 2, 'stroke-dasharray': '4,4' } } }
                         });
-                    } catch(e) { /* safe */ }
+                    } catch(e) { /* swallow-ok: cosmetic diff outline; the NEW and REMOVED badges and the diff summary line carry the same information */ }
                     self._addDiffBadge(cell, 'REMOVED', '#ef4444');
                 }
             });
@@ -2780,7 +2791,7 @@ let ComposerPersistence = (function() {
                 let view = self.paper.findViewByModel(cell);
                 if (!view) return;
                 view.vel.attr({ opacity: 1 });
-                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* safe */ }
+                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* swallow-ok: cosmetic un-highlight while clearing the snapshot diff */ }
             });
 
             /* Restore link styles */
@@ -2821,7 +2832,7 @@ let ComposerPersistence = (function() {
                     let view = self.paper.findViewByModel(cell);
                     if (!view) return;
                     view.vel.attr({ opacity: 1 });
-                    try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* safe */ }
+                    try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* swallow-ok: cosmetic un-highlight while hiding the snapshot diff overlay */ }
                 });
                 self.graph.getLinks().forEach(function(link) {
                     let relId = link.get('relId');
@@ -2866,15 +2877,15 @@ let ComposerPersistence = (function() {
                 if (!view) return;
 
                 if (addedIds[eid] || addedIds[String(eid)]) {
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#22c55e', 'stroke-width': 3 } } } }); } catch(e) { /* safe */ }
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#22c55e', 'stroke-width': 3 } } } }); } catch(e) { /* swallow-ok: cosmetic diff outline; the NEW and REMOVED badges and the diff summary line carry the same information */ }
                     self._addDiffBadge(cell, 'NEW', '#22c55e');
                 } else if (movedIds[eid] || movedIds[String(eid)]) {
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#3b82f6', 'stroke-width': 3, 'stroke-dasharray': '6,3' } } } }); } catch(e) { /* safe */ }
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#3b82f6', 'stroke-width': 3, 'stroke-dasharray': '6,3' } } } }); } catch(e) { /* swallow-ok: cosmetic diff outline; the NEW and REMOVED badges and the diff summary line carry the same information */ }
                     let mi = movedMap[eid] || movedMap[String(eid)];
                     if (mi) self._addDisplacementArrow(cell, mi.dx, mi.dy);
                 } else if (removedIds[eid] || removedIds[String(eid)]) {
                     view.vel.attr({ opacity: 0.5 });
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#ef4444', 'stroke-width': 2, 'stroke-dasharray': '4,4' } } } }); } catch(e) { /* safe */ }
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#ef4444', 'stroke-width': 2, 'stroke-dasharray': '4,4' } } } }); } catch(e) { /* swallow-ok: cosmetic diff outline; the NEW and REMOVED badges and the diff summary line carry the same information */ }
                     self._addDiffBadge(cell, 'REMOVED', '#ef4444');
                 }
             });
@@ -2913,7 +2924,9 @@ let ComposerPersistence = (function() {
                         ' other user(s) editing this diagram';
                 }
             })
-            .catch(function() {});
+            /* Presence awareness only — a failure here just means the "other editors"
+               indicator doesn't light up this time; nothing for the user to act on. */
+            .catch(function() { /* swallow-ok: presence awareness only; the other-editors indicator just does not light up and no edit of the user's is affected */ });
         },
 
         collaborationLeave: function() {
@@ -2921,10 +2934,11 @@ let ComposerPersistence = (function() {
             let diagramId = self.savedViewpointId;
             if (!diagramId) return;
             let csrfToken = helpers.csrfToken;
+            /* Fire-and-forget cleanup as the user navigates away — nothing actionable. */
             fetch('/archimate/api/diagrams/' + diagramId + '/editors/leave', {
                 method: 'POST',
                 headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
-            }).catch(function() {});
+            }).catch(function() { /* swallow-ok: fire-and-forget presence cleanup as the user navigates away; there is no session left to report into */ });
         },
 
         collaborationRefresh: function() {
@@ -2936,7 +2950,8 @@ let ComposerPersistence = (function() {
             .then(function(data) {
                 self.collaborationOtherEditors = data.count || 0;
             })
-            .catch(function() {});
+            /* Presence awareness only — see collaborationJoin() above. */
+            .catch(function() { /* swallow-ok: presence refresh only, see collaborationJoin above */ });
         },
 
         };

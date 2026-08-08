@@ -123,15 +123,15 @@
                         </td>
                         <td class="px-4 py-3">
                             {% if d.horizon == 'strategic' %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                 Strategic
                             </span>
                             {% elif d.horizon == 'tactical' %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary/90 dark:bg-primary/20 dark:text-primary/80">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary/90">
                                 Tactical
                             </span>
                             {% elif d.horizon == 'operational' %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground dark:bg-card dark:text-foreground/70">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
                                 Operational
                             </span>
                             {% else %}
@@ -163,7 +163,7 @@
                         </td>
                         <td class="px-4 py-3">
                             {% if d.enterprise_level %}
-                            <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Enterprise decision">
+                            <span class="inline-flex items-center gap-1 text-amber-600" title="Enterprise decision">
                                 <i data-lucide="star" class="w-3.5 h-3.5 fill-current" aria-hidden="true"></i>
                                 <span class="text-xs font-medium">Enterprise</span>
                             </span>

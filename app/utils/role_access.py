@@ -20,7 +20,6 @@ from app.models.user import (
     ROLE_PORTFOLIO_MANAGER,
     ROLE_PROCUREMENT,
     ROLE_SOLUTION_ARCHITECT,
-    VALID_ROLES,
 )
 
 
@@ -138,10 +137,27 @@ DEFAULT_ROLE = ROLE_SOLUTION_ARCHITECT
 
 
 def get_user_role(user) -> str:
-    """Get user's enterprise role with fallback to default."""
-    if not user or not hasattr(user, "enterprise_role"):
+    """Get user's enterprise role with fallback to default.
+
+    Must never raise. Since the shipped sidebar started calling
+    can_access_section(), this runs while rendering EVERY authenticated page, so
+    an exception here 500s the whole application rather than one feature.
+
+    Reading the attribute can fail for reasons that have nothing to do with
+    roles: a detached or expired instance re-fetches on access, and if the row
+    has gone (or the session was rolled back mid-request) SQLAlchemy raises
+    ObjectDeletedError. That is exactly what happened on the applications list
+    error path - the view caught its own failure and re-rendered the template,
+    and the sidebar then turned a handled error into an unhandled 500.
+
+    `hasattr` does not protect against this: it only swallows AttributeError.
+    """
+    if not user:
         return DEFAULT_ROLE
-    return user.enterprise_role or DEFAULT_ROLE
+    try:
+        return getattr(user, "enterprise_role", None) or DEFAULT_ROLE
+    except Exception:  # noqa: BLE001 - a nav gate must not be able to 500 a page
+        return DEFAULT_ROLE
 
 
 def can_access_section(user, section: str) -> bool:

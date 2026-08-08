@@ -3,12 +3,7 @@
 # This system enforces proper error analysis, implementation, and testing
 # before any fix can be claimed as complete. NO EXCEPTIONS.
 
-import os
-import subprocess
-import sys
-import time
 from datetime import datetime
-from pathlib import Path
 
 
 class VerificationEnforcer:
@@ -242,14 +237,14 @@ class VerificationEnforcer:
             endpoint = error_analysis["actual_error"].split(": ")[-1]
             steps.append(
                 {
-                    "description": f"Find endpoint implementation in source routes",
+                    "description": "Find endpoint implementation in source routes",
                     "action": "search_endpoint",
                     "target": endpoint,
                 }
             )
             steps.append(
                 {
-                    "description": f"Copy endpoint to unified routes",
+                    "description": "Copy endpoint to unified routes",
                     "action": "copy_endpoint",
                     "target": endpoint,
                 }

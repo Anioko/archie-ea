@@ -1,0 +1,337 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}{{ initiative.name }}{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Portfolio', 'href': url_for('portfolio.index')},
+    {'text': initiative.name, 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 space-y-6">
+
+  <div>
+    <h1 class="text-3xl font-bold">{{ initiative.name }}</h1>
+    <p class="text-muted-foreground mt-2">
+      {{ initiative.current_phase or 'Phase not set' }}
+      &middot; Sponsor: {{ initiative.executive_sponsor or '—' }}
+      &middot; Programme manager: {{ initiative.program_manager or '—' }}
+    </p>
+  </div>
+
+  {# ── Money ─────────────────────────────────────────────────────────────── #}
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-lg border bg-card p-6">
+      <p class="text-sm font-medium text-muted-foreground">Approved budget</p>
+      <p class="text-2xl font-bold mt-3">
+        {% if approved_budget is not none %}{{ '{:,.0f}'.format(approved_budget) }}{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+      </p>
+    </div>
+    <div class="rounded-lg border bg-card p-6">
+      <p class="text-sm font-medium text-muted-foreground">Spent to date</p>
+      <p class="text-2xl font-bold mt-3">
+        {% if spent_to_date is not none %}{{ '{:,.0f}'.format(spent_to_date) }}{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+      </p>
+      {% if spent_to_date is none %}
+      <p class="text-xs text-muted-foreground mt-1">No actuals feed connected</p>
+      {% endif %}
+    </div>
+    <div class="rounded-lg border bg-card p-6">
+      <p class="text-sm font-medium text-muted-foreground">Forecast</p>
+      <p class="text-2xl font-bold mt-3">
+        {% if forecast_cost is not none %}{{ '{:,.0f}'.format(forecast_cost) }}{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+      </p>
+    </div>
+    <div class="rounded-lg border bg-card p-6">
+      <p class="text-sm font-medium text-muted-foreground">Variance</p>
+      <p class="text-2xl font-bold mt-3">
+        {% if variance_pct is not none %}
+          <span class="{% if variance_pct > 10 %}text-destructive{% elif variance_pct > 0 %}text-warning{% else %}text-success{% endif %}">
+            {{ '%+.1f' | format(variance_pct) }}%
+          </span>
+        {% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+      </p>
+    </div>
+  </div>
+
+  {# ── Benefits ──────────────────────────────────────────────────────────── #}
+  <div class="rounded-lg border bg-card">
+    <div class="flex items-center justify-between border-b px-6 py-4">
+      <h2 class="text-xl font-semibold">Benefits</h2>
+      <div class="text-sm text-muted-foreground">
+        Financial target
+        <span class="font-semibold text-foreground">
+          {% if benefit_target is not none %}{{ '{:,.0f}'.format(benefit_target) }}{% else %}&mdash;{% endif %}
+        </span>
+        &middot; realised
+        <span class="font-semibold text-foreground">
+          {% if benefit_actual is not none %}{{ '{:,.0f}'.format(benefit_actual) }}{% else %}&mdash;{% endif %}
+        </span>
+        {% if non_financial_count %}
+        <span class="ml-2">+ {{ non_financial_count }} non-financial</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="border-b bg-muted/40">
+          <tr class="text-left">
+            <th class="px-4 py-3 font-medium">Benefit</th>
+            <th class="px-4 py-3 font-medium">Measure</th>
+            <th class="px-4 py-3 font-medium text-right">Baseline</th>
+            <th class="px-4 py-3 font-medium text-right">Target</th>
+            <th class="px-4 py-3 font-medium text-right">Actual</th>
+            <th class="px-4 py-3 font-medium text-right">Realised</th>
+            <th class="px-4 py-3 font-medium">Owner</th>
+            <th class="px-4 py-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in benefits %}
+          <tr class="border-b last:border-0 {% if b.is_overdue %}bg-destructive/5{% endif %}">
+            <td class="px-4 py-3 font-medium">
+              {{ b.name }}
+              {% if b.is_overdue %}
+              <span class="ml-1 text-xs text-destructive" title="Past target date with no measured actual">overdue</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-muted-foreground">{{ b.measure or '—' }}{% if b.unit %} <span class="text-xs">({{ b.unit }})</span>{% endif %}</td>
+            <td class="px-4 py-3 text-right tabular-nums">{% if b.baseline_value is not none %}{{ '{:,.0f}'.format(b.baseline_value) }}{% else %}&mdash;{% endif %}</td>
+            <td class="px-4 py-3 text-right tabular-nums">{% if b.target_value is not none %}{{ '{:,.0f}'.format(b.target_value) }}{% else %}&mdash;{% endif %}</td>
+            <td class="px-4 py-3 text-right tabular-nums">{% if b.actual_value is not none %}{{ '{:,.0f}'.format(b.actual_value) }}{% else %}&mdash;{% endif %}</td>
+            <td class="px-4 py-3 text-right tabular-nums">
+              {% if b.realisation_percentage is not none %}
+                <span class="{% if b.realisation_percentage >= 90 %}text-success{% elif b.realisation_percentage >= 50 %}text-warning{% else %}text-destructive{% endif %} font-medium">
+                  {{ b.realisation_percentage }}%
+                </span>
+              {% else %}<span class="text-muted-foreground" title="Needs a baseline, a target and a measured actual">&mdash;</span>{% endif %}
+            </td>
+            <td class="px-4 py-3">{{ b.owner.email if b.owner else '—' }}</td>
+            <td class="px-4 py-3">{{ b.status|replace('_',' ')|title }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not benefits %}
+      <p class="text-sm text-muted-foreground py-8 text-center">
+        No benefits recorded. An initiative without a measurable benefit cannot be shown to have paid.
+      </p>
+      {% endif %}
+    </div>
+
+    {# Add a benefit. Baseline is asked for up front on purpose: a target with no
+       baseline cannot be measured against later. #}
+    <form method="post" action="{{ url_for('portfolio.benefit_create', initiative_id=initiative.id) }}"
+          class="border-t px-6 py-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7 items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="lg:col-span-2">
+        <label for="b-name" class="block text-xs font-medium mb-1">Benefit</label>
+        <input id="b-name" name="name" required placeholder="e.g. Retire duplicate CRM licences"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+      <div>
+        <label for="b-type" class="block text-xs font-medium mb-1">Type</label>
+        <select id="b-type" name="benefit_type" class="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <option value="cost_saving">Cost saving</option>
+          <option value="cost_avoidance">Cost avoidance</option>
+          <option value="revenue">Revenue</option>
+          <option value="productivity">Productivity</option>
+          <option value="risk_reduction">Risk reduction</option>
+          <option value="compliance">Compliance</option>
+          <option value="customer">Customer</option>
+          <option value="capability">Capability</option>
+        </select>
+      </div>
+      <div>
+        <label for="b-unit" class="block text-xs font-medium mb-1">Unit</label>
+        <input id="b-unit" name="unit" placeholder="GBP"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground">
+      </div>
+      <div>
+        <label for="b-baseline" class="block text-xs font-medium mb-1">Baseline</label>
+        <input id="b-baseline" name="baseline_value" type="number" step="any"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+      </div>
+      <div>
+        <label for="b-target" class="block text-xs font-medium mb-1">Target</label>
+        <input id="b-target" name="target_value" type="number" step="any"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+      </div>
+      <div>
+        <label for="b-date" class="block text-xs font-medium mb-1">By</label>
+        <input id="b-date" name="target_date" type="date"
+               class="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
+      </div>
+      <div class="lg:col-span-7">
+        <button type="submit" class="h-9 px-4 rounded-md text-sm bg-primary text-primary-foreground hover:bg-primary/90">
+          Add benefit
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {# Record a measurement against an existing benefit. #}
+  {% if benefits %}
+  <div class="rounded-lg border bg-card">
+    <div class="border-b px-6 py-4">
+      <h2 class="text-xl font-semibold">Record a measurement</h2>
+      <p class="text-sm text-muted-foreground mt-1">
+        What turns a claimed benefit into evidence. Status becomes &ldquo;realised&rdquo; only when the
+        numbers support it.
+      </p>
+    </div>
+    <div class="divide-y">
+      {% for b in benefits %}
+      <form method="post" action="{{ url_for('portfolio.benefit_measure', benefit_id=b.id) }}"
+            class="px-6 py-3 flex flex-wrap items-end gap-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="flex-1 min-w-[12rem]">
+          <div class="text-sm font-medium">{{ b.name }}</div>
+          <div class="text-xs text-muted-foreground">
+            baseline {{ b.baseline_value if b.baseline_value is not none else '—' }}
+            &rarr; target {{ b.target_value if b.target_value is not none else '—' }}
+          </div>
+        </div>
+        <div>
+          <label for="m-val-{{ b.id }}" class="block text-xs font-medium mb-1">Actual</label>
+          <input id="m-val-{{ b.id }}" name="actual_value" type="number" step="any" required
+                 class="h-9 w-32 rounded-md border border-input bg-background px-3 text-sm">
+        </div>
+        <div>
+          <label for="m-date-{{ b.id }}" class="block text-xs font-medium mb-1">Measured on</label>
+          <input id="m-date-{{ b.id }}" name="actual_date" type="date"
+                 class="h-9 rounded-md border border-input bg-background px-2 text-sm">
+        </div>
+        <button type="submit" class="h-9 px-3 rounded-md text-sm border border-input hover:bg-accent">Record</button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── RAID: assumptions ─────────────────────────────────────────────────── #}
+  <div class="rounded-lg border bg-card">
+    <div class="border-b px-6 py-4">
+      <h2 class="text-xl font-semibold">Assumptions</h2>
+      <p class="text-sm text-muted-foreground mt-1">Highest exposure first &mdash; impact &times; uncertainty</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="border-b bg-muted/40">
+          <tr class="text-left">
+            <th class="px-4 py-3 font-medium">Assumption</th>
+            <th class="px-4 py-3 font-medium text-right">Exposure</th>
+            <th class="px-4 py-3 font-medium">Validate by</th>
+            <th class="px-4 py-3 font-medium">Owner</th>
+            <th class="px-4 py-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in assumptions %}
+          <tr class="border-b last:border-0 {% if a.is_overdue_for_validation %}bg-warning/5{% endif %}">
+            <td class="px-4 py-3">{{ a.statement }}</td>
+            <td class="px-4 py-3 text-right tabular-nums">{{ a.exposure if a.exposure is not none else '—' }}</td>
+            <td class="px-4 py-3">
+              {{ a.validate_by_date.strftime('%Y-%m-%d') if a.validate_by_date else '—' }}
+              {% if a.is_overdue_for_validation %}<span class="ml-1 text-xs text-warning">overdue</span>{% endif %}
+            </td>
+            <td class="px-4 py-3">{{ a.owner.email if a.owner else '—' }}</td>
+            <td class="px-4 py-3">{{ a.status|title }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not assumptions %}
+      <p class="text-sm text-muted-foreground py-8 text-center">No assumptions recorded.</p>
+      {% endif %}
+    </div>
+
+    {# Resolving keeps the record: an assumption that proved false is the most
+       useful entry in the log, and the one that should have become a risk. #}
+    {% for a in assumptions if a.status == 'open' %}
+    <form method="post" action="{{ url_for('portfolio.assumption_resolve', assumption_id=a.id) }}"
+          class="border-t px-6 py-3 flex flex-wrap items-center gap-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <span class="text-sm flex-1 min-w-[14rem] truncate" title="{{ a.statement }}">{{ a.statement }}</span>
+      <input type="text" name="note" placeholder="What happened (required to invalidate)"
+             class="flex-1 min-w-[14rem] h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground"
+             aria-label="Resolution note">
+      <button name="status" value="validated" class="h-9 px-3 rounded-md text-sm bg-success/10 text-success hover:bg-success/20">Validated</button>
+      <button name="status" value="invalidated" class="h-9 px-3 rounded-md text-sm bg-destructive/10 text-destructive hover:bg-destructive/20">Invalidated</button>
+    </form>
+    {% endfor %}
+
+    <form method="post" action="{{ url_for('portfolio.assumption_create', initiative_id=initiative.id) }}"
+          class="border-t px-6 py-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5 items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="lg:col-span-2">
+        <label for="a-stmt" class="block text-xs font-medium mb-1">Assumption</label>
+        <input id="a-stmt" name="statement" required placeholder="e.g. The vendor API supports bulk export"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+      <div>
+        <label for="a-impact" class="block text-xs font-medium mb-1">Impact if false (1&ndash;5)</label>
+        <input id="a-impact" name="impact_if_false" type="number" min="1" max="5"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+      </div>
+      <div>
+        <label for="a-conf" class="block text-xs font-medium mb-1">Confidence (1&ndash;5)</label>
+        <input id="a-conf" name="confidence" type="number" min="1" max="5"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+      </div>
+      <div>
+        <label for="a-by" class="block text-xs font-medium mb-1">Validate by</label>
+        <input id="a-by" name="validate_by_date" type="date"
+               class="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
+      </div>
+      <div class="lg:col-span-5">
+        <button type="submit" class="h-9 px-4 rounded-md text-sm bg-primary text-primary-foreground hover:bg-primary/90">
+          Log assumption
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {# ── Delivery and origin ───────────────────────────────────────────────── #}
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="rounded-lg border bg-card">
+      <div class="border-b px-6 py-4"><h2 class="text-xl font-semibold">Work packages</h2></div>
+      <ul class="divide-y">
+        {% for wp in work_packages %}
+        <li class="px-6 py-3 flex items-center justify-between">
+          <span>{{ wp.name }}</span>
+          <span class="text-sm text-muted-foreground">
+            {{ wp.percent_complete if wp.percent_complete is not none else '—' }}%
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if not work_packages %}
+      <p class="text-sm text-muted-foreground py-8 text-center">Nothing is delivering this initiative yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="rounded-lg border bg-card">
+      <div class="border-b px-6 py-4"><h2 class="text-xl font-semibold">Originating demand</h2></div>
+      <ul class="divide-y">
+        {% for d in demands %}
+        <li class="px-6 py-3">
+          <div class="font-medium">{{ d.title }}</div>
+          <div class="text-sm text-muted-foreground">
+            {{ d.reference or '—' }} &middot; {{ d.source|replace('_',' ')|title if d.source else '—' }}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if not demands %}
+      <p class="text-sm text-muted-foreground py-8 text-center">No demand recorded &mdash; this initiative has no traceable origin.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

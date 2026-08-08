@@ -25,7 +25,10 @@
                                         method: 'PATCH',
                                         headers: {'Content-Type': 'application/json'},
                                         body: JSON.stringify({lifecycle: $event.target.value})
-                                    }).then(() => loadElements())
+                                    }).then(r => {
+                                        if (!r.ok) { throw new Error('lifecycle update failed: ' + r.status); }
+                                        return loadElements();
+                                    }).catch(() => { Platform.toast.error('Could not update lifecycle phase.'); loadElements(); })
                                 " aria-label="Set lifecycle phase">
                             <option value="current">Current</option>
                             <option value="transitional">Transitional</option>

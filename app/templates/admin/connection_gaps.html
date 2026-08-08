@@ -173,7 +173,7 @@
                             {% if jk in sol.filled %}
                             <span class="inline-block h-3 w-3 rounded-full bg-emerald-500" title="{{ junction_labels[jk] }}: Connected"></span>
                             {% else %}
-                            <span class="inline-block h-3 w-3 rounded-full bg-red-500/40" title="{{ junction_labels[jk] }}: Missing"></span>
+                            <span class="inline-block h-3 w-3 rounded-full bg-destructive/40" title="{{ junction_labels[jk] }}: Missing"></span>
                             {% endif %}
                         </td>
                         {% endfor %}
@@ -200,7 +200,7 @@
             <span class="inline-block h-3 w-3 rounded-full bg-emerald-500"></span> Connected
         </span>
         <span class="flex items-center gap-1.5">
-            <span class="inline-block h-3 w-3 rounded-full bg-red-500/40"></span> Missing
+            <span class="inline-block h-3 w-3 rounded-full bg-destructive/40"></span> Missing
         </span>
         <span class="ml-auto">Column headers: Dri=Drivers, Goa=Goals, Con=Constraints, Req=Requirements, App=Applications, Arc=ArchiMate, Ven=Vendors, Rec=Recommendations, Ris=Risks, Tco=TCO, Met=Metrics, Pla=Plateaus, Apq=APQC, Cap=Capabilities</span>
     </div>

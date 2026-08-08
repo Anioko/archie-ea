@@ -282,6 +282,9 @@ let ComposerGraph = (function() {
                     headers: { 'X-CSRFToken': csrfToken() },
                 }).catch(function(err) {
                     console.warn('Failed to delete relationship ' + relId + ' from server:', err);
+                    /* The link is already gone from the canvas — the user needs to know the
+                       delete did NOT persist, or it will silently reappear on next reload. */
+                    _toast('error', 'Relationship removed on canvas but not saved — it may reappear on reload');
                 });
             }
         },
@@ -339,7 +342,7 @@ let ComposerGraph = (function() {
                         ]
                     });
                     view.addTools(tools);
-                } catch(e) { /* graceful degradation */ }
+                } catch(e) { /* swallow-ok: optional JointJS vertex and segment tools; without them the line is simply not reshapeable, which is the view-mode behaviour anyway */ }
             }
         },
 
@@ -356,7 +359,7 @@ let ComposerGraph = (function() {
                 line.removeAttribute('data-original-stroke');
             }
             /* Remove link tools on deselect */
-            try { view.removeTools(); } catch(e) {}
+            try { view.removeTools(); } catch(e) { /* swallow-ok: cosmetic removal of link tools on deselect */ }
         },
 
         renameElement: function() {
@@ -434,7 +437,12 @@ let ComposerGraph = (function() {
                             }
                         });
                     }
-                }).catch(function() {});
+                }).catch(function() {
+                    /* The element was already removed from the canvas — this call only
+                       checks for downstream impact, but a silent failure here leaves the
+                       architect unaware that dependents might now be stale. */
+                    _toast('error', 'Could not check downstream impact of removing "' + name + '"');
+                });
             }
         },
 
@@ -999,6 +1007,7 @@ let ComposerGraph = (function() {
                     return !validSet[t];
                 });
             })
+            // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
             .catch(function() {
                 self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                 self.relPickerInvalidTypes = [];
@@ -1195,21 +1204,34 @@ let ComposerGraph = (function() {
                 self.customStyleTemplates.push(tmpl);
             }
 
+            let persisted = true;
             try {
                 localStorage.setItem('composer_style_templates', JSON.stringify(self.customStyleTemplates));
-            } catch(e) {}
+            } catch(e) { persisted = false; }
 
             self.newStyleTemplateName = '';
             self.styleTemplateSaveOpen = false;
-            self._toast('Style template "' + tmpl.name + '" saved', 'info');
+            if (persisted) {
+                _toast('info', 'Style template "' + tmpl.name + '" saved');
+            } else {
+                /* Template is only in memory now — it looked saved but will vanish on
+                   reload, so the user has to be told rather than finding out later. */
+                _toast('error', 'Could not save style template "' + tmpl.name + '" — storage unavailable');
+            }
         },
 
         deleteCustomStyleTemplate: function(name) {
             let self = this;
             self.customStyleTemplates = (self.customStyleTemplates || []).filter(function(t) { return t.name !== name; });
+            /* The row vanishes from the list the moment this runs, so a storage
+               failure read as "deleted" — and the template came back on the next
+               reload. saveStyleTemplate() above already reports the mirror-image
+               failure; this one has to as well. */
             try {
                 localStorage.setItem('composer_style_templates', JSON.stringify(self.customStyleTemplates));
-            } catch(e) {}
+            } catch(e) {
+                _toast('error', 'Could not delete style template "' + name + '" — storage unavailable, it will reappear on reload');
+            }
         },
 
         resetElementStyles: function() {
@@ -1514,7 +1536,10 @@ let ComposerGraph = (function() {
             fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
@@ -1582,7 +1607,10 @@ let ComposerGraph = (function() {
             fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
@@ -1613,9 +1641,8 @@ let ComposerGraph = (function() {
                     self._pushUndo();
                 }
             })
-            .catch(function() {
-                /* Silent fail — auto-detect is best-effort */
-            });
+            /* swallow-ok: automatic relationship auto-detect the user never asked for — it runs on drop, adds links when it can, and claims nothing when it cannot */
+            .catch(function() {});
         },
 
         /* CMP2-003: Debounced wrapper (500ms) to avoid hammering API on bulk imports */
@@ -1664,7 +1691,10 @@ let ComposerGraph = (function() {
             fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
@@ -1693,9 +1723,8 @@ let ComposerGraph = (function() {
                     self._pushUndo();
                 }
             })
-            .catch(function() {
-                /* Silent fail — auto-detect is best-effort */
-            });
+            /* swallow-ok: automatic relationship auto-detect the user never asked for — it runs on bulk import, adds links when it can, and claims nothing when it cannot */
+            .catch(function() {});
         },
 
         /* ── CMP2-002: Bulk import from portfolio ───────────── */

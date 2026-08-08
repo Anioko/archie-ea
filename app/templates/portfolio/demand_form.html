@@ -1,0 +1,129 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}Submit demand{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Portfolio', 'href': url_for('portfolio.index')},
+    {'text': 'Demand', 'href': url_for('portfolio.demands')},
+    {'text': 'Submit', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 max-w-3xl space-y-6">
+
+  <div>
+    <h1 class="text-3xl font-bold">Submit a demand</h1>
+    <p class="text-muted-foreground mt-2">
+      A request for change, before it becomes an initiative
+    </p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="rounded-lg border p-4 text-sm
+                {% if category == 'error' %}border-destructive/30 bg-destructive/5 text-destructive
+                {% else %}border-success/30 bg-success/5 text-success{% endif %}">
+      {{ message }}
+    </div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="post" action="{{ request.path }}" class="space-y-6">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="rounded-lg border bg-card p-6 space-y-4">
+      <div>
+        <label for="title" class="block text-sm font-medium mb-1.5">Title <span class="text-destructive">*</span></label>
+        <input id="title" name="title" type="text" required value="{{ form.get('title', '') }}"
+               class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+               placeholder="e.g. Replace the manual supplier onboarding process">
+      </div>
+
+      <div>
+        <label for="description" class="block text-sm font-medium mb-1.5">What is being asked for</label>
+        <textarea id="description" name="description" rows="4"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Describe the change and who it affects">{{ form.get('description', '') }}</textarea>
+      </div>
+
+      <div>
+        <label for="business_justification" class="block text-sm font-medium mb-1.5">Why now</label>
+        <textarea id="business_justification" name="business_justification" rows="3"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="The cost of not doing it, or the deadline driving it">{{ form.get('business_justification', '') }}</textarea>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="source" class="block text-sm font-medium mb-1.5">Source</label>
+          <select id="source" name="source"
+                  class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            <option value="">&mdash;</option>
+            {% for s in sources %}
+            <option value="{{ s }}" {% if form.get('source') == s %}selected{% endif %}>{{ s|replace('_',' ')|title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="requested_for_business_unit" class="block text-sm font-medium mb-1.5">Business unit</label>
+          <input id="requested_for_business_unit" name="requested_for_business_unit" type="text"
+                 value="{{ form.get('requested_for_business_unit', '') }}"
+                 class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-lg border bg-card p-6 space-y-4">
+      <div>
+        <h2 class="text-lg font-semibold">Triage inputs</h2>
+        <p class="text-sm text-muted-foreground mt-1">
+          Optional. Priority is value &times; urgency, and stays blank until both are given &mdash;
+          a score derived from half the inputs is worse than no score.
+        </p>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label for="business_value_score" class="block text-sm font-medium mb-1.5">Business value (1&ndash;5)</label>
+          <input id="business_value_score" name="business_value_score" type="number" min="1" max="5"
+                 value="{{ form.get('business_value_score', '') }}"
+                 class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+        <div>
+          <label for="urgency_score" class="block text-sm font-medium mb-1.5">Urgency (1&ndash;5)</label>
+          <input id="urgency_score" name="urgency_score" type="number" min="1" max="5"
+                 value="{{ form.get('urgency_score', '') }}"
+                 class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+        <div>
+          <label for="effort_estimate_days" class="block text-sm font-medium mb-1.5">Effort (days)</label>
+          <input id="effort_estimate_days" name="effort_estimate_days" type="number" min="0"
+                 value="{{ form.get('effort_estimate_days', '') }}"
+                 class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+        <div>
+          <label for="needed_by_date" class="block text-sm font-medium mb-1.5">Needed by</label>
+          <input id="needed_by_date" name="needed_by_date" type="date"
+                 value="{{ form.get('needed_by_date', '') }}"
+                 class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button type="submit"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+        Submit demand
+      </button>
+      <a href="{{ url_for('portfolio.demands') }}"
+         class="inline-flex items-center gap-2 px-4 py-2 text-sm border border-input rounded-md hover:bg-accent">
+        Cancel
+      </a>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

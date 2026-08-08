@@ -19,10 +19,9 @@ TOGAF ADM Integration:
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
-from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import joinedload
+from sqlalchemy import func, or_
 
 from app import db
 from app.models.architecture_review_board import (
@@ -30,12 +29,8 @@ from app.models.architecture_review_board import (
     ARBBoardMember,
     ARBCapabilityImpact,
     ARBGovernanceStandard,
-    ARBReviewComment,
     ARBReviewItem,
-    ARBReviewStatus,
     ArchitectureReviewBoard,
-    ReviewType,
-    TOGAFPhase,
 )
 
 logger = logging.getLogger(__name__)
@@ -322,7 +317,7 @@ class ARBGovernanceService:
             raise ValueError(f"Review item {review_item_id} not found")
 
         if item.status != "draft":
-            raise ValueError(f"Item must be in draft status to submit")
+            raise ValueError("Item must be in draft status to submit")
 
         item.status = "submitted"
         item.submitted_at = datetime.utcnow()
@@ -670,7 +665,6 @@ class ARBGovernanceService:
 
         # Get linked capabilities
         capability_ids = []
-        from app.models.unified_capability import UnifiedCapability
 
         if adr.linked_capabilities:
             capability_ids = [cap.id for cap in adr.linked_capabilities]

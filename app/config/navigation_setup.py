@@ -5,7 +5,7 @@ Shows how to integrate the new navigation registry into Flask app,
 validate on startup, and provide context processor for templates.
 """
 
-from flask import Flask, g
+from flask import Flask
 from flask_login import current_user
 
 from app.config.navigation_registry_v2 import get_registry, validate_on_startup

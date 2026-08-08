@@ -51,7 +51,7 @@
         <!-- Confirmed specs ready to lock into UML -->
         {% if confirmed_specs_count > 0 %}
         <div x-show="phase >= 2 && !applyingSpecs" x-cloak
-             class="mb-4 flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+             class="mb-4 flex items-start gap-3 rounded-lg border border-info/30 bg-info/10 px-4 py-3 text-sm text-info">
             <i data-lucide="lock" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <div class="flex-1">
                 <strong>{{ confirmed_specs_count }} confirmed spec{{ 's' if confirmed_specs_count != 1 else '' }}</strong>
@@ -59,7 +59,7 @@
                 Applying confirmed specs overwrites the LLM's field inference with your architect-verified definitions — making them binding for Phase 4 code generation.
             </div>
             <button @click="applySpecs()" :disabled="applyingSpecs"
-                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-blue-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-blue-600 text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
                 <i data-lucide="lock" class="h-3 w-3"></i>
                 Apply Specs
             </button>
@@ -68,10 +68,10 @@
 
         <!-- Error banners -->
         <template x-for="err in errors" :key="err.id">
-            <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+            <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">
                 <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
                 <span x-text="err.text" class="flex-1"></span>
-                <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-red-600">
+                <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-destructive">
                     <i data-lucide="x" class="h-3.5 w-3.5"></i>
                 </button>
             </div>
@@ -315,7 +315,7 @@
                             <template x-for="(el, i) in (nlResult && nlResult.elements || [])" :key="i">
                                 <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-background border border-border text-xs">
                                     <span class="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                                          :class="{'bg-blue-500':el.layer==='Business','bg-violet-500':el.layer==='Application','bg-orange-500':el.layer==='Technology','bg-gray-400':el.layer==='Implementation'}"></span>
+                                          :class="{'bg-info':el.layer==='Business','bg-violet-500':el.layer==='Application','bg-orange-500':el.layer==='Technology','bg-gray-400':el.layer==='Implementation'}"></span>
                                     <span class="truncate font-mono text-foreground" x-text="el.name" :title="el.name + ' (' + el.type + ')'"></span>
                                 </div>
                             </template>
@@ -333,7 +333,7 @@
                     {% if confirmed_specs_count > 0 %}
                     {% set spec_s = 's' if confirmed_specs_count != 1 else '' %}
                     <button @click="applySpecs()" :disabled="applyingSpecs || !uml"
-                            class="inline-flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-700 px-4 py-2 text-sm font-medium hover:bg-blue-500/20 disabled:opacity-50 transition-colors"
+                            class="inline-flex items-center gap-2 rounded-md border border-info/40 bg-info/10 text-info px-4 py-2 text-sm font-medium hover:bg-info/20 disabled:opacity-50 transition-colors"
                             title="Lock {{ confirmed_specs_count }} confirmed field spec{{ spec_s }} into UML classes">
                         <i data-lucide="lock" class="h-4 w-4"></i>
                         <span x-text="applyingSpecs ? 'Applying…' : 'Apply {{ confirmed_specs_count }} Confirmed Spec{{ spec_s }}'"></span>
@@ -453,18 +453,18 @@
                                                 <tbody>
                                                     <template x-for="(field, idx) in (editingFields[cls.name] || cls.fields || [])" :key="idx">
                                                         <tr class="border-b border-border/50 hover:bg-muted/20">
-                                                            <td class="py-1 px-2"><input type="text" x-model="field.name" class="w-full rounded border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring" :class="validateField(field) ? 'border-red-400' : 'border-input'" placeholder="field_name" aria-label="field_name"><span x-show="validateField(field)" x-cloak class="text-[10px] text-red-500 mt-0.5 block" x-text="validateField(field)"></span></td>
+                                                            <td class="py-1 px-2"><input type="text" x-model="field.name" class="w-full rounded border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring" :class="validateField(field) ? 'border-destructive' : 'border-input'" placeholder="field_name" aria-label="field_name"><span x-show="validateField(field)" x-cloak class="text-[10px] text-destructive mt-0.5 block" x-text="validateField(field)"></span></td>
                                                             <td class="py-1 px-2"><select x-model="field.type" class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Type"><option value="int">int</option><option value="str">str</option><option value="float">float</option><option value="Decimal">Decimal</option><option value="datetime">datetime</option><option value="bool">bool</option><option value="UUID">UUID</option></select></td>
                                                             <td class="py-1 px-2 text-center"><input type="checkbox" x-model="field.nullable" class="h-3.5 w-3.5 accent-primary"></td>
                                                             <td class="py-1 px-2"><input type="text" x-model="field.description" class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" placeholder="Description" aria-label="Description"></td>
-                                                            <td class="py-1 px-2"><button aria-label="Remove" @click="removeField(cls.name, idx)" class="text-muted-foreground hover:text-red-500 transition-colors"><i data-lucide="x" class="h-3.5 w-3.5"></i></button></td>
+                                                            <td class="py-1 px-2"><button aria-label="Remove" @click="removeField(cls.name, idx)" class="text-muted-foreground hover:text-destructive transition-colors"><i data-lucide="x" class="h-3.5 w-3.5"></i></button></td>
                                                         </tr>
                                                     </template>
                                                 </tbody>
                                             </table>
                                             <div class="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
                                                 <button @click="addField(cls.name)" class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><i data-lucide="plus" class="h-3 w-3"></i> Add Field</button>
-                                                <button @click="confirmClass(cls)" :disabled="confirmingClass === cls.name" class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"><i data-lucide="check" class="h-3 w-3"></i><span x-text="confirmingClass === cls.name ? 'Saving…' : 'Confirm Fields'"></span></button>
+                                                <button @click="confirmClass(cls)" :disabled="confirmingClass === cls.name" class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"><i data-lucide="check" class="h-3 w-3"></i><span x-text="confirmingClass === cls.name ? 'Saving…' : 'Confirm Fields'"></span></button>
                                             </div>
                                         </div>
                                     </div>
@@ -630,7 +630,7 @@
                                         </div>
                                     </template>
                                     <template x-if="sapImport.error">
-                                        <div class="rounded-md bg-red-500/10 border border-red-500/30 p-3 text-xs">
+                                        <div class="rounded-md bg-destructive/10 border border-destructive/30 p-3 text-xs">
                                             <p class="font-semibold text-destructive">Import error</p>
                                             <p class="text-muted-foreground mt-1" x-text="sapImport.error"></p>
                                         </div>
@@ -742,7 +742,7 @@
             <div x-show="phase >= 4" x-collapse class="border-t border-border px-5 pb-5 pt-4">
                 <!-- Error banners -->
                 <template x-for="err in errors" :key="err.id">
-                    <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-destructive">
+                    <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                         <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
                         <span x-text="err.text" class="flex-1"></span>
                         <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-destructive"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>

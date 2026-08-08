@@ -13,7 +13,7 @@ Blueprint name: metrics_v2 (distinct from v1)
 
 import re
 
-from flask import Blueprint, Response, render_template
+from flask import Blueprint, render_template
 
 from app.core.api import api_success
 from app.core.compat import mark_blueprint_guardrailed

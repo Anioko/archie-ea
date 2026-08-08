@@ -24,10 +24,12 @@ function loadReviewQueue() {
                 updatePendingCount(data.total_items);
             } else {
                 console.error('Failed to load review queue:', data.error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not load the review queue.');
             }
         })
         .catch(function(error) {
             console.error('Error loading review queue:', error);
+            if (window.Platform && Platform.toast) Platform.toast.error('Could not load the review queue.');
         })
         .finally(function() {
             document.getElementById('loading').classList.add('hidden');

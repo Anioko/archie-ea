@@ -10,11 +10,9 @@ Features:
 """
 
 import logging
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy import and_, or_
 
-from app import db
 from app.models.application_layer import ApplicationComponent
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 from app.models.vendor.vendor_organization import VendorOrganization
@@ -259,7 +257,7 @@ class KnowledgeGraphService:
                         "type": rel_info.get("type", "Association"),
                         "confidence": 0.7,
                         "source_method": "knowledge_graph",
-                        "description": f"Suggested from knowledge graph pattern",
+                        "description": "Suggested from knowledge graph pattern",
                     }
                 )
 

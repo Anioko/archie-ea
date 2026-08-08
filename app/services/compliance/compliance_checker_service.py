@@ -10,16 +10,14 @@ architecture decisions comply with mandatory regulations and constraints.
 
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 from app import db
-from app.models import ArchiMateElement, ArchitectureModel
+from app.models import ArchitectureModel
 from app.models.compliance_models import (
-    ComplianceControl,
     ComplianceGap,
     ComplianceRequirement,
     ProjectConstraint,
-    QualityAttribute,
     RegulatoryFramework,
 )
 
@@ -381,7 +379,7 @@ class ComplianceCheckerService:
             ]
             if budget_issues:
                 recommendations.append(
-                    f"💰 Budget constraints violated. Reduce scope or request additional funding."
+                    "💰 Budget constraints violated. Reduce scope or request additional funding."
                 )
 
         return recommendations

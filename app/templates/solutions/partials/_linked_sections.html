@@ -135,9 +135,9 @@
                         <div class="flex items-center gap-2">
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
                                   :class="adr.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
-                                           (adr.status === 'deprecated' || adr.status === 'superseded') ? 'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30' :
-                                           adr.status === 'proposed' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
-                                           'bg-primary/10 text-primary border border-primary/30'"
+ (adr.status === 'deprecated' || adr.status === 'superseded') ? 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30' :
+ adr.status === 'proposed' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+ 'bg-primary/10 text-primary border border-primary/30'"
                                   x-text="adr.status || 'draft'"></span>
                             <button type="button" @click="unlinkEntity('adr', adr.id)"
                                 class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove">
@@ -290,12 +290,12 @@
                 <div class="flex items-center gap-3 min-w-0 flex-1">
                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
                           :class="{
-                              'bg-amber-500/10 text-amber-600 border-amber-500/30': el.layer === 'business',
-                              'bg-sky-500/10 text-sky-600 border-sky-500/30': el.layer === 'application',
-                              'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': el.layer === 'technology',
-                              'bg-violet-500/10 text-violet-600 border-violet-500/30': el.layer === 'strategy' || el.layer === 'motivation',
-                              'bg-muted text-muted-foreground border-border': !['business','application','technology','strategy','motivation'].includes(el.layer)
-                          }"
+ 'bg-amber-500/10 text-amber-600 border-amber-500/30': el.layer === 'business',
+ 'bg-sky-500/10 text-sky-600 border-sky-500/30': el.layer === 'application',
+ 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': el.layer === 'technology',
+ 'bg-violet-500/10 text-violet-600 border-violet-500/30': el.layer === 'strategy' || el.layer === 'motivation',
+ 'bg-muted text-muted-foreground border-border': !['business','application','technology','strategy','motivation'].includes(el.layer)
+ }"
                           x-text="el.layer"></span>
                     <div class="min-w-0 flex-1">
                         <input type="text" x-model="el.name"
@@ -346,7 +346,7 @@
                     <span x-text="req.name || ('Requirement #' + req.id)"></span>
                     <span x-show="req.moscow_priority" x-cloak
                           class="px-1 py-0 rounded text-[10px] font-bold"
-                          :class="{'bg-red-200 text-red-800': req.moscow_priority === 'MUST', 'bg-yellow-200 text-yellow-800': req.moscow_priority === 'SHOULD', 'bg-muted text-foreground': req.moscow_priority === 'WONT'}"
+                          :class="{'bg-destructive text-destructive-emphasis': req.moscow_priority === 'MUST', 'bg-yellow-200 text-yellow-800': req.moscow_priority === 'SHOULD', 'bg-muted text-foreground': req.moscow_priority === 'WONT'}"
                           x-text="req.moscow_priority"></span>
                     <button type="button" @click="unlinkEntity('requirement', req.id)"
                         class="text-primary/60 hover:text-destructive ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Remove" aria-label="Remove requirement link">
@@ -471,7 +471,7 @@
                                 <div class="flex items-center gap-2">
                                     <p class="text-sm font-medium text-foreground truncate" x-text="item.name"></p>
                                     <template x-if="manageModalType === 'application' && item.name && (item.name.startsWith('(Duplicate)') || item.is_duplicate)">
-                                        <span class="flex-shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">
+                                        <span class="flex-shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-300">
                                             Duplicate
                                         </span>
                                     </template>

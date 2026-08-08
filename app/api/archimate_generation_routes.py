@@ -7,7 +7,6 @@ Provides comprehensive API for enterprise architecture modeling from vendor and 
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional  # dead-code-ok: used by type hints in docstrings
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required

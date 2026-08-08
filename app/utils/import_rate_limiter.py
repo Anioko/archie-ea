@@ -14,11 +14,10 @@ Features:
 
 import logging
 import time
-from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
 from collections import defaultdict, deque
 
-from flask import request, g
+from flask import request
 from flask_login import current_user
 
 logger = logging.getLogger(__name__)

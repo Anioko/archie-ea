@@ -5,28 +5,17 @@ Provides validation and analysis services for data architecture models
 according to ArchiMate 3.2 specifications and relationship rules.
 """
 
-from typing import Dict, List, Optional, Set, Tuple  # dead-code-ok
+from typing import Dict, List  # dead-code-ok
 
 from sqlalchemy.orm import joinedload
 
 from app.models import (  # dead-code-ok
-    ApplicationComponent,
     ArchiMateElement,
     ArchiMateRelationship,
-    BusinessCapability,
-    BusinessEvent,
-    BusinessObject,
-    BusinessProcess,
     ConceptualDataModel,
     DataLineage,
-    DataObject,
-    DataTransformation,
     LogicalDataModel,
-    Meaning,
-    Node,
     PhysicalDataModel,
-    Representation,
-    SystemSoftware,
 )
 
 
@@ -317,22 +306,22 @@ class DataArchitectureService:
         """Serialize data lineage with ArchiMate metadata."""
         return [
             {
-                "id": l.id,
-                "name": l.name,
-                "description": l.description,
-                "archimate_element_id": l.archimate_element_id,
-                "lineage_type": l.lineage_type,
-                "source_system": l.source_system,
-                "target_system": l.target_system,
-                "data_domain": l.data_domain,
-                "data_classification": l.data_classification,
-                "frequency": l.frequency,
-                "transformation_count": len(l.transformations)
-                if hasattr(l, "transformations")
+                "id": item.id,
+                "name": item.name,
+                "description": item.description,
+                "archimate_element_id": item.archimate_element_id,
+                "lineage_type": item.lineage_type,
+                "source_system": item.source_system,
+                "target_system": item.target_system,
+                "data_domain": item.data_domain,
+                "data_classification": item.data_classification,
+                "frequency": item.frequency,
+                "transformation_count": len(item.transformations)
+                if hasattr(item, "transformations")
                 else 0,
-                "created_at": l.created_at.isoformat() if l.created_at else None,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
             }
-            for l in lineage
+            for item in lineage
         ]
 
     def _extract_archimate_relationships(self, architecture_model_id: int) -> List[Dict]:

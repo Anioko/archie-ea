@@ -141,7 +141,7 @@
                                 'bg-primary/10 text-primary/90':   entry.comm_type === 'meeting',
                                 'bg-emerald-500/10 text-green-800':  entry.comm_type === 'email',
                                 'bg-purple-100 text-purple-800': entry.comm_type === 'decision',
-                                'bg-destructive/10 text-red-800':    entry.comm_type === 'escalation',
+                                'bg-destructive/10 text-destructive-emphasis':    entry.comm_type === 'escalation',
                                 'bg-amber-100 text-amber-800':  entry.comm_type === 'status_update'
                             }"
                             x-text="entry.comm_type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())"

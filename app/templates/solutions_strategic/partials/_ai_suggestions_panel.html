@@ -149,9 +149,27 @@
         }
     }
 
+    // Each section below hides its container unless it has content. A failed
+    // fetch therefore looked exactly like "the AI had nothing to suggest here",
+    // which is the opposite of the truth — the suggestions may exist and simply
+    // not have arrived. Reveal the section with an explicit failure line instead.
+    function showSectionError(containerId, bodyId, what) {
+        const container = document.getElementById(containerId);
+        const body = document.getElementById(bodyId);
+        if (body) {
+            body.textContent = '';
+            const p = document.createElement('p');
+            p.className = 'text-sm text-destructive';
+            p.textContent = what + ' could not be loaded. Refresh to try again.';
+            body.appendChild(p);
+        }
+        if (container) container.classList.remove('hidden');
+    }
+
     async function loadVendorSuggestions() {
         try {
             const res = await fetch(`/api/solutions/${solutionId}/suggestions/vendors`);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             if (data.suggestions && data.suggestions.length > 0) {
                 const container = document.getElementById('vendor-suggestions-container');
@@ -168,12 +186,14 @@
             }
         } catch (err) {
             console.warn('Vendor suggestions failed:', err);
+            showSectionError('vendor-suggestions-container', 'vendor-list', 'Recommended vendors');
         }
     }
 
     async function loadArchitecture() {
         try {
             const res = await fetch(`/api/solutions/${solutionId}/suggestions/archimate`);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             if (data.suggestions && data.suggestions.length > 0) {
                 const container = document.getElementById('archimate-suggestions-container');
@@ -189,12 +209,14 @@
             }
         } catch (err) {
             console.warn('Architecture suggestions failed:', err);
+            showSectionError('archimate-suggestions-container', 'archimate-list', 'ArchiMate element suggestions');
         }
     }
 
     async function loadRisks() {
         try {
             const res = await fetch(`/api/solutions/${solutionId}/suggestions/risks`);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             if (data.suggestions && data.suggestions.length > 0) {
                 const container = document.getElementById('risk-suggestions-container');
@@ -216,12 +238,14 @@
             }
         } catch (err) {
             console.warn('Risk suggestions failed:', err);
+            showSectionError('risk-suggestions-container', 'risk-list', 'Identified risks');
         }
     }
 
     async function loadCosts() {
         try {
             const res = await fetch(`/api/solutions/${solutionId}/suggestions/costs`);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             if (data.suggestion) {
                 const container = document.getElementById('cost-suggestions-container');
@@ -244,12 +268,14 @@
             }
         } catch (err) {
             console.warn('Cost suggestions failed:', err);
+            showSectionError('cost-suggestions-container', 'cost-data', 'The cost estimate');
         }
     }
 
     async function loadNextActions() {
         try {
             const res = await fetch(`/api/solutions/${solutionId}/suggestions/next-actions`);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             if (data.next_actions && data.next_actions.length > 0) {
                 const container = document.getElementById('next-actions-container');
@@ -267,6 +293,7 @@
             }
         } catch (err) {
             console.warn('Next actions failed:', err);
+            showSectionError('next-actions-container', 'actions-list', 'Next phase actions');
         }
     }
 
@@ -279,9 +306,16 @@
                 const feedbackType = btn.getAttribute('data-type');
                 const reason = reasonInput.value || '';
 
-                // Visual feedback
+                // Optimistic selection — reverted below if the POST does not land,
+                // so a highlighted button always means "recorded", never "sent".
+                const previous = Array.from(feedbackBtns).filter(b => b.classList.contains('selected'));
                 feedbackBtns.forEach(b => b.classList.remove('selected'));
                 btn.classList.add('selected');
+
+                function revertSelection() {
+                    btn.classList.remove('selected');
+                    previous.forEach(b => b.classList.add('selected'));
+                }
 
                 // Submit feedback
                 try {
@@ -294,14 +328,18 @@
                             reasoning_state_id: reasoningStateId
                         })
                     });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
                     const result = await res.json();
                     if (result.success) {
+                        Platform.toast.success('Feedback recorded.');
                     } else {
-                        Platform.alert('Failed to record feedback');
+                        revertSelection();
+                        Platform.toast.error(result.error || 'Your feedback could not be recorded.');
                     }
                 } catch (err) {
                     console.error('Feedback submission error:', err);
-                    Platform.alert('Error submitting feedback');
+                    revertSelection();
+                    Platform.toast.error('Your feedback could not be recorded.');
                 }
             });
         });

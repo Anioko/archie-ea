@@ -144,7 +144,7 @@ class ArchiMateExchangeService:
         )
 
         # Map ArchiMate exchange type to our ElementType enum
-        kg_element_type = ArchiMateExchangeService._map_exchange_type_to_kg(element_type)
+        ArchiMateExchangeService._map_exchange_type_to_kg(element_type)
 
         properties = {
             "archimate_id": element_id,
@@ -270,7 +270,7 @@ class ArchiMateExchangeService:
                     relationship, element_mapping
                 )
                 relationships_container.append(xml_relationship)
-            except Exception as e:
+            except Exception:
                 # Skip relationships with missing mappings
                 continue
 
@@ -301,9 +301,9 @@ class ArchiMateExchangeService:
         for key, value in element.properties.items():
             if key.startswith("property_"):
                 prop_key = key[9:]  # Remove 'property_' prefix
-                prop_elem = ET.SubElement(
+                (ET.SubElement(
                     xml_element, "archimate:property", {"key": prop_key, "value": str(value)}
-                )
+                ))
 
         return xml_element
 
@@ -369,7 +369,6 @@ class ArchiMateExchangeService:
         """Map ArchiMate exchange relationship type to our KGRelationshipType enum."""
         # Simplified mapping
         type_mapping = {
-            "association": KGRelationshipType.DEPENDS_ON,
             "realization": KGRelationshipType.DEPENDS_ON,
             "serving": KGRelationshipType.PROVIDES,
             "assignment": KGRelationshipType.MAPS_TO,

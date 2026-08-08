@@ -11,7 +11,6 @@ Flask CLI commands for managing ACM technical capabilities:
 import click
 from flask.cli import with_appcontext
 
-from ..models.technical_capability import ACMDomain
 from ..services.acm_technical_capability_service import ACMTechnicalCapabilityService
 
 
@@ -29,7 +28,7 @@ def seed_acm():
 
     result = ACMTechnicalCapabilityService.seed_capabilities()
 
-    click.echo(f"\nACM Seed Results:")
+    click.echo("\nACM Seed Results:")
     click.echo(f"  Created: {result['created']}")
     click.echo(f"  Updated: {result['updated']}")
     click.echo(f"  Total capabilities: {result['total']}")

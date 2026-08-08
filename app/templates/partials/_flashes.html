@@ -4,20 +4,20 @@
     {% with msgs = get_flashed_messages(category_filter=[category]) %}
         {% for msg in msgs %}
             {% if category == 'error' %}
-                {% set alert_class = 'border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive' %}
+                {% set alert_class = 'border-destructive/50 text-destructive [&>svg]:text-destructive' %}
                 {% set bg_class = 'bg-destructive/10' %}
                 {% set icon_name = 'alert-circle' %}
             {% elif category == 'warning' %}
-                {% set alert_class = 'border-warning/50 text-warning dark:border-warning [&>svg]:text-warning' %}
-                {% set bg_class = 'bg-warning/5 dark:bg-warning/20' %}
+                {% set alert_class = 'border-warning/50 text-warning [&>svg]:text-warning' %}
+                {% set bg_class = 'bg-warning/5' %}
                 {% set icon_name = 'alert-triangle' %}
             {% elif category == 'success' %}
-                {% set alert_class = 'border-success/50 text-success dark:border-success [&>svg]:text-success' %}
-                {% set bg_class = 'bg-success/5 dark:bg-success/20' %}
+                {% set alert_class = 'border-success/50 text-success [&>svg]:text-success' %}
+                {% set bg_class = 'bg-success/5' %}
                 {% set icon_name = 'check-circle' %}
             {% else %}
-                {% set alert_class = 'border-primary/50 text-primary dark:border-primary [&>svg]:text-primary' %}
-                {% set bg_class = 'bg-primary/5 dark:bg-primary/20' %}
+                {% set alert_class = 'border-primary/50 text-primary [&>svg]:text-primary' %}
+                {% set bg_class = 'bg-primary/5' %}
                 {% set icon_name = 'info' %}
             {% endif %}
             
@@ -41,7 +41,7 @@
                     </div>
                     <button 
                         @click="clearTimeout(timeout); flashVisible = false"
-                        class="flex-shrink-0 rounded-md p-1 hover:bg-black/5 dark:hover:bg-background/10 transition-colors"
+                        class="flex-shrink-0 rounded-md p-1 hover:bg-black/5 transition-colors"
                         aria-label="Close alert"
                     >
                         <i data-lucide="x" class="w-4 h-4"></i>

@@ -4,21 +4,24 @@ Core CRUD Routes for Application Management
 Handles create, read (legacy redirect), update, and delete operations for ApplicationComponent.
 """
 
+from datetime import datetime
 from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
-from flask_login import current_user, login_required
+from flask_login import login_required
 
 from .. import db
-from ..models.application_layer import (
-    ApplicationFunction,
-    ApplicationProcess,
-    DataObject,
-)
 from ..models.application_portfolio import ApplicationComponent
 from ..models.models import ArchiMateElement, ArchiMateRelationship
 from ..models.requirements import Requirement
+from ..utils.html_sanitizer import sanitize_html
+from ..utils.validators import (
+    validate_application_name,
+    validate_description,
+    validate_integer,
+    validate_string,
+)
 from . import application_mgmt
 from .forms import ApplicationComponentForm
-from .routes import _build_vendor_product_choices, _redirect_to_detail, _sync_vendor_products
+from .routes import _build_vendor_product_choices, _sync_vendor_products
 
 @application_mgmt.route("/applications/create", methods=["GET", "POST"])
 @login_required
@@ -387,7 +390,11 @@ def application_edit(id):
                 "applications/edit.html",
                 form=form,
                 mode="edit",
-                app=app,
+                # The template reads `application`, not `app`. Passing only `app`
+                # raised UndefinedError on the very first line ({{ application.name }}),
+                # so the validation-failure branch 500'd instead of redisplaying
+                # the form with its error message.
+                application=app,
             )
 
         app.name = form.name.data
@@ -542,7 +549,6 @@ def application_edit(id):
     requirements = Requirement.query.filter_by(application_component_id=app.id).all()
     drivers = Driver.query.filter_by(application_component_id=app.id).all()
     goals = Goal.query.filter_by(application_component_id=app.id).all()
-    from ..models.models import Outcome
 
     outcomes = (
         Outcome.query.filter_by(architecture_id=app.architecture_id).all()
@@ -683,7 +689,8 @@ def application_edit(id):
         "applications/edit.html",
         form=form,
         mode="edit",
-        app=app,
+        # The template reads `application`, not `app`.
+        application=app,
         application_functions=application_functions,
         application_processes=application_processes,
         data_objects=data_objects,

@@ -31,7 +31,7 @@ def sync_pricing(provider, service, region):
         return
 
     result = connector.sync(service_filter=service)
-    click.echo(f"Sync complete:")
+    click.echo("Sync complete:")
     click.echo(f"  Services synced: {result.services_synced}")
     click.echo(f"  Pricing rows created: {result.pricing_rows_created}")
     click.echo(f"  Pricing rows updated: {result.pricing_rows_updated}")

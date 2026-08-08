@@ -47,7 +47,11 @@ INTENTIONALLY_GLOBAL = {
     "ApplicationOwner": "queried by user_id, which already implies one tenant",
     "ApplicationDocument": "reached via ApplicationComponent; handlers verify ownership",
     "ContractApplication": "join row between two scoped parents",
-    "VendorProductCapability": "vendor catalogue is shared reference data",
+    # VendorProductCapability was listed here on the reasoning that the vendor
+    # catalogue is shared. The catalogue is — VendorOrganization stays global —
+    # but an assessment of how a product covers a business_capability is not:
+    # that capability is tenant-owned, so the row describes one customer's
+    # model. It now carries TenantMixin. See tests/test_vendor_tenancy_policy.py.
     "VendorProductPricing": "vendor catalogue is shared reference data",
     "SolutionScoringConfig": "scoring defaults are platform-level",
     "OrgConnectorConfig": "queried by explicit organization_id in every caller",
@@ -166,13 +170,20 @@ def test_tenant_mixin_actually_filters_reads(app):
         "The isolation listener is not applying." % (a_id, b_id))
 
 
-def test_bulk_delete_still_bypasses_the_filter(app):
-    """Pin the documented limitation so it cannot quietly change.
+def test_bulk_delete_is_tenant_filtered(app):
+    """ADR-0003 gap 1 is closed: a bulk DELETE cannot cross tenants.
 
-    do_orm_execute returns early for non-SELECT, so a bulk DELETE is NOT scoped.
-    Every bulk write must carry organization_id in its own predicate. If this
-    ever starts passing, the guidance in CLAUDE.md is wrong and callers relying
-    on it need revisiting.
+    This test previously pinned the opposite — do_orm_execute returned early for
+    non-SELECT, so a bulk DELETE carried no tenant predicate — and its own
+    docstring said that if it ever started passing, CLAUDE.md and the callers
+    relying on that guidance needed revisiting. That is exactly what happened:
+    the listener now applies with_loader_criteria to ORM-enabled UPDATE and
+    DELETE as well, CLAUDE.md's bulk-write paragraph has been rewritten, and the
+    two strict xfails in tests/test_tenant_isolation.py are plain passes.
+
+    Bulk writes should still carry organization_id explicitly as
+    defence-in-depth: raw SQL and anything outside a request context remain
+    unfiltered (gap 2, by design).
     """
     from app import db
     from app.models.application_portfolio import ApplicationComponent
@@ -193,12 +204,34 @@ def test_bulk_delete_still_bypasses_the_filter(app):
         from flask import g
 
         g.current_org_id = a_id
-        # Unscoped bulk delete issued from tenant A, targeting a row owned by B.
+        # Bulk delete issued from tenant A, targeting a row owned by B, with no
+        # organization_id of its own in the predicate — the mechanism must supply it.
         deleted = ApplicationComponent.query.filter(
             ApplicationComponent.name == "bulk-target %s" % marker
         ).delete(synchronize_session=False)
         db.session.commit()
 
-    assert deleted == 1, (
-        "bulk DELETE is now tenant-filtered. That is safer, but CLAUDE.md and "
-        "several call sites document the opposite - update them together.")
+    assert deleted == 0, (
+        "TENANT LEAK: a bulk DELETE issued in org %d's context matched org %d's "
+        "row. do_orm_execute is not applying the tenant filter to DELETE." % (a_id, b_id))
+
+    # And the row is genuinely still there, read back as its owner.
+    with app.test_request_context():
+        from flask import g
+
+        g.current_org_id = b_id
+        survivor = ApplicationComponent.query.filter(
+            ApplicationComponent.name == "bulk-target %s" % marker
+        ).one_or_none()
+        assert survivor is not None, "org B's row was destroyed by org A's bulk delete"
+
+    # This test commits real rows; clean them up rather than leaving residue in
+    # the shared test database (the 540 stale organisations in it came from
+    # exactly this pattern).
+    with app.app_context():
+        ApplicationComponent.query.filter(
+            ApplicationComponent.name == "bulk-target %s" % marker
+        ).delete(synchronize_session=False)
+        Organization.query.filter(Organization.id.in_([a_id, b_id])).delete(
+            synchronize_session=False)
+        db.session.commit()

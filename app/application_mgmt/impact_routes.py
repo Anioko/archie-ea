@@ -208,7 +208,7 @@ def ai_analyze():
         data = request.get_json()
         app_id = data.get("app_id")
         scenario = data.get("scenario", "custom")
-        context = data.get("context", {})  # Additional context from frontend
+        data.get("context", {})
 
         if not app_id:
             return jsonify({"error": "Application ID is required"}), 400
@@ -256,7 +256,7 @@ def ai_analyze():
                 }
             )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"available": False, "error": "Invalid request parameters"}), 400
     except Exception as e:
         current_app.logger.error(f"AI analysis failed: {e}", exc_info=True)

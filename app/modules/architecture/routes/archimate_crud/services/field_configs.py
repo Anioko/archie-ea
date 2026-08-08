@@ -365,8 +365,11 @@ ELEMENT_TYPE_CONFIGS: Dict[str, ElementTypeConfig] = {
     ),
 
     # ── Technology Layer ─────────────────────────────────────────────────────
-    'TechnologyNode': ElementTypeConfig(
-        element_type='TechnologyNode',
+    # Keyed as 'Node' (not 'TechnologyNode') to match the element_type string
+    # MODEL_REGISTRY and LAYER_CONFIG actually use in routes.py — a mismatched
+    # key here means get_element_config('Node') never finds this config.
+    'Node': ElementTypeConfig(
+        element_type='Node',
         layer='technology',
         display_name='Technology Node',
         description='A computational or physical resource hosting, executing, or processing artifacts',
@@ -379,8 +382,9 @@ ELEMENT_TYPE_CONFIGS: Dict[str, ElementTypeConfig] = {
                 placeholder='e.g., AWS us-east-1, On-Prem DC1', grid_column=2),
         ]
     ),
-    'TechnologyDevice': ElementTypeConfig(
-        element_type='TechnologyDevice',
+    # Keyed as 'Device' for the same reason — see 'Node' above.
+    'Device': ElementTypeConfig(
+        element_type='Device',
         layer='technology',
         display_name='Device',
         description='A physical IT resource upon which system software and artifacts can be stored or deployed',
@@ -543,6 +547,6 @@ def create_empty_form_data(element_type: str) -> Dict[str, str]:
         return {}
     
     data = {'name': '', 'description': ''}
-    for field in config.fields:
-        data[field.name] = ''
+    for item in config.fields:
+        data[item.name] = ''
     return data

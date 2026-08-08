@@ -25,7 +25,7 @@
     {% if pending_approvals %}
     <div class="space-y-4">
         {% for instance in pending_approvals %}
-        <div class="rounded-xl border-2 border-warning/20 bg-warning/5 dark:bg-warning/20 p-6">
+        <div class="rounded-xl border-2 border-warning/20 bg-warning/5 p-6">
             <div class="flex items-start justify-between mb-4">
                 <div>
                     <h3 class="text-lg font-semibold">{{ instance.workflow_definition.workflow_name if instance.workflow_definition else 'Unknown Workflow' }}</h3>
@@ -63,12 +63,12 @@
                     View Details
                 </a>
                 <button @click="approveWorkflow({{ instance.id }})"
-                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-success text-white hover:bg-success text-sm" aria-label="Approve">
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-success text-primary-foreground hover:bg-success text-sm" aria-label="Approve">
                     <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
                     Approve & Continue
                 </button>
                 <button @click="rejectWorkflow({{ instance.id }})"
-                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive text-white hover:bg-destructive text-sm" aria-label="Reject">
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive text-primary-foreground hover:bg-destructive text-sm" aria-label="Reject">
                     <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
                     Reject
                 </button>

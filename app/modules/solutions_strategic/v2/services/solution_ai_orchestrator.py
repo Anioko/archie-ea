@@ -917,7 +917,7 @@ class SolutionAIOrchestrator:
             from app.modules.ai_chat.services.solution_ai_service import SolutionAIService
 
             vendors = wave1_context.get("vendors") or []
-            vendor_names = [v.get("name", "") for v in vendors if v.get("name")]
+            [v.get("name", "") for v in vendors if v.get("name")]
 
             svc = SolutionAIService()
             suggestions = svc.suggest_elements(
@@ -1127,7 +1127,6 @@ class SolutionAIOrchestrator:
             return {"proposals": [], "reasoning_id": None, "total": 0}
 
         # Build lookup by name for filtering
-        linked_ids = {e.id for e in linked}
         name_to_id = {}
         for e in linked:
             name_to_id[e.name] = e.id
@@ -1765,7 +1764,6 @@ CRITICAL -- TRACEABILITY:
         """
         try:
             from app.models.solution_architect_models import (
-                SolutionAnalysisSession,
                 SolutionRecommendation,
                 RecommendationOptionType,
             )
@@ -2035,16 +2033,14 @@ CRITICAL -- TRACEABILITY:
         if solution.analysis_session_id:
             session = SolutionAnalysisSession.query.get(solution.analysis_session_id)
 
-        drivers = []
         goals = []
-        requirements = []
 
         if session:
             pd = SolutionProblemDefinition.query.filter_by(session_id=session.id).first()
             if pd:
-                drivers = SolutionDriver.query.filter_by(problem_id=pd.id).all()
+                SolutionDriver.query.filter_by(problem_id=pd.id).all()
                 goals = SolutionGoal.query.filter_by(problem_id=pd.id).all()
-                requirements = SolutionRequirement.query.filter_by(problem_id=pd.id).all()
+                SolutionRequirement.query.filter_by(problem_id=pd.id).all()
 
         # 2. Gather selected capabilities (try UnifiedCapability first, fall back to BusinessCapability)
         from app.models.unified_capability import UnifiedCapability
@@ -2155,7 +2151,7 @@ CRITICAL -- TRACEABILITY:
 
         created = {'courses_of_action': 0, 'value_streams': 0, 'resources': 0, 'gaps_analyzed': 0}
         caps_by_name = {c.name.lower().strip(): c for c in capabilities}
-        goals_by_name = {g.name.lower().strip(): g for g in goals}
+        {g.name.lower().strip(): g for g in goals}
 
         # --- Courses of Action ---
         try:
@@ -2283,7 +2279,7 @@ CRITICAL -- TRACEABILITY:
             'business_actors': 0, 'business_processes': 0, 'business_services': 0,
             'business_roles': 0, 'business_objects': 0, 'business_events': 0,
         }
-        caps_by_name = {c.name.lower().strip(): c for c in capabilities}
+        {c.name.lower().strip(): c for c in capabilities}
 
         # --- Business Actors (derived from stakeholders) ---
         actors_by_name = {}
@@ -3231,7 +3227,7 @@ CRITICAL -- TRACEABILITY:
             for evt_data in parsed.get('implementation_events', []):
                 with db.session.begin_nested():
                     plateau_name = (evt_data.get('plateau_name') or '').lower().strip()
-                    plateau_ref = plateaus_by_name.get(plateau_name)
+                    plateaus_by_name.get(plateau_name)
                     evt = ImplementationEvent(
                         name=evt_data.get('name', ''),
                         description=evt_data.get('description', ''),
@@ -3538,7 +3534,6 @@ CRITICAL -- TRACEABILITY:
         stacks, business processes, and rationalization scores to ground the LLM
         in organizational reality instead of generic patterns.
         """
-        import json as _json
         ctx = {
             'app_capability_map': '',
             'tech_standards': '',
@@ -3623,7 +3618,6 @@ CRITICAL -- TRACEABILITY:
             from app.models.process_data import BusinessProcess
 
             if cap_ids:
-                from app.models.business_capability import BusinessCapability
                 # Find processes linked to selected capabilities
                 processes = BusinessProcess.query.filter(
                     BusinessProcess.primary_capability_id.in_(cap_ids)
@@ -3796,7 +3790,6 @@ CRITICAL -- TRACEABILITY:
         Without this, the Sankey, traceability, and dashboard show empty data.
         """
         from app.models.archimate_core import ArchiMateElement
-        from app.models.solution_archimate_element import SolutionArchiMateElement as SAE
 
         if not name or not name.strip():
             return None
@@ -4198,7 +4191,7 @@ CRITICAL -- TRACEABILITY:
 
         # 14. ApplicationComponent → BusinessProcess (via capability_name cross-match)
         # Link app components to the business processes they serve
-        biz_process_names = [bp.get('name', '') for bp in biz_parsed.get('business_processes', []) if bp.get('name')]
+        [bp.get('name', '') for bp in biz_parsed.get('business_processes', []) if bp.get('name')]
         for ac in app_parsed.get('application_components', []):
             cap_name = ac.get('capability_name', '')
             if cap_name:
@@ -4418,15 +4411,11 @@ CRITICAL -- TRACEABILITY:
         Returns:
             (created_counts, failed_types) -- e.g. ({'drivers': 4, 'goals': 3, ...}, {'options': 'error msg'})
         """
-        from flask_login import current_user
         from app.models.solution_architect_models import (
-            SolutionAnalysisSession,
-            SolutionProblemDefinition,
             SolutionDriver,
             SolutionGoal,
             SolutionConstraint,
             SolutionRequirement,
-            SolutionRecommendation,
             SolutionPrinciple,
             SolutionAssessment,
             DriverType,

@@ -299,7 +299,6 @@ def get_card_artifacts(card_ref):
     if card_type != "solution":
         return jsonify({"success": True, "artifacts": {}, "phase_gate": {}})
 
-    from app import db
     from app.models.solution_models import Solution, SolutionArchiMateElement
 
     solution = Solution.query.get(entity_id)
@@ -760,10 +759,9 @@ def roadmap_timeline(board_id):
 
     # Build groups from phases (only phases that have at least one card)
     all_phases = ADMPhase.query.order_by(ADMPhase.order).all()  # model-safety-ok
-    phase_map = {p.code: p.name for p in all_phases}
 
     tasks = []
-    today = __import__("datetime").date.today()
+    __import__("datetime").date.today()
     for card in cards:
         phase_code = card.adm_phase.code if card.adm_phase else "A"
         start = card.target_start_date or (card.started_at.date() if card.started_at else None)

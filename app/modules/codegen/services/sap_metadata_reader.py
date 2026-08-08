@@ -103,6 +103,7 @@ def _infer_module(table_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# fabricated-ok: opt-in SAP mock mode; disclosed in UI as 'Use mock SAP data' / 'Run Mock Import'
 # Mock data
 # ---------------------------------------------------------------------------
 
@@ -524,7 +525,7 @@ class SapMetadataReader:
         # RFC_READ_TABLE against DD02L
         options = [{"TEXT": "TABCLASS NE 'INTTAB'"}]
         if package_filter:
-            options.append({"TEXT": f"AND AS4LOCAL = 'A'"})
+            options.append({"TEXT": "AND AS4LOCAL = 'A'"})
 
         result = self._call(
             "RFC_READ_TABLE",

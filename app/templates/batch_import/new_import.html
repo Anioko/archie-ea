@@ -64,9 +64,9 @@
                                     <template x-for="mode in archimateModesOptions" :key="mode.value">
                                         <label
                                             :class="{
-                                                'border-primary bg-primary/5 ring-2 ring-primary': form.archimate_mode === mode.value,
-                                                'border-border hover:border-primary/50': form.archimate_mode !== mode.value
-                                            }"
+ 'border-primary bg-primary/5 ring-2 ring-primary': form.archimate_mode === mode.value,
+ 'border-border hover:border-primary/50': form.archimate_mode !== mode.value
+ }"
                                             class="relative flex cursor-pointer rounded-lg border p-4 transition-all"
                                         >
                                             <input
@@ -456,10 +456,10 @@
                                 </div>
 
                                 <template x-if="form.budget_limit && estimatedCost > form.budget_limit">
-                                    <div class="rounded-lg bg-warning/5 dark:bg-warning/20 border border-warning/20 dark:border-warning p-3">
+                                    <div class="rounded-lg bg-warning/5 border border-warning/20 p-3">
                                         <div class="flex items-start gap-2">
                                             <i data-lucide="alert-triangle" class="h-4 w-4 text-warning mt-0.5" aria-hidden="true"></i>
-                                            <p class="text-xs text-warning dark:text-warning">
+                                            <p class="text-xs text-warning">
                                                 Estimated cost exceeds your budget limit of $<span x-text="form.budget_limit"></span>. Processing will pause when the budget is reached.
                                             </p>
                                         </div>
@@ -723,6 +723,7 @@ function newImportForm() {
                 }
             } catch (error) {
                 console.error('Failed to load applications:', error);
+                this.showToast('Failed to load applications', 'error');
             } finally {
                 this.loadingApplications = false;
             }

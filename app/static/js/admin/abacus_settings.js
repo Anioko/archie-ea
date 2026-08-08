@@ -190,6 +190,7 @@ function updateImportedDataCounts() {
     .then(function(response) { return response.json(); })
     .then(function(data) {
         if (data.success) {
+            window._abacusStatsErrorShown = false;
             // Update applications count
             let appsCount = data.applications || 0;
             let appsCountEl = document.getElementById('imported-apps-count');
@@ -217,6 +218,12 @@ function updateImportedDataCounts() {
     })
     .catch(function(error) {
         console.error('Error fetching Abacus stats:', error);
+        // Polled every 10s — toast once per outage, not on every retry, and reset
+        // so a later outage (not just recovery) can surface again.
+        if (!window._abacusStatsErrorShown) {
+            window._abacusStatsErrorShown = true;
+            if (window.Platform && Platform.toast) Platform.toast.error('Could not refresh imported data counts.');
+        }
     });
 }
 

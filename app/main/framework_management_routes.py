@@ -229,7 +229,7 @@ def deploy_configuration():
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "message": "An internal error occurred"}), 500
 
@@ -271,7 +271,7 @@ def activate_extension(extension_id=None):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "message": "An internal error occurred"}), 500
 
 
@@ -328,7 +328,7 @@ def apply_template():
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "message": "An internal error occurred"}), 500
 

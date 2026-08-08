@@ -337,7 +337,6 @@ def apply_genome_template(slug):
     SolutionArchiMateElement junctions with spec_data containing
     field definitions, and stores the genome in CodegenGeneration.
     """
-    from flask_login import current_user
     from app.models.solution_models import Solution
     from app.models.archimate_core import ArchiMateElement
     from app.models.solution_archimate_element import SolutionArchiMateElement

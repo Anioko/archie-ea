@@ -6,9 +6,8 @@ All endpoints require authentication.
 import logging
 
 from flask import Blueprint, jsonify, request
-from flask_login import current_user, login_required  # dead-code-ok
+from flask_login import login_required  # dead-code-ok
 
-from app import db  # dead-code-ok
 
 # Module-level imports so tests can patch via:
 #   app.modules.ea_workflows.routes.phase_f_routes.MigrationWave

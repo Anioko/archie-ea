@@ -2,8 +2,7 @@
 Critical Path Analyzer - Identifies critical path and calculates realistic timelines.
 """
 
-from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from typing import Dict, List, Tuple
 
 
 class CriticalPathAnalyzer:

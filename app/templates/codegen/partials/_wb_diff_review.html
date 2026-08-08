@@ -153,7 +153,7 @@ function wbDiffReview() {
         const escaped = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="text-green-400">${escaped}</span>`;
         if (line.startsWith('-') && !line.startsWith('---')) return `<span class="text-red-400">${escaped}</span>`;
-        if (line.startsWith('@@')) return `<span class="text-blue-400">${escaped}</span>`;
+        if (line.startsWith('@@')) return `<span class="text-info">${escaped}</span>`;
         if (line.startsWith('---') || line.startsWith('+++')) return `<span class="text-muted-foreground/60">${escaped}</span>`;
         return `<span class="text-foreground/70">${escaped}</span>`;
       }).join('\n');

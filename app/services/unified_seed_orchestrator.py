@@ -7,9 +7,8 @@ Implements comprehensive seeding with rollback capabilities and progress trackin
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from app import db
 from app.services.business_capability_seeder import BusinessCapabilitySeeder
 from app.services.technical_capability_seeder import TechnicalCapabilitySeeder
 from app.services.vendor_organization_seeder import VendorOrganizationSeeder

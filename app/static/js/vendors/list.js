@@ -241,6 +241,11 @@ async function loadVendorMappings() {
             });
         }
     } catch (error) {
+        // Without this, every application silently shows as "unmapped" — a false
+        // negative, since app.mapped simply never gets set to true — rather than
+        // an explained failure.
+        console.error('Error loading vendor mappings:', error);
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load existing vendor mappings.');
     }
 }
 

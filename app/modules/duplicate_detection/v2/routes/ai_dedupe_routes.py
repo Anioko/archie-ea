@@ -227,7 +227,7 @@ def api_feedback():
         duplicate_id = data.get("duplicate_id")
         action = data.get("action")
         confidence = data.get("confidence")
-        notes = data.get("notes", "")
+        data.get("notes", "")
         if not duplicate_id or not action or confidence is None:
             return jsonify(
                 {

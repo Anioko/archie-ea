@@ -83,37 +83,41 @@ if (window.__ALPINE_ARCH_LOADED__) {
             successMsg: '',
             _startLoading() {
                 this.loading = true; this.submitting = true; this.errorMsg = ''; this.successMsg = '';
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').start();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: a missing or broken Alpine loading store must not stop the operation the user asked for */ }
             },
             _stopLoading() {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: spinner teardown only; the caller's own success or error message below is the real signal to the user */ }
             },
             _handleError(err) {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: spinner teardown only; the caller's own success or error message below is the real signal to the user */ }
                 this.errorMsg = (err && err.message) ? err.message : 'An unexpected error occurred.';
                 _toast('error', this.errorMsg);
             },
             _handleSuccess(msg) {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: spinner teardown only; the caller's own success or error message below is the real signal to the user */ }
                 this.successMsg = msg || 'Operation completed successfully.';
                 _toast('success', this.successMsg);
             }

@@ -49,7 +49,7 @@
 
     {% if chain.requirements | length == 0 %}
     <!-- TRC-025: Amber banner when motivation layer is disconnected from architecture -->
-    <div class="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-200">
+    <div class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3 text-sm text-amber-800">
         <i data-lucide="triangle-alert" class="h-4 w-4 mt-0.5 shrink-0 text-amber-500"></i>
         <span>
             <strong>Motivation layer not connected to architecture.</strong>
@@ -79,9 +79,9 @@
                 aria-label="Stakeholder layer"
                 class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
             >
-                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-violet-50 dark:bg-violet-950/30">
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-violet-50">
                     <span class="h-3 w-3 rounded-full bg-violet-500" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-violet-700 dark:text-violet-300">Stakeholder</h2>
+                    <h2 class="text-sm font-semibold text-violet-700">Stakeholder</h2>
                     <span class="text-xs text-muted-foreground">{{ chain.stakeholders | length }}</span>
                     <a href="{{ url_for('archimate.composer_page') }}?layer=Motivation" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
                 </div>
@@ -111,9 +111,9 @@
                 aria-label="Driver layer"
                 class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
             >
-                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-amber-50 dark:bg-amber-950/30">
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-amber-50">
                     <span class="h-3 w-3 rounded-full bg-amber-500" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-amber-700 dark:text-amber-300">Driver</h2>
+                    <h2 class="text-sm font-semibold text-amber-700">Driver</h2>
                     <span class="text-xs text-muted-foreground">{{ chain.drivers | length }}</span>
                     <a href="{{ url_for('archimate.composer_page') }}?layer=Motivation" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
                 </div>
@@ -142,9 +142,9 @@
                 aria-label="Goal layer"
                 class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
             >
-                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30">
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-emerald-50">
                     <span class="h-3 w-3 rounded-full bg-emerald-500" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Goal</h2>
+                    <h2 class="text-sm font-semibold text-emerald-700">Goal</h2>
                     <span class="text-xs text-muted-foreground">{{ chain.goals | length }}</span>
                     <a href="{{ url_for('archimate.composer_page') }}?layer=Motivation" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
                 </div>
@@ -173,9 +173,9 @@
                 aria-label="Requirement layer"
                 class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
             >
-                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-primary/5 dark:bg-blue-950/30">
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-primary/5">
                     <span class="h-3 w-3 rounded-full bg-primary" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-primary dark:text-blue-300">Requirement</h2>
+                    <h2 class="text-sm font-semibold text-primary">Requirement</h2>
                     <span class="text-xs text-muted-foreground">{{ chain.requirements | length }}</span>
                     <a href="{{ url_for('archimate.composer_page') }}?layer=Motivation" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
                 </div>
@@ -207,9 +207,9 @@
                 aria-label="Capability layer"
                 class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
             >
-                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30">
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-indigo-50">
                     <span class="h-3 w-3 rounded-full bg-primary" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Capability</h2>
+                    <h2 class="text-sm font-semibold text-indigo-700">Capability</h2>
                     <span class="text-xs text-muted-foreground">{{ chain.capabilities | length }}</span>
                     <a href="{{ url_for('archimate.composer_page') }}?layer=Business" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
                 </div>
@@ -238,9 +238,9 @@
                 aria-label="Process layer"
                 class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
             >
-                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-teal-50 dark:bg-teal-950/30">
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-teal-50">
                     <span class="h-3 w-3 rounded-full bg-teal-500" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-teal-700 dark:text-teal-300">Process</h2>
+                    <h2 class="text-sm font-semibold text-teal-700">Process</h2>
                     <span class="text-xs text-muted-foreground">{{ chain.processes | length }}</span>
                     <a href="{{ url_for('archimate.composer_page') }}?layer=Business" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
                 </div>
@@ -269,9 +269,9 @@
                 aria-label="Application layer"
                 class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
             >
-                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-orange-50 dark:bg-orange-950/30">
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-orange-50">
                     <span class="h-3 w-3 rounded-full bg-orange-500" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-orange-700 dark:text-orange-300">Application</h2>
+                    <h2 class="text-sm font-semibold text-orange-700">Application</h2>
                     <span class="text-xs text-muted-foreground">{{ chain.applications | length }}</span>
                     <a href="{{ url_for('archimate.composer_page') }}?layer=Application" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
                 </div>
@@ -300,9 +300,9 @@
                 aria-label="Technology layer"
                 class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
             >
-                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-slate-50 dark:bg-slate-900/60">
-                    <span class="h-3 w-3 rounded-full bg-slate-500" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Technology</h2>
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-muted">
+                    <span class="h-3 w-3 rounded-full bg-muted-foreground" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-foreground">Technology</h2>
                     <span class="text-xs text-muted-foreground">{{ chain.technology | length }}</span>
                     <a href="{{ url_for('archimate.composer_page') }}?layer=Technology" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
                 </div>
@@ -481,11 +481,11 @@
                             {% if key == 'orphaned_drivers' %}
                             <button type="button" data-id="{{ item.id }}" data-name="{{ item.name | e }}"
                                 @click="openLinkModal('driver-goal', $el.dataset.id, $el.dataset.name, gapGoals)"
-                                class="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-700 dark:text-amber-300">Link to Goal</button>
+                                class="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-700">Link to Goal</button>
                             {% elif key == 'orphaned_capabilities' %}
                             <button type="button" data-id="{{ item.id }}" data-name="{{ item.name | e }}"
                                 @click="openLinkModal('capability-app', $el.dataset.id, $el.dataset.name, gapApps)"
-                                class="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-700 dark:text-amber-300">Link to Application</button>
+                                class="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-700">Link to Application</button>
                             {% endif %}
                         </span>
                         {% endfor %}
@@ -511,7 +511,7 @@ function traceabilityChain() {
     const _maps = {{ relationship_maps | tojson }};
 
     /* GLB-056 / TRC-026: Element-solution data by layer (pre-parsed in <head>) */
-    const _esDataByLayer = {{ element_solutions_json|safe if element_solutions_json else '{}' }};
+    const _esDataByLayer = {{ (element_solutions_json or {}) | tojson }};
 
     /* TRC-028: Gap link picker lists (from chain) */
     const _gapGoals = {{ (chain.get('goals') or []) | tojson }};

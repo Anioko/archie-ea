@@ -5,7 +5,7 @@
    Alpine.js implementation of TanStack Table patterns.
 
    Usage:
-     {% from 'components/data_table.html' import data_table, data_table_faceted_filter %}
+     {% from 'components/data_table.html' import data_table, data_table_faceted_filter with context %}
 
      {{ data_table(
          id='requirements-table',
@@ -336,9 +336,9 @@ if (!window._dataTableEngine) {
                                 <span class="h-2 w-2 rounded-full"
                                       :class="{
                                           'bg-emerald-500': row['{{ col.key }}'] === 'approved' || row['{{ col.key }}'] === 'done',
-                                          'bg-blue-500': row['{{ col.key }}'] === 'in_review' || row['{{ col.key }}'] === 'in_progress',
+                                          'bg-info': row['{{ col.key }}'] === 'in_review' || row['{{ col.key }}'] === 'in_progress',
                                           'bg-amber-500': row['{{ col.key }}'] === 'draft' || row['{{ col.key }}'] === 'todo',
-                                          'bg-red-500': row['{{ col.key }}'] === 'rejected' || row['{{ col.key }}'] === 'cancelled',
+                                          'bg-destructive': row['{{ col.key }}'] === 'rejected' || row['{{ col.key }}'] === 'cancelled',
                                           'bg-muted-foreground': row['{{ col.key }}'] === 'open' || row['{{ col.key }}'] === 'backlog' || row['{{ col.key }}'] === 'deferred'
                                       }"></span>
                                 <span class="text-sm capitalize" x-text="(row['{{ col.key }}'] || '').replace(/_/g, ' ')"></span>
@@ -346,13 +346,13 @@ if (!window._dataTableEngine) {
                             {% elif col.get('type') == 'priority' %}
                             <div class="flex items-center gap-2">
                                 <template x-if="row['{{ col.key }}'] === 'MUST' || row['{{ col.key }}'] === 'high'">
-                                    <i data-lucide="arrow-up" class="h-3.5 w-3.5 text-red-500" aria-hidden="true"></i>
+                                    <i data-lucide="arrow-up" class="h-3.5 w-3.5 text-destructive" aria-hidden="true"></i>
                                 </template>
                                 <template x-if="row['{{ col.key }}'] === 'SHOULD' || row['{{ col.key }}'] === 'medium'">
                                     <i data-lucide="arrow-right" class="h-3.5 w-3.5 text-amber-500" aria-hidden="true"></i>
                                 </template>
                                 <template x-if="row['{{ col.key }}'] === 'COULD' || row['{{ col.key }}'] === 'low'">
-                                    <i data-lucide="arrow-down" class="h-3.5 w-3.5 text-blue-500" aria-hidden="true"></i>
+                                    <i data-lucide="arrow-down" class="h-3.5 w-3.5 text-info" aria-hidden="true"></i>
                                 </template>
                                 <template x-if="row['{{ col.key }}'] === 'WONT'">
                                     <i data-lucide="minus" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
@@ -445,19 +445,27 @@ if (!window._dataTableEngine) {
 
             {# Navigation buttons #}
             <div class="flex items-center gap-1">
+                {# aria-label is required, not optional: the icon carries aria-hidden,
+                   so without a label these announce as "button" with no name. This is
+                   the shared pagination control, so every data table in the product
+                   inherits whatever it does. #}
                 <button type="button" @click="firstPage()" :disabled="currentPage <= 1"
+                        aria-label="Go to first page"
                         class="hidden lg:inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevrons-left" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="previousPage()" :disabled="currentPage <= 1"
+                        aria-label="Go to previous page"
                         class="inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="nextPage()" :disabled="currentPage >= totalPages"
+                        aria-label="Go to next page"
                         class="inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="lastPage()" :disabled="currentPage >= totalPages"
+                        aria-label="Go to last page"
                         class="hidden lg:inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevrons-right" class="h-4 w-4" aria-hidden="true"></i>
                 </button>

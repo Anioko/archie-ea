@@ -11,11 +11,6 @@ from typing import Any, Dict
 from flask import current_app, render_template
 from flask_login import current_user, login_required
 
-from app.models.ai_service import AIPromptTemplate
-from app.models.application_portfolio import ApplicationComponent
-from app.models.business_capabilities import BusinessCapability
-from app.models.unified_capability import UnifiedCapability
-from app.models.vendor.vendor_organization import VendorOrganization
 from app.services.multi_domain_chat_service import MultiDomainChatService
 from . import unified_ai_chat_bp
 
@@ -134,23 +129,9 @@ def get_chat_service():
 @login_required
 def index():
     """Renders the Enhanced Multi-Domain AI Chat Interface."""
-    # Pre-fetch prompt templates for the UI selector (serialized for tojson in template)
-    templates = []
-    try:
-        raw_templates = AIPromptTemplate.query.all()
-        templates = [
-            {
-                "id": t.id,
-                "name": t.name,
-                "description": t.description,
-                "category": t.category,
-                "system_prompt": t.system_prompt,
-                "user_prompt_template": t.user_prompt_template,
-            }
-            for t in raw_templates
-        ]
-    except Exception as e:
-        current_app.logger.warning(f"Could not load prompt templates: {e}")
+    # No prompt-template pre-fetch. It ran AIPromptTemplate.query.all() on every
+    # page load to populate a selector whose value chat_core discarded, so it
+    # cost a query per render and changed no answer.
 
     # Keep the landing page renderable even if AI service bootstrap fails in prod.
     domain_config = _fallback_domain_config()
@@ -174,48 +155,14 @@ def index():
             if chat_bootstrap_error is None:
                 chat_bootstrap_error = "AI personas could not be loaded. Showing limited chat configuration."
 
-    # Get context data for different domains (configurable limit)
-    # Wrapped in try/except to handle model configuration issues gracefully
-    context_limit = current_app.config.get("AI_CHAT_CONTEXT_LIMIT", 50)
-    context_data = {
-        "applications": [],
-        "capabilities": [],
-        "vendors": [],
-        "unified_capabilities": [],
-    }
-
-    try:
-        context_data["applications"] = ApplicationComponent.query.limit(
-            context_limit
-        ).all()
-    except Exception as e:
-        current_app.logger.warning(f"Could not load applications: {e}")
-
-    try:
-        context_data["capabilities"] = BusinessCapability.query.limit(
-            context_limit
-        ).all()
-    except Exception as e:
-        current_app.logger.warning(f"Could not load capabilities: {e}")
-
-    try:
-        context_data["vendors"] = VendorOrganization.query.limit(context_limit).all()
-    except Exception as e:
-        current_app.logger.warning(f"Could not load vendors: {e}")
-
-    try:
-        context_data["unified_capabilities"] = UnifiedCapability.query.limit(
-            context_limit
-        ).all()
-    except Exception as e:
-        current_app.logger.warning(f"Could not load unified capabilities: {e}")
-
+    # No context_data here: this used to run four queries of up to
+    # AI_CHAT_CONTEXT_LIMIT (default 50) rows each on every page load and pass
+    # them to a template that referenced context_data zero times. The chat loads
+    # its context on demand from /ai-chat/context/<domain> instead.
     return render_template(
         "ai_chat/index.html",
-        prompt_templates=templates,
         domain_config=domain_config,
         persona_config=persona_config,
-        context_data=context_data,
         chat_bootstrap_error=chat_bootstrap_error,
     )
 

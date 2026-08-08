@@ -126,6 +126,11 @@ function seedManager() {
                 }
             } catch (e) {
                 console.error('Failed to refresh seed status:', e);
+                // seed/seedAll already set this.message to their own success/failure result;
+                // this only means the category list on screen may now be stale, so append
+                // rather than overwrite whatever that message already said.
+                this.message = (this.message ? this.message + ' — ' : '') + 'Could not refresh status list; reload to see current state.';
+                this.messageType = 'error';
             }
             this.$nextTick(() => lucide.createIcons());
         },

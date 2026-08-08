@@ -14,25 +14,20 @@ Complies with:
 - Flask best practices
 """
 
-import json  # dead-code-ok
-from datetime import datetime, timedelta  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 
-from flask import flash, jsonify, redirect, render_template, request, url_for
+from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import and_, func, or_, text  # dead-code-ok
+from sqlalchemy import or_, text  # dead-code-ok
 from sqlalchemy.orm import joinedload  # dead-code-ok
 
-from .. import csrf, db  # dead-code-ok
+from .. import db  # dead-code-ok
 from ..models.implementation_migration import (
     Deliverable,
     ImplementationEvent,
     Gap as ImplementationGap,
     Plateau as ImplementationPlateau,
     WorkPackage as ImplementationWorkPackage,
-)
-from ..models.models import ArchitectureModel  # dead-code-ok
-from ..models.unified_application_capability_mapping import (  # dead-code-ok
-    UnifiedApplicationCapabilityMapping,
 )
 from ..models.unified_capability import UnifiedCapability
 from ..services.gap_discovery_service import GapDiscoveryService
@@ -139,7 +134,7 @@ def implementation_dashboard():
             capability_summary=capability_summary,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading dashboard. Please try again.", "error")
         return render_template(
             "implementation_planning/dashboard.html",
@@ -193,7 +188,7 @@ def work_packages_list():
             priority=priority,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading work packages. Please try again.", "error")
         return redirect(url_for("implementation_planning.implementation_dashboard"))
 
@@ -224,7 +219,7 @@ def work_package_detail(work_package_id):
             events=events,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading work package. Please try again.", "error")
         return redirect(url_for("implementation_planning.work_packages_list"))
 
@@ -344,7 +339,7 @@ def edit_work_package(work_package_id):
                 )
             )
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             if request.is_json:
                 return jsonify({"error": "An internal error occurred"}), 500
@@ -400,7 +395,7 @@ def delete_work_package(work_package_id):
         flash("Work package deleted successfully!", "success")
         return redirect(url_for("implementation_planning.work_packages_list"))
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         if request.is_json:
             return jsonify({"error": "An internal error occurred"}), 500
@@ -432,7 +427,7 @@ def api_dashboard_stats():
             ).count(),
         }
         return jsonify({"stats": stats})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -462,7 +457,7 @@ def api_work_packages():
             query = query.limit(limit)
         work_packages = query.all()
         return jsonify({"work_packages": [_serialize_entity(wp) for wp in work_packages]})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -477,7 +472,7 @@ def api_work_package_detail(work_package_id):
     try:
         work_package = ImplementationWorkPackage.query.get_or_404(work_package_id)
         return jsonify(_serialize_entity(work_package))
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -528,7 +523,7 @@ def api_create_work_package():
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -574,7 +569,7 @@ def api_update_work_package(work_package_id):
 
         return jsonify({"success": True, "work_package": _serialize_entity(work_package)})
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -617,7 +612,7 @@ def api_delete_work_package(work_package_id):
 
         return jsonify({"success": True})
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -690,7 +685,7 @@ def gaps_list():
             status=status,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading gaps. Please try again.", "error")
         return redirect(url_for("implementation_planning.implementation_dashboard"))
 
@@ -718,7 +713,7 @@ def discover_gaps():
 
         return redirect(url_for("implementation_planning.gaps_list"))
 
-    except Exception as e:
+    except Exception:
         flash("Error during gap discovery. Please try again.", "error")
         return redirect(url_for("implementation_planning.gaps_list"))
 
@@ -748,7 +743,7 @@ def gap_detail(gap_id):
             related_work_packages=related_work_packages,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading gap. Please try again.", "error")
         return redirect(url_for("implementation_planning.gaps_list"))
 
@@ -772,7 +767,7 @@ def api_gaps():
             query = query.limit(limit)
         gaps = query.all()
         return jsonify({"gaps": [_serialize_entity(gap) for gap in gaps]})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -798,7 +793,7 @@ def api_discover_gaps():
 
         return jsonify({"success": True, "gaps_data": gaps_data})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -846,7 +841,7 @@ def deliverables_list():
             work_package_id=work_package_id,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading deliverables. Please try again.", "error")
         return redirect(url_for("implementation_planning.implementation_dashboard"))
 
@@ -863,7 +858,7 @@ def api_deliverables():
         return jsonify(
             {"deliverables": [deliverable.to_dict() for deliverable in deliverables]}
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -906,7 +901,7 @@ def api_create_deliverable():
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -927,7 +922,7 @@ def plateaus_list():
             "implementation_planning/plateaus.html", plateaus=plateaus
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading plateaus. Please try again.", "error")
         return redirect(url_for("implementation_planning.implementation_dashboard"))
 
@@ -942,7 +937,7 @@ def api_plateaus():
     try:
         plateaus = ImplementationPlateau.query.all()
         return jsonify({"plateaus": [_serialize_entity(plateau) for plateau in plateaus]})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -1053,7 +1048,7 @@ def api_roadmap_data():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1113,7 +1108,7 @@ def generate_report():
 
         return jsonify({"success": True, "report": report_data})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1143,7 +1138,7 @@ def estimate_duration():
 
         return jsonify({"success": True, "prediction": prediction})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1161,5 +1156,5 @@ def estimation_accuracy():
 
         return jsonify({"success": True, "accuracy": accuracy})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

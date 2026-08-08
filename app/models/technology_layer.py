@@ -27,6 +27,8 @@ from decimal import Decimal
 from sqlalchemy import CheckConstraint, event
 from sqlalchemy.orm import relationship, validates
 
+from app.models.mixins import TenantMixin
+
 from .. import db
 
 # ============================================================================
@@ -34,7 +36,8 @@ from .. import db
 # ============================================================================
 
 
-class Node(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class Node(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Node - Computational or physical resource
 
@@ -217,7 +220,8 @@ class Node(db.Model):
 # ============================================================================
 
 
-class Device(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class Device(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Device - Physical IT hardware
 
@@ -403,7 +407,8 @@ class Device(db.Model):
 # ============================================================================
 
 
-class SystemSoftware(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class SystemSoftware(TenantMixin, db.Model):
     """
     ArchiMate 3.2 System Software - Software environment providing execution platform
 
@@ -611,7 +616,8 @@ class SystemSoftware(db.Model):
 # ============================================================================
 
 
-class TechnologyInterface(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyInterface(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Technology Interface - Point of access to technology services
 
@@ -703,7 +709,8 @@ class TechnologyInterface(db.Model):
 # ============================================================================
 
 
-class Path(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class Path(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Path - Link between nodes for communication
 
@@ -767,7 +774,8 @@ class Path(db.Model):
 # ============================================================================
 
 
-class CommunicationNetwork(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class CommunicationNetwork(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Communication Network - Network for data communication
 
@@ -839,7 +847,8 @@ class CommunicationNetwork(db.Model):
 # ============================================================================
 
 
-class TechnologyService(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyService(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Technology Service - Externally visible unit of technology functionality
 
@@ -1044,7 +1053,8 @@ def create_technologyservice_archimate_element(mapper, connection, target):
 # ============================================================================
 
 
-class TechnologyArtifact(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyArtifact(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Artifact - A piece of data that is used or produced in a software development
     process, or by deployment and operation of a system.
@@ -1114,7 +1124,8 @@ def create_artifact_archimate_element(mapper, connection, target):
 # ============================================================================
 
 
-class TechnologyCollaboration(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyCollaboration(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Technology Collaboration - An aggregate of two or more nodes that work together
     to perform collective technology behavior.

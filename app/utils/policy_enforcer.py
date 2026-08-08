@@ -3,9 +3,7 @@ LLM Policy Enforcement System
 Systematic enforcement of LLM rules to prevent policy violations
 """
 
-import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -243,6 +241,7 @@ class PolicyEnforcer:
                 action="block",
                 requires_approval=True,
             ),
+            # fabricated-ok: section heading for rules that govern seeding, not seeded data
             # Sample Data Creation Rules
             PolicyRule(
                 name="NO_SAMPLE_DATA",
@@ -484,7 +483,7 @@ def block_if_violation(
             if v.rule.severity in [PolicySeverity.CRITICAL, PolicySeverity.TERMINATION]
         ]
         if critical_violations:
-            logger.error(f"OPERATION BLOCKED - Critical Policy Violations:")
+            logger.error("OPERATION BLOCKED - Critical Policy Violations:")
             for violation in critical_violations:
                 logger.error(f"  - {violation.rule.name}: {violation.rule.description}")
                 logger.error(f"    Suggested: {violation.suggested_action}")

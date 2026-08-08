@@ -125,9 +125,9 @@
         {# Worklist filter indicator #}
         {% if selected_workspace %}
         {% set _ws_labels = {'needs_setup': 'Needs Setup', 'in_design': 'In Design', 'needs_attention': 'Needs Attention', 'ready_for_review': 'Ready for Review'} %}
-        <div class="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60 dark:bg-amber-950/20" data-testid="worklist-filter-indicator" role="status" aria-live="polite">
+        <div class="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60" data-testid="worklist-filter-indicator" role="status" aria-live="polite">
             <i data-lucide="list-filter" class="h-3.5 w-3.5 text-amber-600 shrink-0" aria-hidden="true"></i>
-            <span class="text-xs text-amber-700 dark:text-amber-400 font-medium">Filtered by worklist: {{ _ws_labels.get(selected_workspace, selected_workspace) }} ({{ total_count }} solution{{ 's' if total_count != 1 else '' }})</span>
+            <span class="text-xs text-amber-700 font-medium">Filtered by worklist: {{ _ws_labels.get(selected_workspace, selected_workspace) }} ({{ total_count }} solution{{ 's' if total_count != 1 else '' }})</span>
             <a href="{{ request.path }}" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline underline-offset-2" aria-label="Clear worklist filter">Clear filter</a>
         </div>
         {% endif %}
@@ -212,7 +212,7 @@
                                     {% elif _gov in ('arb_review', 'under_review') %}
                                         {% set _gov_cls = 'bg-amber-500/10 text-amber-600 border border-amber-500/20' %}
                                     {% elif _gov == 'rejected' %}
-                                        {% set _gov_cls = 'bg-red-500/10 text-destructive border border-red-500/20' %}
+                                        {% set _gov_cls = 'bg-destructive/10 text-destructive border border-destructive/20' %}
                                     {% else %}
                                         {% set _gov_cls = 'bg-muted text-muted-foreground border border-border/50' %}
                                     {% endif %}
@@ -223,15 +223,15 @@
                                 <div class="space-y-2">
                                     <div class="flex items-baseline gap-2">
                                         <span class="text-2xl font-bold tracking-tight
-                                            {% if (ws.readiness_pct or 0) >= 80 %}text-emerald-600
-                                            {% elif (ws.readiness_pct or 0) >= 40 %}text-amber-500
-                                            {% else %}text-foreground{% endif %}">{{ ws.readiness_pct or 0 }}%</span>
+ {% if (ws.readiness_pct or 0) >= 80 %}text-emerald-600
+ {% elif (ws.readiness_pct or 0) >= 40 %}text-amber-500
+ {% else %}text-foreground{% endif %}">{{ ws.readiness_pct or 0 }}%</span>
                                     </div>
                                     <div class="h-1.5 w-32 rounded-full bg-muted/50 overflow-hidden">
                                         <div class="h-full rounded-full transition-all
-                                            {% if (ws.readiness_pct or 0) >= 80 %}bg-emerald-500
-                                            {% elif (ws.readiness_pct or 0) >= 40 %}bg-amber-500
-                                            {% else %}bg-primary{% endif %}"
+ {% if (ws.readiness_pct or 0) >= 80 %}bg-emerald-500
+ {% elif (ws.readiness_pct or 0) >= 40 %}bg-amber-500
+ {% else %}bg-primary{% endif %}"
                                              style="width: {{ ws.readiness_pct or 0 }}%"></div>
                                     </div>
                                     <p class="text-[10px] text-muted-foreground">{{ ws.readiness_passed or 0 }}/{{ ws.readiness_total or 0 }} TOGAF checks</p>
@@ -551,7 +551,10 @@
     }
     let cfg = window.__SOLUTION_LIST_CONFIG__ || {};
     fetch(cfg.templatesUrl || '/solutions/templates', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) { throw new Error('templates request failed: ' + r.status); }
+        return r.json();
+      })
       .then(function(data) {
         if (!list) return;
         let templates = (data && data.templates) || [];

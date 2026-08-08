@@ -69,7 +69,7 @@
             {% set pct = ((step.count / step.total * 100)|round|int) if step.total > 0 else 0 %}
             <a href="{{ step.url }}" class="flex flex-col items-center text-center group flex-1 {{ 'opacity-50' if step.count == 0 else '' }}">
                 <div class="flex items-center justify-center w-10 h-10 rounded-full border-2 {{ 'border-primary bg-primary/10 text-primary' if step.count > 0 else 'border-border text-muted-foreground' }} group-hover:border-primary/70 transition-colors mb-1.5">
-                    <i data-lucide="{{ step.icon }}" class="h-4.5 w-4.5"></i>
+                    <i data-lucide="{{ step.icon }}" class="h-4 w-4"></i>
                 </div>
                 <span class="text-xs font-semibold">{{ step.label }}</span>
                 <span class="text-xs text-muted-foreground">{{ step.count }}/{{ step.total }} ({{ pct }}%)</span>
@@ -138,7 +138,7 @@
     <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <div class="rounded-xl border bg-card p-4">
             <div class="flex items-center gap-3">
-                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-500/10">
+                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-info/10">
                     <i data-lucide="layers" class="h-5 w-5 text-primary"></i>
                 </div>
                 <div>
@@ -395,9 +395,12 @@
                 </div>
                 <span class="text-xs font-semibold w-10 text-right">{{ risk_pct }}%</span>
             </div>
-            {# Business Criticality — uses lifecycle as proxy; TODO: backend needs dedicated 'business_criticality' field #}
+            {# Labelled for what it actually measures. This bar plots lifecycle_pct;
+               it was previously captioned "Business Criticality", which is a different
+               field the backend does not yet supply. Rename here only when a real
+               business_criticality value is passed in. #}
             <div class="flex items-center gap-3">
-                <span class="text-xs font-medium w-32 text-muted-foreground">Business Criticality</span>
+                <span class="text-xs font-medium w-32 text-muted-foreground">Lifecycle Coverage</span>
                 <div class="flex-1 h-5 bg-muted rounded-full overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-500 {{ 'bg-destructive' if lifecycle_pct < 25 else ('bg-amber-500' if lifecycle_pct <= 75 else 'bg-emerald-500') }}"
                          style="width: {{ lifecycle_pct }}%"></div>
@@ -514,7 +517,7 @@
         <a href="/consolidation-list"
            class="rounded-xl border bg-card p-5 text-left hover:border-primary/50 hover:shadow-sm transition-all group no-underline">
             <div class="flex items-start gap-3">
-                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-500/10 text-primary group-hover:bg-blue-500/20 transition-colors">
+                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-info/10 text-primary group-hover:bg-info/20 transition-colors">
                     <i data-lucide="list-checks" class="h-5 w-5"></i>
                 </div>
                 <div>

@@ -46,6 +46,7 @@ class ApplicationArchitectureManager {
       this.updateLayerCounts(data.element_counts_by_layer);
     } catch (error) {
       console.error('Error loading application details:', error);
+      if (window.Platform && Platform.toast) Platform.toast.error('Could not load application details.');
     }
   }
 
@@ -84,6 +85,7 @@ class ApplicationArchitectureManager {
       }
     } catch (error) {
       console.error('Error loading elements:', error);
+      if (window.Platform && Platform.toast) Platform.toast.error('Could not load architecture elements.');
     }
   }
 
@@ -95,6 +97,7 @@ class ApplicationArchitectureManager {
       this.documents = data.documents;
     } catch (error) {
       console.error('Error loading documents:', error);
+      if (window.Platform && Platform.toast) Platform.toast.error('Could not load architecture documents.');
     }
   }
 
@@ -601,6 +604,7 @@ class ApplicationArchitectureManager {
       }
     } catch (error) {
       console.error('Error loading frameworks:', error);
+      if (window.Platform && Platform.toast) Platform.toast.error('Could not load frameworks.');
     }
   }
 
@@ -1049,5 +1053,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.archManager = new ApplicationArchitectureManager(APPLICATION_ID);
   } catch (error) {
     console.error('Error creating manager:', error);
+    if (window.Platform && Platform.toast) Platform.toast.error('This page failed to initialize. Please reload.');
   }
 });

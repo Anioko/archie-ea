@@ -12,8 +12,13 @@ URL Structure:
 /enterprise/implementation/* - Implementation Planning
 """
 
+# Side-effect import, NOT dead code: this is the only module that imports
+# app/models/metrics.py, and that import is what registers the
+# `application_metrics_snapshots` table on db.metadata. Removing it (as
+# `ruff --fix --select F401` did) silently drops the table from the ORM —
+# caught by comparing db.metadata.tables before and after.
+from ..models.metrics import ApplicationMetricsSnapshot  # noqa: F401
 import logging
-from datetime import datetime  # dead-code-ok
 
 from flask import (
     Blueprint,
@@ -26,26 +31,18 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required  # dead-code-ok
-from sqlalchemy import func, or_, select, text  # dead-code-ok
-from sqlalchemy.exc import IntegrityError as SQLIntegrityError  # dead-code-ok
+from sqlalchemy import or_  # dead-code-ok
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload  # dead-code-ok
 
 from .. import db
 from ..security.audit import audit_logger, AuditEventType, AuditEventSeverity
 from ..exceptions import (  # dead-code-ok
-    BusinessRuleError,
     DatabaseError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
 )
 from ..utils.api_helpers import api_error
 from ..models import (  # dead-code-ok
     ConceptualDataModel,
     Contract,
-    DataLineage,
-    DataTransformation,
     DesignPattern,
     LogicalDataModel,
     PhysicalDataModel,
@@ -56,14 +53,11 @@ from ..models import (  # dead-code-ok
 )
 from ..models.business_capabilities import (  # dead-code-ok
     BusinessCapability,
-    BusinessFunction,
-    Capability,
 )
 from ..models.archimate_core import ArchiMateElement
 from ..models.implementation_migration import Gap
 from ..models.implementation_migration import Plateau
 from ..models.implementation_migration import WorkPackage
-from ..models.metrics import ApplicationMetricsSnapshot  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -105,17 +99,22 @@ def data_architecture_dashboard():
 @enterprise_bp.route("/data/models")
 @login_required
 def data_models():
-    """Data Models Overview - renders existing data architecture dashboard"""
-    try:
-        conceptual_models = ConceptualDataModel.query.limit(500).all()
-        logical_models = LogicalDataModel.query.limit(500).all()
-        physical_models = PhysicalDataModel.query.limit(500).all()
+    """Data Models Overview - renders existing data architecture dashboard.
 
+    Passes the same counts as `data_architecture_dashboard`, because both render
+    `enterprise/data_architecture_dashboard.html` and its metric tiles read
+    `conceptual_count` / `logical_count` / `physical_count`. This route used to
+    pass three *lists* under different names; the template never read them, so
+    every tile fell through `value=... or 0` and displayed 0 whatever the real
+    count was — a fabricated zero indistinguishable from a measured one. The
+    lists were also never rendered, so fetching up to 1500 rows was pure waste.
+    """
+    try:
         return render_template(
             "enterprise/data_architecture_dashboard.html",
-            conceptual_models=conceptual_models,
-            logical_models=logical_models,
-            physical_models=physical_models,
+            conceptual_count=ConceptualDataModel.query.count(),
+            logical_count=LogicalDataModel.query.count(),
+            physical_count=PhysicalDataModel.query.count(),
         )
     except SQLAlchemyError as e:
         current_app.logger.error(f"Database error loading data models: {e}")
@@ -586,6 +585,102 @@ def api_list_work_packages():
     })
 
 
+def _milestones_for(wp):
+    """Delivery milestones for a work package, via the projects that deliver it.
+
+    Returns [] rather than raising if the project models are unavailable — the
+    Gantt degrades to bars without markers, which is honest; it must never
+    invent a milestone.
+    """
+    try:
+        out = []
+        for project in getattr(wp, "projects", None) or []:
+            for ms in project.milestones:
+                target = ms.actual_date or ms.target_date
+                if not target:
+                    continue
+                out.append({
+                    "id": str(ms.id),
+                    "name": ms.name,
+                    "date": target.isoformat(),
+                    "status": ms.status,
+                    "project": project.name,
+                })
+        return sorted(out, key=lambda m: m["date"])
+    except Exception:
+        logger.exception("Could not resolve milestones for work package %s", getattr(wp, "id", "?"))
+        return []
+
+
+@enterprise_bp.route("/api/work-packages/gantt", methods=["GET"])
+@login_required
+def api_work_packages_gantt():
+    """Work packages in the shape the Gantt component consumes.
+
+    Separate from api_list_work_packages because that endpoint is a paginated
+    table feed (row_number, summary, percent_complete) while the Gantt needs a
+    full unpaginated timeline (start/end dates, progress, cost, owner).
+
+    The Gantt previously called `/implementation/api/work-packages`. That route
+    does resolve — despite a stale comment in _bootstrap/blueprints.py claiming
+    the blueprint was deregistered — but it serves WorkPackage.to_dict(), whose
+    field names do not match what the component reads: it emits `target_date` and
+    `percent_complete` where the Gantt expects `end_date` and
+    `progress_percentage`, and omits assigned_to / business_capability / layer /
+    milestones entirely. The chart therefore drew bars with undefined dates and
+    progress. This endpoint serves the component's actual contract.
+
+    Tenant scoping is implicit — WorkPackage carries TenantMixin.
+    """
+    try:
+        q = WorkPackage.query
+        status_filter = request.args.get("status", "")
+        if status_filter:
+            q = q.filter(WorkPackage.status == status_filter)
+
+        # Undated packages cannot be placed on a timeline; excluding them keeps the
+        # chart honest rather than inventing a start date. They remain visible in
+        # the table feed above.
+        q = q.filter(WorkPackage.start_date.isnot(None))
+        work_packages = q.order_by(
+            WorkPackage.start_date.asc(), WorkPackage.sequence_order.asc()
+        ).all()
+
+        items = []
+        for wp in work_packages:
+            items.append({
+                "id": wp.id,
+                "name": wp.name or "",
+                "description": wp.description or wp.summary or "",
+                "assigned_to": (wp.owner.email if wp.owner else None),
+                "business_capability": (wp.capability.name if wp.capability else None),
+                "status": wp.status or "planned",
+                "start_date": wp.start_date.isoformat() if wp.start_date else None,
+                # The Gantt's x-axis field is end_date; the model calls it target_date.
+                "end_date": (
+                    wp.completed_date.isoformat() if wp.completed_date
+                    else (wp.target_date.isoformat() if wp.target_date else None)
+                ),
+                "progress_percentage": (
+                    wp.percent_complete
+                    if wp.percent_complete is not None
+                    else (100 if wp.completed_date else 0)
+                ),
+                "estimated_cost": wp.estimated_cost,
+                "layer": wp.element_type or "implementation",
+                # Milestone hangs off Project. Project now carries a real
+                # work_package_id FK, so the delivery milestones of a work package
+                # are reachable: work_package -> projects -> milestones. Before that
+                # FK existed there was no path and this was necessarily [].
+                "milestones": _milestones_for(wp),
+            })
+
+        return jsonify({"work_packages": items, "total": len(items)})
+    except Exception:
+        logger.exception("Failed to build Gantt work-package feed")
+        return jsonify({"error": "Failed to load work packages"}), 500
+
+
 # CSRF: Protected via X-CSRFToken header sent by Platform.fetch
 @enterprise_bp.route("/api/work-packages", methods=["POST"])
 @login_required
@@ -747,7 +842,6 @@ def ai_architecture_analysis():
         from app.models.ai_recommendations import AIRecommendation
         from app.models.implementation_migration import Gap
         from app.models.application_portfolio import ApplicationComponent
-        from sqlalchemy import func
 
         # Fetch recent AI recommendations
         ai_recommendations = (
@@ -888,7 +982,6 @@ def process_optimization():
     try:
         from app.models.process_data import BusinessProcess
         from app.models.industry_apqc import IndustryProcessRecommendation
-        from app.models.business_capabilities import BusinessCapability
         from sqlalchemy import func
 
         # Total process count

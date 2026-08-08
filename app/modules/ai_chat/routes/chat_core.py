@@ -177,6 +177,36 @@ def get_available_models():
         )
 
 
+def _load_history(thread_id, user_id):
+    """Prior turns of *thread_id*, oldest first, or [] when there are none.
+
+    Ownership-checked: thread_id arrives from the client, so without the check a
+    user could replay another user's conversation into their own prompt simply
+    by passing someone else's id.
+
+    Never raises. History is an enhancement to the turn, not a precondition for
+    it - a failure here should cost the model its memory, not cost the user their
+    answer.
+    """
+    if not thread_id or not user_id:
+        return []
+    try:
+        from app.services.conversation_history import get_history_service, thread_owned_by
+
+        if not thread_owned_by(thread_id, user_id):
+            logger.warning("chat history requested for a thread the user does not own")
+            return []
+        messages = get_history_service().get_thread_messages(thread_id)
+        return [
+            {"role": m.role, "content": m.content}
+            for m in messages
+            if getattr(m, "role", None) in ("user", "assistant") and getattr(m, "content", None)
+        ]
+    except Exception:
+        logger.warning("chat history unavailable; continuing without it", exc_info=True)
+        return []
+
+
 @unified_ai_chat_bp.route("/message", methods=["POST"])
 @login_required
 @rate_limit(30, "1h")  # LLM-003: 30 requests per hour for chat operations
@@ -412,7 +442,7 @@ def send_message():
 
     try:
         # Get multi-domain chat service
-        chat_service = get_chat_service()
+        get_chat_service()
 
         # Prepare context data
         context_data = {}
@@ -441,6 +471,12 @@ def send_message():
             context_data.update(document_context)
 
         # ENT-085: Pass attached image data for vision/multimodal analysis
+        # The chat client no longer sends these. AgentRunner — which is what
+        # actually runs the turn — has no vision handling, so the base64 landed
+        # in context_data and was dropped by every context loader. The user saw
+        # a thumbnail and got a confident answer generated as if no diagram had
+        # been attached. The UI was removed rather than left lying; this stays
+        # as the reattachment point, and is inert while nothing sends it.
         image_data = data.get("image_data")
         if image_data and isinstance(image_data, str):
             context_data["image_data"] = image_data
@@ -457,6 +493,7 @@ def send_message():
             context=context_data,
             persona=persona,
             requested_model=requested_model,
+            history=_load_history(incoming_thread_id, current_user.id),
         )
 
         # ENH-018: Populate junction tables if agent result includes design_output
@@ -496,7 +533,15 @@ def send_message():
                 "actions_taken": agent_result.get("actions_taken", []),
                 "pending_approvals": agent_result.get("pending_approvals", []),
                 "requires_approval": bool(agent_result.get("pending_approvals")),
-                "context_used": True,
+                # The records the read tools actually returned this turn, so the
+                # reader can check the answer against the rows rather than
+                # trusting it.
+                "sources": agent_result.get("sources", []),
+                # Was hardcoded True on every response regardless of whether any
+                # context was built - _build_system_prompt swallows a context
+                # failure into an empty string, so the API asserted grounding
+                # unconditionally. Report what actually happened.
+                "context_used": bool(agent_result.get("sources")),
                 "workspace_id": workspace_id,
                 "thread_id": thread_id,
                 "processing_metadata": {
@@ -597,44 +642,31 @@ def submit_message_feedback():
     if rating not in ("up", "down"):
         return jsonify({"error": "rating must be 'up' or 'down'"}), 400
 
+    from app import db
+
     try:
-        from app.extensions import db
-        from sqlalchemy import text
-        # Store feedback; table created lazily on first use
-        _org_id = getattr(g, 'current_org_id', None)
-        if _org_id:
-            db.session.execute(
-                text(
-                    "INSERT INTO ai_chat_feedback (user_id, rating, domain, persona, message_text, created_at, organization_id) "
-                    "VALUES (:uid, :r, :d, :p, :m, CURRENT_TIMESTAMP, :org_id)"
-                ),
-                {
-                    "uid": current_user.id,
-                    "r": rating,
-                    "d": domain,
-                    "p": persona,
-                    "m": message_text,
-                    "org_id": _org_id,
-                },
-            )
-        else:
-            db.session.execute(  # tenant-exempt: fallback when organization_id unavailable
-                text(
-                    "INSERT INTO ai_chat_feedback (user_id, rating, domain, persona, message_text, created_at) "
-                    "VALUES (:uid, :r, :d, :p, :m, CURRENT_TIMESTAMP)"
-                ),
-                {
-                    "uid": current_user.id,
-                    "r": rating,
-                    "d": domain,
-                    "p": persona,
-                    "m": message_text,
-                },
-            )
+        from app.models.ai_chat_feedback import AIChatFeedback
+
+        # organization_id is set by the tenant before_flush; do not pass it.
+        db.session.add(AIChatFeedback(
+            user_id=current_user.id,
+            rating=rating,
+            domain=domain,
+            persona=persona,
+            message_text=message_text,
+        ))
         db.session.commit()
     except Exception:
-        # Table may not exist yet — log and return success anyway so UI works
-        current_app.logger.info("ai_chat_feedback table not ready; feedback not persisted")
+        # This used to swallow every failure, log at INFO and return
+        # success: True. organization_id was declared on no model and in no
+        # migration, so the raw INSERT that referenced it raised
+        # UndefinedColumn every time — the endpoint reported success for a
+        # write that never happened, and without a rollback the aborted
+        # transaction cascaded InFailedSqlTransaction into every later query
+        # on the request.
+        db.session.rollback()
+        current_app.logger.exception("ai_chat_feedback insert failed")
+        return jsonify({"error": "Feedback could not be saved"}), 500
 
     return jsonify({"success": True, "rating": rating})
 
@@ -711,9 +743,43 @@ def send_message_stream():
     app = current_app._get_current_object()
     user_id_for_thread = current_user.id if current_user.is_authenticated else None
 
+    # Capture the tenant NOW, while we are still on the request thread.
+    #
+    # app/middleware/tenant_context.py sets g.current_org_id in a before_request
+    # handler, and app/middleware/tenant_isolation.py returns without adding any
+    # filter when it is absent. The worker below runs in a daemon thread with only
+    # an app context - stream_with_context preserves the request context for the
+    # SSE *generator*, not for this thread - so without this every TenantMixin
+    # SELECT executed while building the prompt and running the agent's tools ran
+    # UNFILTERED ACROSS EVERY ORGANISATION. That included APISettings, so provider
+    # selection could pick up another tenant's LLM API key and send this
+    # organisation's prompts under, and billed to, that account.
+    #
+    # This is the default path: the UI tries /message/stream first and only falls
+    # back to /message on failure.
+    from app.middleware.tenant_context import current_org_id as _current_org_id
+
+    org_id_for_thread = _current_org_id()
+    # Load history here too, on the request thread, so the worker starts with the
+    # conversation already in hand rather than paying a DB round-trip inside the
+    # stream.
+    history_for_thread = _load_history(incoming_thread_id, user_id_for_thread)
+    if org_id_for_thread is None:
+        # Reproduce the request's own tenant context exactly rather than guessing
+        # an org - but say so, because an authenticated chat turn should have one.
+        logger.warning(
+            "chat stream: no tenant context on the request; the agent thread will "
+            "run with the same unscoped context this user would see in-request"
+        )
+
     def run_agent():
         try:
             with app.app_context():
+                # Re-establish the tenant before anything queries. Must precede
+                # AgentRunner construction: context assembly reads on import-time
+                # paths inside run().
+                g.current_org_id = org_id_for_thread
+
                 from app.modules.ai_chat.services.agent_runner import AgentRunner
                 runner = AgentRunner(user_id=user_id_for_thread, yield_event=emit)
                 result = runner.run(
@@ -723,6 +789,7 @@ def send_message_stream():
                     persona=persona or None,
                     requested_model=requested_model or None,
                     stream_mode=True,
+                    history=history_for_thread,
                 )
                 # Persist this turn (thread-backed history rail). Always on;
                 # never breaks the stream. thread_id rides back on the done event.
@@ -914,7 +981,7 @@ def get_available_domains():
         chat_service = get_chat_service()
         domains = chat_service.get_available_domains()
         return jsonify({"success": True, "domains": domains})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {"error": "Failed to get domains", "details": "See server logs for details"}
         ), 500
@@ -953,7 +1020,7 @@ def get_available_personas():
         chat_service = get_chat_service()
         personas = chat_service.get_available_personas()
         return jsonify({"success": True, "personas": personas})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get personas",
@@ -1023,7 +1090,7 @@ def get_prompt_templates():
             }
         ]
         return jsonify({"success": True, "templates": template_list, "slash_commands": slash_commands})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get templates",
@@ -1054,7 +1121,7 @@ def get_chat_history():
 
         return jsonify({"success": True, "history": history})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get chat history",
@@ -1079,7 +1146,7 @@ def clear_chat_history():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to clear history",
@@ -1118,7 +1185,7 @@ def save_chat_session():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to save session",
@@ -1137,7 +1204,7 @@ def get_saved_sessions():
 
         return jsonify({"success": True, "sessions": sessions})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get sessions",
@@ -1159,7 +1226,7 @@ def load_chat_session(session_id):
         else:
             return jsonify({"error": result.get("error", "Session not found")}), 404
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to load session",
@@ -1284,7 +1351,7 @@ def get_domain_context(domain):
         chat_service = get_chat_service()
         context_data = chat_service.get_domain_context(domain)
         return jsonify(context_data)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -1368,11 +1435,24 @@ def reject_tool_action(approval_id: int):
 @unified_ai_chat_bp.route("/session/toggle-auto-execute", methods=["POST"])
 @login_required
 def toggle_auto_execute():
-    """
-    Toggle the agent auto-execute mode for the current session.
-    When ON: auto-tier tools execute immediately.
-    When OFF (default): all tools queue for user confirmation.
-    Returns the new state.
+    """Toggle the session's auto-execute preference and return the new state.
+
+    NOT ENFORCED. This docstring previously claimed "When OFF (default): all
+    tools queue for user confirmation" - that was false in three ways: the flag
+    is written to the Flask session and read by nothing; the default is ON, not
+    OFF (AgentRunner queues only tier=="approve" regardless); and 34 of the 37
+    tools, including every create and link, are tier=="auto" and execute with no
+    confirmation either way. blueprint_chat.js:10 documents the real behaviour.
+
+    Enforcing it needs a registry change, not a route change: `tier` currently
+    has only "auto" and "approve", and "auto" covers both reads
+    (find_applications) and writes (create_solution). Gating on the flag today
+    would put every search behind an approval prompt. Split reads from writes -
+    a third tier, or a `mutates` flag on each schema in tools/registry.py - then
+    have AgentRunner queue mutating tools when this is off.
+
+    Left in place rather than deleted because blueprint_chat.js:43 calls it and
+    the stored preference is what that future gate would read.
     """
     from flask import session as flask_session
     current = flask_session.get("agent_auto_execute", False)

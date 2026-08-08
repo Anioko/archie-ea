@@ -33,7 +33,7 @@ import logging
 import traceback
 import uuid
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
 from flask import current_app
 
@@ -2639,7 +2639,7 @@ class EAWorkflowEngine:
         from app.models.solution_models import Solution
         from app.models.architecture_review_board import ARBReviewItem
 
-        scope = input_data.get("scope", {})
+        input_data.get("scope", {})
         app_id = (instance.context or {}).get("application_component_id")
 
         stakeholders = []
@@ -3636,7 +3636,7 @@ provides foundation for subsequent architecture development phases.
 
         total = len(elements_detail)
         layers_present = sorted(layer_counts.keys())
-        layers_missing = [l for l in ALL_LAYERS if l not in layers_present]
+        layers_missing = [item for item in ALL_LAYERS if item not in layers_present]
         elements_with_issues = sum(1 for e in elements_detail if e["issues"])
         healthy = total - elements_with_issues
 
@@ -3975,7 +3975,7 @@ provides foundation for subsequent architecture development phases.
 
         if raw_text:
             lines = raw_text.split("\n")
-            extracted["application_name"] = next((l.strip() for l in lines if l.strip()), "Unknown Application")
+            extracted["application_name"] = next((item.strip() for item in lines if item.strip()), "Unknown Application")
             extracted["description"] = raw_text[:500]
             extracted["word_count"] = len(raw_text.split())
             extracted["extraction_method"] = "text_parsing"
@@ -4238,11 +4238,11 @@ provides foundation for subsequent architecture development phases.
         for schedule in due:
             try:
                 context = schedule.default_context or {}
-                instance = self.start_workflow(
+                (self.start_workflow(
                     workflow_code=schedule.definition.workflow_code,
                     context=context,
                     triggered_by="scheduled",
-                )
+                ))
                 # Update next_run_at based on schedule_type
                 now = datetime.utcnow()
                 schedule_type = getattr(schedule, "schedule_type", "daily")
@@ -4656,7 +4656,7 @@ provides foundation for subsequent architecture development phases.
             weights = context.get("strategic_weights_input") or {}
             gaps_data = context.get("capability_gaps") or {}
             options = context.get("investment_options") or {}
-            adjustments = context.get("roadmap_adjustments_input") or {}
+            context.get("roadmap_adjustments_input") or {}
 
             total_investment = options.get("estimated_total_3yr_usd", 0.0) if isinstance(options, dict) else 0.0
             caps_addressed = gaps_data.get("total_gaps", 0) if isinstance(gaps_data, dict) else 0
@@ -4837,7 +4837,7 @@ provides foundation for subsequent architecture development phases.
                 raw = []
 
         dependency_graph = input_data.get("dependency_graph") or {}
-        edges = dependency_graph.get("edges", [])
+        dependency_graph.get("edges", [])
         nodes = dependency_graph.get("nodes", [])
 
         # Build coupling score: number of inbound + outbound edges per app
@@ -4909,7 +4909,6 @@ provides foundation for subsequent architecture development phases.
 
     def _handle_business_case_calc(self, instance, step_def, input_data) -> Dict:
         """APP_DISPOSITION step 6: estimate 3-year business case from dispositions."""
-        from app.models import ApplicationComponent
 
         dispositions_input = input_data.get("dispositions") or {}
         raw = dispositions_input.get("dispositions", []) if isinstance(dispositions_input, dict) else []
@@ -5133,8 +5132,8 @@ provides foundation for subsequent architecture development phases.
                     if wave_num == 1 else
                     "AT_RISK or BREAKING integrations where a fallback exists — migrate after Wave 1 is stable."
                     if wave_num == 2 else
-                    f"BREAKING dependencies with NO fallback coverage. "
-                    f"DO NOT PROCEED until Wave 2 is proven stable and each blocker has a remediation plan."
+                    "BREAKING dependencies with NO fallback coverage. "
+                    "DO NOT PROCEED until Wave 2 is proven stable and each blocker has a remediation plan."
                 ),
             }
 
@@ -5144,7 +5143,7 @@ provides foundation for subsequent architecture development phases.
         if wave2:
             waves.append(_wave_summary(wave2, 2, "Core Migration — Moderate Risk", True))
         if wave3:
-            waves.append(_wave_summary(wave3, 3, f"Critical — Blockers Require Sign-Off", True))
+            waves.append(_wave_summary(wave3, 3, "Critical — Blockers Require Sign-Off", True))
 
         blocker_names = [a.get("app_name") for a in wave3]
         total_effort = sum(i.get("effort_days", 0) for i in integrations)
@@ -5211,7 +5210,7 @@ provides foundation for subsequent architecture development phases.
 
     def _handle_arb_impact_assessment(self, instance, step_def, input_data) -> Dict:
         """ARB_PACK_GENERATION step 4: derive impact assessment from proposed changes."""
-        current_state = input_data.get("current_state") or {}
+        input_data.get("current_state") or {}
         proposed_changes = input_data.get("proposed_changes") or {}
         if isinstance(proposed_changes, dict):
             changes_data = proposed_changes.get("proposed_changes", {})
@@ -5384,7 +5383,6 @@ provides foundation for subsequent architecture development phases.
         No hardcoded costs — cost guidance derived from vendor tier in catalog.
         """
         from app.models.models import Vendor
-        from app.models.application import ApplicationCapabilityLink
         from app.models import ApplicationComponent
 
         capability_gaps = input_data.get("capability_gaps") or {}

@@ -199,7 +199,6 @@ def register_sap_import_routes(app=None) -> None:
         from flask_login import login_required
 
         from app.modules.codegen.routes.codegen_routes import codegen_bp
-        from app.modules.codegen.routes._helpers import _check_access
 
         @codegen_bp.route(
             "/api/sap/import",

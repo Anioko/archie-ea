@@ -136,7 +136,7 @@ def create_capability():
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to create capability"}), 500
 
 
@@ -176,7 +176,7 @@ def update_capability(capability_id):
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to update capability"}), 500
 
 
@@ -215,7 +215,7 @@ def add_compliance_requirement():
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return (
             jsonify(
                 {"success": False, "error": "Failed to add compliance requirement"}
@@ -302,7 +302,7 @@ def update_application_metadata(app_id):
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to update application"}), 500
 
 
@@ -338,7 +338,7 @@ def validate_modification_request():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Validation failed"}), 500
 
 
@@ -590,7 +590,7 @@ def suggest_entities():
             {"success": True, "suggestions": suggestions, "partial_text": partial_text}
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get suggestions",

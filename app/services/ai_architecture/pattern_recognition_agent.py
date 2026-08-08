@@ -6,7 +6,7 @@ to established frameworks (TOGAF, Zachman).
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -66,18 +66,6 @@ class PatternRecognitionAgent:
                 "different models",
             ],
             "confidence_threshold": 0.5,
-            "frameworks": ["TOGAF", "Zachman"],
-        },
-        "event_sourcing": {
-            "keywords": ["event sourcing", "event store", "immutable", "audit", "replay"],
-            "characteristics": ["immutable event log", "state reconstruction", "audit trail"],
-            "frameworks": ["TOGAF"],
-            "confidence_threshold": 0.5,
-        },
-        "api_gateway": {
-            "keywords": ["gateway", "api", "routing", "proxy", "aggregation"],
-            "characteristics": ["API gateway pattern", "request routing", "service aggregation"],
-            "confidence_threshold": 0.3,
             "frameworks": ["TOGAF", "Zachman"],
         },
         "hexagonal": {
@@ -364,7 +352,7 @@ class PatternRecognitionAgent:
         relevant = {}
         description = context.get("solution_description", "").lower()
         solution_type = context.get("solution_type", "")
-        business_domain = context.get("business_domain", "")
+        context.get("business_domain", "")
         constraints = [c.lower() for c in context.get("constraints", [])]
 
         # Check each scenario for relevance

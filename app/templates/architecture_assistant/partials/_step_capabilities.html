@@ -6,7 +6,7 @@
   </div>
 
   <div x-show="prePopulatedCapabilities.length > 0" x-cloak
-    class="rounded-md border border-blue-500/30 bg-blue-500/5 p-3 text-sm text-primary">
+    class="rounded-md border border-info/30 bg-info/5 p-3 text-sm text-primary">
     <i data-lucide="info" class="h-4 w-4 inline mr-1"></i>
     <span x-text="prePopulatedCapabilities.length"></span> capabilities imported from linked applications.
   </div>
@@ -54,7 +54,7 @@
             <div class="flex items-center gap-2">
               <span x-text="cap.name" class="text-sm font-medium"></span>
               <span x-show="cap.from_app" x-cloak
-                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/30">
                 From linked app
               </span>
             </div>

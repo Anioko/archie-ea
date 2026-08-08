@@ -13,7 +13,7 @@ from app.extensions import db
 def link_decision_capability(decision_id):
     """ARB-002: Link a capability to an architecture decision."""
     from app.models.architecture_decision import ArchitectureDecision, DecisionCapabilityLink
-    decision = ArchitectureDecision.query.get_or_404(decision_id)
+    ArchitectureDecision.query.get_or_404(decision_id)
     data = request.get_json() or {}
     capability_id = data.get('capability_id')
     if not capability_id:
@@ -55,7 +55,7 @@ def capability_decisions(capability_id):
     """ARB-002: Get all decisions linked to a capability, grouped by horizon."""
     from app.models.architecture_decision import ArchitectureDecision, DecisionCapabilityLink
     links = DecisionCapabilityLink.query.filter_by(capability_id=capability_id).all()
-    decision_ids = [l.decision_id for l in links]
+    decision_ids = [item.decision_id for item in links]
     decisions = ArchitectureDecision.query.filter(
         ArchitectureDecision.id.in_(decision_ids),
         ArchitectureDecision.status.in_(['proposed', 'under_review', 'accepted'])
@@ -85,7 +85,7 @@ def capability_governance_panel(capability_id):
 
     # All decisions linked to this capability
     links = DecisionCapabilityLink.query.filter_by(capability_id=capability_id).all()
-    decision_ids = [l.decision_id for l in links]
+    decision_ids = [item.decision_id for item in links]
 
     all_decisions = ArchitectureDecision.query.filter(
         ArchitectureDecision.id.in_(decision_ids)
@@ -412,8 +412,8 @@ def decision_register():
     for d in decisions:
         links = DecisionCapabilityLink.query.filter_by(decision_id=d.id).all()
         row = d.to_dict()
-        row['linked_capability_ids'] = [l.capability_id for l in links]
-        row['primary_link_type'] = next((l.link_type for l in links if l.is_primary), None)
+        row['linked_capability_ids'] = [item.capability_id for item in links]
+        row['primary_link_type'] = next((item.link_type for item in links if item.is_primary), None)
         results.append(row)
 
     return jsonify({'decisions': results, 'total': len(results)}), 200

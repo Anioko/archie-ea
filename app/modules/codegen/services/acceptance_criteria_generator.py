@@ -303,7 +303,7 @@ class AcceptanceCriteriaGenerator:
                 elif actions and actions[0].get("type") == "require_approval":
                     verification = f"API: POST /api/{entity.lower()}s → 202, GET /api/approval-requests → contains new entry"
                 elif actions and actions[0].get("type") == "notify":
-                    verification = f"API: trigger action, verify notification log/webhook fired"
+                    verification = "API: trigger action, verify notification log/webhook fired"
                 else:
                     verification = f"API: trigger {event} on {entity}, verify {then}"
 
@@ -341,7 +341,7 @@ class AcceptanceCriteriaGenerator:
                         "source": {"type": "business_rule", "name": rule.name, "rule_id": rule.id},
                         "given": ", ".join(neg_given_parts),
                         "when": when,
-                        "then": f"the operation succeeds normally (rule does not fire)",
+                        "then": "the operation succeeds normally (rule does not fire)",
                         "verification": f"API: POST /api/{entity.lower()}s with condition NOT met → 201 success",
                         "priority": "MUST",
                         "category": "business_rule",

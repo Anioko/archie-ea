@@ -5,9 +5,9 @@
 
 {% macro status_badge(status) %}
   {% if status == 'proposed' %}
-  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">Proposed</span>
+  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-700 border border-amber-500/20">Proposed</span>
   {% elif status == 'accepted' %}
-  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">Accepted</span>
+  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">Accepted</span>
   {% elif status == 'deprecated' %}
   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">Deprecated</span>
   {% elif status == 'superseded' %}
@@ -69,7 +69,7 @@
                 <i data-lucide="info" class="h-4 w-4 text-muted-foreground"></i>
                 Context
             </h2>
-            <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.context }}</div>
+            <div class="prose prose-sm max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.context }}</div>
         </div>
         {% endif %}
 
@@ -79,7 +79,7 @@
                 <i data-lucide="check-circle" class="h-4 w-4 text-primary"></i>
                 Decision
             </h2>
-            <div class="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap font-medium">{{ decision.decision }}</div>
+            <div class="prose prose-sm max-w-none whitespace-pre-wrap font-medium">{{ decision.decision }}</div>
         </div>
         {% endif %}
 
@@ -89,7 +89,7 @@
                 <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground"></i>
                 Consequences
             </h2>
-            <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.consequences }}</div>
+            <div class="prose prose-sm max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.consequences }}</div>
         </div>
         {% endif %}
 
@@ -99,7 +99,7 @@
                 <i data-lucide="git-branch" class="h-4 w-4 text-muted-foreground"></i>
                 Alternatives Considered
             </h2>
-            <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.alternatives }}</div>
+            <div class="prose prose-sm max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.alternatives }}</div>
         </div>
         {% endif %}
 

@@ -1,0 +1,120 @@
+"""Shared test fixtures.
+
+Before this file existed, every test module hand-rolled a module-scoped ``app``
+fixture and cleaned up its own rows, because the test database is shared and
+persistent. That is flaky by construction: a test that fails partway through
+leaves rows behind, and the next run sees them.
+
+The ``db_session`` fixture here replaces that pattern with a transaction that is
+always rolled back, so no test can leave residue even if it fails mid-way.
+
+Backwards compatibility
+-----------------------
+The eight pre-existing test modules define their own module-scoped ``app``
+fixture. pytest resolves the *closest* definition, so those keep working
+untouched — the fixtures below are opt-in for new tests.
+
+Requires PostgreSQL: ``TestingConfig`` rejects SQLite outright. Set
+``TEST_DATABASE_URL`` before running.
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+
+import pytest
+
+
+@pytest.fixture(scope="session")
+def app():
+    """Boot the application once per test session."""
+    os.environ.setdefault("FLASK_CONFIG", "testing")
+    from app import create_app
+
+    application = create_app("testing")
+    application.config["TESTING"] = True
+    application.config["WTF_CSRF_ENABLED"] = False
+    return application
+
+
+@pytest.fixture(scope="session")
+def _schema(app):
+    """Ensure tables exist once per session.
+
+    ``create_all()`` only creates *missing* tables, so this is safe against a
+    shared database that already has a schema. It does not add missing columns —
+    see the schema-drift gate in scripts/verify.py for that.
+    """
+    from app import db
+
+    with app.app_context():
+        db.create_all()
+    return True
+
+
+@pytest.fixture
+def db_session(app, _schema):
+    """A database session whose work is always rolled back.
+
+    Binds ``db.session`` to a single connection held open inside an outer
+    transaction. ``join_transaction_mode="create_savepoint"`` means a
+    ``session.commit()`` inside the test resolves to a SAVEPOINT release rather
+    than a real COMMIT, so committing code under test behaves normally while the
+    outer transaction still discards everything at teardown.
+    """
+    from app import db
+
+    with app.app_context():
+        connection = db.engine.connect()
+        transaction = connection.begin()
+        db.session.configure(bind=connection, join_transaction_mode="create_savepoint")
+        try:
+            yield db.session
+        finally:
+            db.session.remove()
+            if transaction.is_active:
+                transaction.rollback()
+            connection.close()
+            # Drop the per-test binding so later sessions use the normal engine.
+            db.session.configure(bind=None)
+
+
+@pytest.fixture
+def make_org(db_session):
+    """Factory for Organization rows with collision-free names."""
+
+    def _make(label: str = "org"):
+        from app.models.organization import Organization
+
+        suffix = uuid.uuid4().hex[:10]
+        org = Organization(name=f"Test {label} {suffix}", slug=f"test-{label}-{suffix}")
+        db_session.add(org)
+        db_session.flush()
+        return org
+
+    return _make
+
+
+@pytest.fixture
+def tenant_ctx(app):
+    """Enter a request-scoped tenant context, as a logged-in request would.
+
+    The isolation middleware keys off ``g.current_org_id`` and is a deliberate
+    no-op without it, so any test asserting isolation must establish it.
+
+        with tenant_ctx(org.id):
+            ...  # queries here are scoped to org.id
+    """
+    import contextlib
+
+    from flask import g
+
+    @contextlib.contextmanager
+    def _ctx(org_id):
+        # A test request context so `g` behaves as it does in a real request.
+        with app.test_request_context("/"):
+            g.current_org_id = org_id
+            yield
+
+    return _ctx

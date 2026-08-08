@@ -518,7 +518,7 @@ def _relationship_to_dict(r):
 @login_required
 def api_list_elements():
     """API: List elements (JSON) with relationship + solution counts (ARCH-002)."""
-    from sqlalchemy import func, or_
+    from sqlalchemy import func
 
     # Subquery: count relationships where element is source or target
     rel_sub = (

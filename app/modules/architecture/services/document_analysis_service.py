@@ -265,33 +265,32 @@ class DocumentAnalysisService:
         self, image_path: str, provider: str, context: str
     ) -> Tuple[Dict, Optional[LLMInteraction]]:
         """Analyze image file for ArchiMate elements."""
-        # Use specialized prompt based on context
-        if context == "application":
-            prompt_addition = """
-Focus on extracting Application Layer elements:
-- ApplicationComponent (applications, systems, modules)
-- ApplicationInterface (APIs, integration points)
-- ApplicationService (services exposed by applications)
-- ApplicationFunction (functions performed by applications)
-- DataObject (data entities managed by applications)
-
-Also extract related Business and Technology layer elements that interact with applications.
-"""
-        else:  # vendor
-            prompt_addition = """
-Focus on extracting Business Layer elements related to vendors:
-- BusinessActor (vendor organizations, partners)
-- Product (vendor products, solutions)
-- Contract (vendor agreements, SLAs)
-- BusinessService (services provided by vendors)
-
-Also extract Application and Technology elements that represent vendor offerings.
-"""
-
         # `await ...__doc__` used to sit here, awaiting a docstring string. That
         # raises TypeError: object str can't be used in 'await' expression - so
         # every image upload through this path failed before it reached the
         # model, and the context prompt built above was never used by anything.
+        #
+        # Removing that await left `prompt_addition` referenced but never bound
+        # (ruff F821 - a NameError on the first image upload), because both
+        # branches of the context switch had been gutted to `pass`. Build the
+        # value the call actually wants; extract_archimate_from_diagram documents
+        # extra_instructions as caller-specific guidance appended to the prompt.
+        # Name the ArchiMate types exactly (DESIGN.md: ArchiMate is the backbone,
+        # not a view) so the model returns types that map straight onto
+        # ArchiMateElement rows without a second normalisation pass.
+        if context == "application":
+            prompt_addition = (
+                "Focus on Application Layer elements: ApplicationComponent, "
+                "ApplicationService, ApplicationInterface, ApplicationFunction "
+                "and the DataObject elements they access."
+            )
+        else:  # vendor
+            prompt_addition = (
+                "Focus on vendor-supplied products and what they run on: the "
+                "ApplicationComponent elements each vendor provides, plus the "
+                "Node, SystemSoftware and TechnologyService elements beneath them."
+            )
+
         extracted_data, interaction = await self.multi_modal_service.extract_archimate_from_diagram(
             image_path, provider, extra_instructions=prompt_addition
         )
@@ -416,7 +415,7 @@ Also extract Application and Technology elements that represent vendor offerings
                         error_type = extracted_data.get("metadata", {}).get("error_type", "")
                         raw_response = extracted_data.get("metadata", {}).get("raw_response", "")
 
-                        logger.warning(f"⚠️ Enhanced extraction returned 0 elements")
+                        logger.warning("⚠️ Enhanced extraction returned 0 elements")
                         logger.warning(f"Error: {error_msg}")
                         logger.warning(f"Error type: {error_type}")
                         if raw_response:
@@ -2269,7 +2268,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
                                             "properties": {},
                                         }
                                     )
-                        except (json.JSONDecodeError, ValueError) as parse_err:
+                        except (json.JSONDecodeError, ValueError):
                             # Create minimal element as fallback
                             try:
                                 element_objects.append(
@@ -2570,7 +2569,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
                         {
                             "relationship": f"{source_name} -> {target_name}",
                             "type": "unknown_element",
-                            "error": f"Source or target element not found in extracted elements",
+                            "error": "Source or target element not found in extracted elements",
                             "severity": "warning",
                         }
                     )
@@ -2979,7 +2978,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
 
         This prevents token limit issues and improves reliability for large datasets.
         """
-        logger.info(f"Analyzing large spreadsheet using chunking strategy")
+        logger.info("Analyzing large spreadsheet using chunking strategy")
 
         records = structured_data.get("records", [])
         columns = structured_data.get("columns", []) or structured_data.get("headers", [])

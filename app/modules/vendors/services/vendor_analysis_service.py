@@ -7,17 +7,14 @@ Comprehensive vendor and product analysis for Enterprise Architecture decision-m
 Supports comparison, recommendations, and portfolio analysis.
 """
 
-import json
 
 # ApplicationComponent import removed - not used in vendor analysis
 # from app.models.application_portfolio import ApplicationComponent
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
 
-from app import db
 from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (
     VendorOrganization,

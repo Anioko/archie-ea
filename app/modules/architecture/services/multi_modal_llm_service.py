@@ -356,7 +356,6 @@ class MultiModalLLMService:
         temperature: float,
     ) -> Tuple[str, Optional[LLMInteraction]]:
         """Analyze PDF using Gemini Files API (better for large documents)."""
-        import uuid
 
         # Step 1: Upload file to Files API
         file_size = len(pdf_data)

@@ -31,6 +31,14 @@ DENIED = "denied"
 
 # path -> the archetypes that should reach it, from the decorator definitions.
 # platform_admin is added to every row because requires_role() grants it always.
+#
+# /ai-chat is the one deliberately open row. chat_views.index carries
+# @login_required and no role gate, so every archetype is expected to reach it —
+# stating that explicitly is what makes the row worth having. It pins both
+# directions of a page that had no authorisation coverage at all: a role gate
+# added later would lock eight personas out of the assistant and show up here,
+# and test_no_archetype_reaches_another_personas_section_unauthenticated now also
+# covers it, which matters because the chat sees the whole portfolio.
 POLICY = {
     "/procurement/contracts":  {"procurement", "portfolio_manager"},
     "/procurement/licenses":   {"procurement", "portfolio_manager"},
@@ -38,24 +46,59 @@ POLICY = {
     "/my-applications/":       {"application_manager"},
     "/my-applications/list":   {"application_manager"},
     "/my-applications/health": {"application_manager"},
+    "/ai-chat":                set(ARCHETYPES),
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
 
 
-def _login(page, base, email):
-    page.goto(base + "/account/login", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-    page.fill("#email", email)
-    page.fill("#password", PASSWORD)
-    try:
-        page.click("#submit", force=True, no_wait_after=True)
-    except TypeError:
-        page.locator("#submit").dispatch_event("click")
-    try:
-        page.wait_for_url(lambda u: "/account/login" not in u, timeout=PAGE_TIMEOUT)
-    except Exception:
-        pass
-    assert "/account/login" not in page.url, "could not sign in as %s" % email
+def _login(page, base, email, _attempts=2):
+    """Sign in, retrying once, and say which failure actually happened.
+
+    This used to swallow the wait_for_url timeout with `except Exception: pass`
+    and then assert on page.url, so a navigation that simply had not finished
+    reported as "could not sign in as ...". That made one archetype fail
+    intermittently in a full smoke run — and a DIFFERENT archetype each time,
+    which is the signature of a timing race rather than a credentials or
+    authorisation problem. In isolation the file passed 11/11 every time.
+
+    The app has no login rate limiting or account lockout, so a slow response
+    under the load of a full browser suite was the only remaining explanation.
+    Retrying once absorbs that; distinguishing the two causes means the next
+    person does not have to rediscover which one they are looking at.
+    """
+    for attempt in range(1, _attempts + 1):
+        page.goto(base + "/account/login", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.fill("#email", email)
+        page.fill("#password", PASSWORD)
+        try:
+            page.click("#submit", force=True, no_wait_after=True)
+        except TypeError:
+            page.locator("#submit").dispatch_event("click")
+
+        timed_out = False
+        try:
+            page.wait_for_url(lambda u: "/account/login" not in u, timeout=PAGE_TIMEOUT)
+        except Exception:
+            timed_out = True
+
+        if "/account/login" not in page.url:
+            return
+        # Still on the login page. An actual rejection renders a flash; a timing
+        # failure does not. Only the latter is worth retrying.
+        rejected = page.locator(".alert-danger, .flash-error, [role=alert]").count() > 0
+        if rejected:
+            raise AssertionError(
+                f"sign-in REJECTED for {email} — the page rendered an error, so this is "
+                f"a credentials or account-state problem, not a timing one"
+            )
+        if attempt == _attempts:
+            raise AssertionError(
+                f"sign-in for {email} never navigated away from /account/login after "
+                f"{_attempts} attempts (wait_for_url timed out: {timed_out}). No error "
+                f"was rendered, so the form was accepted but the response did not "
+                f"arrive within {PAGE_TIMEOUT}ms."
+            )
 
 
 def _observe(page, base, path):

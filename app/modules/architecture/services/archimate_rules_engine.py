@@ -9,13 +9,11 @@ enterprise architecture modeling.
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchiMateView
+from app.models import ArchiMateElement, ArchiMateRelationship
 from app.models.business_capabilities import BusinessCapability
-from app.models.technical_capability import TechnicalCapability
 from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 
 logger = logging.getLogger(__name__)

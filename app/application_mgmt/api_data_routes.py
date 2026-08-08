@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 
-from flask import current_app, flash, jsonify, redirect, request  # dead-code-ok
+from flask import current_app, flash, jsonify, request  # dead-code-ok
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
@@ -115,7 +115,7 @@ def analyze_document_for_application(application_id):
     from ..services.archimate.document_analysis_service import DocumentAnalysisService
     from ..services.archimate.document_upload_service import DocumentUploadService
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     try:
         analysis_service = DocumentAnalysisService()
@@ -289,7 +289,7 @@ def apply_analysis_to_application(application_id):
     """
     from ..services.archimate.document_analysis_service import DocumentAnalysisService
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     try:
         data = request.get_json()
@@ -361,7 +361,7 @@ def get_analysis_history(application_id):
     """Get analysis history for an application."""
     from ..models.document_analysis import DocumentAnalysis
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     analyses = (
         DocumentAnalysis.query.filter_by(
@@ -397,7 +397,7 @@ def test_api():
 def get_applications_table_data():
     """API endpoint for server-side paginated table data"""
     try:
-        from app.utils.api_response import error_response, success_response
+        from app.utils.api_response import success_response
         from sqlalchemy import inspect
 
         # Get query parameters with pagination bounds checking

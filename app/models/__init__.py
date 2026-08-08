@@ -290,6 +290,18 @@ else:
     # Risk model for TPM-013 risk heat map
     from .risk import Risk, RiskStatus  # noqa: F401
 
+    # Approved-technology register behind the governance dashboard's Standards tab
+    from .technology_standard import TechnologyStandard  # noqa: F401
+
+    # Measurable initiative outcomes (replaces the expected_benefits JSON blob)
+    from .benefit import Benefit  # noqa: F401
+
+    # Demand intake (the front door) and Assumption (completes RAID)
+    from .demand import Assumption, Demand  # noqa: F401
+
+    # Hourly rates, so logged effort can be costed into initiative spend
+    from .rate_card import RateCard  # noqa: F401
+
     # SA-009: TOGAF ADM deliverable checklists per phase
     from .adm_deliverable import ADMDeliverable, ADMDeliverableCheck  # noqa: F401
 

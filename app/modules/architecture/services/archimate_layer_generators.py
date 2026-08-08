@@ -8,7 +8,7 @@ Supports three modes: quick (50 - 100), standard (100 - 200), comprehensive (200
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app.models.application_portfolio import ApplicationComponent
 from app.services.llm_service import LLMService

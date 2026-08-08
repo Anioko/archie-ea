@@ -15,7 +15,7 @@ def match_entities():
     """Match entities based on input text"""
     try:
         data = request.get_json()
-        text = data.get("text", "")
+        data.get("text", "")
 
         # Simple placeholder implementation
         return jsonify({"success": True, "matches": []})

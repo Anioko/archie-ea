@@ -139,7 +139,28 @@ class TestBizbokGridWithSeededData:
         from app.modules.capabilities.services import value_stream_service as vs_service
 
         suffix = uuid.uuid4().hex[:8]
-        with app.app_context():
+        # A TENANT context, not just an app context. ValueStream is TenantMixin, so
+        # organization_id is NOT NULL and filled by the column default, which reads
+        # g.current_org_id. Outside a request that default deliberately returns None
+        # when more than one Organization exists rather than guessing the tenant —
+        # and a restored production database has six. This test previously ran with
+        # only an app context and passed solely because a fresh database created
+        # value_streams WITHOUT the column at all; against real data it failed with
+        # NotNullViolation.
+        with app.test_request_context("/"):
+            from flask import g
+
+            org = db.session.execute(
+                db.text("SELECT id FROM organizations ORDER BY id LIMIT 1")
+            ).scalar()
+            if org is None:
+                from app.models.organization import Organization
+
+                seeded = Organization(name=f"VS Test Org {suffix}", slug=f"vs-test-{suffix}")
+                db.session.add(seeded)
+                db.session.flush()
+                org = seeded.id
+            g.current_org_id = org
             # Created via the service (Core-level insert) rather than
             # db.session.add(ValueStream(...)) directly: a pre-existing
             # after_insert event on ValueStream in app/models/strategy_layer.py

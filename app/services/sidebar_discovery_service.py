@@ -13,8 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 from enum import Enum
 
-from app.models.sidebar import SidebarMenu, SidebarSection, SidebarItem
-from app import db
+from app.models.sidebar import SidebarItem
 
 logger = logging.getLogger(__name__)
 

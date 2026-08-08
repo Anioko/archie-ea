@@ -104,11 +104,31 @@ class KanbanBoard(TenantMixin, db.Model):
         return f"<KanbanBoard {self.name}>"
 
 
-class KanbanCard(db.Model):
+class KanbanCard(TenantMixin, db.Model):
     """Individual kanban cards representing architectural work items"""
 
     __tablename__ = "kanban_cards"
     __table_args__ = {"extend_existing": True}
+
+    # KanbanBoard carries TenantMixin; KanbanCard did not. Cards were therefore
+    # protected only when reached *through* a board — a direct
+    # `KanbanCard.query.get(id)` or `.filter_by(...)` returned any tenant's card,
+    # and card titles, descriptions and assignees are business content.
+    #
+    # Nullable for the usual reason: kanban_cards is an existing table and
+    # reconcile-schema can only ADD nullable columns (ADR 0002). Isolation keys
+    # on isinstance(TenantMixin), not on nullability.
+    #
+    # Unlike the other backfills in this series, this one does not have to guess
+    # or ask: board_id is NOT NULL and boards are already scoped, so each card's
+    # true owner is derivable exactly.
+    #     flask --app manage backfill-kanban-card-org
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = Column(Integer, primary_key=True)
     title = Column(String(300), nullable=False)
@@ -196,6 +216,45 @@ class KanbanCard(db.Model):
     story_points = db.Column(db.Integer, nullable=True)
     labels = db.Column(db.JSON, nullable=True)
     acceptance_criteria = db.Column(db.Text, nullable=True)
+
+    # Effort actuals, pulled from Jira. Only assignee/status/story_points were
+    # ever synced, so nothing in the platform could observe how much effort a
+    # piece of work had actually consumed — which is why EnterpriseInitiative's
+    # spent_to_date was a column nothing ever wrote. Jira reports both in
+    # seconds; kept in seconds to avoid a lossy conversion on the way in.
+    # Nullable: existing rows have no history, and "no worklog" must stay
+    # distinguishable from "zero effort".
+    time_spent_seconds = db.Column(db.Integer, nullable=True)
+    time_estimate_seconds = db.Column(db.Integer, nullable=True)
+    effort_synced_at = db.Column(db.DateTime, nullable=True)
+
+    # Effort has to reach an initiative for spend to be computable, and it could
+    # not. `work_package_id` above points at roadmap_work_packages, which stores
+    # business_capability as a String and carries no foreign keys at all — a dead
+    # end. The canonical work package is the ArchiMate Implementation & Migration
+    # element in `work_packages`, which does link to the initiative. This is the
+    # missing hop: card -> work package -> initiative.
+    implementation_work_package_id = db.Column(
+        db.Integer, db.ForeignKey("work_packages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    @property
+    def time_spent_hours(self):
+        """Effort actually logged, in hours. None when Jira reported nothing."""
+        if self.time_spent_seconds is None:
+            return None
+        return round(self.time_spent_seconds / 3600.0, 2)
+
+    @property
+    def effort_variance_pct(self):
+        """Logged vs originally estimated. None unless both are known."""
+        if not self.time_estimate_seconds or self.time_spent_seconds is None:
+            return None
+        return round(
+            (self.time_spent_seconds - self.time_estimate_seconds)
+            / self.time_estimate_seconds * 100,
+            1,
+        )
 
     # Gantt / progress
     arch_layer = db.Column(db.String(50), nullable=True)

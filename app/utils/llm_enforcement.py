@@ -4,10 +4,8 @@ LLM Enforcement System - Capability Framework Protection
 Monitors and enforces guardrails for all LLM operations
 """
 
-import json
 import os
 import re
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -53,24 +51,6 @@ class LLMEnforcementSystem:
             return True  # File doesn't exist, no issue
 
         # FORBIDDEN PATTERNS FOR FILE DELETION
-        forbidden_patterns = [
-            r"del.*\.py",
-            r"remove.*\.py",
-            r"delete.*\.py",
-            r"rm.*\.py",
-            r"unlink.*\.py",
-            r"os\.remove",
-            r"os\.unlink",
-            r"pathlib.*unlink",
-            r"Path.*unlink",
-            "rmdir",
-            r"shutil\.rmtree",
-            r"shutil\.move",
-            r"shutil\.copy",
-            r"write_to_file.*delete",
-            r"edit.*delete",
-            r"multi_edit.*delete",
-        ]
 
         # Check if this is a Python file
         if file_path.endswith(".py"):
@@ -280,7 +260,7 @@ class LLMEnforcementSystem:
 
         with open(log_file, "a") as f:
             f.write(f"\n{'='*80}\n")
-            f.write(f"LLM ENFORCEMENT SYSTEM VIOLATION\n")
+            f.write("LLM ENFORCEMENT SYSTEM VIOLATION\n")
             f.write(f"Timestamp: {datetime.now().isoformat()}\n")
             f.write(f"{'='*80}\n")
 

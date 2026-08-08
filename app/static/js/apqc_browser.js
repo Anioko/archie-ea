@@ -104,6 +104,7 @@ class APQCBrowserManager {
             }
         } catch (error) {
             console.error('Error loading industry variants:', error);
+            this.showError('Error loading industry variants');
         }
     }
 

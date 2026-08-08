@@ -524,7 +524,7 @@ class ArchiMateTemplateService:
                 "name": entity_name,
                 "type": elem_type,
                 "layer": layer,
-                "description": f"Extracted from requirements",
+                "description": "Extracted from requirements",
             }
             elements.append(element)
             element_id += 1

@@ -12,16 +12,6 @@ from flask_login import login_required
 from sqlalchemy import func, select
 
 from .. import db
-from ..models.application_layer import (
-    ApplicationCollaboration,
-    ApplicationEvent,
-    ApplicationFunction,
-    ApplicationInteraction,
-    ApplicationInterface,
-    ApplicationProcess,
-    ApplicationService,
-    DataObject,
-)
 from ..models.application_portfolio import ApplicationComponent
 from ..models.archimate_business import (
     BusinessCollaboration,
@@ -38,15 +28,11 @@ from ..models.archimate_technology import (
     TechnologyInteraction,
     TechnologyProcess,
 )
-from ..models.business_capabilities import BusinessCapability, BusinessFunction
+from ..models.business_capabilities import BusinessCapability
 from ..models.business_layer import (
-    BusinessActor,
     BusinessEvent,
-    BusinessObject,
-    BusinessRole,
-    BusinessService,
 )
-from ..models.motivation import Assessment, Driver, Goal, Meaning, Stakeholder, Value
+from ..models.motivation import Assessment, Meaning, Stakeholder, Value
 from ..models.technology_layer import (
     CommunicationNetwork,
     Device,
@@ -417,7 +403,7 @@ def application_capability_mapping_delete(id, mapping_id):
 @login_required
 def update_motivation_layer(id):
     """Update Motivation Layer elements (Requirements, Stakeholders, Drivers, Goals)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     # csrf-ok: global CSRFProtect active
 
@@ -624,21 +610,24 @@ def update_motivation_layer(id):
                             changed_fields.append(f"outcome_{outcome_id}")
                             db.session.add(outcome_obj)
 
-        # Process constraint updates and deletions
-        # Note: Constraint model not yet created in the codebase
+        # Process constraint updates and deletions.
+        # The Constraint model does not exist yet, so this block is switched off at
+        # `if False:` and is unreachable. The noqa markers below record that the
+        # undefined name is a known consequence of that, not an unfixed defect —
+        # remove them (and the `if False:`) when the model lands.
         if False:  # Disabled until Constraint model is created
             for constraint_data in form.constraints.data:
                 constraint_id = constraint_data.get("id")
                 constraint_delete = constraint_data.get("_delete")
                 if constraint_id and constraint_delete:
-                    constraint_obj = Constraint.query.get(int(constraint_id))
+                    constraint_obj = Constraint.query.get(int(constraint_id))  # noqa: F821 — model not yet created
                     if constraint_obj:
                         db.session.delete(constraint_obj)
                         changed_fields.append(f"constraint_{constraint_id}_deleted")
                 constraint_name = constraint_data.get("name")
                 constraint_description = constraint_data.get("description")
                 if constraint_id and constraint_name:
-                    constraint_obj = Constraint.query.get(int(constraint_id))
+                    constraint_obj = Constraint.query.get(int(constraint_id))  # noqa: F821 — model not yet created
                     if constraint_obj:
                         has_changed = False
                         if constraint_obj.name != constraint_name:
@@ -717,7 +706,7 @@ def update_motivation_layer(id):
 @login_required
 def update_strategy_layer(id):
     """Update Strategy Layer elements (Capabilities, Resources, Value Streams, Courses of Action)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     # csrf-ok: global CSRFProtect active
 
@@ -850,7 +839,7 @@ def update_strategy_layer(id):
 @login_required
 def update_business_layer(id):
     """Update Business Layer elements (Services, Processes, Actors, Roles)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = BusinessLayerForm(request.form)
@@ -1245,7 +1234,7 @@ def update_business_layer(id):
 @login_required
 def update_application_layer(id):
     """Update Application Layer elements (Interfaces, Data Objects, Services)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = ApplicationLayerForm(request.form)
@@ -1538,7 +1527,7 @@ def update_application_layer(id):
 @login_required
 def update_technology_layer(id):
     """Update Technology Layer elements (Nodes, SystemSoftware, TechnologyServices)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = TechnologyLayerForm(request.form)

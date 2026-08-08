@@ -55,7 +55,6 @@ class ServiceNowConnectorService:
         """
         from app.extensions import db
         from app.models.application_portfolio import ApplicationComponent
-        from app.models.connector_config import ConnectorConfig
 
         config = self._get_config(org_id, "servicenow")
         if config is None or not config.enabled:
@@ -137,7 +136,6 @@ class ServiceNowConnectorService:
         """
         from app.extensions import db
         from app.models.architecture_review_board import ARBReviewItem
-        from app.models.connector_config import ConnectorConfig
 
         arb_item = ARBReviewItem.query.get(arb_decision_id)
         if arb_item is None:

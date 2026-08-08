@@ -33,10 +33,10 @@ def get_import_history():
         page = request.args.get("page", 1, type=int)
         per_page = request.args.get("per_page", 20, type=int)
         status = request.args.get("status")
-        date_from = request.args.get("date_from")
-        date_to = request.args.get("date_to")
+        request.args.get("date_from")
+        request.args.get("date_to")
 
-        service = BatchProcessingService()
+        BatchProcessingService()
 
         # Query batch jobs for current user with optional filters
         query = BatchJob.query.filter_by(created_by_id=current_user.id)

@@ -70,6 +70,22 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ArchiMate backfill CLI: {e}")
 
+    # Demo tenant relationship seeder
+    try:
+        from app.commands import seed_demo_mappings
+        seed_demo_mappings.init_app(app)
+        app.logger.info("✅ Demo mapping seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register demo mapping seed CLI: {e}")
+
+    # ADR-0003: layer-wide tenancy backfill/harden (runs on boot after reconcile-schema)
+    try:
+        from app.commands.backfill_layer_tenancy import init_app as init_layer_tenancy
+        init_layer_tenancy(app)
+        app.logger.info("✅ Layer tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register layer tenancy backfill CLI: {e}")
+
     # BIZBOK Strategy & Motivation backfill CLI command
     try:
         from scripts.backfill_strategy_motivation_elements import init_app as init_strat_backfill
@@ -202,6 +218,34 @@ def init_cli(app):
         app.logger.info("✅ Value-stream tenancy backfill CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register value-stream tenancy backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_value_stream_archimate import init_app as init_vs_archimate
+        init_vs_archimate(app)
+        app.logger.info("✅ Value-stream ArchiMate backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register value-stream ArchiMate backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_data_archimate import init_app as init_data_archimate
+        init_data_archimate(app)
+        app.logger.info("✅ Data-entity ArchiMate backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register data-entity ArchiMate backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_archimate_layer_casing import init_app as init_layer_casing
+        init_layer_casing(app)
+        app.logger.info("✅ ArchiMate layer-casing backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register ArchiMate layer-casing backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_principle_org import init_app as init_principle_org
+        init_principle_org(app)
+        app.logger.info("✅ Principle tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register principle tenancy backfill CLI: {e}")
 
     try:
         from app.commands.backfill_architect_role import init_app as init_backfill_architect

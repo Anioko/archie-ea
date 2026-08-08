@@ -11,7 +11,6 @@ Provides:
 import logging
 import threading
 import time
-from collections import defaultdict
 from functools import wraps
 from typing import Any, Dict, List, Optional
 

@@ -215,9 +215,9 @@
                                     <div class="space-y-1.5">
                                         <template x-for="(v, vi) in qualityDetails.blueprint_violations" :key="vi">
                                             <div class="flex items-start gap-2 px-3 py-2 rounded-lg"
-                                                 :class="v.severity === 'error' ? 'bg-red-500/5 border border-red-500/20' : 'bg-amber-500/5 border border-amber-500/20'">
+                                                 :class="v.severity === 'error' ? 'bg-destructive/5 border border-destructive/20' : 'bg-amber-500/5 border border-amber-500/20'">
                                                 <span class="shrink-0 text-[9px] font-bold uppercase px-1 py-0.5 rounded"
-                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive dark:bg-red-900/30 dark:text-red-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'"
+                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-amber-100 text-amber-700'"
                                                       x-text="v.severity"></span>
                                                 <div class="flex-1 min-w-0">
                                                     <p class="text-[11px] font-medium text-foreground leading-snug" x-text="v.constraint"></p>
@@ -225,7 +225,7 @@
                                                 </div>
                                                 <button @click="patchViolation(v.constraint)"
                                                         class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-colors"
-                                                        :class="v.severity === 'error' ? 'border-red-400/50 text-destructive hover:bg-red-500/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
+                                                        :class="v.severity === 'error' ? 'border-destructive/50 text-destructive hover:bg-destructive/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
                                                         title="Auto-patch this violation">Patch</button>
                                             </div>
                                         </template>
@@ -326,7 +326,7 @@
                                 <button @click="verify()"
                                         :disabled="verifying || !fileList.length"
                                         class="flex-1 h-8 text-[10px] font-medium border rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
-                                        :class="verifying ? 'border-blue-400/50 text-primary bg-blue-500/5' : 'border-emerald-400/50 text-emerald-600 hover:bg-emerald-500/5'">
+                                        :class="verifying ? 'border-blue-400/50 text-primary bg-info/5' : 'border-emerald-400/50 text-emerald-600 hover:bg-emerald-500/5'">
                                     <template x-if="!verifying">
                                         <i data-lucide="play-circle" class="h-3 w-3"></i>
                                     </template>
@@ -584,7 +584,7 @@
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Build and run the generated FastAPI app in Docker. Opens /docs (Swagger UI) for the live API.</p>
                         <div x-show="dockerError" x-cloak
-                             class="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[10px] text-destructive mb-2"
+                             class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[10px] text-destructive mb-2"
                              x-text="dockerError"></div>
                         <div x-show="!dockerRunning" x-cloak>
                             <button @click="dockerPreview()" :disabled="dockerBuilding || !fileList.length"
@@ -635,11 +635,11 @@
                         <div class="flex items-center gap-3 mb-2">
                             <div class="w-1 h-5 rounded-full bg-primary"></div>
                             <p class="text-sm font-semibold text-foreground">Live Frontend Preview</p>
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">Instant · No GitHub needed</span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/30">Instant · No GitHub needed</span>
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Opens the generated Next.js frontend in <strong>StackBlitz WebContainers</strong> — a real Node.js environment running entirely in your browser. See your app live in ~30 seconds with no local setup.</p>
                         <button @click="openStackBlitz()" :disabled="stackBlitzLoading || !fileList.length"
-                                class="w-full h-9 text-xs font-semibold rounded-lg border border-blue-500/30 bg-blue-500/8 hover:bg-blue-500/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                                class="w-full h-9 text-xs font-semibold rounded-lg border border-info/30 bg-info/10 hover:bg-info/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="stackBlitzLoading" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <!-- StackBlitz bolt icon -->
                             <svg x-show="!stackBlitzLoading" class="w-3.5 h-3.5" viewBox="0 0 28 28" fill="currentColor"><path d="M14.5 2L4 16h9.5L12 26l12-14h-9.5z"/></svg>
@@ -685,7 +685,7 @@
                     <!-- Deploy to Vercel (only when shadcn-nextjs frontend selected) -->
                     <div x-show="fileList.length > 0 && fileList.some(f => f.startsWith('frontend/'))" x-cloak>
                         <div class="flex items-center gap-3 mb-2">
-                            <div class="w-1 h-5 rounded-full bg-foreground dark:bg-background"></div>
+                            <div class="w-1 h-5 rounded-full bg-foreground"></div>
                             <p class="text-sm font-semibold text-foreground">Deploy Frontend to Vercel</p>
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Deploy the generated Next.js frontend to Vercel for free. Vercel auto-detects Next.js from <code class="font-mono bg-muted px-1 rounded">frontend/vercel.json</code> in your repo.</p>
@@ -765,31 +765,31 @@ eas build --platform android --profile preview</pre>
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/10 text-amber-700 border border-amber-500/30">No NativeWind styling</span>
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Shows app structure and logic in a browser simulator. NativeWind <code class="font-mono bg-muted px-1 rounded">className</code> props are ignored in Snack — UI renders unstyled. Useful for checking navigation flow and data loading.</p>
-                        <div x-show="snackError" x-cloak class="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[10px] text-destructive mb-2" x-text="snackError"></div>
+                        <div x-show="snackError" x-cloak class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[10px] text-destructive mb-2" x-text="snackError"></div>
 
                         <!-- Action buttons (shown after upload) -->
                         <div x-show="snackUrl" x-cloak class="flex gap-2 mb-3">
                             <a :href="snackUrl" target="_blank" rel="noopener noreferrer"
-                               class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-primary flex items-center justify-center gap-1.5">
+                               class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 bg-info/10 hover:bg-info/20 text-primary flex items-center justify-center gap-1.5">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
                                 Open in Tab
                             </a>
                             <button @click="showEmbed = !showEmbed"
-                                    :class="showEmbed ? 'bg-primary text-primary-foreground' : 'bg-blue-500/10 text-primary'"
-                                    class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-blue-500/30 hover:bg-blue-500/20 flex items-center justify-center gap-1.5 transition-colors">
+                                    :class="showEmbed ? 'bg-primary text-primary-foreground' : 'bg-info/10 text-primary'"
+                                    class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 hover:bg-info/20 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3"/></svg>
                                 Simulator
                             </button>
                             <button @click="showQr = !showQr"
-                                    :class="showQr ? 'bg-primary text-primary-foreground' : 'bg-blue-500/10 text-primary'"
-                                    class="h-7 px-2.5 text-[10px] font-semibold rounded-md border border-blue-500/30 hover:bg-blue-500/20 flex items-center justify-center gap-1.5 transition-colors">
+                                    :class="showQr ? 'bg-primary text-primary-foreground' : 'bg-info/10 text-primary'"
+                                    class="h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 hover:bg-info/20 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zm0 9.75c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zm9.75-9.75c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z"/></svg>
                                 QR
                             </button>
                         </div>
 
                         <!-- Inline Expo Snack embed (phone simulator) -->
-                        <div x-show="showEmbed && snackId" x-cloak class="mb-3 rounded-xl overflow-hidden border border-zinc-200 bg-zinc-950">
+                        <div x-show="showEmbed && snackId" x-cloak class="mb-3 rounded-xl overflow-hidden border border-border bg-zinc-950">
                             <iframe :src="'https://snack.expo.dev/embedded/@snack/' + snackId + '?preview=true&platform=ios&theme=dark'"
                                     style="width: 100%; height: 580px; border: 0;"
                                     allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
@@ -797,7 +797,7 @@ eas build --platform android --profile preview</pre>
                         </div>
 
                         <!-- QR Code for Expo Go scanning -->
-                        <div x-show="showQr && snackId" x-cloak class="mb-3 rounded-xl border border-zinc-200 bg-background p-4 text-center">
+                        <div x-show="showQr && snackId" x-cloak class="mb-3 rounded-xl border border-border bg-background p-4 text-center">
                             <img :src="'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=exp://exp.host/@snack/' + snackId"
                                  alt="QR Code" class="mx-auto rounded-lg" width="200" height="200">
                             <p class="text-[10px] text-muted-foreground mt-2">Scan with <strong>Expo Go</strong> — note: NativeWind styling will not render. Use an EAS dev build for full styling.</p>
@@ -822,7 +822,7 @@ eas build --platform android --profile preview</pre>
                             })
                             .catch(e => { snacking = false; snackError = 'Network error: ' + e.message; })"
                                 :disabled="snacking"
-                                class="w-full h-8 text-xs font-semibold rounded-lg border border-blue-500/30 bg-blue-500/8 hover:bg-blue-500/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                                class="w-full h-8 text-xs font-semibold rounded-lg border border-info/30 bg-info/10 hover:bg-info/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="snacking" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <svg x-show="!snacking" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3"/></svg>
                             <span x-text="snacking ? 'Uploading to Snack…' : (snackUrl ? 'Re-upload to Snack' : 'Preview in Expo Snack')"></span>
@@ -967,7 +967,7 @@ eas build --platform android --profile preview</pre>
                             <div class="flex items-start justify-between gap-2">
                                 <p class="text-[11px] text-foreground/90 leading-relaxed" x-text="intentPlan && intentPlan.summary"></p>
                                 <span class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider"
-                                      :class="(intentPlan && intentPlan.risk) === 'high' ? 'text-destructive border-red-400/40 bg-red-500/5' : (intentPlan && intentPlan.risk) === 'medium' ? 'text-amber-600 border-amber-400/40 bg-amber-500/5' : 'text-emerald-600 border-emerald-400/40 bg-emerald-500/5'"
+                                      :class="(intentPlan && intentPlan.risk) === 'high' ? 'text-destructive border-destructive/40 bg-destructive/5' : (intentPlan && intentPlan.risk) === 'medium' ? 'text-amber-600 border-amber-400/40 bg-amber-500/5' : 'text-emerald-600 border-emerald-400/40 bg-emerald-500/5'"
                                       x-text="(intentPlan && intentPlan.risk) ? (intentPlan.risk + ' risk') : 'low risk'"></span>
                             </div>
 
@@ -1015,7 +1015,7 @@ eas build --platform android --profile preview</pre>
                                 </div>
                                 <template x-for="(s, si) in (intentVerify && intentVerify.steps ? intentVerify.steps : [])" :key="si">
                                     <div class="rounded-md border px-2 py-1.5"
-                                         :class="s.status === 'pass' ? 'border-emerald-500/20 bg-emerald-500/5' : s.status === 'warn' ? 'border-amber-500/20 bg-amber-500/5' : s.status === 'running' ? 'border-blue-500/20 bg-blue-500/5' : 'border-border bg-muted/20'">
+                                         :class="s.status === 'pass' ? 'border-emerald-500/20 bg-emerald-500/5' : s.status === 'warn' ? 'border-amber-500/20 bg-amber-500/5' : s.status === 'running' ? 'border-info/20 bg-info/5' : 'border-border bg-muted/20'">
                                         <div class="flex items-center gap-1.5">
                                             <i x-show="s.status === 'pass'" data-lucide="check-circle-2" class="h-3 w-3 text-emerald-600"></i>
                                             <i x-show="s.status === 'warn'" data-lucide="alert-triangle" class="h-3 w-3 text-amber-600"></i>
@@ -1038,7 +1038,7 @@ eas build --platform android --profile preview</pre>
                                         <p class="text-muted-foreground">Total</p>
                                         <p class="font-semibold text-foreground" x-text="intentGateStats.total_events || 0"></p>
                                     </div>
-                                    <div class="rounded border border-red-500/20 bg-red-500/5 px-1.5 py-1 text-center">
+                                    <div class="rounded border border-destructive/20 bg-destructive/5 px-1.5 py-1 text-center">
                                         <p class="text-destructive">Blocked</p>
                                         <p class="font-semibold text-destructive" x-text="intentGateStats.blocked || 0"></p>
                                     </div>
@@ -1205,7 +1205,7 @@ eas build --platform android --profile preview</pre>
                                             </button>
                                             <!-- Delete -->
                                             <button @click="deleteTemplateSet(tmpl.id)"
-                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive hover:border-red-500/30 transition-colors flex items-center justify-center">
+                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex items-center justify-center">
                                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1h4M1.5 2.5h7l-.75 6H2.25l-.75-6ZM4 4.5v2.5M6 4.5v2.5"/><path d="M1.5 2.5h7" stroke="currentColor" stroke-width=".5" fill="none"/></svg>
                                             </button>
                                         </div>
@@ -1295,8 +1295,8 @@ eas build --platform android --profile preview</pre>
                                         x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                         class="inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-xs font-semibold transition-all"
                                         :class="previewModalTab === tab.key
-                                            ? 'bg-background text-foreground shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground hover:bg-background/50'">
+ ? 'bg-background text-foreground shadow-sm'
+ : 'text-muted-foreground hover:text-foreground hover:bg-background/50'">
                                     <i :data-lucide="tab.icon" class="w-3.5 h-3.5"></i><span x-text="tab.label"></span>
                                 </button>
                             </template>
@@ -1313,8 +1313,8 @@ eas build --platform android --profile preview</pre>
                                         x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                         class="h-7 w-9 rounded text-sm transition-all flex items-center justify-center"
                                         :class="previewDevice === d.key
-                                            ? 'bg-background text-foreground shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground'">
+ ? 'bg-background text-foreground shadow-sm'
+ : 'text-muted-foreground hover:text-foreground'">
                                     <i :data-lucide="d.ico" class="w-4 h-4"></i></button>
                             </template>
                         </div>

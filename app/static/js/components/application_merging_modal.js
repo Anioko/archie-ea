@@ -33,7 +33,10 @@ function showMergeToast(message, type) {
       window.dispatchEvent(new CustomEvent('toast', { detail: { message: message, type: type } }));
       return;
     }
-  } catch (e) { /* fall through to inline toast */ }
+  } catch (e) {
+    // CustomEvent dispatch is a best-effort path to a toast system this widget
+    // doesn't own; if it throws, the code below builds an inline toast directly.
+  }
   let colors = {
     success: 'bg-emerald-500/10 border-emerald-200 text-green-800',
     error: 'bg-destructive/10 border-destructive/20 text-red-800',

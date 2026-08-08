@@ -18,9 +18,11 @@ from typing import Optional
 from sqlalchemy import event
 
 from .. import db
+from .mixins import TenantMixin
 
 
-class DataCatalog(db.Model):
+class DataCatalog(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Catalog model for centralized metadata management.
 
@@ -68,7 +70,8 @@ class DataCatalog(db.Model):
         return f"<DataCatalog {self.name} ({self.catalog_type})>"
 
 
-class DataQualityMetrics(db.Model):
+class DataQualityMetrics(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Quality Metrics model for tracking quality over time.
 
@@ -119,7 +122,8 @@ class DataQualityMetrics(db.Model):
         return f"<DataQualityMetrics {self.data_entity_id} (Score: {self.overall_quality_score})>"
 
 
-class DataGovernanceWorkflow(db.Model):
+class DataGovernanceWorkflow(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Governance Workflow model for approval processes.
 
@@ -180,7 +184,8 @@ class DataGovernanceWorkflow(db.Model):
         return f"<DataGovernanceWorkflow {self.name} ({self.workflow_status})>"
 
 
-class DataAccessControl(db.Model):
+class DataAccessControl(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Access Control model for managing data access permissions.
 
@@ -236,7 +241,8 @@ class DataAccessControl(db.Model):
         return f"<DataAccessControl User:{self.user_id} -> Entity:{self.data_entity_id} ({self.access_type})>"
 
 
-class DataRetentionPolicy(db.Model):
+class DataRetentionPolicy(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Retention Policy model for retention and archival rules.
 

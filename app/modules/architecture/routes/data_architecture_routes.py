@@ -209,7 +209,7 @@ def api_data_models():
                 ],
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -236,7 +236,7 @@ def api_data_lineage():
                 for m in lineage_models
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -262,7 +262,7 @@ def api_data_transformations():
                 for t in transformations
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -324,7 +324,7 @@ def create_data_model():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -445,6 +445,17 @@ def edit_data_entity(entity_id):
         entity.contains_pii = "contains_pii" in request.form
         entity.system_of_record = request.form.get("system_of_record", "").strip() or None
         entity.is_master_data = "is_master_data" in request.form
+
+        # ArchiMate is the backbone: keep the mirrored element's name (and
+        # description) in sync on rename so the two never drift apart.
+        if entity.archimate_element_id:
+            from app.models.archimate_core import ArchiMateElement
+
+            element = db.session.get(ArchiMateElement, entity.archimate_element_id)
+            if element:
+                element.name = entity.name
+                element.description = entity.description or f"Data object for entity: {entity.name}"
+
         db.session.commit()
         flash(f"Data entity '{entity.name}' updated.", "success")
         return redirect(url_for("data_architecture.data_entity_catalog"))

@@ -49,7 +49,7 @@
 
     {# Filters #}
     <div class="rounded-lg border bg-card p-4">
-        <form method="get" class="flex flex-wrap gap-3 items-end">
+        <form method="get" action="{{ url_for('data_architecture.data_entity_catalog') }}" class="flex flex-wrap gap-3 items-end">
             <div class="flex-1 min-w-[200px]">
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Search</label>
                 <input type="text" name="search" value="{{ search }}"

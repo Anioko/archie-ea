@@ -67,7 +67,7 @@ import requests
 from flask import current_app
 
 from app import db
-from app.models import LLMInteraction, PipelineStage
+from app.models import LLMInteraction
 
 # from .llm_validator import LLMValidator  # Temporarily disabled
 from app.services.core.retry_handler import retry_on_transient_error
@@ -208,15 +208,13 @@ class LLMService:
         provider_priority = ["openai", "anthropic", "gemini", "deepseek", "openrouter", "azure", "huggingface"]
 
         # Default models for each provider (used when falling back to .env)
-        default_models = {
-            "anthropic": "claude-3-sonnet-20240229",
-            "openai": "gpt-4",
-            "gemini": "gemini-2.0-flash",
-            "deepseek": "deepseek-chat",
-            "azure": "gpt-4",
-            "huggingface": "meta-llama/Llama-2-7b-chat-hf",
-            "openrouter": "google/gemini-2.5-flash-preview:free",
-        }
+        # Single source of truth - these ids were hardcoded in six places and
+        # drifted independently until every Claude id was stale, several to
+        # RETIRED models that now 404 (claude-3-sonnet-20240229 went out in
+        # July 2025).
+        from app.modules.ai_chat.services.model_defaults import DEFAULT_MODELS
+
+        default_models = dict(DEFAULT_MODELS)
 
         # Ensure clean transaction state before query
         try:
@@ -412,7 +410,7 @@ class LLMService:
 
         if violations:
             raise RuntimeError(
-                f"NO HARDCODED DATA POLICY VIOLATION DETECTED:\n"
+                "NO HARDCODED DATA POLICY VIOLATION DETECTED:\n"
                 + "\n".join(violations)
                 + "\n\nAll models MUST be loaded from database APISettings table only."
             )
@@ -480,7 +478,7 @@ class LLMService:
             for settings in enabled_providers:
                 if settings.has_key() and settings.default_model and settings.default_model.strip():
                     valid_providers.append(settings.provider)
-        except Exception as e:
+        except Exception:
             # Database might not be available, continue to env fallback
             logger.debug("Failed to query API settings from database", exc_info=True)
 
@@ -688,15 +686,32 @@ Generate the JSON object now:"""
             prompt=prompt, model=model, provider=provider, pipeline_stage_id=pipeline_stage_id
         )
 
-        # Validate and parse JSON response with schema validation
+        # Parse and shape-check the JSON response.
+        #
+        # This previously called LLMValidator.validate_architecture_response(), but
+        # that class is not importable: `from .llm_validator import LLMValidator` is
+        # commented out at the top of this module as "Temporarily disabled", and
+        # llm_validator.py does not exist. The except below catches only ValueError,
+        # so the resulting NameError escaped uncaught — every architecture-generation
+        # call 500'd here rather than degrading.
+        #
+        # Parsing directly keeps the documented contract: a dict with "elements" and
+        # "relationships", falling back to empty lists when the response is not
+        # usable. Restore the richer schema validation when llm_validator lands.
         try:
-            result = LLMValidator.validate_architecture_response(response_text)
+            parsed = json.loads(response_text)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"expected a JSON object, got {type(parsed).__name__}")
+            result = {
+                "elements": parsed.get("elements") or [],
+                "relationships": parsed.get("relationships") or [],
+            }
             logger.info(
-                f"✓ Architecture response validation passed: {len(result.get('elements', []))} elements"
+                f"✓ Architecture response parsed: {len(result['elements'])} elements"
             )
             return result
 
-        except ValueError as e:
+        except (ValueError, TypeError) as e:
             logger.error(f"✗ Architecture response validation failed: {e}")
             logger.debug(f"Response was: {response_text[:500]}...")
             # Return empty structure on validation failure
@@ -1639,7 +1654,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             fallback_defaults = {
                 "openai": "gpt-4o-mini",
                 "anthropic": "claude-haiku-4-5-20251001",
-                "gemini": "gemini-1.5-flash",
+                "gemini": "gemini-2.0-flash",
                 "deepseek": "deepseek-chat",
                 "openrouter": "deepseek/deepseek-chat",
                 "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -1987,7 +2002,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             logger.info(f"Response length: {len(response_text)} characters")
             logger.info(f"Input tokens: {token_input}")
             logger.info(f"Output tokens: {token_output}")
-            logger.info(f"\nFirst 500 chars of response:")
+            logger.info("\nFirst 500 chars of response:")
             logger.info("-" * 80)
             logger.info(response_text[:500])
             logger.info("-" * 80)
@@ -2037,10 +2052,10 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             logger.info(f"\n❌ ERROR: Anthropic API timeout: {str(e)}")
             logger.error(f"Anthropic API timeout after 120 seconds: {str(e)}")
             raise TimeoutError(
-                f"ArchiMate generation timed out. The complexity of your requirements may require simplification or breaking into smaller parts."
+                "ArchiMate generation timed out. The complexity of your requirements may require simplification or breaking into smaller parts."
             )
         except anthropic.AuthenticationError as e:
-            logger.info(f"\n❌ ERROR: Authentication failed - Invalid API key")
+            logger.info("\n❌ ERROR: Authentication failed - Invalid API key")
             logger.info(f"Error details: {str(e)}")
             logger.error(f"Anthropic authentication error: {str(e)}")
             raise ValueError(
@@ -2054,7 +2069,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             # Check if this is a credit/balance error (400 with credit balance message)
             if "credit balance" in error_str.lower() or "insufficient credits" in error_str.lower():
                 logger.warning(
-                    f"⚠️ Anthropic API credits exhausted. Error will trigger automatic fallback."
+                    "⚠️ Anthropic API credits exhausted. Error will trigger automatic fallback."
                 )
             raise
         except anthropic.APIError as e:
@@ -2078,7 +2093,6 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # Normalize Gemini model names to correct API format
         # Try multiple model name formats if first fails
         model_normalized = model.lower().strip()
-        original_model = model_normalized
 
         # Try common model name variations
         model_variations = []
@@ -2351,7 +2365,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 )
 
                 # Calculate max length (input + output, but don't exceed model max)
-                max_length = min(prompt_length + output_tokens, model_max_length)
+                min(prompt_length + output_tokens, model_max_length)
 
                 # Generate text with proper truncation
                 result = generator(
@@ -2523,7 +2537,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             },
             "anthropic": {
                 "name": "Anthropic (Claude)",
-                "default_models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"]
+                "default_models": ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]
             },
             "gemini": {
                 "name": "Google (Gemini)",
@@ -2772,13 +2786,13 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         """
         try:
             # Build the decision log entry
-            decision_log = {
+            ({
                 "decision_type": decision_type,
                 "context": context,
                 "decision": decision,
                 "rationale": rationale,
                 "timestamp": datetime.utcnow().isoformat(),
-            }
+            })
 
             # Create LLMInteraction record for audit
             interaction = LLMInteraction(
@@ -2938,7 +2952,7 @@ def test_api_key(provider: str, api_key: str, model: str | None = None) -> Dict:
             return {"success": True, "message": f"Connection successful. Model: {response.model}"}
 
         elif provider == "gemini":
-            model_name = _resolve_model("gemini", model) or "gemini-1.5-flash"
+            model_name = _resolve_model("gemini", model) or "gemini-2.0-flash"
 
             try:
                 ping_response = requests.post(

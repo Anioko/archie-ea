@@ -11,7 +11,6 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import threading
-import json
 
 from flask import current_app
 

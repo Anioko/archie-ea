@@ -175,7 +175,7 @@
                     announcer.assertive(message);
                 }
             }
-        } catch(e) { /* announcer unavailable — fail silently */ }
+        } catch(e) { /* swallow-ok: screen-reader announcement of a modal that has already opened or closed visually; an error toast about it would itself be noise */ }
     }
 
     // ── Background inert management (VIOLATION-10) ───────────────────────────
@@ -231,7 +231,10 @@
                     store[id] = isOpen;
                     if (payload !== undefined) store[id + '_payload'] = payload;
                 }
-            } catch(e) {}
+            } catch(e) {
+                // Best-effort mirror into the Alpine store for x-show bindings; the
+                // modal's own open/close state above is the source of truth either way.
+            }
         }
     }
 

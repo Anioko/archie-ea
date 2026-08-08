@@ -175,7 +175,11 @@ PERSONA_CONFIGS = {
             "Data Integration",
         ],
         "focus_areas": ["Data quality", "Data flows", "Master data", "Data security"],
-        "default_domain": "architecture",
+        # Was "architecture", so the persona named after the data-architecture
+        # context never loaded it: _load_data_architecture_context exists and was
+        # unreachable for this persona, which got the generic architecture
+        # context instead.
+        "default_domain": "data_architecture",
         "context_priority": ["data_flows", "data_models", "governance"],
         "sample_prompts": [
             "Map all data entities for the customer data domain",
@@ -4359,7 +4363,7 @@ Use enterprise architecture terminology appropriate for this role."""
             summary = {
                 "total_elements": total_elements,
                 "by_layer": {layer: count for layer, count in layer_counts if layer},
-                "by_type": [{"type": t, "layer": l, "count": c} for t, l, c in type_counts if t],
+                "by_type": [{"type": t, "layer": item, "count": c} for t, item, c in type_counts if t],
             }
 
             # Step 2: Load relationship counts per element (batch query)
@@ -4520,7 +4524,7 @@ Use enterprise architecture terminology appropriate for this role."""
             app_counts = {}
             try:
                 rows = db.session.execute(  # tenant-filtered: scoped via parent FK (application_capability_mapping)
-                    text("""  # tenant-filtered
+                    text("""
                         SELECT m.business_capability_id, COUNT(DISTINCT m.application_component_id) as app_count
                         FROM application_capability_mapping m
                         GROUP BY m.business_capability_id
@@ -4534,7 +4538,7 @@ Use enterprise architecture terminology appropriate for this role."""
             children_counts = {}
             try:
                 children_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (business_capability)
-                    text("""  # tenant-filtered
+                    text("""
                         SELECT parent_capability_id, COUNT(*) as child_count
                         FROM business_capability
                         WHERE parent_capability_id IS NOT NULL
@@ -4586,7 +4590,7 @@ Use enterprise architecture terminology appropriate for this role."""
             cap_list.sort(key=lambda c: c["investment_priority"], reverse=True)
             priority_caps = [c for c in cap_list[:5] if c["investment_priority"] > 0]
 
-            return {
+            result = {
                 "business_capabilities": cap_list[:60],
                 "total_capabilities": len(cap_list),
                 "covered_capabilities": covered,
@@ -4595,6 +4599,51 @@ Use enterprise architecture terminology appropriate for this role."""
                 "total_applications": total_apps,
                 "priority_investment_areas": priority_caps,
             }
+
+            # Deep-link focus: ?element_id=<id>&context_type=capability. The list
+            # above is sorted by investment priority and cut at 60, so the asked-for
+            # capability could be absent entirely — pull it to the front and label it.
+            focus_id = (context_filter or {}).get("element_id")
+            focus_type = (context_filter or {}).get("context_type")
+            if focus_id and focus_type in ("capability", "business_capability"):
+                focus_cap = None
+                try:
+                    focus_cap = BusinessCapability.query.get(int(focus_id))
+                except (TypeError, ValueError):
+                    focus_cap = None
+                if focus_cap is None:
+                    result["context_focus"] = {
+                        "type": "capability",
+                        "id": focus_id,
+                        "resolved": False,
+                        "_note": (
+                            f"The user opened this chat from a capability page (id={focus_id}) "
+                            "but that capability could not be loaded for this organisation. Do "
+                            "NOT assume it is one of the capabilities listed here — say the "
+                            "record could not be read."
+                        ),
+                    }
+                else:
+                    entry = next(
+                        (c for c in cap_list if c.get("id") == focus_cap.id),
+                        {"id": focus_cap.id, "name": focus_cap.name},
+                    )
+                    if entry not in result["business_capabilities"]:
+                        result["business_capabilities"].insert(0, entry)
+                    result["context_focus"] = {
+                        "type": "capability",
+                        "id": focus_cap.id,
+                        "name": focus_cap.name,
+                        "resolved": True,
+                        "capability": entry,
+                        "_note": (
+                            "The user opened this chat from this capability's page. It is the "
+                            "subject of their question unless they say otherwise. The other "
+                            "capabilities below are context, not the subject."
+                        ),
+                    }
+
+            return result
         except Exception as e:
             self.logger.error(f"Error loading capability context: {e}")
             return {"error": str(e)}
@@ -4778,6 +4827,23 @@ Use enterprise architecture terminology appropriate for this role."""
 
             vendors = VendorOrganization.query.limit(50).all()
 
+            # Deep-link focus. vendor_detail.html links here with
+            # ?element_id=<id>&context_type=vendor, and before this the filter was
+            # dropped on the floor: the model got the first 50 vendors with nothing
+            # saying which one the user had open. Load the asked-for vendor first so
+            # it is guaranteed to survive the 30-row slice below.
+            # (docs/known-issues/ai-chat-parameter-effects.md §2)
+            focus_id = (context_filter or {}).get("element_id")
+            focus_wanted = (context_filter or {}).get("context_type") == "vendor" and focus_id
+            focus_vendor = None
+            if focus_wanted:
+                try:
+                    focus_vendor = VendorOrganization.query.get(int(focus_id))
+                except (TypeError, ValueError):
+                    focus_vendor = None
+                if focus_vendor is not None and all(v.id != focus_vendor.id for v in vendors):
+                    vendors.insert(0, focus_vendor)
+
             # Vendor concentration via 3 data paths
             concentration = {}  # vendor_org_id -> set of app_ids
             try:
@@ -4890,13 +4956,48 @@ Use enterprise architecture terminology appropriate for this role."""
                     vendor_entry["name"], []
                 )
 
-            return {
+            result = {
                 "vendor_organizations": vendor_list[:30],
                 "total_vendors": len(vendor_list),
                 "high_risk_vendors": [v for v in vendor_list if v["concentration_risk"] == "high"],
                 "total_applications_with_vendor": sum(len(s) for s in concentration.values()),
                 "capability_alternatives": self._get_capability_alternative_vendors(),
             }
+
+            if focus_wanted:
+                if focus_vendor is None:
+                    # Say so. Silently returning the generic list would let the
+                    # model answer about a vendor that is not the one asked about.
+                    result["context_focus"] = {
+                        "type": "vendor",
+                        "id": focus_id,
+                        "resolved": False,
+                        "_note": (
+                            f"The user opened this chat from a vendor page (id={focus_id}) "
+                            "but that vendor record could not be loaded. Do NOT assume it is "
+                            "one of the vendors listed here — say the record could not be read."
+                        ),
+                    }
+                else:
+                    entry = next(
+                        (v for v in vendor_list if v.get("id") == focus_vendor.id), None
+                    )
+                    if entry is not None and entry not in result["vendor_organizations"]:
+                        result["vendor_organizations"].insert(0, entry)
+                    result["context_focus"] = {
+                        "type": "vendor",
+                        "id": focus_vendor.id,
+                        "name": focus_vendor.name,
+                        "resolved": True,
+                        "vendor": entry,
+                        "_note": (
+                            "The user opened this chat from this vendor's page. It is the "
+                            "subject of their question unless they say otherwise. The other "
+                            "vendors below are context, not the subject."
+                        ),
+                    }
+
+            return result
         except Exception as e:
             self.logger.error(f"Error loading vendor context: {e}")
             return {"error": str(e)}
@@ -5079,8 +5180,119 @@ Use enterprise architecture terminology appropriate for this role."""
                 "capability_gaps": max(0, total_caps - int(mapped)),
                 "coverage_percent": round((int(mapped) / total_caps * 100) if total_caps else 0, 1),
             }
+
+            # Name some of the estate, not just count it.
+            #
+            # This context is what the DEFAULT domain injects, and it used to be
+            # six integers and a static domain list - roughly 700 characters with
+            # not one application, capability or vendor NAME in it. The assistant
+            # therefore knew the shape of the customer's portfolio and none of its
+            # contents, so anything specific it said had to come from a tool call
+            # or from invention.
+            #
+            # A sample, explicitly labelled as one. The counts above are the
+            # authority on size; these names exist so the model can recognise and
+            # disambiguate what the user refers to ("the Salesforce one") and know
+            # which tool to reach for. Labelling matters: an unlabelled list of 20
+            # of 5,000 applications reads as the portfolio.
+            SAMPLE = 20
+            ctx["portfolio_sample"] = {
+                "_note": (
+                    "A SAMPLE for recognition and disambiguation only, NOT the "
+                    "full portfolio. Use portfolio_summary for totals and the "
+                    "search tools to look anything up."
+                ),
+                "applications": [
+                    {"id": a.id, "name": a.name, "status": a.deployment_status}
+                    for a in ApplicationComponent.query
+                    .order_by(ApplicationComponent.updated_at.desc().nullslast())
+                    .limit(SAMPLE).all()
+                ],
+                "capabilities": [
+                    {"id": c.id, "name": c.name}
+                    for c in BusinessCapability.query
+                    .filter(BusinessCapability.name.isnot(None))
+                    .limit(SAMPLE).all()
+                ],
+                "vendors": [
+                    {"id": v.id, "name": v.name}
+                    for v in VendorOrganization.query
+                    .filter(VendorOrganization.name.isnot(None))
+                    .limit(SAMPLE).all()
+                ],
+                "showing": SAMPLE,
+                "of_applications": total_apps,
+                "of_capabilities": total_caps,
+                "of_vendors": total_vendors,
+            }
         except Exception as e:
             logger.debug(f"Cross-domain summary skipped: {e}")
+
+        # Deep-link focus. The general domain is the fallback, so it receives every
+        # deep link that carries no `domain` — archimate/composer.html sends
+        # ?element_id=<id>&context_type=solution with no domain at all. Without this
+        # the id was discarded and the model saw only a 20-row sample that need not
+        # contain the record the user was looking at.
+        focus_id = (context_filter or {}).get("element_id")
+        focus_type = (context_filter or {}).get("context_type")
+        if focus_id and focus_type:
+            try:
+                from app.models.application_portfolio import ApplicationComponent
+                from app.models.business_capabilities import BusinessCapability
+                from app.models.solution_models import Solution
+                from app.models.vendor.vendor_organization import VendorOrganization
+
+                model = {
+                    "application": ApplicationComponent,
+                    "capability": BusinessCapability,
+                    "business_capability": BusinessCapability,
+                    "solution": Solution,
+                    "vendor": VendorOrganization,
+                }.get(str(focus_type).lower())
+
+                record = None
+                if model is not None:
+                    try:
+                        record = model.query.get(int(focus_id))
+                    except (TypeError, ValueError):
+                        record = None
+
+                focus = {"type": focus_type, "id": focus_id, "resolved": record is not None}
+                if record is not None:
+                    focus["name"] = record.name
+                    description = getattr(record, "description", None)
+                    if description:
+                        focus["description"] = description[:500]
+                    focus["_note"] = (
+                        f"The user opened this chat from this {focus_type}'s page. It is the "
+                        "subject of their question unless they say otherwise. The "
+                        "portfolio_sample below is a sample, not the subject."
+                    )
+                elif model is None:
+                    focus["_note"] = (
+                        f"The user arrived from a page of an unrecognised type "
+                        f"('{focus_type}', id={focus_id}), so nothing could be loaded for it. "
+                        "Ask what they are asking about rather than guessing."
+                    )
+                else:
+                    focus["_note"] = (
+                        f"The user opened this chat from a {focus_type} page (id={focus_id}) "
+                        "but that record could not be loaded for this organisation. Do NOT "
+                        "assume it is one of the records sampled below — say the record "
+                        "could not be read."
+                    )
+                ctx["context_focus"] = focus
+            except Exception as e:
+                logger.debug(f"Context focus resolution skipped: {e}")
+                ctx["context_focus"] = {
+                    "type": focus_type,
+                    "id": focus_id,
+                    "resolved": False,
+                    "_note": (
+                        "The record this chat was opened from could not be loaded. Do NOT "
+                        "assume it is one of the records sampled below."
+                    ),
+                }
         return ctx
 
     def _get_capability_crossref(self, context: Dict) -> str:
@@ -5320,7 +5532,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "architecture",
-                "response": f"I encountered an error processing your architecture question. Please try again or rephrase your question.",
+                "response": "I encountered an error processing your architecture question. Please try again or rephrase your question.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("architecture_elements", []),
@@ -5391,7 +5603,7 @@ Response should be practical, actionable, and based on current industry standard
             return {
                 "success": False,
                 "domain": "technology",
-                "response": f"I encountered an error processing your technology question. Please try again.",
+                "response": "I encountered an error processing your technology question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("technology_stacks", []),
@@ -5491,7 +5703,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "business_capability",
-                "response": f"I encountered an error processing your capability question. Please try again.",
+                "response": "I encountered an error processing your capability question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("business_capabilities", []),
@@ -5626,7 +5838,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "gap_analysis",
-                "response": f"I encountered an error processing your gap analysis question. Please try again.",
+                "response": "I encountered an error processing your gap analysis question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("capability_gaps", []),
@@ -5732,7 +5944,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "vendor_intelligence",
-                "response": f"I encountered an error processing your vendor question. Please try again.",
+                "response": "I encountered an error processing your vendor question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("vendor_organizations", []),
@@ -6173,7 +6385,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "general",
-                "response": f"I encountered an error processing your question. Please try again or rephrase.",
+                "response": "I encountered an error processing your question. Please try again or rephrase.",
                 "error": str(e),
                 "insights": [],
                 "context_used": list(context.keys()) if context else [],
@@ -6334,7 +6546,7 @@ Instructions:
         """Build a side-by-side vendor comparison from DB data."""
         try:
             from sqlalchemy import text, func
-            from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+            from app.models.vendor.vendor_organization import VendorProduct
 
             lines = [f"VENDOR COMPARISON: {vendor_a['name']} vs {vendor_b['name']}"]
             for v_info in [vendor_a, vendor_b]:
@@ -6413,7 +6625,6 @@ Instructions:
 
             # Create or find a solution to anchor the workflow
             solution_id = (context or {}).get("solution_id")
-            solution_name = target
 
             # Load current state data for the target area
             resolved = self._resolve_entities_from_message(message)
@@ -6904,7 +7115,7 @@ End with: "Type **'next'** to complete the design workflow."
                 lines.append("  All supported capabilities have alternative supporting applications.")
 
             # List all supported capabilities
-            lines.append(f"  All supported capabilities:")
+            lines.append("  All supported capabilities:")
             for _, cap_name, cap_level, _ in cap_rows[:15]:
                 lines.append(f"    - {cap_name} (L{cap_level})")
 
@@ -7050,9 +7261,20 @@ End with: "Type **'next'** to complete the design workflow."
             feedback_count = 0
             try:
                 from sqlalchemy import text
-                feedback_count = db.session.execute(  # tenant-filtered: scoped via parent FK (ai_chat_feedback)
-                    text("SELECT COUNT(*) FROM ai_chat_feedback")  # tenant-filtered
-                ).scalar() or 0
+                # Was a bare COUNT(*) over the whole table, marked
+                # "scoped via parent FK" — there is no parent FK. Every tenant
+                # saw the global count. It read as harmless while the table was
+                # empty; the write path is fixed now, so it would not have been.
+                from flask import g as _g
+                _org = getattr(_g, "current_org_id", None)
+                if _org is None:
+                    feedback_count = None   # unknown, not zero — see CLAUDE.md
+                else:
+                    feedback_count = db.session.execute(
+                        text("SELECT COUNT(*) FROM ai_chat_feedback "
+                             "WHERE organization_id = :org"),
+                        {"org": _org},
+                    ).scalar() or 0
             except Exception:  # fabricated-values-ok
                 logger.exception("Failed to operation")
                 pass
@@ -7967,7 +8189,7 @@ End with: "Type **'next'** to complete the design workflow."
         elif step == "GENERATE":
             if msg_lower in ("generate", "yes", "proceed", "go"):
                 solution_id = wf.get("solution_id")
-                accepted_ids = wf.get("accepted_ids", [])
+                wf.get("accepted_ids", [])
                 solution_name = wf.get("solution_name", "the solution")
 
                 # Call generation
@@ -8147,8 +8369,8 @@ End with: "Type **'next'** to complete the design workflow."
             if "generate roadmap" in msg_lower or "generate plateaus" in msg_lower:
                 if workspace_id:
                     planner = DeliveryPlanningService(kernel, user_id=self.user_id)
-                    wp_result = planner.generate_work_packages(workspace_id, solution_id)
-                    pl_result = planner.generate_plateaus(workspace_id, solution_id)
+                    planner.generate_work_packages(workspace_id, solution_id)
+                    planner.generate_plateaus(workspace_id, solution_id)
                     summary = planner.generate_planner_summary(workspace_id)
                     return {"success": True, "response": summary.get("message", "Roadmap generated.")}
                 return None

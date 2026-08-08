@@ -6,12 +6,20 @@
 # Migration: Copied from app/routes/enterprise_api_routes.py -> app/modules/capabilities/routes/
 # Date: 2026-02-14 | Relative imports fixed for new location.
 #
+# CORRECTION (2026-07-30): the "DEPRECATED / fallback / do NOT modify" note above is
+# stale. app/routes/enterprise_api_routes.py no longer exists, and this file is
+# imported live by app/modules/capabilities/__init__.py — it is the only copy and it
+# serves traffic. Two real defects were fixed here on that basis (an unbound `logger`
+# used in nine except blocks, and Python accidentally embedded in the Playwright
+# template string). Treat this as live code, not a frozen fallback.
+#
 # Enterprise Entity API Routes for Unified Mapping Modal
 # Provides endpoints for fetching applications, systems, initiatives, projects
 # Used by ADM Kanban enterprise integration
 
 import csv
 import io
+import logging
 
 import requests
 from flask import Blueprint, Response, jsonify, request
@@ -27,6 +35,14 @@ from app.models.project_models import Project
 from app.models.solution_architect_models import SolutionRequirement
 from app.models.system_architecture import SystemBoundary
 from app.models.vendor.vendor_organization import EnterpriseInitiative
+
+# Module-level logger. Nine call sites in this file referenced `logger` — all inside
+# `except` blocks — but it was never bound at module scope: the only
+# `logger = logging.getLogger(__name__)` in the file was accidentally embedded in the
+# Playwright TypeScript template string below, so it was string content, not code.
+# Every one of those handlers therefore raised NameError and masked the exception it
+# was meant to report.
+logger = logging.getLogger(__name__)
 
 enterprise_api_bp = Blueprint(
     "enterprise_entity_api", __name__, url_prefix="/api/enterprise"
@@ -250,7 +266,7 @@ def get_applications():
 
         return jsonify({"applications": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -291,7 +307,7 @@ def get_systems():
 
         return jsonify({"systems": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -332,7 +348,7 @@ def get_initiatives():
 
         return jsonify({"initiatives": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -376,7 +392,7 @@ def get_projects():
 
         return jsonify({"projects": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -641,8 +657,6 @@ Then response status is 401
 // Generated from: {req_ac}
 import {{ test, expect }} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import logging
-logger = logging.getLogger(__name__)
 
 test('{req_name} - WCAG 2.1 AA compliance', async ({{ page }}) => {{
   await page.goto('/relevant-page');
@@ -848,7 +862,7 @@ def get_all_entities():
 
         return jsonify(result)
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -1013,7 +1027,6 @@ def _req_to_dict(req):
     # Motivation layer name resolution (lazy — use ORM relationship if loaded)
     driver_name = req.driver.name if req.driver_id and req.driver else None
     goal_name = req.goal.name if req.goal_id and req.goal else None
-    stakeholder_name = req.stakeholder.name if req.stakeholder_id and req.stakeholder else None
     return {
         "id": req.id,
         "reference_id": f"REQ-{req.id:04d}",
@@ -1038,7 +1051,6 @@ def _req_to_dict(req):
         "goal_id": req.goal_id,
         "goal_name": goal_name,
         "stakeholder_id": req.stakeholder_id,
-        "stakeholder_name": stakeholder_name,
         "archimate_requirement_id": req.archimate_requirement_id,
         "archimate_requirement_name": _resolve_archimate_req_name(req.archimate_requirement_id),
         # User Story / Epic fields (TPM-003)
@@ -2757,7 +2769,7 @@ def solution_readiness_report(solution_id):
     coverage_score = round(len(present_layers) / len(required_layers) * 100)
 
     # --- DIMENSION 2: Requirements Quality ---
-    classified = sum(layer_counts.get(l, 0) for l in required_layers)
+    classified = sum(layer_counts.get(item, 0) for item in required_layers)
     with_ac = sum(1 for r in reqs if r.acceptance_criteria and len(r.acceptance_criteria) > 20)
     quality_score = round((classified / total * 50 + with_ac / max(total, 1) * 50)) if total > 0 else 0
 
@@ -2957,7 +2969,7 @@ def get_requirement_dependencies(req_id):
     """PRQ-001: Get dependency graph for a requirement."""
     from app.models.solution_architect_models import SolutionRequirement, RequirementDependency
 
-    req = SolutionRequirement.query.get_or_404(req_id)
+    SolutionRequirement.query.get_or_404(req_id)
 
     outgoing = RequirementDependency.query.filter_by(req_id=req_id).all()
     incoming = RequirementDependency.query.filter_by(depends_on_id=req_id).all()
@@ -2988,7 +3000,7 @@ def add_requirement_dependency(req_id):
     """PRQ-001: Add a dependency between two requirements."""
     from app.models.solution_architect_models import SolutionRequirement, RequirementDependency
 
-    req = SolutionRequirement.query.get_or_404(req_id)
+    SolutionRequirement.query.get_or_404(req_id)
     data = request.get_json() or {}
 
     depends_on_id = data.get('depends_on_id')
@@ -3005,7 +3017,7 @@ def add_requirement_dependency(req_id):
     if existing:
         return jsonify({'error': 'Circular dependency detected'}), 400
 
-    target = SolutionRequirement.query.get_or_404(depends_on_id)
+    SolutionRequirement.query.get_or_404(depends_on_id)
 
     dep = RequirementDependency(
         req_id=req_id,

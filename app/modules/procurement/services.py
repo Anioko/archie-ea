@@ -12,7 +12,6 @@ from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, func, or_
 
-from app.extensions import db
 from app.models.application_portfolio import VendorContract
 
 

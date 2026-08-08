@@ -9,7 +9,7 @@ Provides:
 - Export viewpoint to SVG/PNG
 """
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -18,13 +18,10 @@ from app.config.archimate_viewpoints import (
     VIEWPOINTS,
     ViewpointDefinition,
     get_viewpoint,
-    get_viewpoint_summary,
     get_viewpoints_allowing_element,
-    get_viewpoints_for_layer,
     get_viewpoints_for_stakeholder,
     is_element_allowed_in_viewpoint,
     is_relationship_allowed_in_viewpoint,
-    validate_view_against_viewpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,7 +199,6 @@ class ViewpointBuilder:
             raise ValueError(f"Unknown viewpoint code: {viewpoint_code}")
 
         # Get elements from database
-        from app import db
         from app.models.archimate_core import ArchiMateElement
 
         if element_ids:

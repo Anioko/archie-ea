@@ -236,7 +236,6 @@ class SeedDataGenerator:
             # Separate PK, FK, and regular fields
             columns = []
             generators = []
-            has_pk = False
 
             for fdef in field_defs:
                 fname = fdef.get("name", "")
@@ -249,7 +248,6 @@ class SeedDataGenerator:
 
                 # Skip auto-increment PKs (id field)
                 if fname == "id" and not self._is_foreign_key(fname, fdef):
-                    has_pk = True
                     columns.append(fname)
                     generators.append(("pk", fdef_copy))
                     continue

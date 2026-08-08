@@ -25,11 +25,26 @@ def admin_required(f):
         if not current_user.is_authenticated:
             abort(401)  # Unauthorized
 
-        # Check for admin role (supports multiple attribute names)
+        # Check for admin role (supports multiple attribute names).
+        #
+        # `User.is_admin` is a METHOD (app/models/user.py:208), so the previous
+        # `getattr(current_user, "is_admin", False)` returned the bound method -
+        # always truthy - and this decorator therefore never denied anyone. Each
+        # candidate is now resolved and *called* when callable, so a method, a
+        # property and a plain attribute all evaluate to their real value.
+        def _truthy(attr):
+            value = getattr(current_user, attr, False)
+            if callable(value):
+                try:
+                    return bool(value())
+                except Exception:
+                    return False
+            return bool(value)
+
         is_admin = (
-            getattr(current_user, "is_admin", False)
-            or getattr(current_user, "is_superuser", False)
-            or (hasattr(current_user, "role") and current_user.role == "admin")
+            _truthy("is_admin")
+            or _truthy("is_superuser")
+            or getattr(current_user, "role", None) == "admin"
         )
 
         if not is_admin:

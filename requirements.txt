@@ -61,22 +61,22 @@ urllib3>=2.1.0,<3.0.0
 msal>=1.28.0,<2.0.0
 # MIME type validation (IMP-001: File upload security)
 python-magic>=0.4.27,<1.0.0
-python-magic-bin>=0.4.14,<1.0.0; platform_system == "Windows"
+# python-magic-bin is NOT installed on Python 3.13+. It was last released in 2017
+# and its bundled `magic` module conflicts with modern python-magic: with both
+# present on Windows + CPython 3.13, `import magic` HANGS indefinitely inside
+# magic/compat.py rather than failing. app/utils/file_validation.py guards the
+# import with `except ImportError`, which a hang walks straight past, so the
+# whole app becomes unbootable — verified: create_app() never returned, and
+# removing this package alone brought boot back to 33s.
+# Linux and the production image are unaffected; they use the system libmagic.
+python-magic-bin>=0.4.14,<1.0.0; platform_system == "Windows" and python_version < "3.13"
 
 # -----------------------------------------------------------------------------
-# 4. TESTING & PLAYWRIGHT
+# 4. IMAGE PROCESSING
 # -----------------------------------------------------------------------------
-pytest==8.3.3
-pytest-asyncio>=0.23.0,<1.0.0
-pytest-playwright>=0.7.0,<0.8.0
-pytest-json-report>=1.5.0,<2.0.0
-pytest-timeout>=2.2.0,<3.0.0
-pytest-xdist==3.6.1
-pytest-mock>=3.11.0,<4.0.0
-pytest-rerunfailures>=13.0,<15.0
-pytest-cov>=5.0.0,<7.0.0
-playwright>=1.47.0,<2.0.0
-Pillow>=12.3.0,<13.0.0
+# (Test tooling moved to requirements-test.txt — it was shipping in the
+#  production image, enlarging attack surface and CVE surface for no benefit.)
+Pillow>=12.3.0,<13.0.0       # CVE: 24 advisories at 10.4.0 (parses untrusted uploads)
 
 # -----------------------------------------------------------------------------
 # 5. AI/LLM API CLIENTS (Cloud-based - no heavy ML deps)
@@ -115,7 +115,7 @@ jsonpickle>=3.0.0,<4.0.0
 python-dateutil>=2.8.0,<3.0.0
 python-dotenv>=1.0.0,<2.0.0
 # Document parsing for journey wizard document upload (extract-brief endpoint)
-pypdf>=6.9.2,<7.0.0
+pypdf>=6.14.2,<7.0.0         # CVE: 35 advisories at 5.9.0; <6.0.0 bound blocked the fix
 python-docx>=1.0.0,<2.0.0
 
 # -----------------------------------------------------------------------------
@@ -130,9 +130,13 @@ raygun4py>=4.4.0,<5.0.0
 webassets>=2.0,<3.0.0
 jsmin>=3.0.0,<4.0.0
 
-# Fuzzy string matching (for duplicate detection)
-fuzzywuzzy>=0.18.0
-python-Levenshtein>=0.21.0  # Optional speedup for fuzzywuzzy
+# Fuzzy string matching (for duplicate detection).
+# rapidfuzz (MIT) replaces fuzzywuzzy (GPL-2.0-only) + python-Levenshtein
+# (GPL-2.0-or-later). Those two, plus their transitive Levenshtein, put GPL-2.0
+# code in the dependency tree of a product that is also offered under a
+# commercial licence — see docs/adr/0006. rapidfuzz is API-compatible for the
+# functions used and is faster.
+rapidfuzz>=3.9.0
 jellyfish>=1.0.0  # Jaro-Winkler, phonetic matching
 
 # =============================================================================

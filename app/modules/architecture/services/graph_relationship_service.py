@@ -7,11 +7,10 @@ and inferring new connections based on graph structure.
 
 import logging
 from collections import defaultdict, deque
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 
-from app import db
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 
 logger = logging.getLogger(__name__)
@@ -205,7 +204,7 @@ class GraphRelationshipService:
         - If element type matches pattern (e.g., all ApplicationComponents connect to same interface)
         """
         relationships = []
-        elem_name = extracted_elem.get("name", "").lower()
+        extracted_elem.get("name", "").lower()
         elem_type = extracted_elem.get("type", "")
 
         # Pattern 1: Find elements that connect to similar targets

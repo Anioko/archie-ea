@@ -13,18 +13,16 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, or_
 
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping
 from app.models.application_consolidation import (
     ApplicationConsolidationRecommendation,
-    ApplicationDuplicationReport,
     ApplicationSimilarityAnalysis,
 )
 from app.models.application_layer import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
-from app.models.cost_intelligence import CapabilityCostAllocation
 from app.services.decorators import transactional
 from app.services.llm_service import LLMService
 

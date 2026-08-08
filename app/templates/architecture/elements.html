@@ -130,7 +130,7 @@
                                 <td class="px-4 py-2 text-muted-foreground capitalize" x-text="item.layer || u2014"></td>
                                 <td class="px-4 py-2 text-center">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold"
-                                          :class="(item.debt_score || 0) >= 70 ? bg-red-500/10 text-destructive : (item.debt_score || 0) >= 40 ? bg-amber-500/10 text-amber-600 : bg-emerald-500/10 text-emerald-600"
+                                          :class="(item.debt_score || 0) >= 70 ? bg-destructive/10 text-destructive : (item.debt_score || 0) >= 40 ? bg-amber-500/10 text-amber-600 : bg-emerald-500/10 text-emerald-600"
                                           x-text="(item.debt_score || 0) + %"></span>
                                 </td>
                                 <td class="px-4 py-2 text-xs text-muted-foreground hidden lg:table-cell" x-text="(item.factors || []).join(, ) || item.reason || u2014"></td>
@@ -146,23 +146,23 @@
     {% set dq_issues = (no_desc_count or 0) + (no_rels_count or 0) + (no_solutions_count or 0) %}
     {% if dq_issues > 0 %}
     <div data-testid="data-quality-banner"
-         class="mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        <span class="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300">
+         class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <span class="flex items-center gap-1.5 font-medium text-amber-800">
             <svg class="w-4 h-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
             Data quality
         </span>
         {% if no_desc_count %}
-        <span data-testid="dq-no-description" class="text-amber-700 dark:text-amber-400">
+        <span data-testid="dq-no-description" class="text-amber-700">
             <strong>{{ no_desc_count }}</strong> element{{ 's' if no_desc_count != 1 }} missing description
         </span>
         {% endif %}
         {% if no_rels_count %}
-        <span data-testid="dq-no-relationships" class="text-amber-700 dark:text-amber-400">
+        <span data-testid="dq-no-relationships" class="text-amber-700">
             <strong>{{ no_rels_count }}</strong> element{{ 's' if no_rels_count != 1 }} with no relationships
         </span>
         {% endif %}
         {% if no_solutions_count %}
-        <span data-testid="dq-no-solutions" class="text-amber-700 dark:text-amber-400">
+        <span data-testid="dq-no-solutions" class="text-amber-700">
             <strong>{{ no_solutions_count }}</strong> element{{ 's' if no_solutions_count != 1 }} not linked to any solution
         </span>
         {% endif %}
@@ -434,8 +434,9 @@
             <div class="border-t border-border pt-4">
                 <h3 class="text-sm font-medium text-foreground mb-3">Relationships</h3>
                 <div x-show="detailLoading" x-cloak class="text-xs text-muted-foreground">Loading...</div>
-                <div x-show="!detailLoading && relationships.length === 0" x-cloak class="text-xs text-muted-foreground italic">No relationships</div>
-                <div x-show="!detailLoading && relationships.length > 0" x-cloak class="space-y-2">
+                <div x-show="!detailLoading && relationshipsError" x-cloak class="text-xs text-destructive">Could not load relationships.</div>
+                <div x-show="!detailLoading && !relationshipsError && relationships.length === 0" x-cloak class="text-xs text-muted-foreground italic">No relationships</div>
+                <div x-show="!detailLoading && !relationshipsError && relationships.length > 0" x-cloak class="space-y-2">
                     <template x-for="rel in relationships" :key="rel.id">
                         <div class="flex items-center gap-2 text-xs p-2 rounded-md bg-muted/30">
                             <span class="layer-dot w-2 h-2" :class="'layer-' + (rel.direction === 'outgoing' ? (rel.target_layer || '').toLowerCase() : (rel.source_layer || '').toLowerCase())"></span>
@@ -551,6 +552,7 @@ document.addEventListener('alpine:init', () => {
         selectedIds: [],
         selectedElement: null,
         detailLoading: false,
+        relationshipsError: false,
         relationships: [],
         showCreateModal: false,
         createSubmitting: false,
@@ -624,7 +626,11 @@ document.addEventListener('alpine:init', () => {
                 this._diagramRenderer.loadElements(data.elements, data.relationships);
                 this._diagramRenderer.fitToContent();
                 this.diagramLoaded = true;
-            } catch(e) { console.warn('[BIZBOK] diagram load failed', e); }
+            } catch(e) {
+                // Optional viewpoint diagram alongside the element list/table; a failed
+                // load just leaves the diagram panel unrendered — the list is unaffected.
+                console.warn('[BIZBOK] diagram load failed', e);
+            }
         },
 
         async fetchLayers() {
@@ -642,6 +648,7 @@ document.addEventListener('alpine:init', () => {
                 }));
             } catch (e) {
                 console.error('Failed to refresh layer counts:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not load layer counts.');
             }
         },
 
@@ -727,6 +734,7 @@ document.addEventListener('alpine:init', () => {
             this.selectedElement = el;
             this.detailLoading = true;
             this.relationships = [];
+            this.relationshipsError = false;
             try {
                 const resp = await fetch('/architecture/api/elements/' + el.id + '/relationships');
                 const json = await resp.json();
@@ -735,6 +743,7 @@ document.addEventListener('alpine:init', () => {
                 this.relationships = [...outgoing, ...incoming];
             } catch (e) {
                 console.error('Failed to load relationships:', e);
+                this.relationshipsError = true;
             }
             this.detailLoading = false;
         },
@@ -824,9 +833,9 @@ document.addEventListener('alpine:init', () => {
                 motivation: 'bg-violet-500/10 text-violet-600 border-violet-500/30',
                 strategy: 'bg-indigo-500/10 text-primary border-indigo-500/30',
                 business: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-                application: 'bg-blue-500/10 text-primary border-blue-500/30',
+                application: 'bg-info/10 text-primary border-info/30',
                 technology: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-                implementation: 'bg-slate-500/10 text-slate-600 border-slate-500/30',
+                implementation: 'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30',
             };
             return map[l] || 'bg-muted text-muted-foreground border-border';
         },
@@ -843,9 +852,15 @@ document.addEventListener('alpine:init', () => {
                     this.elements = this.elements.filter(e => e.id !== el.id);
                     if (this.selectedElement?.id === el.id) this.selectedElement = null;
                     this.totalCount = Math.max(0, this.totalCount - 1);
+                } else {
+                    let msg = 'Could not delete that element.';
+                    // Error body is not guaranteed to be JSON; fall back to the generic message above.
+                    try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch (e) { /* swallow-ok: the error body need not be JSON; the generic message above is toasted either way, so a parse failure must not replace the real failure the user is about to be told about */ }
+                    Platform.toast.error(msg);
                 }
             } catch (e) {
                 console.error('Delete failed:', e);
+                Platform.toast.error('Could not delete that element.');
             }
         }
     }));

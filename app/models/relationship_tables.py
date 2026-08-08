@@ -21,6 +21,7 @@ Junction Tables:
 from datetime import datetime
 
 from .. import db
+from .mixins import TenantMixin
 
 # ============================================================================
 # Vendor Product Association Tables (Option B+)
@@ -425,7 +426,8 @@ class ProcessRoleRaci(db.Model):
 # ============================================================================
 
 
-class ProcessDataCrud(db.Model):
+class ProcessDataCrud(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     CRUD Matrix: Links BusinessProcess to BusinessObject with CRUD operations
 
@@ -690,7 +692,8 @@ class InterfaceConsumer(db.Model):
 # ============================================================================
 
 
-class DataObjectStorage(db.Model):
+class DataObjectStorage(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Object Storage: BusinessObject is stored in ApplicationComponent
 
@@ -891,15 +894,12 @@ class ApplicationProcessSupport(db.Model):
     def __repr__(self):
         return f"<ApplicationProcessSupport App:{self.application_component_id} Process:{self.business_process_id} {self.support_type}>"
 
-    # Metadata
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    notes = db.Column(db.Text)
-
-    # Relationships (will be set up via back_populates in models)
-
-    def __repr__(self):
-        return f"<ApplicationRequirementMapping App:{self.application_component_id} Req:{self.requirement_id} {self.implementation_status}>"
+    # NOTE: a stray copy of ApplicationRequirementMapping's tail used to follow here —
+    # duplicate created_at/updated_at/notes columns and a second __repr__ referencing
+    # self.requirement_id and self.implementation_status. Python kept the LAST
+    # definition, so ApplicationProcessSupport.__repr__ raised AttributeError for
+    # fields this class does not have. The real ApplicationRequirementMapping (line
+    # ~752) is intact and declares all of them itself, so this was duplication only.
 
 
 # ============================================================================

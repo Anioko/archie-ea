@@ -194,8 +194,8 @@ class DocumentIngestionService:
             warnings = []
             if was_truncated:
                 warnings.append(
-                    f"Document exceeded 40,000 characters — only the first portion was analysed. "
-                    f"Split the document or reduce its size for complete extraction."
+                    "Document exceeded 40,000 characters — only the first portion was analysed. "
+                    "Split the document or reduce its size for complete extraction."
                 )
 
             return {

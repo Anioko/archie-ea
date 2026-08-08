@@ -149,8 +149,14 @@ document.addEventListener('alpine:init', () => {
                 const resp = await fetch(`/organization/api/stakeholders/search?q=${encodeURIComponent(q)}`);
                 const json = await resp.json();
                 this.searchResults = json.results || [];
+                this._searchErrorShown = false;
             } catch (e) {
                 console.error('Stakeholder search failed:', e);
+                // Debounced on every keystroke — toast once per outage, not on every retry.
+                if (!this._searchErrorShown) {
+                    this._searchErrorShown = true;
+                    if (window.Platform && Platform.toast) Platform.toast.error('Stakeholder search failed.');
+                }
             } finally {
                 this.searching = false;
             }

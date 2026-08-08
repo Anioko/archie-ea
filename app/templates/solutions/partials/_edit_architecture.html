@@ -81,7 +81,7 @@
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-medium text-foreground" x-text="s.name || s.title"></span>
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="(s.type || s.requirement_type) === 'functional' ? 'bg-primary/10 text-primary border border-primary/20' : (s.type || s.requirement_type) === 'non_functional' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' : 'bg-zinc-500/10 text-zinc-600 border border-zinc-500/20'"
+                                      :class="(s.type || s.requirement_type) === 'functional' ? 'bg-primary/10 text-primary border border-primary/20' : (s.type || s.requirement_type) === 'non_functional' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' : 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/20'"
                                       x-text="(s.type || s.requirement_type || 'functional').replace('_', ' ')"></span>
                             </div>
                             <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
@@ -354,7 +354,7 @@
          accessClass(appId, dataId) {
              const v = this.accessMap[this.accessKey(appId, dataId)];
              if (!v) return 'bg-muted/30 text-muted-foreground hover:bg-muted/50';
-             if (v.access_type === 'read') return 'bg-blue-500/10 text-primary border-blue-500/30';
+             if (v.access_type === 'read') return 'bg-info/10 text-primary border-info/30';
              if (v.access_type === 'write') return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
              if (v.access_type === 'readwrite') return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
              return 'bg-muted/30 text-muted-foreground hover:bg-muted/50';
@@ -376,12 +376,11 @@
                  this.dataObjects = allEls.filter(e => (e.type || '').includes('DataObject') || (e.type || '').includes('DataEntity') || (e.type || '').includes('DatabaseInstance'));
 
                  const relRes = await fetch('/api/solutions/' + this.solutionId + '/relationships?type=access', {credentials:'same-origin'});
-                 if (relRes.ok) {
-                     const relData = await relRes.json();
-                     for (const r of (relData.relationships || [])) {
-                         const key = this.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
-                         this.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
-                     }
+                 if (!relRes.ok) throw new Error('HTTP ' + relRes.status);
+                 const relData = await relRes.json();
+                 for (const r of (relData.relationships || [])) {
+                     const key = this.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
+                     this.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
                  }
              } catch(e) {
                  this.damError = e.message;
@@ -417,10 +416,9 @@
                              relationship_type: 'access'
                          })
                      });
-                     if (res.ok) {
-                         const data = await res.json();
-                         this.accessMap[key] = { id: data.id, access_type: nextType };
-                     }
+                     if (!res.ok) throw new Error('HTTP ' + res.status);
+                     const data = await res.json();
+                     this.accessMap[key] = { id: data.id, access_type: nextType };
                  }
              } catch(e) {
                  this.damError = e.message;

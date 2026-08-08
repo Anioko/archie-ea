@@ -19,6 +19,13 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+# NB: DecisionLedger from app.services, NOT app.models.decision_ledger — both define
+# that name. This module calls .record_decision() and .update_decision_status(),
+# which exist only on the service class; importing the model would compile cleanly
+# and fail at runtime with AttributeError.
+from app.services.decision_ledger import DecisionLedger, DecisionStatus
+from app.services.policy_engine import PolicyEngine
+
 logger = logging.getLogger(__name__)
 
 

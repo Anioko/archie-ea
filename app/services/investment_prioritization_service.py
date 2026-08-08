@@ -10,14 +10,11 @@ Analyzes and prioritizes investments in business capabilities based on:
 """
 
 import logging
-from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List
 
-from sqlalchemy import and_, func, or_
 
-from app import db
 from app.models.application_capability import ApplicationCapabilityMapping
-from app.models.application_portfolio import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
 from app.services.decorators import transactional
 

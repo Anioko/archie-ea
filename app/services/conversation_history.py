@@ -2,9 +2,8 @@
 Conversation History Service with Vector Search
 Persistent chat threads with semantic search capabilities
 """
-import json  # dead-code-ok
 import uuid
-from dataclasses import asdict, dataclass  # dead-code-ok
+from dataclasses import dataclass  # dead-code-ok
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -425,7 +424,7 @@ class ConversationHistoryService:
 
         # Invalidate cache
         invalidate_cache(f"thread:{thread_id}:*")
-        invalidate_cache(f"threads:user:*")
+        invalidate_cache("threads:user:*")
 
     def update_thread_title(self, thread_id: str, title: str):
         """Update thread title."""
@@ -441,116 +440,100 @@ class ConversationHistoryService:
         )
         db.session.commit()
 
-        invalidate_cache(f"threads:user:*")
+        invalidate_cache("threads:user:*")
 
 
-# ============================================================================
-# Module-level wiring so the chat endpoints persist every turn (always on).
-# A single service instance is reused (the vector model loads once, lazily).
-# ============================================================================
+# =====================================================================
 
-_HISTORY_SINGLETON = None
-_TABLES_READY = False
 
-# Dialect-agnostic DDL (Postgres + SQLite). The thread/message tables are created
-# by a raw-SQL migration that the runtime entrypoint doesn't run — so we ensure
-# them here, idempotently, on first use. This keeps chat history working on the
-# live box and on every fresh deploy with no manual migration step.
-_ENSURE_DDL = [
+# =====================================================================
+# Module-level API used by the chat routes.
+#
+# app/modules/ai_chat/routes/chat_core.py imported persist_turn (:479, :760),
+# get_history_service and thread_owned_by (:1219, :1232, :1250) - none of which
+# existed anywhere in the repository. The two persist_turn call sites are wrapped
+# in `except Exception`, so the ImportError was swallowed and NO CONVERSATION WAS
+# EVER SAVED; the thread-detail and delete routes import at function scope with
+# no guard, so both returned 500. The result was a ChatGPT-style history rail
+# that is permanently empty with two of its three controls broken.
+# =====================================================================
+
+_history_service = None
+
+
+def get_history_service() -> ConversationHistoryService:
+    """Process-wide singleton.
+
+    Constructing the service initialises ChromaDB and a SentenceTransformer
+    (see __init__), so building one per request would be very expensive - and
+    every caller wants the same instance.
     """
-    CREATE TABLE IF NOT EXISTS conversation_threads (
-        id VARCHAR(36) PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id),
-        title VARCHAR(255) NOT NULL,
-        model VARCHAR(50) NOT NULL,
-        created_at TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP NOT NULL,
-        message_count INTEGER DEFAULT 0
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_threads_user_updated ON conversation_threads (user_id, updated_at)",
-    """
-    CREATE TABLE IF NOT EXISTS conversation_messages (
-        id VARCHAR(36) PRIMARY KEY,
-        thread_id VARCHAR(36) NOT NULL REFERENCES conversation_threads(id),
-        role VARCHAR(20) NOT NULL,
-        content TEXT NOT NULL,
-        model VARCHAR(50),
-        tokens INTEGER,
-        created_at TIMESTAMP NOT NULL
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_messages_thread_created ON conversation_messages (thread_id, created_at)",
-]
-
-
-def _ensure_tables():
-    """Create the conversation tables if missing. Runs at most once per process."""
-    global _TABLES_READY
-    if _TABLES_READY:
-        return
-    try:
-        for stmt in _ENSURE_DDL:
-            db.session.execute(text(stmt))
-        db.session.commit()
-        _TABLES_READY = True
-    except Exception:
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        # Leave _TABLES_READY False so a later call can retry once the DB is ready.
-
-
-def get_history_service() -> "ConversationHistoryService":
-    """Return the shared history service, building it on first use."""
-    global _HISTORY_SINGLETON
-    _ensure_tables()
-    if _HISTORY_SINGLETON is None:
-        _HISTORY_SINGLETON = ConversationHistoryService()
-    return _HISTORY_SINGLETON
+    global _history_service
+    if _history_service is None:
+        _history_service = ConversationHistoryService()
+    return _history_service
 
 
 def thread_owned_by(thread_id: str, user_id: int) -> bool:
-    """True only if this thread exists and belongs to user_id (guards IDOR)."""
-    if not thread_id or user_id is None:
-        return False
-    _ensure_tables()
-    row = db.session.execute(
-        text("SELECT user_id FROM conversation_threads WHERE id = :id"),
-        {"id": thread_id},
-    ).fetchone()
-    return bool(row) and row.user_id == user_id
+    """True when *thread_id* exists and belongs to *user_id*.
 
-
-def persist_turn(user_id, thread_id, user_message, assistant_text, model=None):
-    """Persist one user+assistant turn, creating the thread on the first turn.
-
-    Returns the thread_id (new one if created). NEVER raises — chat must keep
-    working even if history storage hiccups.
+    Ownership is the authorisation boundary for the thread routes: conversation
+    threads are keyed by user, so without this check any authenticated user
+    could read or delete another user's chat history by guessing an id.
     """
-    if user_id is None or not (user_message or "").strip():
-        return thread_id
-    try:
-        svc = get_history_service()
-        model = (model or "assistant").strip() or "assistant"
-        # New conversation, or a thread_id that isn't this user's → start fresh.
-        if not thread_owned_by(thread_id, user_id):
-            title = (user_message or "New chat").strip().splitlines()[0][:60] or "New chat"
-            thread_id = svc.create_thread(user_id, title=title, model=model).id
-        svc.add_message(thread_id, "user", user_message, model=None)
-        if (assistant_text or "").strip():
-            svc.add_message(thread_id, "assistant", assistant_text, model=model)
-        return thread_id
-    except Exception as exc:  # pragma: no cover - persistence must never break chat
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        try:
-            from flask import current_app
+    if not thread_id or not user_id:
+        return False
+    row = db.session.execute(  # tenant-filtered: scoped via parent FK (user_id)
+        text(
+            "SELECT 1 FROM conversation_threads "
+            "WHERE id = :thread_id AND user_id = :user_id LIMIT 1"
+        ),
+        {"thread_id": str(thread_id), "user_id": user_id},
+    ).first()
+    return row is not None
 
-            current_app.logger.warning("persist_turn failed: %s", exc)
-        except Exception:
-            pass
-        return thread_id
+
+def _derive_title(user_message: str) -> str:
+    """First line of the opening message, trimmed - what the history rail shows."""
+    text_ = (user_message or "").strip().splitlines()[0] if (user_message or "").strip() else ""
+    if not text_:
+        return "New conversation"
+    return text_[:77] + "..." if len(text_) > 80 else text_
+
+
+def persist_turn(
+    user_id: int,
+    thread_id: Optional[str],
+    user_message: str,
+    assistant_response: str,
+    model: Optional[str] = None,
+) -> Optional[str]:
+    """Save one exchange and return the thread id to send back to the client.
+
+    Creates the thread on the first turn. create_thread() already stores the
+    opening user message via its initial_message argument, so passing it there
+    and calling add_message() again would duplicate it - hence the branch.
+
+    Returns None when there is no user to attribute the turn to; callers treat a
+    falsy thread_id as "not persisted" rather than failing the request.
+    """
+    if not user_id:
+        return None
+
+    service = get_history_service()
+
+    if thread_id and thread_owned_by(thread_id, user_id):
+        service.add_message(thread_id, "user", user_message)
+    else:
+        thread = service.create_thread(
+            user_id=user_id,
+            title=_derive_title(user_message),
+            model=model or "unknown",
+            initial_message=user_message,
+        )
+        thread_id = thread.id
+
+    if assistant_response:
+        service.add_message(thread_id, "assistant", assistant_response, model=model)
+
+    return thread_id

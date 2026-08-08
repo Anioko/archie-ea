@@ -37,8 +37,14 @@ class Project(TenantMixin, db.Model):
     created_date = db.Column(db.DateTime, default=datetime.utcnow)
     updated_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Project manager and team
-    project_manager = db.Column(db.String(100))  # Could link to User model if needed
+    # Project manager and team.
+    # project_manager is free text and stays for back-compat; project_manager_id is
+    # the real link. Without it there is no ownership graph — nothing can answer
+    # "what am I accountable for", and no notification can find a person.
+    project_manager = db.Column(db.String(100))
+    project_manager_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     team_members = db.Column(db.Text)  # JSON or comma-separated list of team members
 
     # Budget and progress
@@ -52,12 +58,53 @@ class Project(TenantMixin, db.Model):
         "Milestone", backref="project", lazy="dynamic", cascade="all, delete-orphan"
     )
 
-    # Traceability to architecture (optional foreign keys for flexibility)
-    capability_id = db.Column(db.Integer, nullable=True)  # Optional link to capabilities (INTEGER)
-    requirement_id = db.Column(db.Integer, nullable=True)  # Optional link to requirements (INTEGER)
+    # ── Traceability to architecture ────────────────────────────────────────
+    # These were bare Integers with a comment where a foreign key belonged, so
+    # nothing could traverse them: the architecture repository and the delivery
+    # repository held the same ids and could not join. Declaring the FK is what
+    # makes "which initiative is closing this capability gap, and is it on track"
+    # answerable in one query instead of never.
+    #
+    # projects.id is a UUID, which is irrelevant here — a foreign key column on
+    # this table simply has to match the *target* primary key's type (Integer).
+    #
+    # work_package_id is the important one. WorkPackage is the ArchiMate
+    # Implementation & Migration element (DESIGN.md: ArchiMate is the backbone,
+    # not a view), already linked to capability, goal, plateau and application
+    # component. Hanging Project off it inherits that whole graph.
+    #
+    # All nullable: `projects` is an existing table and reconcile-schema can only
+    # ADD nullable columns (ADR 0002). Existing rows keep working unlinked.
+    work_package_id = db.Column(
+        db.Integer, db.ForeignKey("work_packages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    capability_id = db.Column(
+        db.Integer,
+        db.ForeignKey("unified_capabilities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    requirement_id = db.Column(
+        db.Integer, db.ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    work_package = db.relationship("WorkPackage", backref="projects", foreign_keys=[work_package_id])
+    capability = db.relationship(
+        "UnifiedCapability", backref="delivery_projects", foreign_keys=[capability_id]
+    )
+    project_manager_user = db.relationship("User", foreign_keys=[project_manager_id])
 
     def __repr__(self):
         return f"<Project {self.name}>"
+
+    @property
+    def traces_to_architecture(self) -> bool:
+        """True when this project is reachable from the architecture repository.
+
+        A project with no link is invisible to every roadmap, gap and portfolio
+        view — it consumes budget the architecture cannot see.
+        """
+        return any((self.work_package_id, self.capability_id, self.requirement_id))
 
     @property
     def total_tasks(self):

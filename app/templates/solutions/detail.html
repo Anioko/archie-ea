@@ -71,7 +71,7 @@
 
 {# AIC-318: workspace return banner — visible when an active AI chat workspace is linked #}
 {% if active_workspace_id %}
-<div class="bg-blue-500/10 border-b border-blue-500/30 text-blue-700 dark:text-blue-400 px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="workspace-return-banner">
+<div class="bg-info/10 border-b border-info/30 text-info px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="workspace-return-banner">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
   This solution has an active AI workspace.
   <a href="{{ url_for('unified_ai_chat.index') }}?workspace={{ active_workspace_id }}" class="font-medium underline hover:no-underline ml-1">Return to Chat Workspace &rarr;</a>
@@ -79,10 +79,10 @@
 {% endif %}
 
 {% if show_created_banner %}
-<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 dark:text-emerald-400 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
+<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
   <span><strong>Programme created.</strong> Your architecture blueprint is ready &mdash; fill in sections below to build it out.</span>
-  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800 dark:text-emerald-300" aria-label="Dismiss">
+  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800" aria-label="Dismiss">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
   </button>
 </div>
@@ -187,7 +187,7 @@
                         <div class="border-t border-border pt-2 space-y-1">
                             <p class="text-xs font-medium">
                                 Sandbox: <span x-text="testResult.test_summary.passed + ' passed'" class="text-emerald-600"></span>,
-                                <span x-text="testResult.test_summary.failed + ' failed'" class="text-red-600"></span>
+                                <span x-text="testResult.test_summary.failed + ' failed'" class="text-destructive"></span>
                             </p>
                             <template x-for="f in (testResult.failures || []).slice(0, 5)" :key="f.test_name">
                                 <p class="text-[11px] text-muted-foreground">
@@ -200,7 +200,7 @@
                     </template>
                     {# Error display #}
                     <template x-if="error">
-                        <p class="text-xs text-red-600" x-text="error"></p>
+                        <p class="text-xs text-destructive" x-text="error"></p>
                     </template>
                 </div>
             </div>
@@ -721,7 +721,7 @@
             <span x-text="tab.label"></span>
             <span class="ml-1 text-[10px] text-muted-foreground" x-text="'(' + tab.phase + ')'"></span>
             <span class="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 rounded-full text-[10px] font-bold px-1"
-                  :class="tab.pct === 100 ? 'bg-emerald-500/15 text-emerald-400' : tab.pct >= 40 ? 'bg-amber-500/15 text-amber-400' : tab.pct > 0 ? 'bg-red-500/15 text-red-400' : 'bg-muted text-muted-foreground'"
+                  :class="tab.pct === 100 ? 'bg-emerald-500/15 text-emerald-400' : tab.pct >= 40 ? 'bg-amber-500/15 text-amber-400' : tab.pct > 0 ? 'bg-destructive/15 text-red-400' : 'bg-muted text-muted-foreground'"
                   x-html="tab.pct === 100 ? '&#10003;' : tab.pct + '%'"></span>
           </button>
         </template>
@@ -824,7 +824,7 @@
           </div>
           <div class="rounded-xl border border-border bg-card p-4">
             <div class="flex items-center gap-3">
-              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 shrink-0">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-destructive/10 border border-destructive/20 shrink-0">
                 <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
               </span>
               <div>
@@ -844,15 +844,15 @@
               Architecture Completeness
             </h4>
             <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold
-              {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' if _ac.score >= 80
-                 else ('bg-amber-500/10 text-amber-600 border border-amber-500/20' if _ac.score >= 40
-                 else 'bg-red-500/10 text-destructive border border-red-500/20') }}">
+ {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' if _ac.score >= 80
+ else ('bg-amber-500/10 text-amber-600 border border-amber-500/20' if _ac.score >= 40
+ else 'bg-destructive/10 text-destructive border border-destructive/20') }}">
               {{ _ac.score }}% &mdash; {{ _ac.filled_count }}/{{ _ac.total }} sections
             </span>
           </div>
           <div class="h-2 w-full rounded-full bg-muted/50 overflow-hidden mb-3">
             <div class="h-full rounded-full transition-all duration-500
-              {{ 'bg-emerald-500' if _ac.score >= 80 else ('bg-amber-500' if _ac.score >= 40 else 'bg-red-400') }}"
+ {{ 'bg-emerald-500' if _ac.score >= 80 else ('bg-amber-500' if _ac.score >= 40 else 'bg-destructive') }}"
                  style="width: {{ _ac.score }}%"></div>
           </div>
           <div class="flex flex-wrap gap-1.5">
@@ -883,8 +883,8 @@
           <p class="text-xs text-foreground/80">{{ goals | length }} goal{{ 's' if goals | length != 1 }} defined but no drivers. Goals without drivers have no business justification &mdash; ARB will ask "why?"</p>
         </div>
         {% elif drivers and goals and not requirements_list %}
-        <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+        <div class="rounded-lg border border-info/20 bg-info/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-info shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
           <p class="text-xs text-foreground/80">Drivers and goals defined &mdash; next: define requirements to complete the Driver &rarr; Goal &rarr; Requirement chain.</p>
         </div>
         {% endif %}
@@ -908,7 +908,7 @@
           {% endfor %}
           {% for c in constraints %}
           <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
-            <span class="w-2 h-2 rounded-full bg-red-400 shrink-0"></span>
+            <span class="w-2 h-2 rounded-full bg-destructive shrink-0"></span>
             <span class="flex-1">{{ c.get('name') or c.get('title') or c.get('description', 'Untitled') }}</span>
             <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Constraint</span>
           </div>
@@ -997,7 +997,7 @@
             <span class="text-xs text-muted-foreground">Target: {{ qa.get('target_value') or qa.get('target') }}</span>
             {% endif %}
             {% if qa.get('priority') %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-red-500/10 text-red-400{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-destructive/10 text-red-400{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
             {% endif %}
           </div>
           {% endfor %}
@@ -1033,8 +1033,8 @@
         <p class="text-xs text-foreground/80">{{ requirements_list | length }} requirement{{ 's' if requirements_list | length != 1 }} defined in Phase A but no capabilities mapped. Requirements can't trace to applications without capabilities &mdash; the Requirement &rarr; Capability &rarr; Application chain is broken.</p>
       </div>
       {% elif capabilities_json and not applications %}
-      <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 flex items-start gap-2">
-        <svg class="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+      <div class="rounded-lg border border-info/20 bg-info/5 px-4 py-2.5 flex items-start gap-2">
+        <svg class="w-3.5 h-3.5 text-info shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
         <p class="text-xs text-foreground/80">{{ capabilities_json | length }} capabilities mapped &mdash; next: link applications to show which systems realize these capabilities.</p>
       </div>
       {% endif %}
@@ -1057,7 +1057,7 @@
                 <div class="flex items-center gap-2 mt-2">
                   {% set mat = cap.get('maturity_level') or cap.get('level') %}
                   {% if mat %}
-                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-emerald-500/10 text-emerald-400{% elif mat >= 3 %}bg-amber-500/10 text-amber-400{% else %}bg-red-500/10 text-red-400{% endif %}">L{{ mat }}</span>
+                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-emerald-500/10 text-emerald-400{% elif mat >= 3 %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-red-400{% endif %}">L{{ mat }}</span>
                   {% endif %}
                 </div>
               </div>
@@ -1092,7 +1092,7 @@
                 <td class="px-5 py-2.5 font-medium">{{ app.name }}</td>
                 <td class="px-3 py-2.5">
                   <span class="inline-flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full {% if 'strategic' in lc %}bg-emerald-400{% elif 'transition' in lc or 'tolerate' in lc %}bg-amber-400{% elif 'decommission' in lc or 'retire' in lc %}bg-red-400{% else %}bg-muted-foreground{% endif %}"></span>
+                    <span class="w-1.5 h-1.5 rounded-full {% if 'strategic' in lc %}bg-emerald-400{% elif 'transition' in lc or 'tolerate' in lc %}bg-amber-400{% elif 'decommission' in lc or 'retire' in lc %}bg-destructive{% else %}bg-muted-foreground{% endif %}"></span>
                     <span class="text-xs">{{ app.lifecycle_status or '&mdash;' }}</span>
                   </span>
                 </td>
@@ -1140,8 +1140,8 @@
           </table>
         </div>
         {% if has_subscription_vendors %}
-        <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 mt-3 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div class="rounded-lg border border-info/20 bg-info/5 px-4 py-2.5 mt-3 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-info shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           <p class="text-xs text-foreground/80">Subscription-based products detected. Ensure recurring licence costs are reflected in TCO on the Opportunities tab.</p>
         </div>
         {% endif %}
@@ -1263,8 +1263,8 @@
           <p class="text-xs text-foreground/80">Missing ArchiMate layer{{ 's' if missing_layers | length != 1 }}: <strong>{{ missing_layers | join(', ') }}</strong>. A complete SAD needs all three layers for cross-layer traceability. ARB readiness requires &ge;5 cross-layer relationships.</p>
         </div>
         {% elif ns_layers.has_rel == 0 %}
-        <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+        <div class="rounded-lg border border-info/20 bg-info/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-info shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
           <p class="text-xs text-foreground/80">All three ArchiMate layers present &mdash; but no cross-layer relationships defined yet. Link elements across layers to show how business processes are realized by applications and supported by technology.</p>
         </div>
         {% else %}
@@ -1475,7 +1475,7 @@
         <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
           {% for plateau in plateaus_list %}
           <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
-            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0">{{ loop.index }}</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-info/20 text-info text-xs font-bold shrink-0">{{ loop.index }}</span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-foreground">{{ plateau.get('name') or plateau.get('title') or 'Plateau ' ~ loop.index }}</p>
               <p class="text-[10px] text-muted-foreground">{{ plateau.get('description', '') | truncate(100) }}</p>
@@ -1490,7 +1490,7 @@
         <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
           {% for phase in investment_phases %}
           <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
-            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0">{{ phase.get('phase_number', loop.index) }}</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-info/20 text-info text-xs font-bold shrink-0">{{ phase.get('phase_number', loop.index) }}</span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-foreground">{{ phase.get('name') or phase.get('title') or 'Phase ' ~ loop.index }}</p>
               {% if phase.get('budget') %}<p class="text-[10px] text-muted-foreground">Budget: {{ currency_symbol }}{{ '{:,.0f}'.format(phase.get('budget')) }}</p>{% endif %}
@@ -1572,7 +1572,7 @@
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               {% set gov_status = (solution.governance_status or 'draft') | lower %}
-              <span class="flex items-center justify-center w-10 h-10 rounded-lg {% if gov_status == 'approved' %}bg-emerald-500/10 border-emerald-500/20{% elif gov_status in ('arb_review', 'in_review') %}bg-amber-500/10 border-amber-500/20{% elif gov_status == 'rejected' %}bg-red-500/10 border-red-500/20{% else %}bg-muted border-border{% endif %} border">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg {% if gov_status == 'approved' %}bg-emerald-500/10 border-emerald-500/20{% elif gov_status in ('arb_review', 'in_review') %}bg-amber-500/10 border-amber-500/20{% elif gov_status == 'rejected' %}bg-destructive/10 border-destructive/20{% else %}bg-muted border-border{% endif %} border">
                 {% if gov_status == 'approved' %}
                 <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
                 {% else %}
@@ -1614,7 +1614,7 @@
           {% endif %}
         {% endfor %}
         {% if ns_risk.unmitigated_high > 0 %}
-        <div class="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+        <div class="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5 mb-4 flex items-start gap-2">
           <svg class="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
           <p class="text-xs text-foreground/80"><strong>{{ ns_risk.unmitigated_high }}</strong> high/critical risk{{ 's' if ns_risk.unmitigated_high != 1 }} without mitigation plan. ARB will not approve with unaddressed high-severity risks.</p>
         </div>
@@ -1636,7 +1636,7 @@
                 <td class="px-5 py-2.5">{{ risk.get('name') or risk.get('title') or risk.get('description', 'Untitled') }}</td>
                 <td class="px-3 py-2.5">
                   <span class="inline-flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full {% if sev == 'high' or sev == 'critical' %}bg-red-400{% elif sev == 'medium' %}bg-amber-400{% else %}bg-muted-foreground{% endif %}"></span>
+                    <span class="w-1.5 h-1.5 rounded-full {% if sev == 'high' or sev == 'critical' %}bg-destructive{% elif sev == 'medium' %}bg-amber-400{% else %}bg-muted-foreground{% endif %}"></span>
                     <span class="text-xs {% if sev == 'high' or sev == 'critical' %}text-red-400{% elif sev == 'medium' %}text-amber-400{% endif %}">{{ sev | title }}</span>
                   </span>
                 </td>
@@ -1677,7 +1677,7 @@
                 <td class="px-3 py-2.5 font-medium">{{ adr.title or 'Untitled' }}</td>
                 <td class="px-3 py-2.5">
                   {% set adr_status = (adr.status or 'draft') | lower %}
-                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-emerald-500/10 text-emerald-400{% elif adr_status == 'proposed' %}bg-amber-500/10 text-amber-400{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-blue-500/10 text-blue-400{% endif %}">{{ adr_status | title }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-emerald-500/10 text-emerald-400{% elif adr_status == 'proposed' %}bg-amber-500/10 text-amber-400{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-info/10 text-info{% endif %}">{{ adr_status | title }}</span>
                 </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (adr.decision or '')[:80] }}{% if (adr.decision or '') | length > 80 %}&hellip;{% endif %}</td>
               </tr>
@@ -1736,7 +1736,7 @@
           <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
             <span class="flex-1">{{ cm.get('framework') or cm.get('regulation') or cm.get('name') or 'Unnamed' }}{% if cm.get('control_id') %} &middot; {{ cm.get('control_id') }}{% endif %}</span>
             {% set cm_status = (cm.get('status') or cm.get('compliance_status') or 'pending') | lower %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-emerald-500/10 text-emerald-400{% elif cm_status in ('partial', 'in_progress') %}bg-amber-500/10 text-amber-400{% else %}bg-red-500/10 text-red-400{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-emerald-500/10 text-emerald-400{% elif cm_status in ('partial', 'in_progress') %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-red-400{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
           </div>
           {% endfor %}
         </div>
@@ -1746,7 +1746,7 @@
       {# Traceability chains — with specific gap diagnosis #}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-slate-500"></div>
+          <div class="w-1 h-5 rounded-full bg-muted-foreground"></div>
           <p class="text-sm font-semibold text-foreground">Traceability</p>
         </div>
         {# Compute chain status with granular progress and gap diagnosis #}
@@ -1779,13 +1779,13 @@
         ] %}
         <div class="rounded-xl border border-border bg-card overflow-hidden divide-y divide-border">
           {% for chain in chains %}
-          <div class="px-5 py-3 {% if chain.pct < 100 %}bg-red-500/5{% endif %}">
+          <div class="px-5 py-3 {% if chain.pct < 100 %}bg-destructive/5{% endif %}">
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-sm">{{ chain.label }}</span>
               <span class="text-xs font-medium {% if chain.pct == 100 %}text-emerald-400{% elif chain.pct >= 50 %}text-amber-400{% else %}text-red-400{% endif %}">{{ chain.pct }}%</span>
             </div>
             <div class="w-full bg-muted rounded-full h-1.5">
-              <div class="h-1.5 rounded-full {% if chain.pct == 100 %}bg-emerald-400{% elif chain.pct >= 50 %}bg-amber-400{% else %}bg-red-400{% endif %}" style="width:{{ chain.pct }}%"></div>
+              <div class="h-1.5 rounded-full {% if chain.pct == 100 %}bg-emerald-400{% elif chain.pct >= 50 %}bg-amber-400{% else %}bg-destructive{% endif %}" style="width:{{ chain.pct }}%"></div>
             </div>
             {% if chain.gap %}
             <p class="text-[10px] text-muted-foreground mt-1.5">
@@ -1973,9 +1973,13 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
             try {
                 const r = await fetch(`/solutions/${solutionId}/comments?section=${this.section}`);
+                if (!r.ok) throw new Error('Failed to load comments: ' + r.status);
                 const data = await r.json();
                 this.comments = data.comments || [];
-            } catch(e) { this.comments = []; }
+            } catch(e) {
+                this.comments = [];
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load comments');
+            }
             this.loading = false;
         },
 
@@ -1988,14 +1992,15 @@ document.addEventListener('alpine:init', () => {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ section: this.section, content: this.newComment.trim() }),
                 });
-                if (r.ok) {
-                    this.newComment = '';
-                    await this.loadComments();
-                    this.$nextTick(() => {
-                        if (this.$refs.commentList) this.$refs.commentList.scrollTop = 9999;
-                    });
-                }
-            } catch(e) {}
+                if (!r.ok) throw new Error('Failed to post comment: ' + r.status);
+                this.newComment = '';
+                await this.loadComments();
+                this.$nextTick(() => {
+                    if (this.$refs.commentList) this.$refs.commentList.scrollTop = 9999;
+                });
+            } catch(e) {
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to post comment');
+            }
             this.submitting = false;
         },
 
@@ -2010,8 +2015,11 @@ document.addEventListener('alpine:init', () => {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ section: this.section, content: this.replyText.trim(), parent_comment_id: parentId }),
                 });
-                if (r.ok) { this.replyTo = null; this.replyText = ''; await this.loadComments(); }
-            } catch(e) {}
+                if (!r.ok) throw new Error('Failed to post reply: ' + r.status);
+                this.replyTo = null; this.replyText = ''; await this.loadComments();
+            } catch(e) {
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to post reply');
+            }
             this.submitting = false;
         },
 
@@ -2315,6 +2323,9 @@ function sadPage() {
         }
       } catch (e) {
         console.warn('[detail] viewpoint diagram load failed:', e);
+        container.innerHTML = '<div class="flex items-center justify-center py-8 text-center">' +
+          '<div><p class="text-sm text-destructive">Diagram failed to load.</p>' +
+          '<p class="text-xs text-muted-foreground mt-1">Reload the page to try again.</p></div></div>';
       }
     }
   };
@@ -2322,7 +2333,7 @@ function sadPage() {
 </script>
 <script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script> <!-- entity-picker-ok: script include -->
 {% if stakeholder_mappings %}
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/d3.min.js') }}"></script>
 <script>
 (function(){
   'use strict';

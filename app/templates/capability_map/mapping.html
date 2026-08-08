@@ -34,9 +34,9 @@
             <h2 class="text-base font-semibold text-foreground">Coverage Matrix</h2>
             <div class="flex gap-3 text-xs text-muted-foreground">
                 <a href="{{ url_for('unified_low_priority.capability_map_capabilities') }}"
-                   class="text-primary dark:text-primary/80 hover:underline">All Capabilities &rarr;</a>
+                   class="text-primary hover:underline">All Capabilities &rarr;</a>
                 <a href="{{ url_for('unified_low_priority.capability_map_applications') }}"
-                   class="text-primary dark:text-primary/80 hover:underline">All Applications &rarr;</a>
+                   class="text-primary hover:underline">All Applications &rarr;</a>
             </div>
         </div>
         <div class="divide-y divide-border">
@@ -74,7 +74,7 @@
             <div class="px-6 py-2.5 flex items-center gap-3 hover:bg-muted/20 text-sm">
                 <span class="font-medium text-foreground">
                     <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
-                       class="hover:underline text-primary dark:text-primary/80">{{ app.name }}</a>
+                       class="hover:underline text-primary">{{ app.name }}</a>
                 </span>
                 {% set s = (app.status or 'active')|lower %}
                 {% if s == 'active' %}

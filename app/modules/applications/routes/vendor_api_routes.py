@@ -50,7 +50,6 @@ def match_applications_to_vendors():
         from app.models.vendor.vendor_organization import (
             VendorOrganization,
             VendorProduct,
-            application_vendor_products,
         )
 
         # Get applications (capped to prevent unbounded queries)
@@ -405,7 +404,7 @@ def generate_vendor_process_mappings():
     """Generate vendor-process mappings with confidence scores."""
     try:
         data = request.get_json() or {}
-        vendor_id = data.get("vendor_id")
+        _vendor_id = data.get("vendor_id")
         confidence_threshold = data.get("confidence_threshold", 30)
 
         from app.services.vendor_process_mapping_service import (

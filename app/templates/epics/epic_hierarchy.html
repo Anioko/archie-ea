@@ -6,7 +6,7 @@
 {% block content %}
 <div class="p-6 max-w-5xl mx-auto" x-data="epicHierarchy()" x-init="init()">
   <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold text-foreground dark:text-primary-foreground">Epic → Story → Sub-task Hierarchy</h1>
+    <h1 class="text-2xl font-bold text-foreground">Epic → Story → Sub-task Hierarchy</h1>
     <button
       @click="showEpicForm = !showEpicForm"
       class="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium">
@@ -15,18 +15,18 @@
   </div>
 
   <!-- Add Epic Form -->
-  <div x-show="showEpicForm" x-cloak class="mb-6 p-4 bg-background dark:bg-card border border-border dark:border-gray-700 rounded-lg shadow-sm">
-    <h2 class="text-sm font-semibold mb-3 text-foreground dark:text-foreground/70">New Epic</h2>
+  <div x-show="showEpicForm" x-cloak class="mb-6 p-4 bg-background border border-border rounded-lg shadow-sm">
+    <h2 class="text-sm font-semibold mb-3 text-foreground">New Epic</h2>
     <div class="flex gap-2">
       <input
         x-model="newEpicTitle"
         type="text"
         placeholder="Epic title"
-        class="flex-1 px-3 py-2 border border-border dark:border-gray-600 rounded-md text-sm dark:bg-muted-foreground/30 dark:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+        class="flex-1 px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         @keydown.enter="createEpic()"
        aria-label="Epic title"/>
       <button @click="createEpic()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90">Create</button>
-      <button @click="showEpicForm = false; newEpicTitle = ''" class="px-4 py-2 bg-muted dark:bg-muted-foreground/20 text-foreground dark:text-foreground/80 rounded-md text-sm hover:bg-muted">Cancel</button>
+      <button @click="showEpicForm = false; newEpicTitle = ''" class="px-4 py-2 bg-muted text-foreground rounded-md text-sm hover:bg-muted">Cancel</button>
     </div>
     <p x-show="epicError" x-cloak x-text="epicError" class="mt-2 text-destructive text-xs"></p>
   </div>
@@ -34,18 +34,18 @@
   <!-- Epic Tree -->
   <div class="space-y-4">
     <template x-for="epic in epics" :key="epic.id">
-      <div class="border border-primary/20 dark:border-blue-800 rounded-lg overflow-hidden shadow-sm">
+      <div class="border border-primary/20 rounded-lg overflow-hidden shadow-sm">
         <!-- Epic Header -->
-        <div class="bg-primary/5 dark:bg-blue-900/40 px-4 py-3 flex items-center gap-3 cursor-pointer"
+        <div class="bg-primary/5 px-4 py-3 flex items-center gap-3 cursor-pointer"
              @click="epic._open = !epic._open">
-          <span class="text-primary dark:text-blue-400" x-text="epic._open ? '▼' : '▶'"></span>
-          <span class="font-semibold text-primary/90 dark:text-blue-200 flex-1" x-text="epic.title"></span>
-          <span class="text-xs text-muted-foreground dark:text-muted-foreground/60">
+          <span class="text-primary" x-text="epic._open ? '▼' : '▶'"></span>
+          <span class="font-semibold text-primary/90 flex-1" x-text="epic.title"></span>
+          <span class="text-xs text-muted-foreground">
             <span x-text="epic.story_count"></span> stories ·
             <span x-text="epic.total_points"></span> pts
           </span>
           <!-- Progress bar -->
-          <div class="w-32 bg-muted dark:bg-muted-foreground/30 rounded-full h-2 ml-2" :title="`${epic.completed_points}/${epic.total_points} pts done`">
+          <div class="w-32 bg-muted rounded-full h-2 ml-2" :title="`${epic.completed_points}/${epic.total_points} pts done`">
             <div class="bg-primary h-2 rounded-full transition-all"
                  :style="`width: ${epic.total_points > 0 ? Math.round(epic.completed_points / epic.total_points * 100) : 0}%`">
             </div>
@@ -58,15 +58,15 @@
         </div>
 
         <!-- Story List -->
-        <div x-show="epic._open" x-cloak class="divide-y divide-border/50 dark:divide-gray-700">
+        <div x-show="epic._open" x-cloak class="divide-y divide-border/50">
           <!-- Add Story Form (inline) -->
-          <div x-show="storyForm.epicId === epic.id" x-cloak class="px-6 py-3 bg-muted/30 dark:bg-gray-800/60">
+          <div x-show="storyForm.epicId === epic.id" x-cloak class="px-6 py-3 bg-muted/30">
             <div class="flex gap-2 items-center">
               <input
                 x-model="storyForm.title"
                 type="text"
                 placeholder="Story title (As a user...)"
-                class="flex-1 px-3 py-1.5 border border-border dark:border-gray-600 rounded text-sm dark:bg-muted-foreground/30 dark:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-green-500"
+                class="flex-1 px-3 py-1.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                 @keydown.enter="createStory(epic)"
                aria-label="Story title (As a user...)"/>
               <input
@@ -74,10 +74,10 @@
                 type="number"
                 min="0"
                 placeholder="pts"
-                class="w-16 px-2 py-1.5 border border-border dark:border-gray-600 rounded text-sm dark:bg-muted-foreground/30 dark:text-primary-foreground focus:outline-none"
+                class="w-16 px-2 py-1.5 border border-border rounded text-sm focus:outline-none"
                aria-label="pts"/>
               <button @click="createStory(epic)" class="px-3 py-1.5 bg-emerald-600 text-primary-foreground rounded text-xs hover:bg-green-700">Add</button>
-              <button @click="storyForm.epicId = null" class="px-3 py-1.5 bg-muted dark:bg-muted-foreground/20 text-foreground dark:text-foreground/80 rounded text-xs">Cancel</button>
+              <button @click="storyForm.epicId = null" class="px-3 py-1.5 bg-muted text-foreground rounded text-xs">Cancel</button>
             </div>
             <p x-show="storyForm.error" x-cloak x-text="storyForm.error" class="mt-1 text-destructive text-xs"></p>
           </div>
@@ -85,23 +85,23 @@
           <template x-for="story in epic.stories" :key="story.id">
             <div>
               <!-- Story Row -->
-              <div class="px-8 py-2 flex items-center gap-3 bg-background dark:bg-gray-800/80 hover:bg-muted/30 dark:hover:bg-gray-700/50">
+              <div class="px-8 py-2 flex items-center gap-3 bg-background hover:bg-muted/30">
                 <span class="cursor-pointer text-muted-foreground/60" @click="story._open = !story._open" x-text="story._open ? '▼' : '▶'"></span>
-                <span class="flex-1 text-sm text-foreground dark:text-foreground/80" x-text="story.title"></span>
-                <span class="text-xs bg-muted dark:bg-muted-foreground/30 text-muted-foreground dark:text-muted-foreground/60 px-2 py-0.5 rounded" x-text="story.story_points + ' pts'"></span>
-                <label class="flex items-center gap-1 text-xs text-muted-foreground dark:text-muted-foreground/60 cursor-pointer" :title="'DoD ' + (story.dod_complete ? 'complete' : 'incomplete')">
+                <span class="flex-1 text-sm text-foreground" x-text="story.title"></span>
+                <span class="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded" x-text="story.story_points + ' pts'"></span>
+                <label class="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer" :title="'DoD ' + (story.dod_complete ? 'complete' : 'incomplete')">
                   <input type="checkbox" :checked="story.dod_complete" disabled class="rounded" />
                   DoD
                 </label>
                 <button
                   @click.stop="openSubtaskForm(story)"
-                  class="px-2 py-0.5 bg-muted dark:bg-muted-foreground/20 text-foreground dark:text-foreground/80 rounded text-xs hover:bg-muted">
+                  class="px-2 py-0.5 bg-muted text-foreground rounded text-xs hover:bg-muted">
                   + Sub-task
                 </button>
               </div>
 
               <!-- Sub-task list -->
-              <div x-show="story._open" x-cloak class="bg-muted/30 dark:bg-gray-900/30">
+              <div x-show="story._open" x-cloak class="bg-muted/30">
                 <!-- Add Sub-task Form -->
                 <div x-show="subtaskForm.storyId === story.id" x-cloak class="px-16 py-2">
                   <div class="flex gap-2 items-center">
@@ -109,17 +109,17 @@
                       x-model="subtaskForm.title"
                       type="text"
                       placeholder="Sub-task title"
-                      class="flex-1 px-3 py-1 border border-border dark:border-gray-600 rounded text-xs dark:bg-muted-foreground/30 dark:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      class="flex-1 px-3 py-1 border border-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
                       @keydown.enter="createSubtask(story)"
                      aria-label="Sub-task title"/>
                     <button @click="createSubtask(story)" class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-purple-700">Add</button>
-                    <button @click="subtaskForm.storyId = null" class="px-3 py-1 bg-muted dark:bg-muted-foreground/20 text-foreground dark:text-foreground/80 rounded text-xs">Cancel</button>
+                    <button @click="subtaskForm.storyId = null" class="px-3 py-1 bg-muted text-foreground rounded text-xs">Cancel</button>
                   </div>
                   <p x-show="subtaskForm.error" x-cloak x-text="subtaskForm.error" class="mt-1 text-destructive text-xs"></p>
                 </div>
 
                 <template x-for="st in story.subtasks" :key="st.id">
-                  <div class="px-16 py-1.5 flex items-center gap-3 text-xs text-muted-foreground dark:text-muted-foreground/60 border-t border-border/50 dark:border-gray-800">
+                  <div class="px-16 py-1.5 flex items-center gap-3 text-xs text-muted-foreground border-t border-border/50">
                     <span class="text-foreground/70">└</span>
                     <span class="flex-1" x-text="st.title"></span>
                     <label class="flex items-center gap-1 cursor-pointer" :title="'DoD ' + (st.dod_complete ? 'complete' : 'incomplete')">

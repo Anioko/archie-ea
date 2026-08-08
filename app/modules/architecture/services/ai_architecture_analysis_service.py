@@ -20,18 +20,10 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Dict, List  # dead-code-ok
 
 from app import db
-from app.config.apqc_archimate_mapping_rules import (  # dead-code-ok
-    get_element_pattern_for_category,
-    get_mapping_rule_for_level,
-    get_primary_element_type,
-    should_create_element,
-)
 from app.models.application_portfolio import ApplicationComponent
-from app.models.apqc_process import APQCProcess  # dead-code-ok
-from app.models.business_capability import BusinessCapability  # dead-code-ok
 from app.services.agents.apqc_extraction_agent import APQCExtractionAgent
 # Import directly from canonical location to avoid circular import
 from app.modules.architecture.services.archimate_mapping_agent import ArchiMateMappingAgent

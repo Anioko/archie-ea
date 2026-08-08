@@ -56,7 +56,7 @@
       {%- set pattern_lower = item.pattern | lower %}
       {%- if 'monolith' in pattern_lower %}
         {%- set bar_color = 'bg-destructive' %}
-        {%- set badge_color = 'bg-destructive/10 text-red-800' %}
+        {%- set badge_color = 'bg-destructive/10 text-destructive-emphasis' %}
       {%- elif 'legacy' in pattern_lower %}
         {%- set bar_color = 'bg-orange-500' %}
         {%- set badge_color = 'bg-orange-100 text-orange-800' %}

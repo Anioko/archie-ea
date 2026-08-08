@@ -153,6 +153,15 @@ class Config:
     STRIPE_PRICE_PRO = os.environ.get("STRIPE_PRICE_PRO", "")
     STRIPE_PRICE_ENTERPRISE = os.environ.get("STRIPE_PRICE_ENTERPRISE", "")
 
+    # Jira inbound webhook (TPM-008). POST /webhooks/jira is unauthenticated and
+    # csrf-exempt by necessity, so this HMAC secret is its ONLY access control.
+    # The handler read this key before it was ever declared here, so it always
+    # resolved to "" - and the signature check treated an empty secret as
+    # "skip verification". Left unset the endpoint now rejects every request
+    # (fail closed); set it to the secret configured on the Jira webhook to
+    # enable the integration.
+    JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
+
     # Parse the REDIS_URL to set RQ config variables
     urllib.parse.uses_netloc.append("redis")
     url = urllib.parse.urlparse(REDIS_URL)
@@ -333,6 +342,22 @@ class TestingConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = False
 
+    # Brute-force protection is a production control; under test it throttles the
+    # suite instead of an attacker. /account/login is capped at 10 POSTs per
+    # minute keyed on IP, and every smoke test signs in from 127.0.0.1 — so as
+    # the suite grows it is structurally guaranteed to refuse its own logins.
+    #
+    # It did. A full single-process run failed 31 tests and errored 9 more, every
+    # one of them a sign-in refused with "Rate limit exceeded: 10 per 1m", across
+    # the authorisation matrix, the archetype journeys and the AI chat journey.
+    # The archetype that lost varied by timing, which made it read as a race.
+    #
+    # tests/test_rate_limiting.py covers the limiter directly, below this switch,
+    # and asserts the login route still carries the decorator — so disabling it
+    # here costs no coverage of the control. It only stops the control from
+    # deciding the outcome of tests that are not about it.
+    RATE_LIMITING_ENABLED = False
+
     # PostgreSQL REQUIRED for tests (matches production behavior)
     # SQLite is NOT supported - tests must use PostgreSQL for consistency
     SQLALCHEMY_DATABASE_URI = os.environ.get(
@@ -370,13 +395,26 @@ class ProductionConfig(Config):
     DEBUG = False
     USE_RELOADER = False
 
-    # Session cookie security
-    _cookie_secure_default = os.environ.get("PREFERRED_URL_SCHEME", "http").lower() == "https"
-    SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", _cookie_secure_default)
+    # Session cookie security.
+    #
+    # Secure defaults to TRUE here. It used to be derived from
+    # PREFERRED_URL_SCHEME, which ProductionConfig never sets (only
+    # DevelopmentConfig does), so the default resolved to "http" -> False and a
+    # production deployment shipped session and remember-me cookies over plain
+    # HTTP unless an operator happened to set the env var. A security default
+    # that depends on a variable this class does not define is not a default.
+    #
+    # Set SESSION_COOKIE_SECURE=false explicitly for the rare TLS-terminated-
+    # nowhere deployment; that is now a visible decision rather than the
+    # accident.
+    SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", True)
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    REMEMBER_COOKIE_SECURE = _env_bool("REMEMBER_COOKIE_SECURE", _cookie_secure_default)
+    REMEMBER_COOKIE_SECURE = _env_bool("REMEMBER_COOKIE_SECURE", True)
     REMEMBER_COOKIE_HTTPONLY = True
+    # Was unset, so the remember-me cookie had no SameSite protection at all
+    # while the session cookie did.
+    REMEMBER_COOKIE_SAMESITE = "Lax"
 
     # PostgreSQL for production (REQUIRED - validated at runtime)
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")

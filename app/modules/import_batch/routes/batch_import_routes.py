@@ -12,7 +12,6 @@ Includes Server-Sent Events (SSE) for real-time progress streaming.
 import json
 import logging
 import time
-from functools import wraps  # dead-code-ok
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 from flask_login import current_user, login_required
@@ -24,11 +23,10 @@ from app.models.audit_log import AuditLog
 from app.models.batch_import import BatchImportJob, BatchJobStatus
 from app.services.batch_approval_service import BatchApprovalService
 from app.services.batch_import_service import BatchImportService
-from app.services.import_audit_service import ImportAuditService, log_file_upload, log_batch_approval  # dead-code-ok
+from app.services.import_audit_service import log_batch_approval  # dead-code-ok
 from app.services.batch_processor_service import BatchProcessorService
 from app.utils.error_sanitizer import ErrorSanitizer, handle_import_error
 from app.utils.file_validation import validate_mime_type, InvalidFileTypeError, get_allowed_extensions_display
-from app.security.import_decorators import with_import_security  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,7 @@ batch_import_bp = Blueprint(
     "batch_import_api", __name__, url_prefix="/api/batch-import"
 )
 
-from app.utils.import_rate_limiter import import_rate_limit, add_rate_limit_headers  # dead-code-ok
+from app.utils.import_rate_limiter import import_rate_limit  # dead-code-ok
 from app.schemas.api_schemas import BatchImportOptionsSchema, _load_and_validate
 
 
@@ -95,7 +93,7 @@ def create_job():
         # Security: validate MIME type (IMP-001: File upload security)
         try:
             mime_type = validate_mime_type(file, file.filename)
-        except InvalidFileTypeError as e:
+        except InvalidFileTypeError:
             # IMP-002: Audit failed upload
             AuditLog.log_file_upload(
                 user_id=current_user.id,
@@ -479,9 +477,9 @@ def start_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -825,7 +823,7 @@ def _process_batch_with_events(batch, job):
             start_time = time.time()
             
             # Create savepoint for this application processing
-            app_savepoint = db.session.begin_nested()
+            db.session.begin_nested()
             
             try:
                 # Set processing status
@@ -1087,9 +1085,9 @@ def pause_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1122,9 +1120,9 @@ def resume_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1160,9 +1158,9 @@ def cancel_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1194,7 +1192,7 @@ def delete_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
     except HTTPException:
         raise
@@ -1349,7 +1347,7 @@ def approve_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1386,7 +1384,7 @@ def reject_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1419,7 +1417,7 @@ def commit_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1449,7 +1447,7 @@ def retry_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1585,7 +1583,7 @@ def approve_element(element_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1620,7 +1618,7 @@ def reject_element(element_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise

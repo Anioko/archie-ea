@@ -5,15 +5,23 @@ Provides central governance oversight, ARB reviews, ADRs, risk register, and ent
 import logging
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, render_template, request
-from flask_login import login_required, current_user
+from flask import Blueprint, jsonify, render_template
+from flask_login import login_required
 
 from app import db
-from app.decorators import audit_log, require_roles
+from app.decorators import require_roles
 
 logger = logging.getLogger(__name__)
 
 governance_bp = Blueprint("governance", __name__, url_prefix="/governance")
+
+# ArchiMate Principle carries an RFC-2119 enforcement level; the dashboard badges
+# a "priority". Map the two rather than inventing a priority the model never held.
+_ENFORCEMENT_TO_PRIORITY = {
+    "MUST": "Critical",
+    "SHOULD": "High",
+    "MAY": "Medium",
+}
 
 
 @governance_bp.route("/dashboard")
@@ -29,7 +37,6 @@ def api_metrics():
     """API endpoint to get governance metrics."""
     try:
         from app.models.solution_governance import SolutionARBReview as SolutionGovernance
-        from app.models.governance_gates import GovernanceGate
         
         # Count pending ARB reviews
         pending_reviews = db.session.query(SolutionGovernance).filter(
@@ -76,65 +83,77 @@ def api_metrics():
             'compliance_rate': compliance_rate
         })
     except Exception as e:
-        logger.error(f"Error getting governance metrics: {e}")
-        return jsonify({
-            'pending_reviews': 0,
-            'active_risks': 0,
-            'recent_adrs': 0,
-            'compliance_rate': 0
-        }), 200
+        # Previously returned all-zero metrics with HTTP 200, which the dashboard
+        # rendered as fact — "Compliance Rate 0%" for a query that never ran.
+        # Fail loudly so the client shows its "could not be loaded" state instead.
+        logger.error(f"Error getting governance metrics: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to load governance metrics'}), 500
 
 
 @governance_bp.route("/api/principles")
 @login_required
 def api_principles():
-    """API endpoint to get architecture principles."""
+    """Architecture principles for the governance dashboard.
+
+    Reads the ArchiMate Principle element (app/models/models.py) — the backbone
+    model per DESIGN.md — rather than a parallel governance-only table. This
+    previously imported a non-existent `app.models.architecture_principle`, so
+    the ImportError branch silently returned [] and the dashboard showed nothing.
+
+    Tenant scoping is implicit: Principle carries TenantMixin, so do_orm_execute
+    injects `WHERE organization_id = g.current_org_id`. Rows predating that change
+    have a NULL organization_id and are excluded until
+    `flask --app manage backfill-principle-org` has been run.
+    """
     try:
-        from app.models.architecture_principle import ArchitecturePrinciple
-        
-        principles = db.session.query(ArchitecturePrinciple).filter(
-            ArchitecturePrinciple.is_active == True
-        ).all()
-        
+        from app.models.models import Principle
+
+        # Deprecated/superseded principles are not current governance.
+        principles = (
+            db.session.query(Principle)
+            .filter(Principle.status.notin_(["deprecated", "superseded"]))
+            .order_by(Principle.name)
+            .all()
+        )
+
         return jsonify([{
             'id': p.id,
             'name': p.name,
             'statement': p.statement,
-            'priority': p.priority,
-            'domain': p.domain
+            # The dashboard renders `priority` as a badge (Critical -> destructive).
+            # RFC-2119 enforcement level is the closest real signal we hold.
+            'priority': _ENFORCEMENT_TO_PRIORITY.get(
+                (p.enforcement_level or "").upper(), p.enforcement_level or "—"
+            ),
+            'domain': p.category or "—",
         } for p in principles])
-    except ImportError:
-        logger.warning("ArchitecturePrinciple model not found")
-        return jsonify([])
     except Exception as e:
-        logger.error(f"Error getting principles: {e}")
-        return jsonify([]), 500
+        logger.error(f"Error getting principles: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to load architecture principles'}), 500
 
 
 @governance_bp.route("/api/standards")
 @login_required
 def api_standards():
-    """API endpoint to get technology standards."""
+    """Approved-technology register for the governance dashboard.
+
+    The TechnologyStandard model did not exist when this route was written, so the
+    ImportError branch silently returned [] — which is what drove the template's
+    fabricated "Python 3.11+ / Approved" fallback. Tenant-scoped via TenantMixin.
+    """
     try:
         from app.models.technology_standard import TechnologyStandard
-        
-        standards = db.session.query(TechnologyStandard).filter(
-            TechnologyStandard.is_active == True
-        ).all()
-        
-        return jsonify([{
-            'id': s.id,
-            'technology': s.technology_name,
-            'category': s.category,
-            'status': s.status,
-            'version': s.approved_version
-        } for s in standards])
-    except ImportError:
-        logger.warning("TechnologyStandard model not found")
-        return jsonify([])
+
+        standards = (
+            db.session.query(TechnologyStandard)
+            .filter(TechnologyStandard.is_active.is_(True))
+            .order_by(TechnologyStandard.category, TechnologyStandard.technology_name)
+            .all()
+        )
+        return jsonify([s.to_dict() for s in standards])
     except Exception as e:
-        logger.error(f"Error getting standards: {e}")
-        return jsonify([]), 500
+        logger.error(f"Error getting standards: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to load technology standards'}), 500
 
 
 @governance_bp.route("/api/reviews/recent")
@@ -161,8 +180,9 @@ def api_recent_reviews():
             'reviewer': gov.reviewer_name if hasattr(gov, 'reviewer_name') else 'ARB'
         } for gov, sol in reviews])
     except Exception as e:
-        logger.error(f"Error getting recent reviews: {e}")
-        return jsonify([]), 200
+        # Was: return [] with HTTP 200 — indistinguishable from "no reviews exist".
+        logger.error(f"Error getting recent reviews: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to load recent ARB reviews'}), 500
 
 
 @governance_bp.route("/arb-reviews")

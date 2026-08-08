@@ -31,7 +31,7 @@
                 <i data-lucide="check-square" class="h-4 w-4" aria-hidden="true"></i>
                 <span class="hidden sm:inline">Pending Approvals</span>
                 {% if status_counts.waiting_approval %}
-                <span class="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-warning text-white text-xs">
+                <span class="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-warning text-primary-foreground text-xs">
                     {{ status_counts.waiting_approval }}
                 </span>
                 {% endif %}
@@ -1338,15 +1338,19 @@ function analyticsPanel() {
     return {
         analytics: {},
         loaded: false,
+        loadError: false,
         async loadAnalytics() {
             try {
                 const resp = await fetch('/api/ea-workflows/analytics');
                 const data = await resp.json();
                 if (data.success) {
                     this.analytics = data.analytics;
+                } else {
+                    this.loadError = true;
                 }
             } catch (e) {
                 console.error('Failed to load analytics:', e);
+                this.loadError = true;
             }
             this.loaded = true;
         }

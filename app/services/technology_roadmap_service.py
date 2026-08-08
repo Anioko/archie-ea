@@ -12,7 +12,6 @@ Plans and manages technology evolution and modernization:
 from datetime import date, datetime
 from typing import Dict, List
 
-from app import db
 from app.services.decorators import transactional
 
 
@@ -157,8 +156,8 @@ class TechnologyRoadmapService:
 
         # Databases
         if any(
-            db in tech_lower
-            for db in ["mysql", "postgresql", "oracle", "sql server", "mongodb", "redis"]
+            db_name in tech_lower
+            for db_name in ["mysql", "postgresql", "oracle", "sql server", "mongodb", "redis"]
         ):
             return "Database"
 

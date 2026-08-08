@@ -144,7 +144,7 @@ class SolutionSuggestionGenerator:
         if target_phases is None:
             target_phases = list(PHASE_ELEMENT_TYPES.keys())
 
-        solution = context.get("solution") or {}
+        context.get("solution") or {}
         results: Dict[str, Dict[str, List]] = {}
 
         for phase in target_phases:

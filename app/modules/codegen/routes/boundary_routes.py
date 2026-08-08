@@ -29,7 +29,6 @@ from app.models.solution_models import Solution
 from app.utils.csrf_helper import require_csrf
 
 from .codegen_routes import codegen_bp
-from ._helpers import _check_access
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +87,14 @@ def _generate_docker_compose(solutions_data):
         lines += [
             f"  {slug}:",
             f"    build: ./{svc['repo_name']}",
-            f"    ports:",
+            "    ports:",
             f"      - \"{port}:8000\"",
-            f"    environment:",
+            "    environment:",
             f"      - DATABASE_URL=postgresql://postgres:${{POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}}@db:5432/{slug}",
             f"      - SERVICE_NAME={slug}",
-            f"    depends_on:",
-            f"      - db",
-            f"    restart: unless-stopped",
+            "    depends_on:",
+            "      - db",
+            "    restart: unless-stopped",
             "",
         ]
     lines += [
@@ -146,7 +145,7 @@ def _generate_nginx_conf(solutions_data):
 
 def _generate_client_sdk(consumer_name, producer_name, contracts):
     """Generate a minimal Python SDK stub for inter-service calls."""
-    consumer_slug = re.sub(r"[^a-zA-Z0-9]", "_", consumer_name).lower()
+    re.sub(r"[^a-zA-Z0-9]", "_", consumer_name).lower()
     producer_slug = re.sub(r"[^a-zA-Z0-9]", "_", producer_name).lower()
     class_name = "".join(w.capitalize() for w in producer_slug.split("_")) + "Client"
 

@@ -111,7 +111,7 @@ def seed_vendor_catalogue():
 
         category = entry.get("category", "OTHER")
         product_name = _generate_product_name(name, category)
-        domain = CATEGORY_TO_DOMAIN.get(category, "other")
+        CATEGORY_TO_DOMAIN.get(category, "other")
         vp = VendorProduct(
             name=product_name,
             vendor_organization=vo,

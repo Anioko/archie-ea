@@ -18,7 +18,7 @@ import logging
 import socket
 import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 from urllib.parse import urlparse
 

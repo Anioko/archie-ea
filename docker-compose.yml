@@ -10,8 +10,21 @@ services:
     #                      create_all never alters existing tables, so a long-lived DB drifts
     #                      and core pages 500 (e.g. arb_review_items.jira_issue_key). See
     #                      docs/known-issues/schema-drift-on-existing-databases.md
+    #   backfill-principle-org — Principle gained TenantMixin; reconcile-schema adds
+    #                      organization_id as NULL, and the tenant filter compares with
+    #                      `=`, so NULL matches nothing. Without this every pre-existing
+    #                      architecture principle silently disappears from the governance
+    #                      dashboard, the ARB screens and the AI chat tools. Non-fatal:
+    #                      it refuses to guess when several organisations exist.
+    #   backfill-archimate-layer-casing — archimate_elements.layer accumulated two
+    #                      casings and Postgres `=` is case-sensitive, so the column
+    #                      partitioned itself. ArchiMateElement.layer now canonicalises
+    #                      both stored values and query literals to lower case, which
+    #                      means a legacy capitalised row matches NOTHING until this
+    #                      has run. It is therefore required, not optional, on any
+    #                      database that predates that change. Idempotent.
     #   backfill-architect-role — normalise existing users onto the architect role.
-    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && { flask --app manage backfill-value-stream-tenancy || echo 'WARN value-stream tenancy backfill skipped - run manually with --org-id'; } && flask --app manage backfill-architect-role && gunicorn -c gunicorn.conf.py manage:app"
+    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && { flask --app manage backfill-archimate-layer-casing || echo 'WARN archimate layer casing backfill skipped - ArchiMate elements stored with a capitalised layer will not match any query until it runs'; } && { flask --app manage backfill-layer-tenancy || echo 'WARN layer tenancy backfill skipped - newly tenant-scoped tables keep nullable organization_id until it runs; rows left NULL are invisible to every org'; } && { flask --app manage backfill-value-stream-tenancy || echo 'WARN value-stream tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-principle-org || echo 'WARN principle tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-initiative-org || echo 'WARN initiative tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-kanban-card-org || echo 'WARN kanban card tenancy backfill skipped'; } && flask --app manage backfill-architect-role && gunicorn -c gunicorn.conf.py manage:app"
     # Guardrails added 2026-07-30. Previously restart=no and no mem_limit, so a
     # memory spike triggered a GLOBAL OOM (22 Jul) and a wedged container stayed
     # wedged for six days (24-30 Jul). The ceiling confines a spike to this

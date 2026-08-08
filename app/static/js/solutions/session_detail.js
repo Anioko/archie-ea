@@ -132,6 +132,7 @@ function sessionDetail() {
                 }
             } catch (err) {
                 console.error('AI elements generation error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI elements');
             } finally {
                 this.aiLoading.elements = false;
             }
@@ -152,6 +153,7 @@ function sessionDetail() {
                 }
             } catch (err) {
                 console.error('Pattern detection error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to detect patterns');
             } finally {
                 this.aiLoading.patterns = false;
             }
@@ -172,6 +174,7 @@ function sessionDetail() {
                 }
             } catch (err) {
                 console.error('AI requirements generation error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI requirements');
             } finally {
                 this.aiLoading.requirements = false;
             }
@@ -192,6 +195,7 @@ function sessionDetail() {
                 }
             } catch (err) {
                 console.error('AI roadmap generation error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI roadmap');
             } finally {
                 this.aiLoading.roadmap = false;
             }
@@ -423,6 +427,7 @@ function sessionDetail() {
                 this.scenarioResults = recalculated;
             } catch (err) {
                 console.error('Scenario recalculation error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to recalculate scenario');
             } finally {
                 this.scenarioLoading = false;
             }

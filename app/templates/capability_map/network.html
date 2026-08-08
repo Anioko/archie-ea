@@ -14,7 +14,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/d3.min.js') }}"></script>
 <style>
     .node circle {
         cursor: pointer;
@@ -152,6 +152,7 @@
                     this.renderNetwork();
                 } catch (error) {
                     console.error('Error loading capabilities:', error);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load capability network data.');
                 }
             },
 

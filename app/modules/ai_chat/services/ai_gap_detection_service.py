@@ -26,26 +26,21 @@ Usage:
     legacy_only = service.find_capabilities_with_only_legacy_apps()
 """
 
-import json  # dead-code-ok
 import logging
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app
-from sqlalchemy import and_, func, or_, text  # dead-code-ok
+from sqlalchemy import func, or_  # dead-code-ok
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
-from app.models.business_capabilities import BusinessCapability  # dead-code-ok
 from app.models.capability_gap_analysis import (  # dead-code-ok
-    CapabilityGapAnalysis,
     CapabilityGapDetail,
-    GapAnalysisRecommendation,
-    GapSolutionOption,
 )
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
-from app.models.unified_capability import BusinessDomain, UnifiedCapability  # dead-code-ok
+from app.models.unified_capability import UnifiedCapability  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -353,7 +348,6 @@ class AIGapDetectionService:
                 mappings = mappings_by_cap.get(cap_id, [])
 
                 apps_info = []
-                total_cost = 0
 
                 for mapping in mappings:
                     app = app_lookup.get(mapping.application_component_id)
@@ -586,7 +580,6 @@ class AIGapDetectionService:
         results = []
 
         try:
-            from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
             from app.models.vendor.vendor_product import VendorProductDetail
 
             # Check for EOL dates in the near future (18 months)
@@ -871,12 +864,12 @@ class AIGapDetectionService:
     def _get_coverage_recommendation(self, coverage: float, capability: UnifiedCapability) -> str:
         """Generate coverage improvement recommendation."""
         if coverage == 0:
-            return f"Critical: No application coverage. Assess build vs buy options immediately."
+            return "Critical: No application coverage. Assess build vs buy options immediately."
         elif coverage < 25:
-            return f"High priority: Enhance existing applications or acquire new solution."
+            return "High priority: Enhance existing applications or acquire new solution."
         elif coverage < 50:
-            return f"Medium priority: Review coverage gaps and create improvement plan."
-        return f"Low priority: Minor coverage improvements possible."
+            return "Medium priority: Review coverage gaps and create improvement plan."
+        return "Low priority: Minor coverage improvements possible."
 
     def _get_eol_recommendation(self, product, days_until_eol: Optional[int]) -> str:
         """Generate EOL-related recommendation."""

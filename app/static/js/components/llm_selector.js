@@ -80,10 +80,11 @@ let APP_CONFIG = window.__APP_CONFIG__ || {};
       }
     })
     .then(function(response) {
-      if (response.ok) {
-        return response.json();
+      if (!response.ok) {
+        console.warn('Failed to load LLM preference: HTTP ' + response.status);
+        return null;
       }
-      return null;
+      return response.json();
     })
     .then(function(data) {
       if (data && data.success && data.preference) {
@@ -92,6 +93,8 @@ let APP_CONFIG = window.__APP_CONFIG__ || {};
       }
     })
     .catch(function(error) {
+      // Best-effort personalization: on failure the selector just keeps showing
+      // the default LLM instead of the user's saved preference — not an error state.
       console.error('Error loading preference:', error);
     });
   }

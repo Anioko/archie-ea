@@ -5,14 +5,12 @@ Provides production-grade semantic search capabilities with domain-aware
 re-ranking and intelligent result processing.
 """
 
-import asyncio  # dead-code-ok
 import json
 import logging
 import threading
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
-from flask import current_app  # dead-code-ok
 from sqlalchemy import text
 
 from app import db

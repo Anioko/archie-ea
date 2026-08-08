@@ -441,6 +441,7 @@ function archimateRoadmapApp() {
                 this.renderTimeline();
             } catch (error) {
                 console.error('Error loading data:', error);
+                Platform.toast.error('Failed to load roadmap data — try refreshing the page');
             }
         },
 
@@ -665,9 +666,11 @@ function archimateRoadmapApp() {
                     this.loadData();
                 } else {
                     console.error('Error saving work package:', await response.text());
+                    Platform.toast.error('Failed to save work package — your changes were not saved');
                 }
             } catch (error) {
                 console.error('Error saving work package:', error);
+                Platform.toast.error('Failed to save work package — your changes were not saved');
             }
         },
 
@@ -682,9 +685,11 @@ function archimateRoadmapApp() {
                         this.loadData();
                     } else {
                         console.error('Error deleting work package:', await response.text());
+                        Platform.toast.error('Failed to delete work package');
                     }
                 } catch (error) {
                     console.error('Error deleting work package:', error);
+                    Platform.toast.error('Failed to delete work package');
                 }
             }
         },

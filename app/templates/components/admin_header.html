@@ -272,15 +272,15 @@
         if (!badge) return;
         const text = badge.textContent.trim().toLowerCase();
         const map = {
-            admin:    'bg-amber-500/10 text-amber-700 border-amber-500/30',
-            user:     'bg-blue-500/10 text-primary border-blue-500/30',
-            analyst:  'bg-purple-500/10 text-primary border-purple-500/30',
-            architect:'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
-            viewer:   'bg-slate-500/10 text-slate-600 border-slate-400/30',
+              admin:    'bg-amber-500/10 text-amber-700 border-amber-500/30',
+              user:     'bg-info/10 text-primary border-info/30',
+              analyst:  'bg-purple-500/10 text-primary border-purple-500/30',
+              architect:'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
+              viewer:   'bg-muted-foreground/10 text-muted-foreground border-slate-400/30',
         };
         const cls = Object.entries(map).find(([k]) => text.includes(k));
         if (cls) cls[1].split(' ').forEach(function(c) { badge.classList.add(c); });
-        else 'bg-blue-500/10 text-primary border-blue-500/30'.split(' ').forEach(function(c) { badge.classList.add(c); });
+        else 'bg-info/10 text-primary border-info/30'.split(' ').forEach(function(c) { badge.classList.add(c); });
     })();
 
     /* ── Platform-aware keyboard shortcut hint ───────────────────────────── */
@@ -409,7 +409,11 @@
                         'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
                         'X-Requested-With': 'XMLHttpRequest',
                     },
-                }).catch(function() { /* silent */ });
+                }).catch(function() {
+                    // Fire-and-forget alongside the <a> navigation the click already
+                    // triggers; a failed mark-read just means it shows unread again
+                    // on the next poll, which is harmless.
+                });
             });
         });
     }
@@ -433,14 +437,19 @@
                 const count = data.unread_count || 0;
                 updateBadge(count);
                 if (typeof Alpine !== 'undefined') {
+                    // Best-effort mirror into the Alpine store for other components
+                    // that read it; the DOM badge/list above is the source of truth.
                     try {
                         Alpine.store('notifications').count = count;
                         Alpine.store('notifications').items = notifItems;
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: best-effort mirror into an Alpine store that may not be registered yet; the DOM badge/list above already carries the same data, so there is nothing the user needs to be told */ }
                 }
                 renderNotifications();
             })
-            .catch(function() { /* silent */ });
+            .catch(function() {
+                // Polled every 60s; notifications are a non-critical widget, so a
+                // failed refresh just leaves the badge/list at their last-known state.
+            });
     }
 
     if (notifBtn && notifDropdown) {
@@ -457,10 +466,11 @@
             notifItems = notifItems.map(function(n) { return Object.assign({}, n, { read: true }); });
             updateBadge(0);
             if (typeof Alpine !== 'undefined') {
+                // Best-effort mirror into the Alpine store; the DOM state above is authoritative.
                 try {
                     Alpine.store('notifications').count = 0;
                     Alpine.store('notifications').items = notifItems;
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: best-effort mirror into an Alpine store that may not be registered yet; the real persistence is the POST below, whose failure IS reported */ }
             }
             renderNotifications();
 
@@ -472,7 +482,14 @@
                     'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-            }).catch(function() { /* silent — optimistic UI already updated */ });
+            }).catch(function() {
+                // The optimistic UI above already shows "all read"; if this didn't
+                // actually persist, the next 60s poll will silently bring the unread
+                // items back with no explanation, so tell the user now instead.
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not mark notifications as read. They may reappear.');
+                }
+            });
         });
     }
 
@@ -522,14 +539,23 @@
                                     'X-Requested-With': 'XMLHttpRequest',
                                 },
                                 body: JSON.stringify({ bu_id: id || null }),
-                            }).then(function() {
+                            }).then(function(r) {
+                                if (!r.ok) throw new Error('HTTP ' + r.status);
                                 window.location.reload();
-                            }).catch(function() {});
+                            }).catch(function() {
+                                if (window.Platform && Platform.toast) {
+                                    Platform.toast.error('Could not change the business unit scope.');
+                                }
+                            });
                         });
                     });
                 }
             })
-            .catch(function() { /* silent */ });
+            .catch(function() {
+                if (buList) {
+                    buList.innerHTML = '<p class="px-3 py-1.5 text-sm text-destructive">Could not load business units.</p>';
+                }
+            });
     }
 
     if (buBtn && buDropdown) {

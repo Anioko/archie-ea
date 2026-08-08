@@ -2,7 +2,7 @@
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/badge.html' import badge %}
-{% from 'macros/nav_macros_shadcn.html' import pill_tabs, tab_panel %}
+{% from 'macros/nav_macros_shadcn.html' import pill_tabs, tab_panel with context %}
 
 {% block title %}{% if app is defined and app %}{{ app.name }} — Application Detail{% else %}Applications Dashboard{% endif %}{% endblock %}
 
@@ -73,15 +73,15 @@
         {% elif app.data_freshness_tier == 'stale' %}
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">stale</span>
         {% elif app.data_freshness_tier == 'outdated' %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-red-500/10 text-destructive border border-red-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
         {% else %}
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
         {% endif %}
         {# ARC-F02: Data completeness badge #}
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-            {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-            {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
-            {% else %}bg-red-500/10 text-destructive border border-red-500/30{% endif %}"
+ {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
+ {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+ {% else %}bg-destructive/10 text-destructive border border-destructive/30{% endif %}"
             title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
             {{ app.completeness_score }}% complete
         </span>
@@ -138,23 +138,23 @@
    Data Completeness Nudge Banner — shown only when completeness < 40%
 ───────────────────────────────────────────────────────────────────────────── #}
 {% if app and app.completeness_score < 40 %}
-<div class="mb-4 bg-amber-50 border border-amber-200 rounded-lg dark:bg-amber-950/20 dark:border-amber-800"
+<div class="mb-4 bg-amber-50 border border-amber-200 rounded-lg"
      x-data="{ dismissed: false }" x-show="!dismissed">
   <div class="px-4 py-3 flex items-center justify-between gap-4">
     <div class="flex items-center gap-3">
       <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0" aria-hidden="true"></i>
       <div>
-        <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+        <p class="text-sm font-medium text-amber-800">
           Data completeness: {{ app.completeness_score }}% — AI analysis quality is low
         </p>
-        <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+        <p class="text-xs text-amber-700 mt-0.5">
           Missing: {{ app.completeness_gaps | join(', ') }}. Fill these in to improve AI architect responses.
         </p>
       </div>
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">
       <button @click="dismissed = true"
-        class="text-xs text-amber-700 hover:text-amber-900 dark:text-amber-300 underline">Dismiss</button>
+        class="text-xs text-amber-700 hover:text-amber-900 underline">Dismiss</button>
     </div>
   </div>
 </div>
@@ -247,7 +247,7 @@
     {% set today = namespace(d=none) %}
     {% set days_until = (app.contract_expiry_date - namespace(d=none).d) %}
     <div class="rounded-lg border px-4 py-3
-      {% if app.contract_expiry_date|string < '2026-04-20' %}border-destructive/30 bg-destructive/10{% elif app.contract_expiry_date|string < '2026-05-20' %}border-warning/30 bg-warning/10{% else %}border-border bg-muted/30{% endif %}">
+ {% if app.contract_expiry_date|string < '2026-04-20' %}border-destructive/30 bg-destructive/10{% elif app.contract_expiry_date|string < '2026-05-20' %}border-warning/30 bg-warning/10{% else %}border-border bg-muted/30{% endif %}">
       <div class="flex items-center gap-2 text-sm">
         <i data-lucide="calendar" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
         <span><strong>Contract Expiry:</strong> {{ app.contract_expiry_date.strftime('%d %b %Y') }}</span>
@@ -338,7 +338,7 @@
               <div x-data="{ name: '{{ archimate_info.name | replace("'", "\\'") }}', type: '{{ archimate_info.type | replace("'", "\\'") }}' }" class="flex gap-2 items-center flex-wrap">
                 <input x-model="name" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Name" aria-label="Name">
                 <input x-model="type" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Type" aria-label="Type">
-                <button @click="fetch('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'}, body:JSON.stringify({action:'correct', name, type})}).then(()=>{correcting=false; confirmed=true})"
+                <button @click="fetch('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'}, body:JSON.stringify({action:'correct', name, type})}).then(r=>{ if (!r.ok) { throw new Error('correct request failed: ' + r.status); } correcting=false; confirmed=true; }).catch(()=>{ Platform.toast.error('Could not save the correction. Please try again.'); })"
                   class="text-xs bg-primary text-primary-foreground rounded px-2 py-1">Save</button>
                 <button @click="correcting=false"
                   class="text-xs text-muted-foreground hover:text-foreground rounded px-2 py-1">Cancel</button>
@@ -776,15 +776,19 @@
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Functional Maturity</p>
         <p class="mt-1 text-2xl font-bold text-foreground">
-          {% if functional_maturity > 0 %}{{ '%.1f' | format(functional_maturity) }} / 5{% else %}0 / 5{% endif %}
+          {% if functional_maturity %}{{ '%.1f' | format(functional_maturity) }} / 5{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
         </p>
       </div>
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compliance Score</p>
+        {% if compliance_score is none %}
+        <p class="mt-1 text-2xl font-bold text-muted-foreground" title="Not yet assessed">&mdash;</p>
+        {% else %}
         <p class="mt-1 text-2xl font-bold
-          {% if compliance_score >= 80 %}text-success{% elif compliance_score >= 50 %}text-warning{% else %}text-destructive{% endif %}">
+ {% if compliance_score >= 80 %}text-success{% elif compliance_score >= 50 %}text-warning{% else %}text-destructive{% endif %}">
           {{ '%.0f' | format(compliance_score) }}%
         </p>
+        {% endif %}
       </div>
     </div>
 
@@ -800,7 +804,12 @@
                 let resp = await fetch('/applications/{{ app.id }}/suggest-capabilities');
                 let data = await resp.json();
                 if (data.success) this.suggestions = data.suggestions || [];
-            } catch (e) { /* silent */ }
+            } catch (e) {
+                // Best-effort: this whole card is x-show="loaded && suggestions.length > 0",
+                // so a failed load just leaves it hidden — the same as "no suggestions",
+                // which is an acceptable degrade for an optional AI enrichment widget.
+                console.warn('Failed to load capability suggestions:', e);
+            }
             finally { this.loading = false; this.loaded = true; }
         },
         async accept(capId, confidence, idx) {
@@ -811,8 +820,16 @@
                     body: JSON.stringify({capability_id: capId, confidence: confidence})
                 });
                 let data = await resp.json();
-                if (data.success) { this.suggestions.splice(idx, 1); setTimeout(() => location.reload(), 500); }
-            } catch (e) { console.warn('Accept error:', e); }
+                if (data.success) {
+                    this.suggestions.splice(idx, 1);
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    Platform.toast.error(data.error || 'Could not accept that suggestion.');
+                }
+            } catch (e) {
+                console.warn('Accept error:', e);
+                Platform.toast.error('Could not accept that suggestion.');
+            }
         }
     }" x-init="loadSuggestions()" x-cloak x-show="loaded && suggestions.length > 0"
        class="rounded-xl border border-primary/20 bg-card shadow-sm mb-4">
@@ -1495,16 +1512,21 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4 text-center lg:col-span-1">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Compliance Score</p>
+        {% if compliance_score is none %}
+        <div class="text-5xl font-bold text-muted-foreground">&mdash;</div>
+        <p class="text-xs text-muted-foreground mt-2">Not yet assessed</p>
+        {% else %}
         <div class="text-5xl font-bold
-          {% if compliance_score >= 80 %}text-success
-          {% elif compliance_score >= 50 %}text-warning
-          {% else %}text-destructive{% endif %}">
+ {% if compliance_score >= 80 %}text-success
+ {% elif compliance_score >= 50 %}text-warning
+ {% else %}text-destructive{% endif %}">
           {{ '%.0f' | format(compliance_score) }}<span class="text-2xl">%</span>
         </div>
         {% if compliance_results %}
         <p class="text-xs text-muted-foreground mt-2">
           {{ compliance_results.get('satisfied_count', 0) }} / {{ compliance_results.get('total_requirements', 0) }} requirements satisfied
         </p>
+        {% endif %}
         {% endif %}
       </div>
 
@@ -1669,9 +1691,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Current Uptime</p>
             <p class="text-2xl font-bold
-              {% if health_metrics.current_uptime >= 99 %}text-success
-              {% elif health_metrics.current_uptime >= 95 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if health_metrics.current_uptime >= 99 %}text-success
+ {% elif health_metrics.current_uptime >= 95 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.2f' | format(health_metrics.current_uptime) }}%
             </p>
           </div>
@@ -1689,9 +1711,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Change Failure Rate</p>
             <p class="font-medium
-              {% if health_metrics.change_failure_rate < 5 %}text-success
-              {% elif health_metrics.change_failure_rate < 15 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if health_metrics.change_failure_rate < 5 %}text-success
+ {% elif health_metrics.change_failure_rate < 15 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.1f' | format(health_metrics.change_failure_rate) }}%
             </p>
           </div>
@@ -1709,9 +1731,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Code Quality Score</p>
             <p class="text-2xl font-bold
-              {% if quality_metrics.code_quality_score >= 80 %}text-success
-              {% elif quality_metrics.code_quality_score >= 50 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.code_quality_score >= 80 %}text-success
+ {% elif quality_metrics.code_quality_score >= 50 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.0f' | format(quality_metrics.code_quality_score) }}
             </p>
           </div>
@@ -1724,9 +1746,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Open Bugs</p>
             <p class="font-medium
-              {% if quality_metrics.bugs_count == 0 %}text-success
-              {% elif quality_metrics.bugs_count < 10 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.bugs_count == 0 %}text-success
+ {% elif quality_metrics.bugs_count < 10 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ quality_metrics.bugs_count }}
             </p>
           </div>
@@ -1734,8 +1756,8 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Vulnerabilities</p>
             <p class="font-medium
-              {% if quality_metrics.vulnerabilities_count == 0 %}text-success
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.vulnerabilities_count == 0 %}text-success
+ {% else %}text-destructive{% endif %}">
               {{ quality_metrics.vulnerabilities_count }}
             </p>
           </div>
@@ -1743,9 +1765,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Code Coverage</p>
             <p class="font-medium
-              {% if quality_metrics.code_coverage >= 80 %}text-success
-              {% elif quality_metrics.code_coverage >= 50 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.code_coverage >= 80 %}text-success
+ {% elif quality_metrics.code_coverage >= 50 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.1f' | format(quality_metrics.code_coverage) }}%
             </p>
           </div>
@@ -1753,9 +1775,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Automated Testing</p>
             <p class="font-medium
-              {% if quality_metrics.automated_testing_coverage >= 80 %}text-success
-              {% elif quality_metrics.automated_testing_coverage >= 50 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.automated_testing_coverage >= 80 %}text-success
+ {% elif quality_metrics.automated_testing_coverage >= 50 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.1f' | format(quality_metrics.automated_testing_coverage) }}%
             </p>
           </div>
@@ -2021,7 +2043,13 @@
       <p class="mt-2 text-sm text-muted-foreground">Loading workflows…</p>
     </div>
 
-    <div x-show="!loading && instances.length === 0" x-cloak class="py-8 text-center">
+    <div x-show="!loading && loadError" x-cloak class="py-8 text-center">
+      <i data-lucide="alert-triangle" class="mx-auto h-10 w-10 text-destructive mb-3 opacity-60" aria-hidden="true"></i>
+      <p class="text-sm font-medium text-foreground mb-1">Couldn't load workflow runs</p>
+      <p class="text-xs text-muted-foreground" x-text="loadError"></p>
+    </div>
+
+    <div x-show="!loading && !loadError && instances.length === 0" x-cloak class="py-8 text-center">
       <i data-lucide="play-circle" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
       <p class="text-sm font-medium text-foreground mb-1">No workflow runs yet</p>
       <p class="text-xs text-muted-foreground mb-3">Start an EA workflow to review and govern this application.</p>
@@ -2052,12 +2080,14 @@
   <script>
   function eaWorkflowsTab(appId) {
     return {
-      appId: appId, loading: true, instances: [],
+      appId: appId, loading: true, instances: [], loadError: null,
       async init() {
         try {
           const r = await fetch('/api/ea-workflows/instances?application_id=' + appId + '&per_page=10');
-          if (r.ok) { const d = await r.json(); this.instances = d.instances || []; }
-        } catch(e) { /* silent */ } finally { this.loading = false; lucide.createIcons(); }
+          if (!r.ok) throw new Error('Failed to load workflow runs (' + r.status + ')');
+          const d = await r.json();
+          this.instances = d.instances || [];
+        } catch(e) { this.loadError = e.message; } finally { this.loading = false; lucide.createIcons(); }
       }
     };
   }

@@ -190,7 +190,7 @@
                             <div class="flex items-center gap-2 ml-4 shrink-0">
                                 <span x-show="gap.severity || gap.priority"
                                     class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
-                                    :class="(gap.severity || gap.priority || ).toLowerCase() === critical ? bg-red-500/10 text-destructive border border-red-500/30 : (gap.severity || gap.priority || ).toLowerCase() === high ? bg-amber-500/10 text-amber-600 border border-amber-500/30 : bg-muted text-muted-foreground"
+                                    :class="(gap.severity || gap.priority || ).toLowerCase() === critical ? bg-destructive/10 text-destructive border border-destructive/30 : (gap.severity || gap.priority || ).toLowerCase() === high ? bg-amber-500/10 text-amber-600 border border-amber-500/30 : bg-muted text-muted-foreground"
                                     x-text="gap.severity || gap.priority"></span>
                                 <span x-show="gap.mapped_count !== undefined"
                                     class="text-[10px] text-muted-foreground"
@@ -368,7 +368,7 @@
                 <p class="text-sm text-muted-foreground mt-1">Operate, govern, and sustain the application platform.</p>
                 <div class="mt-3 flex items-center space-x-4">
                     <span class="text-sm text-muted-foreground">Level 1</span>
-                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-destructive/10 text-red-800">Operations</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-destructive/10 text-destructive-emphasis">Operations</span>
                     <span class="px-2 py-1 text-xs font-semibold rounded-full bg-muted text-foreground">Supporting</span>
                 </div>
 

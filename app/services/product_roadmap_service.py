@@ -82,9 +82,6 @@ def get_outcome_roadmap(solution_id: int = None, board_id: int = None) -> dict:
     next_sprints = active_and_future[2:4]
     later_sprints = active_and_future[4:]
 
-    now_ids = {s.id for s in now_sprints}
-    next_ids = {s.id for s in next_sprints}
-    later_ids = {s.id for s in later_sprints}
 
     # ------------------------------------------------------------------
     # 2. Load epics with aggregated story data

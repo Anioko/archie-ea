@@ -23,12 +23,14 @@
             async _resolveBoardId() {
                 try {
                     const r = await fetch("/api/sprints/default-board");
-                    if (r.ok) {
-                        const data = await r.json();
-                        this.boardId = data.board_id;
-                    }
+                    if (!r.ok) throw new Error("HTTP " + r.status);
+                    const data = await r.json();
+                    this.boardId = data.board_id;
                 } catch (e) {
                     console.warn("sprint_planning: could not resolve board_id", e);
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error("Could not load the sprint board");
+                    }
                 }
             },
 
@@ -54,7 +56,7 @@
             async createSprint(name, startDate, endDate, capacityPoints) {
                 if (!this.boardId || !name) return;
                 try {
-                    await fetch("/api/sprints", {
+                    const r = await fetch("/api/sprints", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -65,25 +67,29 @@
                             capacity_points: Number(capacityPoints) || 0,
                         }),
                     });
+                    if (!r.ok) throw new Error("HTTP " + r.status);
                     this.newSprint = { name: "", startDate: "", endDate: "", capacityPoints: 0 };
                     this.showCreateForm = false;
                     await this.loadSprints();
                 } catch (e) {
                     console.warn("sprint_planning: createSprint failed", e);
+                    if (window.Platform && Platform.toast) Platform.toast.error("Could not create the sprint.");
                 }
             },
 
             async assignCard(cardRef, sprintId) {
                 if (!sprintId) return;
                 try {
-                    await fetch(`/api/sprints/${sprintId}/cards`, {
+                    const r = await fetch(`/api/sprints/${sprintId}/cards`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ card_ref: cardRef }),
                     });
+                    if (!r.ok) throw new Error("HTTP " + r.status);
                     await this.loadSprints();
                 } catch (e) {
                     console.warn("sprint_planning: assignCard failed", e);
+                    if (window.Platform && Platform.toast) Platform.toast.error("Could not assign the card to that sprint.");
                 }
             },
 

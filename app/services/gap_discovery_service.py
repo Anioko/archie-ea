@@ -23,10 +23,8 @@ Complies with:
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from flask import current_app
-from sqlalchemy import and_, func, or_, text
 
 from app.models.business_capabilities import BusinessCapability
 
@@ -34,11 +32,8 @@ from .. import db
 from ..models.application_portfolio import ApplicationComponent
 from ..models.implementation_migration import (
     Gap as ImplementationGap,
-    Plateau as ImplementationPlateau,
-    WorkPackage as ImplementationWorkPackage,
 )
-from ..models.models import ArchiMateElement, ArchitectureModel
-from ..models.vendor.vendor_organization import VendorProduct
+from ..models.models import ArchiMateElement
 
 logger = logging.getLogger(__name__)
 
@@ -331,13 +326,13 @@ class GapDiscoveryService:
                 "has_gaps": True,
                 "description": f"Business capability '{capability.name}' has insufficient support ({coverage_percentage}% coverage)",
                 "baseline": f"Current coverage: {supporting_apps} applications, {supporting_processes} processes",
-                "target": f"Target: Minimum 80% coverage with adequate application and process support",
+                "target": "Target: Minimum 80% coverage with adequate application and process support",
                 "severity": "high" if coverage_percentage < 50 else "medium",
                 "risk": "high" if capability.level == "strategic" else "medium",
                 "urgency": "high" if coverage_percentage < 50 else "medium",
                 "affected_elements": [f"Capability: {capability.name}"],
                 "solution": f"Develop or acquire applications to support {capability.name} capability",
-                "criteria": f"Achieve 80%+ coverage with measurable business outcomes",
+                "criteria": "Achieve 80%+ coverage with measurable business outcomes",
                 "coverage_percentage": coverage_percentage,
             }
 

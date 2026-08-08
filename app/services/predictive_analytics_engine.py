@@ -12,17 +12,14 @@ Provides machine learning-powered predictive capabilities for the platform:
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import joblib
-import numpy as np
 import pandas as pd
-from flask import current_app
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from app import db
 from app.models.application_portfolio import ApplicationComponent
 from app.models.unified_capability import UnifiedCapability
 from app.models.vendor.vendor_organization import VendorOrganization

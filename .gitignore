@@ -67,6 +67,12 @@ TEST_*.txt
 VALIDATION_*.txt
 VALIDATION_*.md
 VENDOR_*.txt
+# ...but the vendored-asset provenance record is a tracked artefact, not clutter.
+# It is how "what is in app/static/vendor and where did it come from" is answered
+# for an enterprise security review, and the vendor-integrity gate reads it.
+# Second time this "one-off looking name" pattern has hidden a permanent file —
+# see the scripts/check_*.py note further down.
+!app/static/vendor/VENDOR_MANIFEST.txt
 VENDOR_*.md
 📖_*.txt
 🎉_*.txt
@@ -177,8 +183,25 @@ verification_artifacts/
 !app/static/img/*.png
 !app/static/img/*.jpg
 
-# One-off diagnostic scripts
+# One-off diagnostic scripts.
+#
+# NOTE: these globs are why DESIGN.md can reference a `check_token_migration.py`
+# pre-commit hook that is absent from the repository — a permanent quality gate was
+# named like a throwaway and got ignored out of existence. Permanent gates must be
+# negated below, not just named carefully.
 scripts/check_*.py
+# Permanent gates — must stay tracked despite the check_*.py glob above.
+# Note: gitignore has no inline comments, so each negation gets its own line.
+!scripts/check_design_tokens.py
+!scripts/check_external_origins.py
+!scripts/check_sri.py
+!scripts/check_deployed_deps.py
+!scripts/check_raw_sql_tenancy.py
+!scripts/check_fabricated_data.py
+!scripts/check_macro_import_context.py
+!scripts/check_dead_interactions.py
+!scripts/check_broken_surfaces.py
+!scripts/check_template_syntax.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py
@@ -235,3 +258,32 @@ instance/
 .scannerwork/
 # junit report - generated
 test-results.xml
+
+# --- Local scratch / working files ---------------------------------------------
+# Ad-hoc scripts and dumps that accumulate at the repo root during investigation.
+# Listed explicitly rather than with broad globs (build_*.py, seed_*.py) so a
+# legitimately-named future module is not silently untracked.
+#
+# CI scans the FULL git history with gitleaks, so an accidental `git add -A` that
+# commits a dump containing real data is expensive to undo. Prefer putting new
+# throwaway work in scratch/ below.
+scratch/
+b_gz.html
+b_plain.html
+h_gz.txt
+h_plain.txt
+build_diagram.py
+build_engagement.py
+build_phase5.py
+codegen_incontainer.py
+seed_caps_overlap.py
+seed_sap_sfdc.py
+
+# Ad-hoc REPL scripts that reached the repo root and were committed by accident
+# (qc.py, si.py, readgen.py, recheck.py — 11-19 lines each, one with a hardcoded
+# solution_id=11, referenced by nothing). Deleted 2026-08-03. Named explicitly
+# rather than by glob so a legitimately-named future module is not swallowed.
+qc.py
+si.py
+readgen.py
+recheck.py

@@ -155,7 +155,7 @@
 </div>
 
 <!-- LLM-Powered Recommendations -->
-{% from 'components/llm_recommendations.html' import llm_recommendations %}
+{% from 'components/llm_recommendations.html' import llm_recommendations with context %}
 {% from 'components/risk_detail_modal.html' import risk_detail_modal %}
 
 {{ risk_detail_modal() }}
@@ -200,11 +200,11 @@ document.addEventListener('alpine:init', () => {
         async init() {
             try {
                 const response = await fetch('/strategic/api/risks/statuses');
-                if (response.ok) {
-                    this.statuses = await response.json();
-                }
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                this.statuses = await response.json();
             } catch (err) {
                 console.error('Failed to fetch risk statuses:', err);
+                Platform.toast.error('Failed to load risk statuses: ' + err.message);
             }
         },
         

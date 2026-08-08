@@ -1294,7 +1294,7 @@
 
     {# ── PLATFORM_MIGRATION_SCOPING: Migration Scope Document ─── #}
     {% if migration_scope %}
-    <div class="rounded-xl border-2 border-blue-500/20 bg-blue-500/5 p-6 space-y-5" id="migration-scope">
+    <div class="rounded-xl border-2 border-info/20 bg-info/5 p-6 space-y-5" id="migration-scope">
         <div class="flex items-center gap-3">
             <i data-lucide="server" class="h-6 w-6 text-primary" aria-hidden="true"></i>
             <h3 class="text-lg font-semibold">Platform Migration Scope</h3>
@@ -1501,7 +1501,7 @@
 
     {# ── INTEGRATION_IMPACT_ASSESSMENT: Impact Register ─── #}
     {% if impact_register %}
-    <div class="rounded-xl border-2 border-red-500/20 bg-red-500/5 p-6 space-y-5" id="impact-register">
+    <div class="rounded-xl border-2 border-destructive/20 bg-destructive/5 p-6 space-y-5" id="impact-register">
         <div class="flex items-center gap-3">
             <i data-lucide="git-branch" class="h-6 w-6 text-destructive" aria-hidden="true"></i>
             <h3 class="text-lg font-semibold">Integration Impact Register</h3>
@@ -1671,7 +1671,7 @@
                                 <tr>
                                     <td class="px-3 py-2 font-medium {% if v.vendor_name == _vs_rec %}text-primary{% endif %}">{{ v.vendor_name }}{% if v.vendor_name == _vs_rec %} <i data-lucide="star" class="inline h-3 w-3 text-primary" aria-hidden="true"></i>{% endif %}</td>
                                     <td class="px-3 py-2 text-right tabular-nums">{{ '%.1f'|format(v.overall_score|default(0)) }}</td>
-                                    <td class="px-3 py-2 text-muted-foreground text-xs">{{ v.recommendation|default('')|truncate(60) }}</td>
+                                    <td class="px-3 py-2 text-muted-foreground text-xs">{{ v.recommendation|default('', true)|truncate(60) }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -2424,7 +2424,7 @@ function instancePage() {
                 if (data.success && (data.avg_duration || data.total_runs > 1)) {
                     this.runHistory = data;
                 }
-            } catch (e) { /* graceful degradation */ }
+            } catch (e) { /* swallow-ok: run history is an optional ETA enrichment shown only when previous runs exist; without it the page hides the estimate rather than showing a wrong one, and the run itself is unaffected */ }
         },
 
         formatDuration(seconds) {
@@ -2469,7 +2469,7 @@ function instancePage() {
                         this.failureSummary = data.instance.error_message || 'Workflow failed';
                     }
                 }
-            } catch (e) { /* retry on next interval */ }
+            } catch (e) { /* swallow-ok: status poll fires on a repeating interval while a run is in flight; the last-known status stays on screen and the next tick retries, so a dropped poll must not toast once per second */ }
         },
 
         async toggleWatch() {

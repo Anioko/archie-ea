@@ -3,10 +3,9 @@ Unified Timeline Engine
 Synchronizes and manages timelines across all roadmap systems
 """
 
-import json  # dead-code-ok
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Dict, List, Optional  # dead-code-ok
 
 from sqlalchemy import text
 
@@ -477,7 +476,6 @@ class UnifiedTimelineEngine:
             ):
                 # Move initiative 2
                 new_start = result[0].end_date + timedelta(days=1)
-                new_end = new_start + (result[1].end_date - result[1].start_date)
 
                 conflict.description += (
                     f" - Suggested: Move {result[1].name} to start {new_start.strftime('%Y-%m-%d')}"
@@ -488,7 +486,6 @@ class UnifiedTimelineEngine:
             ):
                 # Move initiative 1
                 new_start = result[1].end_date + timedelta(days=1)
-                new_end = new_start + (result[0].end_date - result[0].start_date)
 
                 conflict.description += (
                     f" - Suggested: Move {result[0].name} to start {new_start.strftime('%Y-%m-%d')}"

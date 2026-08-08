@@ -5,16 +5,22 @@ Provides intelligent context enhancement, persistence, and management
 for multi-domain AI conversations.
 """
 
-import asyncio  # dead-code-ok
 import json
 import logging
-from datetime import datetime, timedelta  # dead-code-ok
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from datetime import datetime  # dead-code-ok
+from typing import TYPE_CHECKING, Any, Dict, List, Optional  # dead-code-ok
 
-from flask import current_app  # dead-code-ok
 from sqlalchemy import text
 
 from app import db
+
+if TYPE_CHECKING:
+    # `IntentResult` appears only in quoted annotations here (23 of them), so it is
+    # never evaluated at runtime. Importing it under TYPE_CHECKING resolves the
+    # forward reference for type checkers and linters at zero runtime cost, and
+    # keeps the import graph acyclic — intent_classification_service does not import
+    # this module today, but a real import would create that risk for no benefit.
+    from app.services.intent_classification_service import IntentResult
 
 logger = logging.getLogger(__name__)
 

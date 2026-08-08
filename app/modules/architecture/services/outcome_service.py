@@ -18,11 +18,10 @@ ArchiMate 3.2 Compliance:
 import json
 import logging
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
 from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel, Outcome
+from app.models import ArchiMateElement, ArchiMateRelationship, Outcome
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)

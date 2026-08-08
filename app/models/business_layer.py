@@ -284,7 +284,8 @@ class BusinessActor(TenantMixin, db.Model):
 # ============================================================================
 
 
-class BusinessRole(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class BusinessRole(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Business Role - Responsibility assigned to one or more actors
 
@@ -990,7 +991,8 @@ def create_object_archimate_element(mapper, connection, target):
 # ============================================================================
 
 
-class BusinessEvent(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class BusinessEvent(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Business Event - Something that happens (internally or externally)
     and influences behavior.

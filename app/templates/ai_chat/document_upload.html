@@ -120,10 +120,10 @@
             </div>
 
             {# Info Banner #}
-            <div class="mb-3 p-2 bg-primary/5 dark:bg-primary/20 border border-primary/20 dark:border-primary rounded-md">
+            <div class="mb-3 p-2 bg-primary/5 border border-primary/20 rounded-md">
                 <div class="flex items-start gap-2">
                     <i data-lucide="info" class="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0"></i>
-                    <div class="text-xs text-primary dark:text-primary">
+                    <div class="text-xs text-primary">
                         <p class="font-medium mb-1">How to Auto-Create Elements:</p>
                         <ol class="list-decimal list-inside space-y-0.5 text-xs">
                             <li>Select context: General, Application, or Vendor</li>
@@ -312,9 +312,9 @@
                     <button type="button"
                         @click="useSimpleParsing = !useSimpleParsing"
                         :class="{
-                            'bg-success text-success-foreground': useSimpleParsing,
-                            'bg-muted text-muted-foreground': !useSimpleParsing
-                        }"
+ 'bg-success text-success-foreground': useSimpleParsing,
+ 'bg-muted text-muted-foreground': !useSimpleParsing
+ }"
                         class="px-2 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1"
                         title="Toggle between AI analysis and simple parsing (no LLM)"
                     >
@@ -331,9 +331,9 @@
                             <button type="button" 
                                 @click="selectedProvider = key"
                                 :class="{
-                                    'bg-primary text-primary-foreground': selectedProvider === key,
-                                    'bg-muted text-muted-foreground hover:bg-accent': selectedProvider !== key
-                                }"
+ 'bg-primary text-primary-foreground': selectedProvider === key,
+ 'bg-muted text-muted-foreground hover:bg-accent': selectedProvider !== key
+ }"
                                 class="px-2 py-1 rounded text-xs font-medium transition-colors"
                                 :title="provider.name"
                             >
@@ -344,10 +344,10 @@
                 </div>
                 
                 {# Simple Parsing Info #}
-                <div x-show="useSimpleParsing" x-cloak class="p-2 bg-primary/5 dark:bg-primary/20 border border-primary/20 dark:border-primary rounded-md">
+                <div x-show="useSimpleParsing" x-cloak class="p-2 bg-primary/5 border border-primary/20 rounded-md">
                     <div class="flex items-start gap-2">
                         <i data-lucide="info" class="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0"></i>
-                        <div class="text-xs text-primary dark:text-primary">
+                        <div class="text-xs text-primary">
                             <p class="font-medium mb-1">Simple Parsing Mode (No LLM):</p>
                             <p class="text-xs">Works best with structured CSV/Excel files. Maps columns directly to ArchiMate elements without AI analysis.</p>
                         </div>
@@ -368,25 +368,25 @@
             </div>
 
             {# No Elements Found Message #}
-            <div x-show="!uploading && !analysisResults && previewElements.length === 0 && uploadStatus === 'No elements found'" x-cloak class="p-3 bg-warning/5 dark:bg-warning/20 border border-warning/20 dark:border-warning rounded-md mb-3">
+            <div x-show="!uploading && !analysisResults && previewElements.length === 0 && uploadStatus === 'No elements found'" x-cloak class="p-3 bg-warning/5 border border-warning/20 rounded-md mb-3">
                 <div class="flex items-center gap-2">
                     <i data-lucide="alert-circle" class="h-4 w-4 text-warning"></i>
-                    <p class="text-sm text-warning dark:text-warning">
+                    <p class="text-sm text-warning">
                         No ArchiMate elements were found in the document. The file may not contain architecture information, or the format may not be supported.
                     </p>
                 </div>
-                <p class="text-xs text-warning dark:text-warning/60 mt-2">
+                <p class="text-xs text-warning mt-2">
                     Try uploading a document that contains application names, system descriptions, or architecture diagrams.
                 </p>
             </div>
 
             {# Preview Results Panel - Shows extracted elements before creation #}
             <div x-show="previewElements.length > 0 && !analysisResults" x-cloak class="space-y-2 mb-3">
-                <div class="p-2 bg-warning/5 dark:bg-warning/20 border border-warning/20 dark:border-warning rounded-md">
+                <div class="p-2 bg-warning/5 border border-warning/20 rounded-md">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-2">
                             <i data-lucide="eye" class="h-4 w-4 text-warning"></i>
-                            <h4 class="text-sm font-semibold text-warning dark:text-warning">Preview Mode</h4>
+                            <h4 class="text-sm font-semibold text-warning">Preview Mode</h4>
                             <span class="text-xs bg-warning/10 text-warning px-2 py-0.5 rounded-full"
                                   x-text="previewElements.length + ' elements found'"></span>
                         </div>
@@ -394,7 +394,7 @@
                             <i data-lucide="x" class="h-4 w-4"></i>
                         </button>
                     </div>
-                    <p class="text-xs text-warning dark:text-warning mb-3">
+                    <p class="text-xs text-warning mb-3">
                         Review and select the elements you want to create. Uncheck any incorrect ones.
                     </p>
 
@@ -409,7 +409,7 @@
                     {# Element List with Checkboxes #}
                     <div class="space-y-1.5 max-h-64 overflow-y-auto">
                         <template x-for="(elem, index) in previewElements" :key="index">
-                            <div class="flex items-start gap-2 p-2 bg-background dark:bg-warning/40 rounded border border-warning/20 dark:border-warning"
+                            <div class="flex items-start gap-2 p-2 bg-background rounded border border-warning/20"
                                  :class="{'opacity-50': !selectedElements[index]}">
                                 {# Checkbox #}
                                 <input type="checkbox"
@@ -420,7 +420,7 @@
                                 {# Element Info (editable when in edit mode) #}
                                 <div class="flex-1 min-w-0" x-show="editingElement !== index" x-cloak>
                                     <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-xs font-medium text-warning dark:text-warning truncate" 
+                                        <span class="text-xs font-medium text-warning truncate" 
                                               x-text="elem.resolved_name || elem.name"></span>
                                         <span class="text-xs px-1.5 py-0.5 bg-warning/10 text-warning rounded" x-text="elem.type"></span>
                                         <span class="text-xs text-warning" x-text="elem.layer || ''"></span>
@@ -429,10 +429,10 @@
                                         <template x-if="elem.confidence">
                                             <span class="text-xs px-1.5 py-0.5 rounded"
                                                   :class="{
-                                                      'bg-success/10 text-success': elem.confidence.score >= 0.75,
-                                                      'bg-warning/10 text-warning': elem.confidence.score >= 0.5 && elem.confidence.score < 0.75,
-                                                      'bg-destructive/10 text-destructive': elem.confidence.score < 0.5
-                                                  }"
+ 'bg-success/10 text-success': elem.confidence.score >= 0.75,
+ 'bg-warning/10 text-warning': elem.confidence.score >= 0.5 && elem.confidence.score < 0.75,
+ 'bg-destructive/10 text-destructive': elem.confidence.score < 0.5
+ }"
                                                   :title="'Confidence: ' + (elem.confidence.score * 100).toFixed(0) + '%'">
                                                 <i data-lucide="trending-up" class="h-3 w-3 inline"></i>
                                                 <span x-text="(elem.confidence.score * 100).toFixed(0) + '%'"></span>
@@ -448,7 +448,7 @@
                                             </span>
                                         </template>
                                     </div>
-                                    <p class="text-xs text-warning dark:text-warning truncate mt-0.5" x-text="elem.description || 'No description'"></p>
+                                    <p class="text-xs text-warning truncate mt-0.5" x-text="elem.description || 'No description'"></p>
                                     
                                     {# Knowledge Graph Related Entities #}
                                     <template x-if="elem.kg_related_entities && elem.kg_related_entities.length > 0">
@@ -533,8 +533,8 @@
                                 :disabled="getSelectedCount() === 0 || creatingElements"
                                 class="flex-1 inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 transition-colors"
                                 :class="getSelectedCount() > 0 && !creatingElements
-                                    ? 'bg-success text-success-foreground hover:bg-success'
-                                    : 'bg-muted text-muted-foreground cursor-not-allowed'" aria-label="Create selected elements">
+ ? 'bg-success text-success-foreground hover:bg-success'
+ : 'bg-muted text-muted-foreground cursor-not-allowed'" aria-label="Create selected elements">
                             <template x-if="!creatingElements">
                                 <span class="flex items-center">
                                     <i data-lucide="plus-circle" class="mr-1.5 h-3.5 w-3.5"></i>
@@ -567,10 +567,10 @@
                     <div class="flex items-center gap-1.5 flex-shrink-0">
                         <span
                             :class="{
-                                'bg-success/10 text-success': analysisResults?.confidence === 'high',
-                                'bg-warning/10 text-warning': analysisResults?.confidence === 'medium',
-                                'bg-destructive/10 text-destructive': analysisResults?.confidence === 'low'
-                            }"
+ 'bg-success/10 text-success': analysisResults?.confidence === 'high',
+ 'bg-warning/10 text-warning': analysisResults?.confidence === 'medium',
+ 'bg-destructive/10 text-destructive': analysisResults?.confidence === 'low'
+ }"
                             class="px-1.5 py-0.5 rounded text-xs font-medium"
                             x-text="(analysisResults?.confidence || 'medium').toUpperCase()"
                         ></span>
@@ -592,18 +592,18 @@
                     <div x-show="showEntityDetails" x-cloak class="space-y-2">
                     {# High Confidence Matches #}
                     <div x-show="analysisResults?.entity_matching?.matches && analysisResults.entity_matching.matches.length > 0" x-cloak
-                         class="p-2 bg-success/5 dark:bg-success/20 rounded-md border border-success/20 dark:border-success">
+                         class="p-2 bg-success/5 rounded-md border border-success/20">
                         <div class="flex items-center gap-2 mb-3">
                             <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
-                            <h5 class="text-sm font-semibold text-success dark:text-success">Matched Entities</h5>
+                            <h5 class="text-sm font-semibold text-success">Matched Entities</h5>
                             <span class="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full"
                                   x-text="(analysisResults?.entity_matching?.matches?.length || 0) + ' found'"></span>
                         </div>
                         <div class="space-y-2 max-h-40 overflow-y-auto">
                             <template x-for="match in (analysisResults?.entity_matching?.matches || [])" :key="match.entity_id">
-                                <div class="flex items-center justify-between bg-background dark:bg-success/40 rounded p-2 border border-success/20 dark:border-success">
+                                <div class="flex items-center justify-between bg-background rounded p-2 border border-success/20">
                                     <div class="flex-1 min-w-0">
-                                        <span class="text-sm font-medium text-success dark:text-success" x-text="match.entity_name"></span>
+                                        <span class="text-sm font-medium text-success" x-text="match.entity_name"></span>
                                         <span class="text-xs text-success ml-2" x-text="match.entity_type"></span>
                                     </div>
                                     <div class="flex items-center gap-2">
@@ -619,18 +619,18 @@
 
                     {# Potential Duplicates Warning #}
                     <div x-show="analysisResults?.entity_matching?.potential_duplicates && analysisResults.entity_matching.potential_duplicates.length > 0" x-cloak
-                         class="p-4 bg-warning/5 dark:bg-warning/20 rounded-lg border border-warning/20 dark:border-warning">
+                         class="p-4 bg-warning/5 rounded-lg border border-warning/20">
                         <div class="flex items-center gap-2 mb-3">
                             <i data-lucide="alert-triangle" class="h-4 w-4 text-warning"></i>
-                            <h5 class="text-sm font-semibold text-warning dark:text-warning">Potential Duplicates</h5>
+                            <h5 class="text-sm font-semibold text-warning">Potential Duplicates</h5>
                             <span class="text-xs bg-warning/10 text-warning px-2 py-0.5 rounded-full"
                                   x-text="(analysisResults?.entity_matching?.potential_duplicates?.length || 0) + ' warnings'"></span>
                         </div>
                         <div class="space-y-2 max-h-32 overflow-y-auto">
                             <template x-for="dup in (analysisResults?.entity_matching?.potential_duplicates || [])" :key="dup.entity_id">
-                                <div class="flex items-center justify-between bg-background dark:bg-warning/40 rounded p-2 border border-warning/20 dark:border-warning">
+                                <div class="flex items-center justify-between bg-background rounded p-2 border border-warning/20">
                                     <div class="flex-1 min-w-0">
-                                        <span class="text-sm font-medium text-warning dark:text-warning" x-text="dup.warning"></span>
+                                        <span class="text-sm font-medium text-warning" x-text="dup.warning"></span>
                                     </div>
                                     <span class="text-xs px-2 py-0.5 rounded"
                                           :class="{'bg-warning/20 text-warning': dup.match_level === 'medium', 'bg-warning/20 text-warning': dup.match_level === 'low'}"
@@ -642,11 +642,11 @@
 
                     {# Enhanced Created Elements Summary with Detailed Breakdown #}
                     <div x-show="(analysisResults?.created_elements > 0) || (creationDetails?.totalCount > 0)" x-cloak 
-                         class="p-3 bg-success/5 dark:bg-success/20 rounded-md border border-success/20 dark:border-success">
+                         class="p-3 bg-success/5 rounded-md border border-success/20">
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-1.5">
                                 <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
-                                <h5 class="text-sm font-semibold text-success dark:text-success">
+                                <h5 class="text-sm font-semibold text-success">
                                     Successfully Created
                                 </h5>
                                 <span class="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full font-medium"
@@ -663,10 +663,10 @@
                         <div x-show="creationDetails" x-cloak class="space-y-3 mb-3">
                             {# Breakdown by Element Type #}
                             <div x-show="Object.keys(creationDetails?.byType || {}).length > 0" x-cloak>
-                                <h6 class="text-xs font-medium text-success dark:text-success/60 mb-1.5">By Element Type:</h6>
+                                <h6 class="text-xs font-medium text-success mb-1.5">By Element Type:</h6>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="[type, count] in Object.entries(creationDetails?.byType || {}).sort((a, b) => b[1] - a[1])" :key="type">
-                                        <span class="text-xs bg-background dark:bg-success/40 text-success dark:text-success px-2 py-1 rounded border border-success/20 dark:border-success">
+                                        <span class="text-xs bg-background text-success px-2 py-1 rounded border border-success/20">
                                             <span x-text="type"></span>
                                             <span class="ml-1 font-semibold" x-text="'(' + count + ')'"></span>
                                         </span>
@@ -676,10 +676,10 @@
                             
                             {# Breakdown by Layer #}
                             <div x-show="Object.keys(creationDetails?.byLayer || {}).length > 0" x-cloak>
-                                <h6 class="text-xs font-medium text-success dark:text-success/60 mb-1.5">By ArchiMate Layer:</h6>
+                                <h6 class="text-xs font-medium text-success mb-1.5">By ArchiMate Layer:</h6>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="[layer, count] in Object.entries(creationDetails?.byLayer || {}).sort((a, b) => b[1] - a[1])" :key="layer">
-                                        <span class="text-xs bg-background dark:bg-success/40 text-success dark:text-success px-2 py-1 rounded border border-success/20 dark:border-success">
+                                        <span class="text-xs bg-background text-success px-2 py-1 rounded border border-success/20">
                                             <span x-text="layer"></span>
                                             <span class="ml-1 font-semibold" x-text="'(' + count + ')'"></span>
                                         </span>
@@ -689,18 +689,18 @@
                             
                             {# Element Names List #}
                             <div x-show="(creationDetails?.elementNames || []).length > 0" x-cloak>
-                                <h6 class="text-xs font-medium text-success dark:text-success/60 mb-1.5">
+                                <h6 class="text-xs font-medium text-success mb-1.5">
                                     Element Names (<span x-text="(creationDetails?.elementNames || []).length"></span> total):
                                 </h6>
-                                <div class="max-h-40 overflow-y-auto space-y-1 bg-background dark:bg-success/40 rounded p-2 border border-success/20 dark:border-success">
+                                <div class="max-h-40 overflow-y-auto space-y-1 bg-background rounded p-2 border border-success/20">
                                     <template x-for="(name, idx) in (creationDetails?.elementNames || []).slice(0, 50)" :key="idx">
-                                        <div class="text-xs text-success dark:text-success flex items-center gap-2">
+                                        <div class="text-xs text-success flex items-center gap-2">
                                             <span class="text-success w-4" x-text="(idx + 1) + '.'"></span>
                                             <span class="truncate" x-text="name"></span>
                                         </div>
                                     </template>
                                     <div x-show="(creationDetails?.elementNames || []).length > 50" x-cloak 
-                                         class="text-xs text-success text-center pt-1 border-t border-success/20 dark:border-success mt-1">
+                                         class="text-xs text-success text-center pt-1 border-t border-success/20 mt-1">
                                         ... and <span x-text="(creationDetails?.elementNames || []).length - 50"></span> more elements
                                     </div>
                                 </div>
@@ -708,13 +708,13 @@
                             
                             {# Errors if any #}
                             <div x-show="(creationDetails?.errors || []).length > 0" x-cloak 
-                                 class="p-2 bg-destructive/5 dark:bg-destructive/20 rounded border border-destructive/20 dark:border-destructive">
-                                <h6 class="text-xs font-medium text-destructive dark:text-destructive/60 mb-1">
+                                 class="p-2 bg-destructive/5 rounded border border-destructive/20">
+                                <h6 class="text-xs font-medium text-destructive mb-1">
                                     Errors (<span x-text="(creationDetails?.errors || []).length"></span>):
                                 </h6>
                                 <div class="space-y-1 max-h-24 overflow-y-auto">
                                     <template x-for="(err, idx) in (creationDetails?.errors || []).slice(0, 5)" :key="idx">
-                                        <div class="text-xs text-destructive dark:text-destructive/60" x-text="err"></div>
+                                        <div class="text-xs text-destructive" x-text="err"></div>
                                     </template>
                                     <div x-show="(creationDetails?.errors || []).length > 5" x-cloak 
                                          class="text-xs text-destructive text-center">
@@ -728,9 +728,9 @@
                         <div x-show="!creationDetails && analysisResults?.created_details && analysisResults.created_details.length > 0" x-cloak 
                              class="space-y-1 max-h-32 overflow-y-auto">
                             <template x-for="(elem, index) in (analysisResults?.created_details || []).slice(0, 10)" :key="index">
-                                <div class="flex items-center justify-between bg-background dark:bg-success/40 rounded p-1.5 border border-success/20 dark:border-success">
+                                <div class="flex items-center justify-between bg-background rounded p-1.5 border border-success/20">
                                     <div class="flex-1 min-w-0">
-                                        <span class="text-xs font-medium text-success dark:text-success truncate block" x-text="elem.name"></span>
+                                        <span class="text-xs font-medium text-success truncate block" x-text="elem.name"></span>
                                         <span class="text-xs text-success" x-text="elem.type"></span>
                                     </div>
                                 </div>
@@ -742,7 +742,7 @@
                         </div>
                         
                         {# Actions #}
-                        <div class="mt-3 pt-2 border-t border-success/20 dark:border-success flex items-center justify-between">
+                        <div class="mt-3 pt-2 border-t border-success/20 flex items-center justify-between">
                             <button type="button" @click="buildCreationDetails(analysisResults?.created_elements || 0, analysisResults?.created_details || [], analysisResults?.errors || [])"
                                     x-show="!creationDetails && (analysisResults?.created_elements > 0)" x-cloak
                                     class="text-xs text-success hover:text-success font-medium flex items-center gap-1" aria-label="Show element breakdown">
@@ -759,18 +759,18 @@
 
                 {# New Entities Found #}
                     <div x-show="analysisResults?.entity_matching?.new_entities && analysisResults.entity_matching.new_entities.length > 0" x-cloak
-                         class="p-4 bg-primary/5 dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-primary">
+                         class="p-4 bg-primary/5 rounded-lg border border-primary/20">
                         <div class="flex items-center gap-2 mb-3">
                             <i data-lucide="plus-circle" class="h-4 w-4 text-primary"></i>
-                            <h5 class="text-sm font-semibold text-primary dark:text-primary">New Entities Discovered</h5>
+                            <h5 class="text-sm font-semibold text-primary">New Entities Discovered</h5>
                             <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full"
                                   x-text="(analysisResults?.entity_matching?.new_entities?.length || 0) + ' new'"></span>
                         </div>
                         <div class="space-y-2 max-h-32 overflow-y-auto">
                             <template x-for="entity in (analysisResults?.entity_matching?.new_entities || [])" :key="entity.name">
-                                <div class="flex items-center justify-between bg-background dark:bg-primary/40 rounded p-2 border border-primary/20 dark:border-primary">
+                                <div class="flex items-center justify-between bg-background rounded p-2 border border-primary/20">
                                     <div class="flex-1 min-w-0">
-                                        <span class="text-sm font-medium text-primary dark:text-primary" x-text="entity.name"></span>
+                                        <span class="text-sm font-medium text-primary" x-text="entity.name"></span>
                                         <span class="text-xs text-primary ml-2" x-text="entity.type"></span>
                                     </div>
                                     <button type="button" @click="createEntity(entity)" class="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary" aria-label="Create entity">
@@ -783,19 +783,19 @@
 
                     {# Relationship Suggestions #}
                     <div x-show="analysisResults?.entity_matching?.relationship_suggestions && analysisResults.entity_matching.relationship_suggestions.length > 0" x-cloak
-                         class="p-4 bg-primary/5 dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-primary">
+                         class="p-4 bg-primary/5 rounded-lg border border-primary/20">
                         <div class="flex items-center gap-2 mb-3">
                             <i data-lucide="git-branch" class="h-4 w-4 text-primary"></i>
-                            <h5 class="text-sm font-semibold text-primary dark:text-primary">Suggested Relationships</h5>
+                            <h5 class="text-sm font-semibold text-primary">Suggested Relationships</h5>
                         </div>
                         <div class="space-y-2 max-h-32 overflow-y-auto">
                             <template x-for="rel in (analysisResults?.entity_matching?.relationship_suggestions || [])" :key="rel.source + rel.target_name">
-                                <div class="flex items-center gap-2 text-xs bg-background dark:bg-primary/40 rounded p-2 border border-primary/20 dark:border-primary">
-                                    <span class="text-primary dark:text-primary" x-text="rel.source || rel.source_name"></span>
+                                <div class="flex items-center gap-2 text-xs bg-background rounded p-2 border border-primary/20">
+                                    <span class="text-primary" x-text="rel.source || rel.source_name"></span>
                                     <i data-lucide="arrow-right" class="h-3 w-3 text-primary"></i>
                                     <span class="px-1.5 py-0.5 bg-primary/10 text-primary rounded" x-text="rel.relationship_type"></span>
                                     <i data-lucide="arrow-right" class="h-3 w-3 text-primary"></i>
-                                    <span class="text-primary dark:text-primary" x-text="rel.target_name"></span>
+                                    <span class="text-primary" x-text="rel.target_name"></span>
                                 </div>
                             </template>
                         </div>
@@ -804,21 +804,21 @@
 
                 {# Compact Gap Analysis Results #}
                 <div x-show="analysisResults?.gap_analysis && analysisResults.gap_analysis.total_extracted > 0" x-cloak
-                     class="p-2 bg-warning/5 dark:bg-warning/20 rounded-md border border-warning/20 dark:border-warning">
+                     class="p-2 bg-warning/5 rounded-md border border-warning/20">
                     <div class="flex items-center gap-1.5 mb-2">
                         <i data-lucide="pie-chart" class="h-3.5 w-3.5 text-warning"></i>
-                        <h5 class="text-xs font-semibold text-warning dark:text-warning">Gap Analysis</h5>
+                        <h5 class="text-xs font-semibold text-warning">Gap Analysis</h5>
                     </div>
                     <div class="grid grid-cols-3 gap-1.5 mb-2">
-                        <div class="text-center p-1.5 bg-background dark:bg-warning/40 rounded">
+                        <div class="text-center p-1.5 bg-background rounded">
                             <div class="text-sm font-bold text-warning" x-text="analysisResults?.gap_analysis?.total_extracted || 0"></div>
                             <div class="text-xs text-warning">Extracted</div>
                         </div>
-                        <div class="text-center p-1.5 bg-background dark:bg-warning/40 rounded">
+                        <div class="text-center p-1.5 bg-background rounded">
                             <div class="text-sm font-bold text-success" x-text="analysisResults?.gap_analysis?.existing_matches_count || 0"></div>
                             <div class="text-xs text-success">Matched</div>
                         </div>
-                        <div class="text-center p-1.5 bg-background dark:bg-warning/40 rounded">
+                        <div class="text-center p-1.5 bg-background rounded">
                             <div class="text-sm font-bold text-primary" x-text="analysisResults?.gap_analysis?.new_elements_count || 0"></div>
                             <div class="text-xs text-primary">New</div>
                         </div>
@@ -826,7 +826,7 @@
                     <div class="w-full bg-muted rounded-full h-1.5 mb-1">
                         <div class="bg-success h-1.5 rounded-full" :style="'width: ' + (analysisResults?.gap_analysis?.coverage_percentage || 0) + '%'"></div>
                     </div>
-                    <p class="text-xs text-warning dark:text-warning/60" x-text="(analysisResults?.gap_analysis?.coverage_percentage || 0) + '% coverage'"></p>
+                    <p class="text-xs text-warning" x-text="(analysisResults?.gap_analysis?.coverage_percentage || 0) + '% coverage'"></p>
                     <div x-show="analysisResults?.gap_analysis?.recommendations && analysisResults.gap_analysis.recommendations.length > 0" x-cloak class="mt-2 space-y-1">
                         <template x-for="rec in (analysisResults?.gap_analysis?.recommendations || [])" :key="rec">
                             <p class="text-xs text-warning"><i data-lucide="info" class="h-3 w-3 inline mr-1"></i><span x-text="rec"></span></p>
@@ -836,20 +836,20 @@
 
                 {# Persona-Specific Insights #}
                 <div x-show="analysisResults?.persona_insights?.persona" x-cloak
-                     class="p-4 bg-primary/5 dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-violet-800">
+                     class="p-4 bg-primary/5 rounded-lg border border-primary/20">
                     <div class="flex items-center gap-2 mb-3">
                         <i data-lucide="user-cog" class="h-4 w-4 text-primary"></i>
-                        <h5 class="text-sm font-semibold text-primary dark:text-primary">
+                        <h5 class="text-sm font-semibold text-primary">
                             <span x-text="(analysisResults?.persona_insights?.persona || '').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></span> Insights
                         </h5>
                     </div>
                     <div class="space-y-2">
-                        <p class="text-xs text-primary dark:text-primary">
+                        <p class="text-xs text-primary">
                             <span x-text="analysisResults?.persona_insights?.relevant_elements_count || 0"></span> relevant elements found
                         </p>
                         <div x-show="analysisResults?.persona_insights?.recommended_actions && analysisResults.persona_insights.recommended_actions.length > 0" x-cloak class="space-y-1">
                             <template x-for="action in (analysisResults?.persona_insights?.recommended_actions || [])" :key="action">
-                                <div class="flex items-start gap-2 text-xs text-primary dark:text-primary">
+                                <div class="flex items-start gap-2 text-xs text-primary">
                                     <i data-lucide="check" class="h-3 w-3 mt-0.5 text-primary"></i>
                                     <span x-text="action"></span>
                                 </div>
@@ -859,52 +859,52 @@
                 </div>
 
                 {# Domain Insights #}
-                <div x-show="analysisResults?.domain_insights" x-cloak class="p-4 bg-primary/5 dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-primary">
+                <div x-show="analysisResults?.domain_insights" x-cloak class="p-4 bg-primary/5 rounded-lg border border-primary/20">
                     <div class="flex items-center gap-2 mb-2">
                         <i data-lucide="brain" class="h-4 w-4 text-primary"></i>
-                        <h5 class="text-sm font-semibold text-primary dark:text-primary">Domain Insights</h5>
+                        <h5 class="text-sm font-semibold text-primary">Domain Insights</h5>
                     </div>
                     <div class="space-y-2 text-sm">
                         <template x-for="finding in (analysisResults?.domain_insights?.key_findings || [])" :key="finding">
                             <div class="flex items-start gap-2">
                                 <i data-lucide="check-circle" class="h-3 w-3 text-primary mt-0.5 flex-shrink-0"></i>
-                                <span class="text-primary dark:text-primary/60" x-text="finding"></span>
+                                <span class="text-primary" x-text="finding"></span>
                             </div>
                         </template>
                     </div>
                 </div>
 
                 {# Conversational Elements #}
-                <div x-show="analysisResults?.conversational_elements && analysisResults.conversational_elements.length > 0" x-cloak class="p-4 bg-success/5 dark:bg-success/20 rounded-lg border border-success/20 dark:border-success">
+                <div x-show="analysisResults?.conversational_elements && analysisResults.conversational_elements.length > 0" x-cloak class="p-4 bg-success/5 rounded-lg border border-success/20">
                     <div class="flex items-center gap-2 mb-3">
                         <i data-lucide="message-square" class="h-4 w-4 text-success"></i>
-                        <h5 class="text-sm font-semibold text-success dark:text-success">Discovered Elements</h5>
+                        <h5 class="text-sm font-semibold text-success">Discovered Elements</h5>
                         <span class="text-xs bg-success/10 text-success px-2 py-1 rounded" x-text="(analysisResults?.conversational_elements?.length || 0) + ' elements'"></span>
                     </div>
                     <div class="space-y-2 max-h-48 overflow-y-auto">
                         <template x-for="element in (analysisResults?.conversational_elements || [])" :key="element.chat_friendly_name || element.name">
-                            <div class="bg-background dark:bg-success/40 rounded p-2 border border-success/20 dark:border-success">
+                            <div class="bg-background rounded p-2 border border-success/20">
                                 <div class="flex items-center justify-between mb-1">
-                                    <span class="text-sm font-medium text-success dark:text-success" x-text="element.chat_friendly_name"></span>
+                                    <span class="text-sm font-medium text-success" x-text="element.chat_friendly_name"></span>
                                     <span class="text-xs bg-success/10 text-success px-1 py-0.5 rounded" x-text="element.layer"></span>
                                 </div>
-                                <p class="text-xs text-success dark:text-success/60" x-text="element.description"></p>
+                                <p class="text-xs text-success" x-text="element.description"></p>
                             </div>
                         </template>
                     </div>
                 </div>
 
                 {# Follow-up Questions #}
-                <div x-show="analysisResults?.follow_up_questions && analysisResults.follow_up_questions.length > 0" x-cloak class="p-4 bg-accent dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-primary">
+                <div x-show="analysisResults?.follow_up_questions && analysisResults.follow_up_questions.length > 0" x-cloak class="p-4 bg-accent rounded-lg border border-primary/20">
                     <div class="flex items-center gap-2 mb-3">
                         <i data-lucide="help-circle" class="h-4 w-4 text-primary"></i>
-                        <h5 class="text-sm font-semibold text-primary dark:text-primary">Suggested Questions</h5>
+                        <h5 class="text-sm font-semibold text-primary">Suggested Questions</h5>
                     </div>
                     <div class="space-y-2">
                         <template x-for="question in (analysisResults?.follow_up_questions || [])" :key="question">
                             <button type="button"
                                 @click="askQuestion(question)"
-                                class="w-full text-left text-sm text-primary dark:text-primary hover:text-primary dark:hover:text-primary p-2 rounded hover:bg-accent dark:hover:bg-primary/40 transition-colors"
+                                class="w-full text-left text-sm text-primary hover:text-primary p-2 rounded hover:bg-accent transition-colors"
                              aria-label="Ask follow-up question">
                                 <i data-lucide="arrow-right" class="h-3 w-3 mr-2 inline"></i>
                                 <span x-text="question"></span>

@@ -5,7 +5,6 @@ Provides resilience, monitoring, caching, and operational capabilities
 for the AI reasoning engine.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -1088,7 +1087,7 @@ def with_circuit_breaker(breaker_name: str):
                 result = await func(*args, **kwargs)
                 breaker.record_success()
                 return result
-            except Exception as e:
+            except Exception:
                 breaker.record_failure()
                 raise
 
@@ -1145,7 +1144,7 @@ def with_metrics(operation_name: str):
                 metrics.histogram(f"{operation_name}_duration_ms", duration)
 
                 return result
-            except Exception as e:
+            except Exception:
                 metrics.increment(f"{operation_name}_total", labels={"status": "error"})
                 raise
 

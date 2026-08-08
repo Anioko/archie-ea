@@ -160,7 +160,6 @@ def _build_relationships_text(element_id):
     """
     try:
         from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
-        from app import db
 
         lines = []
         # Outgoing relationships (this element is source)

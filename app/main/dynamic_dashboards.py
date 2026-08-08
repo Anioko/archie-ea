@@ -6,7 +6,7 @@ dashboards for ANY SQLAlchemy model without requiring manual route creation.
 """
 from datetime import datetime
 
-from flask import Blueprint, abort, current_app, render_template, request, url_for  # dead-code-ok
+from flask import Blueprint, abort, current_app, render_template, url_for  # dead-code-ok
 
 from app.models.application_layer import (
     ApplicationEvent,
@@ -22,7 +22,7 @@ from app.models.business_capabilities import BusinessCapability
 
 # Import models from implementation planning (avoid conflicts with implementation_migration)
 from app.models.implementation_planning import ImplementationPlateau as Plateau
-from app.models.project_models import Milestone, Project, ProjectNote, ProjectResource, Task  # dead-code-ok
+from app.models.project_models import Milestone, Project, Task  # dead-code-ok
 from app.services.api_dashboard_generator import APIDashboardGenerator
 from flask_login import login_required
 
@@ -200,7 +200,7 @@ def universal_dashboard(model_slug):
 
         # Render with the new beautiful dashboard template
         return render_template("dashboards/model_dashboard.html", config=config)
-    except (OperationalError, ProgrammingError) as e:
+    except (OperationalError, ProgrammingError):
         # Table doesn't exist in database
         abort(
             404,
@@ -249,7 +249,7 @@ def universal_detail(model_slug, record_id):
         # Render with detail template
         return render_template("dashboards/generic_detail.html", config=detail_config)
 
-    except (OperationalError, ProgrammingError) as e:
+    except (OperationalError, ProgrammingError):
         # Table doesn't exist in database
         abort(
             404,

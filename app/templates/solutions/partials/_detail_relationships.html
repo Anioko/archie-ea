@@ -46,10 +46,10 @@
         typeBadgeClass(t) {
             const cat = this.typeCategory(t);
             const map = {
-                structural: 'bg-blue-500/10 text-primary border-blue-500/30',
+                structural: 'bg-info/10 text-primary border-info/30',
                 dependency: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
                 dynamic:    'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-                other:      'bg-gray-500/10 text-muted-foreground border-gray-500/30'
+                other:      'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30'
             };
             return map[cat] || map.other;
         },
@@ -119,7 +119,16 @@
                 const results = data.elements || data || [];
                 if (target === 'source') this.sourceResults = results.slice(0, 10);
                 else this.targetResults = results.slice(0, 10);
-            } catch(e) { /* ignore search errors */ }
+                this._elementSearchErrorShown = false;
+            } catch(e) {
+                console.warn('[relationships] element search failed:', e);
+                // Fires on every debounced keystroke — toast once per
+                // outage rather than once per character typed.
+                if (!this._elementSearchErrorShown) {
+                    this._elementSearchErrorShown = true;
+                    if (window.Platform && Platform.toast) Platform.toast.error('Element search failed');
+                }
+            }
         },
 
         selectSource(elem) {
@@ -234,6 +243,7 @@
             this.accepting = true;
             this.relError = null;
             let accepted = 0;
+            let failed = 0;
             for (const p of selected) {
                 try {
                     const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
@@ -246,15 +256,17 @@
                             relationship_type: p.relationship_type
                         })
                     });
-                    if (res.ok) {
-                        const data = await res.json();
-                        this.relRows.push(data.relationship || data);
-                        accepted++;
-                    }
-                } catch(e) { /* skip failed proposals */ }  // fabricated-values-ok
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const data = await res.json();
+                    this.relRows.push(data.relationship || data);
+                    accepted++;
+                } catch(e) { failed++; }
             }
             this.proposals = this.proposals.filter(p => !p.checked);
             if (this.proposals.length === 0) this.showProposals = false;
+            if (failed > 0) {
+                this.relError = failed + ' of ' + selected.length + ' relationship(s) could not be created.';
+            }
             this.accepting = false;
         },
 
@@ -263,7 +275,7 @@
                 motivation: 'bg-purple-500/10 text-primary border-purple-500/30',
                 strategy: 'bg-rose-500/10 text-rose-600 border-rose-500/30',
                 business: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-                application: 'bg-blue-500/10 text-primary border-blue-500/30',
+                application: 'bg-info/10 text-primary border-info/30',
                 technology: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
             };
             return map[(layer || '').toLowerCase()] || 'bg-muted text-muted-foreground border-border';

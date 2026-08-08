@@ -735,6 +735,11 @@ function composerApp() {
         srUseRegex: false,
         srMatches: [],
         srCurrentIndex: -1,
+        /* Rendered under the Find box. An unparseable regex used to abort the
+           search silently, which read as "0 matches" — the same answer a valid
+           pattern with no hits gives. Inline rather than a toast because the
+           search runs debounced on every keystroke. */
+        srRegexError: null,
 
         /* Zoom preset dropdown */
         zoomDropdownOpen: false,
@@ -1474,7 +1479,7 @@ function composerApp() {
                                 attrs: { stroke: '#f59e0b', 'stroke-width': 2, 'stroke-dasharray': '4,3' },
                             }},
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic lock highlight replayed 50ms after render; the lock itself is already recorded on the cell, so a view that is not up yet is nothing to act on */ }
                 }, 50);
             });
 
@@ -1571,7 +1576,10 @@ function composerApp() {
                 fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
                     credentials: 'same-origin',
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) { throw new Error('valid-relationship-types request failed: ' + r.status); }
+                    return r.json();
+                })
                 .then(function(data) {
                     let validDetailed = data.valid_types_detailed || [];
                     self.relPickerTypes = validDetailed.length > 0
@@ -1592,6 +1600,7 @@ function composerApp() {
                         return !validSet[t];
                     });
                 })
+                // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
                 .catch(function() {
                     self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                     self.relPickerInvalidTypes = [];
@@ -1682,6 +1691,7 @@ function composerApp() {
                         self.relPickerTypes.forEach(function(v) { validSet[v.type || v] = true; });
                         self.relPickerInvalidTypes = ALL_REL.filter(function(t) { return !validSet[t]; });
                     })
+                    // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
                     .catch(function() {
                         self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                         self.relPickerInvalidTypes = [];
@@ -1735,7 +1745,7 @@ function composerApp() {
                 /* Fetch rich detail from API (skip __builtin__ template elements) */
                 if (elId && parseInt(elId, 10) > 0) {
                     fetch('/archimate/api/elements/' + elId + '/detail', { credentials: 'same-origin' })
-                    .then(function(r) { if (r.ok) return r.json(); throw new Error('not found'); })
+                    .then(function(r) { if (!r.ok) throw new Error('not found'); return r.json(); })
                     .then(function(data) {
                         if (self.selectedNode && self.selectedNode.elementId === elId) {
                             self.selectedNode.description = data.description || '';
@@ -2359,7 +2369,7 @@ function composerApp() {
                     self._pendingAutosaveRestore = savedData;
                     self._showAutosavePrompt = true;
                 }
-            } catch(_) {}
+            } catch(_) { /* swallow-ok: reading the localStorage crash-recovery snapshot throws in private mode; there is then simply no restore prompt, which promised the user nothing */ }
             setInterval(function() {
                 if (!self.graph || !self.viewpointDirty) return;
                 if (self.graph.getElements().length === 0) return;
@@ -2370,7 +2380,7 @@ function composerApp() {
                         elementCount: self.elementCount,
                         solutionId: self.solutionId
                     }));
-                } catch (e) { console.warn('Auto-persist failed:', e.message); }
+                } catch (e) { /* swallow-ok: crash-recovery snapshot written every 10s; the visible "Autosave:" indicator tracks the SERVER save, not this, and a toast every 10 seconds would be worse than the failure it reports */ console.warn('Auto-persist failed:', e.message); }
             }, 10000);
 
             /* ── Wave 10: Load quality score for solution ── */
@@ -2378,7 +2388,7 @@ function composerApp() {
                 fetch('/api/solutions/' + self.solutionId + '/quality-score', { credentials: 'same-origin' })
                     .then(function(r) { return r.ok ? r.json() : null; })
                     .then(function(data) { if (data) self.qualityScore = data; })
-                    .catch(function() {});
+                    .catch(function() { /* swallow-ok: optional quality-score enrichment that no template renders; a failure changes nothing the user can see */ });
             }
 
             /* ── Check for saved viewpoint_id in URL ── */
@@ -2449,7 +2459,7 @@ function composerApp() {
                         _toast('info', 'ArchiMate elements' + appName + ' loaded from AI Chat — review and accept to place on canvas');
                         return;
                     }
-                } catch (_) { /* malformed sessionStorage — skip */ }
+                } catch (_) { /* swallow-ok: defensive parse of our own sessionStorage prefill; malformed or absent simply means no prefill and the composer opens as normal */ }
             }
 
             /* ── Load existing data ── */
@@ -2490,7 +2500,8 @@ function composerApp() {
             let params = new URLSearchParams(window.location.search);
             if (!params.has('prefill')) return;
             let raw = null;
-            try { raw = sessionStorage.getItem('composer_prefill'); } catch (_) {}
+            /* sessionStorage throws in private/incognito mode — best-effort, no prefill if unavailable */
+            try { raw = sessionStorage.getItem('composer_prefill'); } catch (_) { /* swallow-ok: sessionStorage throws in private mode; raw stays null and the prefill is skipped, which is the no-prefill path the user already expects */ }
             if (!raw) return;
             let payload = null;
             try { payload = JSON.parse(raw); } catch (_) { return; }
@@ -2498,8 +2509,8 @@ function composerApp() {
             if (!payload || !payload.elements || !Array.isArray(payload.elements)) return;
             if (payload.timestamp && (Date.now() - payload.timestamp) > 300000) return;
 
-            /* Clear so refresh doesn't re-trigger */
-            try { sessionStorage.removeItem('composer_prefill'); } catch (_) {}
+            /* Clear so refresh doesn't re-trigger — best-effort, same private-mode caveat as above */
+            try { sessionStorage.removeItem('composer_prefill'); } catch (_) { /* swallow-ok: best-effort cleanup so a refresh does not re-trigger the prefill; same private-mode caveat as the read above */ }
 
             /* Normalise element shape to match composer_ai.js expectations */
             let elements = payload.elements.map(function(e) {
@@ -2557,7 +2568,7 @@ function composerApp() {
                 { name: 'dot', args: { color: '#dde1e6', thickness: 1 } },
                 { name: 'dot', args: { color: '#c8cdd3', thickness: 1, scaleFactor: 5 } },
             ] : false;
-            try { this.paper.drawGrid(); } catch(e) {}
+            try { this.paper.drawGrid(); } catch(e) { /* swallow-ok: cosmetic grid redraw; statusText below still reports whether the grid is on or off */ }
             this.statusText = this.showGrid ? 'Grid visible' : 'Grid hidden';
         },
 
@@ -2608,7 +2619,7 @@ function composerApp() {
                                 }},
                             });
                         }
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic lock border; the lock state itself is already applied to the cell and counted in lockedCount */ }
                 }
             });
 
@@ -3154,7 +3165,10 @@ function composerApp() {
             fetch('/api/archimate/valid-relationships/' + encodeURIComponent(newType) + '/' + encodeURIComponent(targetType), {
                 credentials: 'same-origin'
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('valid-relationships request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let validTypes = (data.data || {}).valid_relationship_types || [];
                 if (validTypes.length === 0) {
@@ -3182,6 +3196,7 @@ function composerApp() {
             .catch(function() {
                 /* On error, just offset to avoid overlap */
                 newNode.position(newBBox.x + 220, newBBox.y);
+                _toast('error', 'Could not check valid relationships for this drop');
             });
         },
 
@@ -3552,11 +3567,17 @@ function composerApp() {
                 self.staleRelationships = data.stale_relationships;
                 self.showStalenessReview = true;
             })
-            .catch(function() {});
+            .catch(function() { /* swallow-ok: unsolicited background staleness advisory; on failure the review panel just does not open, and the user was never told it would */ });
         },
 
         keepAsIntent: function(relId) {
             let self = this;
+            /* The row used to be struck from the review list — and the whole panel
+               closed — the instant the PATCH was FIRED, before any response came
+               back. A 403/500, or no network at all, therefore looked exactly like
+               "marked as architectural intent"; the flag was never persisted and
+               the relationship reappeared as stale on the next check. Only remove
+               the row once the server has confirmed the write. */
             fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId, {
                 method: 'PATCH',
                 headers: {
@@ -3564,9 +3585,15 @@ function composerApp() {
                     'X-CSRFToken': (document.cookie.match(/csrf_token=([^;]+)/) || [])[1] || '',
                 },
                 body: JSON.stringify({ relationship_intent: { rel_id: relId, is_architectural_intent: true } }),
-            }).catch(function() {});
-            self.staleRelationships = self.staleRelationships.filter(function(r) { return r.rel_id !== relId; });
-            if (!self.staleRelationships.length) { self.showStalenessReview = false; }
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('Server returned ' + r.status);
+                self.staleRelationships = self.staleRelationships.filter(function(x) { return x.rel_id !== relId; });
+                if (!self.staleRelationships.length) { self.showStalenessReview = false; }
+            })
+            .catch(function(err) {
+                _toast('error', 'Could not mark the relationship as architectural intent — ' + (err.message || 'the change was not saved'));
+            });
         },
 
         removeStalenessRel: function(relId) {
@@ -3901,6 +3928,7 @@ function composerApp() {
                 self.relPickerTypes.forEach(function(v) { validSet[v.type || v] = true; });
                 self.relPickerInvalidTypes = ALL_REL.filter(function(t) { return !validSet[t]; });
             })
+            // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
             .catch(function() {
                 self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                 self.relPickerInvalidTypes = [];
@@ -3993,15 +4021,20 @@ function composerApp() {
 
             this.statusText = 'Copied ' + this._clipboard.length + ' element(s)'
                 + (self._clipboardLinks.length ? ' and ' + self._clipboardLinks.length + ' relationship(s)' : '');
-            try { localStorage.setItem('archimate_clipboard', JSON.stringify(this._clipboard)); } catch(e) {}
+            /* Cross-tab clipboard persistence is a bonus — in-memory this._clipboard is
+               already set above, so a private-mode/quota failure here is harmless. */
+            try { localStorage.setItem('archimate_clipboard', JSON.stringify(this._clipboard)); } catch(e) { /* swallow-ok: cross-tab clipboard mirror; the in-memory _clipboard is already set above, so paste works in this tab either way */ }
         },
 
         _pasteClipboard: function(atPoint) {
             if (this._clipboard.length === 0) {
+                /* Best-effort restore from a previous tab/session — if this throws
+                   or the stored value is malformed, _clipboard just stays empty
+                   and the paste below is a no-op. */
                 try {
                     let stored = localStorage.getItem('archimate_clipboard');
                     if (stored) this._clipboard = JSON.parse(stored);
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: optional restore of a clipboard from another tab; on failure _clipboard stays empty and the paste below is a no-op */ }
             }
             if (this._clipboard.length === 0) return;
             let self = this;
@@ -5001,7 +5034,9 @@ function composerApp() {
                         method: 'PATCH', credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                         body: JSON.stringify({ custom_properties: { event_schedule: schedule.trim() } }),
-                    }).catch(function() {});
+                    }).catch(function() {
+                        _toast('error', 'Failed to save event schedule — it will be lost on reload');
+                    });
                 }
             }
         },
@@ -5019,7 +5054,9 @@ function composerApp() {
                     method: 'PATCH', credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify({ custom_properties: { event_schedule: '' } }),
-                }).catch(function() {});
+                }).catch(function() {
+                    _toast('error', 'Failed to clear event schedule on the server — it may reappear on reload');
+                });
             }
         },
 
@@ -5509,7 +5546,7 @@ function composerApp() {
                 let self = this;
                 setTimeout(function() {
                     if (self.canvasSearchMatches.indexOf(cell) !== -1) {
-                        try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) {}
+                        try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) { /* swallow-ok: cosmetic flash highlight on a search match; the match is still selected and centred */ }
                     }
                 }, 100);
             }
@@ -5521,7 +5558,7 @@ function composerApp() {
             this.canvasSearchMatches.forEach(function(cell) {
                 let view = self.paper.findViewByModel(cell);
                 if (view) {
-                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) {}
+                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) { /* swallow-ok: cosmetic un-highlight while clearing search matches */ }
                 }
             });
         },
@@ -5586,9 +5623,11 @@ function composerApp() {
         },
 
         _saveCustomPropsToStorage: function() {
+            /* Local cache only — _syncCustomPropsToServer() is the real persistence
+               path and reports its own failures, so a storage failure here is harmless. */
             try {
                 localStorage.setItem(this._customPropsKey(), JSON.stringify(this.customProperties));
-            } catch(e) {}
+            } catch(e) { /* swallow-ok: local cache only; _syncCustomPropsToServer is the real persistence path and reports its own failures */ }
         },
 
         /** CMP-043: Persist custom properties to server API for a real DB element. */
@@ -5817,7 +5856,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 6, rx: 8, attrs: { stroke: '#dc2626', 'stroke-width': 3 } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic dependency-chain outline; the opacity tint and the statusText summary still convey the result */ }
                 } else if (el.id in downIds) {
                     /* Downstream: orange tint */
                     vel.attr({ opacity: Math.max(0.4, 1 - downIds[el.id] * 0.15) });
@@ -5825,7 +5864,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 4, rx: 6, attrs: { stroke: '#f97316', 'stroke-width': 2, 'stroke-dasharray': '4,2' } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic dependency-chain outline; the opacity tint and the statusText summary still convey the result */ }
                 } else if (el.id in upIds) {
                     /* Upstream: blue tint */
                     vel.attr({ opacity: Math.max(0.4, 1 - upIds[el.id] * 0.15) });
@@ -5833,7 +5872,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 4, rx: 6, attrs: { stroke: '#3b82f6', 'stroke-width': 2, 'stroke-dasharray': '4,2' } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic dependency-chain outline; the opacity tint and the statusText summary still convey the result */ }
                 } else {
                     /* Unrelated: dim to 20% */
                     vel.attr({ opacity: 0.2 });
@@ -5867,7 +5906,7 @@ function composerApp() {
                 let view = self.paper.findViewByModel(el);
                 if (!view) return;
                 view.vel.attr({ opacity: 1 });
-                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) {}
+                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* swallow-ok: cosmetic un-highlight while clearing the dependency overlay */ }
             });
 
             /* Reset all link visuals */

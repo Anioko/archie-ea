@@ -17,16 +17,12 @@ ArchiMate 3.2 Compliance:
 
 import json
 import logging
-import re
 from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
 from app.models import (
     ArchiMateElement,
-    ArchiMateRelationship,
-    ArchitectureModel,
-    BusinessCapability,
     ConstraintElement,
     Requirement,
 )

@@ -8,7 +8,7 @@ Used by both unified applications import and batch import systems.
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from .date_parser import parse_flexible_date
 

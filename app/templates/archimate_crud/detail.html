@@ -36,34 +36,34 @@
 
             <!-- Identity badges -->
             <div class="flex flex-wrap items-center gap-2 mt-3">
-                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-primary/5 text-primary border-primary/20 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-primary/5 text-primary border-primary/20">
                     <i data-lucide="layers" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ element_type }}
                 </span>
-                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-purple-50 text-purple-700 border-purple-200">
                     <i data-lucide="stack" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ layer|title }}
                 </span>
                 {% if element.scope %}
-                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-muted text-foreground border-border">
                     {{ element.scope|title }}
                 </span>
                 {% endif %}
                 {% if element.building_block_type %}
-                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 border-amber-200">
                     <i data-lucide="box" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ element.building_block_type }}
                 </span>
                 {% endif %}
                 {% if element.plateau %}
-                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-emerald-500/5 text-emerald-700 border-emerald-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-emerald-500/5 text-emerald-700 border-emerald-200">
                     <i data-lucide="flag" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ element.plateau }}
                 </span>
                 {% endif %}
                 {% if element.status %}
-                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {% if element.status == 'Active' %}bg-emerald-500/5 text-emerald-700 border-emerald-200{% elif element.status in ('Deprecated','Retired') %}bg-destructive/5 text-destructive border-destructive/20{% else %}bg-slate-100 text-slate-700 border-slate-200{% endif %}">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {% if element.status == 'Active' %}bg-emerald-500/5 text-emerald-700 border-emerald-200{% elif element.status in ('Deprecated','Retired') %}bg-destructive/5 text-destructive border-destructive/20{% else %}bg-muted text-foreground border-border{% endif %}">
                     {{ element.status }}
                 </span>
                 {% endif %}
                 {% if relationships|length > 0 %}
-                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-muted text-foreground border-border">
                     <i data-lucide="git-merge" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ relationships|length }} relationship{{ 's' if relationships|length != 1 else '' }}
                 </span>
                 {% endif %}
@@ -241,7 +241,7 @@
                 {% for rel in outgoing %}
                 <div class="flex items-center justify-between py-2.5 gap-4">
                     <div class="flex items-center gap-3 min-w-0">
-                        <span class="inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-400">
+                        <span class="inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground border-border">
                             {{ rel.type }}
                         </span>
                         <div class="min-w-0">
@@ -270,7 +270,7 @@
                 {% for rel in incoming %}
                 <div class="flex items-center justify-between py-2.5 gap-4">
                     <div class="flex items-center gap-3 min-w-0">
-                        <span class="inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-400">
+                        <span class="inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground border-border">
                             {{ rel.type }}
                         </span>
                         <div class="min-w-0">

@@ -12,6 +12,7 @@ Supports Anthropic (Claude) and OpenAI providers.
 Tools marked 'approve' tier are queued for user confirmation — not executed.
 """
 
+from app.modules.ai_chat.tools.executor import ToolCall
 import json
 import logging
 from typing import Callable, Optional
@@ -19,6 +20,14 @@ from typing import Callable, Optional
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 8
+
+# Which tools write. Derived in tools/registry.py by reading each implementation
+# for db.session.add/commit/delete, not from tool names.
+try:
+    from app.modules.ai_chat.tools.registry import mutating_tool_names as _mutating_tool_names
+    _MUTATING_TOOLS = _mutating_tool_names()
+except Exception:  # registry import failure must not take the turn with it
+    _MUTATING_TOOLS = frozenset()
 
 # Agent-mode system prompt prefix injected before domain context.
 _AGENT_PREFIX = """You are an Enterprise Architecture Copilot with DIRECT WRITE ACCESS
@@ -45,6 +54,18 @@ HOW TO OPERATE:
 5. Never fabricate IDs. Always use names — the system resolves them to IDs.
 6. If solution_id is in the ACTIVE SOLUTION CONTEXT below, pass it to all tools automatically.
 
+GROUNDING — this is a system of record, so an unverifiable answer is worse than none:
+7. State a fact about the portfolio only if a tool returned it or it appears in the
+   context below. If neither, say you would need to look it up, and look it up.
+8. Refer to records by the exact name the tool returned. The records you read are
+   attached to your reply as sources automatically — you do not need to write links,
+   but the names must match or the citation will not line up with what you said.
+9. Read the coverage fields on every tool result. When a result says it is showing
+   N of M, report M as the total and say the list is partial. Never present the
+   number of rows you were shown as the number that exists.
+10. When context arrives with an "_omitted" key, those parts were withheld for size
+    and are NOT empty — retrieve them with a tool before drawing a conclusion.
+
 LIVE ARCHITECTURE CONTEXT:
 """
 
@@ -70,6 +91,221 @@ class AgentRunner:
     # Public entry point                                                   #
     # ------------------------------------------------------------------ #
 
+    # How much prior conversation to replay. Turns, not messages: one turn is a
+    # user message plus its assistant reply.
+    MAX_HISTORY_TURNS = 10
+    MAX_HISTORY_CHARS = 24000
+
+    # Budget for the serialised domain context block.
+    MAX_CONTEXT_CHARS = 6000
+
+    # ------------------------------------------------------------------ #
+    # Citations
+    # ------------------------------------------------------------------ #
+    # Which read tool yields which kind of record. Derived from the tool's own
+    # results rather than asked of the model: a citation the model writes is a
+    # claim, and claims are the thing being verified. These are ground truth -
+    # the rows the database actually returned this turn.
+    #
+    # Widened by reading each of the 37 tools' return shapes, not by matching
+    # names. Only tools whose result carries records with a real id and name
+    # belong here; the rest return scores, narratives or write receipts, so
+    # mapping them would be inert at best and, if the entity type were guessed
+    # wrong, a fabricated citation - the exact failure this mechanism prevents.
+    #
+    # technical_capability has no detail route, so _source_url returns None for
+    # it and the UI shows the name unlinked. The id still travels, so the record
+    # stays findable.
+    _TOOL_ENTITY = {
+        "find_applications": "application",
+        "find_applications_by_capability": "application",
+        "query_capability_gaps": "capability",
+        "search_capabilities_by_problem": "capability",
+        "search_archimate_elements": "archimate_element",
+        "find_technical_capabilities": "technical_capability",
+        "get_solution_summary": "solution",
+    }
+    MAX_SOURCES = 25
+
+    @staticmethod
+    def _source_url(entity_type: str, row: dict):
+        """Best-effort link to the record, or None.
+
+        None is a normal outcome, not a failure: url_for needs the endpoint to be
+        registered, and blueprints here register non-fatally (CLAUDE.md), so a
+        degraded feature must not take the citation with it. The UI shows the
+        name unlinked in that case - still verifiable, since the id travels with
+        it.
+        """
+        from flask import url_for
+
+        try:
+            if entity_type == "application":
+                return url_for("unified_applications.application_detail", id=row["id"])
+            if entity_type == "capability":
+                return url_for("enterprise_crud.get_capability", capability_id=row["id"])
+            if entity_type == "vendor":
+                return url_for("unified_vendors.vendor_detail", vendor_id=row["id"])
+            if entity_type == "solution":
+                return url_for("solution_design.view_solution", solution_id=row["id"])
+            if entity_type == "archimate_element":
+                # This route is keyed by layer and type as well as id, both of
+                # which search_archimate_elements already returns.
+                if row.get("layer") and row.get("type"):
+                    return url_for(
+                        "archimate_crud.detail_element",
+                        layer=str(row["layer"]).lower(),
+                        element_type=str(row["type"]),
+                        element_id=row["id"],
+                    )
+        except Exception:
+            # Unregistered endpoint, or no request/app context to build against.
+            return None
+        return None
+
+    def _collect_sources(self, tool_name: str, result: dict, sources: list) -> None:
+        """Record the entities a read tool actually returned, for citation.
+
+        Without this an answer is unfalsifiable: the model says "Salesforce is
+        end-of-life in 2027" and the reader has no id, no link and no way to tell
+        a real row from a fluent invention. For a system of record that is worse
+        than no answer.
+
+        Deduplicated on (type, id) because the same record often comes back from
+        several tools in one turn, and capped so a broad query cannot bury the
+        answer under its own footnotes.
+        """
+        entity_type = self._TOOL_ENTITY.get(tool_name)
+        if not entity_type or not isinstance(result, dict) or not result.get("success"):
+            return
+        rows = result.get("result")
+        # A single-record tool returns {"result": {...}} rather than a list.
+        # get_solution_summary is exactly that, so requiring a list meant an
+        # answer built on a real solution cited nothing and read as ungrounded —
+        # while _source_url had carried an unreachable `solution` branch all along.
+        if isinstance(rows, dict):
+            rows = [rows]
+        if not isinstance(rows, list):
+            return
+
+        seen = {(s["type"], s["id"]) for s in sources}
+        for row in rows:
+            if len(sources) >= self.MAX_SOURCES:
+                return
+            if not isinstance(row, dict) or row.get("id") is None or not row.get("name"):
+                continue
+            key = (entity_type, row["id"])
+            if key in seen:
+                continue
+            seen.add(key)
+            sources.append({
+                "type": entity_type,
+                "id": row["id"],
+                "name": row["name"],
+                "url": self._source_url(entity_type, row),
+            })
+
+    @classmethod
+    def _serialise_context(cls, raw_ctx: dict) -> str:
+        """Serialise domain context, dropping WHOLE keys when over budget.
+
+        This was `json.dumps(raw_ctx, default=str)[:6000]` - a raw slice of a
+        JSON string. Two problems, both silent. It cut mid-token, so the model
+        received malformed JSON ending part-way through a field value and had to
+        guess where the data stopped. And nothing told it anything had been
+        removed, so a context truncated from 40 elements to 22 looked exactly
+        like a portfolio that contains 22.
+
+        Dropping whole top-level keys keeps the JSON parseable and names what
+        went missing, so the model can say "I wasn't given that" instead of
+        answering from the fragment it happened to receive.
+        """
+        if not raw_ctx:
+            return ""
+
+        blob = json.dumps(raw_ctx, default=str)
+        if len(blob) <= cls.MAX_CONTEXT_CHARS:
+            return blob
+
+        # Largest keys first - dropping one big list usually beats dropping
+        # several small scalars that carry the totals.
+        kept = dict(raw_ctx)
+        dropped = []
+        by_size = sorted(
+            raw_ctx.keys(),
+            key=lambda k: len(json.dumps(raw_ctx[k], default=str)),
+            reverse=True,
+        )
+        for key in by_size:
+            if len(json.dumps(kept, default=str)) <= cls.MAX_CONTEXT_CHARS:
+                break
+            if len(kept) == 1:
+                break  # never drop the last key - an empty object says nothing
+            kept.pop(key, None)
+            dropped.append(key)
+
+        if dropped:
+            kept["_omitted"] = {
+                "keys": sorted(dropped),
+                "reason": (
+                    "Dropped to fit the context budget. These were NOT empty - "
+                    "use the search tools to retrieve them rather than assuming "
+                    "they contain nothing."
+                ),
+            }
+
+        blob = json.dumps(kept, default=str)
+        # Belt and braces: if a single retained key still blows the budget, cut
+        # it, but say so in the text rather than leaving broken JSON.
+        if len(blob) > cls.MAX_CONTEXT_CHARS:
+            return (
+                blob[: cls.MAX_CONTEXT_CHARS]
+                + '\n/* CONTEXT TRUNCATED MID-VALUE - treat the final entry as '
+                'incomplete and verify anything from it with a tool call. */'
+            )
+        return blob
+
+    @staticmethod
+    def _prepare_history(history: Optional[list]) -> list:
+        """Normalise stored turns into a valid, bounded message list.
+
+        Three things have to hold or the provider rejects the request outright:
+        the sequence must alternate user/assistant, it must begin with a user
+        message, and it must not end with one (this turn's message goes there).
+        Stored history can violate all three - a turn whose assistant reply
+        failed to persist leaves two user messages adjacent - so this rebuilds
+        pairs rather than trusting the rows.
+        """
+        if not history:
+            return []
+
+        pairs = []
+        pending_user = None
+        for entry in history:
+            role = (entry or {}).get("role")
+            content = (entry or {}).get("content")
+            if not content or role not in ("user", "assistant"):
+                continue
+            if role == "user":
+                pending_user = str(content)
+            elif pending_user is not None:
+                pairs.append((pending_user, str(content)))
+                pending_user = None
+            # An assistant message with no preceding user message is dropped:
+            # replaying it would break alternation.
+
+        pairs = pairs[-AgentRunner.MAX_HISTORY_TURNS:]
+
+        # Drop whole turns from the oldest end until under the character budget.
+        while pairs and sum(len(u) + len(a) for u, a in pairs) > AgentRunner.MAX_HISTORY_CHARS:
+            pairs.pop(0)
+
+        messages = []
+        for user_text, assistant_text in pairs:
+            messages.append({"role": "user", "content": user_text})
+            messages.append({"role": "assistant", "content": assistant_text})
+        return messages
+
     def run(
         self,
         user_message: str,
@@ -78,9 +314,17 @@ class AgentRunner:
         persona: Optional[str] = None,
         requested_model: Optional[str] = None,
         stream_mode: bool = False,
+        history: Optional[list] = None,
     ) -> dict:
         """
         Execute the full ReAct loop for one user message.
+
+        `history` is the prior turns of this conversation as
+        [{"role": "user"|"assistant", "content": str}, ...], oldest first.
+        Without it every turn was an independent single-message call - the model
+        had no idea what "it" referred to in a follow-up - while the UI presented
+        a persistent thread rail. Callers pass None for a genuinely new
+        conversation.
 
         Returns
         -------
@@ -101,7 +345,41 @@ class AgentRunner:
         try:
             provider, model = LLMService._get_configured_provider()
             if requested_model:
-                model = requested_model
+                # Resolve the PROVIDER along with the model. Overriding `model`
+                # alone sent whatever the user picked to whatever provider the
+                # resolver happened to land on - choose an Anthropic model while
+                # it resolved OpenAI and a Claude model id went to OpenAI, which
+                # fails with an opaque provider error.
+                #
+                # MultiDomainChatService._resolve_requested_model already does
+                # this correctly by matching the id against each enabled
+                # provider's configured models; reuse it rather than writing a
+                # second, divergent copy.
+                resolved = None
+                try:
+                    from app.modules.ai_chat.services.multi_domain_chat_service import (
+                        MultiDomainChatService,
+                    )
+
+                    resolved = MultiDomainChatService()._resolve_requested_model(requested_model)
+                except Exception:
+                    logger.warning(
+                        "AgentRunner: could not resolve requested model %r to a provider",
+                        requested_model,
+                        exc_info=True,
+                    )
+
+                if resolved:
+                    provider, model = resolved
+                else:
+                    # Not configured for any enabled provider. Keep the resolved
+                    # provider's own default rather than sending it a model id it
+                    # does not serve.
+                    logger.warning(
+                        "AgentRunner: requested model %r is not configured for any "
+                        "enabled provider; using %s/%s instead",
+                        requested_model, provider, model,
+                    )
             api_keys = LLMService._get_all_api_keys(provider)
             if not api_keys:
                 return self._fallback("No API keys configured for provider: " + provider)
@@ -132,11 +410,21 @@ class AgentRunner:
         # Build tool schemas for the provider
         tool_schemas = self._build_tool_schemas(provider, TOOL_SCHEMAS)
 
-        # Initialise message history
-        messages = [{"role": "user", "content": user_message}]
+        # Initialise message history with the prior turns of this conversation.
+        #
+        # Bounded deliberately: the whole transcript would grow without limit and
+        # the tool-call blocks appended during this turn already share the same
+        # budget. Kept as whole turns so the sequence stays strictly alternating,
+        # which the Anthropic API requires, and trimmed from the OLDEST end so
+        # the most recent exchange - the one a follow-up refers to - always
+        # survives.
+        messages = self._prepare_history(history)
+        messages.append({"role": "user", "content": user_message})
         executor = ToolExecutor(self.user_id)
         actions_taken = []
         pending_approvals = []
+        # Records the read tools actually returned this turn, for citation.
+        sources = []
 
         for iteration in range(MAX_ITERATIONS):
             # Call LLM
@@ -156,6 +444,7 @@ class AgentRunner:
                     "response": llm_resp.get("text", ""),
                     "actions_taken": actions_taken,
                     "pending_approvals": pending_approvals,
+                    "sources": sources,
                 }
 
             # Process each tool call
@@ -191,6 +480,7 @@ class AgentRunner:
                     # Auto-execute
                     self._emit({"type": "tool_start", "tool": tc.name, "args": tc.arguments})
                     result = executor.execute(tc)
+                    self._collect_sources(tc.name, result, sources)
                     self._emit({"type": "tool_result", "tool": tc.name, "result": result})
 
                     if result.get("success"):
@@ -199,6 +489,11 @@ class AgentRunner:
                             "arguments": tc.arguments,
                             "result": result.get("result"),
                             "message": result.get("message"),
+                            # Marked here so the client does not carry a second
+                            # copy of the read/write split. The registry flag is
+                            # the single source of truth for receipts, the
+                            # next-artifact suggestion and approval tiering.
+                            "mutates": tc.name in _MUTATING_TOOLS,
                         })
 
                 tool_results.append((tc_raw, result))
@@ -217,6 +512,7 @@ class AgentRunner:
             ),
             "actions_taken": actions_taken,
             "pending_approvals": pending_approvals,
+            "sources": sources,
         }
 
     # ------------------------------------------------------------------ #
@@ -257,15 +553,46 @@ class AgentRunner:
             ctx_result = svc.get_domain_context(domain, context or {})
             if ctx_result.get("success"):
                 raw_ctx = ctx_result.get("context", {})
-                # Compact serialisation — don't dump the full context blob
-                ctx_block = json.dumps(raw_ctx, default=str)[:6000]
+                ctx_block = self._serialise_context(raw_ctx)
         except Exception as e:
             logger.debug("AgentRunner: context build failed: %s", e)
 
+        # The governed charter: the persona's mission and scope, the six HARD
+        # RULES (evidence, no fabrication, propose-don't-dispose, cite your
+        # source) and a live-data block queried now.
+        #
+        # This used to be the one-line note below and nothing else, so selecting
+        # "AI Data Architect" over "CIO" changed the prompt by a job title. The
+        # charters were reachable only through
+        # MultiDomainChatService._get_persona_system_prompt <- process_message,
+        # which this path never calls — so the assistant was not governed by the
+        # rules CLAUDE.md names as its governance layer, and the rule forbidding
+        # invented application names and counts was never in context.
         persona_note = ""
         if persona:
-            persona_note = f"\nYou are operating as: {persona.replace('_', ' ').title()}.\n"
+            try:
+                from app.modules.ai_chat.services.architect_persona_charters import (
+                    build_architect_prompt,
+                )
 
+                # Returns None for the six ungoverned personas, which then fall
+                # through to the label below rather than losing their persona.
+                charter = build_architect_prompt(persona)
+                if charter:
+                    persona_note = "\n" + charter + "\n"
+            except Exception:
+                # A charter that cannot be built must not cost the turn. The
+                # label is a worse prompt, not a broken one.
+                logger.warning(
+                    "AgentRunner: charter unavailable for persona %s", persona, exc_info=True
+                )
+            if not persona_note:
+                persona_note = f"\nYou are operating as: {persona.replace('_', ' ').title()}.\n"
+
+        # The charter goes last, after the context block. _serialise_context
+        # drops whole keys when it is over budget, so anything appended after it
+        # is safe from that trimming — and the HARD RULES are the last thing that
+        # should be sacrificed to make room.
         return _AGENT_PREFIX + solution_block + portfolio_block + ctx_block + persona_note
 
     # ------------------------------------------------------------------ #

@@ -12,9 +12,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Type
 
-from flask import current_app
-from sqlalchemy import event
-from sqlalchemy.orm import contains_eager, joinedload, selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 
 class QueryCache:
@@ -184,7 +182,7 @@ class BatchQueryExecutor:
                 # Execute query with filter
                 result = model.query.filter_by(**filters).all()
                 self._results[name] = result
-            except Exception as e:
+            except Exception:
                 self._results[query_def["name"]] = []
 
         return self._results

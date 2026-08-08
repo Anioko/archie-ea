@@ -32,7 +32,7 @@
 
     {# Loading state #}
     <div x-show="arbLoading" x-cloak class="py-8 text-center">
-        <span class="animate-spin h-8 w-8 border-3 border-primary border-t-transparent rounded-full inline-block mb-3"></span>
+        <span class="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full inline-block mb-3"></span>
         <p class="text-sm text-muted-foreground">Assembling ARB submission package...</p>
     </div>
 
@@ -41,13 +41,13 @@
         <div class="flex items-center justify-between">
             <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">ARB Readiness</p>
             <span class="text-sm font-bold"
-                  :class="readinessScore() === 100 ? 'text-emerald-600' : readinessScore() >= 60 ? 'text-amber-600' : 'text-red-600'"
+                  :class="readinessScore() === 100 ? 'text-emerald-600' : readinessScore() >= 60 ? 'text-amber-600' : 'text-destructive'"
                   x-text="readinessScore() + '%'"></span>
         </div>
         {# Progress bar #}
         <div class="w-full bg-muted rounded-full h-1.5">
             <div class="rounded-full h-1.5 transition-all duration-500"
-                 :class="readinessScore() === 100 ? 'bg-emerald-500' : readinessScore() >= 60 ? 'bg-amber-500' : 'bg-red-500'"
+                 :class="readinessScore() === 100 ? 'bg-emerald-500' : readinessScore() >= 60 ? 'bg-amber-500' : 'bg-destructive'"
                  :style="'width: ' + readinessScore() + '%'"></div>
         </div>
         {# Checklist items #}
@@ -73,12 +73,12 @@
             <div class="flex items-center justify-between">
                 <span class="text-sm font-semibold">Blueprint Completeness</span>
                 <span class="text-lg font-bold"
-                      :class="reasoningCompleteness >= 0.8 ? 'text-emerald-600' : reasoningCompleteness >= 0.5 ? 'text-amber-600' : 'text-red-600'"
+                      :class="reasoningCompleteness >= 0.8 ? 'text-emerald-600' : reasoningCompleteness >= 0.5 ? 'text-amber-600' : 'text-destructive'"
                       x-text="Math.round(reasoningCompleteness * 100) + '%'"></span>
             </div>
             <div class="w-full bg-muted rounded-full h-2">
                 <div class="rounded-full h-2 transition-all duration-500"
-                     :class="reasoningCompleteness >= 0.8 ? 'bg-emerald-500' : reasoningCompleteness >= 0.5 ? 'bg-amber-500' : 'bg-red-500'"
+                     :class="reasoningCompleteness >= 0.8 ? 'bg-emerald-500' : reasoningCompleteness >= 0.5 ? 'bg-amber-500' : 'bg-destructive'"
                      :style="'width: ' + (reasoningCompleteness * 100) + '%'"></div>
             </div>
         </div>
@@ -126,10 +126,10 @@
                         <div class="flex items-center gap-2 min-w-0">
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
                                   :class="{
-                                      'bg-red-500/10 text-red-600': gap.severity === 'critical',
+                                      'bg-destructive/10 text-destructive': gap.severity === 'critical',
                                       'bg-amber-500/10 text-amber-600': gap.severity === 'high',
-                                      'bg-blue-500/10 text-blue-600': gap.severity === 'medium',
-                                      'bg-zinc-500/10 text-zinc-600': true
+                                      'bg-info/10 text-info': gap.severity === 'medium',
+                                      'bg-muted-foreground/10 text-muted-foreground': true
                                   }"
                                   x-text="gap.severity || 'unknown'"></span>
                             <span class="text-xs font-medium truncate" x-text="gap.title || gap.name || gap.gap_type || 'Gap'"></span>
@@ -234,7 +234,7 @@
                     <p class="text-xs text-muted-foreground" x-text="arbPackage.solution ? arbPackage.solution.description : ''"></p>
                 </div>
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
-                      :class="arbPackage.solution && arbPackage.solution.governance_status === 'arb_review' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30'"
+                      :class="arbPackage.solution && arbPackage.solution.governance_status === 'arb_review' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30'"
                       x-text="arbPackage.solution ? arbPackage.solution.governance_status : 'draft'"></span>
             </div>
         </div>
@@ -298,7 +298,7 @@
                                           :class="{
                                               'bg-emerald-500/10 text-emerald-600': arbPackage.domains[code].status === 'confirmed',
                                               'bg-amber-500/10 text-amber-600': arbPackage.domains[code].status === 'pending',
-                                              'bg-zinc-500/10 text-zinc-600': arbPackage.domains[code].status === 'not_applicable'
+                                              'bg-muted-foreground/10 text-muted-foreground': arbPackage.domains[code].status === 'not_applicable'
                                           }"
                                           x-text="arbPackage.domains[code].status"></span>
                                 </div>
@@ -307,7 +307,7 @@
                                     <span x-text="arbPackage.domains[code].relevance_tier"></span>
                                     <div class="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
                                         <div class="h-full rounded-full transition-all"
-                                             :class="arbPackage.domains[code].property_coverage >= 80 ? 'bg-emerald-500' : arbPackage.domains[code].property_coverage >= 60 ? 'bg-amber-500' : 'bg-red-500'"
+                                             :class="arbPackage.domains[code].property_coverage >= 80 ? 'bg-emerald-500' : arbPackage.domains[code].property_coverage >= 60 ? 'bg-amber-500' : 'bg-destructive'"
                                              :style="'width:' + arbPackage.domains[code].property_coverage + '%'"></div>
                                     </div>
                                     <span class="text-[10px] font-medium" x-text="arbPackage.domains[code].property_coverage + '%'"></span>

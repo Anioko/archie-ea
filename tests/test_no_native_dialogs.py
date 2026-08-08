@@ -53,6 +53,23 @@ def _offending_lines(path):
             # Jinja comments explaining what NOT to do are not call sites.
             if stripped.startswith("{#") or stripped.startswith("<!--"):
                 continue
+            # Neither is a JS comment saying "never alert()" - settings/index.html
+            # was flagged for its own guidance note.
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            # Nor is DEFINING a macro called alert(). components/alert.html has
+            # exported `alert` since it was written, and enterprise/
+            # ai_architecture_analysis.html imports it by that name.
+            #
+            # This matters more than a tidy count: the previous attempt to satisfy
+            # this test renamed the macro to `Platform.alert`, which Jinja cannot
+            # parse - a macro name may not contain a dot - so components/alert.html
+            # stopped compiling and every page importing it would 500. The
+            # template-syntax gate caught it. A test that cannot tell a definition
+            # from a call site will keep provoking that fix, so teach it the
+            # difference instead.
+            if re.search(r"\{%-?\s*macro\s+(?:alert|confirm)\s*\(", stripped):
+                continue
             found.append((number, stripped[:120]))
     return found
 

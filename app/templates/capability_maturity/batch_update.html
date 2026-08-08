@@ -34,7 +34,7 @@
     <div class="bg-warning/10 border border-warning/30 rounded-lg p-4 mb-6">
         <div class="flex">
             <div class="flex-shrink-0">
-                <i data-lucide="alert-triangle" class="h-5 w-5 text-warning dark:text-warning/80" aria-hidden="true"></i>
+                <i data-lucide="alert-triangle" class="h-5 w-5 text-warning" aria-hidden="true"></i>
             </div>
             <div class="ml-3">
                 <h2 class="text-sm font-medium text-foreground">Batch Update Warning</h2>
@@ -126,7 +126,7 @@
             <h2 class="text-lg font-semibold text-foreground">Batch Update Configuration</h2>
         </div>
         <div class="p-6">
-            <form method="POST" class="space-y-6">
+            <form method="POST" action="{{ url_for('maturity_management.batch_update_maturity') }}" class="space-y-6">
                 {{ csrf_token() }}
                 <!-- Filter Configuration -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">

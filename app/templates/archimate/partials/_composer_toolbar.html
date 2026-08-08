@@ -152,7 +152,7 @@
         </button>
 
         {# ── Lanes / Note / Viewpoints — segmented pill control ── #}
-        <div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 gap-0"
+        <div class="flex items-center bg-muted p-0.5 rounded-lg border border-border gap-0"
              style="background: hsl(var(--muted)); border-color: hsl(var(--border));">
             <template x-if="mode === 'edit'">
                 <button type="button" class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5"
@@ -831,7 +831,7 @@
         <template x-if="qualityScore">
             <div class="flex items-center gap-1 ml-auto mr-2">
                 <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border"
-                     :class="qualityScore.overall >= 80 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : qualityScore.overall >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' : 'bg-red-500/10 text-destructive border-red-500/30'">
+                     :class="qualityScore.overall >= 80 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : qualityScore.overall >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' : 'bg-destructive/10 text-destructive border-destructive/30'">
                     <span x-text="'Quality: ' + qualityScore.overall + '%'"></span>
                 </div>
                 <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] text-muted-foreground border border-border">

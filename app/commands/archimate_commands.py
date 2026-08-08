@@ -315,7 +315,7 @@ def health_check():
         click.echo(f"📋 Models: {model_count}")
 
         # Test service instantiation
-        archimate_service = ArchiMateService()
+        ArchiMateService()
         click.echo("✅ ArchiMate service instantiated successfully")
 
     except Exception as e:

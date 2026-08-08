@@ -113,7 +113,7 @@ def get_vendors():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve vendors",
             code="VENDORS_RETRIEVAL_ERROR",
@@ -179,7 +179,7 @@ def get_vendor(vendor_id):
 
         return success_response(vendor_data)
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve vendor",
             code="VENDOR_RETRIEVAL_ERROR",
@@ -294,7 +294,7 @@ def create_vendor():
             status_code=201,
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to create vendor",
@@ -410,7 +410,7 @@ def update_vendor(vendor_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to update vendor",
@@ -464,7 +464,7 @@ def delete_vendor(vendor_id):
             {"message": "Vendor deleted successfully", "id": str(vendor_id)}
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to delete vendor",

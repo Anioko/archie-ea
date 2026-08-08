@@ -130,7 +130,7 @@
                                 {{ ls | title }}
                             </span>
                             {% elif ls in ('development', 'testing', 'planning') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-500/10 text-primary border-primary/20">
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-info/10 text-primary border-primary/20">
                                 {{ ls | title }}
                             </span>
                             {% elif ls in ('deprecated', 'retirement', 'retired') %}
@@ -171,7 +171,7 @@
                         <td class="px-6 py-3">
                             {% set crit = component.criticality %}
                             {% if crit == 'mission_critical' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-red-500/10 text-destructive border-destructive/20">Mission Critical</span>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-destructive/10 text-destructive border-destructive/20">Mission Critical</span>
                             {% elif crit == 'high' %}
                             <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">High</span>
                             {% elif crit == 'medium' %}

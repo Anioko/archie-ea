@@ -22,13 +22,13 @@
     <div class="flex flex-wrap gap-2 mb-6">
         <a href="{{ url_for('arch_decisions.list_decisions') }}"
            class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-                  {% if not status_filter %}bg-primary text-primary-foreground{% else %}bg-muted text-muted-foreground hover:bg-accent{% endif %}">
+ {% if not status_filter %}bg-primary text-primary-foreground{% else %}bg-muted text-muted-foreground hover:bg-accent{% endif %}">
             All
         </a>
         {% for s, label in [('proposed','Proposed'),('accepted','Accepted'),('deprecated','Deprecated'),('superseded','Superseded')] %}
         <a href="{{ url_for('arch_decisions.list_decisions', status=s, phase=phase_filter) }}"
            class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-                  {% if status_filter == s %}bg-primary text-primary-foreground{% else %}bg-muted text-muted-foreground hover:bg-accent{% endif %}">
+ {% if status_filter == s %}bg-primary text-primary-foreground{% else %}bg-muted text-muted-foreground hover:bg-accent{% endif %}">
             {{ label }}
         </a>
         {% endfor %}
@@ -73,9 +73,9 @@
                     </td>
                     <td class="px-4 py-3">
                         {% if d.status == 'proposed' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">Proposed</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-700 border border-amber-500/20">Proposed</span>
                         {% elif d.status == 'accepted' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">Accepted</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">Accepted</span>
                         {% elif d.status == 'deprecated' %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Deprecated</span>
                         {% elif d.status == 'superseded' %}

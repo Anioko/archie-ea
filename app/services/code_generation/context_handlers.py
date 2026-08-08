@@ -3,9 +3,8 @@ Context Handlers for Code Generation
 
 Provides context-aware data loading for different code generation modes.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from app import db
 from app.models.application_portfolio import ApplicationComponent
 
 try:
@@ -15,7 +14,7 @@ except ImportError:
     Application = None
 import logging
 
-from app.services.mdd_code_generation_service import TechnologyStack, UMLElement
+from app.services.mdd_code_generation_service import UMLElement
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +328,7 @@ class ArchitectureModeHandler:
             ValueError: If view not found
         """
         try:
-            from app.models.archimate_element import ArchiMateElement
+            from app.models.archimate_element import ArchiMateElement  # noqa: F401 — availability probe: the import IS the test
             from app.models.archimate_view import ArchiMateView
         except ImportError:
             logger.warning("ArchiMate models not available")

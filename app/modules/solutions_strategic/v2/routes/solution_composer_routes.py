@@ -1033,7 +1033,7 @@ def submit_to_arb():
     description = data.get("description", "")
     if description:
         description += "\n\n"
-    description += f"Solution Composer Canvas Summary:\n"
+    description += "Solution Composer Canvas Summary:\n"
     description += f"- Canvas ID: {service.current_canvas.canvas_id}\n"
     description += f"- Canvas Name: {service.current_canvas.name}\n"
     description += f"- Elements: {node_count}\n"
@@ -1076,7 +1076,7 @@ def submit_to_arb():
                 },
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "Failed to submit to ARB"}), 500
 
@@ -1256,7 +1256,7 @@ def create_canvas_from_adm_workflow(workflow_instance_id: int):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to create canvas"}), 500
 
 
@@ -1345,9 +1345,9 @@ def import_adm_to_existing_canvas(canvas_id: int, workflow_instance_id: int):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to import"}), 500
 
 
@@ -1482,7 +1482,7 @@ def populate_canvas_from_solution(solution_id: int):
         layer_x_counters[layer] = col + 1
 
         node_id = f"sol{solution_id}-el{element.id}"
-        result = service.add_node(
+        (service.add_node(
             node_id=node_id,
             element_type=el_type,
             name=el_name,
@@ -1491,7 +1491,7 @@ def populate_canvas_from_solution(solution_id: int):
             position_x=col * _NODE_X_STEP + 50,
             position_y=layer_idx * _LAYER_Y_STEP + 50,
             properties={"element_role": junc.element_role, "layer_type": junc.layer_type},
-        )
+        ))
         added.append({"node_id": node_id, "name": el_name, "type": el_type, "layer": layer})
 
     state = service.get_canvas_state()

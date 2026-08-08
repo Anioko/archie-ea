@@ -3,7 +3,7 @@ Roadmap Widget Component - Reusable Gantt Timeline Visualization
 Extracted from capability-map/index.html for use across the application
 
 Usage:
-  {% from 'components/roadmap_widget.html' import roadmap_widget %}
+  {% from 'components/roadmap_widget.html' import roadmap_widget with context %}
   {{ roadmap_widget(
       data_endpoint=url_for('implementation_planning.api_roadmap_data'),
       title='Implementation Roadmap',

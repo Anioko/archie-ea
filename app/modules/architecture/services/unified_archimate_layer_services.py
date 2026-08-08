@@ -23,10 +23,10 @@ All original classes and methods are preserved exactly as they were.
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+from app.models import ArchiMateElement, ArchiMateRelationship
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -284,11 +284,11 @@ class ApplicationLayerService:
         relationships.append(flow_rel)
 
         # Link data objects to flow (via properties)
-        flow_props = {
+        ({
             "data_objects": data_object_ids,
             "flow_type": "data_transfer",
             "created_at": datetime.utcnow().isoformat(),
-        }
+        })
 
         # Store data flow metadata
         for data_obj_id in data_object_ids:

@@ -15,18 +15,14 @@ Key Features:
 - Interactive discovery dashboard
 """
 
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import joinedload
 
 from app import db
-from app.models import User
-from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (
     TCOCalculation,
     VendorOrganization,

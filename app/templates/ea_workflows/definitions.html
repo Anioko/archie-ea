@@ -35,7 +35,7 @@
         <div class="flex flex-wrap items-center gap-2">
             <a href="{{ url_for('main.ea_workflows_definitions') }}{% if selected_category %}?category={{ selected_category }}{% endif %}"
                class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors
-                      {% if not selected_phase %}ring-2 ring-primary bg-primary text-primary-foreground{% else %}bg-muted hover:bg-muted/80 text-foreground{% endif %}"
+ {% if not selected_phase %}ring-2 ring-primary bg-primary text-primary-foreground{% else %}bg-muted hover:bg-muted/80 text-foreground{% endif %}"
                aria-current="{% if not selected_phase %}page{% endif %}">
                 All
             </a>
@@ -43,7 +43,7 @@
             {% set count = phase_counts.get(phase_code, 0) %}
             <a href="{{ url_for('main.ea_workflows_definitions', phase=phase_code) }}{% if selected_category %}&category={{ selected_category }}{% endif %}"
                class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors
-                      {% if selected_phase == phase_code %}ring-2 ring-primary bg-primary text-primary-foreground{% else %}bg-muted hover:bg-muted/80 text-foreground{% endif %}"
+ {% if selected_phase == phase_code %}ring-2 ring-primary bg-primary text-primary-foreground{% else %}bg-muted hover:bg-muted/80 text-foreground{% endif %}"
                aria-current="{% if selected_phase == phase_code %}page{% endif %}"
                title="{{ phase_name }}">
                 <span class="flex h-6 w-6 items-center justify-center rounded-full {% if selected_phase == phase_code %}bg-primary-foreground/20{% else %}bg-background/80{% endif %} text-xs font-bold">{{ phase_code }}</span>
@@ -98,13 +98,13 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
-                        {% if defn.is_active %}bg-emerald-500/10 text-emerald-700 dark:text-emerald-400{% else %}bg-muted text-foreground/80{% endif %}">
+ {% if defn.is_active %}bg-emerald-500/10 text-emerald-700 else %}bg-muted text-foreground/80{% endif %}">
                         {{ 'Active' if defn.is_active else 'Inactive' }}
                     </span>
                     <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
-                        {% if defn.automation_level == 'automated' %}bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
-                        {% elif defn.automation_level == 'assisted' %}bg-primary/10 text-primary
-                        {% else %}bg-muted text-foreground/80{% endif %}">
+ {% if defn.automation_level == 'automated' %}bg-emerald-500/10 text-emerald-700
+ {% elif defn.automation_level == 'assisted' %}bg-primary/10 text-primary
+ {% else %}bg-muted text-foreground/80{% endif %}">
                         {{ defn.automation_level|title }}
                     </span>
                 </div>

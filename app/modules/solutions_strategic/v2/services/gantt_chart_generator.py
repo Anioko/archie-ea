@@ -2,7 +2,7 @@
 Gantt Chart Generator - Generates timeline visualization data for workflows.
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
 

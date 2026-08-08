@@ -114,6 +114,7 @@ class VendorCatalogManager {
             }
         } catch (error) {
             console.error('Error loading categories:', error);
+            this.showError('Error loading categories');
         }
     }
 
@@ -127,6 +128,7 @@ class VendorCatalogManager {
             }
         } catch (error) {
             console.error('Error loading tiers:', error);
+            this.showError('Error loading tiers');
         }
     }
 

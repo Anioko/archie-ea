@@ -37,7 +37,7 @@
     <!-- Search Filters -->
     <div class="bg-card rounded-lg shadow mb-6">
         <div class="p-6">
-            <form method="GET" class="space-y-4">
+            <form method="GET" action="{{ url_for('maturity_management.search_capabilities') }}" class="space-y-4">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label for="q" class="block text-sm font-medium text-foreground mb-2">Search</label>
@@ -132,10 +132,10 @@
                             {% if cap.category %}
                                 <div class="group relative">
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                        {% if cap.category.startswith('APO') or cap.category.startswith('BAI') or cap.category.startswith('DSS') or cap.category.startswith('MEA') %}bg-primary/10 text-primary
-                                        {% elif cap.category.startswith('L4') %}bg-primary/20 text-primary
-                                        {% elif cap.category in ['SMP', 'BUS', 'GMP', 'INF', 'INT', 'COL', 'TMP', 'SVC'] %}bg-secondary text-secondary-foreground
-                                        {% else %}bg-muted text-foreground{% endif %}">
+ {% if cap.category.startswith('APO') or cap.category.startswith('BAI') or cap.category.startswith('DSS') or cap.category.startswith('MEA') %}bg-primary/10 text-primary
+ {% elif cap.category.startswith('L4') %}bg-primary/20 text-primary
+ {% elif cap.category in ['SMP', 'BUS', 'GMP', 'INF', 'INT', 'COL', 'TMP', 'SVC'] %}bg-secondary text-secondary-foreground
+ {% else %}bg-muted text-foreground{% endif %}">
                                         {{ cap.category }}
                                     </span>
                                     <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-popover text-popover-foreground text-xs rounded-lg border border-border opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10 shadow-md">
@@ -155,11 +155,11 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if cap.current_maturity_level %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                    {% if cap.current_maturity_level == 1 %}bg-destructive/10 text-destructive
-                                    {% elif cap.current_maturity_level == 2 %}bg-warning/10 text-warning dark:text-warning/80
-                                    {% elif cap.current_maturity_level == 3 %}bg-warning/10 text-warning dark:text-warning/60
-                                    {% elif cap.current_maturity_level == 4 %}bg-primary/10 text-primary
-                                    {% else %}bg-primary/20 text-primary{% endif %}">
+ {% if cap.current_maturity_level == 1 %}bg-destructive/10 text-destructive
+ {% elif cap.current_maturity_level == 2 %}bg-warning/10 text-warning
+ {% elif cap.current_maturity_level == 3 %}bg-warning/10 text-warning
+ {% elif cap.current_maturity_level == 4 %}bg-primary/10 text-primary
+ {% else %}bg-primary/20 text-primary{% endif %}">
                                     Level {{ cap.current_maturity_level }}
                                 </span>
                             {% else %}
@@ -171,11 +171,11 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if cap.target_maturity_level %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                    {% if cap.target_maturity_level == 1 %}bg-destructive/10 text-destructive
-                                    {% elif cap.target_maturity_level == 2 %}bg-warning/10 text-warning dark:text-warning/80
-                                    {% elif cap.target_maturity_level == 3 %}bg-warning/10 text-warning dark:text-warning/60
-                                    {% elif cap.target_maturity_level == 4 %}bg-primary/10 text-primary
-                                    {% else %}bg-primary/20 text-primary{% endif %}">
+ {% if cap.target_maturity_level == 1 %}bg-destructive/10 text-destructive
+ {% elif cap.target_maturity_level == 2 %}bg-warning/10 text-warning
+ {% elif cap.target_maturity_level == 3 %}bg-warning/10 text-warning
+ {% elif cap.target_maturity_level == 4 %}bg-primary/10 text-primary
+ {% else %}bg-primary/20 text-primary{% endif %}">
                                     Level {{ cap.target_maturity_level }}
                                 </span>
                             {% else %}
@@ -187,9 +187,9 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if cap.maturity_gap and cap.maturity_gap > 0 %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                    {% if cap.maturity_gap > 2 %}bg-destructive/10 text-destructive
-                                    {% elif cap.maturity_gap > 1 %}bg-warning/10 text-warning dark:text-warning/80
-                                    {% else %}bg-primary/10 text-primary{% endif %}">
+ {% if cap.maturity_gap > 2 %}bg-destructive/10 text-destructive
+ {% elif cap.maturity_gap > 1 %}bg-warning/10 text-warning
+ {% else %}bg-primary/10 text-primary{% endif %}">
                                     {{ cap.maturity_gap }}
                                 </span>
                             {% else %}
@@ -199,10 +199,10 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if cap.strategic_importance %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                    {% if cap.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
-                                    {% elif cap.strategic_importance == 'high' %}bg-warning/10 text-warning dark:text-warning/80
-                                    {% elif cap.strategic_importance == 'medium' %}bg-warning/10 text-warning dark:text-warning/60
-                                    {% else %}bg-muted text-foreground{% endif %}">
+ {% if cap.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
+ {% elif cap.strategic_importance == 'high' %}bg-warning/10 text-warning
+ {% elif cap.strategic_importance == 'medium' %}bg-warning/10 text-warning
+ {% else %}bg-muted text-foreground{% endif %}">
                                     {{ cap.strategic_importance }}
                                 </span>
                             {% else %}

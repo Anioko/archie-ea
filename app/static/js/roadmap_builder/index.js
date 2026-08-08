@@ -345,6 +345,7 @@ let RoadmapBuilder = {
             })
             .catch(function(err) {
                 console.error('Error loading critical path:', err);
+                self.showToast('Error loading critical path. Please retry.', 'error');
             });
     },
 
@@ -527,6 +528,7 @@ let RoadmapBuilder = {
             })
             .catch(function(err) {
                 console.error('Error loading dependency graph:', err);
+                self.showToast('Error loading dependency graph. Please retry.', 'error');
             });
     },
 

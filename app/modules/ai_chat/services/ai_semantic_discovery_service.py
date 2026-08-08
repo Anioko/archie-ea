@@ -17,16 +17,13 @@ Key Features:
 - Alternative scenario analysis
 """
 
-import asyncio  # dead-code-ok
-import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import and_, func, or_, text  # dead-code-ok
 from sqlalchemy.orm import joinedload  # dead-code-ok
 
 # Core AI/ML deps: torch + sentence-transformers (faiss-cpu is the vector backend)
@@ -54,7 +51,6 @@ except Exception:
 from app import db
 from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (  # dead-code-ok
-    VendorOrganization,
     VendorProduct,
     VendorProductCapability,
 )
@@ -168,7 +164,7 @@ class AISemanticDiscoveryService:
             import openai
             openai.api_key = api_key
             # Make a minimal request to check availability
-            response = openai.Model.list()
+            openai.Model.list()
             return True
         except Exception as e:
             logger.debug(f"LLM API not available: {e}")

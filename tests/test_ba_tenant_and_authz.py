@@ -159,22 +159,29 @@ def _login(client, user_id):
     """Switch the test client to *user_id*, and make the switch actually take.
 
     Setting the session cookie is the standard Flask-Login test pattern and is
-    not sufficient here. pytest-flask (1.3.0) pushes an app AND request context
-    around every test that uses an `app` fixture, so `client.get()` reuses that
-    context instead of pushing its own - and Flask-Login caches the resolved
-    user on it as `g._login_user`.
+    not sufficient here. pytest-flask pushes an app AND request context around
+    every test using the `app` fixture, so `client.get()` reuses that context
+    instead of pushing its own - and Flask-Login caches the resolved user on it
+    as `g._login_user`, returning it without ever consulting the cookie.
 
     The consequence is specific and nasty. In a cross-tenant test the first
     login (the owner) resolves and caches; the second login (the attacker)
-    changes the cookie and nothing else. The "attacker" request then runs AS
-    THE OWNER, who can of course read their own record - and the test reports a
-    cross-org READ leak that cannot happen. Verified three ways that the
-    product blocks it correctly with a 404, including by driving these same
-    helpers outside pytest.
+    changes the cookie and nothing else, so the "attacker" request runs AS THE
+    OWNER - who can of course read their own record. The tests then reported a
+    cross-org READ leak that cannot happen. Measured directly: the request saw
+    session["_user_id"] == "735" (attacker) while current_user.id was still 734
+    (owner), with id(g) identical across both requests. Verified against a real
+    WSGI server over HTTP with two genuine logins, where the product correctly
+    refuses with 404.
 
-    So drop the cached user. Without this the four cross-org tests in this file
-    are worse than useless: they fail when the product is correct, which trains
-    people to ignore the one test class that would catch a real tenancy leak.
+    A test that fails for a reason unrelated to what it asserts is worse than no
+    test: it trains people to wave through red isolation results, in the one
+    test class that would catch a genuine tenancy leak.
+
+    The cleared set is the union of what both fixes for this bug identified:
+    Flask-Login's two caches, plus the tenant context the isolation middleware
+    keys off - stale org state would defeat the point of this module just as
+    surely as a stale user.
     """
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
@@ -182,10 +189,11 @@ def _login(client, user_id):
 
     from flask import g, has_app_context
 
-    if has_app_context():
-        for cached in ("_login_user", "_current_user"):
-            if hasattr(g, cached):
-                delattr(g, cached)
+    if not has_app_context():
+        return  # no lingering context; nothing cached to clear
+    for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
+        if hasattr(g, cached):
+            delattr(g, cached)
 
 
 def _cleanup_ids(db, model, ids):

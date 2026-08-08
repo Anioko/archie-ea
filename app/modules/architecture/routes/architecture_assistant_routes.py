@@ -28,7 +28,6 @@ from flask import Blueprint, Response, current_app, jsonify, render_template, re
 from flask_login import current_user, login_required
 
 from app.decorators import require_roles
-from app.models.archimate import ArchitectureElement  # dead-code-ok
 from app.models.archimate_motivation import (
     MotivationAssessment,
     MotivationConstraint,
@@ -596,8 +595,10 @@ def design_solution():
         constraints = data.get("constraints")
         include_vendor_analysis = data.get("include_vendor_analysis", True)
 
-        # Gather RAG context (best-effort — never crashes the endpoint)
-        rag_context = ""
+        # Gather RAG context (best-effort — never crashes the endpoint).
+        # Bound before the try: retrieval failure must leave these defined.
+        _rag_context = ""
+        rag_ctx = None
         try:
             from app.services.architecture_rag_service import ArchitectureRAGService
             rag_svc = ArchitectureRAGService()
@@ -605,7 +606,7 @@ def design_solution():
                 business_domain=data.get("business_domain", ""),
                 capability_ids=[validated_id],
             )
-            rag_context = rag_svc.format_context(rag_ctx)
+            _rag_context = rag_svc.format_context(rag_ctx)
         except Exception as e:
             logger.warning("RAG context retrieval failed in design-solution: %s", e)
 
@@ -616,11 +617,24 @@ def design_solution():
             requirements=requirements,
             constraints=constraints,
             include_vendor_analysis=include_vendor_analysis,
+            # The structured dict, not the formatted string: the ranker matches
+            # option text against individual principles and prior decisions, and
+            # needs them as rows to name which one matched.
+            rag_context=rag_ctx,
         )
-        # rag_context is deliberately not passed: design_solution does not declare
-        # it, so doing so raised TypeError and the endpoint always 500'd. The RAG
-        # context is still retrieved above but the service cannot consume it yet -
-        # a real feature gap, tracked separately from this crash fix.
+        # design_solution() cannot consume rag_context: it is deterministic — it
+        # ranks vendor/build/hybrid options from the capability, vendors and
+        # constraints — with no LLM prompt for a text blob to enter. Passing it
+        # raised TypeError, which is why it was dropped.
+        #
+        # But get_context_for_solution() runs four SQL queries (principles, prior
+        # ARB decisions, reference architectures, solution patterns) on every
+        # request, and formatting then discarding the result made all four pure
+        # waste. Returning it alongside the design costs nothing further and gives
+        # the caller the governance context the retrieval was written to surface.
+        # Purely additive: no existing field changes.
+        if isinstance(result, dict) and _rag_context:
+            result.setdefault("rag_context", _rag_context)
 
         _log_ai_call(
             action="design_solution",
@@ -1055,7 +1069,7 @@ def _build_arb_draft_from_solution(solution):
     cost = qb.get("cost_sustainability", {})
 
     # ── Business Justification ────────────────────────────────────────────────
-    bj = f"## Business Justification\n\n"
+    bj = "## Business Justification\n\n"
     bj += f"**Solution:** {solution.name}\n"
     if solution.business_domain:
         bj += f"**Domain:** {solution.business_domain}\n"
@@ -1815,8 +1829,10 @@ def analyze_gap():
         target_coverage = data.get("target_coverage", 100.0)
         include_solutions = data.get("include_solutions", True)
 
-        # Gather RAG context (best-effort — never crashes the endpoint)
-        rag_context = ""
+        # Gather RAG context (best-effort — never crashes the endpoint).
+        # Bound before the try: retrieval failure must leave these defined.
+        _rag_context = ""
+        rag_ctx = None
         try:
             from app.services.architecture_rag_service import ArchitectureRAGService
             rag_svc = ArchitectureRAGService()
@@ -1824,7 +1840,7 @@ def analyze_gap():
                 business_domain=data.get("business_domain", ""),
                 capability_ids=capability_ids,
             )
-            rag_context = rag_svc.format_context(rag_ctx)
+            _rag_context = rag_svc.format_context(rag_ctx)
         except Exception as e:
             logger.warning("RAG context retrieval failed in analyze-gap: %s", e)
 
@@ -1834,8 +1850,11 @@ def analyze_gap():
             target_coverage=target_coverage,
             include_solutions=include_solutions,
         )
-        # rag_context not passed: analyze_gap does not declare it, so this raised
-        # TypeError on every call. Retrieved above but not yet consumable.
+        # Same as design-solution: analyze_gap() is deterministic and cannot take a
+        # text blob, but the four queries behind _rag_context have already run, so
+        # the result is returned rather than discarded. Purely additive.
+        if isinstance(result, dict) and _rag_context:
+            result.setdefault("rag_context", _rag_context)
 
         _log_ai_call(
             action="analyze_gap",
@@ -2362,7 +2381,7 @@ def add_business_driver(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding business driver: {e}")
@@ -2479,7 +2498,7 @@ def add_strategic_objective(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding strategic objective: {e}")
@@ -2617,7 +2636,7 @@ def add_business_capability(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding business capability: {e}")
@@ -2658,7 +2677,7 @@ def generate_capability_heatmap(context_id):
 
         return jsonify({"success": True, "data": heatmap}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating capability heatmap: {e}")
@@ -2700,7 +2719,7 @@ def generate_problem_statement(context_id):
 
         return jsonify({"success": True, "data": {"problem_statement": problem_statement}}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating problem statement: {e}")
@@ -2741,7 +2760,7 @@ def generate_scope_definition(context_id):
 
         return jsonify({"success": True, "data": {"scope_definition": scope_definition}}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating scope definition: {e}")
@@ -3569,7 +3588,6 @@ def export_arb_document(solution_id):
     """Export ARB submission as a printable HTML document."""
     from app.models.solution_models import Solution
     from app.models.solution_element import SolutionElement
-    from app.models.archimate_core import ArchiMateElement
 
     solution = Solution.query.get(solution_id)
     if not solution:
