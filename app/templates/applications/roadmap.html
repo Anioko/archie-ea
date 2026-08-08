@@ -294,17 +294,19 @@
             fetch('/capability-map/api/roadmap/plateaus'),
             fetch('/api/capabilities/grouped'),
           ]);
-          if (pr.ok) {
-            const pd = await pr.json();
-            this.plateaus = pd.plateaus || [];
-          }
-          if (cr.ok) {
-            const cd = await cr.json();
-            const grouped = cd.capabilities || cd;
-            this.capabilities = Object.values(grouped).flat();
-          }
-        } catch {
-          // Plateau/capability loading is non-critical; form still works without them
+          if (!pr.ok) throw new Error('Failed to load plateaus (' + pr.status + ')');
+          const pd = await pr.json();
+          this.plateaus = pd.plateaus || [];
+
+          if (!cr.ok) throw new Error('Failed to load capabilities (' + cr.status + ')');
+          const cd = await cr.json();
+          const grouped = cd.capabilities || cd;
+          this.capabilities = Object.values(grouped).flat();
+        } catch (e) {
+          // Plateau/capability lists are optional for the form, so this is a
+          // heads-up rather than a blocker — but the user must still be told
+          // the dropdowns may be incomplete.
+          Platform.toast.warning(e.message + ' — some dropdown options may be unavailable.');
         }
       },
 

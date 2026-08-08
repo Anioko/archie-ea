@@ -276,13 +276,13 @@ function apiRegistry() {
             if (spec && !spec.spec_content) {
                 try {
                     const res = await fetch(`/solutions/api/registry/specs/${specId}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        spec.spec_content = data.data.spec_content;
-                        spec.description = spec.description || data.data.description;
-                    }
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data = await res.json();
+                    spec.spec_content = data.data.spec_content;
+                    spec.description = spec.description || data.data.description;
                 } catch (err) {
                     console.error('Failed to load spec detail:', err);
+                    Platform.toast.error('Failed to load API spec details: ' + err.message);
                 }
             }
         },

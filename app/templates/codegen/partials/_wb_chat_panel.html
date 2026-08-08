@@ -184,19 +184,18 @@ function wbChatPanel() {
       if (!this.solutionId) return;
       try {
         const r = await fetch(`/solutions/${this.solutionId}/codegen/chat-edit/history?limit=40`);
-        if (r.ok) {
-          const history = await r.json();
-          this.messages = history.map(m => ({
-            role: m.role,
-            content: m.content,
-            patches: m.patches || [],
-            streaming: false,
-            allApplied: false,
-            dbId: m.id,
-          }));
-          this.$nextTick(() => this.scrollToBottom());
-        }
-      } catch (e) { /* Non-critical */ }
+        if (!r.ok) throw new Error('Failed to load chat history (' + r.status + ')');
+        const history = await r.json();
+        this.messages = history.map(m => ({
+          role: m.role,
+          content: m.content,
+          patches: m.patches || [],
+          streaming: false,
+          allApplied: false,
+          dbId: m.id,
+        }));
+        this.$nextTick(() => this.scrollToBottom());
+      } catch (e) { Platform.toast.warning(e.message); }
     },
 
     async send() {
@@ -322,7 +321,13 @@ function wbChatPanel() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.CSRF_TOKEN || '' },
                 body: JSON.stringify({ file: patch.file, diff: patch.diff, force: true }),
               });
-              if (r2.ok) { patch.applied = true; window.wbRefreshFile?.(patch.file); }
+              if (r2.ok) {
+                patch.applied = true;
+                window.wbRefreshFile?.(patch.file);
+              } else {
+                const err2 = await r2.json().catch(() => ({}));
+                Platform.toast.error('Failed to apply patch: ' + (err2.error || 'Unknown error'));
+              }
             }
           } else {
             Platform.toast.error('Failed to apply patch: ' + (result.error || 'Unknown error'));

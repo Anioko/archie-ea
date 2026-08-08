@@ -62,8 +62,13 @@
                             edit_data: editorData
                         })
                     }).then(response => {
-                        if (response.ok) {
+                        if (!response.ok) {
+                            Platform.toast.error('Failed to save changes (HTTP ' + response.status + ')');
+                            return;
                         }
+                        Platform.toast.success('Saved.');
+                    }).catch(error => {
+                        Platform.toast.error('Failed to save changes: ' + error.message);
                     });
                     
                     CKEDITOR.instances[editorIDName].destroy();
