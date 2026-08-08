@@ -77,9 +77,13 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - name: Install gate tooling
-        # Ruff plus pip-audit: scripts/verify.py and the check_* scripts are
-        # stdlib-only, so these gates run without installing app dependencies.
-        run: python -m pip install --upgrade pip "ruff==${RUFF_VERSION}" pip-audit
+        # Ruff, pip-audit — and jinja2, because the check_* scripts are NOT all
+        # stdlib-only as this comment used to claim. Two gates parse templates.
+        # Without jinja2, check_template_syntax printed "0" and returned success,
+        # so a must-be-zero gate protecting against a template that 500s every
+        # page using it reported a clean measurement having parsed nothing. It
+        # now fails loudly instead, which is why this dependency is explicit.
+        run: python -m pip install --upgrade pip "ruff==${RUFF_VERSION}" pip-audit jinja2
       - name: Compile + lint ratchets + design tokens + air-gap
         run: python scripts/verify.py --tag static
       - name: Dependency CVE gate

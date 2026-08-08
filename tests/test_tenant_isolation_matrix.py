@@ -47,7 +47,11 @@ INTENTIONALLY_GLOBAL = {
     "ApplicationOwner": "queried by user_id, which already implies one tenant",
     "ApplicationDocument": "reached via ApplicationComponent; handlers verify ownership",
     "ContractApplication": "join row between two scoped parents",
-    "VendorProductCapability": "vendor catalogue is shared reference data",
+    # VendorProductCapability was listed here on the reasoning that the vendor
+    # catalogue is shared. The catalogue is — VendorOrganization stays global —
+    # but an assessment of how a product covers a business_capability is not:
+    # that capability is tenant-owned, so the row describes one customer's
+    # model. It now carries TenantMixin. See tests/test_vendor_tenancy_policy.py.
     "VendorProductPricing": "vendor catalogue is shared reference data",
     "SolutionScoringConfig": "scoring defaults are platform-level",
     "OrgConnectorConfig": "queried by explicit organization_id in every caller",

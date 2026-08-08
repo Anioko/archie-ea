@@ -28,18 +28,31 @@ TILE_VARS = ("conceptual_count", "logical_count", "physical_count")
 
 
 @pytest.fixture
-def one_of_each(db_session):
-    """Insert one model of each kind so a correct count is non-zero."""
+def one_of_each(app, db_session, make_org):
+    """Insert one model of each kind so a correct count is non-zero.
+
+    Built inside a tenant context: these three gained TenantMixin when ADR-0003
+    was completed, so organization_id is NOT NULL on a freshly created schema.
+    Without a context this inserted NULL and failed — on CI, where init-db
+    builds the constraint, but NOT against a long-lived database whose column
+    predates the change and is still nullable. That difference is exactly why
+    this passed against the shared test database and broke in CI.
+    """
     from app.models.all_missing_models import (
         ConceptualDataModel,
         LogicalDataModel,
         PhysicalDataModel,
     )
 
-    db_session.add(ConceptualDataModel(name="Customer Domain Model"))
-    db_session.add(LogicalDataModel(name="Customer Logical Model"))
-    db_session.add(PhysicalDataModel(name="Customer Physical Model"))
-    db_session.flush()
+    org = make_org("data-models")
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        db_session.add(ConceptualDataModel(name="Customer Domain Model"))
+        db_session.add(LogicalDataModel(name="Customer Logical Model"))
+        db_session.add(PhysicalDataModel(name="Customer Physical Model"))
+        db_session.commit()
 
 
 def _render_context(app, view_name):

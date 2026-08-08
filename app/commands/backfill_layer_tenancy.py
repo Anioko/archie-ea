@@ -86,13 +86,27 @@ def _tenant_tables():
     Derived from the mapper registry rather than a hand-kept list so the next
     model to gain the mixin is covered without editing this file. Dual-mapped
     tables (`extend_existing`) appear once.
+
+    Names are re-checked against a strict identifier pattern before being
+    returned. They come from mapped classes rather than from any request, so
+    this cannot fail in practice — it exists so the f-string interpolation
+    below (bandit B608, which cannot know the source is trusted) is guarded by
+    something executable rather than by a comment.
     """
+    import re
+
     from app.models.mixins import TenantMixin
 
+    safe = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
     tables = set()
     for mapper in db.Model.registry.mappers:
         if issubclass(mapper.class_, TenantMixin):
-            tables.add(mapper.local_table.name)
+            name = mapper.local_table.name
+            if not safe.match(name):
+                raise RuntimeError(
+                    f"refusing to interpolate unexpected table name {name!r}"
+                )
+            tables.add(name)
     return sorted(tables)
 
 
