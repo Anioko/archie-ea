@@ -20,6 +20,10 @@ Classes, each a distinct user-visible failure:
                  Enter reloads the page and loses what was typed.
   forbidden-ui   alert() / confirm() in shipped UI code. DESIGN.md forbids both;
                  they are unstyled, unblockable and untestable.
+  orphan-page    a template that extends a layout — so it is a PAGE, not a
+                 partial — that no render_template() call names and no other
+                 template includes. It cannot be reached by any URL. Either
+                 dead code, or a feature that was built and never wired up.
 
 Dynamic URLs (anything containing a template expression or string
 concatenation) are skipped rather than guessed at — a false positive here costs
@@ -75,7 +79,7 @@ def scan() -> dict[str, list[str]]:
     resolves, _n = _route_matcher()
     out: dict[str, list[str]] = {k: [] for k in
                                 ("dead-link", "dead-fetch", "swallowed",
-                                 "form-no-action", "forbidden-ui")}
+                                 "form-no-action", "forbidden-ui", "orphan-page")}
 
     html = sorted(TEMPLATES.rglob("*.html"))
     js = sorted(STATIC_JS.rglob("*.js"))
@@ -138,6 +142,35 @@ def scan() -> dict[str, list[str]]:
             out["forbidden-ui"].append(
                 "%s:%d: forbidden-ui: %s() — DESIGN.md requires Platform.toast/modal"
                 % (rel(path), line_of(text, m.start()), m.group(1)))
+
+
+    # ── orphan-page ─────────────────────────────────────────────────────────
+    # Extending a layout is what distinguishes a page from a partial or a macro
+    # file. A page nothing renders and nothing includes has no URL at all.
+    #
+    # Verified against dynamic dispatch before trusting this: the whole codebase
+    # contains exactly ONE render_template() with a variable template name
+    # (solution_narrative_service.py, for narrative documents), so a template
+    # cannot be reached by indirection that this check cannot see.
+    py_src = "".join(
+        p.read_text(encoding="utf-8", errors="ignore")
+        for p in (ROOT / "app").rglob("*.py")
+    )
+    tpl_src = "".join(
+        p.read_text(encoding="utf-8", errors="ignore")
+        for p in TEMPLATES.rglob("*.html")
+    )
+    extends_layout = re.compile(r"{%-?\s*extends\s+['\"]layouts/")
+    for path in sorted(TEMPLATES.rglob("*.html")):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if not extends_layout.search(text):
+            continue                      # partial, macro file, or component
+        name = path.relative_to(TEMPLATES).as_posix()
+        if name in py_src or name in tpl_src:
+            continue                      # rendered by a route, or included
+        out["orphan-page"].append(
+            "%s:1: orphan-page: extends a layout but no route renders it and no "
+            "template includes it — the page has no URL" % path.relative_to(ROOT).as_posix())
 
     return {k: sorted(set(v)) for k, v in out.items()}
 
