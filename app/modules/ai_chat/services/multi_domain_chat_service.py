@@ -175,7 +175,11 @@ PERSONA_CONFIGS = {
             "Data Integration",
         ],
         "focus_areas": ["Data quality", "Data flows", "Master data", "Data security"],
-        "default_domain": "architecture",
+        # Was "architecture", so the persona named after the data-architecture
+        # context never loaded it: _load_data_architecture_context exists and was
+        # unreachable for this persona, which got the generic architecture
+        # context instead.
+        "default_domain": "data_architecture",
         "context_priority": ["data_flows", "data_models", "governance"],
         "sample_prompts": [
             "Map all data entities for the customer data domain",

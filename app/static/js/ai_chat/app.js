@@ -32,14 +32,12 @@
     const chatForm = document.getElementById('chat-form');
     const userInput = document.getElementById('user-input');
     const domainSelector = document.getElementById('domain-selector');
-    const templateSelector = document.getElementById('template-selector');
     const personaSelector = document.getElementById('persona-selector');
     const modelSelector = document.getElementById('model-selector');
     const selectedElementIdInput = document.getElementById('selected-element-id');
 
     // Get configurations from window object
     let domainConfig = window.domainConfig || {};
-    let promptTemplates = window.promptTemplates || [];
     let personaConfig = window.personaConfig || {};
 
     /* Conversation state and rendering now live in ai_chat/render.js, because
@@ -117,7 +115,6 @@
         state.currentDomain = e.target.value;
         updateDomainUI(state.currentDomain);
         loadDomainContext(state.currentDomain);
-        updateTemplateOptions(state.currentDomain);
     });
 
     // Initialize persona selector
@@ -174,29 +171,11 @@
         lucide.createIcons();
     }
 
-    function updateTemplateOptions(domain) {
-        const config = domainConfig[domain];
-        if (!config || !config.templates) return;
-
-        // Clear existing options
-        templateSelector.innerHTML = '';
-
-        // Add domain-specific templates
-        config.templates.forEach(template => {
-            const option = document.createElement('option');
-            option.value = template;
-            option.textContent = template;
-            templateSelector.appendChild(option);
-        });
-
-        // Add custom templates from database
-        promptTemplates.forEach(template => {
-            const customOption = document.createElement('option');
-            customOption.value = template.name;
-            customOption.textContent = template.name;
-            templateSelector.appendChild(customOption);
-        });
-    }
+    /* updateTemplateOptions() lived here. template_name was validated and
+       HTML-sanitised by chat_core and then discarded — AgentRunner.run() has no
+       such parameter and nothing read it after line 362 — so the dropdown it
+       filled, and the AIPromptTemplate query behind it, affected no answer ever
+       produced. Removed rather than left as decoration. */
 
     function handleEnter(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -296,7 +275,6 @@
         const _payload = JSON.stringify({
             message: message,
             domain: state.currentDomain,
-            template_name: templateSelector.value,
             element_id: selectedElementIdInput.value || null,
             context_type: state.contextElement?.type || null,
             persona: state.currentPersona || null,
@@ -695,8 +673,6 @@
         // Update UI
         updateDomainUI(domain);
         loadDomainContext(domain);
-        updateTemplateOptions(domain);
-
         // Set the sample prompt in the input field
         userInput.value = samplePrompt;
         userInput.focus();
@@ -852,7 +828,6 @@ Would you like me to provide more details about the extracted elements or help y
     document.addEventListener('DOMContentLoaded', () => {
         updateDomainUI(state.currentDomain);
         loadDomainContext(state.currentDomain);
-        updateTemplateOptions(state.currentDomain);
         loadAvailableModels(); // Load available models
 
         // Load initial alert count

@@ -11,7 +11,6 @@ from typing import Any, Dict
 from flask import current_app, render_template
 from flask_login import current_user, login_required
 
-from app.models.ai_service import AIPromptTemplate
 from app.services.multi_domain_chat_service import MultiDomainChatService
 from . import unified_ai_chat_bp
 
@@ -130,23 +129,9 @@ def get_chat_service():
 @login_required
 def index():
     """Renders the Enhanced Multi-Domain AI Chat Interface."""
-    # Pre-fetch prompt templates for the UI selector (serialized for tojson in template)
-    templates = []
-    try:
-        raw_templates = AIPromptTemplate.query.all()
-        templates = [
-            {
-                "id": t.id,
-                "name": t.name,
-                "description": t.description,
-                "category": t.category,
-                "system_prompt": t.system_prompt,
-                "user_prompt_template": t.user_prompt_template,
-            }
-            for t in raw_templates
-        ]
-    except Exception as e:
-        current_app.logger.warning(f"Could not load prompt templates: {e}")
+    # No prompt-template pre-fetch. It ran AIPromptTemplate.query.all() on every
+    # page load to populate a selector whose value chat_core discarded, so it
+    # cost a query per render and changed no answer.
 
     # Keep the landing page renderable even if AI service bootstrap fails in prod.
     domain_config = _fallback_domain_config()
@@ -176,7 +161,6 @@ def index():
     # its context on demand from /ai-chat/context/<domain> instead.
     return render_template(
         "ai_chat/index.html",
-        prompt_templates=templates,
         domain_config=domain_config,
         persona_config=persona_config,
         chat_bootstrap_error=chat_bootstrap_error,

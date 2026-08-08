@@ -1,0 +1,104 @@
+"""A persona's default scope must point at the context built for it.
+
+`domain` is the only request parameter that reliably changes what the model is
+shown — it selects one of nine context loaders. `persona` selects the charter.
+They are orthogonal, which is why the redesign keeps scope visible rather than
+deriving it and hiding it.
+
+That only works if the defaults are right. They were not.
+"""
+
+import pytest
+
+from app.modules.ai_chat.services.multi_domain_chat_service import (
+    MultiDomainChatService,
+    PERSONA_CONFIGS,
+)
+
+
+def test_the_data_architect_defaults_to_the_data_architecture_context():
+    """It defaulted to `architecture`, so it never loaded its own loader.
+
+    `_load_data_architecture_context` exists and was unreachable for the persona
+    named after it: selecting "AI Data Architect" loaded the generic architecture
+    context instead.
+    """
+    assert PERSONA_CONFIGS["data_architect"]["default_domain"] == "data_architecture"
+
+
+@pytest.mark.parametrize("persona,cfg", sorted(PERSONA_CONFIGS.items()))
+def test_every_persona_defaults_to_a_domain_that_exists(persona, cfg, app):
+    """A default naming a domain with no loader silently falls through to general."""
+    default = cfg.get("default_domain")
+    assert default, f"{persona} declares no default_domain"
+
+    with app.app_context():
+        svc = MultiDomainChatService()
+        result = svc.get_domain_context(default, {})
+    assert result.get("success"), (
+        f"{persona} defaults to domain '{default}', which did not load: "
+        f"{result.get('error')}"
+    )
+
+
+def test_the_capability_architect_is_reachable():
+    """It has a config entry AND dedicated prompts, and no way to select it.
+
+    capability_architect_prompts.py is imported for it at
+    multi_domain_chat_service.py:3337, so it is a working persona that the
+    picker simply never offered.
+    """
+    from pathlib import Path
+
+    assert "capability_architect" in PERSONA_CONFIGS
+    tpl = (Path(__file__).resolve().parents[1]
+           / "app/templates/ai_chat/index.html").read_text(encoding="utf-8")
+    assert 'value="capability_architect"' in tpl, (
+        "capability_architect is configured, has its own prompt module, and "
+        "cannot be chosen"
+    )
+
+
+def test_the_compliance_and_data_architecture_scopes_are_offered():
+    """Both exist server-side with a loader and appeared in no UI.
+
+    `compliance` is the ARB's question — "verify this against our architecture
+    principles" — and was the most valuable domain nobody could select.
+    """
+    from pathlib import Path
+
+    tpl = (Path(__file__).resolve().parents[1]
+           / "app/templates/ai_chat/index.html").read_text(encoding="utf-8")
+    for domain in ("compliance", "data_architecture"):
+        assert 'value="%s"' % domain in tpl, (
+            f"the {domain} scope has a server-side loader and no way to reach it"
+        )
+
+
+def test_the_dead_template_selector_is_gone():
+    """template_name is validated, sanitised, then discarded.
+
+    chat_core.py bounds it to 100 chars and runs sanitize_html over it; nothing
+    reads it afterwards and AgentRunner.run() has no such parameter. The
+    dropdown, and the AIPromptTemplate query that filled it on every page load,
+    affected no answer ever produced.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    tpl = (root / "app/templates/ai_chat/index.html").read_text(encoding="utf-8")
+    assert 'id="template-selector"' not in tpl, "the inert template selector is still rendered"
+
+    # Check executable lines only. A comment explaining why the query was removed
+    # legitimately names it, and a substring match over the whole file would
+    # flag that prose — the same trap the design-tokens gate falls into.
+    views = (root / "app/modules/ai_chat/routes/chat_views.py").read_text(encoding="utf-8")
+    code = [
+        line for line in views.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    offenders = [line.strip() for line in code if "AIPromptTemplate" in line]
+    assert not offenders, (
+        "the page still queries prompt templates for a control that no longer "
+        "exists: %s" % offenders
+    )

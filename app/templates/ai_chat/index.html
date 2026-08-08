@@ -170,20 +170,57 @@ x-cloak>
 
         <!-- Domain Selector & Controls - Responsive wrapping -->
         <div x-data="{ showAdvanced: false }" class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-            <!-- Domain Selector — always visible, primary context switch -->
-            <div class="relative flex-1 min-w-[140px] max-w-[200px]">
-                <select id="domain-selector" aria-label="Assistant domain"
-                    class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
-                    <option value="general">General Assistant</option>
-                    <option value="architecture">Architecture Assistant</option>
-                    <option value="technology">Technology Advisor</option>
-                    <option value="business_capability">Capability Analyst</option>
-                    <option value="gap_analysis">Gap Detection</option>
-                    <option value="vendor_intelligence">Vendor Intelligence</option>
-                    <option value="smart_search">Smart Search</option>
-                </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                    <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+            {# Assistant, then scope. Persona selects the charter; domain selects
+               which of nine context loaders runs. They are orthogonal — deriving
+               scope from persona and hiding it makes "Data Architect looking at
+               vendor data" unreachable — so scope stays visible, labelled
+               "Looking at", which is the noun a user already thinks in. #}
+            <div class="flex items-center gap-1.5 flex-1 min-w-[180px] max-w-[260px]">
+                <label for="persona-selector" class="text-xs text-muted-foreground shrink-0 hidden xl:inline">Assistant</label>
+                <div class="relative flex-1">
+                    <select id="persona-selector" aria-label="Assistant"
+                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
+                        <optgroup label="AI Architects (governed, live-data)">
+                            <option value="enterprise_architect" selected>AI Enterprise Architect</option>
+                            <option value="solutions_architect">AI Solution Architect</option>
+                            <option value="technology_architect">AI Technical Architect</option>
+                            <option value="data_architect">AI Data Architect</option>
+                            <option value="business_architect">AI Business Architect</option>
+                        </optgroup>
+                        <optgroup label="Specialist roles">
+                            <option value="application_architect">Application Architect</option>
+                            <option value="integration_architect">Integration Architect</option>
+                            <option value="systems_architect">Systems Architect</option>
+                            <option value="capability_architect">Capability Architect</option>
+                            <option value="business_analyst">Business Analyst</option>
+                            <option value="product_analyst">Product Analyst</option>
+                            <option value="cio">CIO / IT Executive</option>
+                        </optgroup>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                        <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-1.5 flex-1 min-w-[170px] max-w-[240px]">
+                <label for="domain-selector" class="text-xs text-muted-foreground shrink-0 hidden xl:inline">Looking&nbsp;at</label>
+                <div class="relative flex-1">
+                    <select id="domain-selector" aria-label="Looking at"
+                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <option value="general">Whole portfolio</option>
+                        <option value="architecture">Architecture</option>
+                        <option value="data_architecture">Data architecture</option>
+                        <option value="technology">Technology</option>
+                        <option value="business_capability">Capabilities</option>
+                        <option value="gap_analysis">Gaps</option>
+                        <option value="vendor_intelligence">Vendors</option>
+                        <option value="compliance">Architecture principles</option>
+                        <option value="smart_search">Everything (search)</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                        <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    </div>
                 </div>
             </div>
 
@@ -200,31 +237,6 @@ x-cloak>
             <!-- Advanced Controls — Persona, Model, Template (collapsed by default) -->
             <div x-show="showAdvanced" x-cloak x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
                  class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-                <!-- Persona Selector -->
-                <div class="relative flex-1 min-w-[140px] max-w-[180px]">
-                    <select id="persona-selector"
-                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium" aria-label="Select Role">
-                        <option value="">Select Role</option>
-                        <optgroup label="AI Architects (governed, live-data)">
-                            <option value="enterprise_architect" selected>AI Enterprise Architect</option>
-                            <option value="solutions_architect">AI Solution Architect</option>
-                            <option value="technology_architect">AI Technical Architect</option>
-                            <option value="data_architect">AI Data Architect</option>
-                            <option value="business_architect">AI Business Architect</option>
-                        </optgroup>
-                        <optgroup label="Specialist roles">
-                            <option value="application_architect">Application Architect</option>
-                            <option value="integration_architect">Integration Architect</option>
-                            <option value="systems_architect">Systems Architect</option>
-                            <option value="business_analyst">Business Analyst</option>
-                            <option value="product_analyst">Product Analyst</option>
-                            <option value="cio">CIO / IT Executive</option>
-                        </optgroup>
-                    </select>
-                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                        <i data-lucide="user" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-                </div>
 
                 <!-- Model Selector -->
                 <div class="relative flex-1 min-w-[160px] max-w-[220px]">
@@ -237,16 +249,6 @@ x-cloak>
                     </div>
                 </div>
 
-                <!-- Template Selector -->
-                <div class="relative flex-1 min-w-[140px] max-w-[180px]">
-                    <select id="template-selector" aria-label="Prompt template"
-                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        <option value="">Custom Query</option>
-                    </select>
-                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                        <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-                </div>
             </div>
 
             <!-- AI Tools -->
@@ -920,7 +922,6 @@ x-cloak>
 <script>
     // Domain configuration from server - embedded as JSON
     window.domainConfig = {{ domain_config | tojson | safe }};
-    window.promptTemplates = {{ prompt_templates | tojson | safe }};
     window.personaConfig = {{ persona_config.personas | tojson | safe if persona_config else '{}' | safe }};
     window.csrfToken = '{{ csrf_token() }}';
 </script>
