@@ -109,7 +109,15 @@ def page(browser, request):
     ctx.set_default_navigation_timeout(PAGE_TIMEOUT)
     pg = ctx.new_page()
     pg.console_errors = []
+    pg.page_errors = []
     pg.on("console", lambda m: pg.console_errors.append(m.text) if m.type == "error" else None)
+    # `pageerror` as well as `console`: they carry different failures, and only
+    # this suite's sibling (test_ai_chat_journey) was watching both. An uncaught
+    # exception — the ReferenceError a CSP-blocked script leaves behind when the
+    # function it defined is never declared — is NOT delivered as a console
+    # event. Every page in the product was throwing
+    # "drawerFocusTrap is not defined" on load and this suite saw none of it.
+    pg.on("pageerror", lambda e: pg.page_errors.append(str(e)))
     yield pg
     ctx.close()
 
@@ -136,9 +144,10 @@ def test_archetype_can_use_its_product(archetype, page, live_server, seeded):
         if state["overflow"] > 0:
             failures.append("%s -> %dpx horizontal overflow" % (path, state["overflow"]))
 
-    errors = [e for e in page.console_errors if "favicon" not in e.lower()]
+    errors = [e for e in (page.console_errors + page.page_errors)
+              if "favicon" not in e.lower()]
     if errors:
-        failures.append("%d console error(s): %s" % (len(errors), errors[:3]))
+        failures.append("%d JavaScript error(s): %s" % (len(errors), errors[:3]))
 
     assert not failures, "%s cannot use its product:\n  - %s" % (
         archetype, "\n  - ".join(failures))
@@ -238,3 +247,52 @@ def test_an_archetype_cannot_reach_another_personas_section(page, live_server, s
     assert response.status in (403, 404), (
         "procurement reached the application manager's section (HTTP %d) - "
         "requires_application_owner is not holding" % response.status)
+
+
+# Pages reachable from the navigation that no archetype journey visits. Each one
+# was found shipping JavaScript errors by a manual browser walk, precisely
+# because nothing here opened it:
+#
+#   /architecture/business/BusinessProcess   an x-for keyed on a field the
+#   /architecture/physical/Equipment         health endpoint does not return, so
+#                                            all seven rows shared the key
+#                                            `undefined` and Alpine's reconciler
+#                                            crashed on every visit
+#   /consolidation-list/                     the data-table mixin's computed
+#                                            getters were dropped by Object.assign,
+#                                            so the template referenced names the
+#                                            component did not have
+#   /applications/rationalization            never opened by any journey
+#
+# An enterprise architect is the archetype with reach across these screens.
+UNJOURNEYED_PAGES = [
+    "/architecture/business/BusinessProcess",
+    "/architecture/physical/Equipment",
+    "/consolidation-list/",
+    "/applications/rationalization",
+]
+
+
+@pytest.mark.parametrize("path", UNJOURNEYED_PAGES)
+def test_reachable_pages_boot_without_javascript_errors(path, page, live_server, seeded):
+    """A page in the navigation must not throw on load.
+
+    Split from the archetype baseline deliberately: these are not any one
+    persona's signature screen, so folding them into a journey would misreport
+    which persona is broken. They are asserted for the one property every
+    reachable page owes a user — it renders and its front end boots clean.
+    """
+    _login(page, live_server, seeded["emails"]["enterprise_architect"])
+    page.console_errors.clear()
+    page.page_errors.clear()
+
+    response, state = _visit(page, live_server, path)
+    status = response.status if response else 0
+    assert status < 400, "%s -> HTTP %d" % (path, status)
+    assert state["alpine"] == "object", (
+        "%s -> front end did not boot (window.Alpine is %s)" % (path, state["alpine"]))
+
+    errors = [e for e in (page.console_errors + page.page_errors)
+              if "favicon" not in e.lower()]
+    assert not errors, "%s -> %d JavaScript error(s):\n  - %s" % (
+        path, len(errors), "\n  - ".join(errors[:5]))
