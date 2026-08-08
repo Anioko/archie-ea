@@ -130,8 +130,13 @@ def scan() -> dict[str, list[str]]:
     href_re = re.compile(r'href\s*=\s*"([^"]+)"')
     fetch_re = re.compile(r"""fetch\(\s*['"]([^'"]+)['"]""")
     form_re = re.compile(r"<form\b([^>]*)>", re.I)
-    swallow_re = re.compile(r"catch\s*\([^)]*\)\s*\{\s*(?:/\*.*?\*/\s*)?(?:console\.\w+\([^;]*\);?\s*)?\}",
-                            re.S)
+    # The comment and console-call groups must not cross a brace. With re.S and
+    # a lazy .*? they could reach a LATER */ further down the file, matching a
+    # catch that plainly does report the failure — composer.js:1781 calls
+    # _toast('error', ...) inside a commented catch and was reported as silent.
+    swallow_re = re.compile(
+        r"catch\s*\([^)]*\)\s*\{\s*(?:/\*[^{}]*?\*/\s*)?"
+        r"(?:console\.\w+\([^;{}]*\);?\s*)?\}")
     forbidden_re = re.compile(r"(?<![\w.])(alert|confirm)\s*\(")
 
     def rel(p): return p.relative_to(ROOT).as_posix()
