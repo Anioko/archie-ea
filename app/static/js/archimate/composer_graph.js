@@ -342,7 +342,7 @@ let ComposerGraph = (function() {
                         ]
                     });
                     view.addTools(tools);
-                } catch(e) { /* graceful degradation */ }
+                } catch(e) { /* swallow-ok: optional JointJS vertex and segment tools; without them the line is simply not reshapeable, which is the view-mode behaviour anyway */ }
             }
         },
 
@@ -359,7 +359,7 @@ let ComposerGraph = (function() {
                 line.removeAttribute('data-original-stroke');
             }
             /* Remove link tools on deselect */
-            try { view.removeTools(); } catch(e) { /* cosmetic — best-effort */ }
+            try { view.removeTools(); } catch(e) { /* swallow-ok: cosmetic removal of link tools on deselect */ }
         },
 
         renameElement: function() {
@@ -1223,11 +1223,15 @@ let ComposerGraph = (function() {
         deleteCustomStyleTemplate: function(name) {
             let self = this;
             self.customStyleTemplates = (self.customStyleTemplates || []).filter(function(t) { return t.name !== name; });
-            /* Best-effort persistence — the in-memory list above is already updated
-               for this session even if storage is unavailable (private mode/quota). */
+            /* The row vanishes from the list the moment this runs, so a storage
+               failure read as "deleted" — and the template came back on the next
+               reload. saveStyleTemplate() above already reports the mirror-image
+               failure; this one has to as well. */
             try {
                 localStorage.setItem('composer_style_templates', JSON.stringify(self.customStyleTemplates));
-            } catch(e) {}
+            } catch(e) {
+                _toast('error', 'Could not delete style template "' + name + '" — storage unavailable, it will reappear on reload');
+            }
         },
 
         resetElementStyles: function() {
@@ -1637,10 +1641,8 @@ let ComposerGraph = (function() {
                     self._pushUndo();
                 }
             })
-            .catch(function() {
-                /* Best-effort auto-detect: stay silent for the user, but no longer
-                   risk treating a failed response body as a successful result. */
-            });
+            /* swallow-ok: automatic relationship auto-detect the user never asked for — it runs on drop, adds links when it can, and claims nothing when it cannot */
+            .catch(function() {});
         },
 
         /* CMP2-003: Debounced wrapper (500ms) to avoid hammering API on bulk imports */
@@ -1721,9 +1723,8 @@ let ComposerGraph = (function() {
                     self._pushUndo();
                 }
             })
-            .catch(function() {
-                /* Silent fail — auto-detect is best-effort */
-            });
+            /* swallow-ok: automatic relationship auto-detect the user never asked for — it runs on bulk import, adds links when it can, and claims nothing when it cannot */
+            .catch(function() {});
         },
 
         /* ── CMP2-002: Bulk import from portfolio ───────────── */

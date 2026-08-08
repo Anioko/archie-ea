@@ -318,7 +318,7 @@ let ComposerSearch = (function() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#8b5cf6', 'stroke-width': 3 } } }
                         });
-                    } catch(e) { /* cosmetic search-match highlight — best-effort */ }
+                    } catch(e) { /* swallow-ok: cosmetic search-match outline; the match count and jump-to-match still work without it */ }
                 }
             });
 
@@ -333,7 +333,7 @@ let ComposerSearch = (function() {
             (self.srMatches || []).forEach(function(cell) {
                 let view = self.paper.findViewByModel(cell);
                 if (view) {
-                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#8b5cf6', 'stroke-width': 3 } } } }); } catch(e) { /* cosmetic — best-effort */ }
+                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#8b5cf6', 'stroke-width': 3 } } } }); } catch(e) { /* swallow-ok: cosmetic un-highlight when clearing search matches */ }
                 }
             });
         },
