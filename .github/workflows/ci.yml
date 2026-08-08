@@ -11,7 +11,15 @@ name: CI
 # clean-up.
 on:
   push:
-    branches: [main, master]
+    # main/master AND the branch production actually deploys from. That branch
+    # was previously ungated: it is not the default branch, so `push` never fired
+    # for it, and deploys are cut straight from it rather than through a PR — so
+    # every release went out with no CI having run on the exact tree being
+    # shipped. It is not hypothetical: `fix(csp)` and its gate sat on a feature
+    # branch while production served the broken code they fixed, and the smoke
+    # suite that would have caught it (a console-error assertion per archetype,
+    # already present) never executed against a deployed commit.
+    branches: [main, master, trial/merge-upstream]
   # Deliberately NO branch filter. The previous `branches: [main, master]` gated
   # only PRs targeting the default branch, so work on a long-lived integration
   # branch accumulated commits with no gate having run on any of them and the
