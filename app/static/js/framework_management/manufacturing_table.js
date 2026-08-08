@@ -24,14 +24,22 @@ function setupEventListeners() {
 function loadTableData() {
     tableData = [];
     fetch('/framework-management/api/manufacturing/instances')
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            // fetch does not reject on 4xx/5xx, so a 500 used to render the same
+            // "no records" table an empty framework legitimately produces.
+            if (!r.ok) { throw new Error('HTTP ' + r.status); }
+            return r.json();
+        })
         .then(function(res) {
             tableData = res.data || [];
             renderTable();
         })
-        .catch(function() {
+        .catch(function(e) {
             tableData = [];
             renderTable();
+            if (window.Platform && window.Platform.toast) {
+                window.Platform.toast.error('Could not load framework instances: ' + (e.message || 'request failed') + '. The table is empty because the load failed, not because there are no records.');
+            }
         });
 }
 

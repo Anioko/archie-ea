@@ -287,7 +287,7 @@ class CurrencyManager {
             // Private-mode browsers throw on localStorage writes; the preference just
             // won't persist across sessions, which is harmless.
             localStorage.setItem('preferred_currency', this.currentCurrency);
-        } catch (e) {
+        } catch (e) { /* swallow-ok: localStorage writes throw in private mode; the currency the user picked is already applied, it just will not persist across sessions */
             console.warn('Could not save currency preference:', e);
         }
     }
@@ -302,7 +302,7 @@ class CurrencyManager {
             if (saved && this.isSupported(saved)) {
                 this.setCurrency(saved);
             }
-        } catch (e) {
+        } catch (e) { /* swallow-ok: localStorage reads throw in private mode; the app falls back to the default currency, which is a working state and not an error the user can act on */
             console.warn('Could not load currency preference:', e);
         }
     }

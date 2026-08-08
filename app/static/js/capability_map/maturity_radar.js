@@ -41,7 +41,13 @@
         }
 
         fetch('/capability-map/api/unified-capabilities')
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                // fetch does not reject on 4xx/5xx: without this the catch below
+                // never ran and a failed load fell through to the same "no
+                // capabilities" panel a genuinely empty portfolio shows.
+                if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                return r.json();
+            })
             .then(function (data) {
                 var caps = data.unified_capabilities || data.capabilities || [];
                 loading.classList.add('hidden');
@@ -54,9 +60,14 @@
                 renderRadar();
                 if (chartContainer) chartContainer.classList.remove('hidden');
             })
-            .catch(function () {
+            .catch(function (e) {
                 loading.classList.add('hidden');
+                // The empty panel says "no capabilities yet", which would be a lie
+                // here — the capabilities may well exist and simply failed to load.
                 if (empty) empty.classList.remove('hidden');
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error('Could not load capability maturity: ' + (e.message || 'request failed') + '. The chart below is empty because the load failed, not because there is no data.');
+                }
             });
     }
 

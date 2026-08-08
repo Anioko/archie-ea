@@ -346,7 +346,7 @@
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').start();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: a missing or broken Alpine loading store must not stop the table from loading its rows */ }
                 try {
                     let qs   = this._buildQueryString();
                     let url  = (_apiUrl || this.apiUrl || '') + ((_apiUrl || this.apiUrl || '').indexOf('?') === -1 ? '?' : '&') + qs;
@@ -367,7 +367,7 @@
                         if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                             Alpine.store('loading').stop();
                         }
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cleanup in finally; a store failure here must not mask the load error already toasted above */ }
                 }
             },
 

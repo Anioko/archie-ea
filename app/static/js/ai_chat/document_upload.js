@@ -658,7 +658,7 @@ function aiChatDocumentUploader() {
                         },
                         silent: true
                     });
-                } catch (error) {
+                } catch (error) { /* swallow-ok: background training signal, not the user's edit; the edit below is applied locally either way and telling the user their correction "failed" would be false */
                     console.warn('Failed to record feedback:', error);
                 }
             }

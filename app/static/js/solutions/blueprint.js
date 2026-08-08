@@ -252,7 +252,7 @@ function blueprintPage() {
                 // Best-effort teardown of the previous JointJS instance before
                 // replacing it — a throw here (e.g. paper already detached)
                 // must not block rendering the new one.
-                try { self.renderers[sectionId].destroy(); } catch (e) {}
+                try { self.renderers[sectionId].destroy(); } catch (e) { /* swallow-ok: teardown of the previous JointJS paper before it is replaced; a throw on an already-detached paper must not stop the new diagram rendering */ }
                 delete self.renderers[sectionId];
             }
 

@@ -437,7 +437,7 @@
                     wrap = null;   // finalised in place; nothing left to drop
                     // Genome panel extraction is an optional side-panel enrichment;
                     // the chat turn above already completed and must not be undone by this failing.
-                    if (window._genomePanelInstance) { try { await window._genomePanelInstance.extractAfterMessage(state.chatHistory); } catch (_) {} }
+                    if (window._genomePanelInstance) { try { await window._genomePanelInstance.extractAfterMessage(state.chatHistory); } catch (_) { /* swallow-ok: optional side-panel enrichment run after the answer is already on screen; an error toast here would read as the answer having failed when it did not */ } }
                 }
             });
         } finally {
@@ -720,7 +720,7 @@
         }
         const label = (personaConfig && personaConfig[persona] && personaConfig[persona].name) || persona;
         // Best-effort welcome banner; persona selection above already took effect either way.
-        try { appendSystemMessage(`${label} engaged — grounded in live platform data. Press Enter to use the suggested prompt, or ask your own.`, 'info'); } catch (e) {}
+        try { appendSystemMessage(`${label} engaged — grounded in live platform data. Press Enter to use the suggested prompt, or ask your own.`, 'info'); } catch (e) { /* swallow-ok: cosmetic welcome banner; the persona switch above already took effect, so failing to print the banner is not a failure the user needs to act on */ }
     }
     document.querySelectorAll('.architect-card[data-persona]').forEach(function(card) {
         card.addEventListener('click', function() {
@@ -986,8 +986,9 @@ Would you like me to provide more details about the extracted elements or help y
       }
       c.innerHTML = t.map(function (x) {
         var active = (x.id === window.__threadId) ? ' bg-accent' : '';
-        // Best-effort date formatting; an unparsable timestamp just leaves the row's date blank.
-        var d = ''; try { d = new Date(x.updated_at || x.created_at).toLocaleDateString(); } catch (e) {}
+        // An unparsable timestamp renders as an em dash, never as a blank that
+        // would read as "this conversation has no date".
+        var d = '—'; try { d = new Date(x.updated_at || x.created_at).toLocaleDateString(); } catch (e) { /* swallow-ok: date formatting of one row; the em dash above already tells the user the date is unknown */ }
         return '<div class="js-thr group relative flex items-center rounded-lg border border-border hover:bg-accent/50 transition-colors' + active + '" data-id="' + esc(x.id) + '">' +
           '<button type="button" class="js-thr-open flex-1 text-left p-3 min-w-0">' +
           '<div class="font-medium text-xs truncate">' + esc(x.title || 'New chat') + '</div>' +
@@ -1062,6 +1063,6 @@ Would you like me to provide more details about the extracted elements or help y
 
   // Auto-load the rail so past chats are visible without clicking Refresh; failure here
   // just means the sidebar list stays empty until the next successful call, non-fatal to boot.
-  function boot() { try { window.loadSessionList(); } catch (e) {} }
+  function boot() { try { window.loadSessionList(); } catch (e) { /* swallow-ok: loadSessionList renders its own "Couldn't load conversations" state; this guard only stops a throw at page load from aborting the rest of the script */ } }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

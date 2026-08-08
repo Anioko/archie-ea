@@ -17,14 +17,24 @@ function integrationContractsMixin() {
             let self = this;
             self.contractLoading[elementId] = true;
             fetch('/solutions/' + self.solutionId + '/api/integration-contracts/' + elementId)
-                .then(function (r) { return r.json(); })
+                // fetch does not reject on 4xx/5xx, and `if (data.success)` with no
+                // else left the panel showing its empty state — indistinguishable
+                // from a component that genuinely has no contracts recorded.
+                .then(function (r) {
+                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                    return r.json();
+                })
                 .then(function (data) {
-                    if (data.success) {
-                        self.integrationContracts[elementId] = data.data;
-                    }
+                    if (!data.success) { throw new Error(data.error || 'Request failed'); }
+                    self.integrationContracts[elementId] = data.data;
                     self.contractLoading[elementId] = false;
                 })
-                .catch(function () { self.contractLoading[elementId] = false; });
+                .catch(function (e) {
+                    self.contractLoading[elementId] = false;
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Could not load integration contracts: ' + (e.message || 'request failed'));
+                    }
+                });
         },
 
         saveIntegrationContract: function (elementId, targetId, contract) {
@@ -35,15 +45,25 @@ function integrationContractsMixin() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self.csrfToken },
                 body: JSON.stringify({ target_element_id: targetId, contract: contract })
             })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data.success) {
-                    self.loadIntegrationContracts(elementId);
-                    if (window.Platform && Platform.toast) Platform.toast.success('Contract saved');
-                }
-                self.contractSaving[elementId] = false;
+            // A failed PUT used to do nothing but clear the saving flag: no toast,
+            // no revert, so the user saw the spinner stop and assumed the contract
+            // had been saved when nothing reached the server.
+            .then(function (r) {
+                if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                return r.json();
             })
-            .catch(function () { self.contractSaving[elementId] = false; });
+            .then(function (data) {
+                if (!data.success) { throw new Error(data.error || 'Request failed'); }
+                self.contractSaving[elementId] = false;
+                self.loadIntegrationContracts(elementId);
+                if (window.Platform && Platform.toast) Platform.toast.success('Contract saved');
+            })
+            .catch(function (e) {
+                self.contractSaving[elementId] = false;
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Contract NOT saved: ' + (e.message || 'request failed'));
+                }
+            });
         },
 
         suggestIntegrationContract: function (elementId) {
@@ -54,15 +74,22 @@ function integrationContractsMixin() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self.csrfToken },
                 body: JSON.stringify({})
             })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data.success) {
-                    self.loadIntegrationContracts(elementId);
-                    if (window.Platform && Platform.toast) Platform.toast.success('Contract suggested');
-                }
-                self.contractLoading[elementId] = false;
+            .then(function (r) {
+                if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                return r.json();
             })
-            .catch(function () { self.contractLoading[elementId] = false; });
+            .then(function (data) {
+                if (!data.success) { throw new Error(data.error || 'Request failed'); }
+                self.contractLoading[elementId] = false;
+                self.loadIntegrationContracts(elementId);
+                if (window.Platform && Platform.toast) Platform.toast.success('Contract suggested');
+            })
+            .catch(function (e) {
+                self.contractLoading[elementId] = false;
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not suggest a contract: ' + (e.message || 'request failed'));
+                }
+            });
         },
 
         validateIntegrationContract: function (elementId) {

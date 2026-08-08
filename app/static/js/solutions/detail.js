@@ -1238,9 +1238,16 @@ document.addEventListener('alpine:init', function () {
                 this.activityLoading = true;
                 try {
                     let resp = await fetch(this.apiBase + '/activity', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                    // fetch does not reject on 4xx/5xx: without this, a failed load
+                    // rendered the same "no activity yet" panel a brand-new
+                    // solution shows, and the user could not tell them apart.
+                    if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
                     let data = await resp.json();
                     this.activityList = (data && data.activities) || [];
-                } catch (e) { this.activityList = []; }
+                } catch (e) {
+                    this.activityList = [];
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load the activity trail: ' + (e.message || 'request failed'));
+                }
                 this.activityLoading = false;
             },
 
@@ -1248,9 +1255,15 @@ document.addEventListener('alpine:init', function () {
                 this.gapsLoading = true;
                 try {
                     let resp = await fetch(this.apiBase + '/gaps', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                    // An empty gap list reads as "no gaps" — a governance
+                    // statement. It must never be what a failed request looks like.
+                    if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
                     let data = await resp.json();
                     this.gaps = (data && data.gaps) || [];
-                } catch (e) { this.gaps = []; }
+                } catch (e) {
+                    this.gaps = [];
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load gaps: ' + (e.message || 'request failed') + '. This list is empty because the load failed, not because there are no gaps.');
+                }
                 this.gapsLoading = false;
             },
 
@@ -1258,9 +1271,15 @@ document.addEventListener('alpine:init', function () {
             async loadLinkedRequirements() {
                 try {
                     let resp = await fetch(this.apiBase + '/all-requirements', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                    // Same trap: "no requirements linked" is a claim about the
+                    // solution, not an acceptable rendering of a failed request.
+                    if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
                     let data = await resp.json();
                     this.linkedRequirements = (data && data.items) || [];
-                } catch (e) { this.linkedRequirements = []; }
+                } catch (e) {
+                    this.linkedRequirements = [];
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load linked requirements: ' + (e.message || 'request failed'));
+                }
             },
 
             get traceabilityPreviewRows() {
@@ -1807,13 +1826,13 @@ document.addEventListener('alpine:init', function () {
             wizardNext() {
                 if (this.wizardStep < 4) {
                     this.wizardStep++;
-                    try { sessionStorage.setItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId, this.wizardStep); } catch(e) {}
+                    try { sessionStorage.setItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId, this.wizardStep); } catch(e) { /* swallow-ok: sessionStorage throws in private mode; the wizard already moved on screen and only loses its restore point */ }
                 }
             },
             wizardPrev() {
                 if (this.wizardStep > 1) {
                     this.wizardStep--;
-                    try { sessionStorage.setItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId, this.wizardStep); } catch(e) {}
+                    try { sessionStorage.setItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId, this.wizardStep); } catch(e) { /* swallow-ok: sessionStorage throws in private mode; the wizard already moved on screen and only loses its restore point */ }
                 }
             },
             wizardDismiss() {
@@ -1822,16 +1841,16 @@ document.addEventListener('alpine:init', function () {
                 try {
                     sessionStorage.setItem('wizard_dismissed_' + window.__SOLUTION_CONFIG__.solutionId, '1');
                     sessionStorage.removeItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId);
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: sessionStorage throws in private mode; the wizard is already dismissed in memory and only fails to stay dismissed after a reload */ }
             },
             wizardShouldShow() {
                 if (this.wizardDismissed) return false;
-                try { if (sessionStorage.getItem('wizard_dismissed_' + window.__SOLUTION_CONFIG__.solutionId)) return false; } catch(e) {}
+                try { if (sessionStorage.getItem('wizard_dismissed_' + window.__SOLUTION_CONFIG__.solutionId)) return false; } catch(e) { /* swallow-ok: sessionStorage read; unreadable storage means the wizard shows, which is the safe default and not an error */ }
                 // Restore wizard step from sessionStorage (Fix 4)
                 try {
                     const savedStep = sessionStorage.getItem('wizard_step_' + window.__SOLUTION_CONFIG__.solutionId);
                     if (savedStep) this.wizardStep = parseInt(savedStep, 10) || 1;
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: sessionStorage read; the wizard opens at step 1, which is a working state and nothing the user needs to be warned about */ }
                 return this.maturityScore < 50;
             },
 
