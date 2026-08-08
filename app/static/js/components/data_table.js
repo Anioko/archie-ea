@@ -15,13 +15,20 @@
  *
  * Usage (composition — complex tables):
  *   Alpine.data('consolidationTable', function() {
- *       return Object.assign({}, Platform.dataTable.mixin({
+ *       return Platform.dataTable.extend(Platform.dataTable.mixin({
  *           apiUrl: '/api/entries',
  *           perPage: 25,
  *           itemsKey: 'entries',
  *           onResponse: function(data) { this.summary = data.summary || {}; }
  *       }), { summary: {}, ...pageSpecificMethods });
  *   });
+ *
+ *   Use extend(), NOT Object.assign(). This example recommended Object.assign
+ *   until the pattern it teaches was found throwing "selectedCount is not
+ *   defined" on the consolidation list: the computed getters below are
+ *   installed with defineProperty and are therefore non-enumerable, and
+ *   Object.assign copies only own enumerable properties, so they are dropped in
+ *   transit. Five other tables had the same latent break. See extendMixin.
  *
  * Requires: Platform.table (ui/table.js), Alpine.js
  * Optional: window.currencyManager (currency.js), window.lucide (Lucide icons)
@@ -87,6 +94,7 @@
         currency: function(value) {
             if (value == null) return null;
             if (global.currencyManager) {
+                // currencyManager may throw on an unrecognised value; the Intl fallback below covers it.
                 try { return global.currencyManager.format(value); }
                 catch(e) { /* fall through */ }
             }
@@ -320,7 +328,9 @@
                 // Call base load
                 await origLoadItems.call(this);
 
-                // Call onResponse hook with full API data
+                // Call onResponse hook with full API data. The load above already
+                // succeeded and rendered; a bug in a page-specific hook must not
+                // take that down with it.
                 if (_onResponse && this.items) {
                     try { _onResponse.call(this, this._lastResponseData || {}); } catch(e) {}
                 }
@@ -421,6 +431,7 @@
         baseMixin._loadItems = async function() {
             this.loading = true;
             this.errorMsg = '';
+            // Best-effort UI affordance: a missing/broken loading store must not block the load.
             try {
                 if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                     Alpine.store('loading').start();
@@ -449,6 +460,7 @@
                 if (t) t.error(this.errorMsg);
             } finally {
                 this.loading = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the load.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
