@@ -138,6 +138,14 @@ def scan() -> dict[str, list[str]]:
         r"catch\s*\([^)]*\)\s*\{\s*(?:/\*[^{}]*?\*/\s*)?"
         r"(?:console\.\w+\([^;{}]*\);?\s*)?\}")
     forbidden_re = re.compile(r"(?<![\w.])(alert|confirm)\s*\(")
+    # A DEFINITION named alert/confirm is the replacement for the native call,
+    # not an instance of it. Both remaining findings were the cure, not the
+    # disease: components/alert.html is `{% macro alert(variant=...) %}`, the
+    # macro that replaces native alerts, and alpine-architecture.js is
+    # `confirm() { ... }`, the modal method Platform hands callers instead of
+    # window.confirm. A definition is followed by `) {`; a call is not.
+    definition_re = re.compile(r"(?:\bmacro\s+|\bfunction\s+)?(?:alert|confirm)"
+                               r"\s*\([^()]*\)\s*(?:\{|%\})")
 
     def rel(p): return p.relative_to(ROOT).as_posix()
     def line_of(text, idx): return text[:idx].count("\n") + 1
@@ -192,6 +200,8 @@ def scan() -> dict[str, list[str]]:
                 "%s:%d: swallowed: catch block tells neither the user nor the logs"
                 % (rel(path), line_of(text, m.start())))
         for m in forbidden_re.finditer(text):
+            if definition_re.match(text, m.start()):
+                continue
             out["forbidden-ui"].append(
                 "%s:%d: forbidden-ui: %s() — DESIGN.md requires Platform.toast/modal"
                 % (rel(path), line_of(text, m.start()), m.group(1)))
