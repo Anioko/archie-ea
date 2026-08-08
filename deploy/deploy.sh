@@ -26,7 +26,12 @@ set -euo pipefail
 REPO=/root/archie-ea
 BACKUPS=/root/deploy-backups
 HEALTH_URL=http://127.0.0.1:5000/health
-HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-300}
+# 300 was shorter than this host's actual boot. The container runs init-db and
+# reconcile-schema before gunicorn accepts a connection, which on the 2-vCPU
+# production box measured 375s on 2026-08-08 - so a perfectly good deploy was
+# declared unhealthy at 300s and rolled itself back. Set from the measurement
+# with room for a slower run, not from a round number.
+HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-900}
 
 TARGET=${1:-}
 FORCE=${2:-}
@@ -187,6 +192,24 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 done
 
 if [ "$healthy" != "1" ]; then
+    # A rollback to the commit we just deployed restores nothing. PREVIOUS is
+    # HEAD at script start, and an earlier run that died after step 4 leaves
+    # HEAD already AT the target - so the "rollback" recreates the identical
+    # container and reports success at rolling back. That happened on
+    # 2026-08-08: an aborted run left HEAD at the target, the next run timed
+    # out, and it "rolled back" to the same commit. It was harmless only
+    # because the code was fine. Had the code been genuinely broken, the
+    # safety net would have re-deployed the breakage and exited 1 claiming to
+    # have recovered.
+    if [ "$PREVIOUS" = "$TARGET_SHA" ]; then
+        echo "ABORT: unhealthy, and there is nothing to roll back to - HEAD was" >&2
+        echo "already at $TARGET_SHA before this run (an earlier deploy likely died" >&2
+        echo "after checkout). Refusing to pretend a rollback happened." >&2
+        echo "Recover by deploying a known-good ref explicitly:" >&2
+        echo "  ./deploy/deploy.sh <last-good-sha> --force" >&2
+        echo "database dump: $BACKUPS/db-$TS.sql.gz" >&2
+        exit 1
+    fi
     say "UNHEALTHY - rolling back to $PREVIOUS"
     git checkout -q "$PREVIOUS"
     docker compose up -d --force-recreate server
