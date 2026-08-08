@@ -201,13 +201,12 @@
                                      });
 
                                      const relRes = await fetch('/api/solutions/' + this.solId + '/relationships?type=assignment', {credentials:'same-origin'});
-                                     if (relRes.ok) {
-                                         const relData = await relRes.json();
-                                         for (const r of (relData.relationships || [])) {
-                                             const srcId = r.source?.id || r.source_element_id;
-                                             const tgtId = r.target?.id || r.target_element_id;
-                                             this.assignments[srcId] = { relId: r.id, nodeId: tgtId };
-                                         }
+                                     if (!relRes.ok) throw new Error('HTTP ' + relRes.status);
+                                     const relData = await relRes.json();
+                                     for (const r of (relData.relationships || [])) {
+                                         const srcId = r.source?.id || r.source_element_id;
+                                         const tgtId = r.target?.id || r.target_element_id;
+                                         this.assignments[srcId] = { relId: r.id, nodeId: tgtId };
                                      }
                                  } catch(e) {
                                      this.depError = e.message;
@@ -243,10 +242,9 @@
                                                  relationship_type: 'assignment'
                                              })
                                          });
-                                         if (res.ok) {
-                                             const data = await res.json();
-                                             this.assignments[deployableId] = { relId: data.id, nodeId: parseInt(nodeId) };
-                                         }
+                                         if (!res.ok) throw new Error('HTTP ' + res.status);
+                                         const data = await res.json();
+                                         this.assignments[deployableId] = { relId: data.id, nodeId: parseInt(nodeId) };
                                      }
                                  } catch(e) {
                                      this.depError = e.message;

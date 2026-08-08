@@ -1973,9 +1973,13 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
             try {
                 const r = await fetch(`/solutions/${solutionId}/comments?section=${this.section}`);
+                if (!r.ok) throw new Error('Failed to load comments: ' + r.status);
                 const data = await r.json();
                 this.comments = data.comments || [];
-            } catch(e) { this.comments = []; }
+            } catch(e) {
+                this.comments = [];
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load comments');
+            }
             this.loading = false;
         },
 
@@ -1988,14 +1992,15 @@ document.addEventListener('alpine:init', () => {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ section: this.section, content: this.newComment.trim() }),
                 });
-                if (r.ok) {
-                    this.newComment = '';
-                    await this.loadComments();
-                    this.$nextTick(() => {
-                        if (this.$refs.commentList) this.$refs.commentList.scrollTop = 9999;
-                    });
-                }
-            } catch(e) {}
+                if (!r.ok) throw new Error('Failed to post comment: ' + r.status);
+                this.newComment = '';
+                await this.loadComments();
+                this.$nextTick(() => {
+                    if (this.$refs.commentList) this.$refs.commentList.scrollTop = 9999;
+                });
+            } catch(e) {
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to post comment');
+            }
             this.submitting = false;
         },
 
@@ -2010,8 +2015,11 @@ document.addEventListener('alpine:init', () => {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ section: this.section, content: this.replyText.trim(), parent_comment_id: parentId }),
                 });
-                if (r.ok) { this.replyTo = null; this.replyText = ''; await this.loadComments(); }
-            } catch(e) {}
+                if (!r.ok) throw new Error('Failed to post reply: ' + r.status);
+                this.replyTo = null; this.replyText = ''; await this.loadComments();
+            } catch(e) {
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to post reply');
+            }
             this.submitting = false;
         },
 

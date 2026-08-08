@@ -1912,34 +1912,39 @@ function blueprintDocIngestion(solutionId) {
 
         async accept(proposalId) {
             this.accepting = true;
+            this.uploadError = null;
             try {
                 let r = await fetch(base + '/proposals/' + proposalId + '/accept', {
                     method: 'POST', headers: { 'X-CSRFToken': csrf }
                 });
-                if (r.ok) {
-                    this.proposals = this.proposals.filter(function(p) { return p.id !== proposalId; });
-                    if (this.proposals.length === 0) this.allDone = true;
-                    // Refresh maturity score if available
-                    if (typeof refreshMaturityScore === 'function') refreshMaturityScore();
-                }
+                if (!r.ok) throw new Error('Accept failed: ' + r.status);
+                this.proposals = this.proposals.filter(function(p) { return p.id !== proposalId; });
+                if (this.proposals.length === 0) this.allDone = true;
+                // Refresh maturity score if available
+                if (typeof refreshMaturityScore === 'function') refreshMaturityScore();
+            } catch (e) {
+                this.uploadError = e.message || 'Accept failed. Please try again.';
             } finally { this.accepting = false; }
         },
 
         async reject(proposalId) {
             this.accepting = true;
+            this.uploadError = null;
             try {
                 let r = await fetch(base + '/proposals/' + proposalId + '/reject', {
                     method: 'POST', headers: { 'X-CSRFToken': csrf }
                 });
-                if (r.ok) {
-                    this.proposals = this.proposals.filter(function(p) { return p.id !== proposalId; });
-                    if (this.proposals.length === 0) this.allDone = true;
-                }
+                if (!r.ok) throw new Error('Reject failed: ' + r.status);
+                this.proposals = this.proposals.filter(function(p) { return p.id !== proposalId; });
+                if (this.proposals.length === 0) this.allDone = true;
+            } catch (e) {
+                this.uploadError = e.message || 'Reject failed. Please try again.';
             } finally { this.accepting = false; }
         },
 
         async acceptAll() {
             this.accepting = true;
+            this.uploadError = null;
             try {
                 let ids = this.proposals.map(function(p) { return p.id; });
                 let r = await fetch(base + '/proposals/batch-accept', {
@@ -1947,16 +1952,18 @@ function blueprintDocIngestion(solutionId) {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
                     body: JSON.stringify({ proposal_ids: ids })
                 });
-                if (r.ok) {
-                    this.proposals = [];
-                    this.allDone = true;
-                    if (typeof refreshMaturityScore === 'function') refreshMaturityScore();
-                }
+                if (!r.ok) throw new Error('Accept all failed: ' + r.status);
+                this.proposals = [];
+                this.allDone = true;
+                if (typeof refreshMaturityScore === 'function') refreshMaturityScore();
+            } catch (e) {
+                this.uploadError = e.message || 'Accept all failed. Please try again.';
             } finally { this.accepting = false; }
         },
 
         async rejectAll() {
             this.accepting = true;
+            this.uploadError = null;
             try {
                 let ids = this.proposals.map(function(p) { return p.id; });
                 let r = await fetch(base + '/proposals/batch-reject', {
@@ -1964,7 +1971,11 @@ function blueprintDocIngestion(solutionId) {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
                     body: JSON.stringify({ proposal_ids: ids })
                 });
-                if (r.ok) { this.proposals = []; this.allDone = true; }
+                if (!r.ok) throw new Error('Reject all failed: ' + r.status);
+                this.proposals = [];
+                this.allDone = true;
+            } catch (e) {
+                this.uploadError = e.message || 'Reject all failed. Please try again.';
             } finally { this.accepting = false; }
         },
 

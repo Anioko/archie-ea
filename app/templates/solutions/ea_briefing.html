@@ -138,7 +138,10 @@
                         method: 'POST',
                         headers: { 'X-CSRFToken': this._csrf() },
                     });
-                    if (r.ok) { window.location.href = '/solutions/briefings'; }
+                    if (!r.ok) throw new Error('Briefing generation failed: ' + r.status);
+                    window.location.href = '/solutions/briefings';
+                } catch (e) {
+                    if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to generate briefing');
                 } finally { this.busy = false; }
             },
         };

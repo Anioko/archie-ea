@@ -234,6 +234,7 @@
             this.accepting = true;
             this.relError = null;
             let accepted = 0;
+            let failed = 0;
             for (const p of selected) {
                 try {
                     const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
@@ -246,15 +247,17 @@
                             relationship_type: p.relationship_type
                         })
                     });
-                    if (res.ok) {
-                        const data = await res.json();
-                        this.relRows.push(data.relationship || data);
-                        accepted++;
-                    }
-                } catch(e) { /* skip failed proposals */ }  // fabricated-values-ok
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const data = await res.json();
+                    this.relRows.push(data.relationship || data);
+                    accepted++;
+                } catch(e) { failed++; }
             }
             this.proposals = this.proposals.filter(p => !p.checked);
             if (this.proposals.length === 0) this.showProposals = false;
+            if (failed > 0) {
+                this.relError = failed + ' of ' + selected.length + ' relationship(s) could not be created.';
+            }
             this.accepting = false;
         },
 
