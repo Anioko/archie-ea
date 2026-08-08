@@ -87,6 +87,42 @@ def _blank_comments(text: str, jinja: bool) -> str:
     return "".join(out)
 
 
+# The reason must be on the SAME line as the marker. With \s* the class matched
+# across the newline onto the `catch` keyword itself, so a bare `swallow-ok:`
+# with no reason silenced the finding — turning a reviewable exception back
+# into the silent one it exists to prevent.
+_SWALLOW_OK = re.compile(r"swallow-ok:[ \t]*[A-Za-z0-9]")
+
+
+def _swallow_ok(text: str, start: int) -> bool:
+    """True when this catch carries a reviewable `swallow-ok: <reason>` marker.
+
+    A catch that is deliberately silent and one nobody looked at are
+    indistinguishable from the outside — that is the entire defect this class
+    exists to find. Prose in a comment does not fix that: it reads as intent to
+    a human and as neglect to the checker, so a fully triaged file still
+    counted, and the gate could only ever be a ratchet.
+
+    This is the same per-line hatch the rest of the repo uses (`fabricated-ok:`,
+    `air-gap-ok`, `tenancy-ok:`): it makes the exception explicit and greppable
+    rather than silent, and it puts the reason next to the code instead of in a
+    review comment nobody will find again.
+
+    The marker is accepted inside the catch body or on the line above it, so
+    both of these count:
+
+        catch (e) { /* swallow-ok: localStorage throws in private mode */ }
+
+        // swallow-ok: optional telemetry; a failure here must not surface
+        catch (e) {}
+    """
+    line_start = text.rfind("\n", 0, start) + 1
+    prev_start = text.rfind("\n", 0, line_start - 1) + 1
+    body_end = text.find("}", start)
+    body_end = len(text) if body_end == -1 else body_end + 1
+    return bool(_SWALLOW_OK.search(text[prev_start:body_end]))
+
+
 def _route_matcher():
     """Return a predicate that says whether a concrete path resolves to a route."""
     os.environ.setdefault("FLASK_CONFIG", "testing")
@@ -195,10 +231,17 @@ def scan() -> dict[str, list[str]]:
         # containing only a comment is DOCUMENTED intent, which is materially
         # different from a bare `catch {}`. Blanking the comment first turned
         # every considered no-op into an ignored one and inflated this by 27.
-        for m in swallow_re.finditer(raw):
-            out["swallowed"].append(
-                "%s:%d: swallowed: catch block tells neither the user nor the logs"
-                % (rel(path), line_of(text, m.start())))
+        # Third-party code is not ours to annotate or fix. Editing a vendored
+        # minified bundle to satisfy our own checker would break its SRI hash,
+        # which the `sri` gate would then fail — the fix and the gate would be
+        # in direct conflict.
+        if "/static/js/vendor/" not in rel(path):
+            for m in swallow_re.finditer(raw):
+                if _swallow_ok(raw, m.start()):
+                    continue
+                out["swallowed"].append(
+                    "%s:%d: swallowed: catch block tells neither the user nor the logs"
+                    % (rel(path), line_of(text, m.start())))
         for m in forbidden_re.finditer(text):
             if definition_re.match(text, m.start()):
                 continue
