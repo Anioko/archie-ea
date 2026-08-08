@@ -152,8 +152,13 @@ def test_the_ui_renders_citations_escaped():
     # renderEvidence's disclosure (Plan 3 Task 4), so the route changed; the
     # guarantee must not.
     assert "renderSources(sources)" in ui, "renderEvidence does not render the sources"
-    assert "renderEvidence(metadata.trail" in ui, "the completed message drops its sources"
-    assert "renderEvidence(meta.trail" in ui, "the streamed message finalises without its sources"
+    # Sources reach the message through renderAnswerFooter -> renderEvidence
+    # (Plan 3 Task 6 folded receipts and next-artifact into the same footer, so
+    # every answer path shares one call site). The route changed twice now; the
+    # guarantee — sources reach the message, escaped — has not.
+    assert "renderEvidence(m.trail" in ui, "the answer footer does not render the evidence strip"
+    assert "renderAnswerFooter(metadata)" in ui, "the completed message drops its footer"
+    assert "renderAnswerFooter(meta);" in ui, "the streamed message finalises without its footer"
 
 
 def test_no_transcript_rendering_was_left_behind_in_the_template():
@@ -282,8 +287,12 @@ def test_both_render_paths_go_through_the_evidence_strip():
     one did not.
     """
     js = _render_js()
-    assert "renderEvidence(metadata.trail" in js, "the completed message skips the trail"
-    assert "renderEvidence(meta.trail" in js, "the streamed message skips the trail"
+    assert js.count("function renderAnswerFooter(") == 1, (
+        "more than one footer renderer means the paths can drift"
+    )
+    assert "renderEvidence(m.trail" in js, "the footer does not render the evidence strip"
+    assert "renderAnswerFooter(metadata)" in js, "the completed message skips the footer"
+    assert "renderAnswerFooter(meta);" in js, "the streamed message skips the footer"
 
 
 def test_the_disclosure_is_reachable_without_a_mouse():
@@ -305,3 +314,63 @@ def test_source_escaping_survives_the_new_nesting():
     js = _render_js()
     assert "renderSources(sources)" in js, "renderEvidence does not render the sources"
     assert "escapeForHtml(s.name)" in js and "escapeForHtml(s.url)" in js
+
+
+# ── Receipts and next artifact (Plan 3 Task 6) ──────────────────────────────
+
+def test_receipts_are_driven_by_the_mutates_flag_not_by_prose():
+    """A receipt for a write that did not happen is the same defect as a
+    citation for a record that was not returned."""
+    js = _render_js()
+    assert "function renderReceipts(" in js
+    assert "a.mutates" in js, (
+        "receipts do not key on the registry's mutates flag, so they are "
+        "guessing which turns wrote"
+    )
+
+
+def test_the_server_marks_which_actions_wrote():
+    """One source of truth. The client must not carry a second copy of the split."""
+    runner = (ROOT / "app/modules/ai_chat/services/agent_runner.py").read_text(encoding="utf-8")
+    assert '"mutates": tc.name in _MUTATING_TOOLS' in runner
+    assert "mutating_tool_names" in runner, (
+        "agent_runner should read the registry flag rather than re-deriving it"
+    )
+
+
+def test_an_unmapped_turn_offers_no_next_step():
+    """A wrong suggestion costs more than none."""
+    js = _render_js()
+    assert "function renderNextArtifact(" in js
+    assert "if (offers.length === 0) return '';" in js, (
+        "the next-artifact block must render nothing when no tool in the turn "
+        "maps to a known next step"
+    )
+    assert "NEXT_ARTIFACT" in js and "create_option" in js
+
+
+def test_pending_approvals_use_the_endpoints_the_modal_uses():
+    """approval_gate's 202 payload is a different mechanism from the live modal."""
+    js = _render_js()
+    assert "function renderPendingApprovals(" in js
+    assert 'data-modal-open="ai-chat-approvals-modal"' in js, (
+        "the inline card must open the same modal the header badge does"
+    )
+
+
+def test_every_answer_path_renders_the_same_footer():
+    """Streamed, completed and non-streaming fallback must not diverge.
+
+    The fallback previously carried sources only, so an answer that arrived
+    through it showed no receipts at all — the user would see a write happen in
+    prose with no record of it.
+    """
+    js = _render_js()
+    assert js.count("function renderAnswerFooter(") == 1
+    assert "renderAnswerFooter(metadata)" in js, "the completed path skips the footer"
+    assert "renderAnswerFooter(meta);" in js, "the streamed path skips the footer"
+
+    app_js = (ROOT / "app/static/js/ai_chat/app.js").read_text(encoding="utf-8")
+    assert "actions: data.actions_taken || []" in app_js, (
+        "the non-streaming fallback drops receipts"
+    )

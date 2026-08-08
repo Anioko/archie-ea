@@ -249,6 +249,144 @@
 
     var _evidenceSeq = 0;
 
+
+    /* ── Write receipts and the next artifact ────────────────────────────────
+       The assistant can create drivers, goals, options, ArchiMate elements and
+       ARB submissions. None of it was visible: a write produced prose claiming
+       it had happened, and nothing else. Approvals appeared as a badge count in
+       the header, divorced from the conversation that caused them.
+
+       Everything here is driven by which tools actually ran — `mutates` is set
+       server-side from the registry flag — never by reading the model's prose.
+       A receipt for a write that did not happen is the same class of defect as
+       a citation for a record that was not returned.                        */
+
+    var ACTION_LABELS = {
+        create_solution: 'Created solution',
+        create_driver: 'Created driver',
+        create_goal: 'Created goal',
+        create_constraint: 'Created constraint',
+        create_requirement: 'Created requirement',
+        create_risk: 'Created risk',
+        create_option: 'Created option',
+        mark_option_recommended: 'Marked option recommended',
+        create_archimate_element: 'Created ArchiMate element',
+        create_archimate_relationship: 'Created ArchiMate relationship',
+        link_application_to_capability: 'Linked application to capability',
+        link_application_to_solution: 'Linked application to solution',
+        link_capability_to_solution: 'Linked capability to solution',
+        link_vendor_product: 'Linked vendor product',
+        update_application_status: 'Updated application status',
+        update_solution_fields: 'Updated solution',
+        update_solution_phase: 'Advanced ADM phase',
+        submit_for_arb_review: 'Submitted for ARB review'
+    };
+
+    /* Which tool having run justifies which next step. Keyed on the tool, not on
+       words in the answer: a suggestion inferred from prose is a guess, and a
+       wrong next step costs more than none, so an unmapped turn offers nothing. */
+    var NEXT_ARTIFACT = {
+        create_option:            { label: 'Draft an ADR',          href: '/architecture/decisions', icon: 'file-text' },
+        mark_option_recommended:  { label: 'Draft an ADR',          href: '/architecture/decisions', icon: 'file-text' },
+        propose_rationalization:  { label: 'Start a business case', href: '/business-case',          icon: 'briefcase' },
+        query_capability_gaps:    { label: 'Create work packages',  href: '/enterprise/work-packages', icon: 'list-checks' },
+        submit_for_arb_review:    { label: 'Open the ARB queue',    href: '/arb/dashboard',          icon: 'shield-check' }
+    };
+
+    function _recordName(result) {
+        if (!result || typeof result !== 'object') return '';
+        if (Array.isArray(result)) return '';
+        return result.name || result.title || '';
+    }
+
+    function renderReceipts(actions) {
+        if (!Array.isArray(actions)) return '';
+        var writes = actions.filter(function (a) { return a && a.mutates; });
+        if (writes.length === 0) return '';
+
+        var rows = writes.map(function (a) {
+            var label = ACTION_LABELS[a.tool] ||
+                String(a.tool || '').replace(/_/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); });
+            var name = _recordName(a.result);
+            var id = a.result && a.result.id != null ? a.result.id : null;
+            return '<li class="flex items-start gap-2 py-0.5">' +
+                     '<i data-lucide="check" class="h-3 w-3 mt-0.5 shrink-0 text-success" aria-hidden="true"></i>' +
+                     '<span>' + escapeForHtml(label) +
+                       (name ? ': <span class="font-medium text-foreground">' + escapeForHtml(name) + '</span>' : '') +
+                       (id != null ? ' <span class="text-muted-foreground">#' + escapeForHtml(id) + '</span>' : '') +
+                     '</span>' +
+                   '</li>';
+        }).join('');
+
+        return '<div class="mt-3 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs" role="status">' +
+                 '<div class="font-medium text-foreground mb-1">' +
+                   writes.length + ' change' + (writes.length === 1 ? '' : 's') + ' written to the repository' +
+                 '</div>' +
+                 '<ul class="list-none p-0 m-0 text-muted-foreground">' + rows + '</ul>' +
+               '</div>';
+    }
+
+    function renderNextArtifact(actions) {
+        if (!Array.isArray(actions) || actions.length === 0) return '';
+        var seen = {}, offers = [];
+        actions.forEach(function (a) {
+            var next = a && NEXT_ARTIFACT[a.tool];
+            if (!next || seen[next.label]) return;
+            seen[next.label] = true;
+            offers.push(next);
+        });
+        if (offers.length === 0) return '';   // no mapping, no suggestion
+
+        var links = offers.map(function (n) {
+            return '<a href="' + escapeForHtml(n.href) + '" ' +
+                     'class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background ' +
+                     'px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors">' +
+                     '<i data-lucide="' + escapeForHtml(n.icon) + '" class="h-3 w-3" aria-hidden="true"></i>' +
+                     escapeForHtml(n.label) +
+                   '</a>';
+        }).join('');
+        return '<div class="mt-2 flex flex-wrap items-center gap-2">' +
+                 '<span class="text-xs text-muted-foreground">Next:</span>' + links +
+               '</div>';
+    }
+
+    /* Pending approvals, attached to the answer that caused them rather than to
+       a badge in the header. Uses the endpoints the live modal already calls —
+       approval_modal.js — not approval_gate's 202 payload, which is a different
+       mechanism. The header modal stays as the roll-up. */
+    function renderPendingApprovals(pending) {
+        if (!Array.isArray(pending) || pending.length === 0) return '';
+        var rows = pending.map(function (p) {
+            return '<li class="py-0.5">' +
+                     escapeForHtml(String(p.operation_type || 'change')) + ' ' +
+                     escapeForHtml(String(p.entity_type || '')) +
+                     (p.summary ? ' — ' + escapeForHtml(p.summary) : '') +
+                   '</li>';
+        }).join('');
+        return '<div class="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs" role="status">' +
+                 '<div class="font-medium text-warning-emphasis mb-1">' +
+                   pending.length + ' change' + (pending.length === 1 ? '' : 's') + ' awaiting your approval' +
+                 '</div>' +
+                 '<ul class="list-none p-0 m-0 text-muted-foreground">' + rows + '</ul>' +
+                 '<button type="button" data-modal-open="ai-chat-approvals-modal" ' +
+                   'class="mt-1.5 inline-flex items-center gap-1 rounded-md border border-input bg-background ' +
+                   'px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors">Review</button>' +
+               '</div>';
+    }
+
+    /* One call site for everything that hangs below an answer, so the completed
+       and streamed paths cannot render different things. */
+    function renderAnswerFooter(meta) {
+        var m = meta || {};
+        return renderEvidence(m.trail, m.sources, {
+                   contextUsed: m.contextUsed,
+                   domainLabel: m.domain
+               }) +
+               renderReceipts(m.actions) +
+               renderPendingApprovals(m.pendingApprovals) +
+               renderNextArtifact(m.actions);
+    }
+
     /* The domain pill above an answer. Shared by the completed-message path
        and the streamed-message path so the two cannot drift apart. */
     function renderMetaBadge(metadata) {
@@ -292,10 +430,7 @@
             ? '<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl">' +
                 renderMetaBadge(metadata) +
                 '<div class="message-content">' + renderMarkdown(text) + '</div>' +
-                renderEvidence(metadata.trail, metadata.sources, {
-                    contextUsed: metadata.contextUsed,
-                    domainLabel: metadata.domain
-                }) +
+                renderAnswerFooter(metadata) +
               '</div>'
             : '<div class="rounded-xl bg-primary text-primary-foreground p-4 text-sm max-w-3xl">' +
                 '<div class="message-content">' + escapeForHtml(text) + '</div>' +
@@ -432,10 +567,7 @@
         var bubble = body ? body.parentElement : el;
         var badge = renderMetaBadge(meta);
         if (badge) bubble.insertAdjacentHTML('afterbegin', badge);
-        var sources = renderEvidence(meta.trail, meta.sources, {
-            contextUsed: meta.contextUsed,
-            domainLabel: meta.domain
-        });
+        var sources = renderAnswerFooter(meta);
         if (sources) bubble.insertAdjacentHTML('beforeend', sources);
         if (window.lucide) lucide.createIcons();
         return el;
@@ -466,6 +598,9 @@
         renderSources: renderSources,
         appendMessage: appendMessage,
         renderEvidence: renderEvidence,
+        renderReceipts: renderReceipts,
+        renderNextArtifact: renderNextArtifact,
+        renderAnswerFooter: renderAnswerFooter,
         appendSystemMessage: appendSystemMessage,
         appendError: appendError,
         beginStreamedMessage: beginStreamedMessage,

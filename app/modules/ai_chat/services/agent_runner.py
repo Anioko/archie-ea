@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 8
 
+# Which tools write. Derived in tools/registry.py by reading each implementation
+# for db.session.add/commit/delete, not from tool names.
+try:
+    from app.modules.ai_chat.tools.registry import mutating_tool_names as _mutating_tool_names
+    _MUTATING_TOOLS = _mutating_tool_names()
+except Exception:  # registry import failure must not take the turn with it
+    _MUTATING_TOOLS = frozenset()
+
 # Agent-mode system prompt prefix injected before domain context.
 _AGENT_PREFIX = """You are an Enterprise Architecture Copilot with DIRECT WRITE ACCESS
 to the architecture repository. You do not give advice for humans to act on — you act.
@@ -481,6 +489,11 @@ class AgentRunner:
                             "arguments": tc.arguments,
                             "result": result.get("result"),
                             "message": result.get("message"),
+                            # Marked here so the client does not carry a second
+                            # copy of the read/write split. The registry flag is
+                            # the single source of truth for receipts, the
+                            # next-artifact suggestion and approval tiering.
+                            "mutates": tc.name in _MUTATING_TOOLS,
                         })
 
                 tool_results.append((tc_raw, result))

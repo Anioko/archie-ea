@@ -348,7 +348,18 @@
                 appendMessage('ai', data.response, {
                     domain: data.domain,
                     processing_time: data.metadata?.processing_time || processingTime,
-                    sources: data.sources
+                    sources: data.sources,
+                    /* The fallback must show the same footer as the streamed
+                       path. It carries no tool_start/tool_result events — there
+                       is no stream to carry them — so the trail is empty and the
+                       evidence strip reports "context only" rather than
+                       inventing lookups it cannot see. actions_taken does come
+                       back on this path, so receipts and next-artifact are the
+                       same either way. */
+                    trail: [],
+                    contextUsed: true,
+                    actions: data.actions_taken || [],
+                    pendingApprovals: data.pending_approvals || []
                 });
 
                 // Genome extraction — fires after every AI response when ?mode=genome
@@ -416,6 +427,7 @@
                         sources: result.sources,
                         trail: _trail,
                         actions: result.actions || [],
+                        pendingApprovals: result.pendingApprovals || [],
                         // No tool ran, but the domain snapshot was in the prompt:
                         // that is "context only", not "ungrounded".
                         contextUsed: _trail.length === 0
