@@ -23,12 +23,14 @@
             async _resolveBoardId() {
                 try {
                     const r = await fetch("/api/sprints/default-board");
-                    if (r.ok) {
-                        const data = await r.json();
-                        this.boardId = data.board_id;
-                    }
+                    if (!r.ok) throw new Error("HTTP " + r.status);
+                    const data = await r.json();
+                    this.boardId = data.board_id;
                 } catch (e) {
                     console.warn("sprint_planning: could not resolve board_id", e);
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error("Could not load the sprint board");
+                    }
                 }
             },
 

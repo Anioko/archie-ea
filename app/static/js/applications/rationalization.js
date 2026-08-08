@@ -564,6 +564,10 @@ async function checkRetirementBlockers() {
         let assessContainer = document.getElementById('retirement-blocker-assessment-wrapper');
         if (assessContainer) assessContainer.classList.remove('hidden');
       }
+    } else {
+      // Non-fatal: the primary blocker analysis above already succeeded and renders;
+      // this secondary category assessment panel just stays hidden.
+      console.warn('Retirement blocker assessment unavailable: HTTP ' + assessResponse.status);
     }
 
     let data = result.data;
@@ -1915,9 +1919,12 @@ async function loadPortfolioDependencies(page) {
             }
           });
         }
+      } else {
+        console.warn('Portfolio readiness unavailable: HTTP ' + rResp.status);
       }
     } catch (_e) {
       // Non-fatal: table renders without readiness column if fetch fails
+      console.warn('Portfolio readiness fetch failed:', _e);
     }
 
     // Build table rows

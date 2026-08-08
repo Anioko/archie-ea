@@ -25,12 +25,11 @@ async function loadImportFields() {
 
   try {
     const response = await fetch('/applications/import-fields');
-    if (response.ok) {
-      const data = await response.json();
-      TARGET_FIELDS = data.fields || TARGET_FIELDS;
-      COLUMN_ALIASES = data.aliases || {};
-      fieldsLoaded = true;
-    }
+    if (!response.ok) throw new Error('Import fields request failed: ' + response.status);
+    const data = await response.json();
+    TARGET_FIELDS = data.fields || TARGET_FIELDS;
+    COLUMN_ALIASES = data.aliases || {};
+    fieldsLoaded = true;
   // fabricated-ok: falls back to form field definitions/labels, not to invented records
   } catch (error) {
     // Fall back to minimal defaults if API fails

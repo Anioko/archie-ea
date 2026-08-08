@@ -80,10 +80,11 @@ let APP_CONFIG = window.__APP_CONFIG__ || {};
       }
     })
     .then(function(response) {
-      if (response.ok) {
-        return response.json();
+      if (!response.ok) {
+        console.warn('Failed to load LLM preference: HTTP ' + response.status);
+        return null;
       }
-      return null;
+      return response.json();
     })
     .then(function(data) {
       if (data && data.success && data.preference) {

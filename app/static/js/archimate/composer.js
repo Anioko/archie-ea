@@ -1737,7 +1737,7 @@ function composerApp() {
                 /* Fetch rich detail from API (skip __builtin__ template elements) */
                 if (elId && parseInt(elId, 10) > 0) {
                     fetch('/archimate/api/elements/' + elId + '/detail', { credentials: 'same-origin' })
-                    .then(function(r) { if (r.ok) return r.json(); throw new Error('not found'); })
+                    .then(function(r) { if (!r.ok) throw new Error('not found'); return r.json(); })
                     .then(function(data) {
                         if (self.selectedNode && self.selectedNode.elementId === elId) {
                             self.selectedNode.description = data.description || '';

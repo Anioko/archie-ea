@@ -194,15 +194,15 @@ function blueprintChat() {
                     method: 'DELETE',
                     headers: { 'X-CSRFToken': this.csrfToken },
                 });
-                if (resp.ok) {
-                    action.undone = true;
-                    clearTimeout(action.undoTimer);
-                    window.dispatchEvent(new CustomEvent('bp-agent-wrote', {
-                        detail: { entity_type: entityType, solution_id: this.solutionId },
-                    }));
-                }
+                if (!resp.ok) throw new Error('Undo failed: HTTP ' + resp.status);
+                action.undone = true;
+                clearTimeout(action.undoTimer);
+                window.dispatchEvent(new CustomEvent('bp-agent-wrote', {
+                    detail: { entity_type: entityType, solution_id: this.solutionId },
+                }));
             } catch (err) {
                 console.error('Undo failed:', err);
+                Platform.toast.error('Undo failed — the item may still exist');
             }
         },
 
