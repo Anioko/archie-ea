@@ -120,15 +120,16 @@ document.addEventListener('alpine:init', () => {
         /**
          * Record that user skipped a soft-block gate. This is an audit-trail write
          * only — canAdvance was already set true before this is called, so the user's
-         * ability to proceed never depends on it. A failure here just means the skip
-         * isn't recorded for governance review; deliberately non-blocking so the user
-         * isn't stopped by a logging failure on an action they already completed.
+         * ability to proceed never depends on it, and a failure must not stop them.
+         * It must still be reported: the skip is the governance record of a quality
+         * gate being overridden, and an override nobody can see later is worse than
+         * one that was refused.
          */
         async recordSkip() {
             if (!this.assessment || !this.solutionId) return;
 
             try {
-                await fetch(`/api/wizard/${this.solutionId}/quality/skip`, {
+                const resp = await fetch(`/api/wizard/${this.solutionId}/quality/skip`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -140,8 +141,16 @@ document.addEventListener('alpine:init', () => {
                         threshold: this.assessment.threshold,
                     }),
                 });
+                // fetch() resolves on 4xx/5xx, so without this the audit write could
+                // fail with a 500 and look exactly like a successful one.
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
             } catch (e) {
-                console.error('Failed to record quality skip:', e);
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.warning(
+                        'You can continue, but skipping this quality gate was not recorded for governance review: '
+                        + (e.message || 'request failed') + '.'
+                    );
+                }
             }
 
             this.dismiss();

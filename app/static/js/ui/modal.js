@@ -175,7 +175,7 @@
                     announcer.assertive(message);
                 }
             }
-        } catch(e) { /* announcer unavailable — fail silently */ }
+        } catch(e) { /* swallow-ok: screen-reader announcement of a modal that has already opened or closed visually; an error toast about it would itself be noise */ }
     }
 
     // ── Background inert management (VIOLATION-10) ───────────────────────────

@@ -711,7 +711,7 @@
             // or absent, initial just stays [] and discoverTypes() below repopulates it.
             const cfg = JSON.parse('{{ abacus_config.config_json|default("{}", true)|e if abacus_config else "{}" }}');
             initial = cfg.sync_entity_types || [];
-        } catch(e) {}
+        } catch(e) { /* swallow-ok: defensive parse of our own server-rendered config_json; discoverTypes() repopulates the list, so a malformed blob must not block panel init or nag the user */ }
         return {
             availableTypes: [],
             selectedTypes: initial,

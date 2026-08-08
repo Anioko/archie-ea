@@ -96,7 +96,7 @@
             if (global.currencyManager) {
                 // currencyManager may throw on an unrecognised value; the Intl fallback below covers it.
                 try { return global.currencyManager.format(value); }
-                catch(e) { /* fall through */ }
+                catch(e) { /* swallow-ok: formatting fallback only — the Intl path below renders the same value, and an unformattable one returns null so the cell shows an em dash */ }
             }
             let num = typeof value === 'string' ? parseFloat(value) : value;
             if (isNaN(num)) return null;
@@ -332,7 +332,8 @@
                 // succeeded and rendered; a bug in a page-specific hook must not
                 // take that down with it.
                 if (_onResponse && this.items) {
-                    try { _onResponse.call(this, this._lastResponseData || {}); } catch(e) {}
+                    try { _onResponse.call(this, this._lastResponseData || {}); }
+                    catch(e) { /* swallow-ok: page-specific hook running after the rows already loaded and rendered; its failure must not report the load itself as broken */ }
                 }
 
                 // Re-render Lucide icons in new content
@@ -436,7 +437,7 @@
                 if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                     Alpine.store('loading').start();
                 }
-            } catch(e) {}
+            } catch(e) { /* swallow-ok: a missing or broken Alpine loading store must not stop the table from loading its rows */ }
             try {
                 let _apiUrl = options.apiUrl || this.apiUrl || '';
                 let _itemsKey = options.itemsKey || 'items';
@@ -465,7 +466,7 @@
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: cleanup in finally; a store failure here must not mask the load error already toasted above */ }
             }
         };
 
@@ -479,7 +480,16 @@
             Alpine.data('dataTable', function(cfg) {
                 cfg = cfg || {};
                 let m = mixin(cfg);
-                return Object.assign({}, m, {
+                // extendMixin, not Object.assign - this registration had the
+                // exact defect extendMixin exists to prevent, and its own
+                // docstring warns about. Object.assign copies only own
+                // ENUMERABLE properties, and selectedCount / hasSelection /
+                // allPageSelected are installed with defineProperty and are
+                // therefore non-enumerable, so every component built here was
+                // missing them. Latent rather than live only because nothing
+                // currently uses x-data="dataTable(...)" - it was a trap for
+                // whoever did next, which is how the six tables broke before.
+                return extendMixin(m, {
                     init: function() { this._tableInit(); },
                     destroy: function() { this._tableDestroy(); }
                 });

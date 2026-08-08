@@ -288,7 +288,7 @@ function uxPreferences(solutionId) {
                 });
                 if (!resp.ok) {
                     let errData = {};
-                    try { errData = await resp.json(); } catch(_) {}
+                    try { errData = await resp.json(); } catch(_) { /* swallow-ok: the error body need not be JSON; the throw below still surfaces the HTTP status through saveError, so a parse failure must not mask the save failure */ }
                     throw new Error(errData.error || errData.message || 'Save failed (HTTP ' + resp.status + ')');
                 }
                 this.saved = true;

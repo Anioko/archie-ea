@@ -347,7 +347,7 @@
             // Defensive parse of our own server-rendered JSON block; if a page's
             // guided_mode_steps block is malformed, the guide is just unavailable
             // rather than breaking the rest of page init.
-            if (el) { try { this.steps = JSON.parse(el.textContent); } catch(_) {} }
+            if (el) { try { this.steps = JSON.parse(el.textContent); } catch(_) { /* swallow-ok: defensive parse of our own server-rendered step JSON; a malformed block hides the optional guide button rather than breaking page init, and the user never asked for the guide */ } }
             const saved = parseInt(localStorage.getItem(this.storageKey) || '0');
             this.currentIndex = (saved < this.steps.length) ? saved : 0;
         },
@@ -542,7 +542,7 @@
                         this.count = data.unread_count ?? 0;
                         this.items = data.items ?? [];
                     } catch (_) {
-                        /* endpoint may not exist yet — fail silently */
+                        /* swallow-ok: background 60s poll on every page; the badge keeps its last-known count and the next tick retries, so a transient failure must not interrupt whatever the user is doing */
                     }
                 },
                 startPolling() {

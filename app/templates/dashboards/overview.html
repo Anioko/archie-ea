@@ -34,7 +34,7 @@
          x-show="show"
          class="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-5">
         <button type="button"
-                @click="show = false; try { localStorage.setItem('archie_starthere_dismissed','1'); } catch (e) {} /* private-mode browsers throw; the card just reappears next visit */"
+                @click="show = false; try { localStorage.setItem('archie_starthere_dismissed','1'); } catch (e) { /* swallow-ok: localStorage throws in private mode; the card is already dismissed for this visit and merely reappears next time, which is not worth an error toast */ }"
                 class="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Dismiss getting-started guide">
             <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>

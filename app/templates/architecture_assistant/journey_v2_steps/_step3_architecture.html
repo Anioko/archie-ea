@@ -526,13 +526,14 @@
 
                 {# Auto-generated layered viewpoint diagram #}
                 <div class="border-b border-border"
-                     x-data="{ diagramReady: false }"
+                     x-data="{ diagramReady: false, diagramError: false }"
                      x-init="(function(){
                          function renderDiagram(val) {
                              if (!val || !val.elements_by_layer) return;
                              $nextTick(function() {
                                  var container = document.getElementById('journey-arch-diagram');
-                                 if (!container || typeof ComposerRenderer === 'undefined') return;
+                                 if (!container) return;
+                                 if (typeof ComposerRenderer === 'undefined') { diagramError = true; return; }
                                  var els = [], rels = [];
                                  var idCounter = 1;
                                  var nameToId = {};
@@ -553,7 +554,10 @@
                                      renderer.loadElements(els, rels);
                                      renderer.fitToContent();
                                      diagramReady = true;
-                                 } catch(e) { console.warn('Diagram render failed:', e); }
+                                 } catch(e) {
+                                     console.warn('Diagram render failed:', e);
+                                     diagramError = true;
+                                 }
                              });
                          }
                          $watch('architectureResult', renderDiagram);
@@ -565,7 +569,10 @@
                             <a :href="'/archimate/composer?solution_id=' + solutionId" class="text-[10px] text-primary hover:underline">Open in Composer &rarr;</a>
                         </div>
                         <div id="journey-arch-diagram" class="w-full rounded-lg border border-border bg-background overflow-hidden" style="min-height:280px;"></div>
-                        <p x-show="!diagramReady" class="text-xs text-muted-foreground text-center py-8">Generate architecture to see the layered viewpoint diagram</p>
+                        {# A render failure used to leave the "generate it first" hint on screen,
+                           telling the user nothing had been generated when it had. #}
+                        <p x-show="!diagramReady && !diagramError" class="text-xs text-muted-foreground text-center py-8">Generate architecture to see the layered viewpoint diagram</p>
+                        <p x-show="diagramError" x-cloak class="text-xs text-destructive text-center py-8">The architecture was generated, but this diagram could not be drawn. Open it in the Composer to view the model.</p>
                     </div>
                 </div>
 

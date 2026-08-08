@@ -294,7 +294,7 @@
                         try {
                             const storageKey = 'archie_staged_' + this.apiBase.split('/').filter(Boolean).pop();
                             localStorage.setItem(storageKey, JSON.stringify(this.stagedElements));
-                        } catch(e) { /* localStorage full or disabled */ }
+                        } catch(e) { /* swallow-ok: localStorage cache of the staging list, which is already on screen; losing it only means the panel is empty after a reload, never that generation failed */ }
                         if (this.stagedElements.length > 0) {
                             this.showNotification('Generated ' + this.stagedElements.length + ' elements. Review below.', 'success');
                         } else {
@@ -364,7 +364,7 @@
                     if (!beforeResp.ok) throw new Error('HTTP ' + beforeResp.status);
                     const beforeData = await beforeResp.json();
                     beforeScore = beforeData.score || 0;
-                } catch(e) { /* completeness endpoint may not exist — before/after delta is optional, accept still proceeds */ }
+                } catch(e) { /* swallow-ok: optional before/after completeness reading; beforeScore stays null and the summary below simply omits the delta rather than inventing one, and the accept itself still reports its own outcome */ }
                 const promises = elements.map(function(el) {
                     return fetch(self.apiBase + '/link-archimate-element', {
                         method: 'POST',
@@ -406,7 +406,7 @@
                     try {
                         const storageKey = 'archie_staged_' + self.apiBase.split('/').filter(Boolean).pop();
                         localStorage.removeItem(storageKey);
-                    } catch(e) { /* private-mode/quota — see comment above */ }
+                    } catch(e) { /* swallow-ok: clearing a localStorage cache whose contents are already discarded in memory; the key is overwritten next run, so there is nothing lost to report */ }
                     // KAN-003: Clear inference preview cache after bulk accept
                     if (typeof self.clearInferencePreviewCache === 'function') {
                         self.clearInferencePreviewCache();
@@ -445,7 +445,7 @@
                 try {
                     const storageKey = 'archie_staged_' + this.apiBase.split('/').filter(Boolean).pop();
                     localStorage.removeItem(storageKey);
-                } catch(e) { /* private-mode/quota — see comment above */ }
+                } catch(e) { /* swallow-ok: clearing a localStorage cache whose contents are already discarded in memory; the key is overwritten next run, so there is nothing lost to report */ }
                 this.showNotification('Rejected ' + count + ' elements', 'info');
             },
 

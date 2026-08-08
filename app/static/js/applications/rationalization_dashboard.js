@@ -156,7 +156,7 @@ function rationalizationDashboard() {
             // Check localStorage for dismissal
             try {
                 if (localStorage.getItem('rationalization_wizard_dismissed') === 'true') return false;
-            } catch (e) { /* storage unavailable */ }
+            } catch (e) { /* swallow-ok: localStorage read for a dismissal flag; if it throws the first-run wizard simply shows again, which is harmless and not worth an error */ }
             return this.execSummary.loaded;
         },
 
@@ -213,7 +213,7 @@ function rationalizationDashboard() {
                     // RATA-016: Dismiss wizard permanently. Best-effort — private-mode
                     // browsers throw on localStorage writes; the wizard just reappears
                     // next load in that case, which is harmless.
-                    try { localStorage.setItem('rationalization_wizard_dismissed', 'true'); } catch(e) {}
+                    try { localStorage.setItem('rationalization_wizard_dismissed', 'true'); } catch(e) { /* swallow-ok: localStorage writes throw in private mode; the wizard reappears next load, which is harmless next to the scoring run that just succeeded */ }
                     // Refresh dashboard data
                     self.load();
                 }

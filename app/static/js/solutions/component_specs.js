@@ -18,14 +18,24 @@ function componentSpecsMixin() {
             let self = this;
             self.specLoading[elementId] = true;
             fetch('/solutions/' + self.solutionId + '/api/component-specs/' + elementId)
-                .then(function (r) { return r.json(); })
+                // fetch does not reject on 4xx/5xx, and `if (data.success)` with no
+                // else left the panel showing its empty state — indistinguishable
+                // from a component that genuinely has no spec recorded.
+                .then(function (r) {
+                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                    return r.json();
+                })
                 .then(function (data) {
-                    if (data.success) {
-                        self.componentSpecs[elementId] = data.data;
-                    }
+                    if (!data.success) { throw new Error(data.error || 'Request failed'); }
+                    self.componentSpecs[elementId] = data.data;
                     self.specLoading[elementId] = false;
                 })
-                .catch(function () { self.specLoading[elementId] = false; });
+                .catch(function (e) {
+                    self.specLoading[elementId] = false;
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Could not load the component spec: ' + (e.message || 'request failed'));
+                    }
+                });
         },
 
         saveComponentSpec: function (elementId, tab, specData) {
@@ -36,14 +46,24 @@ function componentSpecsMixin() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self.csrfToken },
                 body: JSON.stringify({ tab: tab, data: specData })
             })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data.success) {
-                    self.loadComponentSpec(elementId);
-                }
-                self.specSaving[elementId] = false;
+            // A failed PUT used to do nothing but clear the saving flag: the spinner
+            // stopped, the panel kept the typed values, and the user walked away
+            // believing the spec had been saved when nothing reached the server.
+            .then(function (r) {
+                if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                return r.json();
             })
-            .catch(function () { self.specSaving[elementId] = false; });
+            .then(function (data) {
+                if (!data.success) { throw new Error(data.error || 'Request failed'); }
+                self.specSaving[elementId] = false;
+                self.loadComponentSpec(elementId);
+            })
+            .catch(function (e) {
+                self.specSaving[elementId] = false;
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Component spec NOT saved: ' + (e.message || 'request failed'));
+                }
+            });
         },
 
         confirmSpec: function (elementId, tab, ruleId) {
@@ -76,15 +96,22 @@ function componentSpecsMixin() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self.csrfToken },
                 body: JSON.stringify({})
             })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data.success) {
-                    self.loadComponentSpec(elementId);
-                    if (window.Platform && Platform.toast) Platform.toast.success('Fields inferred');
-                }
-                self.specLoading[elementId] = false;
+            .then(function (r) {
+                if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                return r.json();
             })
-            .catch(function () { self.specLoading[elementId] = false; });
+            .then(function (data) {
+                if (!data.success) { throw new Error(data.error || 'Request failed'); }
+                self.specLoading[elementId] = false;
+                self.loadComponentSpec(elementId);
+                if (window.Platform && Platform.toast) Platform.toast.success('Fields inferred');
+            })
+            .catch(function (e) {
+                self.specLoading[elementId] = false;
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not infer fields: ' + (e.message || 'request failed'));
+                }
+            });
         },
 
         validateSpec: function (elementId, fields) {

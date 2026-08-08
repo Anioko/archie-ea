@@ -125,7 +125,7 @@
                 if (previouslyFocused && previouslyFocused.focus) {
                     // Best-effort focus restore: element may have been removed from the DOM
                     // while the dialog was open, in which case there is nothing to focus.
-                    try { previouslyFocused.focus(); } catch (e) { /* detached */ }
+                    try { previouslyFocused.focus(); } catch (e) { /* swallow-ok: the element that opened the dialog may have been removed from the DOM; the dialog still closed and returned its result, so there is nothing to tell the user */ }
                 }
                 resolve(result);
             }

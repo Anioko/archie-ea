@@ -247,6 +247,7 @@ document.addEventListener('alpine:init', function() {
 
             async loadElements() {
                 this.loading = true;
+                this.loadError = null;
                 try {
                     let params = new URLSearchParams({
                         page: this.currentPage,
@@ -267,12 +268,23 @@ document.addEventListener('alpine:init', function() {
                         '/architecture/api/layer/' + this.activeTab + '/elements?' + params,
                         { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
                     );
+                    // fetch() does not reject on 4xx/5xx. Without this the error
+                    // page body failed JSON.parse (or worse, parsed into an object
+                    // with no .elements) and the table rendered its "no elements"
+                    // empty state — indistinguishable from a layer that is genuinely
+                    // empty, which is the exact thing a system of record must not do.
+                    if (!resp.ok) throw new Error('Server returned ' + resp.status + ' loading ' + this.activeTab + ' elements');
                     let data = await resp.json();
-                    this.elements = data.elements;
+                    this.elements = data.elements || [];
                     this.pagination = data.pagination;
-                    this.layerCounts[this.activeTab] = data.pagination.total;
+                    this.layerCounts[this.activeTab] = (data.pagination && data.pagination.total);
                 } catch (err) {
-                    console.error('Failed to load elements:', err);
+                    // The template already renders an error state + Retry button on
+                    // `loadError` (dashboard.html); nothing ever set it until now.
+                    this.loadError = err.message || 'Could not load elements for this layer';
+                    this.elements = [];
+                    this.layerCounts[this.activeTab] = null;   // unknown, not zero
+                    if (window.Platform && Platform.toast) Platform.toast.error(this.loadError);
                 } finally {
                     this.loading = false;
                     this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
@@ -282,6 +294,7 @@ document.addEventListener('alpine:init', function() {
             async loadAllLayerCounts() {
                 let self = this;
                 let layerKeys = Object.keys(this.layerConfig);
+                let uncounted = [];
                 // Use the fast /count endpoint to avoid loading all rows into Python.
                 // Falls back to the elements endpoint if count endpoint is unavailable.
                 for (let i = 0; i < layerKeys.length; i++) {
@@ -303,19 +316,37 @@ document.addEventListener('alpine:init', function() {
                             let d2 = await r2.json();
                             self.layerCounts[layerKey] = (d2.pagination && d2.pagination.total) || 0;
                         }
-                        self.totalCount = Object.values(self.layerCounts).reduce(function(a, b) { return a + b; }, 0);
+                        self.totalCount = Object.values(self.layerCounts).reduce(function(a, b) { return a + (b || 0); }, 0);
                     } catch (e) {
-                        console.warn('Layer count failed for', layerKey, e);
-                        self.layerCounts[layerKey] = 0;
+                        // null, never 0: a fabricated zero is indistinguishable from
+                        // a layer that really has no elements. The tab badge renders
+                        // null as an em dash.
+                        self.layerCounts[layerKey] = null;
+                        uncounted.push(layerKey);
                     }
+                }
+                // One toast for the whole sweep — six per-layer toasts would be worse
+                // than the failure they report.
+                if (uncounted.length && window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not count elements for: ' + uncounted.join(', ')
+                        + '. Those tabs show a dash instead of a total.');
                 }
             },
 
             async loadViewpoints() {
                 try {
                     let resp = await fetch('/api/archimate/viewpoints', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (!resp.ok) throw new Error('Server returned ' + resp.status);
                     this.availableViewpoints = await resp.json();
-                } catch (e) { console.warn('Could not load viewpoints', e); }
+                } catch (e) {
+                    // The Viewpoint <select> keeps only its hardcoded "All Elements"
+                    // option when this fails, which looks exactly like a tenant that
+                    // has no viewpoints configured. Say so instead.
+                    this.availableViewpoints = {};
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Could not load viewpoints — the viewpoint filter is unavailable');
+                    }
+                }
             },
 
             applyViewpoint() {

@@ -71,13 +71,15 @@
     function loadingStart() {
         if (typeof Alpine !== 'undefined' && Alpine.store) {
             // Best-effort UI affordance: a missing/broken loading store must not block the request.
-            try { Alpine.store('loading') && Alpine.store('loading').start && Alpine.store('loading').start(); } catch(e) {}
+            try { Alpine.store('loading') && Alpine.store('loading').start && Alpine.store('loading').start(); }
+            catch(e) { /* swallow-ok: a missing or broken Alpine loading store must not fail the request the user asked for */ }
         }
     }
     function loadingStop() {
         if (typeof Alpine !== 'undefined' && Alpine.store) {
             // Best-effort UI affordance: a missing/broken loading store must not block the request.
-            try { Alpine.store('loading') && Alpine.store('loading').stop && Alpine.store('loading').stop(); } catch(e) {}
+            try { Alpine.store('loading') && Alpine.store('loading').stop && Alpine.store('loading').stop(); }
+            catch(e) { /* swallow-ok: runs in the completion path of every request; a store failure here must not mask the response or the real error */ }
         }
     }
 
@@ -153,7 +155,8 @@
             if (!response.ok) {
                 let errData = null;
                 // Error body is not guaranteed to be JSON; fall back to statusText/HTTP code below.
-                try { errData = await response.json(); } catch(e) {}
+                try { errData = await response.json(); }
+                catch(e) { /* swallow-ok: the error body may be HTML or empty; the failure itself is still reported below from statusText/HTTP code */ }
                 const errMsg = options.errorMsg ||
                     (errData && (errData.message || errData.error)) ||
                     response.statusText ||
@@ -169,7 +172,7 @@
                         // Best-effort a11y announcement; the toast above already carries the error visually.
                         const ann = Alpine.store('announcer');
                         if (ann && ann.assertive) ann.assertive('Error: ' + errMsg);
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: screen-reader mirror of an error the toast above already showed; announcing twice or not at all must not replace the real error */ }
                 }
 
                 // Only log to console if not silent

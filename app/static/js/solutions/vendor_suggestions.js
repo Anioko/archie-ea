@@ -1,6 +1,8 @@
 // app/static/js/solutions/vendor_suggestions.js
 // Alpine.js mixin for vendor suggestion cards in journey wizard Step 2
-// Included by: app/static/js/architecture_assistant/journey_v2.js (spread into journeyV2Flow)
+// Loaded by: app/templates/architecture_assistant/journey_v3.html (own <script> tag).
+// It previously said it was included by architecture_assistant/journey_v2.js; that
+// file was dead — the v2 route renders journey_v3.html — and has been deleted.
 // API: GET /api/solutions/<id>/suggestions/vendors?capability_ids=<ids>
 //      POST /api/solutions/<id>/suggestions/vendors/confirm
 // Uses var/function style per codebase convention
