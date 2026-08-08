@@ -2,7 +2,7 @@
 {% block content %}
 <div class="register-form">
   <h2>Register your organization</h2>
-  <form method="post">
+  <form method="post" action="{{ request.path }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
       <label for="org_name">Organization Name</label>

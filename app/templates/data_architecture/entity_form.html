@@ -22,7 +22,7 @@
         <p class="text-sm text-muted-foreground mt-1">{{ 'Update this data entity definition.' if entity else 'Define a new business data entity in the catalog.' }}</p>
     </div>
 
-    <form method="post" class="space-y-6">
+    <form method="post" action="{{ request.path }}" class="space-y-6">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="rounded-lg border bg-card p-6 space-y-4">

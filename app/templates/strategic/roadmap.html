@@ -29,7 +29,7 @@
     {# ── Filter Bar ──────────────────────────────────────────────────────── #}
     {% call card.card() %}
         {% call card.card_content(class='p-4') %}
-            <form method="get" class="flex flex-wrap gap-4 items-end">
+            <form method="get" action="{{ request.path }}" class="flex flex-wrap gap-4 items-end">
                 <div class="flex-1 min-w-[200px]">
                     <label for="year" class="block text-sm font-medium text-foreground mb-1">Year</label>
                     <select name="year" id="year" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

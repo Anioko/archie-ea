@@ -48,7 +48,7 @@
     <div x-data="{ matrixSearch: '', gapOpen: false }">
 
     <!-- TRC-011: direction toggle / TRC-015: pivot type selector -->
-    <form method="get" class="rounded-lg border border-border bg-card p-3 shadow-sm">
+    <form method="get" action="{{ url_for('architect_ui.traceability_matrix') }}" class="rounded-lg border border-border bg-card p-3 shadow-sm">
         <div class="flex flex-wrap items-center gap-3">
             <label for="direction" class="text-sm font-medium text-foreground">Direction:</label>
             <select
@@ -84,7 +84,7 @@
     </form>
 
     <!-- TRC-017: server-side search + scope filter -->
-    <form method="get" class="flex items-center gap-3 justify-between flex-wrap">
+    <form method="get" action="{{ url_for('architect_ui.traceability_matrix') }}" class="flex items-center gap-3 justify-between flex-wrap">
         <input type="hidden" name="direction" value="{{ direction }}">
         <input type="hidden" name="pivot_type" value="{{ current_pivot_type }}">
         <input type="hidden" name="plateau" value="{{ current_plateau or '' }}">

@@ -125,7 +125,7 @@
             <h2 class="text-lg font-semibold text-foreground">Update Maturity Levels</h2>
         </div>
         <div class="p-6">
-            <form method="POST" class="space-y-6">
+            <form method="POST" action="{{ url_for('maturity_management.edit_capability_maturity', capability_id=capability.id) }}" class="space-y-6">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <!-- Maturity Level Reference -->
                 <div class="bg-primary/5 border border-primary/20 rounded-lg p-4">

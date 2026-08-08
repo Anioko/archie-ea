@@ -38,7 +38,7 @@
 
     <!-- Filters -->
     <div class="bg-card border border-border rounded-lg p-4 mb-6" x-data>
-        <form method="GET" class="flex flex-wrap gap-4">
+        <form method="GET" action="{{ request.path }}" class="flex flex-wrap gap-4">
             <div>
                 <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
                 <select name="status" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()" aria-label="Status">

@@ -18,7 +18,7 @@
 
     {% call card() %}
         {% call card_content() %}
-            <form method="POST" class="space-y-6">
+            <form method="POST" action="{{ request.path }}" class="space-y-6">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">

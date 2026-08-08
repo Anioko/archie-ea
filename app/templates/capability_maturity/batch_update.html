@@ -126,7 +126,7 @@
             <h2 class="text-lg font-semibold text-foreground">Batch Update Configuration</h2>
         </div>
         <div class="p-6">
-            <form method="POST" class="space-y-6">
+            <form method="POST" action="{{ url_for('maturity_management.batch_update_maturity') }}" class="space-y-6">
                 {{ csrf_token() }}
                 <!-- Filter Configuration -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -22,7 +22,7 @@
 
         <!-- Custom Field Form -->
         <div class="bg-card rounded-lg border p-6">
-            <form method="POST">
+            <form method="POST" action="{{ request.path }}">
                 {{ form.hidden_tag() }}
                 
                 <!-- Field Name -->
