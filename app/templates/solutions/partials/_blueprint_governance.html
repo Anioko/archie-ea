@@ -28,6 +28,9 @@
         <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Platform Setup</h3>
 
         {# Progress bar #}
+        <template x-if="loadError">
+            <p class="text-[10px] text-destructive mb-2">Setup status failed to load — reload the page to try again.</p>
+        </template>
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium" :class="{
                 'text-emerald-600': completionPct >= 80,
@@ -69,6 +72,7 @@
             completionPct: 0,
             configuredCount: 0,
             totalCount: 7,
+            loadError: false,
             checklistItems: [
                 {key: 'integration_contracts', label: 'Integration contracts registered', anchor: 'integration-contracts', done: false},
                 {key: 'identity_provider', label: 'Identity provider configured', anchor: 'identity-provider', done: false},
@@ -91,7 +95,10 @@
                             item.done = !!data[item.key];
                         });
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    console.error('[setupChecklist] failed to load setup status:', err);
+                    self.loadError = true;
+                });
             },
             scrollToSection: function(anchor) {
                 const el = document.getElementById('setup-' + anchor) || document.getElementById(anchor);
@@ -273,11 +280,14 @@
                     </div>
                 </div>
             </template>
+            <template x-if="loadError">
+                <p class="text-[10px] text-destructive">ARB readiness failed to load — reload the page to try again.</p>
+            </template>
         </div>
         <script>
         function arbReadinessPanel(solutionId) {
             return {
-                checks: [], pct: 0,
+                checks: [], pct: 0, loadError: false,
                 load: function() {
                     const self = this;
                     fetch('/solutions/' + solutionId + '/governance-status', {
@@ -289,7 +299,10 @@
                             const passed = self.checks.filter(function(c) { return c.passed; }).length;
                             self.pct = total > 0 ? Math.round(passed / total * 100) : 0;
                         }
-                    }).catch(function() {});
+                    }).catch(function(err) {
+                        console.error('[arbReadinessPanel] failed to load governance status:', err);
+                        self.loadError = true;
+                    });
                 }
             };
         }
@@ -615,8 +628,11 @@
                 </div>
             </template>
 
-            <template x-if="contracts.length === 0 && !showForm">
+            <template x-if="contracts.length === 0 && !showForm && !contractsError">
                 <p class="text-[10px] text-muted-foreground mb-3">No integration contracts registered yet.</p>
+            </template>
+            <template x-if="contractsError">
+                <p class="text-[10px] text-destructive mb-3">Integration contracts failed to load — reload the page to try again.</p>
             </template>
 
             {# Add / Edit form #}
@@ -738,6 +754,7 @@
         return {
             expanded: false,
             contracts: [],
+            contractsError: false,
             connectedApps: [],
             showForm: false,
             saving: false,
@@ -751,8 +768,11 @@
                 let self = this;
                 fetch('/api/enterprise/contracts?per_page=100', {headers: {'Accept': 'application/json'}})
                 .then(function(r) { return r.json(); })
-                .then(function(data) { self.contracts = data.items || []; })
-                .catch(function() {});
+                .then(function(data) { self.contracts = data.items || []; self.contractsError = false; })
+                .catch(function(err) {
+                    console.error('[integrationContracts] failed to load contracts:', err);
+                    self.contractsError = true;
+                });
             },
             loadConnectedApps: function() {
                 let self = this;
@@ -764,7 +784,10 @@
                         return {id: e.application_id, name: e.name || e.element_name || ('App #' + e.application_id)};
                     });
                 })
-                .catch(function() {});
+                .catch(function(err) {
+                    console.error('[integrationContracts] failed to load connected applications:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load applications for the contract form');
+                });
             },
             resetForm: function() {
                 this.form = {application_id: '', name: '', base_url: '', protocol: 'rest', auth_method: 'none', auth_config: {}, environments: {dev: '', staging: '', prod: ''}, sla_latency_ms: null};
@@ -852,6 +875,9 @@
         </button>
 
         <div x-show="expanded" x-collapse class="px-4 pb-4 space-y-2">
+            <template x-if="loadError">
+                <p class="text-[10px] text-destructive">Could not load the existing identity provider config — reload before saving, or you may overwrite it.</p>
+            </template>
             {# Provider selector #}
             <div>
                 <label class="text-[10px] text-muted-foreground block mb-0.5">Provider</label>
@@ -948,6 +974,7 @@
         return {
             expanded: false,
             saving: false,
+            loadError: false,
             currentProvider: null,
             form: {type: '', issuer_url: '', jwks_uri: '', client_id_env: 'OAUTH_CLIENT_ID', audience: '', role_claim: ''},
             scopesStr: 'openid, profile, email',
@@ -977,7 +1004,10 @@
                             }
                         }
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    console.error('[identityProvider] failed to load existing config:', err);
+                    self.loadError = true;
+                });
             },
             onPresetChange: function() {
                 const preset = presetDefaults[this.form.type];
@@ -1042,6 +1072,9 @@
         </button>
 
         <div x-show="expanded" x-collapse class="px-4 pb-4 space-y-4">
+            <template x-if="loadError.db || loadError.cicd || loadError.arch">
+                <p class="text-[10px] text-destructive">Could not load the existing configuration below — reload before saving, or you may overwrite what's already set.</p>
+            </template>
 
             {# ── Database sub-section ── #}
             <div>
@@ -1256,6 +1289,7 @@
             savingDb: false,
             savingCicd: false,
             savingArch: false,
+            loadError: {db: false, cicd: false, arch: false},
             db: {engine: 'postgresql', version: '16', instance_class: 'db.t3.micro', storage_gb: 20, multi_az: false, encryption: true, backup_days: 7},
             cicd: {provider: 'github_actions', container_registry: 'ghcr', k8s_staging_namespace: 'staging', k8s_prod_namespace: 'production', require_manual_approval: true, run_security_scan: true},
             arch: {primary: 'microservices', patterns: [], service_mesh: '', api_gateway: ''},
@@ -1275,7 +1309,10 @@
                         self.db.encryption = c.encryption !== false;
                         self.db.backup_days = c.backup_days || 7;
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    console.error('[infrastructureConfig] failed to load database config:', err);
+                    self.loadError.db = true;
+                });
 
                 // Load CI/CD config
                 fetch('/api/solutions/' + solutionId + '/ci-cd-config', {headers: {'Accept': 'application/json'}})
@@ -1290,7 +1327,10 @@
                         self.cicd.require_manual_approval = c.require_manual_approval !== false;
                         self.cicd.run_security_scan = c.run_security_scan !== false;
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    console.error('[infrastructureConfig] failed to load CI/CD config:', err);
+                    self.loadError.cicd = true;
+                });
 
                 // Load architecture style
                 fetch('/api/solutions/' + solutionId + '/architecture-style', {headers: {'Accept': 'application/json'}})
@@ -1303,7 +1343,10 @@
                         self.arch.service_mesh = c.service_mesh || '';
                         self.arch.api_gateway = c.api_gateway || '';
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    console.error('[infrastructureConfig] failed to load architecture style:', err);
+                    self.loadError.arch = true;
+                });
             },
             saveDb: function() {
                 let self = this;
@@ -1622,7 +1665,10 @@
                             self.serviceUrl = data.check.service_url;
                         }
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    console.error('[complianceMonitor] failed to load latest check:', err);
+                    self.error = 'Failed to load the last compliance check result.';
+                });
             },
             runCheck: function() {
                 let self = this;

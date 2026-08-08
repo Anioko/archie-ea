@@ -164,6 +164,7 @@
                         results: [],
                         showDropdown: false,
                         searching: false,
+                        _searchErrorShown: false,
                         async search() {
                             if (this.query.length < 2) { this.results = []; this.showDropdown = false; return; }
                             this.searching = true;
@@ -174,8 +175,17 @@
                                     const q = this.query.toLowerCase();
                                     this.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
                                     this.showDropdown = this.results.length > 0;
+                                    this._searchErrorShown = false;
                                 }
-                            } catch (e) { console.error('User search error:', e); }
+                            } catch (e) {
+                                console.error('User search error:', e);
+                                // Fires on every debounced keystroke — toast once
+                                // per outage rather than once per character typed.
+                                if (!this._searchErrorShown) {
+                                    this._searchErrorShown = true;
+                                    if (window.Platform && Platform.toast) Platform.toast.error('User search failed');
+                                }
+                            }
                             this.searching = false;
                         },
                         select(user) {

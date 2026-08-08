@@ -234,7 +234,10 @@
                                  this.archSuggestions = d.suggestions || [];
                                  this.archReasoningStateId = d.reasoning_state_id;
                              }
-                         } catch (e) { console.warn('[ENT-074] suggest-archimate error:', e); }
+                         } catch (e) {
+                             console.warn('[ENT-074] suggest-archimate error:', e);
+                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate ArchiMate suggestions');
+                         }
                          this.archLoading = false;
                          if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
                      },
@@ -260,7 +263,10 @@
                              });
                              const d = await r.json();
                              if (d.success) { this.archAccepted.add(idx); this.archEditIdx = null; }
-                         } catch (e) { console.warn('[ENT-074] accept error:', e); }
+                         } catch (e) {
+                             console.warn('[ENT-074] accept error:', e);
+                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to accept suggestion');
+                         }
                          this.archAcceptingIdx = null;
                      },
 
@@ -275,7 +281,10 @@
                                  body: JSON.stringify({ suggestion_id: s.suggestion_id, reasoning_state_id: this.archReasoningStateId })
                              });
                              this.archRejected.add(idx);
-                         } catch (e) { console.warn('[ENT-074] reject error:', e); }
+                         } catch (e) {
+                             console.warn('[ENT-074] reject error:', e);
+                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to reject suggestion');
+                         }
                      },
 
                      startEdit(idx) {
@@ -323,7 +332,10 @@
                                  });
                                  this.archSelected = new Set();
                              }
-                         } catch (e) { console.warn('[ENT-074] bulk-accept error:', e); }
+                         } catch (e) {
+                             console.warn('[ENT-074] bulk-accept error:', e);
+                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to accept selected suggestions');
+                         }
                          this.archLoading = false;
                      },
 
@@ -550,9 +562,15 @@
                          const sel = this.relChatProposals.filter(p => p.checked);
                          if (!sel.length) return;
                          this.relChatAccepting = true;
+                         // Track which proposals actually saved — previously every
+                         // checked proposal was dropped from the list regardless of
+                         // outcome, so a failed save still disappeared as if it had
+                         // been created, and the user had no way to tell.
+                         const succeeded = [];
+                         let failCount = 0;
                          for (const p of sel) {
                              try {
-                                 await fetch('/api/solutions/' + this.relSid + '/relationships', {
+                                 const r = await fetch('/api/solutions/' + this.relSid + '/relationships', {
                                      method: 'POST', credentials: 'same-origin',
                                      headers: {'Content-Type': 'application/json'},
                                      body: JSON.stringify({
@@ -561,10 +579,18 @@
                                          relationship_type: p.relationship_type
                                      })
                                  });
-                             } catch(e) { /* skip failed */ }
+                                 if (!r.ok) throw new Error('HTTP ' + r.status);
+                                 succeeded.push(p);
+                             } catch(e) {
+                                 console.warn('[ENT-095] failed to create relationship', e);
+                                 failCount++;
+                             }
                          }
-                         this.relChatProposals = this.relChatProposals.filter(p => !p.checked);
+                         this.relChatProposals = this.relChatProposals.filter(p => !succeeded.includes(p));
                          this.relChatAccepting = false;
+                         if (failCount > 0 && window.Platform && Platform.toast) {
+                             Platform.toast.error(failCount + ' relationship' + (failCount > 1 ? 's' : '') + ' failed to save — still shown below, please retry');
+                         }
                      },
 
                      relConfBadge(c) {
@@ -667,7 +693,10 @@
                              const r = await fetch('/api/solutions/' + this.bpSid + '/chief-packet', { credentials: 'same-origin' });
                              this.bpData = await r.json();
                              this.bpLoaded = true;
-                         } catch(e) { console.warn('[AI-7] chief-packet error:', e); }
+                         } catch(e) {
+                             console.warn('[AI-7] chief-packet error:', e);
+                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate board packet');
+                         }
                          this.bpLoading = false;
                          if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
                      }

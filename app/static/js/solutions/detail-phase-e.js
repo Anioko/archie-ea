@@ -154,6 +154,7 @@
                     }
                 } catch (err) {
                     console.error('[solutionDetail] accept suggestion error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to accept suggestion');
                 }
             },
 

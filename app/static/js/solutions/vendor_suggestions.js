@@ -66,6 +66,7 @@ function vendorSuggestionsMixin() {
             })
             .catch(function(err) {
                 console.error('Vendor confirm error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to confirm vendor');
             });
         },
 
@@ -168,6 +169,7 @@ function vendorSuggestionsMixin() {
             })
             .catch(function(err) {
                 console.error('Coverage vote error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to record vote');
             });
         },
 

@@ -119,7 +119,16 @@
                 const results = data.elements || data || [];
                 if (target === 'source') this.sourceResults = results.slice(0, 10);
                 else this.targetResults = results.slice(0, 10);
-            } catch(e) { /* ignore search errors */ }
+                this._elementSearchErrorShown = false;
+            } catch(e) {
+                console.warn('[relationships] element search failed:', e);
+                // Fires on every debounced keystroke — toast once per
+                // outage rather than once per character typed.
+                if (!this._elementSearchErrorShown) {
+                    this._elementSearchErrorShown = true;
+                    if (window.Platform && Platform.toast) Platform.toast.error('Element search failed');
+                }
+            }
         },
 
         selectSource(elem) {

@@ -317,6 +317,7 @@
                     }
                 } catch (e) {
                     console.error('Failed to fetch linked requirements:', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load linked requirements');
                 } finally {
                     this.loading = false;
                 }
@@ -335,6 +336,7 @@
                     }
                 } catch (e) {
                     console.error('Failed to unlink requirement:', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to unlink requirement');
                 }
             },
 

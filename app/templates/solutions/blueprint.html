@@ -669,6 +669,11 @@
                                 <p class="text-xs text-muted-foreground">Loading diagram...</p>
                             </div>
                         </template>
+                        <template x-if="diagramsLoaded['{{ section_id }}'] && diagramErrors['{{ section_id }}']">
+                            <div class="text-center py-16">
+                                <p class="text-xs text-destructive">Diagram failed to load — reload the page to try again</p>
+                            </div>
+                        </template>
                     </div>
 
                     {# Element table #}
@@ -1593,6 +1598,9 @@ function linkElementsPicker() {
                 this.linked = all.map(e => e.id);
             } catch (err) {
                 console.error('linkElementsPicker: failed to load linked elements', err);
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Failed to load linked elements — link status shown below may be inaccurate');
+                }
             }
         },
 
@@ -1636,6 +1644,7 @@ function linkElementsPicker() {
                     this.linked = this.linked.filter(id => id !== element.id);
                 } catch (err) {
                     console.error('linkElementsPicker: unlink failed', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to unlink element');
                 }
             } else {
                 try {
@@ -1649,6 +1658,7 @@ function linkElementsPicker() {
                     }
                 } catch (err) {
                     console.error('linkElementsPicker: link failed', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to link element');
                 }
             }
             // Ask the blueprint page to reload this section's element list
@@ -1867,11 +1877,14 @@ function blueprintDocIngestion(solutionId) {
         async loadProposals() {
             try {
                 let r = await fetch(base + '/proposals?status=proposed');
-                if (!r.ok) return;
+                if (!r.ok) throw new Error('HTTP ' + r.status);
                 let d = await r.json();
                 let items = (d.data ? d.data.proposals : null) || d.proposals || [];
                 this.proposals = items.filter(function(p) { return p.status === 'proposed'; });
-            } catch(e) { /* non-fatal */ }
+            } catch(e) {
+                console.error('blueprintDocIngestion: failed to load proposals', e);
+                this.uploadError = 'Could not load pending document proposals — reload the page to try again.';
+            }
         },
 
         async uploadDocument(event) {

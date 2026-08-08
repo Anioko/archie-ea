@@ -841,6 +841,9 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (e) {
                     console.warn('[BIZBOK] viewpoint diagram load failed:', e);
+                    container.innerHTML = '<div class="flex items-center justify-center h-full text-destructive text-sm">' +
+                        '<div class="text-center"><p>Diagram failed to load.</p>' +
+                        '<p class="mt-1 text-xs text-muted-foreground">Reload the page to try again.</p></div></div>';
                 }
             },
 
@@ -1126,6 +1129,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] advance error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Phase advance failed');
                 }
             },
 
@@ -1390,7 +1394,10 @@ document.addEventListener('alpine:init', function () {
                         this.advancedTco = data;
                         this.advancedTcoLoaded = true;
                     }
-                } catch(e) { console.warn('Advanced TCO fetch failed', e); }
+                } catch(e) {
+                    console.warn('Advanced TCO fetch failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load advanced TCO');
+                }
                 finally { this.advancedTcoLoading = false; }
             },
 
@@ -1431,7 +1438,10 @@ document.addEventListener('alpine:init', function () {
                         this.complianceGap = data;
                         this.complianceGapLoaded = true;
                     }
-                } catch(e) { console.warn('Compliance gap fetch failed', e); }
+                } catch(e) {
+                    console.warn('Compliance gap fetch failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load compliance gap analysis');
+                }
                 finally { this.complianceGapLoading = false; }
             },
 
@@ -1447,7 +1457,10 @@ document.addEventListener('alpine:init', function () {
                         this.versionHistory = data.versions;
                         this.versionHistoryLoaded = true;
                     }
-                } catch(e) { console.warn('Version history fetch failed', e); }
+                } catch(e) {
+                    console.warn('Version history fetch failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load version history');
+                }
                 finally { this.versionHistoryLoading = false; }
             },
 
@@ -1465,7 +1478,10 @@ document.addEventListener('alpine:init', function () {
                         this.completenessReport = data;
                         this.completenessLoaded = true;
                     }
-                } catch(e) { console.warn('Completeness check failed', e); }
+                } catch(e) {
+                    console.warn('Completeness check failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load completeness report');
+                }
                 finally { this.completenessLoading = false; }
             },
 
@@ -1580,7 +1596,10 @@ document.addEventListener('alpine:init', function () {
                         this.solDeliverablePhases = active;
                         this.solDeliverablesLoaded = true;
                     }
-                } catch(e) { console.warn('Solution deliverables fetch failed', e); }
+                } catch(e) {
+                    console.warn('Solution deliverables fetch failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load deliverable checklist');
+                }
                 finally { this.solDeliverablesLoading = false; }
             },
 
@@ -1609,7 +1628,10 @@ document.addEventListener('alpine:init', function () {
                         for (let j = 0; j < items.length; j++) { if (items[j].checked) count++; }
                         this.solDeliverableData[phaseKey].checked = count;
                     }
-                } catch(e) { console.warn('Toggle deliverable failed', e); }
+                } catch(e) {
+                    console.warn('Toggle deliverable failed', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to save checklist change — please try again');
+                }
             },
 
             async init() {
@@ -1776,6 +1798,12 @@ document.addEventListener('alpine:init', function () {
             },
 
             // GUIDED WIZARD methods (Fix 4: persist step in sessionStorage)
+            // The wizard-step sessionStorage calls below are deliberately
+            // best-effort: sessionStorage throws in private/incognito mode
+            // or when disabled by policy. Losing step persistence just means
+            // the wizard reopens at step 1 next time — never worth an error
+            // toast or blocking the wizard's own in-memory navigation, which
+            // already advanced above.
             wizardNext() {
                 if (this.wizardStep < 4) {
                     this.wizardStep++;
@@ -2239,6 +2267,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] condition toggle error:', err);
+                    Platform.toast.error('Failed to toggle condition.');
                 }
                 this.togglingCondition = -1;
             },
@@ -2291,6 +2320,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] load comments error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load comments');
                 }
                 this.commentLoading[section] = false;
             },
@@ -2313,6 +2343,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] add comment error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to post comment — please try again');
                 }
                 this.commentPosting[section] = false;
             },
@@ -2355,6 +2386,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[solutionDetail] readiness check error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to check ARB readiness');
                 }
                 this.checkingReadiness = false;
             },
@@ -2550,8 +2582,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(e.id) === -1;
                             });
                             self.archimatePickerOpen = self.archimatePickerResults.length > 0;
+                            self._archimateSearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] archimate search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] archimate search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._archimateSearchErrorShown) {
+                                self._archimateSearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('ArchiMate element search failed');
+                            }
+                        })
                         .finally(function() { self.archimatePickerLoading = false; });
                 }, 300);
             },
@@ -2619,8 +2660,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(c.id) === -1;
                             });
                             self.capabilityPickerOpen = true;
+                            self._capabilitySearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] capability search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] capability search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._capabilitySearchErrorShown) {
+                                self._capabilitySearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('Capability search failed');
+                            }
+                        })
                         .finally(function() { self.capabilityPickerLoading = false; });
                 }, 300);
             },
@@ -2800,8 +2850,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(p.id) === -1;
                             });
                             self.vendorProductPickerOpen = true;
+                            self._vendorProductSearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] vendor product search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] vendor product search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._vendorProductSearchErrorShown) {
+                                self._vendorProductSearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('Vendor product search failed');
+                            }
+                        })
                         .finally(function() { self.vendorProductPickerLoading = false; });
                 }, 300);
             },
@@ -2877,8 +2936,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(p.process_id || p.id) === -1;
                             });
                             self.apqcPickerOpen = true;
+                            self._apqcSearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] APQC search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] APQC search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._apqcSearchErrorShown) {
+                                self._apqcSearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('APQC process search failed');
+                            }
+                        })
                         .finally(function() { self.apqcPickerLoading = false; });
                 }, 300);
             },
@@ -2955,8 +3023,17 @@ document.addEventListener('alpine:init', function () {
                                 return linkedIds.indexOf(a.id) === -1;
                             });
                             self.appPickerOpen = true;
+                            self._appSearchErrorShown = false;
                         })
-                        .catch(function(e) { console.warn('[picker] app search error:', e); })
+                        .catch(function(e) {
+                            console.warn('[picker] app search error:', e);
+                            // Fires on every debounced keystroke — toast once
+                            // per outage rather than once per character typed.
+                            if (!self._appSearchErrorShown) {
+                                self._appSearchErrorShown = true;
+                                if (window.Platform && Platform.toast) Platform.toast.error('Application search failed');
+                            }
+                        })
                         .finally(function() { self.appPickerLoading = false; });
                 }, 300);
             },
@@ -3066,6 +3143,7 @@ document.addEventListener('alpine:init', function () {
                     this.loaded = true;
                 } catch (err) {
                     console.error('[phaseHReview] load error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load Phase H review data');
                 }
                 this.loading = false;
             },

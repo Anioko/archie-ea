@@ -719,6 +719,10 @@ document.addEventListener('alpine:init', function() {
                 };
                 sessionStorage.setItem(this._storageKey, JSON.stringify(state));
             } catch (e) {
+                // Deliberate best-effort: sessionStorage throws in private/
+                // incognito mode or when the quota is exceeded. Losing the
+                // wizard-state autosave is not worth interrupting the user —
+                // they can still submit the form normally.
                 console.warn('Failed to save wizard state to sessionStorage:', e);
             }
         },

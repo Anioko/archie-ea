@@ -2323,6 +2323,9 @@ function sadPage() {
         }
       } catch (e) {
         console.warn('[detail] viewpoint diagram load failed:', e);
+        container.innerHTML = '<div class="flex items-center justify-center py-8 text-center">' +
+          '<div><p class="text-sm text-destructive">Diagram failed to load.</p>' +
+          '<p class="text-xs text-muted-foreground mt-1">Reload the page to try again.</p></div></div>';
       }
     }
   };
