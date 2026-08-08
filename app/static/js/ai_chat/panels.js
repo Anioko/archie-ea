@@ -313,6 +313,154 @@
         URL.revokeObjectURL(url);
     }
 
+
+    /* ── Opening screen: this tenant's portfolio, not 21 generic buttons ─────
+       Uses /ai-chat/recommendations, which the page already called into a
+       sidebar tab nobody opens.
+
+       Every state is designed, because each is a real state a real customer is
+       in on a real day:
+
+         loading      the most prominent element now depends on a network call
+         failed       the endpoint answers 500 with EMPTY ARRAYS, so "no items"
+                      and "outage" are the same payload unless status is checked
+         empty        day one, zero applications — the moment the product has to
+                      be most persuasive, so the empty state IS the onboarding
+                      path rather than a blank panel
+         populated    with the denominator, because "3 items" out of an unstated
+                      total is an editorial claim the user cannot audit
+
+       Nothing here invents a number. A count that was not returned renders as
+       an em dash, never as 0.                                              */
+    async function loadPortfolioBriefing() {
+        const host = document.getElementById('portfolio-briefing');
+        if (!host) return;
+
+        const done = (html) => {
+            host.innerHTML = html;
+            host.setAttribute('aria-busy', 'false');
+            if (window.lucide) lucide.createIcons();
+        };
+
+        try {
+            const persona = state.currentPersona || '';
+            const resp = await fetch('/ai-chat/recommendations?persona=' + encodeURIComponent(persona));
+            if (!resp.ok) throw new Error('recommendations ' + resp.status);
+            const data = await resp.json();
+
+            const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+            const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
+            const items = alerts.concat(recs);
+
+            if (items.length === 0) {
+                done(
+                    '<div class="text-center py-2">' +
+                      '<p class="text-sm font-medium text-foreground">Nothing flagged in your portfolio yet.</p>' +
+                      '<p class="text-xs text-muted-foreground mt-1">Import an application portfolio, or start a ' +
+                        'solution design — that one needs no portfolio at all.</p>' +
+                      '<div class="mt-3 flex flex-wrap items-center justify-center gap-2">' +
+                        '<a href="/import" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 ' +
+                          'text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">' +
+                          '<i data-lucide="upload" class="h-3 w-3" aria-hidden="true"></i>Import a portfolio</a>' +
+                        '<button type="button" id="briefing-start-solution" class="inline-flex items-center gap-1.5 ' +
+                          'rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium ' +
+                          'hover:bg-accent transition-colors">' +
+                          '<i data-lucide="plus-circle" class="h-3 w-3" aria-hidden="true"></i>Design a solution</button>' +
+                      '</div>' +
+                    '</div>'
+                );
+                return;
+            }
+
+            /* The denominator matters. Surfacing 3 items out of an unstated
+               total is an editorial claim: the user cannot see what was ranked
+               above what, or how much was left out. */
+            const total = (data.summary && typeof data.summary.total === 'number')
+                ? data.summary.total : null;
+            const shown = items.slice(0, 3);
+            const scope = total === null
+                ? shown.length + (shown.length === 1 ? ' item' : ' items')
+                : shown.length + ' of ' + total + ' open finding' + (total === 1 ? '' : 's');
+
+            const rows = shown.map((it, i) => {
+                const title = ArchieChat.render.escapeForHtml(it.title || it.message || 'Untitled');
+                const detail = ArchieChat.render.escapeForHtml(
+                    (it.description || it.detail || '').slice(0, 140));
+                const sev = String(it.severity || it.priority || '').toLowerCase();
+                const tone = sev === 'critical' ? 'text-destructive-emphasis'
+                           : sev === 'high' ? 'text-warning-emphasis'
+                           : 'text-muted-foreground';
+                return '<button type="button" class="js-briefing-item w-full text-left rounded-lg border ' +
+                         'border-border bg-background px-3 py-2 hover:border-primary hover:bg-accent ' +
+                         'transition-colors focus-visible:outline-none focus-visible:ring-2 ' +
+                         'focus-visible:ring-ring" data-index="' + i + '">' +
+                         '<div class="flex items-start gap-2">' +
+                           '<i data-lucide="alert-circle" class="h-3.5 w-3.5 mt-0.5 shrink-0 ' + tone + '" aria-hidden="true"></i>' +
+                           '<span class="min-w-0">' +
+                             '<span class="block text-sm font-medium text-foreground">' + title + '</span>' +
+                             (detail ? '<span class="block text-xs text-muted-foreground truncate">' + detail + '</span>' : '') +
+                           '</span>' +
+                         '</div>' +
+                       '</button>';
+            }).join('');
+
+            done(
+                '<div class="flex items-center justify-between mb-2">' +
+                  '<span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">' +
+                    'In your portfolio</span>' +
+                  '<span class="text-[10px] text-muted-foreground">' +
+                    ArchieChat.render.escapeForHtml(scope) + ', ranked by impact</span>' +
+                '</div>' +
+                '<div class="space-y-1.5">' + rows + '</div>'
+            );
+
+            host._items = shown;
+        } catch (err) {
+            /* An outage must not read as a clean portfolio. The endpoint's own
+               500 body carries empty arrays, which is precisely the shape of
+               "nothing to report". */
+            done(
+                '<div class="flex items-start gap-2 text-xs">' +
+                  '<i data-lucide="alert-triangle" class="h-3.5 w-3.5 mt-0.5 shrink-0 text-warning-emphasis" aria-hidden="true"></i>' +
+                  '<span class="flex-1">' +
+                    '<span class="block text-foreground font-medium">Could not read your portfolio.</span>' +
+                    '<span class="block text-muted-foreground">This is an error, not an empty portfolio — ' +
+                      'nothing below reflects your data.</span>' +
+                  '</span>' +
+                  '<button type="button" id="briefing-retry" class="shrink-0 rounded-md border border-input ' +
+                    'bg-background px-2 py-1 font-medium hover:bg-accent transition-colors">Retry</button>' +
+                '</div>'
+            );
+        }
+    }
+
+    /* Delegated: the briefing re-renders, so per-element handlers would leak. */
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest) return;
+        if (e.target.closest('#briefing-retry')) { loadPortfolioBriefing(); return; }
+        if (e.target.closest('#briefing-start-solution')) {
+            const input = document.getElementById('user-input');
+            if (input) {
+                input.value = 'I need a new solution about ';
+                input.focus();
+            }
+            return;
+        }
+        const item = e.target.closest('.js-briefing-item');
+        if (!item) return;
+        const host = document.getElementById('portfolio-briefing');
+        const picked = host && host._items && host._items[Number(item.dataset.index)];
+        if (!picked) return;
+        const input = document.getElementById('user-input');
+        const form = document.getElementById('chat-form');
+        if (!input || !form) return;
+        /* Ask about the finding in the user's own terms; the assistant then
+           looks it up rather than being handed a conclusion to agree with. */
+        input.value = 'Tell me about this finding and what you would do about it: ' +
+                      (picked.title || picked.message || '');
+        form.requestSubmit();
+    });
+
     async function loadRecommendations(refresh = false) {
         const alertsList = document.getElementById('alerts-list');
         const recsContent = document.getElementById('recs-content');
@@ -325,12 +473,20 @@
 
         try {
             const response = await fetch(`/ai-chat/recommendations?persona=${state.currentPersona}&refresh=${refresh}`);
+            /* fetch does not reject on 4xx/5xx, and this endpoint answers 500
+               with {"error": ..., "alerts": [], "recommendations": []} — a shape
+               indistinguishable from "nothing to report" unless the status is
+               checked. Without this, an outage rendered as a clean empty state
+               and a health score of 0%, which reads as a measured zero. */
+            if (!response.ok) throw new Error('recommendations ' + response.status);
             const data = await response.json();
 
-            // Update health score
-            const score = data.health_score || 0;
-            healthScore.textContent = score + '%';
-            healthBar.style.width = score + '%';
+            /* null, not 0: a health score that was never computed must render
+               as an em dash, because 0% is a legitimate measured value and the
+               user cannot tell the two apart. */
+            const score = (typeof data.health_score === 'number') ? data.health_score : null;
+            healthScore.textContent = score === null ? '—' : score + '%';
+            healthBar.style.width = (score === null ? 0 : score) + '%';
 
             // Color based on score
             if (score >= 70) { // token-migration-ok — health score status colors
@@ -423,7 +579,13 @@
             }
 
         } catch (error) {
-            alertsList.innerHTML = `<p class="text-sm text-destructive text-center py-4">Error loading data</p>`;
+            alertsList.innerHTML =
+                '<p class="text-sm text-destructive-emphasis text-center py-4">Could not load alerts. ' +
+                'This is an error, not an empty portfolio.</p>';
+            /* Do not leave a stale or zero score behind an error — an unknown
+               value renders as an em dash (DESIGN.md), never as 0%. */
+            if (healthScore) healthScore.textContent = '—';
+            if (healthBar) healthBar.style.width = '0%';
         }
 
         lucide.createIcons();
@@ -565,6 +727,7 @@
         executeNLQuery: executeNLQuery,
         runQuickQuery: runQuickQuery,
         loadRecommendations: loadRecommendations,
+        loadPortfolioBriefing: loadPortfolioBriefing,
         refreshRecommendations: refreshRecommendations,
         exportContextLog: exportContextLog,
         genomePanel: genomePanel

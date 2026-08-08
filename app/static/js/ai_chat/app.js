@@ -844,6 +844,9 @@ Would you like me to provide more details about the extracted elements or help y
 
         // Load initial alert count
         loadRecommendations();
+        // The opening screen reads this tenant's portfolio rather than asking
+        // the user to supply the agenda.
+        ArchieChat.panels.loadPortfolioBriefing();
 
         /* The welcome grid used to be rebuilt here: messagesContainer.innerHTML
            overwrote the server-rendered grid with a second copy carrying

@@ -603,6 +603,19 @@ x-cloak>
                         <p class="text-sm text-muted-foreground max-w-md mx-auto">Just type your question below — or pick a specialist for a role-tuned partner.</p>
                     </div>
 
+                    {# What is actually happening in THIS tenant, from
+                       /ai-chat/recommendations — an endpoint the page already
+                       called, into a sidebar tab nobody opens. A copilot sitting
+                       on a live portfolio should not open by asking the user to
+                       supply the agenda. Populated by panels.js; every state it
+                       can be in is designed, including the failed one. #}
+                    <div id="portfolio-briefing" class="rounded-xl border border-border bg-card p-4" aria-live="polite" aria-busy="true">
+                        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                            <i data-lucide="loader-2" class="h-3.5 w-3.5 animate-spin" aria-hidden="true"></i>
+                            Reading your portfolio…
+                        </div>
+                    </div>
+
                     {# ── AI Architects: governed, evidence-grounded personas (AI-1/PROG-006) ── #}
                     <div class="space-y-3">
                         <div class="flex items-center justify-center gap-2">
