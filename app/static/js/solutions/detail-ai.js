@@ -21,14 +21,20 @@
                     ['actions', base + 'next-actions'],
                     ['archimate', base + 'archimate']
                 ];
+                const failed = [];
                 await Promise.allSettled(endpoints.map(async ([key, url]) => {
                     try {
                         const r = await fetch(url, { credentials: 'same-origin' });
-                        if (r.ok) this.aiInsightsData[key] = await r.json();
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        this.aiInsightsData[key] = await r.json();
                     } catch (e) {
                         console.warn('[SAD-08] Failed to load ' + key + ':', e);
+                        failed.push(key);
                     }
                 }));
+                if (failed.length && window.Platform && Platform.toast && Platform.toast.error) {
+                    Platform.toast.error('Some AI insights failed to load (' + failed.join(', ') + '). Please try again.');
+                }
                 this.aiInsightsLoaded = true;
                 this.aiInsightsLoading = false;
                 if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
@@ -43,9 +49,14 @@
                 this.explainData = null;
                 try {
                     const r = await fetch('/solutions/api/' + sid + '/reasoning/' + reasoningId, { credentials: 'same-origin' });
-                    if (r.ok) this.explainData = await r.json();
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    this.explainData = await r.json();
                 } catch (e) {
                     console.warn('[SAD-11] explainability fetch failed:', e);
+                    this.explainOpen = false;
+                    if (window.Platform && Platform.toast && Platform.toast.error) {
+                        Platform.toast.error('Failed to load explainability details. Please try again.');
+                    }
                 }
                 this.explainLoading = false;
                 if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());

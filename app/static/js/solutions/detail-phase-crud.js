@@ -356,11 +356,10 @@
                 let beforeScore = null;
                 try {
                     const beforeResp = await fetch(self.apiBase + '/completeness');
-                    if (beforeResp.ok) {
-                        const beforeData = await beforeResp.json();
-                        beforeScore = beforeData.score || 0;
-                    }
-                } catch(e) { /* completeness endpoint may not exist */ }
+                    if (!beforeResp.ok) throw new Error('HTTP ' + beforeResp.status);
+                    const beforeData = await beforeResp.json();
+                    beforeScore = beforeData.score || 0;
+                } catch(e) { /* completeness endpoint may not exist — before/after delta is optional, accept still proceeds */ }
                 const promises = elements.map(function(el) {
                     return fetch(self.apiBase + '/link-archimate-element', {
                         method: 'POST',
@@ -737,16 +736,18 @@
                 this.apqcSearching = true;
                 try {
                     let resp = await fetch('/dashboard/api/apqc-processes');
-                    if (resp.ok) {
-                        let data = await resp.json();
-                        let procs = Array.isArray(data) ? data : (data.processes || []);
-                        let lq = q.toLowerCase();
-                        this.apqcResults = procs.filter(function(p) {
-                            return (p.process_name || '').toLowerCase().indexOf(lq) >= 0
-                                || (p.process_code || '').toLowerCase().indexOf(lq) >= 0;
-                        }).slice(0, 10);
-                    }
-                } catch (e) { console.warn('[APQC search]', e); }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let data = await resp.json();
+                    let procs = Array.isArray(data) ? data : (data.processes || []);
+                    let lq = q.toLowerCase();
+                    this.apqcResults = procs.filter(function(p) {
+                        return (p.process_name || '').toLowerCase().indexOf(lq) >= 0
+                            || (p.process_code || '').toLowerCase().indexOf(lq) >= 0;
+                    }).slice(0, 10);
+                } catch (e) {
+                    console.warn('[APQC search]', e);
+                    Platform.toast.error('APQC process search failed. Please try again.');
+                }
                 this.apqcSearching = false;
             },
 
