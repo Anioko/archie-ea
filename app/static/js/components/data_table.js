@@ -480,7 +480,16 @@
             Alpine.data('dataTable', function(cfg) {
                 cfg = cfg || {};
                 let m = mixin(cfg);
-                return Object.assign({}, m, {
+                // extendMixin, not Object.assign - this registration had the
+                // exact defect extendMixin exists to prevent, and its own
+                // docstring warns about. Object.assign copies only own
+                // ENUMERABLE properties, and selectedCount / hasSelection /
+                // allPageSelected are installed with defineProperty and are
+                // therefore non-enumerable, so every component built here was
+                // missing them. Latent rather than live only because nothing
+                // currently uses x-data="dataTable(...)" - it was a trap for
+                // whoever did next, which is how the six tables broke before.
+                return extendMixin(m, {
                     init: function() { this._tableInit(); },
                     destroy: function() { this._tableDestroy(); }
                 });

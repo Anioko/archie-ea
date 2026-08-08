@@ -97,15 +97,30 @@
       </div>
       <script>
       (async function loadAIMetrics() {
+        const dec = document.getElementById('ai-decisions-count');
+        const sol = document.getElementById('ai-solutions-count');
         try {
           const resp = await fetch('/ai-chat/metrics', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-          if (!resp.ok) return;
+          // fetch does not reject on 4xx/5xx; without this the counters keep their
+          // placeholder dash and read as a measured "none yet".
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
           const data = await resp.json();
-          const dec = document.getElementById('ai-decisions-count');
-          const sol = document.getElementById('ai-solutions-count');
-          if (dec) dec.textContent = data.routine_decisions_automated ?? 0;
-          if (sol) sol.textContent = data.solutions_touch_only_for_review ?? 0;
-        } catch(e) { /* silently fail — metrics are non-critical */ }
+          // A missing counter is not a measured zero — render the em dash instead.
+          if (dec) dec.textContent = data.routine_decisions_automated ?? '—';
+          if (sol) sol.textContent = data.solutions_touch_only_for_review ?? '—';
+        } catch(e) {
+          // The placeholder dash on its own is indistinguishable from "no AI
+          // activity in this period", so say the load failed rather than let the
+          // reader treat an unavailable number as a real one.
+          [dec, sol].forEach(function(el) {
+            if (!el) return;
+            el.textContent = '—';
+            el.setAttribute('title', 'AI automation metrics could not be loaded');
+          });
+          if (window.Platform && Platform.toast) {
+            Platform.toast.error('AI automation metrics could not be loaded.');
+          }
+        }
       })();
       </script>
 

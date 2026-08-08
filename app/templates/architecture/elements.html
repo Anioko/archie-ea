@@ -855,7 +855,7 @@ document.addEventListener('alpine:init', () => {
                 } else {
                     let msg = 'Could not delete that element.';
                     // Error body is not guaranteed to be JSON; fall back to the generic message above.
-                    try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch (e) {}
+                    try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch (e) { /* swallow-ok: the error body need not be JSON; the generic message above is toasted either way, so a parse failure must not replace the real failure the user is about to be told about */ }
                     Platform.toast.error(msg);
                 }
             } catch (e) {

@@ -442,7 +442,7 @@
                     try {
                         Alpine.store('notifications').count = count;
                         Alpine.store('notifications').items = notifItems;
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: best-effort mirror into an Alpine store that may not be registered yet; the DOM badge/list above already carries the same data, so there is nothing the user needs to be told */ }
                 }
                 renderNotifications();
             })
@@ -470,7 +470,7 @@
                 try {
                     Alpine.store('notifications').count = 0;
                     Alpine.store('notifications').items = notifItems;
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: best-effort mirror into an Alpine store that may not be registered yet; the real persistence is the POST below, whose failure IS reported */ }
             }
             renderNotifications();
 

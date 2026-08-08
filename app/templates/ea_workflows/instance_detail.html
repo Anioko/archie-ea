@@ -2424,7 +2424,7 @@ function instancePage() {
                 if (data.success && (data.avg_duration || data.total_runs > 1)) {
                     this.runHistory = data;
                 }
-            } catch (e) { /* graceful degradation */ }
+            } catch (e) { /* swallow-ok: run history is an optional ETA enrichment shown only when previous runs exist; without it the page hides the estimate rather than showing a wrong one, and the run itself is unaffected */ }
         },
 
         formatDuration(seconds) {
@@ -2469,7 +2469,7 @@ function instancePage() {
                         this.failureSummary = data.instance.error_message || 'Workflow failed';
                     }
                 }
-            } catch (e) { /* retry on next interval */ }
+            } catch (e) { /* swallow-ok: status poll fires on a repeating interval while a run is in flight; the last-known status stays on screen and the next tick retries, so a dropped poll must not toast once per second */ }
         },
 
         async toggleWatch() {
