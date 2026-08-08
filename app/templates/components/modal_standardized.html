@@ -107,12 +107,17 @@ function myModalData() {
       
       try {
         const formData = new FormData(this.$el.closest('form'));
-        // PLACEHOLDER — this template is reference documentation for the
-        // Platform.modal pattern (see the header comment); it is not
-        // included by any real page. '/api/endpoint' is not a real route —
-        // replace it with your actual endpoint when copying this pattern
-        // into a real modal.
-        const response = await fetch('/api/endpoint', {
+        // This template is reference documentation for the Platform.modal
+        // pattern (see the header comment); no real page includes it. The
+        // endpoint is deliberately undefined rather than a plausible-looking
+        // '/api/endpoint' string: as a literal it was indistinguishable from a
+        // real call to a route that does not exist, so it sat permanently in
+        // the broken-surfaces count and held that gate open at 1 — where a
+        // genuine dead fetch could have hidden behind it. Undefined here means
+        // copying this pattern without substituting a real endpoint fails
+        // loudly and immediately.
+        const YOUR_ENDPOINT_HERE = undefined;   // e.g. '/applications/42/notes'
+        const response = await fetch(YOUR_ENDPOINT_HERE, {
           method: 'POST',
           body: formData,
           headers: {

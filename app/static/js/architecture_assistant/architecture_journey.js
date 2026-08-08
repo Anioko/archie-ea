@@ -118,6 +118,12 @@
 
             // Step 8b: Rules (properties referenced by _step8b_rules.html)
             ruleSuggestions: [],
+            // The panel had no way to distinguish "still fetching" from "none
+            // exist" from "the fetch failed" — all three rendered the literal
+            // string "Loading suggestions...", so a hard failure looked like a
+            // request permanently in flight. These two make the states distinct.
+            ruleSuggestionsLoading: false,
+            ruleSuggestionsError: null,
             activeRules: [],
             nlRuleInput: '',
             nlRuleLoading: false,
@@ -3797,19 +3803,24 @@
 
             loadRuleSuggestions: function () {
                 let self = this;
+                self.ruleSuggestionsLoading = true;
+                self.ruleSuggestionsError = null;
                 _fetch('/solutions/' + this.solutionId + '/codegen/rules/suggest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 }).then(function (data) {
                     self.ruleSuggestions = data.suggestions || [];
+                    self.ruleSuggestionsLoading = false;
                 }).catch(function (e) {
-                    // ruleSuggestions stays empty, and the panel's empty state is the
-                    // string "Loading suggestions..." — so a hard failure looked to the
-                    // user like a request that was still in flight, forever.
+                    // Leave the list empty rather than inventing a suggestion, and
+                    // record WHY it is empty so the panel can say so. Previously the
+                    // only empty state was the string "Loading suggestions...", so a
+                    // hard failure read as a request still in flight, forever.
                     self.ruleSuggestions = [];
+                    self.ruleSuggestionsLoading = false;
+                    self.ruleSuggestionsError = (e && e.message) || 'request failed';
                     Platform.toast.error('Could not load rule suggestions: '
-                        + ((e && e.message) || 'request failed')
-                        + '. The suggestions panel will keep saying "Loading" until you reload.');
+                        + self.ruleSuggestionsError);
                 });
             },
 
