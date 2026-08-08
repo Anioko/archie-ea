@@ -14,6 +14,7 @@ document.addEventListener('alpine:init', () => {
         saving: false,
         saveError: null,
         saveResult: null,
+        _searchErrorShown: false,
 
         // Element selections
         appSearch: '',
@@ -92,10 +93,20 @@ document.addEventListener('alpine:init', () => {
                 let url = '/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query);
                 if (layerFilter) url += '&layer=' + encodeURIComponent(layerFilter);
                 const res = await fetch(url, { credentials: 'same-origin' });
-                if (!res.ok) return [];
+                if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = await res.json();
+                this._searchErrorShown = false;
                 return (data.elements || data || []).slice(0, 10);
             } catch (e) {
+                // An empty result list reads as "no such element exists", and the
+                // architect's next move is to create a duplicate of one that does.
+                // Toast once per outage, not once per debounced keystroke.
+                if (!this._searchErrorShown) {
+                    this._searchErrorShown = true;
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Element search failed: ' + (e.message || 'request failed') + '. No results are shown because the search could not run.');
+                    }
+                }
                 return [];
             }
         },

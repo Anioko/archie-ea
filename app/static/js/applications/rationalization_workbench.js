@@ -237,7 +237,10 @@ function workbenchApp() {
                 fetch('/applications/rationalization/api/evidence-trail/' + app.id, {
                     headers: { 'Accept': 'application/json' }
                 })
-                .then(function(r) { return r.ok ? r.json() : {}; })
+                // `r.ok ? r.json() : {}` plotted a failed request as a four-zero
+                // dataset on the comparison radar — the worst possible score, drawn
+                // next to real applications and impossible to tell apart from one.
+                .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
                 .then(function(data) {
                     const scores = data.scores || {};
                     self.compareApps.push({
@@ -253,6 +256,13 @@ function workbenchApp() {
                     if (self.compareApps.length >= 2) {
                         self.$nextTick(function() { self.renderComparisonChart(); });
                     }
+                })
+                .catch(function(err) {
+                    // Drop the selection rather than charting an application whose
+                    // scores we do not have.
+                    const pending = self.compareIds.indexOf(app.id);
+                    if (pending >= 0) { self.compareIds.splice(pending, 1); }
+                    Platform.toast.error('Could not load scores for ' + (app.name || 'this application') + ': ' + (err.message || 'request failed') + '. It was left out of the comparison rather than plotted at zero.');
                 });
             }
             if (self.compareApps.length >= 2) {
@@ -322,7 +332,10 @@ function workbenchApp() {
             fetch('/applications/rationalization/api/evidence-trail/' + appId, {
                 headers: { 'Accept': 'application/json' }
             })
-            .then(function(r) { return r.ok ? r.json() : {}; })
+            // A failed evidence-trail request used to open this slide-over on a
+            // radar of zeros with no factors listed, which reads as "we looked and
+            // there is no evidence" rather than "we could not load it".
+            .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
             .then(function(data) {
                 const scores = data.scores || {};
                 const dims = [
@@ -374,8 +387,12 @@ function workbenchApp() {
                 });
             })
             .catch(function(err) {
-                console.error('Breakdown load failed:', err);
+                // breakdownData stays null so the panel renders nothing rather than
+                // a zeroed radar the user would read as a measured score.
+                self.breakdownData = null;
                 self.breakdownLoading = false;
+                self.breakdownOpen = false;
+                Platform.toast.error('Could not load the score breakdown for ' + (self.breakdownAppName || 'this application') + ': ' + (err.message || 'request failed') + '.');
             });
         },
 

@@ -894,12 +894,23 @@
                 let self = this;
                 return self._ensureWorkbenchUml()
                     .then(function () {
-                        // Best-effort: apply confirmed specs if present; ignore "none confirmed" errors.
+                        // "No confirmed field specs" is a 400 and a perfectly normal
+                        // state — there is nothing to apply, so generation proceeds.
+                        // Every OTHER failure means the architect's confirmed fields
+                        // were NOT written into the UML snapshot, and the code about to
+                        // be generated silently falls back to LLM-invented fields.
                         return _fetch('/solutions/' + self.solutionId + '/codegen/apply-specs', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({})
-                        }).catch(function () { return null; });
+                        }).catch(function (e) {
+                            if (!e || e.status !== 400) {
+                                Platform.toast.error('Could not apply your confirmed field specs: '
+                                    + ((e && e.message) || 'request failed')
+                                    + '. Generation continues, but the generated code uses the inferred fields, not your confirmed ones.');
+                            }
+                            return null;
+                        });
                     })
                     .then(function () {
                         let payload = {
@@ -2748,7 +2759,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window._csrfToken || '' },
                 })
-                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (r) { return r.ok ? r.json() : null; /* swallow-ok: TRAC-001 probe fired automatically on every step transition; a null here adds no warning banner and removes none, so nothing on the step changes, and a toast on each navigation would train the user to ignore toasts */ })
                 .then(function (data) {
                     if (data && data.data && data.data.warnings && data.data.warnings.length > 0) {
                         self.stepWarnings[step] = data.data.warnings;
@@ -3520,22 +3531,35 @@
                             + '. Inferred relationships are missing from your architecture — re-run this step.');
                     });
 
-                    // Cost estimation — non-fatal: if it fails the pipeline continues without cost data
+                    // Cost estimation — non-fatal: if it fails the pipeline continues,
+                    // but it continues with NO cost figures, not with zero cost. Returning
+                    // {} here made `|| 0` produce a $0 annual operating cost and a "No cost
+                    // data available for linked applications" message — a statement about
+                    // the portfolio that the failed request had no right to make.
                     return _fetch(API_BASE + '/' + self.solutionId + '/reasoning/estimate-costs', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
-                    }).catch(function () { return {}; });  // Spec 3: cost failure must not abort pipeline
+                    }).catch(function (e) {
+                        Platform.toast.error('Cost estimation failed: '
+                            + ((e && e.message) || 'request failed')
+                            + '. The cost figures on this step show "—" because they could not be calculated, not because these applications have no cost data.');
+                        return null;   // Spec 3: cost failure must not abort the pipeline
+                    });
                 }).then(function (costData) {
-                    self.reasoningCostSummary = costData || {};
-                    const annual = (costData && costData.total_annual_operating) || 0;
-                    const tco = (costData && costData.tco_5_year) || 0;
-                    let coverage = (costData && costData.cost_coverage_pct) || 0;
+                    // null, not {}: the templates test `reasoningCostSummary && ...` and
+                    // render an em dash, which is the honest glyph for "not computed".
+                    self.reasoningCostSummary = costData || null;
+                    const annual = costData ? costData.total_annual_operating : null;
+                    const tco = costData ? costData.tco_5_year : null;
+                    const coverage = costData ? costData.cost_coverage_pct : null;
                     if (annual > 0) {
                         self.copilotMessage = 'Cost estimate: $' + Math.round(annual).toLocaleString() +
-                            '/year operating, $' + Math.round(tco).toLocaleString() +
-                            ' 5-year TCO (' + coverage + '% coverage). Detecting gaps...';
-                    } else {
+                            '/year operating, $' + Math.round(tco || 0).toLocaleString() +
+                            ' 5-year TCO (' + (coverage || 0) + '% coverage). Detecting gaps...';
+                    } else if (costData) {
                         self.copilotMessage = 'No cost data available for linked applications. Detecting gaps...';
+                    } else {
+                        self.copilotMessage = 'Cost estimate unavailable — the calculation failed. Detecting gaps...';
                     }
 
                     // Step 3 -> 4: Detect gaps

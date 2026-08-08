@@ -51,9 +51,13 @@ function planningApp() {
 
             let fetches = [];
             if (tab === 'overview') {
+                // Falling back to an empty object on a non-ok response made a 500
+                // indistinguishable from a real answer: the dossier came out blank
+                // and the evidence trail rendered a radar of four zeros, which reads
+                // as "we scored this application and every dimension came out at zero".
                 fetches = [
-                    fetch(baseUrl + '/decision-dossier/' + appId, { headers: { 'Accept': 'application/json' } }).then(function(r) { return r.ok ? r.json() : {}; }),
-                    fetch(baseUrl + '/evidence-trail/' + appId, { headers: { 'Accept': 'application/json' } }).then(function(r) { return r.ok ? r.json() : {}; })
+                    fetch(baseUrl + '/decision-dossier/' + appId, { headers: { 'Accept': 'application/json' } }).then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); }),
+                    fetch(baseUrl + '/evidence-trail/' + appId, { headers: { 'Accept': 'application/json' } }).then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
                 ];
                 Promise.all(fetches).then(function(results) {
                     const evidenceRaw = results[1] || {};
@@ -98,10 +102,13 @@ function planningApp() {
                     // Render radar chart after DOM update
                     self.$nextTick(function() { self.renderScoreRadar(); });
                 }).catch(function(err) {
-                    console.error('Overview load failed:', err);
                     self.tabLoading.overview = false;
                     self.tabLoaded.overview = true;
                     self.tabData.overview = { dossier_html: '<p>Failed to load dossier.</p>', evidence: [] };
+                    // evidenceData stays null: renderScoreRadar() bails on null, so no
+                    // chart is drawn at all. A radar of zeros would be a score.
+                    self.evidenceData = null;
+                    Platform.toast.error('Could not load the decision dossier or evidence trail: ' + (err.message || 'request failed') + '. No scores are shown because the load failed — this is not a zero score.');
                 });
 
             } else if (tab === 'options') {

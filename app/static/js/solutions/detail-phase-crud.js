@@ -873,21 +873,32 @@
                         Platform.toast.error('Saved, but the list could not be refreshed — reload the page to see the latest data');
                     }
                 }
-                // ENT-018: silently update impact summary after any entity change
+                // ENT-018: update the impact summary after any entity change
                 this._refreshImpact();
             },
 
             _refreshImpact() {
+                // The maturity percentage, risk summary and next milestone on screen
+                // were computed BEFORE the change just saved. Swallowing this left
+                // them there looking current — the same failure the refresh handler
+                // above reports, and the reason it reports it.
                 fetch(this.apiBase + '/recalculate-impact', {
                     method: 'POST', headers: { 'X-CSRFToken': this.csrfToken }
-                }).then(function(r) { return r.ok ? r.json() : null; }).then((data) => {
+                }).then(function(r) {
+                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                    return r.json();
+                }).then((data) => {
                     if (!data) return;
                     if (typeof data.maturity_percentage === 'number') {
                         this.maturityPct = data.maturity_percentage;
                     }
                     if (data.risk_summary) this.riskSummaryLive = data.risk_summary;
                     if (data.next_milestone) this.nextMilestone = data.next_milestone;
-                }).catch(() => {});
+                }).catch((e) => {
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Saved, but the impact summary could not be recalculated (' + ((e && e.message) || 'request failed') + ') — the maturity, risk and milestone figures shown are from before this change.');
+                    }
+                });
             },
     };
 })();

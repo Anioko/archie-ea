@@ -1516,6 +1516,7 @@ document.addEventListener('alpine:init', function () {
                         headers: {'Accept': 'application/json'}
                     });
                     if (!resp.ok) {
+                        // swallow-ok: parses the ERROR BODY, which is not guaranteed to be JSON; {} falls through to the HTTP status on the next line, so the failure is reported to the user either way — nothing is swallowed
                         let errData = await resp.json().catch(() => ({}));
                         this.suggestionsError = errData.error || 'Failed to load suggestions (HTTP ' + resp.status + ')';
                         return;

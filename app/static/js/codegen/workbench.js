@@ -1567,10 +1567,12 @@
                                         body: JSON.stringify({ file: payload.file, diff: payload.diff }),
                                     }
                                 );
-                                const applyData = await applyResp.json().catch(() => ({}));
                                 // fetch() does not reject on 4xx/5xx, and the server can
                                 // also answer 200 {success: false}. Both were previously
                                 // ignored, leaving patchesApplied at 0 with no error.
+                                // The {} below is the ERROR BODY when it is not JSON; the
+                                // check on the next line is what reports the failure.
+                                const applyData = await applyResp.json().catch(() => ({}));
                                 if (!applyResp.ok || !applyData.success) {
                                     throw new Error(applyData.error || applyData.message || ('HTTP ' + applyResp.status));
                                 }
@@ -1807,7 +1809,8 @@
                 const ext = filename.split('.').pop();
                 if (!window.__cm6langs) return [];
                 const factory = window.__cm6langs[ext];
-                try { return factory ? factory() : []; } catch(_) { return []; }
+                try { return factory ? factory() : []; }
+                catch(_) { /* swallow-ok: CodeMirror language-mode probe, not a network call; an empty extension list only costs syntax highlighting and the file's text is displayed unchanged either way */ return []; }
             },
 
             _cmAppTheme() {
@@ -3322,7 +3325,7 @@
                     let data = Alpine.$data(el);
                     if (data && data.cmEditor) return data.cmEditor.state.doc.toString() || '';
                     return (data && data.selectedContent) || '';
-                } catch (_) { return ''; }
+                } catch (_) { /* swallow-ok: reads the open editor's buffer for the chat panel and throws only when the workbench component has been torn down; there is then no open file, and the empty string is the buffer's true contents rather than a failed load */ return ''; }
             };
             window.wbRefreshFile = function (path) {
                 // Best-effort DOM/Alpine bridge from the chat panel — the AI edit

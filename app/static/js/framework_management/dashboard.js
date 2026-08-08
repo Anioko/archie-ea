@@ -8,10 +8,15 @@ let currentData = {
 };
 
 function loadData() {
+    // All three must check r.ok: fetch does not reject on 4xx/5xx. The
+    // active-framework call additionally swallowed a parse failure to null, which
+    // updateActiveFramework() renders as "no framework configured" — a statement
+    // about this organisation's setup that a 500 has no business making. The outer
+    // catch below already paints an explicit error panel with a Retry button.
     Promise.all([
-        fetch('/framework-management/api/available-frameworks').then(function(r) { return r.json(); }),
-        fetch('/framework-management/api/statistics').then(function(r) { return r.json(); }),
-        fetch('/framework-management/api/active-framework').then(function(r) { return r.json().catch(function() { return null; }); })
+        fetch('/framework-management/api/available-frameworks').then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); }),
+        fetch('/framework-management/api/statistics').then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); }),
+        fetch('/framework-management/api/active-framework').then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
     ]).then(function(results) {
         let frameworks = results[0];
         let stats = results[1];
