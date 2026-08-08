@@ -254,6 +254,42 @@ def gate_template_syntax() -> Result:
     return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_dead_interactions() -> Result:
+    """No control that looks like it works and does nothing. Gated at ZERO.
+
+    Four classes, none visible to any other gate — the template compiles, the
+    route returns 200, and the button is present and correctly styled:
+
+      silent-fetch  `if (r.ok) {...}` with no else. fetch does not reject on
+                    4xx/5xx, so a 500, a 403 or a rejected CSRF token falls
+                    through and the handler returns having done nothing. The
+                    user clicks, the button spins, and nothing happens.
+      silent-then   fetch().then() that never inspects status, so the error body
+                    is parsed as a result and the success path runs anyway.
+      dead-handler  @click="foo()" where foo is defined nowhere the page loads.
+      dead-action   data-action="x" with no consumer; the click is dropped.
+
+    Added after a user reported clicking a button on /solutions/briefings/2 and
+    nothing happening. It was one of 97 instances of the same pattern. Three of
+    them were worse than dead: addCapability() pushed a fabricated record into
+    the list when its POST failed, saveContext() reported success before five
+    later saves whose failures were invisible, and a failed team-member DELETE
+    still reloaded the page so the member appeared gone.
+
+    Platform.fetch (app/static/js/core/03-fetch.js) is deliberately EXCLUDED:
+    it already checks !response.ok, extracts the server's message and toasts it.
+    The bug is bypassing that wrapper, not using it.
+    """
+    proc = _run([sys.executable, "scripts/check_dead_interactions.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("dead-interactions", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_dead_interactions.py to list them"
+    return Result("dead-interactions", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_macro_import_context() -> Result:
     """A macro holding a <script> is imported `with context`. Gated at ZERO.
 
@@ -712,6 +748,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_template_references,
              remediation="create the missing partial, correct the path, or delete the "
                          "dead reference; run scripts/check_template_references.py",
+             tags=["static", "ui"]),
+        Gate("dead-interactions", "no control that silently does nothing", "zero",
+             gate_dead_interactions,
+             remediation="run scripts/check_dead_interactions.py; use `if (!r.ok) throw` "
+                         "and report the failure to the user, or switch to Platform.fetch",
              tags=["static", "ui"]),
         Gate("macro-import-context", "script-bearing macros imported with context", "zero",
              gate_macro_import_context,
