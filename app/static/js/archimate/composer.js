@@ -735,6 +735,11 @@ function composerApp() {
         srUseRegex: false,
         srMatches: [],
         srCurrentIndex: -1,
+        /* Rendered under the Find box. An unparseable regex used to abort the
+           search silently, which read as "0 matches" — the same answer a valid
+           pattern with no hits gives. Inline rather than a toast because the
+           search runs debounced on every keystroke. */
+        srRegexError: null,
 
         /* Zoom preset dropdown */
         zoomDropdownOpen: false,

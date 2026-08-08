@@ -290,6 +290,7 @@ let ComposerSearch = (function() {
             self._clearSrHighlights();
             self.srMatches = [];
             self.srCurrentIndex = -1;
+            self.srRegexError = null;
 
             let query = self.srFindText;
             if (!query) return;
@@ -299,6 +300,11 @@ let ComposerSearch = (function() {
             try {
                 re = self.srUseRegex ? new RegExp(query, flags) : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
             } catch(e) {
+                /* Returning here left srMatches empty, and the panel renders that
+                   as "0 / 0" — the identical answer a valid pattern that matched
+                   nothing gives. The user could not tell a typo in their regex
+                   from a diagram that does not contain what they searched for. */
+                self.srRegexError = 'Invalid regular expression: ' + (e.message || query);
                 return;
             }
 
@@ -357,7 +363,12 @@ let ComposerSearch = (function() {
             let re;
             try {
                 re = self.srUseRegex ? new RegExp(query, flags + 'g') : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags + 'g');
-            } catch(e) { return; }
+            } catch(e) {
+                /* The button press did nothing at all and said nothing at all. */
+                self.srRegexError = 'Invalid regular expression: ' + (e.message || query);
+                _toast('error', self.srRegexError);
+                return;
+            }
 
             let newName = oldName.replace(re, self.srReplaceText);
             cell.set('elName', newName);
@@ -388,7 +399,12 @@ let ComposerSearch = (function() {
             let re;
             try {
                 re = self.srUseRegex ? new RegExp(query, flags + 'g') : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags + 'g');
-            } catch(e) { return; }
+            } catch(e) {
+                /* The button press did nothing at all and said nothing at all. */
+                self.srRegexError = 'Invalid regular expression: ' + (e.message || query);
+                _toast('error', self.srRegexError);
+                return;
+            }
 
             let count = self.srMatches.length;
             /* Save all old names for undo */
