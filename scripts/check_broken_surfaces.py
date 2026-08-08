@@ -118,6 +118,14 @@ def scan() -> dict[str, list[str]]:
             url = m.group(1).strip()
             if not url.startswith("/") or _is_dynamic(url):
                 continue
+            # The literal may be only the PREFIX of a concatenated URL:
+            #     fetch('/ai-chat/approvals/' + id + '/approve')
+            # _is_dynamic sees only the captured substring, in which the `+`
+            # does not appear — so every such call was reported as a dead route
+            # at its bare prefix. Look past the closing quote instead.
+            after = text[m.end():m.end() + 12].lstrip()
+            if after.startswith(("+", "$", "`")):
+                continue
             if not resolves(url):
                 out["dead-fetch"].append(
                     "%s:%d: dead-fetch: fetch(\"%s\") matches no route — the request 404s"
