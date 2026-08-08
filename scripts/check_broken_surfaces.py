@@ -44,6 +44,49 @@ STATIC_JS = ROOT / "app" / "static" / "js"
 _SKIP_PREFIX = ("http://", "https://", "//", "mailto:", "tel:", "#", "javascript:", "data:")
 
 
+
+def _blank_comments(text: str, jinja: bool) -> str:
+    """Blank comments while preserving offsets, so line numbers stay correct.
+
+    Every remaining false positive in this checker was a comment: JS docstrings
+    in core/04-toast.js and core/07-dialog.js documenting the REPLACEMENT for
+    alert()/confirm(), and Jinja `{# ... #}` blocks in components/drawer.html and
+    macros/form_macros.html showing example <form> markup. Documentation that
+    names an anti-pattern is not an instance of it — flagging it trains readers
+    to ignore the checker, which is the only thing that makes a checker useless.
+    """
+    out = list(text)
+
+    def blank(a, b):
+        for k in range(a, min(b, len(out))):
+            if out[k] != "\n":
+                out[k] = " "
+
+    spans = []
+    i, n = 0, len(text)
+    while i < n:
+        if jinja and text.startswith("{#", i):
+            j = text.find("#}", i + 2)
+            j = n if j == -1 else j + 2
+            spans.append((i, j))
+            i = j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            j = n if j == -1 else j + 2
+            spans.append((i, j))
+            i = j
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            j = n if j == -1 else j
+            spans.append((i, j))
+            i = j
+        else:
+            i += 1
+    for a, b in spans:
+        blank(a, b)
+    return "".join(out)
+
+
 def _route_matcher():
     """Return a predicate that says whether a concrete path resolves to a route."""
     os.environ.setdefault("FLASK_CONFIG", "testing")
@@ -95,7 +138,7 @@ def scan() -> dict[str, list[str]]:
     def line_of(text, idx): return text[:idx].count("\n") + 1
 
     for path in html:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        text = _blank_comments(path.read_text(encoding="utf-8", errors="ignore"), jinja=True)
         for m in href_re.finditer(text):
             url = m.group(1).strip()
             if not url or url.startswith(_SKIP_PREFIX) or _is_dynamic(url):
@@ -117,7 +160,8 @@ def scan() -> dict[str, list[str]]:
                     % (rel(path), line_of(text, m.start())))
 
     for path in html + js:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        raw = path.read_text(encoding="utf-8", errors="ignore")
+        text = _blank_comments(raw, jinja=path.suffix == ".html")
         for m in fetch_re.finditer(text):
             url = m.group(1).strip()
             if not url.startswith("/") or _is_dynamic(url):
@@ -134,7 +178,11 @@ def scan() -> dict[str, list[str]]:
                 out["dead-fetch"].append(
                     "%s:%d: dead-fetch: fetch(\"%s\") matches no route — the request 404s"
                     % (rel(path), line_of(text, m.start()), url))
-        for m in swallow_re.finditer(text):
+        # Deliberately the RAW text, not the comment-blanked copy: a catch
+        # containing only a comment is DOCUMENTED intent, which is materially
+        # different from a bare `catch {}`. Blanking the comment first turned
+        # every considered no-op into an ignored one and inflated this by 27.
+        for m in swallow_re.finditer(raw):
             out["swallowed"].append(
                 "%s:%d: swallowed: catch block tells neither the user nor the logs"
                 % (rel(path), line_of(text, m.start())))
