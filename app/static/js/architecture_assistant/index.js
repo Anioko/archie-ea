@@ -40,6 +40,9 @@ function saveCache(key, value) {
             localStorage.removeItem(key);
             localStorage.setItem(key, serialized);
         } catch (retryErr) {
+            // localStorage unavailable/full even after clearing this key (e.g. private
+            // browsing mode, or another origin filled the quota) — the wizard still
+            // works without the cache, just without cross-session restore.
             console.warn('[AA] localStorage retry failed:', retryErr.message);
         }
     }
@@ -227,6 +230,7 @@ let ArchAssistant = {
     },
 
     _persistToServer: function(step, data) {
+        let self = this;
         let csrfToken = document.querySelector('meta[name="csrf-token"]');
         let headers = { 'Content-Type': 'application/json' };
         if (csrfToken) { headers['X-CSRFToken'] = csrfToken.getAttribute('content'); }
@@ -237,9 +241,17 @@ let ArchAssistant = {
         }).then(function(resp) {
             if (!resp.ok) {
                 console.warn('[AA] session persist got HTTP ' + resp.status + ' for step ' + step);
+                self.showToast('Your progress for this step did not save on the server — it is only kept locally.', 'error');
+                return;
             }
+            self._persistFailWarned = false;
         }).catch(function(err) {
             console.warn('[AA] session persist failed for step ' + step + ':', err);
+            // Called on every step change — toast once until a save succeeds again.
+            if (!self._persistFailWarned) {
+                self._persistFailWarned = true;
+                self.showToast('Your progress did not save to the server — it is only kept locally.', 'error');
+            }
         });
     },
 
@@ -326,6 +338,7 @@ let ArchAssistant = {
             });
         } catch (e) {
             console.error('Error loading saved sets', e);
+            this.showToast('Could not load your saved capability sets.', 'error');
         }
     },
 
@@ -404,6 +417,9 @@ let ArchAssistant = {
                         }
                     }
                 } catch (hierErr) {
+                    // Secondary panel only — the flat capabilities list above already
+                    // loaded and rendered. Losing the hierarchy browser just means the
+                    // user falls back to the flat list, so this is deliberately silent.
                     console.warn('Hierarchy view not available:', hierErr);
                 }
             }
@@ -594,6 +610,10 @@ let ArchAssistant = {
         self.renderCapabilities(filtered);
         clearTimeout(self._capSearchTimer);
         if (query.length >= 2) {
+            // Debounced server-side search that tops up the local filter above with
+            // results beyond the already-loaded page. The local filter already
+            // rendered above, so a failure here just means the list isn't topped up —
+            // deliberately silent to avoid toasting on every keystroke.
             self._capSearchTimer = setTimeout(function() {
                 fetch('/api/architecture-assistant/capabilities?page=1&per_page=50&search=' + encodeURIComponent(query))
                     .then(function(r) { return r.json(); })
@@ -857,7 +877,9 @@ let ArchAssistant = {
         lucide.createIcons();
 
         try {
-            // First, attempt an in-depth option analysis to enrich the selected option
+            // First, attempt an in-depth option analysis to enrich the selected option.
+            // Best-effort enrichment — the ARB draft below proceeds with the original
+            // (un-enriched) option selection if this fails.
             try {
                 let analysisRes = await fetch('/api/architecture-assistant/analyze-options', {
                     method: 'POST',
@@ -1203,7 +1225,10 @@ let ArchAssistant = {
                         self.showToast('Service is ' + (statusData.status || 'unknown'), 'success');
                     }
                 })
-                .catch(function(err) { console.error('[ArchAssistant] status fetch error:', err); });
+                .catch(function(err) {
+                    console.error('[ArchAssistant] status fetch error:', err);
+                    self.showToast('Could not fetch service status.', 'error');
+                });
         } else {
             self.showToast(action + ' feature - select a capability first', 'info');
         }
@@ -1384,6 +1409,9 @@ let ArchAssistant = {
             debounceTimers[fieldId] = setTimeout(function() {
                 let q = el.value.trim();
                 let type = el.dataset.elementType;
+                // Typeahead search fires per keystroke (debounced) — a failure just
+                // means the dropdown doesn't show suggestions this time; toasting
+                // would be noisy, and the user can keep typing or retry.
                 fetch('/api/architecture-assistant/motivation-elements?type=' + encodeURIComponent(type) + '&q=' + encodeURIComponent(q))
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
@@ -1429,7 +1457,10 @@ let ArchAssistant = {
                         let id = ids.assessment || (ids.stakeholders || [])[0] || (ids.constraints || [])[0];
                         if (id) hiddenInput.value = id;
                     }
-                }).catch(function() {});
+                }).catch(function(e) {
+                    console.error('[AA] Failed to create new ' + (type || 'element') + ':', e);
+                    self.showToast('Could not create "' + val + '" — please retry.', 'error');
+                });
             } else {
                 if (input) input.value = li.dataset.name || li.textContent;
                 if (hiddenInput) hiddenInput.value = li.dataset.id || '';

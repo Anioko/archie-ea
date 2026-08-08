@@ -385,7 +385,9 @@
                 // Reset prompt group statuses
                 this.promptGroups.forEach(k => { this.promptGroupStatus[k] = 'pending'; });
 
-                // Load chat instruction history from localStorage
+                // Load chat instruction history from localStorage. Best-effort cache —
+                // unavailable in private browsing or corrupt JSON just means the seed
+                // suggestions below are used instead.
                 try {
                     const stored = localStorage.getItem('codegen_chat_history_' + this.solutionId);
                     if (stored) this.chatSuggestions = JSON.parse(stored);
@@ -401,7 +403,8 @@
                     ];
                 }
 
-                // Load confirmed classes from localStorage
+                // Load confirmed classes from localStorage. Best-effort cache — a
+                // missing/corrupt value just means classes start unconfirmed.
                 try {
                     const conf = localStorage.getItem('codegen_confirmed_' + this.solutionId);
                     if (conf) this.confirmedClasses = JSON.parse(conf);
@@ -410,7 +413,8 @@
                 // Check if Docker preview container is already running
                 if (initialData.hasFiles) this.checkDockerStatus();
 
-                // Restore saved panel widths from localStorage
+                // Restore saved panel widths from localStorage. Best-effort — falls
+                // back to the default widths already set above.
                 try {
                     const sl = localStorage.getItem('wb-leftW');
                     const sr = localStorage.getItem('wb-rightW');
@@ -520,6 +524,8 @@
             stopDrag() {
                 if (!this.dragging) return;
                 this.dragging = null;
+                // Best-effort: remember panel widths for next visit. Unavailable in
+                // private browsing just means the layout resets to defaults next time.
                 try {
                     localStorage.setItem('wb-leftW', this.leftW);
                     localStorage.setItem('wb-rightW', this.rightW);
@@ -686,7 +692,9 @@
                 try {
                     let data = await this._fetch('/api/codegen/template-sets');
                     this.templateSets = Array.isArray(data) ? data : [];
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not load the template marketplace.', true);
+                }
             },
 
             filteredTemplateSets() {
@@ -706,7 +714,9 @@
                 try {
                     const data = await this._fetch('/api/codegen/template-sets/' + id);
                     this.templatePreviewFiles = data.files || [];
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not load the template preview.', true);
+                }
                 this.templatePreviewLoading = false;
             },
 
@@ -2238,7 +2248,9 @@
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/drift-report`);
                     this.driftHasGithub = data.has_github || false;
                     this.driftReport = data.report || null;
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not load the drift report.', true);
+                }
             },
 
             async scanDrift() {
@@ -2308,7 +2320,9 @@
                         this.previewSchemaCount = data.schema_count || 0;
                         this._startPreviewCountdown();
                     }
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not check live preview status.', true);
+                }
             },
 
             async startPreview() {
@@ -2343,7 +2357,12 @@
                         `/solutions/${this.solutionId}/codegen/preview/stop`,
                         { method: 'DELETE' }
                     );
-                } catch (_) {}
+                } catch (e) {
+                    // The panel below still closes (the user asked to stop it), but the
+                    // container may still be running server-side — tell them so it
+                    // isn't silently left consuming resources.
+                    this._addError('Could not confirm the live preview stopped on the server — it may still be running.');
+                }
                 this.previewActive = false;
                 this.previewOpen = false;
                 if (this._previewTimer) { clearInterval(this._previewTimer); this._previewTimer = null; }
@@ -2627,6 +2646,8 @@
                     }
                     this.fieldEditorOpen[name] = false;
                     this.confirmedClasses[name] = true;
+                    // Best-effort local cache of the confirmation the server just saved
+                    // above — a failure here doesn't affect the confirmation itself.
                     try { localStorage.setItem('codegen_confirmed_' + this.solutionId, JSON.stringify(this.confirmedClasses)); } catch (_) {}
                     this._setSuccess('Fields confirmed for ' + name + '. Next generation will use these exact fields.');
                 } catch (e) {
@@ -2664,6 +2685,8 @@
                     this.umlClasses.forEach(function(cls) {
                         self2.confirmedClasses[cls.name] = true;
                     });
+                    // Best-effort local cache of the confirmation the server just saved
+                    // above — a failure here doesn't affect the confirmation itself.
                     try { localStorage.setItem('codegen_confirmed_' + this.solutionId, JSON.stringify(this.confirmedClasses)); } catch (_) {}
                     this._setSuccess('Confirmed fields for ' + data.confirmed_count + ' classes.');
                 } catch (e) {
@@ -2971,7 +2994,8 @@
                 this.chatHistory.push({ role: 'user', text: instruction });
                 this._scrollChatToBottom();
                 this.chatInstruction = '';
-                // Save to localStorage suggestions
+                // Save to localStorage suggestions — best-effort recent-history cache;
+                // unavailable in private browsing just means suggestions aren't recalled.
                 this.chatSuggestions = [instruction].concat(this.chatSuggestions.filter(function(s) { return s !== instruction; })).slice(0, 5);
                 try { localStorage.setItem('codegen_chat_history_' + this.solutionId, JSON.stringify(this.chatSuggestions)); } catch (_) {}
                 try {
@@ -3099,7 +3123,9 @@
                     this.dockerRunning = false;
                     this.dockerUrl = null;
                     this.dockerContainer = null;
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not stop the Docker preview container — it may still be running.');
+                }
             },
 
             async checkDockerStatus() {
@@ -3107,7 +3133,9 @@
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/docker-preview/status`);
                     this.dockerRunning = data.running;
                     if (data.running) this.dockerUrl = data.app_url || data.api_url;
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not check Docker preview status.', true);
+                }
             },
 
             /* ── StackBlitz Frontend Preview ── */
@@ -3246,6 +3274,10 @@
                 } catch (_) { return ''; }
             };
             window.wbRefreshFile = function (path) {
+                // Best-effort DOM/Alpine bridge from the chat panel — the AI edit
+                // itself already succeeded or failed on its own path with its own
+                // feedback; this only refreshes the editor view to match. A failure
+                // here just leaves the open file view stale until the user re-opens it.
                 try {
                     let data = Alpine.$data(el);
                     if (!data) return;

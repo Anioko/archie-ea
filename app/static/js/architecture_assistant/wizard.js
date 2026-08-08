@@ -925,6 +925,8 @@ function architectureWizard() {
         });
         if (!resp.ok) {
           let err = {};
+          // Body may not be JSON (e.g. an HTML error page) — err stays {} and the
+          // generic message below is used; the error is still thrown either way.
           try { err = await resp.json(); } catch (_) {}
           throw new Error(err.error || 'Comparison failed');
         }
@@ -1271,6 +1273,8 @@ function architectureWizard() {
       });
       if (!resp.ok) {
         let errText = '';
+        // Body may not be JSON — errText stays '' and the HTTP-status fallback
+        // below is used; the error is still thrown either way.
         try { errText = (await resp.json()).error || ''; } catch (_) {}
         throw new Error(errText || 'HTTP ' + resp.status);
       }

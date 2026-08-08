@@ -423,7 +423,10 @@ function businessContextApp() {
                     try {
                         let errBody = await response.json();
                         errMsg = errBody.error || errMsg;
-                    } catch (_) { /* non-JSON body */ }
+                    } catch (_) {
+                        // Body wasn't JSON (e.g. an HTML 500 page) — fall back to the
+                        // generic message above; this.errorMsg is still set either way.
+                    }
                     this.errorMsg = errMsg;
                     return;
                 }

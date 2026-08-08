@@ -130,7 +130,7 @@ document.addEventListener('alpine:init', () => {
 
             this.loading = true;
             try {
-                await fetch(`/api/wizard/${this.solutionId}/autocomplete/apply`, {
+                const resp = await fetch(`/api/wizard/${this.solutionId}/autocomplete/apply`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -138,6 +138,9 @@ document.addEventListener('alpine:init', () => {
                     },
                     body: JSON.stringify({ accepted_fields: accepted }),
                 });
+                // fetch() does not reject on 4xx/5xx — check explicitly so a server
+                // error doesn't fall through to the success path below.
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
                 // Dispatch event so journey component can refresh its state
                 window.dispatchEvent(new CustomEvent('autocomplete-applied', {
@@ -150,10 +153,16 @@ document.addEventListener('alpine:init', () => {
 
             } catch (e) {
                 console.error('Failed to apply completions:', e);
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error('Your accepted completions could not be applied — please retry.');
+                } else {
+                    this.error = 'Your accepted completions could not be applied — please retry.';
+                }
+                return;
             } finally {
                 this.loading = false;
-                this.dismiss();
             }
+            this.dismiss();
         },
 
         /**
