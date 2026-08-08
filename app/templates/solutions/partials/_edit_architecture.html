@@ -376,12 +376,11 @@
                  this.dataObjects = allEls.filter(e => (e.type || '').includes('DataObject') || (e.type || '').includes('DataEntity') || (e.type || '').includes('DatabaseInstance'));
 
                  const relRes = await fetch('/api/solutions/' + this.solutionId + '/relationships?type=access', {credentials:'same-origin'});
-                 if (relRes.ok) {
-                     const relData = await relRes.json();
-                     for (const r of (relData.relationships || [])) {
-                         const key = this.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
-                         this.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
-                     }
+                 if (!relRes.ok) throw new Error('HTTP ' + relRes.status);
+                 const relData = await relRes.json();
+                 for (const r of (relData.relationships || [])) {
+                     const key = this.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
+                     this.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
                  }
              } catch(e) {
                  this.damError = e.message;
@@ -417,10 +416,9 @@
                              relationship_type: 'access'
                          })
                      });
-                     if (res.ok) {
-                         const data = await res.json();
-                         this.accessMap[key] = { id: data.id, access_type: nextType };
-                     }
+                     if (!res.ok) throw new Error('HTTP ' + res.status);
+                     const data = await res.json();
+                     this.accessMap[key] = { id: data.id, access_type: nextType };
                  }
              } catch(e) {
                  this.damError = e.message;

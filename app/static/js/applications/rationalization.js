@@ -564,6 +564,10 @@ async function checkRetirementBlockers() {
         let assessContainer = document.getElementById('retirement-blocker-assessment-wrapper');
         if (assessContainer) assessContainer.classList.remove('hidden');
       }
+    } else {
+      // Non-fatal: the primary blocker analysis above already succeeded and renders;
+      // this secondary category assessment panel just stays hidden.
+      console.warn('Retirement blocker assessment unavailable: HTTP ' + assessResponse.status);
     }
 
     let data = result.data;
@@ -1915,9 +1919,12 @@ async function loadPortfolioDependencies(page) {
             }
           });
         }
+      } else {
+        console.warn('Portfolio readiness unavailable: HTTP ' + rResp.status);
       }
     } catch (_e) {
       // Non-fatal: table renders without readiness column if fetch fails
+      console.warn('Portfolio readiness fetch failed:', _e);
     }
 
     // Build table rows
@@ -2595,7 +2602,10 @@ function executeBulkReview(appIds, action, notes) {
       'X-CSRFToken': csrfToken,
     },
     body: JSON.stringify({ app_ids: appIds, action: action, notes: notes || '' }),
-  }).then(function(r) { return r.json(); });
+  }).then(function(r) {
+    if (!r.ok) { throw new Error('Bulk review request failed: ' + r.status); }
+    return r.json();
+  });
 }
 
 async function loadPortfolioWorkbench(filters, containerId) {
@@ -2937,11 +2947,13 @@ function renderWorkflowStatus(data, containerId) {
 function executiveSummary() {
   return {
     loaded: false,
+    loadError: false,
     data: {},
 
     load: function() {
       const self = this;
       self.loaded = false;
+      self.loadError = false;
       fetch('/applications/rationalization/api/executive-summary', {
         credentials: 'same-origin',
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -2953,10 +2965,14 @@ function executiveSummary() {
             self.loaded = true;
           } else {
             console.error('Executive summary error:', json.error);
+            self.loadError = true;
+            if (window.Platform && Platform.toast) Platform.toast.error('Could not load the executive summary.');
           }
         })
         .catch(function(err) {
           console.error('Failed to load executive summary:', err);
+          self.loadError = true;
+          if (window.Platform && Platform.toast) Platform.toast.error('Could not load the executive summary.');
         });
     },
 

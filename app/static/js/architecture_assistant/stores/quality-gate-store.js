@@ -118,7 +118,11 @@ document.addEventListener('alpine:init', () => {
         },
 
         /**
-         * Record that user skipped a soft-block gate.
+         * Record that user skipped a soft-block gate. This is an audit-trail write
+         * only — canAdvance was already set true before this is called, so the user's
+         * ability to proceed never depends on it. A failure here just means the skip
+         * isn't recorded for governance review; deliberately non-blocking so the user
+         * isn't stopped by a logging failure on an action they already completed.
          */
         async recordSkip() {
             if (!this.assessment || !this.solutionId) return;

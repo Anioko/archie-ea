@@ -204,7 +204,10 @@ function planningApp() {
                     self.loadTab('overview');
                 }
             })
-            .catch(function(err) { console.error('App scoring failed:', err); })
+            .catch(function(err) {
+                console.error('App scoring failed:', err);
+                Platform.toast.error('App scoring failed. Please try again.');
+            })
             .finally(function() { self.isScoringApp = false; });
         },
 
@@ -223,7 +226,10 @@ function planningApp() {
                     Platform.toast.error('Transition failed: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(function(err) { console.error('Review transition error:', err); });
+            .catch(function(err) {
+                console.error('Review transition error:', err);
+                Platform.toast.error('Review transition failed. Please try again.');
+            });
         },
 
         saveReplacementPlan: function() {
@@ -243,7 +249,11 @@ function planningApp() {
                     Platform.toast.error('Save failed: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(function(err) { self.savingReplacement = false; console.error('Save error:', err); });
+            .catch(function(err) {
+                self.savingReplacement = false;
+                console.error('Save error:', err);
+                Platform.toast.error('Save failed. Please try again.');
+            });
         },
 
         submitToARB: function() {
@@ -262,7 +272,10 @@ function planningApp() {
                     Platform.toast.error('ARB submission failed: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(function(err) { console.error('ARB submit error:', err); });
+            .catch(function(err) {
+                console.error('ARB submit error:', err);
+                Platform.toast.error('ARB submission failed. Please try again.');
+            });
         },
 
         saveOverride: function() {
@@ -281,7 +294,10 @@ function planningApp() {
                     Platform.toast.error('Override failed: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(function(err) { console.error('Override error:', err); });
+            .catch(function(err) {
+                console.error('Override error:', err);
+                Platform.toast.error('Override failed. Please try again.');
+            });
         },
 
         removeOverride: async function() {
@@ -296,9 +312,14 @@ function planningApp() {
                 if (data.success) {
                     self.tabLoaded.overrides = false;
                     self.loadTab('overrides');
+                } else {
+                    Platform.toast.error('Remove override failed: ' + (data.error || 'Unknown error'));
                 }
             })
-            .catch(function(err) { console.error('Remove override error:', err); });
+            .catch(function(err) {
+                console.error('Remove override error:', err);
+                Platform.toast.error('Remove override failed. Please try again.');
+            });
         }
     };
 }

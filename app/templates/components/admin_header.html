@@ -409,7 +409,11 @@
                         'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
                         'X-Requested-With': 'XMLHttpRequest',
                     },
-                }).catch(function() { /* silent */ });
+                }).catch(function() {
+                    // Fire-and-forget alongside the <a> navigation the click already
+                    // triggers; a failed mark-read just means it shows unread again
+                    // on the next poll, which is harmless.
+                });
             });
         });
     }
@@ -433,6 +437,8 @@
                 const count = data.unread_count || 0;
                 updateBadge(count);
                 if (typeof Alpine !== 'undefined') {
+                    // Best-effort mirror into the Alpine store for other components
+                    // that read it; the DOM badge/list above is the source of truth.
                     try {
                         Alpine.store('notifications').count = count;
                         Alpine.store('notifications').items = notifItems;
@@ -440,7 +446,10 @@
                 }
                 renderNotifications();
             })
-            .catch(function() { /* silent */ });
+            .catch(function() {
+                // Polled every 60s; notifications are a non-critical widget, so a
+                // failed refresh just leaves the badge/list at their last-known state.
+            });
     }
 
     if (notifBtn && notifDropdown) {
@@ -457,6 +466,7 @@
             notifItems = notifItems.map(function(n) { return Object.assign({}, n, { read: true }); });
             updateBadge(0);
             if (typeof Alpine !== 'undefined') {
+                // Best-effort mirror into the Alpine store; the DOM state above is authoritative.
                 try {
                     Alpine.store('notifications').count = 0;
                     Alpine.store('notifications').items = notifItems;
@@ -472,7 +482,14 @@
                     'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-            }).catch(function() { /* silent — optimistic UI already updated */ });
+            }).catch(function() {
+                // The optimistic UI above already shows "all read"; if this didn't
+                // actually persist, the next 60s poll will silently bring the unread
+                // items back with no explanation, so tell the user now instead.
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not mark notifications as read. They may reappear.');
+                }
+            });
         });
     }
 
@@ -522,14 +539,23 @@
                                     'X-Requested-With': 'XMLHttpRequest',
                                 },
                                 body: JSON.stringify({ bu_id: id || null }),
-                            }).then(function() {
+                            }).then(function(r) {
+                                if (!r.ok) throw new Error('HTTP ' + r.status);
                                 window.location.reload();
-                            }).catch(function() {});
+                            }).catch(function() {
+                                if (window.Platform && Platform.toast) {
+                                    Platform.toast.error('Could not change the business unit scope.');
+                                }
+                            });
                         });
                     });
                 }
             })
-            .catch(function() { /* silent */ });
+            .catch(function() {
+                if (buList) {
+                    buList.innerHTML = '<p class="px-3 py-1.5 text-sm text-destructive">Could not load business units.</p>';
+                }
+            });
     }
 
     if (buBtn && buDropdown) {

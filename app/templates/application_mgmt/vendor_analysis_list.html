@@ -247,14 +247,14 @@ function vendorAnalysisList() {
           credentials: 'same-origin',
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
-        if (resp.ok) {
-          let data = await resp.json();
-          this.analyses = data.analyses || [];
-          this.summary = data.summary || this.summary;
-          this.pagination = data.pagination || this.pagination;
-        }
+        if (!resp.ok) throw new Error('Failed to load vendor analyses (HTTP ' + resp.status + ')');
+        let data = await resp.json();
+        this.analyses = data.analyses || [];
+        this.summary = data.summary || this.summary;
+        this.pagination = data.pagination || this.pagination;
       } catch (e) {
         console.error('Error loading analyses:', e);
+        Platform.toast.error(e.message || 'Failed to load vendor analyses');
       } finally {
         this.loading = false;
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
@@ -293,13 +293,13 @@ function vendorAnalysisList() {
             'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
           }
         });
-        if (resp.ok) {
-          this.deleteTarget = null;
-          this.deleteTargetName = '';
-          await this.loadAnalyses(this.pagination.page);
-        }
+        if (!resp.ok) throw new Error('Failed to delete vendor analysis (HTTP ' + resp.status + ')');
+        this.deleteTarget = null;
+        this.deleteTargetName = '';
+        await this.loadAnalyses(this.pagination.page);
       } catch (e) {
         console.error('Error deleting analysis:', e);
+        Platform.toast.error(e.message || 'Failed to delete vendor analysis');
       }
     }
   };

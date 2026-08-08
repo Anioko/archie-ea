@@ -15,12 +15,14 @@
                 this.solutionOptionsLoading = true;
                 try {
                     let r = await fetch('/solutions/' + sid + '/options', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
-                    if (r.ok) {
-                        let d = await r.json();
-                        this.solutionOptions = (d.data || d.options || d || []);
-                        if (!Array.isArray(this.solutionOptions)) this.solutionOptions = [];
-                    }
-                } catch (e) { console.warn('[SAD-04] solution options fetch failed:', e); }
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    let d = await r.json();
+                    this.solutionOptions = (d.data || d.options || d || []);
+                    if (!Array.isArray(this.solutionOptions)) this.solutionOptions = [];
+                } catch (e) {
+                    console.warn('[SAD-04] solution options fetch failed:', e);
+                    Platform.toast.error('Failed to load solution options. Please try again.');
+                }
                 this.solutionOptionsLoaded = true;
                 this.solutionOptionsLoading = false;
                 if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
@@ -152,6 +154,7 @@
                     }
                 } catch (err) {
                     console.error('[solutionDetail] accept suggestion error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to accept suggestion');
                 }
             },
 
@@ -310,20 +313,22 @@
                         credentials: 'same-origin',
                         headers: { 'Accept': 'application/json' }
                     });
-                    if (resp.ok) {
-                        let json = await resp.json();
-                        if (json.success) {
-                            this.optionsAnalysisData = json;
-                            // Initialise MCDA criteria from response
-                            if (json.mcda && json.mcda.criteria) {
-                                this.mcdaCriteria = json.mcda.criteria.map(function(c) {
-                                    return { name: c.name, weight: c.weight, description: c.description || '' };
-                                });
-                            }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let json = await resp.json();
+                    if (json.success) {
+                        this.optionsAnalysisData = json;
+                        // Initialise MCDA criteria from response
+                        if (json.mcda && json.mcda.criteria) {
+                            this.mcdaCriteria = json.mcda.criteria.map(function(c) {
+                                return { name: c.name, weight: c.weight, description: c.description || '' };
+                            });
                         }
+                    } else {
+                        Platform.toast.error(json.error || 'Options analysis failed.');
                     }
                 } catch (err) {
                     console.error('[ENT-058] options analysis fetch error:', err);
+                    Platform.toast.error('Failed to load options analysis. Please try again.');
                 }
                 this.optionsAnalysisLoading = false;
                 if (typeof lucide !== 'undefined') this.$nextTick(function() { lucide.createIcons(); });

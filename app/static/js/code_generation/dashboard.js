@@ -41,6 +41,10 @@ function loadContext(mode, contextId) {
         })
         .catch(function(error) {
             console.error('Failed to load context:', error);
+            let contextContainer = document.getElementById('contextContainer');
+            if (contextContainer) {
+                safeHTML(contextContainer, '<p class="text-sm text-destructive">Could not load context.</p>');
+            }
         });
 }
 
@@ -54,6 +58,10 @@ function loadTemplates() {
         })
         .catch(function(error) {
             console.error('Failed to load templates:', error);
+            let templateContainer = document.getElementById('templateList');
+            if (templateContainer) {
+                safeHTML(templateContainer, '<p class="text-sm text-destructive">Could not load templates.</p>');
+            }
         });
 }
 

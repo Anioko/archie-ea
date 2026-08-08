@@ -107,6 +107,11 @@ function myModalData() {
       
       try {
         const formData = new FormData(this.$el.closest('form'));
+        // PLACEHOLDER — this template is reference documentation for the
+        // Platform.modal pattern (see the header comment); it is not
+        // included by any real page. '/api/endpoint' is not a real route —
+        // replace it with your actual endpoint when copying this pattern
+        // into a real modal.
         const response = await fetch('/api/endpoint', {
           method: 'POST',
           body: formData,

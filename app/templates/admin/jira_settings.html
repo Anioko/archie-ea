@@ -692,7 +692,10 @@
         fetch('{{ url_for("admin.jira_push_status") }}', {
             headers: {'X-Requested-With': 'XMLHttpRequest'},
         })
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) { throw new Error('jira push status request failed: ' + r.status); }
+            return r.json();
+        })
         .then(data => {
             const ps = data.push_status || {};
             const el = (id) => document.getElementById(id);

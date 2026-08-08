@@ -98,7 +98,7 @@
                 <h2 class="text-lg font-semibold text-foreground">Pending Reviews</h2>
                 <p class="text-sm text-muted-foreground mt-1">Items awaiting Architecture Review Board decision</p>
             </div>
-            <form method="GET" class="flex items-center gap-2">
+            <form method="GET" action="{{ url_for('arb.dashboard') }}" class="flex items-center gap-2">
                 <input type="hidden" name="search" value="{{ request.args.get('search', '') }}">
                 <select name="pending_status" class="rounded-md border border-input bg-background px-3 py-1.5 text-sm" onchange="this.form.submit()" aria-label="Filter by status">
                     <option value="all" {% if pending_status == 'all' %}selected{% endif %}>All Statuses</option>
@@ -230,7 +230,7 @@
 
         <!-- Filters -->
         <div class="p-4 border-b bg-muted/20">
-            <form method="GET" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <form method="GET" action="{{ url_for('arb.dashboard') }}" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-muted-foreground mb-1">Search</label>
                     <input type="text" name="search" value="{{ request.args.get('search', '') }}" 

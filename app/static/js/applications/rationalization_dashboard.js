@@ -210,7 +210,9 @@ function rationalizationDashboard() {
             .then(function(data) {
                 self.scoringResult = data;
                 if (data.success) {
-                    // RATA-016: Dismiss wizard permanently
+                    // RATA-016: Dismiss wizard permanently. Best-effort — private-mode
+                    // browsers throw on localStorage writes; the wizard just reappears
+                    // next load in that case, which is harmless.
                     try { localStorage.setItem('rationalization_wizard_dismissed', 'true'); } catch(e) {}
                     // Refresh dashboard data
                     self.load();
@@ -233,7 +235,10 @@ function rationalizationDashboard() {
             fetch('/applications/rationalization/api/portfolio-scores', {
                 headers: { 'Accept': 'application/json' }
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('Portfolio scores request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(apps) {
                 if (!apps.length) return;
 
@@ -336,6 +341,7 @@ function rationalizationDashboard() {
             })
             .catch(function(err) {
                 console.error('TIME quadrant load failed:', err);
+                Platform.toast.error('Could not load the TIME quadrant chart. Please try again.');
             });
         },
 

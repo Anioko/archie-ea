@@ -1338,15 +1338,19 @@ function analyticsPanel() {
     return {
         analytics: {},
         loaded: false,
+        loadError: false,
         async loadAnalytics() {
             try {
                 const resp = await fetch('/api/ea-workflows/analytics');
                 const data = await resp.json();
                 if (data.success) {
                     this.analytics = data.analytics;
+                } else {
+                    this.loadError = true;
                 }
             } catch (e) {
                 console.error('Failed to load analytics:', e);
+                this.loadError = true;
             }
             this.loaded = true;
         }

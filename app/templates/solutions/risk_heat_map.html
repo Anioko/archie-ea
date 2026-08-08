@@ -341,6 +341,7 @@ function riskHeatMap(solutionId, initialRisks) {
                 this.risks = this.risks.map(r => r.id === updated.id ? updated : r);
             } catch (err) {
                 console.error('Risk status update error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to update risk status');
             }
         },
 

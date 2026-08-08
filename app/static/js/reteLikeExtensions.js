@@ -128,6 +128,8 @@ const ReteLikeExtensions = {
                     break;
                 }
             } catch (err) {
+                // Isolate listeners from each other: one handler throwing must not
+                // stop the remaining listeners for this event from running.
                 console.error(`[ReteLike] Event handler error for ${event}:`, err);
             }
         }
@@ -473,6 +475,8 @@ const ReteLikeExtensions = {
             }
 
         } catch (err) {
+            // Best-effort "snap to nearby node" convenience while dragging; failure is
+            // self-evident (no connecting line appears) and the user can connect manually.
             console.warn('[ReteLike] Auto-connect failed:', err);
         }
     },

@@ -28,7 +28,16 @@ function initRoadmapWidgetInstance(containerId, endpoint) {
                     updateStats(cid);
                 }
             })
-            .catch(function(err) { console.error('Failed to load roadmap:', err); });
+            .catch(function(err) {
+                console.error('Failed to load roadmap:', err);
+                // The count badges default to "0 of 0 items" in the template; a failed
+                // load must not leave that looking like a real (empty) roadmap.
+                let visibleEl = document.getElementById('roadmap-visible-count-' + cid);
+                let totalEl = document.getElementById('roadmap-total-count-' + cid);
+                if (visibleEl) visibleEl.textContent = '—';
+                if (totalEl) totalEl.textContent = '—';
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not load the roadmap.');
+            });
     }
 
     // View toggle

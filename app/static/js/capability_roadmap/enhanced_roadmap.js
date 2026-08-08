@@ -771,6 +771,7 @@ function capabilityRoadmapManager() {
                 }
             } catch (error) {
                 console.error('Error loading grouped capabilities:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not load capabilities.');
             }
         },
 
@@ -931,6 +932,9 @@ function capabilityRoadmapManager() {
                     this.capabilityDuplicateError = null;
                 }
             } catch (error) {
+                // Best-effort live "may be a duplicate" hint, fired on every level/name
+                // change; actual duplicate enforcement happens server-side on submit,
+                // so a failed check here just means the hint doesn't show.
                 console.error('Error checking duplicate:', error);
             }
         },

@@ -172,6 +172,7 @@ function businessContextApp() {
 
         // Save drivers
         async saveDrivers() {
+            let failed = 0;
             for (let i = 0; i < this.context.drivers.length; i++) {
                 let driver = this.context.drivers[i];
                 if (!driver.saved) {
@@ -189,18 +190,22 @@ function businessContextApp() {
                             })
                         });
 
-                        if (response.ok) {
-                            driver.saved = true;
-                        }
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        driver.saved = true;
                     } catch (error) {
                         console.error('Error saving driver:', error);
+                        failed++;
                     }
                 }
+            }
+            if (failed > 0) {
+                Platform.toast.error(failed + ' driver' + (failed > 1 ? 's' : '') + ' failed to save');
             }
         },
 
         // Save objectives
         async saveObjectives() {
+            let failed = 0;
             for (let i = 0; i < this.context.objectives.length; i++) {
                 let objective = this.context.objectives[i];
                 if (!objective.saved) {
@@ -219,18 +224,22 @@ function businessContextApp() {
                             })
                         });
 
-                        if (response.ok) {
-                            objective.saved = true;
-                        }
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        objective.saved = true;
                     } catch (error) {
                         console.error('Error saving objective:', error);
+                        failed++;
                     }
                 }
+            }
+            if (failed > 0) {
+                Platform.toast.error(failed + ' objective' + (failed > 1 ? 's' : '') + ' failed to save');
             }
         },
 
         // Save constraints
         async saveConstraints() {
+            let failed = 0;
             for (let i = 0; i < this.context.constraints.length; i++) {
                 let constraint = this.context.constraints[i];
                 if (!constraint.saved) {
@@ -247,18 +256,22 @@ function businessContextApp() {
                             })
                         });
 
-                        if (response.ok) {
-                            constraint.saved = true;
-                        }
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        constraint.saved = true;
                     } catch (error) {
                         console.error('Error saving constraint:', error);
+                        failed++;
                     }
                 }
+            }
+            if (failed > 0) {
+                Platform.toast.error(failed + ' constraint' + (failed > 1 ? 's' : '') + ' failed to save');
             }
         },
 
         // Save metrics
         async saveMetrics() {
+            let failed = 0;
             for (let i = 0; i < this.context.metrics.length; i++) {
                 let metric = this.context.metrics[i];
                 if (!metric.saved) {
@@ -278,18 +291,22 @@ function businessContextApp() {
                             })
                         });
 
-                        if (response.ok) {
-                            metric.saved = true;
-                        }
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        metric.saved = true;
                     } catch (error) {
                         console.error('Error saving metric:', error);
+                        failed++;
                     }
                 }
+            }
+            if (failed > 0) {
+                Platform.toast.error(failed + ' metric' + (failed > 1 ? 's' : '') + ' failed to save');
             }
         },
 
         // Save capabilities
         async saveCapabilities() {
+            let failed = 0;
             for (let i = 0; i < this.context.capabilities.length; i++) {
                 let capability = this.context.capabilities[i];
                 if (!capability.saved) {
@@ -312,13 +329,16 @@ function businessContextApp() {
                             })
                         });
 
-                        if (response.ok) {
-                            capability.saved = true;
-                        }
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        capability.saved = true;
                     } catch (error) {
                         console.error('Error saving capability:', error);
+                        failed++;
                     }
                 }
+            }
+            if (failed > 0) {
+                Platform.toast.error(failed + ' capabilit' + (failed > 1 ? 'ies' : 'y') + ' failed to save');
             }
         },
 
@@ -403,7 +423,10 @@ function businessContextApp() {
                     try {
                         let errBody = await response.json();
                         errMsg = errBody.error || errMsg;
-                    } catch (_) { /* non-JSON body */ }
+                    } catch (_) {
+                        // Body wasn't JSON (e.g. an HTML 500 page) — fall back to the
+                        // generic message above; this.errorMsg is still set either way.
+                    }
                     this.errorMsg = errMsg;
                     return;
                 }

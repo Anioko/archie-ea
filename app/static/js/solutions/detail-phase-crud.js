@@ -220,6 +220,7 @@
                     }
                 } catch (err) {
                     console.error('[solutionDetail] accept requirement error:', err);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to accept requirement');
                 }
             },
 
@@ -243,6 +244,10 @@
                         })
                     });
                 } catch (err) {
+                    // Best-effort telemetry: recording that a suggestion was
+                    // accepted/rejected does not affect the accept/reject
+                    // itself, which already happened locally — nothing for
+                    // the user to act on if this fails.
                     console.warn('[solutionDetail] Failed to record AI feedback:', err);
                 }
             },
@@ -356,11 +361,10 @@
                 let beforeScore = null;
                 try {
                     const beforeResp = await fetch(self.apiBase + '/completeness');
-                    if (beforeResp.ok) {
-                        const beforeData = await beforeResp.json();
-                        beforeScore = beforeData.score || 0;
-                    }
-                } catch(e) { /* completeness endpoint may not exist */ }
+                    if (!beforeResp.ok) throw new Error('HTTP ' + beforeResp.status);
+                    const beforeData = await beforeResp.json();
+                    beforeScore = beforeData.score || 0;
+                } catch(e) { /* completeness endpoint may not exist — before/after delta is optional, accept still proceeds */ }
                 const promises = elements.map(function(el) {
                     return fetch(self.apiBase + '/link-archimate-element', {
                         method: 'POST',
@@ -394,11 +398,15 @@
                         chainSuffix = ' Engine inferred ' + totalNodesCreated + ' element(s) and ' + totalRelsCreated + ' relationship(s).';
                     }
                     self.stagedElements = [];
-                    // CAP-015: Clear persisted staged elements
+                    // CAP-015: Clear persisted staged elements. Best-effort —
+                    // the elements are already accepted server-side and
+                    // self.stagedElements is already cleared above, so a
+                    // stale localStorage entry is harmless (overwritten next
+                    // time staging runs) and not worth bothering the user.
                     try {
                         const storageKey = 'archie_staged_' + self.apiBase.split('/').filter(Boolean).pop();
                         localStorage.removeItem(storageKey);
-                    } catch(e) { /* ignore */ }
+                    } catch(e) { /* private-mode/quota — see comment above */ }
                     // KAN-003: Clear inference preview cache after bulk accept
                     if (typeof self.clearInferencePreviewCache === 'function') {
                         self.clearInferencePreviewCache();
@@ -430,11 +438,14 @@
             rejectAllStaged() {
                 const count = this.stagedElements.length;
                 this.stagedElements = [];
-                // CAP-015: Clear persisted staged elements
+                // CAP-015: Clear persisted staged elements. Best-effort, same
+                // reasoning as acceptAllStaged above — nothing is lost if
+                // this throws (private mode / quota) since stagedElements is
+                // already cleared and the key is overwritten next run.
                 try {
                     const storageKey = 'archie_staged_' + this.apiBase.split('/').filter(Boolean).pop();
                     localStorage.removeItem(storageKey);
-                } catch(e) { /* ignore */ }
+                } catch(e) { /* private-mode/quota — see comment above */ }
                 this.showNotification('Rejected ' + count + ' elements', 'info');
             },
 
@@ -446,7 +457,12 @@
                     if (stored) {
                         this.stagedElements = JSON.parse(stored);
                     }
-                } catch(e) { /* ignore parse errors */ }
+                } catch(e) {
+                    // Best-effort restore of a client-only cache: corrupt or
+                    // inaccessible localStorage just means the staging panel
+                    // starts empty, same as a first visit — nothing to tell
+                    // the user, nothing lost server-side.
+                }
             },
 
             // --- ArchiMate picker for motivation entity modals ---
@@ -560,9 +576,16 @@
                         this.roleResults = data.users.filter(function(u) {
                             return u.name.toLowerCase().indexOf(q) > -1 || u.email.toLowerCase().indexOf(q) > -1;
                         }).slice(0, 5);
+                        this._userSearchErrorShown = false;
                     }
                 } catch (err) {
                     console.error('[solutionDetail] user search error:', err);
+                    // Fires on every debounced keystroke — toast once per
+                    // outage rather than on every character typed.
+                    if (!this._userSearchErrorShown) {
+                        this._userSearchErrorShown = true;
+                        if (window.Platform && Platform.toast) Platform.toast.error('User search failed');
+                    }
                 }
                 this.roleSearching = false;
             },
@@ -576,13 +599,18 @@
                 try {
                     let body = {};
                     body[field] = user.name;
-                    await fetch(this.apiBase + '/update-json', {
+                    let resp = await fetch(this.apiBase + '/update-json', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                         body: JSON.stringify(body)
                     });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 } catch (err) {
                     console.error('[solutionDetail] role update error:', err);
+                    // The field above was already updated optimistically —
+                    // the user needs to know the save did not actually
+                    // persist, or a page reload will silently revert it.
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to save stakeholder — please try again');
                 }
             },
             startEditRole(field) {
@@ -737,16 +765,18 @@
                 this.apqcSearching = true;
                 try {
                     let resp = await fetch('/dashboard/api/apqc-processes');
-                    if (resp.ok) {
-                        let data = await resp.json();
-                        let procs = Array.isArray(data) ? data : (data.processes || []);
-                        let lq = q.toLowerCase();
-                        this.apqcResults = procs.filter(function(p) {
-                            return (p.process_name || '').toLowerCase().indexOf(lq) >= 0
-                                || (p.process_code || '').toLowerCase().indexOf(lq) >= 0;
-                        }).slice(0, 10);
-                    }
-                } catch (e) { console.warn('[APQC search]', e); }
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    let data = await resp.json();
+                    let procs = Array.isArray(data) ? data : (data.processes || []);
+                    let lq = q.toLowerCase();
+                    this.apqcResults = procs.filter(function(p) {
+                        return (p.process_name || '').toLowerCase().indexOf(lq) >= 0
+                            || (p.process_code || '').toLowerCase().indexOf(lq) >= 0;
+                    }).slice(0, 10);
+                } catch (e) {
+                    console.warn('[APQC search]', e);
+                    Platform.toast.error('APQC process search failed. Please try again.');
+                }
                 this.apqcSearching = false;
             },
 
@@ -836,6 +866,12 @@
                     if (listKey === 'recommendations') this.refreshArchitectureVariantsFromRecommendations();
                 } catch (err) {
                     console.error('[solutionDetail] refresh error:', err);
+                    // Called right after a successful save/delete — the
+                    // write already went through, but the on-screen list is
+                    // now stale until the page is reloaded.
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Saved, but the list could not be refreshed — reload the page to see the latest data');
+                    }
                 }
                 // ENT-018: silently update impact summary after any entity change
                 this._refreshImpact();

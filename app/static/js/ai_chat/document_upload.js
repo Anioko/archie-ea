@@ -646,7 +646,9 @@ function aiChatDocumentUploader() {
             let changed = JSON.stringify(original) !== JSON.stringify(corrected);
 
             if (changed && this.currentUploadId && original) {
-                // Record feedback for learning
+                // Record feedback for learning. Deliberately best-effort/silent: this is a
+                // background training signal, not the edit itself — the edit below always
+                // succeeds locally regardless of whether this call lands.
                 try {
                     await Platform.fetch('/ai-chat/documents/' + this.currentUploadId + '/feedback', {
                         method: 'POST',

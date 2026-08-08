@@ -2059,7 +2059,10 @@
                         Object.assign(self.card, data.card);
                         window.dispatchEvent(new CustomEvent('adm-board-refresh'));
                     }
-                }).catch(function() {});
+                }).catch(function() {
+                    // Platform.fetch already toasted the failure (non-silent by default);
+                    // this only stops it from surfacing as an unhandled promise rejection.
+                });
             }
         };
     };

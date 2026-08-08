@@ -195,7 +195,10 @@
                         setTimeout(function () {
                             self.loadAllCapabilities()
                                 .then(function () { capsLoaded = true; _checkAndTriggerSuggestions(); })
-                                .catch(function () { console.error('Capabilities retry failed'); });
+                                .catch(function () {
+                                    console.error('Capabilities retry failed');
+                                    self.copilotMessage = 'Could not load the capability catalog. Try refreshing the page.';
+                                });
                         }, 2000);
                     });
 
@@ -575,7 +578,12 @@
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ options: self.solutionOptions })
-                }).catch(function () {});
+                }).catch(function (e) {
+                    console.error('[Journey] saveOptions failed:', e);
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.error('Your solution options did not save — please retry.');
+                    }
+                });
             },
 
             loadOptions: function () {
@@ -588,7 +596,10 @@
                         // No options exist — auto-generate variants
                         self.generateVariants();
                     }
-                }).catch(function () {});
+                }).catch(function (e) {
+                    console.error('[Journey] loadOptions failed:', e);
+                    self.copilotMessage = 'Could not load solution options. Try refreshing the page.';
+                });
             },
 
             generateVariants: function () {
@@ -848,7 +859,9 @@
 
                 self.capabilityResults = keywordResults;
 
-                // Phase 2: vector search if keyword results are sparse (< 3 results)
+                // Phase 2: vector search if keyword results are sparse (< 3 results).
+                // Best-effort enhancement — keyword results (above) are already shown,
+                // so a failure here just means the list doesn't get topped up.
                 if (keywordResults.length < 3 && q.length >= 3) {
                     _fetch('/capability-map/api/capabilities/semantic-search', {
                         method: 'POST',
@@ -953,6 +966,9 @@
                     body: JSON.stringify({ capability_id: cap.id })
                 }).catch(function (e) {
                     console.error('Failed to link capability ' + cap.id + ':', e.message || e);
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.error('"' + (cap.name || 'Capability') + '" was not saved to this solution — please retry.');
+                    }
                 });
             },
 
@@ -968,6 +984,9 @@
                         body: JSON.stringify({ capability_id: cap.id })
                     }).catch(function (e) {
                         console.error('Failed to link capability ' + cap.id + ':', e.message || e);
+                        if (global.Platform && global.Platform.toast) {
+                            global.Platform.toast.error('"' + (cap.name || 'Capability') + '" was not saved to this solution — please retry.');
+                        }
                     });
                 }
                 self.suggestedCapabilities = self.suggestedCapabilities.filter(function (s) { return s.id !== cap.id; });
@@ -1150,6 +1169,7 @@
                     }
                 }).catch(function (e) {
                     console.error('Strategy generation failed:', e);
+                    self.copilotMessage = 'Strategy generation failed. Try again.';
                 }).then(function () {
                     self.isProcessing = false;
                 });
@@ -1222,6 +1242,7 @@
                     }
                 }).catch(function (e) {
                     console.error('Implementation generation failed:', e);
+                    self.copilotMessage = 'Implementation generation failed. Try again.';
                 }).then(function () {
                     self.isProcessing = false;
                 });
@@ -1254,12 +1275,18 @@
 
                     self.completenessScore = Math.round((score / total) * 100);
                     self.blockingIssues = issues;
-                }).catch(function () {});
+                }).catch(function (e) {
+                    console.error('[Journey] loadCompleteness failed:', e);
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.error('Could not load solution completeness — try reloading the page.');
+                    }
+                });
 
-                // Wave 10: Load quality score
+                // Wave 10: Load quality score. Left as null (renders as "—") rather than
+                // toasted on failure — a missing score already reads as "not computed".
                 _fetch('/api/solutions/' + self.solutionId + '/quality-score')
                     .then(function (data) { self.qualityScore = data; })
-                    .catch(function () {});
+                    .catch(function (e) { console.error('[Journey] quality-score load failed:', e); });
             },
 
             submitToArb: function () {
@@ -1408,6 +1435,7 @@
             },
 
             saveCapabilityBlueprint: function () {
+                let self = this;
                 _fetch('/api/solutions/' + this.solutionId + '/capability-blueprint', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -1415,7 +1443,14 @@
                         technical_capabilities: this.technicalCapabilities,
                         application_capabilities: this.applicationCapabilities,
                     })
-                }).catch(function () {});
+                }).catch(function (e) {
+                    console.error('[Journey] saveCapabilityBlueprint failed:', e);
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.error('Your capability changes did not save — please retry.');
+                    } else {
+                        self.copilotMessage = 'Your capability changes did not save — please retry.';
+                    }
+                });
             },
 
             loadCapabilityBlueprint: function () {
@@ -1430,7 +1465,12 @@
                             self.systemCapsGenerated = true;
                         }
                     })
-                    .catch(function () {});
+                    .catch(function (e) {
+                        console.error('[Journey] loadCapabilityBlueprint failed:', e);
+                        if (global.Platform && global.Platform.toast) {
+                            global.Platform.toast.error('Could not load capability blueprint — try reloading the page.');
+                        }
+                    });
             },
 
             // ── Wave 6: Element Review + Decision Feedback ───────────────
@@ -1460,6 +1500,9 @@
                     })
                     .catch(function (e) {
                         console.error('Failed to load architecture elements:', e);
+                        if (global.Platform && global.Platform.toast) {
+                            global.Platform.toast.error('Could not load architecture elements — try reloading the page.');
+                        }
                     })
                     .then(function () {
                         self.archElementsLoading = false;
@@ -1493,6 +1536,9 @@
                     })
                     .catch(function (e) {
                         console.error('Failed to load implementation elements:', e);
+                        if (global.Platform && global.Platform.toast) {
+                            global.Platform.toast.error('Could not load implementation elements — try reloading the page.');
+                        }
                     })
                     .then(function () {
                         self.implElementsLoading = false;
@@ -1528,7 +1574,12 @@
                         element_type: el.type,
                         element_layer: el.layer,
                     })
-                }).catch(function () {});
+                }).catch(function (e) {
+                    console.error('[Journey] element unlink failed:', e);
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.error('"' + (el.name || 'Element') + '" was removed here but may still be linked on the server — reload to check.');
+                    }
+                });
             },
 
             removeImplElement: function (idx) {
@@ -1545,7 +1596,12 @@
                         element_type: el.type,
                         element_layer: el.layer,
                     })
-                }).catch(function () {});
+                }).catch(function (e) {
+                    console.error('[Journey] element unlink failed:', e);
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.error('"' + (el.name || 'Element') + '" was removed here but may still be linked on the server — reload to check.');
+                    }
+                });
             },
 
             showWhy: function (el) {
@@ -1560,7 +1616,10 @@
                             el.chain = data.chain || [];
                             el._chainLoaded = true;
                         })
-                        .catch(function () {})
+                        .catch(function (e) {
+                            console.error('[Journey] trace load failed:', e);
+                            el.reasoning = el.description || 'Reasoning chain unavailable — try again.';
+                        })
                         .then(function () { el._chainLoading = false; });
                 }
             },
@@ -1594,6 +1653,9 @@
                     }
                 }).catch(function (e) {
                     console.error('Edit failed:', e);
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.error('Your edit to "' + (el.name || 'this element') + '" did not save — please retry.');
+                    }
                 });
                 self.editingElement = null;
             },
@@ -1772,6 +1834,9 @@
                 return this.staleElementIds.indexOf(elId) !== -1;
             },
 
+            // Advisory only — flags downstream elements as potentially stale so the user
+            // can choose to review/regenerate them. Nothing depends on this succeeding,
+            // so a failure is deliberately silent rather than interrupting the edit.
             propagateStale: function (el) {
                 let self = this;
                 _fetch('/api/solutions/' + self.solutionId + '/elements/' + el.id + '/propagate-stale', {
@@ -1817,6 +1882,9 @@
                 });
             },
 
+            // Automatic version snapshot taken on every step transition. Best-effort:
+            // it's a convenience history feature, not core data, so a failure here
+            // doesn't block the user's progress — just logged for diagnostics.
             createSnapshot: function (step) {
                 let self = this;
                 const labels = {1: 'Problem defined', 2: 'Capabilities mapped', 3: 'Architecture designed', 4: 'Options evaluated', 5: 'Migration planned', 6: 'Review complete'};
@@ -1833,7 +1901,9 @@
                             relationship_count: data.relationship_count,
                         });
                     }
-                }).catch(function () {});
+                }).catch(function (e) {
+                    console.error('[Journey] createSnapshot failed:', e);
+                });
             },
 
             loadSnapshots: function () {
@@ -1842,7 +1912,12 @@
                     .then(function (data) {
                         self.snapshots = data || [];
                     })
-                    .catch(function () {});
+                    .catch(function (e) {
+                        console.error('[Journey] loadSnapshots failed:', e);
+                        if (global.Platform && global.Platform.toast) {
+                            global.Platform.toast.error('Could not load version history.');
+                        }
+                    });
             },
 
             compareSnapshots: function (v1, v2) {
@@ -1853,6 +1928,9 @@
                     })
                     .catch(function (e) {
                         console.error('Comparison failed:', e);
+                        if (global.Platform && global.Platform.toast) {
+                            global.Platform.toast.error('Could not compare these versions — try again.');
+                        }
                     });
             },
 

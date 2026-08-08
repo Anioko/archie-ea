@@ -293,12 +293,12 @@ function capabilityDesignPanel() {
         async loadCapabilities() {
             try {
                 const resp = await fetch(`/solutions/capabilities/search?q=${encodeURIComponent(this.capSearch)}&limit=50`);
-                if (resp.ok) {
-                    const data = await resp.json();
-                    this.availableCapabilities = data.capabilities || data.results || data || [];
-                }
+                if (!resp.ok) throw new Error('Capability search failed: ' + resp.status);
+                const data = await resp.json();
+                this.availableCapabilities = data.capabilities || data.results || data || [];
             } catch (e) {
                 console.error('Failed to load capabilities:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capabilities');
             }
         },
 
@@ -319,23 +319,17 @@ function capabilityDesignPanel() {
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
                     body: JSON.stringify({capability_id: cap.id})
                 });
-                if (resp.ok) {
-                    const result = await resp.json();
-                    this.selectedCapabilities.push({
-                        mapping_id: result.mapping_id || Date.now(),
-                        capability_id: cap.id,
-                        capability_name: cap.name,
-                    });
-                    this.loadAnalysis();
-                }
-            } catch (e) {
-                console.error('Failed to add capability:', e);
-                // Add locally even if API fails
+                if (!resp.ok) throw new Error('Failed to add capability: ' + resp.status);
+                const result = await resp.json();
                 this.selectedCapabilities.push({
-                    mapping_id: Date.now(),
+                    mapping_id: result.mapping_id || Date.now(),
                     capability_id: cap.id,
                     capability_name: cap.name,
                 });
+                this.loadAnalysis();
+            } catch (e) {
+                console.error('Failed to add capability:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to add capability');
             }
         },
 
@@ -356,12 +350,12 @@ function capabilityDesignPanel() {
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
                     body: JSON.stringify({problem_description: this.problemText})
                 });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    this.discoveredCapabilities = data.suggestions || [];
-                }
+                if (!resp.ok) throw new Error('Capability discovery failed: ' + resp.status);
+                const data = await resp.json();
+                this.discoveredCapabilities = data.suggestions || [];
             } catch (e) {
                 console.error('Failed to discover capabilities:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to discover capabilities');
             } finally {
                 this.discovering = false;
             }
@@ -375,15 +369,15 @@ function capabilityDesignPanel() {
             this.analysisLoading = true;
             try {
                 const resp = await fetch(`/solutions/${solutionId}/capability-analysis`);
-                if (resp.ok) {
-                    this.analysisData = await resp.json();
-                    // Sync selected capabilities from server
-                    if (this.analysisData.selected_capabilities) {
-                        this.selectedCapabilities = this.analysisData.selected_capabilities;
-                    }
+                if (!resp.ok) throw new Error('Failed to load capability analysis: ' + resp.status);
+                this.analysisData = await resp.json();
+                // Sync selected capabilities from server
+                if (this.analysisData.selected_capabilities) {
+                    this.selectedCapabilities = this.analysisData.selected_capabilities;
                 }
             } catch (e) {
                 console.error('Failed to load analysis:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capability analysis');
             } finally {
                 this.analysisLoading = false;
             }

@@ -242,7 +242,12 @@
                         headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
                         body: JSON.stringify({enterprise_role: this.selectedRole}),
                     });
-                } catch (_) {}
+                } catch (_) {
+                    // Best-effort: the localStorage timestamp below is what actually
+                    // suppresses the onboarding modal on future visits, so a failed
+                    // server persist just means the role card personalization may
+                    // not fully apply until it succeeds later.
+                }
                 localStorage.setItem('archie_onboarding_ts', Date.now().toString());
                 this.showOnboarding = false;
             }
@@ -339,6 +344,9 @@
         storageKey: 'archie_guide_step_' + window.location.pathname,
         init() {
             const el = document.getElementById('guided-mode-steps-data');
+            // Defensive parse of our own server-rendered JSON block; if a page's
+            // guided_mode_steps block is malformed, the guide is just unavailable
+            // rather than breaking the rest of page init.
             if (el) { try { this.steps = JSON.parse(el.textContent); } catch(_) {} }
             const saved = parseInt(localStorage.getItem(this.storageKey) || '0');
             this.currentIndex = (saved < this.steps.length) ? saved : 0;

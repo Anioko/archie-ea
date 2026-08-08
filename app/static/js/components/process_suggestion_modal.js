@@ -229,6 +229,7 @@ function hideManualProcessMapping() {
 // Process search functionality
 (function() {
   let searchEl = document.getElementById('process-search');
+  let _searchErrorShown = false;
   if (searchEl) {
     searchEl.addEventListener('input', function(e) {
       let query = e.target.value.trim();
@@ -244,9 +245,15 @@ function hideManualProcessMapping() {
         })
         .then(function(processes) {
           displayProcessSearchResults(processes);
+          _searchErrorShown = false;
         })
         .catch(function(error) {
           console.error('Error searching processes:', error);
+          // Fires on every keystroke — toast once per outage, not on every retry.
+          if (!_searchErrorShown) {
+            _searchErrorShown = true;
+            if (window.Platform && Platform.toast) Platform.toast.error('Process search failed.');
+          }
         });
     });
   }

@@ -745,7 +745,10 @@ function arbDocPanel(parentType, parentId) {
         async loadDocuments() {
             try {
                 const r = await fetch(this.listUrl());
-                if (r.ok) { const d = await r.json(); this.documents = d.documents || []; }
+                if (!r.ok) throw new Error('Failed to load documents (HTTP ' + r.status + ')');
+                const d = await r.json();
+                this.documents = d.documents || [];
+                this.error = null;
             } catch(e) { this.error = 'Failed to load documents'; }
         },
 

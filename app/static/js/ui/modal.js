@@ -231,7 +231,10 @@
                     store[id] = isOpen;
                     if (payload !== undefined) store[id + '_payload'] = payload;
                 }
-            } catch(e) {}
+            } catch(e) {
+                // Best-effort mirror into the Alpine store for x-show bindings; the
+                // modal's own open/close state above is the source of truth either way.
+            }
         }
     }
 

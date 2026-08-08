@@ -434,8 +434,9 @@
             <div class="border-t border-border pt-4">
                 <h3 class="text-sm font-medium text-foreground mb-3">Relationships</h3>
                 <div x-show="detailLoading" x-cloak class="text-xs text-muted-foreground">Loading...</div>
-                <div x-show="!detailLoading && relationships.length === 0" x-cloak class="text-xs text-muted-foreground italic">No relationships</div>
-                <div x-show="!detailLoading && relationships.length > 0" x-cloak class="space-y-2">
+                <div x-show="!detailLoading && relationshipsError" x-cloak class="text-xs text-destructive">Could not load relationships.</div>
+                <div x-show="!detailLoading && !relationshipsError && relationships.length === 0" x-cloak class="text-xs text-muted-foreground italic">No relationships</div>
+                <div x-show="!detailLoading && !relationshipsError && relationships.length > 0" x-cloak class="space-y-2">
                     <template x-for="rel in relationships" :key="rel.id">
                         <div class="flex items-center gap-2 text-xs p-2 rounded-md bg-muted/30">
                             <span class="layer-dot w-2 h-2" :class="'layer-' + (rel.direction === 'outgoing' ? (rel.target_layer || '').toLowerCase() : (rel.source_layer || '').toLowerCase())"></span>
@@ -551,6 +552,7 @@ document.addEventListener('alpine:init', () => {
         selectedIds: [],
         selectedElement: null,
         detailLoading: false,
+        relationshipsError: false,
         relationships: [],
         showCreateModal: false,
         createSubmitting: false,
@@ -624,7 +626,11 @@ document.addEventListener('alpine:init', () => {
                 this._diagramRenderer.loadElements(data.elements, data.relationships);
                 this._diagramRenderer.fitToContent();
                 this.diagramLoaded = true;
-            } catch(e) { console.warn('[BIZBOK] diagram load failed', e); }
+            } catch(e) {
+                // Optional viewpoint diagram alongside the element list/table; a failed
+                // load just leaves the diagram panel unrendered — the list is unaffected.
+                console.warn('[BIZBOK] diagram load failed', e);
+            }
         },
 
         async fetchLayers() {
@@ -642,6 +648,7 @@ document.addEventListener('alpine:init', () => {
                 }));
             } catch (e) {
                 console.error('Failed to refresh layer counts:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not load layer counts.');
             }
         },
 
@@ -727,6 +734,7 @@ document.addEventListener('alpine:init', () => {
             this.selectedElement = el;
             this.detailLoading = true;
             this.relationships = [];
+            this.relationshipsError = false;
             try {
                 const resp = await fetch('/architecture/api/elements/' + el.id + '/relationships');
                 const json = await resp.json();
@@ -735,6 +743,7 @@ document.addEventListener('alpine:init', () => {
                 this.relationships = [...outgoing, ...incoming];
             } catch (e) {
                 console.error('Failed to load relationships:', e);
+                this.relationshipsError = true;
             }
             this.detailLoading = false;
         },
@@ -843,9 +852,15 @@ document.addEventListener('alpine:init', () => {
                     this.elements = this.elements.filter(e => e.id !== el.id);
                     if (this.selectedElement?.id === el.id) this.selectedElement = null;
                     this.totalCount = Math.max(0, this.totalCount - 1);
+                } else {
+                    let msg = 'Could not delete that element.';
+                    // Error body is not guaranteed to be JSON; fall back to the generic message above.
+                    try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch (e) {}
+                    Platform.toast.error(msg);
                 }
             } catch (e) {
                 console.error('Delete failed:', e);
+                Platform.toast.error('Could not delete that element.');
             }
         }
     }));

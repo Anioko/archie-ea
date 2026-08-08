@@ -563,7 +563,10 @@
             <template x-if="loading">
                 <div class="text-center py-8 text-muted-foreground">Loading mappings...</div>
             </template>
-            <template x-if="!loading && Object.keys(mappings).length > 0">
+            <template x-if="!loading && loadError">
+                <div class="text-center py-8 text-destructive">Could not load relationship mappings. Please try again.</div>
+            </template>
+            <template x-if="!loading && !loadError && Object.keys(mappings).length > 0">
                 <div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
@@ -638,7 +641,7 @@
                     </div>
                 </div>
             </template>
-            <template x-if="!loading && Object.keys(mappings).length === 0">
+            <template x-if="!loading && !loadError && Object.keys(mappings).length === 0">
                 <div class="text-center py-8 text-muted-foreground">
                     No relationship mappings configured. Check Abacus integration setup.
                 </div>
@@ -658,6 +661,7 @@
         return {
             expanded: false,
             loading: false,
+            loadError: false,
             saving: false,
             saveMessage: '',
             saveError: false,
@@ -669,11 +673,16 @@
             },
             async loadMappings() {
                 this.loading = true;
+                this.loadError = false;
                 try {
                     const resp = await fetch('/admin/abacus-settings/relationship-mappings');
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     const data = await resp.json();
                     this.mappings = data.mappings || {};
-                } catch (e) { console.error('Failed to load mappings:', e); }
+                } catch (e) {
+                    console.error('Failed to load mappings:', e);
+                    this.loadError = true;
+                }
                 finally { this.loading = false; }
             },
             async saveMappings() {
@@ -698,6 +707,8 @@
         // Pre-load selected types from config_json
         let initial = [];
         try {
+            // Best-effort: config_json is server-stored optional JSON; if it's malformed
+            // or absent, initial just stays [] and discoverTypes() below repopulates it.
             const cfg = JSON.parse('{{ abacus_config.config_json|default("{}", true)|e if abacus_config else "{}" }}');
             initial = cfg.sync_entity_types || [];
         } catch(e) {}
@@ -825,7 +836,10 @@
                         this.isStale = false;
                         this.poll();
                     }
-                } catch(e) { console.error('Failed to clear stale jobs:', e); }
+                } catch(e) {
+                    console.error('Failed to clear stale jobs:', e);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not clear stale jobs.');
+                }
             }
         };
     }

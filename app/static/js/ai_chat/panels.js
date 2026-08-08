@@ -107,6 +107,17 @@
 
         } catch (error) {
             console.error('Error loading domain context:', error);
+            // Surface the failure — otherwise the panel is left showing whatever the
+            // previous domain rendered (or nothing), which reads as "no context" rather
+            // than "the load failed".
+            const contextContainer = document.getElementById('domain-context');
+            if (contextContainer) {
+                contextContainer.innerHTML = `
+                    <div class="text-center py-8 text-muted-foreground">
+                        <p class="text-sm text-destructive">Couldn't load context for ${domain}.</p>
+                    </div>
+                `;
+            }
         }
     }
 
@@ -652,16 +663,25 @@
                         },
                         body: JSON.stringify({ conversation, current_genome: this.genome })
                     });
-                    if (!resp.ok) return;
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     const data = await resp.json();
-                    if (!data.success) return;
+                    if (!data.success) throw new Error('extraction did not succeed');
 
                     this.genome = data.genome_partial;
                     this.completeness = data.completeness_pct;
                     this.readyToGenerate = data.ready_to_generate;
                     this._refreshItems();
+                    this._extractErrorShown = false;
                 } catch (e) {
                     console.warn('Genome extraction failed:', e);
+                    // Called after every answer while in genome mode — toast once per
+                    // outage, not on every message, or a bad run spams the user.
+                    if (!this._extractErrorShown) {
+                        this._extractErrorShown = true;
+                        if (window.Platform && Platform.toast) {
+                            Platform.toast.error('Could not update the solution genome from this answer.');
+                        }
+                    }
                 }
             },
 

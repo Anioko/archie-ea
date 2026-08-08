@@ -231,7 +231,8 @@
 
       </div>
     </div>
-    <div x-show="!loaded" x-cloak class="text-sm text-muted-foreground">Loading executive summary…</div>
+    <div x-show="!loaded && !loadError" x-cloak class="text-sm text-muted-foreground">Loading executive summary…</div>
+    <div x-show="!loaded && loadError" x-cloak class="text-sm text-destructive">Could not load the executive summary.</div>
   </div>
 
   <!-- Statistics Cards -->
@@ -2684,7 +2685,7 @@
   // User-search autocomplete widget — reusable across owner/reviewer fields.
   function userSearchWidget(getVal, setVal) {
     return {
-      ures: [], ushow: false,
+      ures: [], ushow: false, uErrorShown: false,
       async usearch() {
         const q = getVal();
         if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
@@ -2692,7 +2693,14 @@
           const r = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
           const d = await r.json();
           if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
-        } catch (e) {}
+          this.uErrorShown = false;
+        } catch (e) {
+          // Debounced on every keystroke — toast once per outage, not on every retry.
+          if (!this.uErrorShown) {
+            this.uErrorShown = true;
+            if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
+          }
+        }
       },
       uselect(u) { setVal(u.name); this.ushow = false; this.ures = []; }
     };

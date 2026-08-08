@@ -253,7 +253,11 @@ document.addEventListener('alpine:init', () => {
                                 layer: el.layer || 'application',
                             }),
                         });
-                        if (res.ok || res.status === 409) elementsLinked++;
+                        if (res.ok || res.status === 409) {
+                            elementsLinked++;
+                        } else {
+                            errors.push('Link ' + el.name + ': HTTP ' + res.status);
+                        }
                     } catch (e) {
                         errors.push('Link ' + el.name + ': ' + e.message);
                     }
@@ -272,7 +276,11 @@ document.addEventListener('alpine:init', () => {
                                 relationship_type: rel.type,
                             }),
                         });
-                        if (res.ok) relsCreated++;
+                        if (res.ok) {
+                            relsCreated++;
+                        } else {
+                            errors.push('Rel ' + rel.source_name + '->' + rel.target_name + ': HTTP ' + res.status);
+                        }
                     } catch (e) {
                         errors.push('Rel ' + rel.source_name + '->' + rel.target_name + ': ' + e.message);
                     }
@@ -292,7 +300,11 @@ document.addEventListener('alpine:init', () => {
                                 relationship_type: 'access',
                             }),
                         });
-                        if (res.ok) relsCreated++;
+                        if (res.ok) {
+                            relsCreated++;
+                        } else {
+                            errors.push('Access rel: HTTP ' + res.status);
+                        }
                     } catch (e) {
                         errors.push('Access rel: ' + e.message);
                     }
@@ -312,7 +324,11 @@ document.addEventListener('alpine:init', () => {
                                 relationship_type: 'assignment',
                             }),
                         });
-                        if (res.ok) relsCreated++;
+                        if (res.ok) {
+                            relsCreated++;
+                        } else {
+                            errors.push('Deploy rel: HTTP ' + res.status);
+                        }
                     } catch (e) {
                         errors.push('Deploy rel: ' + e.message);
                     }

@@ -25,6 +25,7 @@ function blueprintPage() {
         sectionElements: {},
         sectionRelationships: {},
         diagramsLoaded: {},
+        diagramErrors: {},
         renderers: {},
         saving: {},
         narrativeSaving: {},   // 'idle' | 'saving' | 'saved' | 'error' per section
@@ -248,13 +249,21 @@ function blueprintPage() {
 
             // Destroy existing renderer if present
             if (self.renderers[sectionId]) {
+                // Best-effort teardown of the previous JointJS instance before
+                // replacing it — a throw here (e.g. paper already detached)
+                // must not block rendering the new one.
                 try { self.renderers[sectionId].destroy(); } catch (e) {}
                 delete self.renderers[sectionId];
             }
 
+            self.diagramErrors[sectionId] = false;
+
             // Always fetch so relationships are included alongside elements
             fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements')
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function (data) {
                 const elements = (data.data && data.data.elements) || [];
                 const relationships = (data.data && data.data.relationships) || [];
@@ -264,6 +273,7 @@ function blueprintPage() {
             })
             .catch(function (e) {
                 console.warn('[blueprint] diagram fetch failed for ' + sectionId + ':', e);
+                self.diagramErrors[sectionId] = true;
             });
         },
 
@@ -316,6 +326,7 @@ function blueprintPage() {
                 });
             } catch (e) {
                 console.warn('[blueprint] diagram render failed for ' + sectionId + ':', e);
+                self.diagramErrors[sectionId] = true;
             }
         },
 
@@ -600,6 +611,12 @@ function blueprintPage() {
             })
             .catch(function (err) {
                 console.error('[blueprint] refreshEntityData error:', err);
+                // The write that triggered this refresh already succeeded —
+                // don't tell the user the save/delete failed. Tell them the
+                // list on screen may be stale instead.
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Saved, but the list could not be refreshed — reload the page to see the latest data');
+                }
             });
         },
 
@@ -654,6 +671,7 @@ function blueprintPage() {
             })
             .catch(function (e) {
                 console.error('[blueprint] inferCodeSpecs error:', e);
+                if (window.Platform && Platform.toast) Platform.toast.error('Code spec inference failed');
             });
         },
 
@@ -681,6 +699,7 @@ function blueprintPage() {
             })
             .then(function (data) {
                 self.sectionElements[sectionId] = (data.data && data.data.elements) || data.elements || [];
+                self._sectionElementsErrorShown = false;
                 // Re-render diagram if the container is already visible
                 if (self.diagramsLoaded[sectionId]) {
                     self._renderDiagram(sectionId);
@@ -688,6 +707,15 @@ function blueprintPage() {
             })
             .catch(function (e) {
                 console.error('[blueprint] _reloadSectionElements error for ' + sectionId + ':', e);
+                // Called once per section on initial load plus after every
+                // link/unlink and AI-copilot write — toast once per outage
+                // rather than once per section/event.
+                if (!self._sectionElementsErrorShown) {
+                    self._sectionElementsErrorShown = true;
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Some section data could not be refreshed — reload the page to see the latest data');
+                    }
+                }
             });
         },
 
@@ -703,6 +731,12 @@ function blueprintPage() {
                 self.scores = data.scores || data;
             })
             .catch(function (e) {
+                // Deliberate no-op beyond logging: self.scores is not bound
+                // by any template (the score badges on this page are
+                // server-rendered from the Jinja `scores` var at page load,
+                // a separate value) — a failure here has no visible effect
+                // to surface. Left in place so a future consumer of
+                // self.scores gets a log line to start from.
                 console.error('[blueprint] _refreshScores error:', e);
             });
         },

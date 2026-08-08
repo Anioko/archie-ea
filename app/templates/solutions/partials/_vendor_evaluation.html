@@ -197,6 +197,7 @@ document.addEventListener('alpine:init', () => {
                 }
             } catch (e) {
                 console.error('Failed to load vendor evaluation shortlist:', e);
+                this.errorMsg = 'Failed to load vendor shortlist. Reload the page to try again.';
             }
         },
 
@@ -219,6 +220,7 @@ document.addEventListener('alpine:init', () => {
                 }
             } catch (e) {
                 console.error('Vendor product search failed:', e);
+                this.errorMsg = 'Vendor product search failed.';
             } finally {
                 this.searching = false;
             }

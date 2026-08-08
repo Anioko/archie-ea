@@ -329,7 +329,10 @@ let ComposerPersistence = (function() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify(payload),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) { throw new Error('save viewpoint request failed: ' + r.status); }
+                    return r.json();
+                })
                 .then(function(data) {
                     if (data.id) {
                         // Server materialized imported items into real model rows —
@@ -541,6 +544,9 @@ let ComposerPersistence = (function() {
                 self.layerZoneCells = [];
                 self.layerZonesActive = false;
                 let ext = null;
+                /* description is plain free text on older viewpoints (pre-canvas-ext) — a
+                   parse failure there is expected, not an error, so ext just stays null and
+                   the optional swimlane/annotation/property restores below are skipped. */
                 try { if (data.description) ext = JSON.parse(data.description); } catch (e) {}
                 if (ext && ext._canvas_ext && Array.isArray(ext.swimlanes) && ext.swimlanes.length) {
                     ext.swimlanes.forEach(function(sz) {
@@ -642,6 +648,8 @@ let ComposerPersistence = (function() {
 
         discardAutosave: function() {
             let key = 'composer_autosave_' + (this.solutionId || 'scratch');
+            /* Best-effort cleanup — if storage is unavailable there was nothing
+               persisted to discard in the first place. */
             try { localStorage.removeItem(key); } catch(_) {}
             this._pendingAutosaveRestore = null;
             this._showAutosavePrompt = false;
@@ -649,6 +657,7 @@ let ComposerPersistence = (function() {
 
         _clearAutosave: function() {
             let key = 'composer_autosave_' + (this.solutionId || 'scratch');
+            /* Best-effort cleanup — see discardAutosave() above. */
             try { localStorage.removeItem(key); } catch(_) {}
         },
 
@@ -2172,6 +2181,8 @@ let ComposerPersistence = (function() {
                 self.mode = 'view';
                 self.customProperties = {};
                 if (snapData.description) {
+                    /* Same legacy-format caveat as loadSavedViewpoint() — plain-text
+                       descriptions on older snapshots are expected to fail JSON.parse. */
                     try {
                         let ext = JSON.parse(snapData.description);
                         if (ext && ext._canvas_ext && ext.custom_properties) {
@@ -2913,6 +2924,8 @@ let ComposerPersistence = (function() {
                         ' other user(s) editing this diagram';
                 }
             })
+            /* Presence awareness only — a failure here just means the "other editors"
+               indicator doesn't light up this time; nothing for the user to act on. */
             .catch(function() {});
         },
 
@@ -2921,6 +2934,7 @@ let ComposerPersistence = (function() {
             let diagramId = self.savedViewpointId;
             if (!diagramId) return;
             let csrfToken = helpers.csrfToken;
+            /* Fire-and-forget cleanup as the user navigates away — nothing actionable. */
             fetch('/archimate/api/diagrams/' + diagramId + '/editors/leave', {
                 method: 'POST',
                 headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
@@ -2936,6 +2950,7 @@ let ComposerPersistence = (function() {
             .then(function(data) {
                 self.collaborationOtherEditors = data.count || 0;
             })
+            /* Presence awareness only — see collaborationJoin() above. */
             .catch(function() {});
         },
 

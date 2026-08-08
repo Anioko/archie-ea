@@ -102,7 +102,7 @@
     <!-- Upload Form -->
     <div class="rounded-lg border bg-card p-6 space-y-4">
         <h2 class="text-lg font-semibold">Upload OEF XML File</h2>
-        <form method="POST" enctype="multipart/form-data" class="space-y-4">
+        <form method="POST" action="{{ url_for('architect_ui.import_oef') }}" enctype="multipart/form-data" class="space-y-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div
                 class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"

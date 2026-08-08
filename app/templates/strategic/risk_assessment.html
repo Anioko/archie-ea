@@ -200,11 +200,11 @@ document.addEventListener('alpine:init', () => {
         async init() {
             try {
                 const response = await fetch('/strategic/api/risks/statuses');
-                if (response.ok) {
-                    this.statuses = await response.json();
-                }
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                this.statuses = await response.json();
             } catch (err) {
                 console.error('Failed to fetch risk statuses:', err);
+                Platform.toast.error('Failed to load risk statuses: ' + err.message);
             }
         },
         

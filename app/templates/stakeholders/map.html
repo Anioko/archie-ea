@@ -348,20 +348,30 @@ function stakeholderMap() {
       const body = { ...this.form };
       if (this.selectedSolution) body.solution_id = parseInt(this.selectedSolution);
       try {
-        await fetch('/api/stakeholders/', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}, body: JSON.stringify(body) });
+        const resp = await fetch('/api/stakeholders/', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}, body: JSON.stringify(body) });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
         Platform.modal.close('add-stakeholder-modal');
         await this.loadData();
-      } catch(e) { console.error(e); }
+      } catch(e) {
+        console.error(e);
+        Platform.toast.error('Could not add that stakeholder.');
+      }
     },
 
     async patchStakeholder(id, influence_level, interest_level) {
       try {
-        await fetch(`/api/stakeholders/${id}`, {
+        const resp = await fetch(`/api/stakeholders/${id}`, {
           method: 'PATCH',
           headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
           body: JSON.stringify({ influence_level, interest_level })
         });
-      } catch(e) { console.error(e); }
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      } catch(e) {
+        // The dot has already visually moved to the dropped position (drag end);
+        // the user needs to know that position was not actually saved.
+        console.error(e);
+        Platform.toast.error('Could not save the new position. Reload to see the last saved state.');
+      }
     },
 
     renderChart() {

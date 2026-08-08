@@ -37,7 +37,7 @@
     <!-- Search Filters -->
     <div class="bg-card rounded-lg shadow mb-6">
         <div class="p-6">
-            <form method="GET" class="space-y-4">
+            <form method="GET" action="{{ url_for('maturity_management.search_capabilities') }}" class="space-y-4">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label for="q" class="block text-sm font-medium text-foreground mb-2">Search</label>

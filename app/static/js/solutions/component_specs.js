@@ -94,7 +94,10 @@ function componentSpecsMixin() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self.csrfToken },
                 body: JSON.stringify({ fields: fields })
             })
-            .then(function (r) { return r.json(); });
+            .then(function (r) {
+                if (!r.ok) { throw new Error('validate spec request failed: ' + r.status); }
+                return r.json();
+            });
         },
 
         toggleSpecExpanded: function (elementId) {

@@ -177,22 +177,31 @@ let currentCapabilities = [];
 
 function loadStatistics() {
     fetch('/capability-framework/api/statistics')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) { throw new Error('statistics request failed: ' + response.status); }
+            return response.json();
+        })
         .then(data => {
             document.getElementById('total-domains').textContent = data.total_domains;
             document.getElementById('total-capabilities').textContent = data.total_capabilities;
             document.getElementById('manufacturing-capabilities').textContent = data.manufacturing_capabilities;
             document.getElementById('total-mappings').textContent = data.total_mappings;
-            
+
             document.getElementById('fully-covered').textContent = data.gap_analysis.fully_covered;
             document.getElementById('partially-covered').textContent = data.gap_analysis.partially_covered;
             document.getElementById('gap').textContent = data.gap_analysis.gap;
+        })
+        .catch(() => {
+            Platform.toast.error('Could not load capability statistics.');
         });
 }
 
 function loadDomains() {
     fetch('/capability-framework/api/domains')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) { throw new Error('domains request failed: ' + response.status); }
+            return response.json();
+        })
         .then(domains => {
             const container = document.getElementById('domains-container');
             const domainFilter = document.getElementById('domain-filter');
@@ -221,6 +230,9 @@ function loadDomains() {
                 `;
                 container.appendChild(card);
             });
+        })
+        .catch(() => {
+            Platform.toast.error('Could not load capability domains.');
         });
 }
 
@@ -233,10 +245,16 @@ function loadCapabilities() {
     if (level) url += `level=${level}`;
     
     fetch(url)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) { throw new Error('capabilities request failed: ' + response.status); }
+            return response.json();
+        })
         .then(capabilities => {
             currentCapabilities = capabilities;
             renderCapabilities(capabilities);
+        })
+        .catch(() => {
+            Platform.toast.error('Could not load capabilities.');
         });
 }
 
@@ -284,7 +302,10 @@ function showCapabilityDetail(capabilityId) {
     
     // Load capability details
     fetch(`/capability-framework/api/capability/${capabilityId}/applications`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) { throw new Error('capability applications request failed: ' + response.status); }
+            return response.json();
+        })
         .then(applications => {
             const detailsContainer = document.getElementById('capability-details');
             
@@ -344,6 +365,11 @@ function showCapabilityDetail(capabilityId) {
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
+        })
+        .catch(() => {
+            document.getElementById('capability-details').innerHTML =
+                '<p class="text-sm text-destructive">Could not load capability details.</p>';
+            Platform.toast.error('Could not load capability details.');
         });
 }
 

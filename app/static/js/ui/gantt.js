@@ -200,6 +200,8 @@
                 self.error   = null;
 
                 if (self._abortController) {
+                    // Best-effort cancel of a superseded in-flight request; aborting an
+                    // already-settled controller is a no-op we don't need to react to.
                     try { self._abortController.abort(); } catch (e) { /* ignore */ }
                 }
                 self._abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;

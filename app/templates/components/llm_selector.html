@@ -122,6 +122,8 @@ Or with custom ID:
         updateLabel();
       }
     } catch (error) {
+      // Best-effort personalization: on failure the selector just keeps showing
+      // the default LLM instead of the user's saved preference — not an error state.
       console.debug('Error loading preference:', error);
     }
   }

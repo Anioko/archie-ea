@@ -228,6 +228,7 @@ async function loadAnalyticsData() {
 
     } catch (error) {
         console.error('Failed to load analytics data:', error);
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load usage analytics data.');
     }
 }
 </script>

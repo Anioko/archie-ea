@@ -671,6 +671,9 @@ function jobDetail(jobId) {
                 }
             } catch (error) {
                 console.error('Failed to load batches:', error);
+                if (!silent) {
+                    this.showToast('Failed to load batches', 'error');
+                }
             } finally {
                 this.loadingBatches = false;
             }

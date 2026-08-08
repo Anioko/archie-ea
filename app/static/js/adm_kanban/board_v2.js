@@ -552,6 +552,7 @@
                     })
                     .catch(function () {
                         self.phaseElements[phaseCode].loading = false;
+                        self.phaseElements[phaseCode].elementsFailed = true;
                     });
                 _fetch('/api/adm-kanban/v2/phases/' + phaseCode + '/completion')
                     .then(function (data) {
@@ -560,13 +561,19 @@
                             self.phaseElements[phaseCode].pct = data.pct || 0;
                         }
                     })
-                    .catch(function () {});
+                    .catch(function () {
+                        // Platform.fetch already toasted the failure; mark completion as
+                        // unknown so the badge shows "—" instead of a fabricated 0/N.
+                        self.phaseElements[phaseCode].completionFailed = true;
+                    });
             },
 
             phaseElementBadgeText: function (phaseCode) {
                 let pe = this.phaseElements[phaseCode];
                 if (!pe || pe.loading) return '';
-                return pe.created + '/' + pe.total_suggested + ' elements';
+                let created = pe.completionFailed ? '—' : pe.created;
+                let total = pe.elementsFailed ? '—' : pe.total_suggested;
+                return created + '/' + total + ' elements';
             },
         };
     };
