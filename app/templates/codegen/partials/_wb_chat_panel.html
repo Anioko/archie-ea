@@ -237,6 +237,7 @@ function wbChatPanel() {
         });
 
         if (!resp.ok) {
+          // swallow-ok: parses the error BODY only — a non-JSON error page is expected here, and the failure itself is reported on the next line
           const err = await resp.json().catch(() => ({}));
           assistantMsg.content = err.error || 'Request failed.';
           assistantMsg.streaming = false;

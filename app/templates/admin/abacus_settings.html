@@ -867,21 +867,45 @@
     }
 
     // ── Imported data count updater ──────────────────────────────────
+    // These counts are how an admin decides whether an Abacus import worked.
+    // A failed poll must never leave a number on screen: a stale or invented
+    // count is indistinguishable from a measured one.
+    let importedCountsFailing = false;
     function updateImportedDataCounts() {
+        const counts = () => ({
+            appsEl: document.getElementById('imported-apps-count'),
+            capsEl: document.getElementById('imported-caps-count'),
+            appsProg: document.getElementById('apps-progress'),
+            capsProg: document.getElementById('caps-progress'),
+        });
         fetch('/admin/abacus-settings/stats')
-        .then(r => r.json())
+        .then(r => {
+            // fetch does not reject on 4xx/5xx — an error page would otherwise
+            // fall through to the success handler as unparsable JSON.
+            if (!r.ok) throw new Error('stats request failed: ' + r.status);
+            return r.json();
+        })
         .then(data => {
-            if (!data.success) return;
-            const appsEl = document.getElementById('imported-apps-count');
-            const capsEl = document.getElementById('imported-caps-count');
-            const appsProg = document.getElementById('apps-progress');
-            const capsProg = document.getElementById('caps-progress');
-            if (appsEl) appsEl.textContent = data.applications || 0;
-            if (capsEl) capsEl.textContent = data.capabilities || 0;
+            if (!data.success) throw new Error(data.message || 'stats unavailable');
+            const { appsEl, capsEl, appsProg, capsProg } = counts();
+            if (appsEl) appsEl.textContent = data.applications ?? '—';
+            if (capsEl) capsEl.textContent = data.capabilities ?? '—';
             if (appsProg) appsProg.style.width = Math.min(100, (data.applications || 0) / 10) + '%';
             if (capsProg) capsProg.style.width = Math.min(100, (data.capabilities || 0) * 2) + '%';
+            importedCountsFailing = false;
         })
-        .catch(() => {});
+        .catch(() => {
+            const { appsEl, capsEl, appsProg, capsProg } = counts();
+            if (appsEl) appsEl.textContent = '—';
+            if (capsEl) capsEl.textContent = '—';
+            if (appsProg) appsProg.style.width = '0%';
+            if (capsProg) capsProg.style.width = '0%';
+            // Polls every 10s: one toast per outage, not one per tick.
+            if (!importedCountsFailing) {
+                importedCountsFailing = true;
+                Platform.toast.error('Could not load imported data counts — the figures shown are unknown, not zero.');
+            }
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function() {

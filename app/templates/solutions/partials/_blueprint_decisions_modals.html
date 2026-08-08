@@ -398,6 +398,7 @@
                 if (!d.alternatives) return null;
                 if (Array.isArray(d.alternatives)) return d.alternatives;
                 if (typeof d.alternatives === 'object') return null;
+                // swallow-ok: not a network path — parses a stored text field; null means "no renderable alternatives", and the decision itself still renders
                 try { return JSON.parse(d.alternatives); } catch (_) { return null; }
             },
 

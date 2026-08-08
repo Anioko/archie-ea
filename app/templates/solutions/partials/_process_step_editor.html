@@ -204,6 +204,7 @@ function processStepEditor(solutionId) {
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
           body: JSON.stringify({ steps }),
         });
+        // swallow-ok: parses the response BODY only — a non-JSON error page is expected here, and a failed save is reported via el._saveError below
         const body = await r.json().catch(() => ({}));
         if (!r.ok) {
           el._saveError = body.error || 'Save failed';
