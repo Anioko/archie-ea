@@ -1900,12 +1900,12 @@ let ComposerAI = (function() {
                 else if (results.changed && results.changed.some(function(e) { return e.id == eid; })) status = 'changed';
 
                 if (status === 'added') {
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#22c55e', 'stroke-width': 3 } } } }); } catch(e) {}
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#22c55e', 'stroke-width': 3 } } } }); } catch(e) { /* cosmetic gap overlay — best-effort */ }
                 } else if (status === 'removed') {
                     view.vel.attr({ opacity: 0.3 });
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#ef4444', 'stroke-width': 3, 'stroke-dasharray': '4,4' } } } }); } catch(e) {}
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#ef4444', 'stroke-width': 3, 'stroke-dasharray': '4,4' } } } }); } catch(e) { /* cosmetic gap overlay — best-effort */ }
                 } else if (status === 'changed') {
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#f59e0b', 'stroke-width': 2, 'stroke-dasharray': '6,3' } } } }); } catch(e) {}
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#f59e0b', 'stroke-width': 2, 'stroke-dasharray': '6,3' } } } }); } catch(e) { /* cosmetic gap overlay — best-effort */ }
                 } else {
                     view.vel.attr({ opacity: 0.2 });
                 }
@@ -1919,7 +1919,7 @@ let ComposerAI = (function() {
                 let view = self.paper.findViewByModel(cell);
                 if (!view) return;
                 view.vel.attr({ opacity: 1 });
-                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) {}
+                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* cosmetic — best-effort */ }
             });
         },
 

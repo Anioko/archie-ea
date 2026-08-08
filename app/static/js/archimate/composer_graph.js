@@ -282,6 +282,9 @@ let ComposerGraph = (function() {
                     headers: { 'X-CSRFToken': csrfToken() },
                 }).catch(function(err) {
                     console.warn('Failed to delete relationship ' + relId + ' from server:', err);
+                    /* The link is already gone from the canvas — the user needs to know the
+                       delete did NOT persist, or it will silently reappear on next reload. */
+                    _toast('error', 'Relationship removed on canvas but not saved — it may reappear on reload');
                 });
             }
         },
@@ -356,7 +359,7 @@ let ComposerGraph = (function() {
                 line.removeAttribute('data-original-stroke');
             }
             /* Remove link tools on deselect */
-            try { view.removeTools(); } catch(e) {}
+            try { view.removeTools(); } catch(e) { /* cosmetic — best-effort */ }
         },
 
         renameElement: function() {
@@ -434,7 +437,12 @@ let ComposerGraph = (function() {
                             }
                         });
                     }
-                }).catch(function() {});
+                }).catch(function() {
+                    /* The element was already removed from the canvas — this call only
+                       checks for downstream impact, but a silent failure here leaves the
+                       architect unaware that dependents might now be stale. */
+                    _toast('error', 'Could not check downstream impact of removing "' + name + '"');
+                });
             }
         },
 
@@ -1196,18 +1204,27 @@ let ComposerGraph = (function() {
                 self.customStyleTemplates.push(tmpl);
             }
 
+            let persisted = true;
             try {
                 localStorage.setItem('composer_style_templates', JSON.stringify(self.customStyleTemplates));
-            } catch(e) {}
+            } catch(e) { persisted = false; }
 
             self.newStyleTemplateName = '';
             self.styleTemplateSaveOpen = false;
-            self._toast('Style template "' + tmpl.name + '" saved', 'info');
+            if (persisted) {
+                _toast('info', 'Style template "' + tmpl.name + '" saved');
+            } else {
+                /* Template is only in memory now — it looked saved but will vanish on
+                   reload, so the user has to be told rather than finding out later. */
+                _toast('error', 'Could not save style template "' + tmpl.name + '" — storage unavailable');
+            }
         },
 
         deleteCustomStyleTemplate: function(name) {
             let self = this;
             self.customStyleTemplates = (self.customStyleTemplates || []).filter(function(t) { return t.name !== name; });
+            /* Best-effort persistence — the in-memory list above is already updated
+               for this session even if storage is unavailable (private mode/quota). */
             try {
                 localStorage.setItem('composer_style_templates', JSON.stringify(self.customStyleTemplates));
             } catch(e) {}

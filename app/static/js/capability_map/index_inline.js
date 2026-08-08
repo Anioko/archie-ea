@@ -178,6 +178,7 @@ async function loadApplicationsForACMMapping() {
         }
     } catch (error) {
         console.error('Error loading applications for ACM mapping:', error);
+        if (window.Platform && Platform.toast) Platform.toast.error('Failed to load applications for mapping');
     }
 }
 
@@ -1315,6 +1316,7 @@ async function loadBusinessDomainCards() {
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
         console.error('Error loading business domains:', error);
+        if (window.Platform && Platform.toast) Platform.toast.error('Failed to load business domains');
     }
 }
 
@@ -1394,6 +1396,7 @@ async function loadManufacturingDomainStats() {
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
         console.error('Error loading manufacturing domains:', error);
+        if (window.Platform && Platform.toast) Platform.toast.error('Failed to load manufacturing domains');
     }
 }
 
@@ -1440,6 +1443,7 @@ async function loadProcessCategoryStats() {
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
         console.error('Error loading process categories:', error);
+        if (window.Platform && Platform.toast) Platform.toast.error('Failed to load process categories');
     }
 }
 

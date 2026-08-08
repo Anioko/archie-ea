@@ -32,6 +32,7 @@ document.addEventListener('alpine:init', () => {
                 this.renderTree();
             } catch (e) {
                 console.error('Failed to load tree:', e);
+                Platform.toast.error('Failed to load capability tree');
             } finally {
                 this.loading = false;
             }
@@ -348,6 +349,7 @@ document.addEventListener('alpine:init', () => {
                 await this.loadTree();
             } catch (e) {
                 console.error('Delete error:', e);
+                Platform.toast.error('Delete failed. Check console.');
             }
         },
     }));

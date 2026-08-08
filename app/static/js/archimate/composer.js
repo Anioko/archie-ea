@@ -1474,7 +1474,7 @@ function composerApp() {
                                 attrs: { stroke: '#f59e0b', 'stroke-width': 2, 'stroke-dasharray': '4,3' },
                             }},
                         });
-                    } catch(e) {}
+                    } catch(e) { /* cosmetic lock highlight — view may not be rendered yet, nothing actionable */ }
                 }, 50);
             });
 
@@ -2495,6 +2495,7 @@ function composerApp() {
             let params = new URLSearchParams(window.location.search);
             if (!params.has('prefill')) return;
             let raw = null;
+            /* sessionStorage throws in private/incognito mode — best-effort, no prefill if unavailable */
             try { raw = sessionStorage.getItem('composer_prefill'); } catch (_) {}
             if (!raw) return;
             let payload = null;
@@ -2503,7 +2504,7 @@ function composerApp() {
             if (!payload || !payload.elements || !Array.isArray(payload.elements)) return;
             if (payload.timestamp && (Date.now() - payload.timestamp) > 300000) return;
 
-            /* Clear so refresh doesn't re-trigger */
+            /* Clear so refresh doesn't re-trigger — best-effort, same private-mode caveat as above */
             try { sessionStorage.removeItem('composer_prefill'); } catch (_) {}
 
             /* Normalise element shape to match composer_ai.js expectations */
@@ -2562,7 +2563,7 @@ function composerApp() {
                 { name: 'dot', args: { color: '#dde1e6', thickness: 1 } },
                 { name: 'dot', args: { color: '#c8cdd3', thickness: 1, scaleFactor: 5 } },
             ] : false;
-            try { this.paper.drawGrid(); } catch(e) {}
+            try { this.paper.drawGrid(); } catch(e) { /* cosmetic grid redraw — best-effort */ }
             this.statusText = this.showGrid ? 'Grid visible' : 'Grid hidden';
         },
 
@@ -2613,7 +2614,7 @@ function composerApp() {
                                 }},
                             });
                         }
-                    } catch(e) {}
+                    } catch(e) { /* cosmetic lock border — best-effort */ }
                 }
             });
 
@@ -4003,11 +4004,16 @@ function composerApp() {
 
             this.statusText = 'Copied ' + this._clipboard.length + ' element(s)'
                 + (self._clipboardLinks.length ? ' and ' + self._clipboardLinks.length + ' relationship(s)' : '');
+            /* Cross-tab clipboard persistence is a bonus — in-memory this._clipboard is
+               already set above, so a private-mode/quota failure here is harmless. */
             try { localStorage.setItem('archimate_clipboard', JSON.stringify(this._clipboard)); } catch(e) {}
         },
 
         _pasteClipboard: function(atPoint) {
             if (this._clipboard.length === 0) {
+                /* Best-effort restore from a previous tab/session — if this throws
+                   or the stored value is malformed, _clipboard just stays empty
+                   and the paste below is a no-op. */
                 try {
                     let stored = localStorage.getItem('archimate_clipboard');
                     if (stored) this._clipboard = JSON.parse(stored);
@@ -5011,7 +5017,9 @@ function composerApp() {
                         method: 'PATCH', credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                         body: JSON.stringify({ custom_properties: { event_schedule: schedule.trim() } }),
-                    }).catch(function() {});
+                    }).catch(function() {
+                        _toast('error', 'Failed to save event schedule — it will be lost on reload');
+                    });
                 }
             }
         },
@@ -5029,7 +5037,9 @@ function composerApp() {
                     method: 'PATCH', credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify({ custom_properties: { event_schedule: '' } }),
-                }).catch(function() {});
+                }).catch(function() {
+                    _toast('error', 'Failed to clear event schedule on the server — it may reappear on reload');
+                });
             }
         },
 
@@ -5519,7 +5529,7 @@ function composerApp() {
                 let self = this;
                 setTimeout(function() {
                     if (self.canvasSearchMatches.indexOf(cell) !== -1) {
-                        try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) {}
+                        try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) { /* cosmetic flash highlight — best-effort */ }
                     }
                 }, 100);
             }
@@ -5531,7 +5541,7 @@ function composerApp() {
             this.canvasSearchMatches.forEach(function(cell) {
                 let view = self.paper.findViewByModel(cell);
                 if (view) {
-                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) {}
+                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) { /* cosmetic — best-effort */ }
                 }
             });
         },
@@ -5596,6 +5606,8 @@ function composerApp() {
         },
 
         _saveCustomPropsToStorage: function() {
+            /* Local cache only — _syncCustomPropsToServer() is the real persistence
+               path and reports its own failures, so a storage failure here is harmless. */
             try {
                 localStorage.setItem(this._customPropsKey(), JSON.stringify(this.customProperties));
             } catch(e) {}
@@ -5827,7 +5839,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 6, rx: 8, attrs: { stroke: '#dc2626', 'stroke-width': 3 } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* cosmetic — best-effort */ }
                 } else if (el.id in downIds) {
                     /* Downstream: orange tint */
                     vel.attr({ opacity: Math.max(0.4, 1 - downIds[el.id] * 0.15) });
@@ -5835,7 +5847,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 4, rx: 6, attrs: { stroke: '#f97316', 'stroke-width': 2, 'stroke-dasharray': '4,2' } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* cosmetic — best-effort */ }
                 } else if (el.id in upIds) {
                     /* Upstream: blue tint */
                     vel.attr({ opacity: Math.max(0.4, 1 - upIds[el.id] * 0.15) });
@@ -5843,7 +5855,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 4, rx: 6, attrs: { stroke: '#3b82f6', 'stroke-width': 2, 'stroke-dasharray': '4,2' } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* cosmetic — best-effort */ }
                 } else {
                     /* Unrelated: dim to 20% */
                     vel.attr({ opacity: 0.2 });
@@ -5877,7 +5889,7 @@ function composerApp() {
                 let view = self.paper.findViewByModel(el);
                 if (!view) return;
                 view.vel.attr({ opacity: 1 });
-                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) {}
+                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* cosmetic — best-effort */ }
             });
 
             /* Reset all link visuals */
