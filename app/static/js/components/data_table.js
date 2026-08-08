@@ -387,6 +387,29 @@
         return baseMixin;
     }
 
+    /**
+     * Merge the mixin with a page's own properties, PRESERVING getters.
+     *
+     * Callers previously did `Object.assign({}, mixin(...), pageStuff)`, which
+     * drops the four computed getters above: they are installed with
+     * defineProperty and are therefore non-enumerable, and Object.assign copies
+     * only own ENUMERABLE properties. The result was a component on which
+     * selectedCount / hasSelection / allPageSelected did not exist —
+     * "ReferenceError: selectedCount is not defined" on every render of the
+     * consolidation list, with the same latent break in four other tables.
+     *
+     * Marking them enumerable would not fix it and would be worse: Object.assign
+     * INVOKES a getter and copies the resulting value, freezing it against the
+     * bare mixin instead of the live component. Copying descriptors is the only
+     * merge that keeps them as getters bound to the final object.
+     */
+    function extendMixin(base, pageSpecific) {
+        let result = {};
+        Object.defineProperties(result, Object.getOwnPropertyDescriptors(base));
+        Object.defineProperties(result, Object.getOwnPropertyDescriptors(pageSpecific || {}));
+        return result;
+    }
+
     // ── Override base _loadItems to capture raw response ─────────────────
     // We need access to the full API response for onResponse hooks.
     // Patch the mixin's _loadItems to store the raw data.
@@ -455,6 +478,10 @@
     // ── Public API on Platform namespace ──────────────────────────────────
     let dataTableModule = {
         mixin:          mixin,
+        // Use this instead of Object.assign to combine mixin() with page state —
+        // see extendMixin's comment for why Object.assign silently loses the
+        // computed getters.
+        extend:         extendMixin,
         STATUS_CLASSES: STATUS_CLASSES,
         fmt:            fmt,
         getVisiblePages: getVisiblePages

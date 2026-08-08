@@ -248,6 +248,21 @@ class VendorOrganization(db.Model):
 
     Represents major enterprise vendors (SAP, Oracle, Microsoft, Workday, etc.)
     with their complete product portfolios and strategic positioning.
+
+    DELIBERATELY NOT TenantMixin — this is shared reference data, and that is a
+    decision, not an oversight (ADR-0003). Everything here is a fact about the
+    vendor in the world: Gartner quadrant position, market share, revenue, stock
+    symbol. It is identical for every customer, and ``name`` is globally unique,
+    which only makes sense for one shared catalogue. Giving it a tenant column
+    would duplicate all 45 rows per organisation and break that constraint.
+
+    Tenant-specific vendor data belongs elsewhere and is already scoped there:
+    commercial terms in ``vendor_contracts``, application links in
+    ``contract_applications``, and per-customer coverage assessments in
+    ``VendorProductCapability`` below. Sidebar and dashboard vendor counts are
+    therefore global on purpose — see app/_bootstrap/context_processors.py.
+    Pinned by tests/test_vendor_tenancy_policy.py so this cannot be "fixed" by
+    accident.
     """
 
     __tablename__ = "vendor_organizations"
@@ -711,7 +726,19 @@ class VendorProduct(db.Model):
         return f"<VendorProduct {self.vendor_organization.name if self.vendor_organization else 'Unknown'}: {self.name}>"
 
 
-class VendorProductCapability(db.Model):
+# ADR-0003: tenant-scoped. Unlike VendorOrganization above this is NOT reference
+# data — business_capability_id points at a tenant-owned capability, so a row
+# states how well a vendor covers ONE customer's capability model.
+#
+# The table already had an organization_id column, declared here as a bare
+# nullable Integer with no ForeignKey. Nothing populated it (all 192 production
+# rows NULL) and nothing filtered on it, and its lack of an FK is what made
+# TenantMixin's `organization` relationship unjoinable — the first attempt to add
+# the mixin broke mapper initialisation app-wide for exactly that reason. The
+# bare column is gone; the mixin now supplies it with the FK, index and NOT NULL.
+# `flask backfill-layer-tenancy` fills it by reading the tenant off the linked
+# capability rather than guessing.
+class VendorProductCapability(TenantMixin, db.Model):
     """
     Junction table linking vendor products to business capabilities with coverage metrics.
 
@@ -769,7 +796,10 @@ class VendorProductCapability(db.Model):
     data_source_type = db.Column(db.String(30), nullable=False, default='seeded',
                                   server_default='seeded')
     confirmed_by_count = db.Column(db.Integer, nullable=False, default=0, server_default='0')
-    organization_id = db.Column(db.Integer, nullable=True, index=True)
+    # organization_id comes from TenantMixin: it previously stood here as a bare
+    # nullable Integer with NO ForeignKey, which is why the column existed in the
+    # database, was never populated (all 192 production rows NULL), was never
+    # filtered on, and made TenantMixin's `organization` relationship unjoinable.
 
     # Quality metrics
     performance_rating = db.Column(db.Integer)  # 1 - 10: How well does it perform
