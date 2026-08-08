@@ -329,7 +329,10 @@ let ComposerPersistence = (function() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify(payload),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) { throw new Error('save viewpoint request failed: ' + r.status); }
+                    return r.json();
+                })
                 .then(function(data) {
                     if (data.id) {
                         // Server materialized imported items into real model rows —

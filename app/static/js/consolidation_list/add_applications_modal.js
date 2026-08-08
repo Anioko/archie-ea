@@ -30,7 +30,10 @@ function loadAvailableApplications() {
     fetch('/capability-map/api/applications', {
         credentials: 'include'
     })
-    .then(function(response) { return response.json(); })
+    .then(function(response) {
+        if (!response.ok) { throw new Error('applications request failed: ' + response.status); }
+        return response.json();
+    })
     .then(function(data) {
         if (data.applications) {
             // Filter out applications already in consolidation list

@@ -233,7 +233,10 @@ function rationalizationDashboard() {
             fetch('/applications/rationalization/api/portfolio-scores', {
                 headers: { 'Accept': 'application/json' }
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('Portfolio scores request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(apps) {
                 if (!apps.length) return;
 
@@ -336,6 +339,7 @@ function rationalizationDashboard() {
             })
             .catch(function(err) {
                 console.error('TIME quadrant load failed:', err);
+                Platform.toast.error('Could not load the TIME quadrant chart. Please try again.');
             });
         },
 

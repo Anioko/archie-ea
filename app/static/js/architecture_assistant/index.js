@@ -116,7 +116,10 @@ let ArchAssistant = {
         self._selectedViewpoint = self._selectedViewpoint || null;
 
         fetch('/api/architecture-assistant/viewpoints')
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('viewpoints request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let viewpoints = data.viewpoints || [];
                 if (!viewpoints.length) { self.goToStep(1); return; }
@@ -1256,7 +1259,10 @@ let ArchAssistant = {
         }
 
         fetch('/api/architecture-assistant/archimate-model?capability_id=' + capId)
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('archimate-model request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let elements = data.elements || [];
                 let byLayer = {};

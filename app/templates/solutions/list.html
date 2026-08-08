@@ -551,7 +551,10 @@
     }
     let cfg = window.__SOLUTION_LIST_CONFIG__ || {};
     fetch(cfg.templatesUrl || '/solutions/templates', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) { throw new Error('templates request failed: ' + r.status); }
+        return r.json();
+      })
       .then(function(data) {
         if (!list) return;
         let templates = (data && data.templates) || [];

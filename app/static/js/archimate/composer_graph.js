@@ -1515,7 +1515,10 @@ let ComposerGraph = (function() {
             fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
@@ -1583,7 +1586,10 @@ let ComposerGraph = (function() {
             fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
@@ -1615,7 +1621,8 @@ let ComposerGraph = (function() {
                 }
             })
             .catch(function() {
-                /* Silent fail — auto-detect is best-effort */
+                /* Best-effort auto-detect: stay silent for the user, but no longer
+                   risk treating a failed response body as a successful result. */
             });
         },
 
@@ -1665,7 +1672,10 @@ let ComposerGraph = (function() {
             fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;

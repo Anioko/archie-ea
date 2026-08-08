@@ -804,7 +804,10 @@ let processSelectedApplications = new Map();
 function openProcessMappingModal(processId, processName, processCode, processType) {
     // Check if user is authenticated before opening modal
     fetch('/capability-map/api/check-auth')
-        .then(function(response) { return response.json(); })
+        .then(function(response) {
+            if (!response.ok) { throw new Error('check-auth request failed: ' + response.status); }
+            return response.json();
+        })
         .then(function(data) {
             if (data.authenticated) {
                 // User is authenticated, proceed with modal

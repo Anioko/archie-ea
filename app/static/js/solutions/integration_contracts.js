@@ -72,7 +72,10 @@ function integrationContractsMixin() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self.csrfToken },
                 body: JSON.stringify({})
             })
-            .then(function (r) { return r.json(); });
+            .then(function (r) {
+                if (!r.ok) { throw new Error('validate integration contract request failed: ' + r.status); }
+                return r.json();
+            });
         },
 
         toggleContractExpanded: function (elementId) {

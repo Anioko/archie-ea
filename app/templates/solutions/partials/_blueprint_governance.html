@@ -955,7 +955,10 @@
             init: function() {
                 let self = this;
                 fetch('/solutions/' + solutionId + '/identity-provider', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) { throw new Error('identity-provider request failed: ' + r.status); }
+                    return r.json();
+                })
                 .then(function(data) {
                     const idp = (data.data || {}).identity_provider;
                     if (idp) {

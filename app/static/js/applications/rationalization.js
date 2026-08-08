@@ -2602,7 +2602,10 @@ function executeBulkReview(appIds, action, notes) {
       'X-CSRFToken': csrfToken,
     },
     body: JSON.stringify({ app_ids: appIds, action: action, notes: notes || '' }),
-  }).then(function(r) { return r.json(); });
+  }).then(function(r) {
+    if (!r.ok) { throw new Error('Bulk review request failed: ' + r.status); }
+    return r.json();
+  });
 }
 
 async function loadPortfolioWorkbench(filters, containerId) {

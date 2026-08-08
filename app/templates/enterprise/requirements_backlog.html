@@ -1048,15 +1048,16 @@ function requirementsBacklog() {
         async loadMotivationData() {
             try {
                 const [dr, go, st] = await Promise.all([
-                    fetch('/api/enterprise/motivation/drivers', { credentials: 'same-origin' }).then(r => r.json()),
-                    fetch('/api/enterprise/motivation/goals', { credentials: 'same-origin' }).then(r => r.json()),
-                    fetch('/api/enterprise/motivation/stakeholders', { credentials: 'same-origin' }).then(r => r.json()),
+                    fetch('/api/enterprise/motivation/drivers', { credentials: 'same-origin' }).then(r => { if (!r.ok) throw new Error('drivers request failed: ' + r.status); return r.json(); }),
+                    fetch('/api/enterprise/motivation/goals', { credentials: 'same-origin' }).then(r => { if (!r.ok) throw new Error('goals request failed: ' + r.status); return r.json(); }),
+                    fetch('/api/enterprise/motivation/stakeholders', { credentials: 'same-origin' }).then(r => { if (!r.ok) throw new Error('stakeholders request failed: ' + r.status); return r.json(); }),
                 ]);
                 this.motivationData.drivers = dr.data || [];
                 this.motivationData.goals = go.data || [];
                 this.motivationData.stakeholders = st.data || [];
             } catch (e) {
                 console.warn('Motivation data unavailable', e);
+                Platform.toast.error('Could not load motivation data (drivers, goals, stakeholders).');
             }
         },
 
@@ -1403,13 +1404,19 @@ function requirementsBacklog() {
                 credentials: 'same-origin',
                 headers: this.mutationHeaders(),
                 body: JSON.stringify({dod_checklist: this.activeReq.dod_checklist})
-            }).then(r => r.json()).then(d => {
+            }).then(r => {
+                if (!r.ok) throw new Error('save DoD checklist failed: ' + r.status);
+                return r.json();
+            }).then(d => {
                 this.activeReq.dod_complete = d.dod_complete;
                 const idx = this.all.findIndex(x => x.id === this.activeReq.id);
                 if (idx !== -1) {
                     this.all[idx].dod_complete = d.dod_complete;
                     this.all[idx].dod_checklist = d.dod_checklist;
                 }
+            }).catch(e => {
+                console.error('Save DoD checklist error', e);
+                Platform.toast.error('Could not save the definition-of-done checklist.');
             });
         },
         saveScore() {

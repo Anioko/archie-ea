@@ -1571,7 +1571,10 @@ function composerApp() {
                 fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
                     credentials: 'same-origin',
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) { throw new Error('valid-relationship-types request failed: ' + r.status); }
+                    return r.json();
+                })
                 .then(function(data) {
                     let validDetailed = data.valid_types_detailed || [];
                     self.relPickerTypes = validDetailed.length > 0
@@ -3156,7 +3159,10 @@ function composerApp() {
             fetch('/api/archimate/valid-relationships/' + encodeURIComponent(newType) + '/' + encodeURIComponent(targetType), {
                 credentials: 'same-origin'
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) { throw new Error('valid-relationships request failed: ' + r.status); }
+                return r.json();
+            })
             .then(function(data) {
                 let validTypes = (data.data || {}).valid_relationship_types || [];
                 if (validTypes.length === 0) {
@@ -3184,6 +3190,7 @@ function composerApp() {
             .catch(function() {
                 /* On error, just offset to avoid overlap */
                 newNode.position(newBBox.x + 220, newBBox.y);
+                _toast('error', 'Could not check valid relationships for this drop');
             });
         },
 

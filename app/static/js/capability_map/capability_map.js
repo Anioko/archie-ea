@@ -328,7 +328,10 @@
             panel.classList.remove('translate-x-full');
 
             fetch('/capability-map/api/capability/' + capabilityId + '/applications')
-                .then(r => r.json())
+                .then(r => {
+                    if (!r.ok) throw new Error('capability applications request failed: ' + r.status);
+                    return r.json();
+                })
                 .then(data => {
                     let html = '';
                     const cap = data.capability || {};
@@ -833,7 +836,10 @@
         function openProcessMappingModal(processId, processName, processCode, processType) {
             // Check if user is authenticated before opening modal
             fetch('/capability-map/api/check-auth')
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) throw new Error('check-auth request failed: ' + response.status);
+                    return response.json();
+                })
                 .then(data => {
                     if (data.authenticated) {
                         // User is authenticated, proceed with modal
