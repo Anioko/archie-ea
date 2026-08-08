@@ -471,6 +471,12 @@ def send_message():
             context_data.update(document_context)
 
         # ENT-085: Pass attached image data for vision/multimodal analysis
+        # The chat client no longer sends these. AgentRunner — which is what
+        # actually runs the turn — has no vision handling, so the base64 landed
+        # in context_data and was dropped by every context loader. The user saw
+        # a thumbnail and got a confident answer generated as if no diagram had
+        # been attached. The UI was removed rather than left lying; this stays
+        # as the reattachment point, and is inert while nothing sends it.
         image_data = data.get("image_data")
         if image_data and isinstance(image_data, str):
             context_data["image_data"] = image_data
@@ -636,44 +642,31 @@ def submit_message_feedback():
     if rating not in ("up", "down"):
         return jsonify({"error": "rating must be 'up' or 'down'"}), 400
 
+    from app import db
+
     try:
-        from app.extensions import db
-        from sqlalchemy import text
-        # Store feedback; table created lazily on first use
-        _org_id = getattr(g, 'current_org_id', None)
-        if _org_id:
-            db.session.execute(
-                text(
-                    "INSERT INTO ai_chat_feedback (user_id, rating, domain, persona, message_text, created_at, organization_id) "
-                    "VALUES (:uid, :r, :d, :p, :m, CURRENT_TIMESTAMP, :org_id)"
-                ),
-                {
-                    "uid": current_user.id,
-                    "r": rating,
-                    "d": domain,
-                    "p": persona,
-                    "m": message_text,
-                    "org_id": _org_id,
-                },
-            )
-        else:
-            db.session.execute(  # tenant-exempt: fallback when organization_id unavailable
-                text(
-                    "INSERT INTO ai_chat_feedback (user_id, rating, domain, persona, message_text, created_at) "
-                    "VALUES (:uid, :r, :d, :p, :m, CURRENT_TIMESTAMP)"
-                ),
-                {
-                    "uid": current_user.id,
-                    "r": rating,
-                    "d": domain,
-                    "p": persona,
-                    "m": message_text,
-                },
-            )
+        from app.models.ai_chat_feedback import AIChatFeedback
+
+        # organization_id is set by the tenant before_flush; do not pass it.
+        db.session.add(AIChatFeedback(
+            user_id=current_user.id,
+            rating=rating,
+            domain=domain,
+            persona=persona,
+            message_text=message_text,
+        ))
         db.session.commit()
     except Exception:
-        # Table may not exist yet — log and return success anyway so UI works
-        current_app.logger.info("ai_chat_feedback table not ready; feedback not persisted")
+        # This used to swallow every failure, log at INFO and return
+        # success: True. organization_id was declared on no model and in no
+        # migration, so the raw INSERT that referenced it raised
+        # UndefinedColumn every time — the endpoint reported success for a
+        # write that never happened, and without a rollback the aborted
+        # transaction cascaded InFailedSqlTransaction into every later query
+        # on the request.
+        db.session.rollback()
+        current_app.logger.exception("ai_chat_feedback insert failed")
+        return jsonify({"error": "Feedback could not be saved"}), 500
 
     return jsonify({"success": True, "rating": rating})
 

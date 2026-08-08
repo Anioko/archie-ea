@@ -38,6 +38,19 @@ BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "a11y_baseli
 TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]
 
 # One representative page per archetype, signed in as that archetype.
+#
+# NOTE FOR THE FIRST RUN AFTER /ai-chat WAS ADDED: that page had no entry in
+# a11y_baseline.json, because it was in no smoke test at all until now. The
+# first run will therefore FAIL with its real violations — that failure is the
+# point, and is what proves the gate now sees the page. Record them with:
+#
+#     SMOKE_A11Y_UPDATE_BASELINE=1 pytest tests/smoke/test_accessibility_audit.py
+#
+# Then read the diff. Every accepted rule under "/ai-chat" is a known defect
+# scheduled for removal in the client rebuild (see
+# docs/superpowers/specs/2026-08-07-ai-chat-rebuild-design.md §9), NOT an
+# accepted state. Expect at minimum three `select-name` criticals: the domain,
+# model and template selects carry no label.
 AUDIT = [
     ("procurement", "/procurement/contracts"),
     ("procurement", "/procurement/contracts/new"),
@@ -46,6 +59,7 @@ AUDIT = [
     ("portfolio_manager", "/applications/"),
     ("business_architect", "/capability-map/"),
     ("cto", "/dashboard/overview"),
+    ("enterprise_architect", "/ai-chat"),
 ]
 
 # An impact level at which a violation is not negotiable: these block a user

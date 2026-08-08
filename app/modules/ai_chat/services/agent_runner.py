@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 8
 
+# Which tools write. Derived in tools/registry.py by reading each implementation
+# for db.session.add/commit/delete, not from tool names.
+try:
+    from app.modules.ai_chat.tools.registry import mutating_tool_names as _mutating_tool_names
+    _MUTATING_TOOLS = _mutating_tool_names()
+except Exception:  # registry import failure must not take the turn with it
+    _MUTATING_TOOLS = frozenset()
+
 # Agent-mode system prompt prefix injected before domain context.
 _AGENT_PREFIX = """You are an Enterprise Architecture Copilot with DIRECT WRITE ACCESS
 to the architecture repository. You do not give advice for humans to act on — you act.
@@ -98,12 +106,24 @@ class AgentRunner:
     # results rather than asked of the model: a citation the model writes is a
     # claim, and claims are the thing being verified. These are ground truth -
     # the rows the database actually returned this turn.
+    #
+    # Widened by reading each of the 37 tools' return shapes, not by matching
+    # names. Only tools whose result carries records with a real id and name
+    # belong here; the rest return scores, narratives or write receipts, so
+    # mapping them would be inert at best and, if the entity type were guessed
+    # wrong, a fabricated citation - the exact failure this mechanism prevents.
+    #
+    # technical_capability has no detail route, so _source_url returns None for
+    # it and the UI shows the name unlinked. The id still travels, so the record
+    # stays findable.
     _TOOL_ENTITY = {
         "find_applications": "application",
         "find_applications_by_capability": "application",
         "query_capability_gaps": "capability",
         "search_capabilities_by_problem": "capability",
         "search_archimate_elements": "archimate_element",
+        "find_technical_capabilities": "technical_capability",
+        "get_solution_summary": "solution",
     }
     MAX_SOURCES = 25
 
@@ -159,6 +179,12 @@ class AgentRunner:
         if not entity_type or not isinstance(result, dict) or not result.get("success"):
             return
         rows = result.get("result")
+        # A single-record tool returns {"result": {...}} rather than a list.
+        # get_solution_summary is exactly that, so requiring a list meant an
+        # answer built on a real solution cited nothing and read as ungrounded —
+        # while _source_url had carried an unreachable `solution` branch all along.
+        if isinstance(rows, dict):
+            rows = [rows]
         if not isinstance(rows, list):
             return
 
@@ -463,6 +489,11 @@ class AgentRunner:
                             "arguments": tc.arguments,
                             "result": result.get("result"),
                             "message": result.get("message"),
+                            # Marked here so the client does not carry a second
+                            # copy of the read/write split. The registry flag is
+                            # the single source of truth for receipts, the
+                            # next-artifact suggestion and approval tiering.
+                            "mutates": tc.name in _MUTATING_TOOLS,
                         })
 
                 tool_results.append((tc_raw, result))
@@ -526,10 +557,42 @@ class AgentRunner:
         except Exception as e:
             logger.debug("AgentRunner: context build failed: %s", e)
 
+        # The governed charter: the persona's mission and scope, the six HARD
+        # RULES (evidence, no fabrication, propose-don't-dispose, cite your
+        # source) and a live-data block queried now.
+        #
+        # This used to be the one-line note below and nothing else, so selecting
+        # "AI Data Architect" over "CIO" changed the prompt by a job title. The
+        # charters were reachable only through
+        # MultiDomainChatService._get_persona_system_prompt <- process_message,
+        # which this path never calls — so the assistant was not governed by the
+        # rules CLAUDE.md names as its governance layer, and the rule forbidding
+        # invented application names and counts was never in context.
         persona_note = ""
         if persona:
-            persona_note = f"\nYou are operating as: {persona.replace('_', ' ').title()}.\n"
+            try:
+                from app.modules.ai_chat.services.architect_persona_charters import (
+                    build_architect_prompt,
+                )
 
+                # Returns None for the six ungoverned personas, which then fall
+                # through to the label below rather than losing their persona.
+                charter = build_architect_prompt(persona)
+                if charter:
+                    persona_note = "\n" + charter + "\n"
+            except Exception:
+                # A charter that cannot be built must not cost the turn. The
+                # label is a worse prompt, not a broken one.
+                logger.warning(
+                    "AgentRunner: charter unavailable for persona %s", persona, exc_info=True
+                )
+            if not persona_note:
+                persona_note = f"\nYou are operating as: {persona.replace('_', ' ').title()}.\n"
+
+        # The charter goes last, after the context block. _serialise_context
+        # drops whole keys when it is over budget, so anything appended after it
+        # is safe from that trimming — and the HARD RULES are the last thing that
+        # should be sacrificed to make room.
         return _AGENT_PREFIX + solution_block + portfolio_block + ctx_block + persona_note
 
     # ------------------------------------------------------------------ #

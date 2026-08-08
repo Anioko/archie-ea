@@ -40,6 +40,7 @@ module.exports = {
         warning: {
           DEFAULT: "hsl(var(--warning) / <alpha-value>)",
           foreground: "hsl(var(--warning-foreground) / <alpha-value>)",
+          emphasis: "hsl(var(--warning-emphasis) / <alpha-value>)",
         },
         info: {
           DEFAULT: "hsl(var(--info) / <alpha-value>)",
@@ -68,6 +69,59 @@ module.exports = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // Drive @tailwindcss/typography from the design tokens instead of its
+      // stock greys. Every source token is already .dark-aware, so the invert
+      // twins take identical values and dark mode resolves per theme without a
+      // second `prose-invert` ruleset.
+      typography: {
+        DEFAULT: {
+          css: {
+            '--tw-prose-body': 'hsl(var(--foreground))',
+            '--tw-prose-headings': 'hsl(var(--foreground))',
+            '--tw-prose-lead': 'hsl(var(--muted-foreground))',
+            // --info, NOT --primary: --primary is near-white in dark mode
+            // (210 40% 98%), which would make links indistinguishable from
+            // body text. See DESIGN.md "Note on blue".
+            '--tw-prose-links': 'hsl(var(--info))',
+            '--tw-prose-bold': 'hsl(var(--foreground))',
+            '--tw-prose-counters': 'hsl(var(--muted-foreground))',
+            '--tw-prose-bullets': 'hsl(var(--muted-foreground))',
+            '--tw-prose-hr': 'hsl(var(--border))',
+            '--tw-prose-quotes': 'hsl(var(--muted-foreground))',
+            '--tw-prose-quote-borders': 'hsl(var(--border))',
+            '--tw-prose-captions': 'hsl(var(--muted-foreground))',
+            '--tw-prose-code': 'hsl(var(--foreground))',
+            // pre-bg and pre-code must move together, or code blocks render
+            // white-on-white in light mode.
+            '--tw-prose-pre-code': 'hsl(var(--foreground))',
+            '--tw-prose-pre-bg': 'hsl(var(--muted))',
+            '--tw-prose-th-borders': 'hsl(var(--border))',
+            '--tw-prose-td-borders': 'hsl(var(--border))',
+            '--tw-prose-kbd': 'hsl(var(--foreground))',
+            // R G B triplet, not HSL: the plugin injects this into
+            // rgb(var(--tw-prose-kbd-shadows) / <alpha>).
+            '--tw-prose-kbd-shadows': '15 23 42',
+            '--tw-prose-invert-body': 'hsl(var(--foreground))',
+            '--tw-prose-invert-headings': 'hsl(var(--foreground))',
+            '--tw-prose-invert-lead': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-links': 'hsl(var(--info))',
+            '--tw-prose-invert-bold': 'hsl(var(--foreground))',
+            '--tw-prose-invert-counters': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-bullets': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-hr': 'hsl(var(--border))',
+            '--tw-prose-invert-quotes': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-quote-borders': 'hsl(var(--border))',
+            '--tw-prose-invert-captions': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-code': 'hsl(var(--foreground))',
+            '--tw-prose-invert-pre-code': 'hsl(var(--foreground))',
+            '--tw-prose-invert-pre-bg': 'hsl(var(--muted))',
+            '--tw-prose-invert-th-borders': 'hsl(var(--border))',
+            '--tw-prose-invert-td-borders': 'hsl(var(--border))',
+            '--tw-prose-invert-kbd': 'hsl(var(--foreground))',
+            '--tw-prose-invert-kbd-shadows': '226 232 240',
+          },
+        },
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -84,5 +138,7 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  // Bundled in the standalone CLI at scripts/bin/tailwindcss[.exe] — resolves
+  // with no npm install and no network, so the air-gap posture is unaffected.
+  plugins: [require('@tailwindcss/typography')],
 }

@@ -27,7 +27,7 @@ skipping.
 
 Several gates are **ratchets**: they compare a measurement against
 `verification_baseline.json` and fail when it gets worse, so the gate is "no worse",
-not "clean". Only two carry real debt now — **164** raw-Tailwind-colour uses
+not "clean". Only two carry real debt now — **88** raw-Tailwind-colour uses
 (`design_tokens`) and **98** raw-SQL statements on tenant tables with no org predicate
 (`raw_sql_tenancy`). `undefined_names`, `redefinitions`, `lint_core` and `air_gap` are
 all at **0**: treat those four as must-be-clean gates that happen to be implemented as
@@ -50,7 +50,7 @@ All 19 gates, in registry order (`scripts/verify.py`, `build_gates`):
 | `undefined-names` | runtime `NameError` (ruff F821) | ratchet @ 0 |
 | `redefinitions` | shadowed definitions (ruff F811) | ratchet @ 0 |
 | `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet @ 0 |
-| `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet @ 164 |
+| `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet @ 88 |
 | `air-gap` | a UI asset loaded from a public CDN | ratchet @ 0 |
 | `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 98 |
 | `template-syntax` | a Jinja template that does not parse (500s every page using it) | must be 0 |

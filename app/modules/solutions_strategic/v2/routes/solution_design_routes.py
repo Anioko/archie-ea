@@ -8087,7 +8087,7 @@ def portfolio_api():
 def _ensure_solution_dependencies_table():
     """ENH-023: Idempotent DDL for solution_dependencies junction table."""
     try:
-        db.session.execute(db.text("""  # tenant-exempt: DDL
+        db.session.execute(db.text("""
             CREATE TABLE IF NOT EXISTS solution_dependencies (
                 solution_id INTEGER NOT NULL
                     REFERENCES solutions(id) ON DELETE CASCADE,

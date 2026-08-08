@@ -70,9 +70,18 @@ def main() -> int:
         from jinja2 import Environment
         from jinja2.exceptions import TemplateSyntaxError
     except ImportError:
-        print("jinja2 not installed", file=sys.stderr)
-        print(0)
-        return 0
+        # Fail; do NOT print 0. This gate is `zero`-kind, so printing a count of
+        # zero made a missing dependency indistinguishable from a clean tree and
+        # the runner read it as a pass. CI's static-gates job installs only ruff
+        # and pip-audit, so that is precisely what happened: a must-be-zero gate
+        # guarding against a template that 500s every page using it had never
+        # parsed a single template there.
+        print(
+            "jinja2 is not installed, so no template was parsed — this gate "
+            "cannot run. Install jinja2 in the environment that runs it.",
+            file=sys.stderr,
+        )
+        return 2
 
     # parse() only needs the source; no loader required, so an {% extends %} or
     # {% include %} of a template that lives elsewhere does not produce a false
