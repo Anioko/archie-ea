@@ -775,6 +775,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Failed to load settings:', error);
+            if (window.Platform && Platform.toast) {
+                Platform.toast.error('Could not load saved settings; showing defaults instead.');
+            }
         }
     }
 

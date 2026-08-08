@@ -990,7 +990,10 @@ function requirementsBacklog() {
                 const data = await r.json();
                 const templateGroups = data.templates || data.layers || {};
                 this.pickerLayers = Object.keys(templateGroups);
-            } catch(e) { console.error('Template load error', e); }
+            } catch(e) {
+                console.error('Template load error', e);
+                Platform.toast.error('Could not load requirement templates.');
+            }
             this.loadingPicker = false;
         },
 
@@ -1042,6 +1045,7 @@ function requirementsBacklog() {
                 this.usersList = (d.users || []).map(u => ({ id: u.id, name: u.name }));
             } catch (e) {
                 console.warn('Users list unavailable', e);
+                Platform.toast.error('Could not load the users list; owner assignment may be unavailable.');
             }
         },
 
@@ -1132,9 +1136,11 @@ function requirementsBacklog() {
                     this.activeReq.acceptance_criteria = d.acceptance_criteria;
                 } else {
                     console.error('AC generation failed', d.error);
+                    Platform.toast.error(d.error || 'Could not generate acceptance criteria.');
                 }
             } catch (e) {
                 console.error('AC generation error', e);
+                Platform.toast.error('Could not generate acceptance criteria.');
             } finally {
                 this.acGenerating = false;
             }
@@ -1154,9 +1160,11 @@ function requirementsBacklog() {
                     this.tcResult = d.test_cases;
                 } else {
                     console.error('Test case generation failed', d.error);
+                    Platform.toast.error(d.error || 'Could not generate test cases.');
                 }
             } catch (e) {
                 console.error('Test case generation error', e);
+                Platform.toast.error('Could not generate test cases.');
             } finally {
                 this.tcGenerating = false;
             }
@@ -1307,9 +1315,11 @@ function requirementsBacklog() {
                     if (this.showEpicTree) this.loadEpics();
                 } else {
                     console.error('Create failed', d.error);
+                    Platform.toast.error(d.error || 'Could not create the requirement.');
                 }
             } catch (e) {
                 console.error('Create requirement error', e);
+                Platform.toast.error('Could not create the requirement.');
             } finally {
                 this.creating = false;
             }
@@ -1361,11 +1371,13 @@ function requirementsBacklog() {
                     if (this.showEpicTree) this.loadEpics();
                 } else {
                     console.error('Failed to save detail', d2.error);
+                    Platform.toast.error(d2.error || 'Could not save changes.');
                     return;
                 }
                 this.activeReq = null;
             } catch (e) {
                 console.error('Failed to save', e);
+                Platform.toast.error('Could not save changes.');
             } finally {
                 this.saving = false;
             }
@@ -1386,9 +1398,11 @@ function requirementsBacklog() {
                     this.applyRequirementUpdate({ id: req.id, work_package_id: d.work_package_id });
                 } else {
                     console.error('Link work package failed', d.error);
+                    Platform.toast.error(d.error || 'Could not link the work package.');
                 }
             } catch (e) {
                 console.error('Link work package error', e);
+                Platform.toast.error('Could not link the work package.');
             }
         },
         addDodItem() {

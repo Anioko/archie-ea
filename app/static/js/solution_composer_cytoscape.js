@@ -84,13 +84,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const posX = parseFloat(el.style.left);
         const posY = parseFloat(el.style.top);
         try {
-          await fetch(`/api/solution-composer/nodes/${encodeURIComponent(nodeId)}/position`, {
+          const posResp = await fetch(`/api/solution-composer/nodes/${encodeURIComponent(nodeId)}/position`, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({position_x: posX, position_y: posY}),
           });
+          if (!posResp.ok) throw new Error('HTTP ' + posResp.status);
         } catch (e) {
+          // The node visually stays where it was dropped even though the position
+          // did not persist — the user must be told, or a reload silently reverts it.
           console.warn('Failed to save position', e);
+          Platform.toast.error('Could not save the new node position.');
         }
       }
     });
@@ -142,6 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
           } catch (e) {
             console.warn('Failed to add node', e);
+            Platform.toast.error('Failed to add node.');
           }
         });
         paletteEl.appendChild(item);
@@ -159,7 +164,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       }
     } catch (e) {
+      // Distinguish "failed to load" from "nothing saved yet" — otherwise a broken
+      // load reads as an empty canvas and the user starts re-adding nodes that already exist.
       console.warn('No canvas state loaded', e);
+      Platform.toast.error('Could not load the saved canvas. Existing nodes may not be showing.');
     }
 
     // Minimal connection creation: shift-click source then click target

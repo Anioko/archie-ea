@@ -109,6 +109,7 @@ async function loadApplicationsForACMMapping() {
         }
     } catch (error) {
         console.error('Error loading applications for ACM mapping:', error);
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load applications for mapping.');
     }
 }
 
@@ -1200,6 +1201,13 @@ async function loadBusinessDomainCards() {
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
         console.error('Error loading business domains:', error);
+        // The stat spans default to "0" in the template; a failed load must not
+        // leave that in place looking like a real (zero) count.
+        ['unified-domain-count', 'unified-cap-count', 'unified-mapped-count', 'unified-coverage'].forEach(function(id) {
+            let el = document.getElementById(id);
+            if (el) el.textContent = '—';
+        });
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load business domains.');
     }
 }
 
@@ -1270,6 +1278,13 @@ async function loadManufacturingDomainStats() {
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
         console.error('Error loading manufacturing domains:', error);
+        // The stat spans default to "0" in the template; a failed load must not
+        // leave that in place looking like a real (zero) count.
+        ['mfg-cap-count', 'mfg-mapped-count', 'mfg-coverage', 'mfg-avg-oee'].forEach(function(id) {
+            let el = document.getElementById(id);
+            if (el) el.textContent = '—';
+        });
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load manufacturing domain stats.');
     }
 }
 
@@ -1316,6 +1331,15 @@ async function loadProcessCategoryStats() {
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
         console.error('Error loading process categories:', error);
+        // The stat spans default to "0" in the template; a failed load must not
+        // leave that in place looking like a real (zero) count.
+        for (let i = 1; i <= 13; i++) {
+            let countEl = document.getElementById('proc-cat-' + i + '-count');
+            let pctEl = document.getElementById('proc-cat-' + i + '-pct');
+            if (countEl) countEl.textContent = '—';
+            if (pctEl) pctEl.textContent = '—';
+        }
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load process category stats.');
     }
 }
 

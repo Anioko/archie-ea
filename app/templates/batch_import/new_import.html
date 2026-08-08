@@ -723,6 +723,7 @@ function newImportForm() {
                 }
             } catch (error) {
                 console.error('Failed to load applications:', error);
+                this.showToast('Failed to load applications', 'error');
             } finally {
                 this.loadingApplications = false;
             }

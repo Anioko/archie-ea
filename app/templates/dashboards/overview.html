@@ -34,7 +34,7 @@
          x-show="show"
          class="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-5">
         <button type="button"
-                @click="show = false; try { localStorage.setItem('archie_starthere_dismissed','1'); } catch (e) {}"
+                @click="show = false; try { localStorage.setItem('archie_starthere_dismissed','1'); } catch (e) {} /* private-mode browsers throw; the card just reappears next visit */"
                 class="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Dismiss getting-started guide">
             <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
@@ -237,10 +237,18 @@
                     elementCount: 0,
                     async loadDiagram() {
                         let d = null;
+                        let fetchFailed = false;
                         try {
                             const resp = await fetch('/api/archimate/viewpoints/layered/diagram?limit=20');
                             d = await resp.json();
-                        } catch (e) { console.error('layered diagram fetch failed', e); }
+                        } catch (e) {
+                            console.error('layered diagram fetch failed', e);
+                            fetchFailed = true;
+                        }
+                        if (fetchFailed) {
+                            this.diagramState = 'error';
+                            return;
+                        }
                         if (!d || !d.success || !d.elements || !d.elements.length) {
                             this.diagramState = 'empty';
                             return;
@@ -293,6 +301,9 @@
                     </div>
                     <div x-cloak x-show="diagramState === 'empty'" class="flex items-center justify-center py-10">
                         <p class="text-sm text-muted-foreground">No ArchiMate elements to display yet.</p>
+                    </div>
+                    <div x-cloak x-show="diagramState === 'error'" class="flex items-center justify-center py-10">
+                        <p class="text-sm text-destructive">Could not load the diagram. Please try again.</p>
                     </div>
                 </div>
             </div>

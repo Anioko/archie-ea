@@ -2947,11 +2947,13 @@ function renderWorkflowStatus(data, containerId) {
 function executiveSummary() {
   return {
     loaded: false,
+    loadError: false,
     data: {},
 
     load: function() {
       const self = this;
       self.loaded = false;
+      self.loadError = false;
       fetch('/applications/rationalization/api/executive-summary', {
         credentials: 'same-origin',
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -2963,10 +2965,14 @@ function executiveSummary() {
             self.loaded = true;
           } else {
             console.error('Executive summary error:', json.error);
+            self.loadError = true;
+            if (window.Platform && Platform.toast) Platform.toast.error('Could not load the executive summary.');
           }
         })
         .catch(function(err) {
           console.error('Failed to load executive summary:', err);
+          self.loadError = true;
+          if (window.Platform && Platform.toast) Platform.toast.error('Could not load the executive summary.');
         });
     },
 

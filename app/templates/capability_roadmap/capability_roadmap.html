@@ -1254,6 +1254,18 @@
       renderGantt(groups, tasks);
     } catch (e) {
       console.error('[rdm-gantt] load failed:', e);
+      const chartEl = document.getElementById('rdm-gantt-chart');
+      if (chartEl) {
+        chartEl.innerHTML = `
+          <div class="rounded-xl border bg-card shadow-sm">
+            <div class="flex flex-col items-center justify-center py-10 text-center">
+              <i data-lucide="alert-circle" class="mb-3 h-10 w-10 text-destructive/60"></i>
+              <p class="text-sm font-medium text-destructive">Could not load the timeline.</p>
+              <p class="mt-1 text-xs text-muted-foreground">Please try again.</p>
+            </div>
+          </div>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
     }
   }
 

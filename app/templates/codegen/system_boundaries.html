@@ -502,7 +502,9 @@ function systemBoundaries() {
                 const data = await this._fetch(`/api/codegen/system-boundaries/${id}`);
                 const idx = this.boundaries.findIndex(b => b.id === id);
                 if (idx >= 0) this.boundaries[idx] = data;
-            } catch (_) {}
+            } catch (e) {
+                this._addError('Could not refresh boundary: ' + e.message);
+            }
         },
 
         async generateArtifacts(id) {

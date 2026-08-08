@@ -804,7 +804,12 @@
                 let resp = await fetch('/applications/{{ app.id }}/suggest-capabilities');
                 let data = await resp.json();
                 if (data.success) this.suggestions = data.suggestions || [];
-            } catch (e) { /* silent */ }
+            } catch (e) {
+                // Best-effort: this whole card is x-show="loaded && suggestions.length > 0",
+                // so a failed load just leaves it hidden — the same as "no suggestions",
+                // which is an acceptable degrade for an optional AI enrichment widget.
+                console.warn('Failed to load capability suggestions:', e);
+            }
             finally { this.loading = false; this.loaded = true; }
         },
         async accept(capId, confidence, idx) {
@@ -815,8 +820,16 @@
                     body: JSON.stringify({capability_id: capId, confidence: confidence})
                 });
                 let data = await resp.json();
-                if (data.success) { this.suggestions.splice(idx, 1); setTimeout(() => location.reload(), 500); }
-            } catch (e) { console.warn('Accept error:', e); }
+                if (data.success) {
+                    this.suggestions.splice(idx, 1);
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    Platform.toast.error(data.error || 'Could not accept that suggestion.');
+                }
+            } catch (e) {
+                console.warn('Accept error:', e);
+                Platform.toast.error('Could not accept that suggestion.');
+            }
         }
     }" x-init="loadSuggestions()" x-cloak x-show="loaded && suggestions.length > 0"
        class="rounded-xl border border-primary/20 bg-card shadow-sm mb-4">

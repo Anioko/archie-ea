@@ -435,6 +435,8 @@
                     state.chatHistory.push({ role: 'ai', content: result.text, timestamp, metadata: meta });
                     finaliseStreamedMessage(wrap, result.text, meta);
                     wrap = null;   // finalised in place; nothing left to drop
+                    // Genome panel extraction is an optional side-panel enrichment;
+                    // the chat turn above already completed and must not be undone by this failing.
                     if (window._genomePanelInstance) { try { await window._genomePanelInstance.extractAfterMessage(state.chatHistory); } catch (_) {} }
                 }
             });
@@ -717,6 +719,7 @@
             userInput.focus();
         }
         const label = (personaConfig && personaConfig[persona] && personaConfig[persona].name) || persona;
+        // Best-effort welcome banner; persona selection above already took effect either way.
         try { appendSystemMessage(`${label} engaged — grounded in live platform data. Press Enter to use the suggested prompt, or ask your own.`, 'info'); } catch (e) {}
     }
     document.querySelectorAll('.architect-card[data-persona]').forEach(function(card) {
@@ -983,6 +986,7 @@ Would you like me to provide more details about the extracted elements or help y
       }
       c.innerHTML = t.map(function (x) {
         var active = (x.id === window.__threadId) ? ' bg-accent' : '';
+        // Best-effort date formatting; an unparsable timestamp just leaves the row's date blank.
         var d = ''; try { d = new Date(x.updated_at || x.created_at).toLocaleDateString(); } catch (e) {}
         return '<div class="js-thr group relative flex items-center rounded-lg border border-border hover:bg-accent/50 transition-colors' + active + '" data-id="' + esc(x.id) + '">' +
           '<button type="button" class="js-thr-open flex-1 text-left p-3 min-w-0">' +
@@ -1005,7 +1009,10 @@ Would you like me to provide more details about the extracted elements or help y
     if (!id) return;
     try {
       var r = await transport.loadThread(id);
-      if (!r.ok) return;
+      if (!r.ok) {
+        if (window.Platform && window.Platform.toast) window.Platform.toast.error('Could not load that conversation.');
+        return;
+      }
       var j = await r.json();
       var msgs = (j && j.messages) || [];
       window.__threadId = id;
@@ -1029,12 +1036,22 @@ Would you like me to provide more details about the extracted elements or help y
       });
       window.loadSessionList();
       if (mc) mc.scrollTop = mc.scrollHeight;
-    } catch (e) {}
+    } catch (e) {
+      if (window.Platform && window.Platform.toast) window.Platform.toast.error('Could not load that conversation.');
+    }
   };
 
   window.deleteConversation = async function (id) {
     if (!id) return;
-    try { await transport.deleteThread(id); } catch (e) {}
+    try {
+      await transport.deleteThread(id);
+    } catch (e) {
+      // The thread was NOT deleted server-side — do not proceed to
+      // startNewConversation()/refresh below, or the user is left believing
+      // the delete worked while the conversation is still there.
+      if (window.Platform && window.Platform.toast) window.Platform.toast.error('Could not delete that conversation.');
+      return;
+    }
     if (id === window.__threadId) { window.startNewConversation(); return; }
     window.loadSessionList();
   };
@@ -1043,7 +1060,8 @@ Would you like me to provide more details about the extracted elements or help y
   // chat (welcome grid, in-page state, and __threadId all reset cleanly).
   window.startNewConversation = function () { window.__threadId = null; window.location.href = window.location.pathname; };
 
-  // Auto-load the rail so past chats are visible without clicking Refresh.
+  // Auto-load the rail so past chats are visible without clicking Refresh; failure here
+  // just means the sidebar list stays empty until the next successful call, non-fatal to boot.
   function boot() { try { window.loadSessionList(); } catch (e) {} }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

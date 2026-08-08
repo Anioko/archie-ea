@@ -187,7 +187,8 @@
         const nativeFetch = global.fetch;
         global.fetch = function () {
             const result = nativeFetch.apply(this, arguments);
-            try { resetTimer(); } catch (e) { /* swallow */ }
+            // Best-effort activity ping: a failure here must never break the caller's fetch.
+            try { resetTimer(); } catch (e) { /* deliberately not surfaced — see comment above */ }
             return result;
         };
     }

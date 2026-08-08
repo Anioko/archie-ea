@@ -152,6 +152,7 @@
                     this.renderNetwork();
                 } catch (error) {
                     console.error('Error loading capabilities:', error);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load capability network data.');
                 }
             },
 

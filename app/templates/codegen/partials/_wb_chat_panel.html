@@ -278,7 +278,11 @@ function wbChatPanel() {
               } else if (eventType === 'error') {
                 assistantMsg.content = '❌ ' + (data.message || 'Unknown error');
               }
-            } catch (e) { /* skip malformed */ }
+            } catch (e) {
+              // A single SSE event can arrive split across stream chunks and fail to
+              // parse mid-buffer; skipping it here lets the loop pick up the next
+              // (complete) event rather than aborting the whole stream.
+            }
           }
           this.$nextTick(() => this.scrollToBottom());
         }

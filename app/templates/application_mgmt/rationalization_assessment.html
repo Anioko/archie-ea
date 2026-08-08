@@ -534,6 +534,7 @@ document.getElementById('application-select').addEventListener('change', async (
     }
   } catch (err) {
     console.error('Failed to load app data:', err);
+    Platform.toast.error('Could not load data for that application.');
   }
 });
 

@@ -1446,6 +1446,9 @@ window.deleteUnifiedMapping = async function(mappingId, appId) {
         }
     } catch (error) {
         console.error('Error deleting mapping:', error);
+        if (typeof showNotification === 'function') {
+            showNotification('Error deleting mapping. Please try again.', 'error');
+        }
     }
 };
 

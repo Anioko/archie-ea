@@ -70,11 +70,13 @@
     // ── Loading store integration ────────────────────────────────────────────
     function loadingStart() {
         if (typeof Alpine !== 'undefined' && Alpine.store) {
+            // Best-effort UI affordance: a missing/broken loading store must not block the request.
             try { Alpine.store('loading') && Alpine.store('loading').start && Alpine.store('loading').start(); } catch(e) {}
         }
     }
     function loadingStop() {
         if (typeof Alpine !== 'undefined' && Alpine.store) {
+            // Best-effort UI affordance: a missing/broken loading store must not block the request.
             try { Alpine.store('loading') && Alpine.store('loading').stop && Alpine.store('loading').stop(); } catch(e) {}
         }
     }
@@ -150,6 +152,7 @@
             // Non-ok response
             if (!response.ok) {
                 let errData = null;
+                // Error body is not guaranteed to be JSON; fall back to statusText/HTTP code below.
                 try { errData = await response.json(); } catch(e) {}
                 const errMsg = options.errorMsg ||
                     (errData && (errData.message || errData.error)) ||
@@ -163,6 +166,7 @@
                 // Announce to screen readers (only if not silent)
                 if (!silent && typeof Alpine !== 'undefined' && Alpine.store) {
                     try {
+                        // Best-effort a11y announcement; the toast above already carries the error visually.
                         const ann = Alpine.store('announcer');
                         if (ann && ann.assertive) ann.assertive('Error: ' + errMsg);
                     } catch(e) {}

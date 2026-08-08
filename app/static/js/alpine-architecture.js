@@ -83,6 +83,7 @@ if (window.__ALPINE_ARCH_LOADED__) {
             successMsg: '',
             _startLoading() {
                 this.loading = true; this.submitting = true; this.errorMsg = ''; this.successMsg = '';
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').start();
@@ -91,6 +92,7 @@ if (window.__ALPINE_ARCH_LOADED__) {
             },
             _stopLoading() {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
@@ -99,6 +101,7 @@ if (window.__ALPINE_ARCH_LOADED__) {
             },
             _handleError(err) {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
@@ -109,6 +112,7 @@ if (window.__ALPINE_ARCH_LOADED__) {
             },
             _handleSuccess(msg) {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();

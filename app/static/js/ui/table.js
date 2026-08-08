@@ -341,6 +341,7 @@
             async _loadItems() {
                 this.loading  = true;
                 this.errorMsg = '';
+                // Best-effort UI affordance: a missing/broken loading store must not block the load.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').start();
@@ -361,6 +362,7 @@
                     if (t) t.error(this.errorMsg);
                 } finally {
                     this.loading = false;
+                    // Best-effort UI affordance: a missing/broken loading store must not block the load.
                     try {
                         if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                             Alpine.store('loading').stop();

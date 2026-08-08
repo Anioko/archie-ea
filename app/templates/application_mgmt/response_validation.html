@@ -180,6 +180,7 @@ async function loadComparison() {
     }
   } catch (err) {
     console.error('Failed to load comparison:', err);
+    Platform.toast.error('Could not load the data comparison.');
   }
 }
 
@@ -302,9 +303,12 @@ async function confirmResolution() {
       comparisonData[currentConflict].resolved_value = finalValue;
       renderComparison(comparisonData);
       closeResolutionModal();
+    } else {
+      Platform.toast.error(result.error || 'Could not save the resolution.');
     }
   } catch (err) {
     console.error('Failed to resolve:', err);
+    Platform.toast.error('Could not save the resolution. Please try again.');
   }
 }
 
@@ -316,9 +320,10 @@ async function resolveAllConflicts() {
     return;
   }
 
+  let failedCount = 0;
   for (const conflict of conflicts) {
     try {
-      await fetch(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
+      const res = await fetch(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -328,11 +333,15 @@ async function resolveAllConflicts() {
           notes: 'Bulk resolution - Abacus as system of record'
         })
       });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error((result && result.error) || ('HTTP ' + res.status));
 
       conflict.status = 'resolved';
       conflict.resolved_value = conflict.abacus_value;
     } catch (err) {
       console.error(`Failed to resolve ${conflict.field}:`, err);
+      failedCount += 1;
+      // conflict.status stays 'conflict' — do NOT mark it resolved when the write failed.
     }
   }
 
@@ -340,9 +349,14 @@ async function resolveAllConflicts() {
   updateStats({
     total: comparisonData.length,
     matched: comparisonData.filter(c => c.status === 'match' || c.status === 'resolved').length,
-    conflicts: 0,
+    conflicts: comparisonData.filter(c => c.status === 'conflict').length,
     missing: comparisonData.filter(c => c.status === 'missing').length
   });
+  if (failedCount > 0) {
+    Platform.toast.error(failedCount + ' of ' + conflicts.length + ' conflicts could not be resolved. Please retry those.');
+  } else {
+    Platform.toast.success('All conflicts resolved.');
+  }
 }
 
 // Close modal on backdrop click

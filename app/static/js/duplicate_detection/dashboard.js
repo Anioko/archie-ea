@@ -247,6 +247,7 @@ function duplicateDetection() {
                 this.$nextTick(function() { lucide.createIcons(); });
             } catch (error) {
                 console.error('Error loading stats:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not load duplicate detection statistics.');
             }
         },
 
@@ -260,6 +261,7 @@ function duplicateDetection() {
                 this.$nextTick(function() { lucide.createIcons(); });
             } catch (error) {
                 console.error('Error loading groups:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not load duplicate groups.');
             } finally {
                 this.isLoading = false;
             }

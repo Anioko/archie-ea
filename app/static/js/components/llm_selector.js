@@ -93,6 +93,8 @@ let APP_CONFIG = window.__APP_CONFIG__ || {};
       }
     })
     .catch(function(error) {
+      // Best-effort personalization: on failure the selector just keeps showing
+      // the default LLM instead of the user's saved preference — not an error state.
       console.error('Error loading preference:', error);
     });
   }

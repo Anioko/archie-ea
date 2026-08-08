@@ -210,7 +210,9 @@ function rationalizationDashboard() {
             .then(function(data) {
                 self.scoringResult = data;
                 if (data.success) {
-                    // RATA-016: Dismiss wizard permanently
+                    // RATA-016: Dismiss wizard permanently. Best-effort — private-mode
+                    // browsers throw on localStorage writes; the wizard just reappears
+                    // next load in that case, which is harmless.
                     try { localStorage.setItem('rationalization_wizard_dismissed', 'true'); } catch(e) {}
                     // Refresh dashboard data
                     self.load();

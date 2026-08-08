@@ -517,7 +517,12 @@ function vendorAnalysisDetail(analysisId) {
         const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId, {
           credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+          // Otherwise the panel just stays empty and reads as "no analysis yet"
+          // instead of "the load failed".
+          this.showToast('Could not load this analysis', 'error');
+          return;
+        }
         this.analysis = await resp.json();
         this.form.name = (this.analysis.name != null) ? String(this.analysis.name) : '';
         this.form.orgSize = this.analysis.organization_size || 'enterprise';
@@ -528,7 +533,10 @@ function vendorAnalysisDetail(analysisId) {
         }
         this.rankedVendors = this.analysis.vendors || [];
         this.comparisonVendors = this.analysis.vendors || [];
-      } catch (e) { console.error('loadExistingAnalysis:', e); }
+      } catch (e) {
+        console.error('loadExistingAnalysis:', e);
+        this.showToast('Could not load this analysis', 'error');
+      }
     },
 
     /* ============================================================ */
@@ -657,7 +665,12 @@ function vendorAnalysisDetail(analysisId) {
         if (!resp.ok) throw new Error('resolveProcessCapabilityIds: ' + resp.status);
         const caps = await resp.json();
         return caps.map(function(c) { return c.id; });
-      } catch (e) { console.error('resolveProcessCapabilityIds:', e); }
+      } catch (e) {
+        // Falls through to an empty return; getCapabilityIdsForPayload() already
+        // toasts "No capabilities could be resolved..." for a zero-length result,
+        // which covers this failure path too.
+        console.error('resolveProcessCapabilityIds:', e);
+      }
       return [];
     },
 
@@ -812,12 +825,18 @@ function vendorAnalysisDetail(analysisId) {
         const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/comparison', {
           credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
         });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+          this.showToast('Could not load the comparison data', 'error');
+          return;
+        }
         const data = await resp.json();
         this.comparisonVendors = data.vendors || [];
         const self = this;
         this.$nextTick(function() { self.renderCharts(); });
-      } catch (e) { console.error('loadComparison:', e); } finally {
+      } catch (e) {
+        console.error('loadComparison:', e);
+        this.showToast('Could not load the comparison data', 'error');
+      } finally {
         this.loadingComparison = false;
       }
     },
@@ -829,11 +848,17 @@ function vendorAnalysisDetail(analysisId) {
         const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/results', {
           credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
         });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+          this.showToast('Could not load the ranked results', 'error');
+          return;
+        }
         const data = await resp.json();
         this.rankedVendors = data.vendors || [];
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
-      } catch (e) { console.error('loadResults:', e); } finally {
+      } catch (e) {
+        console.error('loadResults:', e);
+        this.showToast('Could not load the ranked results', 'error');
+      } finally {
         this.loadingDecision = false;
       }
     },
@@ -993,11 +1018,17 @@ function vendorAnalysisDetail(analysisId) {
           credentials: 'same-origin',
           headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
         });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+          this.showToast('Could not load requirements', 'error');
+          return;
+        }
         let data = await resp.json();
         this.requirements = data.requirements || [];
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
-      } catch (e) { console.error('loadRequirements:', e); }
+      } catch (e) {
+        console.error('loadRequirements:', e);
+        this.showToast('Could not load requirements', 'error');
+      }
     },
 
     async addRequirement() {
@@ -1185,7 +1216,10 @@ function vendorAnalysisDetail(analysisId) {
         if (data.success) {
           this.scenarios = data.scenarios || [];
         }
-      } catch (e) { console.error('loadScenarios:', e); }
+      } catch (e) {
+        console.error('loadScenarios:', e);
+        this.showToast('Could not load saved scenarios', 'error');
+      }
       this.loadingScenarios = false;
     },
 
@@ -1459,6 +1493,7 @@ function vendorAnalysisDetail(analysisId) {
         if (cData.success) this.stakeholderConsensus = cData;
       } catch (e) {
         console.error('Failed to load stakeholders:', e);
+        this.showToast('Could not load stakeholders', 'error');
       }
       this.loadingStakeholders = false;
     },

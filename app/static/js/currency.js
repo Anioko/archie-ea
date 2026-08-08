@@ -284,6 +284,8 @@ class CurrencyManager {
      */
     saveCurrencyPreference() {
         try {
+            // Private-mode browsers throw on localStorage writes; the preference just
+            // won't persist across sessions, which is harmless.
             localStorage.setItem('preferred_currency', this.currentCurrency);
         } catch (e) {
             console.warn('Could not save currency preference:', e);
@@ -295,6 +297,7 @@ class CurrencyManager {
      */
     loadCurrencyPreference() {
         try {
+            // Private-mode browsers throw on localStorage reads; falls back to the default currency.
             const saved = localStorage.getItem('preferred_currency');
             if (saved && this.isSupported(saved)) {
                 this.setCurrency(saved);
