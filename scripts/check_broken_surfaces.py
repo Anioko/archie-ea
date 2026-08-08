@@ -206,9 +206,18 @@ def scan() -> dict[str, list[str]]:
     # precisely by _swallow_ok() against the handler itself. Folding it in here
     # would let a marker anywhere in a 600-character window silence an
     # unrelated finding further down the same function.
+    # Assignment to ANY identifier ending in Error/error counts as reporting.
+    # \berror\b missed the common case: suggestionsError, relError, loadError
+    # and this.errorMsg are how these components record a failure for the
+    # template to render, and every one of them was reported as silent.
     reports_re = re.compile(
-        r"toast|throw\b|console\.(error|warn)|loadError|errorMsg|"
-        r"\berror\b\s*[=:]", re.I)
+        r"toast|throw\b|console\.(error|warn)|"
+        r"[A-Za-z_$]*[Ee]rror[A-Za-z_$]*\s*[=:]|"
+        # Consuming the server's own error message - `err.error || 'Request
+        # failed.'` - is the failure being surfaced, even when it lands
+        # somewhere with no "error" in its name. The chat panel assigns it to
+        # assistantMsg.content, which no identifier pattern can recognise.
+        r"\.error\s*\|\|", re.I)
 
     forbidden_re = re.compile(r"(?<![\w.])(alert|confirm)\s*\(")
     # A DEFINITION named alert/confirm is the replacement for the native call,
@@ -290,10 +299,16 @@ def scan() -> dict[str, list[str]]:
         if "/static/js/vendor/" not in rel(path) and "fetch(" in raw:
             se_lines = set()
             for pat in silent_empty_res:
-                for m in pat.finditer(raw):
+                # Match against the comment-BLANKED copy. Unlike `swallowed` -
+                # where a comment inside a catch is documented intent and must
+                # be read - a comment merely QUOTING `r.ok ? r.json() : {}` to
+                # explain the anti-pattern is not an instance of it, and was
+                # being reported as one. Offsets are preserved, so line numbers
+                # and the marker lookup below stay correct.
+                for m in pat.finditer(text):
                     if _swallow_ok(raw, m.start()):
                         continue
-                    ctx = raw[max(0, m.start() - 300):m.end() + 300]
+                    ctx = text[max(0, m.start() - 300):m.end() + 300]
                     if reports_re.search(ctx):
                         continue
                     ln = line_of(text, m.start())
