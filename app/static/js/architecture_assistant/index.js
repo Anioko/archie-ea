@@ -632,7 +632,7 @@ let ArchAssistant = {
                             self.renderCapabilities(refiltered);
                         }
                     })
-                    .catch(function() {});
+                    .catch(function() { /* swallow-ok: debounced search-as-you-type; the locally filtered list is already on screen, this only tops it up with server-side matches, and a toast per keystroke would bury real errors */ });
             }, 300);
         }
     },
@@ -893,6 +893,9 @@ let ArchAssistant = {
                     self.decisionRationale = analysis.decision_rationale || null;
                 }
             } catch (e) {
+                // swallow-ok: optional AI enrichment of the option the user already
+                // chose; the ARB draft below is still generated from that choice, so
+                // nothing is lost or misreported and the user has no action to take.
                 console.warn('Option analysis failed, proceeding with original selection', e);
             }
 
@@ -1168,6 +1171,7 @@ let ArchAssistant = {
                 self.showToast('Successfully submitted to ARB! Review: ' + (data.review_number || ''), 'success');
 
                 // Non-blocking: create a Solution record linked to the wizard data
+                let solutionCreateFailed = false;
                 try {
                     let capNames = self.selectedCapabilities.map(function(c) { return c.name; }).join(', ');
                     let wizardPayload = {
@@ -1193,17 +1197,34 @@ let ArchAssistant = {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(wizardPayload)
                     });
-                    let solData = await solResp.json();
-                    if (solData.success && solData.redirect_url) {
+                    // fetch() does not reject on 4xx/5xx, so the status has to be
+                    // checked explicitly or a 500 reads as a successful create.
+                    let solData = await solResp.json().catch(function() { return {}; });
+                    if (!solResp.ok || !solData.success) {
+                        throw new Error(solData.error || ('HTTP ' + solResp.status));
+                    }
+                    if (solData.redirect_url) {
                         redirectUrl = solData.redirect_url;
                     }
                 } catch (solErr) {
-                    console.warn('Solution creation failed (non-blocking):', solErr);
+                    // The ARB review above really was created — that success toast
+                    // stands. The Solution record was NOT, and the user was redirected
+                    // to the review with no hint that the wizard's output never became
+                    // a solution they could open, edit or generate from.
+                    solutionCreateFailed = true;
+                    self.showToast(
+                        'Submitted to ARB, but the Solution record could not be created: '
+                        + (solErr.message || 'request failed')
+                        + '. The wizard data was not saved as a solution — recreate it from the ARB review.',
+                        'error'
+                    );
                 }
 
+                // Hold the redirect long enough for that message to be read; the
+                // 1.5s success path would have flashed it off the screen.
                 setTimeout(function() {
                     window.location.href = redirectUrl;
-                }, 1500);
+                }, solutionCreateFailed ? 8000 : 1500);
             } else {
                 throw new Error(data.error || data.errors ? JSON.stringify(data.errors) : 'ARB submission failed');
             }
@@ -1427,7 +1448,7 @@ let ArchAssistant = {
                         safeHTML(dropdown, html);
                         if (html) dropdown.classList.remove('hidden');
                         else dropdown.classList.add('hidden');
-                    }).catch(function() {});
+                    }).catch(function() { /* swallow-ok: debounced typeahead fired per keystroke; the dropdown simply does not open, the user can keep typing, and toasting on every character would be unusable */ });
             }, 300);
         });
         container.addEventListener('click', function(e) {
@@ -1587,13 +1608,28 @@ let ArchAssistant = {
                     work_package_template: 'auto'
                 };
                 try {
-                    await fetch('/capability-map/api/roadmap/gaps/convert', {
+                    let convertResp = await fetch('/capability-map/api/roadmap/gaps/convert', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(gapPayload)
                     });
+                    // fetch() does not reject on 4xx/5xx — without this check a 500
+                    // here was literally indistinguishable from a successful convert.
+                    if (!convertResp.ok) {
+                        let convertBody = await convertResp.json().catch(function() { return {}; });
+                        throw new Error(convertBody.error || ('HTTP ' + convertResp.status));
+                    }
                 } catch (convertErr) {
-                    console.warn('Gap conversion failed (non-blocking):', convertErr);
+                    // This is the write that turns the gaps into roadmap items and work
+                    // packages. Swallowed, the roadmap rendered from the reads below was
+                    // simply missing them, and the user read that as "the roadmap was
+                    // generated" rather than "your gaps were never persisted".
+                    self.showToast(
+                        'Your capability gaps could not be converted into roadmap items: '
+                        + (convertErr.message || 'request failed')
+                        + '. The roadmap below does not include them.',
+                        'error'
+                    );
                 }
             }
 

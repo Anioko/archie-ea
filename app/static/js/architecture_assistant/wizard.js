@@ -927,7 +927,7 @@ function architectureWizard() {
           let err = {};
           // Body may not be JSON (e.g. an HTML error page) — err stays {} and the
           // generic message below is used; the error is still thrown either way.
-          try { err = await resp.json(); } catch (_) {}
+          try { err = await resp.json(); } catch (_) { /* swallow-ok: parsing an error body that may be an HTML page; the failure is reported by the throw on the next line either way, so reporting the parse itself would only mask the real message */ }
           throw new Error(err.error || 'Comparison failed');
         }
         this.comparisonData = await resp.json();
@@ -1275,7 +1275,7 @@ function architectureWizard() {
         let errText = '';
         // Body may not be JSON — errText stays '' and the HTTP-status fallback
         // below is used; the error is still thrown either way.
-        try { errText = (await resp.json()).error || ''; } catch (_) {}
+        try { errText = (await resp.json()).error || ''; } catch (_) { /* swallow-ok: parsing an error body that may be an HTML page; the failure is reported by the throw on the next line either way, so reporting the parse itself would only mask the real message */ }
         throw new Error(errText || 'HTTP ' + resp.status);
       }
       return resp.json();

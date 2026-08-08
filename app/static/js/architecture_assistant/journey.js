@@ -877,7 +877,7 @@
                         });
                         // Merge: keyword results first, then vector results
                         self.capabilityResults = self.capabilityResults.concat(newResults).slice(0, 10);
-                    }).catch(function () {});
+                    }).catch(function () { /* swallow-ok: search-as-you-type vector top-up; the keyword matches are already rendered above and pgvector may not even be installed, so a toast per keystroke would report an optional feature as a fault */ });
                 }
             },
 
@@ -1282,11 +1282,19 @@
                     }
                 });
 
-                // Wave 10: Load quality score. Left as null (renders as "—") rather than
-                // toasted on failure — a missing score already reads as "not computed".
+                // Wave 10: Load quality score. Left as null so it renders as "—" rather
+                // than a fabricated 0 — but the user is told, because "—" alone is
+                // indistinguishable from a score that was never computed.
                 _fetch('/api/solutions/' + self.solutionId + '/quality-score')
                     .then(function (data) { self.qualityScore = data; })
-                    .catch(function (e) { console.error('[Journey] quality-score load failed:', e); });
+                    .catch(function (e) {
+                        self.qualityScore = null;
+                        if (global.Platform && global.Platform.toast) {
+                            global.Platform.toast.error('Could not load the solution quality score ('
+                                + ((e && e.message) || 'request failed')
+                                + ') — it shows "—" because it could not be read, not because it is zero.');
+                        }
+                    });
             },
 
             submitToArb: function () {
@@ -1548,18 +1556,22 @@
             toggleArchElement: function (idx) {
                 let el = this.architectureElements[idx];
                 el.accepted = !el.accepted;
-                this.logElementDecision(el, el.accepted ? 'accept' : 'reject');
+                this.logElementDecision(el, el.accepted ? 'accept' : 'reject', {
+                    revert: function () { el.accepted = !el.accepted; }
+                });
             },
 
             toggleImplElement: function (idx) {
                 let el = this.implementationElements[idx];
                 el.accepted = !el.accepted;
-                this.logElementDecision(el, el.accepted ? 'accept' : 'reject');
+                this.logElementDecision(el, el.accepted ? 'accept' : 'reject', {
+                    revert: function () { el.accepted = !el.accepted; }
+                });
             },
 
             removeArchElement: function (idx) {
                 let el = this.architectureElements[idx];
-                this.logElementDecision(el, 'reject');
+                this.logElementDecision(el, 'reject', { quiet: true });
                 this.architectureElements.splice(idx, 1);
                 // Propagate stale to downstream dependents (Wave 7)
                 this.propagateStale(el);
@@ -1584,7 +1596,7 @@
 
             removeImplElement: function (idx) {
                 let el = this.implementationElements[idx];
-                this.logElementDecision(el, 'reject');
+                this.logElementDecision(el, 'reject', { quiet: true });
                 this.implementationElements.splice(idx, 1);
                 _fetch('/api/solutions/' + this.solutionId + '/element-decisions', {
                     method: 'POST',
@@ -1793,7 +1805,12 @@
                 this.copilotMessage = 'Cancelled. Click a source element to start again.';
             },
 
-            logElementDecision: function (el, action) {
+            // `opts.revert` is called when the write fails, so a caller that flipped UI
+            // state optimistically can put it back. `opts.quiet` suppresses the toast for
+            // callers (removeArchElement / removeImplElement) that report the same
+            // failure themselves and would otherwise raise two toasts for one outage.
+            logElementDecision: function (el, action, opts) {
+                opts = opts || {};
                 const decision = {
                     element_id: el.id,
                     element_name: el.name,
@@ -1814,12 +1831,22 @@
                     this._consecutiveNewRejections = 0;
                 }
 
-                // Fire-and-forget to server
+                // This POST is the ONLY persistence of an accept/reject — the tick in the
+                // list was flipped optimistically above. Swallowed, the user saw the
+                // element marked accepted and the server never heard about it.
                 _fetch('/api/solutions/' + this.solutionId + '/element-decisions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(decision)
-                }).catch(function () {});
+                }).catch(function (e) {
+                    if (typeof opts.revert === 'function') opts.revert();
+                    if (opts.quiet) return;
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.error('Your "' + action + '" decision for "'
+                            + (el.name || 'this element') + '" was not saved: '
+                            + ((e && e.message) || 'request failed') + '.');
+                    }
+                });
             },
 
             getArchElementsByLayer: function (layer) {
@@ -1853,7 +1880,7 @@
                     if (ids.length > 0) {
                         self.copilotMessage = ids.length + ' downstream element(s) flagged as potentially stale after your change to "' + el.name + '". Review or regenerate them.';
                     }
-                }).catch(function () {});
+                }).catch(function () { /* swallow-ok: advisory staleness hint fired after every element edit; it only adds a copilot note the user may act on, and the edit it follows already reported its own outcome */ });
             },
 
             regenerateStale: function () {
@@ -1882,9 +1909,10 @@
                 });
             },
 
-            // Automatic version snapshot taken on every step transition. Best-effort:
-            // it's a convenience history feature, not core data, so a failure here
-            // doesn't block the user's progress — just logged for diagnostics.
+            // Automatic version snapshot taken on every step transition. A failure must
+            // not block the user's progress, but it cannot be silent either: the version
+            // history is what they would restore from, and a missing entry there looks
+            // like a step that was never reached rather than a snapshot that never saved.
             createSnapshot: function (step) {
                 let self = this;
                 const labels = {1: 'Problem defined', 2: 'Capabilities mapped', 3: 'Architecture designed', 4: 'Options evaluated', 5: 'Migration planned', 6: 'Review complete'};
@@ -1902,7 +1930,11 @@
                         });
                     }
                 }).catch(function (e) {
-                    console.error('[Journey] createSnapshot failed:', e);
+                    if (global.Platform && global.Platform.toast) {
+                        global.Platform.toast.warning('No version snapshot was saved for this step: '
+                            + ((e && e.message) || 'request failed')
+                            + '. Your work is unaffected, but you will not be able to restore to this point.');
+                    }
                 });
             },
 
