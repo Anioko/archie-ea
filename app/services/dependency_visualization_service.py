@@ -81,50 +81,50 @@ class DependencyVisualizationService:
         }
 
     def _get_all_elements(self) -> List[Dict]:
-        """Get all architecture elements from the database."""
-        # This would be adapted to work with your current element models
-        try:
-            elements = []
+        """Get all architecture elements from the database.
 
-            # Get business capabilities
-            from app.models.business_capability import BusinessCapability
+        Query failures propagate. `[]` here silently becomes "the portfolio
+        contains nothing", and every downstream density, centrality and
+        criticality figure is then computed from that.
+        """
+        elements = []
 
-            capabilities = BusinessCapability.query.all()
-            for cap in capabilities:
-                elements.append(
-                    {
-                        "id": cap.id,
-                        "name": cap.name,
-                        "type": "BusinessCapability",
-                        "domain": cap.business_domain or "Unknown",
-                        "strategic_importance": cap.strategic_importance,
-                        "layer": "Business",
-                    }
-                )
+        # Get business capabilities
+        from app.models.business_capability import BusinessCapability
 
-            # Get application components
-            from app.models.application_layer import ApplicationComponent
+        capabilities = BusinessCapability.query.all()
+        for cap in capabilities:
+            elements.append(
+                {
+                    "id": cap.id,
+                    "name": cap.name,
+                    "type": "BusinessCapability",
+                    "domain": cap.business_domain or "Unknown",
+                    "strategic_importance": cap.strategic_importance,
+                    "layer": "Business",
+                }
+            )
 
-            applications = ApplicationComponent.query.filter(
-                ApplicationComponent.deployment_status.in_(
-                    ["production", "Production", "Implementing"]
-                )
-            ).all()
-            for app in applications:
-                elements.append(
-                    {
-                        "id": app.id,
-                        "name": app.name,
-                        "type": "ApplicationComponent",
-                        "technology": app.technology_stack,
-                        "layer": "Application",
-                    }
-                )
+        # Get application components
+        from app.models.application_layer import ApplicationComponent
 
-            return elements
-        except Exception as e:
-            print(f"Error getting elements: {e}")
-            return []
+        applications = ApplicationComponent.query.filter(
+            ApplicationComponent.deployment_status.in_(
+                ["production", "Production", "Implementing"]
+            )
+        ).all()
+        for app in applications:
+            elements.append(
+                {
+                    "id": app.id,
+                    "name": app.name,
+                    "type": "ApplicationComponent",
+                    "technology": app.technology_stack,
+                    "layer": "Application",
+                }
+            )
+
+        return elements
 
     def _build_dependency_graph(self, elements: List[Dict]) -> Dict:
         """Build dependency graph from elements and relationships."""
@@ -159,38 +159,37 @@ class DependencyVisualizationService:
             graph["nodes"].append(node)
             graph["adjacency"][element["id"]] = {"in": [], "out": []}
 
-        # Add edges based on ArchiMate relationships
-        try:
-            # Get ArchiMate relationships
-            relationships = self._get_archimate_relationships()
+        # Add edges based on ArchiMate relationships. Failures propagate: a
+        # handler here would leave a half-built graph that reads as a complete
+        # one, and the caller cannot tell a missing edge from an absent
+        # dependency.
+        relationships = self._get_archimate_relationships()
 
-            for rel in relationships:
-                source_id = rel["source_element_id"]
-                target_id = rel["target_element_id"]
-                rel_type = rel["relationship_type"]
+        for rel in relationships:
+            source_id = rel["source_element_id"]
+            target_id = rel["target_element_id"]
+            rel_type = rel["relationship_type"]
 
-                # Check if both elements exist in our graph
-                if source_id in graph["adjacency"] and target_id in graph["adjacency"]:
-                    edge = {
-                        "source": source_id,
-                        "target": target_id,
-                        "type": rel_type,
-                        "strength": rel.get("relationship_strength", 3),
-                        "impact": rel.get("impact_level", "medium"),
-                    }
-                    graph["edges"].append(edge)
+            # Check if both elements exist in our graph
+            if source_id in graph["adjacency"] and target_id in graph["adjacency"]:
+                edge = {
+                    "source": source_id,
+                    "target": target_id,
+                    "type": rel_type,
+                    "strength": rel.get("relationship_strength", 3),
+                    "impact": rel.get("impact_level", "medium"),
+                }
+                graph["edges"].append(edge)
 
-                    # Update adjacency lists
-                    graph["adjacency"][source_id]["out"].append(target_id)
-                    graph["adjacency"][target_id]["in"].append(source_id)
+                # Update adjacency lists
+                graph["adjacency"][source_id]["out"].append(target_id)
+                graph["adjacency"][target_id]["in"].append(source_id)
 
-                    # Update node dependencies
-                    source_node = next(n for n in graph["nodes"] if n["id"] == source_id)
-                    target_node = next(n for n in graph["nodes"] if n["id"] == target_id)
-                    source_node["dependents"].append(target_id)
-                    target_node["dependencies"].append(source_id)
-        except Exception as e:
-            print(f"Error building relationships: {e}")
+                # Update node dependencies
+                source_node = next(n for n in graph["nodes"] if n["id"] == source_id)
+                target_node = next(n for n in graph["nodes"] if n["id"] == target_id)
+                source_node["dependents"].append(target_id)
+                target_node["dependencies"].append(source_id)
 
         # Calculate graph metrics
         graph["metrics"]["total_edges"] = len(graph["edges"])
@@ -210,32 +209,33 @@ class DependencyVisualizationService:
         return graph
 
     def _get_archimate_relationships(self) -> List[Dict]:
-        """Get ArchiMate relationships from the database."""
-        try:
-            # Query the archimate_relationships table
-            result = db.session.execute(
-                text(
-                    """
-                SELECT source_id, target_id, type
-                FROM archimate_relationships
-                WHERE source_id IS NOT NULL AND target_id IS NOT NULL
-            """
-                ),
-            ).fetchall()
+        """Get ArchiMate relationships from the database.
 
-            return [
-                {
-                    "source_element_id": row[0],
-                    "target_element_id": row[1],
-                    "relationship_type": row[2],
-                    "relationship_strength": 3,
-                    "impact_level": "medium",
-                }
-                for row in result
-            ]
-        except Exception as e:
-            print(f"Error getting relationships: {e}")
-            return []
+        Query failures propagate. `[]` here produces an edgeless dependency
+        graph — "this application has no dependencies" — which is exactly the
+        belief that gets something decommissioned.
+        """
+        # Query the archimate_relationships table
+        result = db.session.execute(
+            text(
+                """
+            SELECT source_id, target_id, type
+            FROM archimate_relationships
+            WHERE source_id IS NOT NULL AND target_id IS NOT NULL
+        """
+            ),
+        ).fetchall()
+
+        return [
+            {
+                "source_element_id": row[0],
+                "target_element_id": row[1],
+                "relationship_type": row[2],
+                "relationship_strength": 3,
+                "impact_level": "medium",
+            }
+            for row in result
+        ]
 
     def _analyze_dependency_metrics(self, graph: Dict) -> Dict:
         """Analyze dependency metrics for the graph."""

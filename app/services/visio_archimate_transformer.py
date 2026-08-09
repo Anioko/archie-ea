@@ -88,6 +88,7 @@ class VisioArchiMateTransformer:
         """Page display names from pages.xml, keyed by 1-based position."""
         try:
             root = safe_xml.fromstring(archive.read("visio/pages/pages.xml"))
+        # silent-data-ok: pages.xml is optional .vsdx metadata; a missing name falls back to "Page N" at the call site and no element, relationship or count is derived from it
         except Exception:  # noqa: BLE001 - page names are optional metadata
             return {}
         names = {}
