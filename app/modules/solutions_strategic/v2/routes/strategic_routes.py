@@ -1,7 +1,14 @@
 """
-DEPRECATED: This file is migrated to app/modules/solutions_strategic/.
-Registration is now centralized via app.modules.solutions_strategic.register().
-Do NOT modify -- kept as fallback until Phase 6 cleanup.
+NOT deprecated, despite what this header said until 2026-08-09. It claimed the
+file was a fallback kept until "Phase 6 cleanup" and instructed readers not to
+modify it. It is registered and serving traffic: app/_bootstrap/blueprints.py
+line 742 imports strategic_bp from this module and registers it.
+
+The header was actively harmful - a defect audit found the compliance dashboard
+here rendering a fully compliant portfolio from a database error, and the
+instruction not to modify is exactly the kind of thing that leaves such a bug
+in place. If this file is ever genuinely retired, delete it rather than leaving
+a note that contradicts the blueprint registration.
 
 Strategic Planning Routes
 

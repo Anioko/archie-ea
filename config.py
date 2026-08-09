@@ -383,9 +383,21 @@ class TestingConfig(Config):
                 "Example: postgresql://postgres:postgres@localhost:5432/flask_test"  # secrets-safety-ok
             )
 
-        if not db_uri:
+        # The guard used to be `if not db_uri`, which can never be true: the
+        # default above always fills it in. So the one warning that would tell
+        # you which database you are actually on was dead code, and the silent
+        # fallback is expensive - it sends pytest at a long-lived `archie_test`
+        # on the default port, which drifts from the models over time. That cost
+        # a real misdiagnosis: a run against the stale fallback failed with
+        # UniqueViolation on ix_value_streams_code, an index that does not exist
+        # in a database built from the current models, and the failures were
+        # initially read as a code defect.
+        if not os.environ.get("TEST_DATABASE_URL"):
             app.logger.warning(
-                "No TEST_DATABASE_URL provided; using default local PostgreSQL test database."
+                "TEST_DATABASE_URL is not set; falling back to %s. "
+                "A long-lived fallback database drifts from the models - set "
+                "TEST_DATABASE_URL explicitly before trusting a failure.",
+                db_uri,
             )
 
         print("THIS APP IS IN TESTING MODE. YOU SHOULD NOT SEE THIS IN PRODUCTION.")

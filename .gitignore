@@ -202,6 +202,9 @@ scripts/check_*.py
 !scripts/check_dead_interactions.py
 !scripts/check_broken_surfaces.py
 !scripts/check_template_syntax.py
+!scripts/check_silent_data.py
+!scripts/check_null_filters.py
+!scripts/check_template_references.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

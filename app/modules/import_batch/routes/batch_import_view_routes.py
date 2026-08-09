@@ -124,22 +124,25 @@ def _get_status_counts(user_id: int) -> dict:
 
 
 def _get_review_needed_count(user_id: int) -> int:
-    """Get count of batches awaiting review for user's jobs."""
-    try:
-        from app import db
+    """Get count of batches awaiting review for user's jobs.
 
-        count = (
-            db.session.query(BatchImportBatch)
-            .join(BatchImportJob)
-            .filter(
-                BatchImportJob.user_id == user_id,
-                BatchImportBatch.status == BatchStatus.READY_FOR_REVIEW,
-            )
-            .count()
+    Deliberately unguarded: the only caller, _get_status_counts, already wraps
+    this in a handler that logs the exception. Catching here returned 0, which
+    told the user no import was waiting for review when the truth was that we
+    could not find out - and an import waiting unnoticed is exactly the thing
+    this number exists to prevent.
+    """
+    from app import db
+
+    return (
+        db.session.query(BatchImportBatch)
+        .join(BatchImportJob)
+        .filter(
+            BatchImportJob.user_id == user_id,
+            BatchImportBatch.status == BatchStatus.READY_FOR_REVIEW,
         )
-        return count
-    except Exception:
-        return 0
+        .count()
+    )
 
 
 # =============================================================================
