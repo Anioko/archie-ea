@@ -70,35 +70,42 @@ class ArchitectureComplianceMatrixService:
     # ------------------------------------------------------------------
 
     def _get_arb_review_status(self, application_id: int) -> str:
-        """Return the latest ARB review status for the given application id."""
+        """Return the latest ARB review status for the given application id.
+
+        Only ``ImportError`` is caught — the ARB model is optional. A query
+        failure is allowed to propagate: "not_reviewed" is a governance claim
+        about the application, and a caller that cannot tell it apart from a
+        database error will act on it.
+        """
         try:
             from app.models.architecture_review_board import ARBReviewItem
-
-            review = (
-                ARBReviewItem.query.filter_by(application_id=application_id)
-                .order_by(desc(ARBReviewItem.created_at))
-                .first()
-            )
-            if review is not None:
-                return review.status or "not_reviewed"
-            return "not_reviewed"
         except ImportError:
             return "not_reviewed"
-        except Exception:
-            return "not_reviewed"
+
+        review = (
+            ARBReviewItem.query.filter_by(application_id=application_id)
+            .order_by(desc(ARBReviewItem.created_at))
+            .first()
+        )
+        if review is not None:
+            return review.status or "not_reviewed"
+        return "not_reviewed"
 
     def _get_violation_count(self, application_id: int) -> int:
-        """Return compliance violation count for the given application id."""
+        """Return compliance violation count for the given application id.
+
+        Only ``ImportError`` is caught — the compliance model is optional. A
+        query failure propagates rather than being reported as ``0``, which the
+        Phase G compliance matrix would publish as "no violations".
+        """
         try:
             from app.models.compliance_models import ComplianceViolation
-
-            return ComplianceViolation.query.filter_by(
-                application_id=application_id
-            ).count()
         except ImportError:
             return 0
-        except Exception:
-            return 0
+
+        return ComplianceViolation.query.filter_by(
+            application_id=application_id
+        ).count()
 
     @staticmethod
     def _overall_status(score: int) -> str:

@@ -18,12 +18,15 @@ ArchiMate 3.2 Compliance:
 """
 
 import json
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from app import db
 from app.models import ArchiMateElement, Requirement
 from app.services.llm_service import LLMService
+
+logger = logging.getLogger(__name__)
 
 
 class StakeholderService:
@@ -272,6 +275,13 @@ class StakeholderService:
             return mapped_requirements
 
         except Exception:
+            # As in DriverService: the rollback means nothing was mapped, so []
+            # is accurate — but the failure must be recorded, or an LLM outage
+            # reads exactly like "no requirement matched this stakeholder".
+            logger.exception(
+                "map_stakeholders_to_requirements(stakeholder=%s) failed; nothing mapped",
+                stakeholder_id,
+            )
             db.session.rollback()
             return []
 

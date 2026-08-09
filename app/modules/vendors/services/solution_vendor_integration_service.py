@@ -16,6 +16,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional  # dead-code-ok
 
+from flask import current_app
 from sqlalchemy import text  # dead-code-ok
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -484,6 +485,15 @@ class SolutionVendorIntegrationService:
             return products
 
         except SQLAlchemyError:
-            return []
+            # Both handlers returned [], which on the vendor picker reads as
+            # "no products match" - so a failed query looked like a catalogue
+            # with nothing in it, and the architect's next move is to add a
+            # vendor product that is already there. Log with the traceback and
+            # let it propagate to a caller that can say so.
+            current_app.logger.exception(
+                "vendor product catalogue query failed; no products returned")
+            raise
         except Exception:
-            return []
+            current_app.logger.exception(
+                "unexpected failure listing vendor products")
+            raise

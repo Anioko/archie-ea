@@ -254,6 +254,42 @@ def gate_template_syntax() -> Result:
     return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_silent_data() -> Result:
+    """A server-side failure returned to the caller as data. MUST BE ZERO.
+
+    `broken-surfaces --kind silent-empty` covers this shape in the front end.
+    This is the same defect one layer down, where no amount of front-end care
+    can detect it: a broad `except Exception:` in a route or service that
+    answers a failed query with `[]`, `{}` or `0`.
+
+    CLAUDE.md's rule is that fabricating a plausible value is worse than showing
+    nothing, because the user cannot tell the difference and acts on it. The
+    first run found 56, including a phase gate reporting "0 drivers defined"
+    from a database error, a regulatory compliance percentage divided by a
+    failed count, a total cost of ownership of zero, and - worst - the AI
+    assistant's grounding context answering an exception with "0% complete",
+    which the model then asserted to the user in fluent prose.
+
+    Removing the swallows also exposed three imports of modules that have never
+    existed in this repo, each dead and silent since it was written: one of
+    them made phase F's "Work packages defined" gate unpassable for every
+    solution ever created.
+
+    Zero rather than a ratchet: unlike raw-SQL tenancy or design tokens, there
+    is no legacy tail here to work through - the 56 were fixed in one pass, so
+    any new one is a regression. Per-line escape hatch: `silent-data-ok:
+    <reason>`.
+    """
+    proc = _run([sys.executable, "scripts/check_silent_data.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("silent-data", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_silent_data.py to list them"
+    return Result("silent-data", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_broken_surfaces(baseline: int) -> Result:
     """Front-end surfaces resolved against the real route table. RATCHET.
 
@@ -793,6 +829,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="run scripts/check_broken_surfaces.py; repoint the URL, "
                          "remove the dead control, or report the failure to the user",
              tags=["static", "ui"]),
+        Gate("silent-data", "no server failure returned to the caller as data", "zero",
+             gate_silent_data,
+             remediation="run scripts/check_silent_data.py; let it propagate, or log "
+                         "and return None - never [] or 0, which read as measured data",
+             tags=["static", "correctness"]),
         Gate("dead-interactions", "no control that silently does nothing", "zero",
              gate_dead_interactions,
              remediation="run scripts/check_dead_interactions.py; use `if (!r.ok) throw` "

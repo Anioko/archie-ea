@@ -1,14 +1,21 @@
 """
-DEPRECATED: This file is migrated to app/modules/solutions_strategic/.
-Registration is now centralized via app.modules.solutions_strategic.register().
-Do NOT modify -- kept as fallback until Phase 6 cleanup.
+NOT deprecated, despite what this header said until 2026-08-09. It claimed the
+file was a fallback kept until "Phase 6 cleanup" and instructed readers not to
+modify it. It is registered and serving traffic: app/_bootstrap/blueprints.py
+line 742 imports strategic_bp from this module and registers it.
+
+The header was actively harmful - a defect audit found the compliance dashboard
+here rendering a fully compliant portfolio from a database error, and the
+instruction not to modify is exactly the kind of thing that leaves such a bug
+in place. If this file is ever genuinely retired, delete it rather than leaving
+a note that contradicts the blueprint registration.
 
 Strategic Planning Routes
 
 Provides routes for investment prioritization, risk assessment, and strategic decision support.
 """
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app.models.application_capability import ApplicationCapabilityMapping
@@ -532,17 +539,13 @@ def compliance_tracking():
             recommendations=analysis["recommendations"],
         )
     except Exception:
-        # Return template with empty data on error to prevent 500
-        return render_template(
-            "strategic/compliance_tracking.html",
-            capability_compliance=[],
-            critical_compliance=[],
-            high_compliance=[],
-            medium_compliance=[],
-            low_compliance=[],
-            portfolio_metrics={"total_capabilities": 0},
-            recommendations=[],
-        )
+        # Do NOT render the template with empty lists here. Doing so showed a
+        # compliance dashboard reporting zero capabilities and zero findings,
+        # which the user cannot distinguish from a fully compliant portfolio.
+        # Matches the sibling dashboards (dependency_visualization,
+        # technology_roadmap) which surface the failure instead.
+        current_app.logger.exception("Compliance tracking dashboard failed")
+        return jsonify({"error": "An internal error occurred"}), 500
 
 
 @strategic_bp.route("/api/compliance-analysis")

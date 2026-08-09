@@ -184,17 +184,22 @@ class CapabilityRequirementGeneratorService:
     # ------------------------------------------------------------------
 
     def _get_apqc_context(self, solution_id: int) -> Dict[int, str]:
-        """Return {apqc_process_id: name} for processes linked to this solution."""
-        try:
-            links = SolutionAPQCProcess.query.filter_by(solution_id=solution_id).all()
-            result = {}
-            for link in links:
-                proc = getattr(link, "apqc_process", None)
-                if proc:
-                    result[proc.id] = proc.name
-            return result
-        except Exception:
-            return {}
+        """Return {apqc_process_id: name} for processes linked to this solution.
+
+        Deliberately unguarded. This dict is rendered into the EARS generation
+        prompt, and an empty one prints "apqc_processes: none linked" — so a
+        query failure told the model the solution was linked to no APQC
+        processes, and the requirements it wrote were grounded in that lie.
+        generate_for_capability already logs the exception with a traceback,
+        rolls back, and answers {"status": "error", ...}.
+        """
+        links = SolutionAPQCProcess.query.filter_by(solution_id=solution_id).all()
+        result = {}
+        for link in links:
+            proc = getattr(link, "apqc_process", None)
+            if proc:
+                result[proc.id] = proc.name
+        return result
 
     def _build_prompt(
         self, cap: UnifiedCapability, apqc_context: Dict[int, str], count: int

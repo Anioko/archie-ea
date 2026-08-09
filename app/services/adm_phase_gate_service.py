@@ -140,40 +140,46 @@ class ADMPhaseGateService:
         )
 
     def _count_phase_outputs(self, architecture_id: int, phase_code: str) -> int:
-        """Count ArchiMate elements produced in a given ADM phase for this architecture."""
-        try:
-            row = db.session.execute(  # tenant-filtered: scoped via architecture_id FK
-                db.text(
-                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
-                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
-                    "WHERE i.architecture_id = :arch_id "
-                    "AND w.adm_phase = :phase "
-                    "AND w.element_role = 'output'"
-                ),
-                {"arch_id": architecture_id, "phase": phase_code},
-            ).scalar()
-            return int(row or 0)
-        except Exception:
-            return 0
+        """Count ArchiMate elements produced in a given ADM phase for this architecture.
+
+        No exception handler: a swallowed query error would report ``0``, which
+        ``can_enter_phase`` and ``get_phase_summary`` state as fact — "missing
+        outputs from phases: [...]" — when nothing is actually known about the
+        phase. Both callers run inside handlers that surface the failure, so the
+        error is better reported than converted into a gate verdict.
+        """
+        row = db.session.execute(  # tenant-filtered: scoped via architecture_id FK
+            db.text(
+                "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                "WHERE i.architecture_id = :arch_id "
+                "AND w.adm_phase = :phase "
+                "AND w.element_role = 'output'"
+            ),
+            {"arch_id": architecture_id, "phase": phase_code},
+        ).scalar()
+        return int(row or 0)
 
     def _has_type_in_phase(self, architecture_id: int, phase_code: str, element_type: str) -> bool:
-        """Check if a specific ArchiMate element type exists for a phase/architecture."""
-        try:
-            row = db.session.execute(  # tenant-filtered: scoped via architecture_id FK
-                db.text(
-                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
-                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
-                    "JOIN archimate_elements ae ON ae.id = w.element_id "
-                    "WHERE i.architecture_id = :arch_id "
-                    "AND w.adm_phase = :phase "
-                    "AND ae.type = :etype "
-                    "AND w.element_role = 'output'"
-                ),
-                {"arch_id": architecture_id, "phase": phase_code, "etype": element_type},
-            ).scalar()
-            return int(row or 0) > 0
-        except Exception:
-            return False
+        """Check if a specific ArchiMate element type exists for a phase/architecture.
+
+        No exception handler, for the same reason as ``_count_phase_outputs``:
+        ``False`` here becomes a "missing element types" gate rejection that
+        names a cause which was never established.
+        """
+        row = db.session.execute(  # tenant-filtered: scoped via architecture_id FK
+            db.text(
+                "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                "JOIN archimate_elements ae ON ae.id = w.element_id "
+                "WHERE i.architecture_id = :arch_id "
+                "AND w.adm_phase = :phase "
+                "AND ae.type = :etype "
+                "AND w.element_role = 'output'"
+            ),
+            {"arch_id": architecture_id, "phase": phase_code, "etype": element_type},
+        ).scalar()
+        return int(row or 0) > 0
 
     def get_phase_summary(self, architecture_id: int) -> list[dict]:
         """Return a summary of all ADM phases A-H with element counts and gate status."""

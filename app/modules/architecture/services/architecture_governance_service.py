@@ -88,60 +88,64 @@ class ArchitectureGovernanceService:
         }
 
     def _get_architecture_elements(self) -> List[Dict]:
-        """Get all architecture elements from the database."""
-        try:
-            elements = []
+        """Get all architecture elements from the database.
 
-            # Get business capabilities
-            from app.models.business_capability import BusinessCapability
+        Deliberately unguarded. Returning [] on a query failure made
+        analyze_governance_portfolio answer "total_elements: 0" with no findings
+        and no recommendations — a clean bill of governance health for a
+        portfolio nobody managed to read. Both callers
+        (strategic_routes.architecture_governance / api_governance_analysis)
+        already turn an exception into an explicit error response.
+        """
+        elements = []
 
-            capabilities = BusinessCapability.query.all()
-            for cap in capabilities:
-                elements.append(
-                    {
-                        "id": cap.id,
-                        "name": cap.name,
-                        "type": "BusinessCapability",
-                        "domain": cap.business_domain or "Unknown",
-                        "strategic_importance": cap.strategic_importance,
-                        "layer": "Business",
-                        "has_documentation": getattr(cap, "has_documentation", False),
-                        "last_review_date": getattr(cap, "last_review_date", None),
-                        "compliance_status": getattr(cap, "compliance_status", "unknown"),
-                        "quality_score": getattr(cap, "quality_score", 0),
-                    }
-                )
+        # Get business capabilities
+        from app.models.business_capability import BusinessCapability
 
-            # Get application components
-            from app.models.application_layer import ApplicationComponent
+        capabilities = BusinessCapability.query.all()
+        for cap in capabilities:
+            elements.append(
+                {
+                    "id": cap.id,
+                    "name": cap.name,
+                    "type": "BusinessCapability",
+                    "domain": cap.business_domain or "Unknown",
+                    "strategic_importance": cap.strategic_importance,
+                    "layer": "Business",
+                    "has_documentation": getattr(cap, "has_documentation", False),
+                    "last_review_date": getattr(cap, "last_review_date", None),
+                    "compliance_status": getattr(cap, "compliance_status", "unknown"),
+                    "quality_score": getattr(cap, "quality_score", 0),
+                }
+            )
 
-            applications = ApplicationComponent.query.filter(
-                ApplicationComponent.deployment_status.in_(
-                    ["production", "Production", "Implementing"]
-                )
-            ).all()
-            for app in applications:
-                elements.append(
-                    {
-                        "id": app.id,
-                        "name": app.name,
-                        "type": "ApplicationComponent",
-                        "technology": app.technology_stack,
-                        "layer": "Application",
-                        "has_documentation": getattr(app, "has_documentation", False),
-                        "last_review_date": getattr(app, "last_review_date", None),
-                        "compliance_status": getattr(app, "compliance_status", "unknown"),
-                        "quality_score": getattr(app, "quality_score", 0),
-                        "architecture_review_required": getattr(
-                            app, "architecture_review_required", True
-                        ),
-                    }
-                )
+        # Get application components
+        from app.models.application_layer import ApplicationComponent
 
-            return elements
-        except Exception as e:
-            print(f"Error getting architecture elements: {e}")
-            return []
+        applications = ApplicationComponent.query.filter(
+            ApplicationComponent.deployment_status.in_(
+                ["production", "Production", "Implementing"]
+            )
+        ).all()
+        for app in applications:
+            elements.append(
+                {
+                    "id": app.id,
+                    "name": app.name,
+                    "type": "ApplicationComponent",
+                    "technology": app.technology_stack,
+                    "layer": "Application",
+                    "has_documentation": getattr(app, "has_documentation", False),
+                    "last_review_date": getattr(app, "last_review_date", None),
+                    "compliance_status": getattr(app, "compliance_status", "unknown"),
+                    "quality_score": getattr(app, "quality_score", 0),
+                    "architecture_review_required": getattr(
+                        app, "architecture_review_required", True
+                    ),
+                }
+            )
+
+        return elements
 
     def _analyze_element_governance(self, element: Dict, include_compliance: bool) -> Dict:
         """Analyze governance for a single architecture element."""

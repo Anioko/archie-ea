@@ -30,6 +30,10 @@ def _check_completeness_threshold(solution, old_score):
     """
     if not solution or not getattr(solution, 'created_by_id', None):
         return
+    if old_score is None:
+        # The "before" score could not be read, so no crossing can be proven.
+        # Notifying anyway would assert a threshold the user never crossed.
+        return
     try:
         result = solution.architecture_completeness_score
         new_score = result.get("score", 0) if isinstance(result, dict) else 0
@@ -50,12 +54,21 @@ def _check_completeness_threshold(solution, old_score):
 
 
 def _get_completeness_score(solution):
-    """PLT-014: Safely get the current completeness score."""
+    """PLT-014: Get the current completeness score, or None if unreadable.
+
+    Returns None — not 0 — when the score cannot be computed. The only caller
+    passes this to `_check_completeness_threshold` as the *before* score, and
+    0 is the one value that makes every threshold look freshly crossed: a
+    failure here used to send the owner "completeness reached 100%" on a score
+    that was never read. `_check_completeness_threshold` skips on None.
+    """
     try:
         result = solution.architecture_completeness_score
         return result.get("score", 0) if isinstance(result, dict) else 0
     except Exception:
-        return 0
+        logger.exception("Completeness score unreadable for solution %s",
+                         getattr(solution, "id", None))
+        return None
 
 
 def _create_notification(user_id, notification_type, message, solution_id=None):

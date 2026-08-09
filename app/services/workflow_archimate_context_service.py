@@ -12,69 +12,75 @@ class WorkflowArchiMateContextService:
 
         Falls back to legacy context JSON if the junction table has no rows for this instance,
         ensuring backward compatibility with pre-EAW-001 workflow runs.
+
+        Query failures are not caught. An empty list here is read as "this
+        instance produced no ArchiMate elements" — the same sentence a caller
+        would print before someone decommissions the thing. Every caller either
+        already wraps this in a handler that logs, or would rather raise than
+        render a fabricated empty viewpoint.
         """
-        try:
-            # Primary path: query junction table (EAW-001)
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (instance_id)
-                db.text(
-                    "SELECT ae.id, ae.name, ae.type, ae.layer, w.element_role, w.adm_phase "
-                    "FROM workflow_instance_archimate_elements w "
-                    "JOIN archimate_elements ae ON ae.id = w.element_id "
-                    "WHERE w.instance_id = :iid "
-                    "ORDER BY w.adm_phase, ae.type, ae.name"
-                ),
-                {"iid": instance_id},
-            ).fetchall()
+        # Primary path: query junction table (EAW-001)
+        rows = db.session.execute(  # tenant-filtered: scoped via parent FK (instance_id)
+            db.text(
+                "SELECT ae.id, ae.name, ae.type, ae.layer, w.element_role, w.adm_phase "
+                "FROM workflow_instance_archimate_elements w "
+                "JOIN archimate_elements ae ON ae.id = w.element_id "
+                "WHERE w.instance_id = :iid "
+                "ORDER BY w.adm_phase, ae.type, ae.name"
+            ),
+            {"iid": instance_id},
+        ).fetchall()
 
-            if rows:
-                return [
-                    {
-                        "id": r[0],
-                        "name": r[1],
-                        "type": r[2],
-                        "layer": r[3],
-                        "element_role": r[4],
-                        "adm_phase": r[5],
-                    }
-                    for r in rows
-                ]
+        if rows:
+            return [
+                {
+                    "id": r[0],
+                    "name": r[1],
+                    "type": r[2],
+                    "layer": r[3],
+                    "element_role": r[4],
+                    "adm_phase": r[5],
+                }
+                for r in rows
+            ]
 
-            # Fallback: legacy context JSON (pre-EAW-001 instances)
-            instance = EAWorkflowInstance.query.get(instance_id)
-            if not instance or not instance.context:
-                return []
-            context = instance.context or {}
-            element_ids = context.get("archimate_scope", context.get("element_ids", []))
-            app_ids = context.get("app_ids", [])
-            if not element_ids and not app_ids:
-                return []
-            if element_ids:
-                elements = ArchiMateElement.query.filter(ArchiMateElement.id.in_(element_ids)).all()
-            else:
-                elements = ArchiMateElement.query.filter(
-                    ArchiMateElement.application_component_id.in_(app_ids)
-                ).all()
-            return [{"id": e.id, "name": e.name, "type": e.type, "layer": e.layer,
-                     "element_role": "output", "adm_phase": None} for e in elements]
-        except Exception:
+        # Fallback: legacy context JSON (pre-EAW-001 instances)
+        instance = EAWorkflowInstance.query.get(instance_id)
+        if not instance or not instance.context:
             return []
+        context = instance.context or {}
+        element_ids = context.get("archimate_scope", context.get("element_ids", []))
+        app_ids = context.get("app_ids", [])
+        if not element_ids and not app_ids:
+            return []
+        if element_ids:
+            elements = ArchiMateElement.query.filter(ArchiMateElement.id.in_(element_ids)).all()
+        else:
+            elements = ArchiMateElement.query.filter(
+                ArchiMateElement.application_component_id.in_(app_ids)
+            ).all()
+        return [{"id": e.id, "name": e.name, "type": e.type, "layer": e.layer,
+                 "element_role": "output", "adm_phase": None} for e in elements]
 
     def get_phase_elements(self, phase_code: str) -> list:
-        """Return all ArchiMate elements tagged with this ADM phase."""
-        try:
-            # properties is db.Text (JSON string); use LIKE for phase match, plateau as fallback
-            elements = ArchiMateElement.query.filter(
-                db.or_(
-                    ArchiMateElement.properties.like('%"adm_phase": "' + phase_code + '"%'),
-                    ArchiMateElement.plateau == phase_code,
-                )
-            ).all()
-            return [
-                {"id": e.id, "name": e.name, "type": e.type, "layer": e.layer, "plateau": e.plateau}
-                for e in elements
-            ]
-        except Exception:
-            return []
+        """Return all ArchiMate elements tagged with this ADM phase.
+
+        Query failures are not caught, for the reason given on
+        ``get_instance_elements``: `[]` becomes "this ADM phase has produced
+        nothing", which the phase viewpoint endpoints publish as a coverage
+        figure.
+        """
+        # properties is db.Text (JSON string); use LIKE for phase match, plateau as fallback
+        elements = ArchiMateElement.query.filter(
+            db.or_(
+                ArchiMateElement.properties.like('%"adm_phase": "' + phase_code + '"%'),
+                ArchiMateElement.plateau == phase_code,
+            )
+        ).all()
+        return [
+            {"id": e.id, "name": e.name, "type": e.type, "layer": e.layer, "plateau": e.plateau}
+            for e in elements
+        ]
 
     def persist_derived_element(
         self,

@@ -83,65 +83,62 @@ class TechnologyRoadmapService:
         }
 
     def _get_technology_components(self) -> List[Dict]:
-        """Get all technology components from the database."""
-        try:
-            components = []
+        """Get all technology components from the database.
 
-            # Get from application components
-            from app.models.application_layer import ApplicationComponent
+        Errors propagate: both callers in `strategic_routes` already turn a
+        failure into a 500. Answering a query failure with `[]` produced a
+        roadmap reporting zero technology components and no modernization
+        debt — indistinguishable from a portfolio that is genuinely clean.
+        """
+        components = []
 
-            applications = ApplicationComponent.query.filter(
-                ApplicationComponent.deployment_status.in_(
-                    ["production", "Production", "Implementing"]
+        # Get from application components
+        from app.models.application_layer import ApplicationComponent
+
+        applications = ApplicationComponent.query.filter(
+            ApplicationComponent.deployment_status.in_(
+                ["production", "Production", "Implementing"]
+            )
+        ).all()
+
+        for app in applications:
+            # Extract technology stack information
+            tech_stack = app.technology_stack or []
+            for tech in tech_stack:
+                components.append(
+                    {
+                        "id": f"app_{app.id}_{tech}",
+                        "name": tech,
+                        "type": "ApplicationTechnology",
+                        "application_id": app.id,
+                        "application_name": app.name,
+                        "deployment_status": app.deployment_status,
+                        "age_years": getattr(app, "age_years", 0),
+                        "platform_status": getattr(app, "platform_status", "supported"),
+                        "technology_category": self._categorize_technology(tech),
+                        "strategic_importance": self._assess_tech_importance(tech, app),
+                        "modernization_need": self._assess_modernization_need(tech, app),
+                    }
                 )
-            ).all()
 
-            for app in applications:
-                # Extract technology stack information
-                tech_stack = app.technology_stack or []
-                for tech in tech_stack:
-                    components.append(
-                        {
-                            "id": f"app_{app.id}_{tech}",
-                            "name": tech,
-                            "type": "ApplicationTechnology",
-                            "application_id": app.id,
-                            "application_name": app.name,
-                            "deployment_status": app.deployment_status,
-                            "age_years": getattr(app, "age_years", 0),
-                            "platform_status": getattr(app, "platform_status", "supported"),
-                            "technology_category": self._categorize_technology(tech),
-                            "strategic_importance": self._assess_tech_importance(tech, app),
-                            "modernization_need": self._assess_modernization_need(tech, app),
-                        }
-                    )
+        from app.models.platform_models import PlatformConfiguration
 
-            # Get from infrastructure components if available
-            try:
-                from app.models.platform_models import PlatformConfiguration
+        for platform in PlatformConfiguration.query.all():
+            components.append(
+                {
+                    "id": f"platform_{platform.id}",
+                    "name": platform.name,
+                    "type": "PlatformTechnology",
+                    "platform_id": platform.id,
+                    "technology_category": "Infrastructure",
+                    "strategic_importance": getattr(
+                        platform, "strategic_importance", "medium"
+                    ),
+                    "modernization_need": getattr(platform, "modernization_need", "low"),
+                }
+            )
 
-                platforms = PlatformConfiguration.query.all()
-                for platform in platforms:
-                    components.append(
-                        {
-                            "id": f"platform_{platform.id}",
-                            "name": platform.name,
-                            "type": "PlatformTechnology",
-                            "platform_id": platform.id,
-                            "technology_category": "Infrastructure",
-                            "strategic_importance": getattr(
-                                platform, "strategic_importance", "medium"
-                            ),
-                            "modernization_need": getattr(platform, "modernization_need", "low"),
-                        }
-                    )
-            except Exception as e:
-                print(f"Error getting platforms: {e}")
-
-            return components
-        except Exception as e:
-            print(f"Error getting technology components: {e}")
-            return []
+        return components
 
     def _categorize_technology(self, technology: str) -> str:
         """Categorize technology based on its name/type."""

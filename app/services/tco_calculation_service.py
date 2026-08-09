@@ -198,11 +198,16 @@ class TCOCalculationService:
             return None
 
     def _safe_sum(self, values: List[Optional[float]]) -> float:
-        """Safely sum values with None handling."""
-        try:
-            return sum(v or 0 for v in values)
-        except Exception:
-            return 0.0
+        """Sum values, treating None as absent.
+
+        Deliberately has no exception handler: a total cost of ownership of
+        ``0.0`` is indistinguishable from "this application costs nothing", and
+        every caller already runs inside a handler that logs the failure and
+        returns an explicit ``error``/"calculation failed" payload. Letting the
+        failure travel there reports it; swallowing it here fabricates a
+        financial figure.
+        """
+        return sum(v or 0 for v in values)
 
     def _safe_divide(self, numerator: float, denominator: float, default: float = 0.0) -> float:
         """

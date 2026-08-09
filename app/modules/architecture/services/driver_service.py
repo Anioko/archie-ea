@@ -17,12 +17,15 @@ ArchiMate 3.2 Compliance:
 """
 
 import json
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from app import db
 from app.models import ArchiMateElement, ArchiMateRelationship, Requirement
 from app.services.llm_service import LLMService
+
+logger = logging.getLogger(__name__)
 
 
 class DriverService:
@@ -397,6 +400,14 @@ class DriverService:
             return linked_reqs
 
         except Exception:
+            # The rollback makes "no requirements were linked" literally true,
+            # so [] is an honest return here — but only once the failure is on
+            # the record. Without this line an LLM outage or a malformed
+            # response was indistinguishable from the model finding no match.
+            logger.exception(
+                "_auto_link_driver_to_requirements(driver=%s) failed; nothing linked",
+                getattr(driver, "id", None),
+            )
             db.session.rollback()
             return []
 

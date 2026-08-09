@@ -4,11 +4,7 @@ Queries REAL junction/child records to determine whether a Solution has met
 the minimum data requirements for the current ADM phase before allowing
 advancement to the next phase.
 """
-import logging
-
 from app.models.solution_models import Solution, SolutionCapabilityMapping
-
-logger = logging.getLogger(__name__)
 
 # Phase ordering for navigation
 PHASE_ORDER = list("ABCDEFGH")
@@ -30,52 +26,43 @@ def _count_drivers(solution):
     """Count SolutionDriver records linked via analysis session."""
     if not solution.analysis_session_id:
         return 0
-    try:
-        from app.models.solution_architect_models import (
-            SolutionProblemDefinition,
-            SolutionDriver,
-        )
+    from app.models.solution_architect_models import (
+        SolutionProblemDefinition,
+        SolutionDriver,
+    )
 
-        problem = SolutionProblemDefinition.query.filter_by(
-            session_id=solution.analysis_session_id
-        ).first()
-        if not problem:
-            return 0
-        return SolutionDriver.query.filter_by(problem_id=problem.id).count()
-    except Exception:
+    problem = SolutionProblemDefinition.query.filter_by(
+        session_id=solution.analysis_session_id
+    ).first()
+    if not problem:
         return 0
+    return SolutionDriver.query.filter_by(problem_id=problem.id).count()
 
 
 def _count_goals(solution):
     """Count SolutionGoal records linked via analysis session."""
     if not solution.analysis_session_id:
         return 0
-    try:
-        from app.models.solution_architect_models import (
-            SolutionProblemDefinition,
-            SolutionGoal,
-        )
+    from app.models.solution_architect_models import (
+        SolutionProblemDefinition,
+        SolutionGoal,
+    )
 
-        problem = SolutionProblemDefinition.query.filter_by(
-            session_id=solution.analysis_session_id
-        ).first()
-        if not problem:
-            return 0
-        return SolutionGoal.query.filter_by(problem_id=problem.id).count()
-    except Exception:
+    problem = SolutionProblemDefinition.query.filter_by(
+        session_id=solution.analysis_session_id
+    ).first()
+    if not problem:
         return 0
+    return SolutionGoal.query.filter_by(problem_id=problem.id).count()
 
 
 def _count_stakeholder_mappings(solution):
     """Count SolutionStakeholderMapping records for this solution."""
-    try:
-        from app.models.solution_stakeholder import SolutionStakeholderMapping
+    from app.models.solution_stakeholder import SolutionStakeholderMapping
 
-        return SolutionStakeholderMapping.query.filter_by(
-            solution_id=solution.id
-        ).count()
-    except Exception:
-        return 0
+    return SolutionStakeholderMapping.query.filter_by(
+        solution_id=solution.id
+    ).count()
 
 
 def _count_capabilities(solution):
@@ -87,77 +74,81 @@ def _count_capabilities(solution):
         return direct
     # Fallback: via analysis session problem
     if solution.analysis_session_id:
-        try:
-            from app.models.solution_architect_models import SolutionProblemDefinition
+        from app.models.solution_architect_models import SolutionProblemDefinition
 
-            problem = SolutionProblemDefinition.query.filter_by(
-                session_id=solution.analysis_session_id
-            ).first()
-            if problem:
-                return SolutionCapabilityMapping.query.filter_by(
-                    problem_id=problem.id
-                ).count()
-        except Exception as e:
-            logger.debug("Capability count failed: %s", e)
+        problem = SolutionProblemDefinition.query.filter_by(
+            session_id=solution.analysis_session_id
+        ).first()
+        if problem:
+            return SolutionCapabilityMapping.query.filter_by(
+                problem_id=problem.id
+            ).count()
     return 0
 
 
 def _count_applications(solution):
     """Count applications linked to solution via junction table."""
-    try:
-        return solution.applications.count()
-    except Exception:
-        return 0
+    return solution.applications.count()
 
 
 def _count_vendor_products(solution):
     """Count vendor products linked to solution via junction table."""
-    try:
-        return solution.vendor_products.count()
-    except Exception:
-        return 0
+    return solution.vendor_products.count()
 
 
 def _count_archimate_by_layer(solution, layer_type):
     """Count ArchiMate elements of a given layer_type for this solution."""
-    try:
-        from app.models.solution_models import SolutionArchiMateElement
+    from app.models.solution_models import SolutionArchiMateElement
 
-        return SolutionArchiMateElement.query.filter_by(
-            solution_id=solution.id, layer_type=layer_type
-        ).count()
-    except Exception:
-        return 0
+    return SolutionArchiMateElement.query.filter_by(
+        solution_id=solution.id, layer_type=layer_type
+    ).count()
 
 
 def _count_work_packages(solution):
-    """Count work packages linked to this solution."""
-    try:
-        from app.models.solution_lifecycle_models import SolutionWorkPackage
+    """Count work packages linked to this solution.
 
-        return SolutionWorkPackage.query.filter_by(solution_id=solution.id).count()
-    except Exception:
-        return 0
+    This used to import `SolutionWorkPackage`, which has never existed in this
+    codebase. The ImportError was swallowed and every call answered 0, so phase
+    F's *critical* "Work packages defined" check was unpassable for every
+    solution, with no trace in any log.
+
+    There are two real stores, and which one holds the rows depends on whether
+    the ArchiMate sync has run:
+      - `RoadmapWorkPackage` (`source_type='solution'`) is where the solution's
+        own work packages are written; and
+      - `WorkPackage` (`context='solution'`) is the ArchiMate mirror that
+        `solution_archimate_sync_service` creates from them.
+    Count the native rows, falling back to the mirror — the same direct-then-
+    fallback shape as `_count_capabilities` above.
+    """
+    from app.models.roadmap_models import RoadmapWorkPackage
+
+    direct = RoadmapWorkPackage.query.filter_by(
+        source_type="solution", source_id=solution.id
+    ).count()
+    if direct > 0:
+        return direct
+
+    from app.models.implementation_migration import WorkPackage
+
+    return WorkPackage.query.filter_by(
+        context="solution", context_id=solution.id
+    ).count()
 
 
 def _count_risks(solution):
     """Count risks for this solution."""
-    try:
-        from app.models.solution_lifecycle_models import SolutionRisk
+    from app.models.solution_lifecycle_models import SolutionRisk
 
-        return SolutionRisk.query.filter_by(solution_id=solution.id).count()
-    except Exception:
-        return 0
+    return SolutionRisk.query.filter_by(solution_id=solution.id).count()
 
 
 def _count_metrics(solution):
     """Count success metrics for this solution."""
-    try:
-        from app.models.solution_lifecycle_models import SolutionMetric
+    from app.models.solution_lifecycle_models import SolutionMetric
 
-        return SolutionMetric.query.filter_by(solution_id=solution.id).count()
-    except Exception:
-        return 0
+    return SolutionMetric.query.filter_by(solution_id=solution.id).count()
 
 
 # ─── Gate definitions ─────────────────────────────────────────────────────────

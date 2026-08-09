@@ -337,52 +337,55 @@ class ComplianceTrackingService:
         }
 
     def _get_all_capabilities(self) -> List[Dict]:
-        """Get all business capabilities from the database."""
+        """Get all business capabilities from the database.
+
+        Errors propagate: the callers in `strategic_routes` already turn a
+        failure into a 500. Answering a query failure with `[]` told the
+        compliance dashboard the portfolio was empty, which is a claim about
+        the data the user cannot distinguish from a genuinely empty portfolio.
+        """
         # This would be adapted to work with your current capability model
-        try:
-            from app.models.business_capability import BusinessCapability
+        from app.models.business_capability import BusinessCapability
 
-            capabilities = BusinessCapability.query.all()
+        capabilities = BusinessCapability.query.all()
 
-            return [
-                {
-                    "id": cap.id,
-                    "name": cap.name,
-                    "domain": cap.business_domain or "Unknown",
-                    "strategic_importance": cap.strategic_importance,
-                    "description": cap.description,
-                    "regulatory_requirements": getattr(cap, "regulatory_requirements", []),
-                    "handles_pii": getattr(cap, "handles_pii", False),
-                    "handles_financial_data": getattr(cap, "handles_financial_data", False),
-                    "handles_health_data": getattr(cap, "handles_health_data", False),
-                    "handles_personal_data": getattr(cap, "handles_personal_data", False),
-                    "privacy_controls": getattr(cap, "privacy_controls", False),
-                    "sox_controls": getattr(cap, "sox_controls", False),
-                    "hipaa_controls": getattr(cap, "hipaa_controls", False),
-                    "has_audit_trail": getattr(cap, "has_audit_trail", False),
-                    "last_audit_date": getattr(cap, "last_audit_date", None),
-                    "open_audit_findings": getattr(cap, "open_audit_findings", []),
-                    "compliance_violations": getattr(cap, "compliance_violations", []),
-                    "regulatory_complexity": getattr(cap, "regulatory_complexity", "MEDIUM"),
-                }
-                for cap in capabilities
-            ]
-        except Exception as e:
-            print(f"Error getting capabilities: {e}")
-            return []
+        return [
+            {
+                "id": cap.id,
+                "name": cap.name,
+                "domain": cap.business_domain or "Unknown",
+                "strategic_importance": cap.strategic_importance,
+                "description": cap.description,
+                "regulatory_requirements": getattr(cap, "regulatory_requirements", []),
+                "handles_pii": getattr(cap, "handles_pii", False),
+                "handles_financial_data": getattr(cap, "handles_financial_data", False),
+                "handles_health_data": getattr(cap, "handles_health_data", False),
+                "handles_personal_data": getattr(cap, "handles_personal_data", False),
+                "privacy_controls": getattr(cap, "privacy_controls", False),
+                "sox_controls": getattr(cap, "sox_controls", False),
+                "hipaa_controls": getattr(cap, "hipaa_controls", False),
+                "has_audit_trail": getattr(cap, "has_audit_trail", False),
+                "last_audit_date": getattr(cap, "last_audit_date", None),
+                "open_audit_findings": getattr(cap, "open_audit_findings", []),
+                "compliance_violations": getattr(cap, "compliance_violations", []),
+                "regulatory_complexity": getattr(cap, "regulatory_complexity", "MEDIUM"),
+            }
+            for cap in capabilities
+        ]
 
     def _get_capability_applications(self, capability_id: int) -> List:
-        """Get applications supporting a capability."""
-        try:
-            from app.models.application_portfolio import ApplicationCapabilityMapping
+        """Get applications supporting a capability.
 
-            mappings = ApplicationCapabilityMapping.query.filter_by(
-                business_capability_id=capability_id
-            ).all()
-            return mappings
-        except Exception as e:
-            print(f"Error getting capability applications: {e}")
-            return []
+        Errors propagate. An empty list here feeds the "no supporting
+        applications" branch of the compliance score, so swallowing a query
+        failure downgraded a capability's compliance rating on the strength of
+        data that was never read.
+        """
+        from app.models.application_portfolio import ApplicationCapabilityMapping
+
+        return ApplicationCapabilityMapping.query.filter_by(
+            business_capability_id=capability_id
+        ).all()
 
     def _calculate_portfolio_compliance_metrics(self, capability_compliance: List[Dict]) -> Dict:
         """Calculate portfolio-level compliance metrics."""

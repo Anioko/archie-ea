@@ -2260,7 +2260,9 @@ def _build_sla_load_config(solution_id: int, services: list) -> dict:
     k6 thresholds reflect the contracted performance targets.
 
     Returns a dict with the same shape as TestGenerator.generate_load_test_config().
-    Returns {} if no SLA rows found (caller should fall back to defaults).
+    Returns {} if no SLA rows found (caller should fall back to defaults), and
+    None if the lookup failed — the caller skips on either, but only {} means
+    "there are genuinely no SLAs".
     """
     try:
         from app.models.solution_sad_models import SolutionSLA
@@ -2326,7 +2328,11 @@ def _build_sla_load_config(solution_id: int, services: list) -> dict:
 
         return load_cfg
     except Exception:
-        return {}
+        logger.exception(
+            "SLA load config lookup failed for solution %s — generated k6 "
+            "thresholds will fall back to generic defaults", solution_id,
+        )
+        return None
 
 
 def _build_resilience_config(solution_id: int) -> dict:
@@ -2343,6 +2349,10 @@ def _build_resilience_config(solution_id: int) -> dict:
           "dlq_topics": [str],
           "chaos_test_targets": [{"entity": str, "risk": str, "scenario": str}],
         }
+
+    Returns {} when there are genuinely no qualifying risks, None when the
+    lookup failed. The caller skips on either, but only {} is a claim about
+    the data.
     """
     try:
         from app.models.solution_sad_models import RiskSnapshot
@@ -2401,7 +2411,11 @@ def _build_resilience_config(solution_id: int) -> dict:
             "chaos_test_targets": chaos_targets,
         }
     except Exception:
-        return {}
+        logger.exception(
+            "Resilience config lookup failed for solution %s — generated code "
+            "will carry no circuit breakers or retry policies", solution_id,
+        )
+        return None
 
 
 def _build_compliance_config(solution_id: int) -> dict:
@@ -2421,6 +2435,10 @@ def _build_compliance_config(solution_id: int) -> dict:
           "requirements": [{"framework": str, "control_id": str, "description": str, "code_impact": str}],
           "gdpr": bool, "sox": bool, "hipaa": bool, "iso27001": bool, "pci_dss": bool,
         }
+
+    Returns {} when the solution has genuinely no compliance mappings, None
+    when the lookup failed. The caller skips on either, but the distinction is
+    the difference between "no frameworks apply" and "we could not find out".
     """
     try:
         from app.models.solution_sad_models import SolutionComplianceMapping
@@ -2457,7 +2475,12 @@ def _build_compliance_config(solution_id: int) -> dict:
             "pci_dss": "PCI-DSS" in frameworks,
         }
     except Exception:
-        return {}
+        logger.exception(
+            "Compliance config lookup failed for solution %s — generated code "
+            "will omit every GDPR/SOX/HIPAA/ISO27001/PCI-DSS artefact",
+            solution_id,
+        )
+        return None
 
 
 def _build_rbac_config(solution_id: int) -> dict:
@@ -2513,6 +2536,13 @@ def _build_rbac_config(solution_id: int) -> dict:
             "roles": roles,
         }
     except Exception:
+        # Shape is fixed by the callers, which do `.get("has_rbac")`, so this
+        # cannot become None. Log loudly instead: a silent False here ships
+        # generated code with no route guards at all.
+        logger.exception(
+            "RBAC config lookup failed for solution %s — generated code will "
+            "have no role guards", solution_id,
+        )
         return {"has_rbac": False, "roles": []}
 
 
@@ -2526,10 +2556,17 @@ def _read_adr_constraints(solution_id: int) -> list:
 
     Returns a list of constraint dicts:
         [{"title": str, "decision": str, "category": str, "override_key": str, "override_value": str}]
+
+    Returns [] when there are genuinely no linked ADRs, None when the lookup
+    failed. The caller skips on either.
     """
     try:
         from app.models.solution_sad_models import SolutionADRDirect
-        from app.models.architecture_models import ArchitectureDecisionRecord
+        # `app.models.architecture_models` has never existed — the resulting
+        # ImportError was swallowed by the handler below, so this function
+        # returned [] on every call and the generator silently ignored every
+        # recorded architecture decision.
+        from app.models.adr import ArchitectureDecisionRecord
 
         links = SolutionADRDirect.query.filter_by(solution_id=solution_id).all()
         if not links:
@@ -2580,11 +2617,19 @@ def _read_adr_constraints(solution_id: int) -> list:
                     "override_value": override_value,
                 })
             except Exception:
+                logger.warning(
+                    "Skipping ADR %s for solution %s — could not be read",
+                    getattr(link, "adr_id", None), solution_id, exc_info=True,
+                )
                 continue
 
         return constraints
     except Exception:
-        return []
+        logger.exception(
+            "ADR constraint lookup failed for solution %s — generated code "
+            "will ignore its recorded architecture decisions", solution_id,
+        )
+        return None
 
 
 def _build_integration_clients(solution_id: int) -> list:
@@ -2599,10 +2644,17 @@ def _build_integration_clients(solution_id: int) -> list:
         [{"name": str, "protocol": str, "direction": str, "source": str,
           "target": str, "client_class": str, "base_url": str, "auth": str,
           "retry": dict, "timeout_s": int}]
+
+    Returns [] when the solution has genuinely no integration flows, None when
+    the lookup failed. The caller skips on either.
     """
     try:
         from app.models.solution_sad_models import SolutionIntegrationFlow
-        from app.models.application_models import Application
+        # `app.models.application_models` has never existed — the ImportError
+        # was swallowed by the handler below, so this returned [] on every call
+        # and no integration client stub was ever generated. The flow's
+        # source/target FK targets `application_components.id`.
+        from app.models.application_portfolio import ApplicationComponent
 
         flows = SolutionIntegrationFlow.query.filter_by(solution_id=solution_id).all()
         if not flows:
@@ -2640,11 +2692,11 @@ def _build_integration_clients(solution_id: int) -> list:
             tgt_name = "target"
             try:
                 if f.source_app_id:
-                    app = Application.query.get(f.source_app_id)
+                    app = db.session.get(ApplicationComponent, f.source_app_id)
                     if app:
                         src_name = _snake(app.name or "source")
                 if f.target_app_id:
-                    app = Application.query.get(f.target_app_id)
+                    app = db.session.get(ApplicationComponent, f.target_app_id)
                     if app:
                         tgt_name = _snake(app.name or "target")
             except Exception as exc:
@@ -2666,7 +2718,11 @@ def _build_integration_clients(solution_id: int) -> list:
 
         return clients
     except Exception:
-        return []
+        logger.exception(
+            "Integration client lookup failed for solution %s — generated code "
+            "will contain no client stubs for its integration flows", solution_id,
+        )
+        return None
 
 
 def _build_kpi_metrics_config(solution_id: int) -> list:
@@ -2679,6 +2735,10 @@ def _build_kpi_metrics_config(solution_id: int) -> list:
 
     Returns a list of metric dicts:
         [{"metric_name": str, "type": str, "help": str, "labels": [...], "source": str}]
+
+    Returns None when the lookup failed. Note the success path always appends a
+    health gauge, so a successful call is never empty — an empty result could
+    only ever have meant failure.
     """
     try:
         from app.models.solution_architect_models import SolutionGoal, SolutionAnalysisSession
@@ -2756,7 +2816,11 @@ def _build_kpi_metrics_config(solution_id: int) -> list:
 
         return metrics
     except Exception:
-        return []
+        logger.exception(
+            "KPI metric lookup failed for solution %s — generated code will "
+            "expose no Prometheus metrics for its goals or outcomes", solution_id,
+        )
+        return None
 
 
 # ── Journey→ArchiMate Bridge ─────────────────────────────────────────────────
