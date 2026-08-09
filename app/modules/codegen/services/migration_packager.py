@@ -205,24 +205,30 @@ pytest tests/ -v
 """
 
     def _export_n8n_workflows(self, solution_id: int) -> dict:
-        """Export compiled n8n workflows for this solution."""
-        try:
-            from app.modules.codegen.models import WorkflowDesign
+        """Export compiled n8n workflows for this solution.
 
-            workflows = WorkflowDesign.query.filter_by(
-                solution_id=solution_id, is_active=True
-            ).all()
+        Errors propagate. `export()` is the last step before the customer
+        deploys this package on their own infrastructure, and an empty dict
+        here silently produced a package with none of their automation
+        workflows in it — the README still promises "n8n workflow definitions
+        (if any)", so nothing on the receiving end reveals the omission. The
+        route caller already logs and returns 500, which is recoverable;
+        shipping a quietly incomplete package is not.
+        """
+        from app.modules.codegen.models import WorkflowDesign
 
-            files = {}
-            for wf in workflows:
-                if wf.compiled_n8n:
-                    safe_name = re.sub(r'[^a-z0-9_-]', '-', wf.name.lower().strip())
-                    files[f"n8n/workflow-{safe_name}.json"] = json.dumps(
-                        wf.compiled_n8n, indent=2
-                    )
-            return files
-        except Exception:
-            return {}
+        workflows = WorkflowDesign.query.filter_by(
+            solution_id=solution_id, is_active=True
+        ).all()
+
+        files = {}
+        for wf in workflows:
+            if wf.compiled_n8n:
+                safe_name = re.sub(r'[^a-z0-9_-]', '-', wf.name.lower().strip())
+                files[f"n8n/workflow-{safe_name}.json"] = json.dumps(
+                    wf.compiled_n8n, indent=2
+                )
+        return files
 
     def _export_grafana_dashboards(self, solution_id: int) -> dict:
         """Generate a basic Grafana dashboard for the solution."""

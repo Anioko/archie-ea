@@ -5034,7 +5034,13 @@ def _parse_sql_ddl(content: str) -> dict:
 
 
 def _parse_openapi(content: str) -> dict:
-    """Parse OpenAPI 2/3 YAML or JSON into {schema_name: [{name, type, required, description}]}."""
+    """Parse OpenAPI 2/3 YAML or JSON into {schema_name: [{name, type, required, description}]}.
+
+    A parse failure propagates. The caller (`import_schema`) already catches it,
+    logs it and answers "Parse failed: <reason>" with a 400. Returning {} sent
+    the user "No entity or field definitions found in the provided schema"
+    instead — telling them their file was empty when it was in fact unreadable.
+    """
     import json as _json
     try:
         import yaml as _yaml
@@ -5042,10 +5048,7 @@ def _parse_openapi(content: str) -> dict:
     except Exception:
         spec = None
     if spec is None:
-        try:
-            spec = _json.loads(content)
-        except Exception:
-            return {}
+        spec = _json.loads(content)
     schemas = ((spec.get('components') or {}).get('schemas')
                or spec.get('definitions') or {})
     FORMAT_MAP = {'date-time': 'datetime', 'date': 'date', 'uuid': 'uuid', 'float': 'float', 'double': 'float'}

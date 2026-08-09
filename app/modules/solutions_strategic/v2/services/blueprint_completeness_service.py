@@ -555,15 +555,18 @@ class BlueprintCompletenessService:
         if not has_vs:
             return 0.0
 
-        try:
-            rels = ArchiMateRelationship.query.filter(
-                db.or_(
-                    ArchiMateRelationship.source_id.in_(element_ids),
-                    ArchiMateRelationship.target_id.in_(element_ids),
-                )
-            ).all()
-        except Exception:
-            return 0.0
+        # Not guarded: a query failure used to score the chain 0.0, which is
+        # exactly the score a solution gets when its Goal → ValueStream →
+        # Capability → Outcome chain is genuinely unlinked. The caller
+        # (`_score_section`) feeds this straight into a completeness
+        # percentage, so the user would act on a number that was never
+        # measured. Let it reach the route's error handling instead.
+        rels = ArchiMateRelationship.query.filter(
+            db.or_(
+                ArchiMateRelationship.source_id.in_(element_ids),
+                ArchiMateRelationship.target_id.in_(element_ids),
+            )
+        ).all()
 
         vs_ids = set(type_index.get("ValueStream", []))
         cap_ids = set(type_index.get("Capability", []))
