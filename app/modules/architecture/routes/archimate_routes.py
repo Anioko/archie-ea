@@ -498,6 +498,11 @@ def _review_element_types():
         )
         return sorted(ALL_ELEMENTS)
     except Exception:  # noqa: BLE001
+        # This is the static ArchiMate vocabulary behind the review filter
+        # drop-down, not portfolio data — an empty list disables the filter and
+        # no count is derived from it. Log so the outage is diagnosable rather
+        # than presenting as a mysteriously empty filter.
+        current_app.logger.exception("import-review element type vocabulary unavailable")
         return []
 
 

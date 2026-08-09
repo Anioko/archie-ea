@@ -430,23 +430,28 @@ class ScenarioAnalysisService:
         return [self._load_application(aid) for aid in app_ids if self._load_application(aid)]
 
     def _load_all_applications(self, limit: int = 20) -> List[Dict]:
-        """Load all applications."""
-        try:
-            from app.models.application_portfolio import ApplicationComponent
+        """Load all applications.
 
-            apps = ApplicationComponent.query.limit(limit).all()
-            return [
-                {
-                    "id": app.id,
-                    "name": app.name,
-                    "status": getattr(app, "lifecycle_status", "Active"),  # model-safety-ok
-                    "criticality": getattr(app, "criticality", "Medium"),  # model-safety-ok
-                    "technology_stack": getattr(app, "technology_stack", ""),  # model-safety-ok
-                }
-                for app in apps
-            ]
-        except Exception:
-            return []
+        Deliberately unguarded. This is the whole input set for a cloud
+        migration scenario when the caller names no applications: returning []
+        produced a full analysis — readiness assessment, 6R strategies, cost
+        projection, risk score — over zero applications, and reported it as the
+        migration plan for the portfolio. analyze_scenario logs the exception
+        with a traceback and answers {"success": False, "error": ...}.
+        """
+        from app.models.application_portfolio import ApplicationComponent
+
+        apps = ApplicationComponent.query.limit(limit).all()
+        return [
+            {
+                "id": app.id,
+                "name": app.name,
+                "status": getattr(app, "lifecycle_status", "Active"),  # model-safety-ok
+                "criticality": getattr(app, "criticality", "Medium"),  # model-safety-ok
+                "technology_stack": getattr(app, "technology_stack", ""),  # model-safety-ok
+            }
+            for app in apps
+        ]
 
     def _load_capability(self, cap_id: int) -> Optional[Dict]:
         """Load capability details."""

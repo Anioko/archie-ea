@@ -29,27 +29,32 @@ logger = logging.getLogger(__name__)
 
 
 def _load_requirements_context(solution_id) -> List[Dict[str, Any]]:
-    """Load SolutionRequirement records for a solution as a plain-dict list."""
+    """Load SolutionRequirement records for a solution as a plain-dict list.
+
+    Raises on a load failure rather than returning []. Every caller is already
+    inside a handler that logs with a traceback and answers
+    ``{"success": False, "error": ...}``; swallowing the error here instead put
+    an empty list into the deliverable's ``requirements`` field, and made
+    ``generate_test_cases`` report the specific, false claim "No requirements
+    with acceptance criteria found".
+    """
     if not solution_id:
         return []
-    try:
-        from app.models.solution_architect_models import SolutionRequirement
-        requirements = SolutionRequirement.query.filter(
-            SolutionRequirement.solution_id == solution_id,
-            SolutionRequirement.deleted_at == None,  # noqa: E711
-        ).all()
-        return [
-            {
-                "name": r.requirement_name,
-                "type": getattr(r, "requirement_type", None),
-                "priority": getattr(r, "moscow_priority", None),
-                "description": r.description,
-                "acceptance_criteria": r.acceptance_criteria,
-            }
-            for r in requirements
-        ]
-    except Exception:
-        return []
+    from app.models.solution_architect_models import SolutionRequirement
+    requirements = SolutionRequirement.query.filter(
+        SolutionRequirement.solution_id == solution_id,
+        SolutionRequirement.deleted_at == None,  # noqa: E711
+    ).all()
+    return [
+        {
+            "name": r.requirement_name,
+            "type": getattr(r, "requirement_type", None),
+            "priority": getattr(r, "moscow_priority", None),
+            "description": r.description,
+            "acceptance_criteria": r.acceptance_criteria,
+        }
+        for r in requirements
+    ]
 
 
 class StructuredDeliverableService:

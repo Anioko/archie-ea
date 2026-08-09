@@ -290,14 +290,16 @@ def api_application_archimate_summary(app_id):
         from app.models.implementation_migration import ImplementationEvent, WorkPackage
         from app.models.technology_layer import Node, SystemSoftware
 
-        # Helper function to safely count entities (some models may not have application_component_id)
+        # Helper function to count entities. Models with no
+        # application_component_id genuinely have 0 elements attached to an
+        # application; a *query failure* does not, so it is not caught here.
+        # Swallowing it returned 0 for that layer and then summed it into
+        # total_elements, publishing an undercount as a measured figure. The
+        # route handler below logs and returns an explicit error instead.
         def safe_count(model, app_id):
-            try:
-                if hasattr(model, "application_component_id"):  # model-safety-ok: polymorphic - checking multiple model classes for column existence
-                    return model.query.filter_by(application_component_id=app_id).count()
-                return 0
-            except Exception:
-                return 0
+            if hasattr(model, "application_component_id"):  # model-safety-ok: polymorphic - checking multiple model classes for column existence
+                return model.query.filter_by(application_component_id=app_id).count()
+            return 0
 
         summary = {
             "business_layer": {
