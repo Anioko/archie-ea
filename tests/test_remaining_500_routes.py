@@ -97,3 +97,77 @@ def test_route_does_not_500(app, db_session, make_org, path):
     assert resp.status_code < 500, (
         f"{path} returned {resp.status_code}: {resp.get_data(as_text=True)[:2000]}"
     )
+
+
+def test_adm_phase_summary_default_path_is_tenant_scoped(db_session, make_org, tenant_ctx):
+    """Regression test for a cross-tenant leak on the architecture_id-omitted path.
+
+    ``/api/ea/workflow-adm-lifecycle`` calls ``get_phase_summary(None)`` — the
+    route never passes an ``architecture_id``, so ``_count_phase_outputs`` and
+    ``_has_type_in_phase`` always took the "no architecture given" branch. That
+    branch's SQL joins ``workflow_instance_archimate_elements`` to
+    ``ea_workflow_instances`` only — neither table carries ``organization_id`` —
+    with no predicate on the tenant-scoped ``archimate_elements`` table either.
+    Raw SQL is not covered by the ORM tenant listener
+    (``do_orm_execute``/``with_loader_criteria`` only instrument ORM-mapped
+    statements), so without an explicit predicate the query silently aggregated
+    every organization's ADM phase outputs and reported the total as the
+    current org's lifecycle status.
+
+    Seeds one ADM-phase-B output under each of two orgs and asserts that, with
+    ``g.current_org_id`` set to org A, the count reflects only org A's row.
+    """
+    from app.models.models import ArchiMateElement, WorkflowInstanceArchiMateElement
+    from app.models.workflow_models import EAWorkflowDefinition, EAWorkflowInstance
+    from app.services.adm_phase_gate_service import ADMPhaseGateService
+
+    org_a, org_b = make_org("adm-gate-a"), make_org("adm-gate-b")
+
+    definition = EAWorkflowDefinition(
+        workflow_code=f"TEST-ADM-GATE-{uuid.uuid4().hex[:8]}",
+        workflow_name="ADM Gate Regression Test",
+        workflow_category="architecture",
+        steps=[],
+    )
+    db_session.add(definition)
+    db_session.flush()
+
+    def _seed_output(org_id):
+        instance = EAWorkflowInstance(
+            instance_code=f"INST-{uuid.uuid4().hex[:8]}",
+            workflow_definition_id=definition.id,
+            context={},
+        )
+        db_session.add(instance)
+        db_session.flush()
+
+        # Insert inside the org's tenant context so before_flush stamps
+        # organization_id, matching how every real ArchiMateElement row is
+        # written (see tests/test_archimate_layer_casing.py for the pattern).
+        with tenant_ctx(org_id):
+            element = ArchiMateElement(name=f"Driver {org_id}", type="Driver")
+            db_session.add(element)
+            db_session.flush()
+
+        link = WorkflowInstanceArchiMateElement(
+            instance_id=instance.id,
+            element_id=element.id,
+            element_role="output",
+            adm_phase="B",
+        )
+        db_session.add(link)
+        db_session.flush()
+
+    _seed_output(org_a.id)
+    _seed_output(org_b.id)
+
+    svc = ADMPhaseGateService()
+    with tenant_ctx(org_a.id):
+        count = svc._count_phase_outputs(None, "B")
+        has_type = svc._has_type_in_phase(None, "B", "Driver")
+
+    assert count == 1, (
+        f"expected only org A's phase-B output to be counted, got {count} "
+        "(cross-tenant leak: every org's ADM outputs were aggregated)"
+    )
+    assert has_type is True
