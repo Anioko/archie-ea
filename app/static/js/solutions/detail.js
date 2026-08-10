@@ -2073,9 +2073,18 @@ document.addEventListener('alpine:init', function () {
                 this.mentionQuery = query;
                 let base = this.apiBase.replace(/\/\d+$/, '');
                 fetch(base + '/users?search=' + encodeURIComponent(query), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-                    .then(function(r) { return r.json(); })
-                    .then(function(d) { this.mentionUsers = (d && d.users) || []; this.mentionOpen = true; }.bind(this))
-                    .catch(function() { this.mentionUsers = []; }.bind(this));
+                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                    .then(function(d) { this.mentionUsers = (d && d.users) || []; this.mentionOpen = true; this._mentionSearchErrorShown = false; }.bind(this))
+                    .catch(function() {
+                        // A failed lookup left an empty dropdown, which reads as
+                        // "no such colleague" — the user drops the mention.
+                        // Fires per keystroke, so toast once per outage.
+                        this.mentionUsers = [];
+                        if (!this._mentionSearchErrorShown) {
+                            this._mentionSearchErrorShown = true;
+                            if (window.Platform && Platform.toast) Platform.toast.error('Could not search people to mention');
+                        }
+                    }.bind(this));
             },
             selectMention(sectionKey, user) {
                 let name = (user && (user.name || user.email)) || '';
@@ -2693,7 +2702,7 @@ document.addEventListener('alpine:init', function () {
                     self.capabilityPickerLoading = true;
                     let url = '/solutions/capabilities/search?q=' + encodeURIComponent(self.capabilityPickerQuery);
                     fetch(url, { headers: { 'X-CSRFToken': self.csrfToken } })
-                        .then(function(r) { return r.json(); })
+                        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                         .then(function(data) {
                             let linkedIds = (self.linkedCapabilities || []).map(function(c) { return c.id || c.capability_id; });
                             self.capabilityPickerResults = (data.capabilities || data.results || []).filter(function(c) {
@@ -2883,7 +2892,7 @@ document.addEventListener('alpine:init', function () {
                     self.vendorProductPickerLoading = true;
                     let url = '/solutions/vendor-products/search?q=' + encodeURIComponent(self.vendorProductPickerQuery);
                     fetch(url, { headers: { 'X-CSRFToken': self.csrfToken } })
-                        .then(function(r) { return r.json(); })
+                        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                         .then(function(data) {
                             let linkedIds = (self.linkedVendorProducts || []).map(function(p) { return p.id || p.product_id; });
                             self.vendorProductPickerResults = (data.results || data.products || []).filter(function(p) {
@@ -2969,7 +2978,7 @@ document.addEventListener('alpine:init', function () {
                     self.apqcPickerLoading = true;
                     let url = '/api/apqc/search?q=' + encodeURIComponent(self.apqcPickerQuery);
                     fetch(url, { headers: { 'X-CSRFToken': self.csrfToken } })
-                        .then(function(r) { return r.json(); })
+                        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                         .then(function(data) {
                             let linkedIds = (self.linkedAPQCProcesses || []).map(function(p) { return p.process_id || p.id; });
                             self.apqcPickerResults = (data.matches || data.processes || data.results || []).filter(function(p) {
@@ -3055,7 +3064,7 @@ document.addEventListener('alpine:init', function () {
                     self.appPickerLoading = true;
                     let url = '/applications/api/list?search=' + encodeURIComponent(self.appPickerQuery) + '&limit=10&sort=relevance';
                     fetch(url, { headers: { 'X-CSRFToken': self.csrfToken } })
-                        .then(function(r) { return r.json(); })
+                        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                         .then(function(data) {
                             let linkedIds = (self.linkedApplications || []).map(function(a) { return a.id || a.app_id; });
                             let items = data.applications || data.results || data.data || [];

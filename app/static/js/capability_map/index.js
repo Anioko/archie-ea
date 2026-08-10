@@ -5901,7 +5901,7 @@
         if (!loading || !container) return;
 
         fetch('/capability-map/api/unified-capabilities')
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let caps = data.unified_capabilities || data.capabilities || [];
                 if (caps.length === 0) {

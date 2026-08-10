@@ -344,7 +344,7 @@ function runPostImportAutoMap(importedCount, suffix) {
       auto_create: true
     })
   })
-  .then(response => response.json())
+  .then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
   .then(data => {
     let mapMessage = 'Auto-mapping complete!\n';
     if (data.process_mappings_created > 0) mapMessage += `APQC Processes mapped: ${data.process_mappings_created}\n`;
@@ -567,7 +567,7 @@ async function processManualImport() {
       duplicate_mode: duplicateMode
     })
   })
-  .then(response => response.json())
+  .then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
   .then(async (data) => {
     if (data.error) {
       importBtn.disabled = false;

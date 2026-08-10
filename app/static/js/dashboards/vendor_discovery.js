@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function loadCapabilities() {
     fetch('/api/vendor-discovery/capabilities')
-        .then(function(response) { return response.json(); })
+        .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function(data) {
             if (data.success) {
                 availableCapabilities = data.capabilities;

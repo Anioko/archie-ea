@@ -43,6 +43,7 @@ function loadProcessSuggestions(appId) {
 
   return fetch('/api/applications/' + appId + '/process-suggestions')
     .then(function(response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
     })
     .then(function(data) {
@@ -241,6 +242,7 @@ function hideManualProcessMapping() {
 
       fetch('/api/applications/processes/search?q=' + encodeURIComponent(query))
         .then(function(response) {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
           return response.json();
         })
         .then(function(processes) {

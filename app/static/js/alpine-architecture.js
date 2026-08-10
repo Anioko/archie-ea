@@ -63,7 +63,7 @@ if (window.__ALPINE_ARCH_LOADED__) {
     function _fetch(url, opts) {
         if (window.Platform && window.Platform.fetch) return window.Platform.fetch(url, opts);
         if (window.apiFetch) return window.apiFetch(url, opts);
-        return fetch(url, opts).then(function (r) { return r.json(); });
+        return fetch(url, opts).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
     }
 
     function _toast(type, msg) {

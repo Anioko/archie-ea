@@ -75,7 +75,7 @@ function componentSpecsMixin() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self.csrfToken },
                 body: JSON.stringify(body)
             })
-            .then(function (r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (data) {
                 if (data.success) {
                     self.loadComponentSpec(elementId);

@@ -33,7 +33,7 @@ function loadContext(mode, contextId) {
         : '/code-generation/api/context/architecture/' + contextId;
 
     fetch(endpoint)
-        .then(function(response) { return response.json(); })
+        .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function(data) {
             if (data.success) {
                 displayContext(data, mode);
@@ -50,7 +50,7 @@ function loadContext(mode, contextId) {
 
 function loadTemplates() {
     fetch('/code-generation/api/templates')
-        .then(function(response) { return response.json(); })
+        .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function(data) {
             if (data.success) {
                 displayTemplates(data.templates);

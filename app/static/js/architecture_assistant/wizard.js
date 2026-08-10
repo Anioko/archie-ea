@@ -1148,7 +1148,7 @@ function architectureWizard() {
       });
 
       fetch('/solutions/' + this.solutionId + '/archimate-elements', { credentials: 'same-origin' })
-        .then(function(r) { return r.json(); })
+        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(function(data) {
           let allElements = [];
           let layers = data.elements_by_layer || {};

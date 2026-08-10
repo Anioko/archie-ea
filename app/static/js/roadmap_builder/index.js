@@ -143,7 +143,7 @@ let RoadmapBuilder = {
         let self = this;
         let groupBy = document.getElementById('timeline-group-by').value;
         fetch('/api/roadmap-builder/timeline?group_by=' + groupBy)
-            .then(function(res) { return res.json(); })
+            .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
             .then(function(data) {
                 if (data.success) {
                     self.renderTimeline(data.data);
@@ -520,7 +520,7 @@ let RoadmapBuilder = {
     loadDependencyGraph: function() {
         let self = this;
         fetch('/api/roadmap-builder/dependency-graph')
-            .then(function(res) { return res.json(); })
+            .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
             .then(function(data) {
                 if (data.success) {
                     self.renderDependencyGraph(data.data);

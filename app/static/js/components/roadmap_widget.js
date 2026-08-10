@@ -19,7 +19,7 @@ function initRoadmapWidgetInstance(containerId, endpoint) {
     // Initialize widget
     function initRoadmapWidget(cid, ep) {
         fetch(ep)
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.success) {
                     window['roadmapData_' + cid].items = data.items || [];

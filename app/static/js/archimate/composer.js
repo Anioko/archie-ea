@@ -1682,7 +1682,7 @@ function composerApp() {
                     fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
                         credentials: 'same-origin',
                     })
-                    .then(function(r) { return r.json(); })
+                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                     .then(function(data) {
                         let validDetailed = data.valid_types_detailed || [];
                         self.relPickerTypes = validDetailed.length > 0 ? validDetailed
@@ -2971,7 +2971,7 @@ function composerApp() {
             fetch('/archimate/viewpoints-api/basic/data?solution_id=' + this.solutionId, {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let elements = data.elements || [];
                 let relationships = data.relationships || [];
@@ -3213,7 +3213,7 @@ function composerApp() {
                 credentials: 'same-origin',
                 headers: { 'Accept': 'application/json' },
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let caps = data.capabilities || data.data || [];
                 self.sidebarCapabilities = caps;
@@ -3299,7 +3299,7 @@ function composerApp() {
                 self.checkingReuse = true;
                 let url = '/archimate/api/elements/search?q=' + encodeURIComponent(name) + '&limit=5';
                 fetch(url, { credentials: 'same-origin' })
-                    .then(function(r) { return r.json(); })
+                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                     .then(function(resp) {
                         let data = resp.data || resp || [];
                         self.similarElements = Array.isArray(data) ? data.filter(function(el) {
@@ -3337,7 +3337,7 @@ function composerApp() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify({ element_ids: ids }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let maturity = data.maturity || {};
                 elements.forEach(function(cell) {
@@ -3919,7 +3919,7 @@ function composerApp() {
             fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let validDetailed = data.valid_types_detailed || [];
                 self.relPickerTypes = validDetailed.length > 0 ? validDetailed
@@ -4150,7 +4150,7 @@ function composerApp() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify({ name: newName }),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     if (data.error) _toast('error', data.error);
                 })
@@ -4171,7 +4171,7 @@ function composerApp() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify({ description: desc }),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     if (data.error) _toast('error', data.error);
                 })
@@ -4203,7 +4203,7 @@ function composerApp() {
                     }
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .catch(function() { _toast('error', 'Failed to save classification'); });
 
             /* Update visual badge on the JointJS node */
@@ -4224,7 +4224,7 @@ function composerApp() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify({ custom_properties: { zone_type: zoneType } }),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .catch(function() { _toast('error', 'Failed to save zone type'); });
             }
             this.statusText = 'Zone type: ' + zoneType;
@@ -4324,7 +4324,7 @@ function composerApp() {
                             solution_id: self.solutionId || null,
                         }),
                     })
-                    .then(function(r) { return r.json(); })
+                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                     .then(function(data) {
                         if (data.id) {
                             self.relCount++;
@@ -4684,7 +4684,7 @@ function composerApp() {
                     headers: { 'X-CSRFToken': csrfToken() },
                     body: formData,
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     if (data.error) { _toast('error', data.error); self.statusText = 'Import failed'; return; }
                     let elements = data.elements || [];
@@ -4837,7 +4837,7 @@ function composerApp() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify({ name: name, type: type, layer: layer }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let elem = data.element || data;
                 if (elem.id) {
@@ -4890,7 +4890,7 @@ function composerApp() {
                     parent_element_id: elementId,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let vpId = data.id || (data.data && data.data.id);
                 if (vpId) {
@@ -5121,7 +5121,7 @@ function composerApp() {
                         },
                     }),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     if (data.error) { _toast('error', data.error); return; }
                     /* Update selectedNode if this element is currently selected */
@@ -5145,7 +5145,7 @@ function composerApp() {
                 method: 'POST', credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.error) { _toast('error', data.error); return; }
                 self.viewpointReviewStatus = 'submitted';
@@ -5169,7 +5169,7 @@ function composerApp() {
                 url += '?viewpoint_id=' + self.currentSavedVpId;
             }
             fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     self.comments = data.comments || [];
                     self.commentsLoading = false;
@@ -5194,7 +5194,7 @@ function composerApp() {
                     viewpoint_id: self.currentSavedVpId || null,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.id) {
                     self.comments.push(data);
@@ -5223,7 +5223,7 @@ function composerApp() {
                 url += '?viewpoint_id=' + self.currentSavedVpId;
             }
             fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     self.auditLog = data.entries || [];
                     self.auditLoading = false;
@@ -5719,7 +5719,7 @@ function composerApp() {
             self.linkViewpointModalOpen = true;
             /* Fetch saved viewpoints for picker */
             fetch('/archimate/api/saved-viewpoints', { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     self.linkViewpointList = (data.viewpoints || data || []).map(function(v) {
                         return { id: v.id, name: v.name || v.viewpoint_name || 'Unnamed' };
@@ -5943,7 +5943,7 @@ function composerApp() {
             fetch('/archimate/api/landscape?row_type=' + encodeURIComponent(self.landscapeRowType) + '&col_type=' + encodeURIComponent(self.landscapeColType), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.landscapeData = data;
                 self.landscapeLoading = false;
@@ -5993,7 +5993,7 @@ function composerApp() {
                       '&col_type=' + encodeURIComponent(self.matrixColType);
 
             fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     self.matrixRows = data.rows || [];
                     self.matrixCols = data.columns || [];
@@ -6684,7 +6684,7 @@ function composerApp() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify({ element_ids: elementIds }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.explanationLoading = false;
                 let text = data.explanation || data.message || 'No explanation returned';

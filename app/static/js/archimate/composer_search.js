@@ -43,7 +43,7 @@ let ComposerSearch = (function() {
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
 
             fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 /* ── Invariant 1: Scope required ── */
                 if (data.scope_required) {
@@ -150,7 +150,7 @@ let ComposerSearch = (function() {
             if (self.solutionOnlyFilter && self.solutionId) url += '&solution_id=' + self.solutionId;
 
             fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(resp) {
                     let data = resp.data || resp || [];
                     self.searchResults = Array.isArray(data) ? data.filter(function(el) {
@@ -184,7 +184,7 @@ let ComposerSearch = (function() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify({ name: name, type: type, layer: layer }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let elem = data.element || data;
                 if (elem.id) {
@@ -463,7 +463,7 @@ let ComposerSearch = (function() {
                     + '&col_type=' + encodeURIComponent(self.matrixColType);
             if (self.solutionId) url += '&solution_id=' + self.solutionId;
             fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.matrixRows = data.rows || [];
                 self.matrixCols = data.columns || [];
