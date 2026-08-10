@@ -1,14 +1,14 @@
 """
 Unified Low Priority Routes
 
-Consolidates remaining routes into a single, comprehensive set:
-1. Architecture routes (architecture_routes.py)
-2. Capability map routes (capability_map_routes.py)
-3. Strategic routes (strategic_routes.py)
-4. Consolidation list routes (consolidation_list_routes.py)
-5. Policy monitoring routes (policy_monitoring_routes.py)
+Architecture, strategic, consolidation-list and policy-monitoring routes under
+/enterprise, defined directly on ``unified_low_priority_bp`` below.
 
-Phase 6: Low priority consolidations with full preservation
+The header used to promise a consolidation of five other route modules
+(architecture_routes.py, capability_map_routes.py, strategic_routes.py,
+consolidation_list_routes.py, policy_monitoring_routes.py) via star imports.
+None of those modules exist here; the aggregator never ran. Every route this
+module serves is written out below.
 """
 
 from flask import (
@@ -47,19 +47,15 @@ unified_low_priority_bp = Blueprint(
     "unified_low_priority", __name__, url_prefix="/enterprise"
 )
 
-# Import individual route modules for consolidation
-try:
-    # Import route functions from existing modules
-    from .architecture_routes import *  # noqa: F403 — deliberate route aggregator
-    from .capability_map_routes import *  # noqa: F403 — deliberate route aggregator
-
-    # from .consolidation_list_routes import *  # Removed: violates blueprints ban
-    from .policy_monitoring_routes import *  # noqa: F403 — deliberate route aggregator
-    from .strategic_routes import *  # noqa: F403 — deliberate route aggregator
-
-    LOW_PRIORITY_ROUTES_AVAILABLE = True
-except ImportError:
-    LOW_PRIORITY_ROUTES_AVAILABLE = False
+# There used to be a `try: from .architecture_routes import * ...` aggregator here,
+# star-importing architecture_routes, capability_map_routes, policy_monitoring_routes
+# and strategic_routes and setting LOW_PRIORITY_ROUTES_AVAILABLE.
+#
+# It never ran. The first of the four modules does not exist in this codebase, so the
+# whole block raised ModuleNotFoundError on line one and the except arm set the flag to
+# False — every time, since before capability_map_routes.py was removed. No name below
+# came from it (ruff reports no F405), and nothing anywhere read the flag. Removed
+# rather than left as a comment that reads like a working feature.
 
 
 # === ARCHITECTURE ROUTES ===
