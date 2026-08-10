@@ -1404,6 +1404,10 @@ document.addEventListener('alpine:init', () => {
         async init() {
             try {
                 const r = await fetch('/api/ea/phases/archimate-summary');
+                // The endpoint answers a failure with 500; without this the error
+                // payload parses to no phases and the badge row renders as
+                // "no elements in any phase", which is a different claim.
+                if (!r.ok) throw new Error('archimate-summary request failed: ' + r.status);
                 const data = await r.json();
                 this.phaseSummary = (data.phases || []).filter(p => p.element_count > 0);
                 this.loaded = true;

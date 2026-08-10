@@ -321,8 +321,8 @@ def get_import_statistics():
         return jsonify({"success": True, "statistics": stats or {}})
 
     except Exception as e:
-        logger.warning(f"Import statistics unavailable: {e}")
-        return jsonify({"success": True, "statistics": {}})
+        logger.exception(f"Import statistics unavailable: {e}")
+        return jsonify({"success": False, "error": "Failed to load import statistics"}), 500
 
 
 def register_import_history_routes(app):

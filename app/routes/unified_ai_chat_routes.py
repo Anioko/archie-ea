@@ -260,30 +260,13 @@ def get_available_models():
         )
 
     except Exception as e:
-        current_app.logger.error(f"Error getting available models: {str(e)}")
-        # Return fallback models instead of error to keep UI functional
+        # The former fallback invented two providers that may not be configured
+        # at all, at 200 with success:true — the picker then offered models the
+        # server cannot route to.
+        current_app.logger.exception(f"Error getting available models: {str(e)}")
         return jsonify(
-            {
-                "success": True,
-                "models": [
-                    {
-                        "provider": "huggingface",
-                        "model": "google/flan-t5-base",
-                        "display_name": "HuggingFace - Flan-T5",
-                        "recommended_for": ["General tasks"],
-                    },
-                    {
-                        "provider": "openai",
-                        "model": "gpt-4o-mini",
-                        "display_name": "OpenAI - GPT-4o Mini",
-                        "recommended_for": ["Complex analysis"],
-                    },
-                ],
-                "current_provider": "huggingface",
-                "current_model": "google/flan-t5-base",
-                "warning": "Could not load configured models, showing defaults",
-            }
-        )
+            {"success": False, "error": "Could not load the configured models"}
+        ), 500
 
 
 # ENT-043: LLM health endpoint — polled by the UI health banner
@@ -299,7 +282,12 @@ def llm_health():
             return jsonify({"status": "healthy", "provider": active.provider, "model": active.default_model})
         return jsonify({"status": "degraded", "provider": None, "model": None})
     except Exception:
-        return jsonify({"status": "degraded", "provider": None, "model": None})
+        # "degraded" at 200 is a real verdict the banner renders; a failed probe
+        # is not that verdict and must not be reported as one.
+        current_app.logger.exception("LLM health probe failed")
+        return jsonify(
+            {"success": False, "error": "Could not determine LLM provider status"}
+        ), 500
 
 
 @unified_ai_chat_bp.route("/message", methods=["POST"])
