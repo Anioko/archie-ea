@@ -277,9 +277,14 @@ def auto_map_application(application_id):
         return jsonify({"success": True, **result})
 
     except Exception as e:
-        current_app.logger.error(f"Error in deprecated auto-map (routed to AI): {e}")
+        current_app.logger.exception(f"Error in deprecated auto-map (routed to AI): {e}")
         # Fallback to legacy service if AI fails
         result = ACMTechnicalCapabilityService.auto_map_application_capabilities(application_id)
+        if result.get("error"):
+            # The legacy service signals a missing application in-band; that is not a
+            # successful mapping and must not be reported as one.
+            return jsonify({"success": False, "error": result["error"]}), 404
+        # error-signalling-ok: the legacy fallback ran and produced real mappings, so the request did succeed; the fallback flag tells the caller which path produced them
         return jsonify(
             {
                 "success": True,

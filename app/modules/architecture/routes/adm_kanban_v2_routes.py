@@ -885,7 +885,8 @@ def suggestions_requirements():
         items = query.order_by(ArchiMateElement.name).limit(20).all()
         results = [{'id': r.id, 'label': r.name, 'ref': f'REQ-{r.id:03d}'} for r in items]
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_requirements failed")
+        return jsonify({'success': False, 'error': 'Could not search requirements'}), 500
     return jsonify({'success': True, 'results': results})
 
 
@@ -905,7 +906,8 @@ def suggestions_goals():
         items = query.order_by(ArchiMateElement.name).limit(20).all()
         results = [{'id': r.id, 'label': r.name, 'ref': f'GOAL-{r.id:03d}'} for r in items]
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_goals failed")
+        return jsonify({'success': False, 'error': 'Could not search goals'}), 500
     return jsonify({'success': True, 'results': results})
 
 
@@ -925,7 +927,8 @@ def suggestions_drivers():
         items = query.order_by(ArchiMateElement.name).limit(20).all()
         results = [{'id': r.id, 'label': r.name, 'ref': f'DRV-{r.id:03d}'} for r in items]
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_drivers failed")
+        return jsonify({'success': False, 'error': 'Could not search drivers'}), 500
     return jsonify({'success': True, 'results': results})
 
 
@@ -938,7 +941,8 @@ def suggestions_principles():
         try:
             from app.models.motivation import Principle
         except ImportError:
-            return jsonify({'success': True, 'results': []})
+            current_app.logger.exception("suggestions_principles: no Principle model available")
+            return jsonify({'success': False, 'error': 'Principle search is unavailable'}), 500
     q = request.args.get('q', '').strip()
     try:
         query = Principle.query
@@ -947,7 +951,8 @@ def suggestions_principles():
         items = query.limit(20).all()
         results = [{'id': r.id, 'label': r.name, 'ref': f'PRIN-{r.id:03d}'} for r in items]
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_principles failed")
+        return jsonify({'success': False, 'error': 'Could not search principles'}), 500
     return jsonify({'success': True, 'results': results})
 
 
@@ -972,7 +977,8 @@ def suggestions_users():
             name = ' '.join(filter(None, [u.first_name, u.last_name])).strip() or u.email
             results.append({'id': u.id, 'label': name, 'email': u.email})
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_users failed")
+        return jsonify({'success': False, 'error': 'Could not search users'}), 500
     return jsonify({'success': True, 'results': results})
 
 

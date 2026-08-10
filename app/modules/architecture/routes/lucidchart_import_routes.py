@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from flask import Blueprint, jsonify, request, session, url_for
+from flask import Blueprint, current_app, jsonify, request, session, url_for
 from flask_login import current_user, login_required
 from werkzeug.routing import BuildError
 
@@ -306,7 +306,14 @@ def register_lucidchart_import_routes(bp: Blueprint) -> None:
         try:
             document = _service.get_document_contents(config, document_id=document_id)
         except LucidchartConnectorError:
-            return jsonify({"needs_auth": True}), 200
+            # LucidchartConnectorError covers timeouts and upstream HTTP errors as well
+            # as token problems, so "needs_auth" was telling the user to reconnect for
+            # faults reconnecting cannot fix. The caller checks !resp.ok first and
+            # renders "Workspace import failed".
+            current_app.logger.exception(
+                "Lucidchart document contents fetch failed for document %s", document_id
+            )
+            return jsonify({"error": "Could not fetch the Lucidchart document"}), 502
         try:
             transformer = _transformer_for_request()
         except ValueError as exc:

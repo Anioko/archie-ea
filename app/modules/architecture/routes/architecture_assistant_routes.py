@@ -3514,8 +3514,8 @@ def get_archimate_model():
         )
         return jsonify(model)
     except Exception as e:
-        logger.error(f"get_archimate_model error for cap {capability_id}: {e}")
-        return jsonify({"elements": [], "relationships": [], "error": str(e)}), 200
+        logger.exception(f"get_archimate_model error for cap {capability_id}: {e}")
+        return jsonify({"error": "Could not build the ArchiMate model"}), 500
 
 
 # ---------------------------------------------------------------------------

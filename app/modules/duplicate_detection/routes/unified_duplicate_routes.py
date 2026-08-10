@@ -610,12 +610,19 @@ def run_simple_detection_api():
                 raise
             except Exception as e:
                 db.session.rollback()  # Ensure session is clean
-                current_app.logger.error(f"Hybrid detection failed: {e}")
-                import traceback
-
-                traceback.print_exc()
+                current_app.logger.exception(f"Hybrid detection failed: {e}")
                 # Fall back to simple
                 run = unified_service.run_detection(threshold)
+                if not run.get("success"):
+                    # Both methods failed — there is no result to report.
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": run.get("message")
+                            or "Duplicate detection failed for both the hybrid and simple methods",
+                        }
+                    ), 500
+                # error-signalling-ok: the simple method ran and produced real results; the warning below tells the caller the hybrid method was not used
                 return jsonify(
                     {
                         "success": run.get("success", False),
@@ -2046,15 +2053,8 @@ def api_statistics_summary():
         raise
 
     except Exception as e:
-        current_app.logger.error(f"Stats summary error: {e}")
-        return jsonify(
-            {
-                "total_groups": 0,
-                "total_estimated_savings": 0,
-                "groups_by_priority": [],
-                "latest_run": None,
-            }
-        )
+        current_app.logger.exception(f"Stats summary error: {e}")
+        return jsonify({"error": "Could not load duplicate detection statistics"}), 500
 
 
 @unified_duplicate_bp.route("/api/duplicate-groups")
@@ -2121,20 +2121,8 @@ def api_duplicate_groups():
         raise
 
     except Exception as e:
-        current_app.logger.error(f"Duplicate groups API error: {e}")
-        return jsonify(
-            {
-                "groups": [],
-                "pagination": {
-                    "page": 1,
-                    "per_page": 10,
-                    "total": 0,
-                    "pages": 0,
-                    "has_next": False,
-                    "has_prev": False,
-                },
-            }
-        )
+        current_app.logger.exception(f"Duplicate groups API error: {e}")
+        return jsonify({"error": "Could not load duplicate groups"}), 500
 
 
 @unified_duplicate_bp.route("/api/detection-runs")
@@ -2173,8 +2161,8 @@ def api_detection_runs():
         raise
 
     except Exception as e:
-        current_app.logger.error(f"Detection runs API error: {e}")
-        return jsonify({"runs": []})
+        current_app.logger.exception(f"Detection runs API error: {e}")
+        return jsonify({"error": "Could not load detection runs"}), 500
 
 
 @unified_duplicate_bp.route("/run-detection", methods=["POST"])

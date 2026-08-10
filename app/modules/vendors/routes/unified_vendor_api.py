@@ -412,27 +412,16 @@ def match_vendor():
                 }
             )
         except ImportError:
-            vendors = VendorOrganization.query.filter(
-                VendorOrganization.name.ilike(f"%{application_name[:10]}%")
-            ).all()
-
-            return jsonify(
-                {
-                    "success": True,
-                    "match_result": {
-                        "matches": [
-                            {"vendor": v.to_dict(), "confidence": 0.5}
-                            for v in vendors[:5]
-                        ],
-                        "total_matches": len(vendors),
-                        "match_method": "catalog_search",
-                    },
-                    "request": {
-                        "application_name": application_name,
-                        "description": description,
-                    },
-                }
+            # The name-substring fallback stamped every hit with a literal
+            # confidence of 0.5, which is indistinguishable from a scored match.
+            # VendorProductService ships with the app, so an ImportError here is a
+            # broken install, not a supported degraded mode.
+            current_app.logger.exception(
+                "VendorProductService unavailable; vendor matching cannot run"
             )
+            return jsonify(
+                {"success": False, "error": "Vendor matching is unavailable"}
+            ), 500
 
     except Exception as e:
         current_app.logger.error(f"Error in vendor matching: {e}")

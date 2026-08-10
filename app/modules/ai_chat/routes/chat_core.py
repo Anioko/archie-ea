@@ -942,12 +942,16 @@ def get_token_usage():
         try:
             provider_name, _ = LLMService._get_configured_provider()
         except ValueError:
+            # No LLM provider configured is a settled configuration state, not a failure.
+            # Counts are None (unknowable without a provider tokenizer), never a 0 that
+            # would read as a measured zero.
+            # error-signalling-ok: configuration-state verdict, not a failure; the caller reads configured=false and renders the warning
             return jsonify({
                 "success": True,
                 "token_usage": {
-                    "total_tokens": 0,
-                    "limit": 0,
-                    "percentage": 0,
+                    "total_tokens": None,
+                    "limit": None,
+                    "percentage": None,
                     "warning": "No enabled LLM provider is configured.",
                 },
                 "provider": None,
@@ -1258,8 +1262,8 @@ def list_conversation_threads():
         threads = get_history_service().get_user_threads(current_user.id, limit=100)
         return jsonify({"success": True, "threads": [_conv_dict(t) for t in threads]})
     except Exception as e:
-        current_app.logger.warning("list_conversation_threads failed: %s", e)
-        return jsonify({"success": True, "threads": []})
+        current_app.logger.exception("list_conversation_threads failed: %s", e)
+        return jsonify({"success": False, "error": "Could not load conversations"}), 500
 
 
 @unified_ai_chat_bp.route("/threads/<thread_id>", methods=["GET"])

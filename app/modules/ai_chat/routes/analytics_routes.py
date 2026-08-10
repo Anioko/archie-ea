@@ -59,12 +59,7 @@ def get_usage_analytics():
 
     except Exception as e:
         logger.error(f"Usage analytics failed: {e}", exc_info=True)
-        return jsonify(
-            {
-                "success": True,
-                "analytics": _default_usage_analytics(),
-            }
-        )
+        return jsonify({"success": False, "error": "Could not load usage analytics"}), 500
 
 
 @unified_ai_chat_bp.route("/analytics/domains", methods=["GET"])
@@ -83,12 +78,7 @@ def get_domain_analytics():
 
     except Exception as e:
         logger.error(f"Domain analytics failed: {e}", exc_info=True)
-        return jsonify(
-            {
-                "success": True,
-                "analytics": _default_domain_analytics(),
-            }
-        )
+        return jsonify({"success": False, "error": "Could not load domain analytics"}), 500
 
 
 @unified_ai_chat_bp.route("/analytics/quality", methods=["GET"])
@@ -107,12 +97,7 @@ def get_quality_metrics():
 
     except Exception as e:
         logger.error(f"Quality metrics failed: {e}", exc_info=True)
-        return jsonify(
-            {
-                "success": True,
-                "metrics": _default_quality_metrics(),
-            }
-        )
+        return jsonify({"success": False, "error": "Could not load quality metrics"}), 500
 
 
 @unified_ai_chat_bp.route("/extensions/analytics/portfolio-health", methods=["GET"])
