@@ -30,6 +30,10 @@ scripts/bin/tailwindcss
 # build step (the Docker image is Python-only). Regenerate it with the build
 # script when templates/classes change; the hashed variants stay ignored.
 app/static/css/tailwind-output.*.css
+# --check writes a pid-suffixed backup and restores from it. If the
+# process dies mid-check the file survives; it is a build artifact,
+# never a source file.
+app/static/css/*.checkbak*
 
 # Asset manifest (build artifact from scripts/build_css.py)
 app/static/manifest.json
