@@ -70,11 +70,16 @@ class WorkflowArchiMateContextService:
         nothing", which the phase viewpoint endpoints publish as a coverage
         figure.
         """
-        # properties is db.Text (JSON string); use LIKE for phase match, plateau as fallback
+        # properties is db.Text (JSON string); use LIKE for phase match, plateau as fallback.
+        # NOTE: ArchiMateElement.plateau is a relationship backref (Plateau.archimate_element,
+        # see app/models/implementation_migration.py) that shadows the TOGAF plateau string
+        # column, which is mapped to the Python attribute `togaf_plateau` for that reason —
+        # comparing the relationship with `==` raises InvalidRequestError ("Can't compare a
+        # collection to an object or collection").
         elements = ArchiMateElement.query.filter(
             db.or_(
                 ArchiMateElement.properties.like('%"adm_phase": "' + phase_code + '"%'),
-                ArchiMateElement.plateau == phase_code,
+                ArchiMateElement.togaf_plateau == phase_code,
             )
         ).all()
         return [
