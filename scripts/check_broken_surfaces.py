@@ -127,9 +127,25 @@ def _route_matcher():
     """Return a predicate that says whether a concrete path resolves to a route."""
     os.environ.setdefault("FLASK_CONFIG", "testing")
     sys.path.insert(0, str(ROOT))
-    from app import create_app
+    try:
+        from app import create_app
 
-    app = create_app("testing")
+        app = create_app("testing")
+    except Exception as exc:  # noqa: BLE001
+        # Say WHY, loudly, instead of dying in a traceback. This gate resolves
+        # URLs against the app's real url_map, so it cannot run anywhere the app
+        # cannot be imported - and when it was mistakenly tagged `static` it
+        # crashed in CI's dependency-free job on every run for a week. An opaque
+        # traceback reads as "the gate found something"; it took reading the CI
+        # log to see the gate had never run at all.
+        raise SystemExit(
+            "check_broken_surfaces cannot run: the Flask app failed to import "
+            "or boot (%s: %s).\n"
+            "This gate needs the application dependencies installed and a "
+            "bootable app - it belongs in a job that runs `pip install -r "
+            "requirements.txt`, alongside boot-health. It is NOT a static "
+            "gate." % (type(exc).__name__, str(exc)[:200])
+        )
     rules = list(app.url_map.iter_rules())
 
     # Convert each rule into a regex. <path:x> matches slashes; every other

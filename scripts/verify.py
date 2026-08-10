@@ -890,7 +890,15 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_broken_surfaces(baseline.get("broken_surfaces", 479)),
              remediation="run scripts/check_broken_surfaces.py; repoint the URL, "
                          "remove the dead control, or report the failure to the user",
-             tags=["static", "ui"]),
+             # NOT "static". This gate boots the Flask app to read its real
+             # url_map, and CI's static-gates job installs only ruff/pip-audit/
+             # jinja2 and says so in its own header: "No database, no app boot."
+             # Tagged static, it crashed there on every run for a week - and
+             # because it crashed rather than reported findings, the failure
+             # read as a gate failure rather than as "this gate cannot run
+             # here". It belongs with boot-health, which installs requirements
+             # and already boots the app for the same reason.
+             tags=["boot", "ui"]),
         Gate("fetch-guards", "no fetch parsed without checking the response", "ratchet",
              lambda: gate_fetch_guards(baseline.get("fetch_guards", 107)),
              remediation="run scripts/check_fetch_guards.py; add if (!resp.ok) throw, "

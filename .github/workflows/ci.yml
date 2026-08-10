@@ -111,6 +111,15 @@ jobs:
           FLASK_CONFIG: testing
           SECRET_KEY: ci-only-not-secret
         run: python scripts/verify.py --gate boot-health
+      # broken-surfaces belongs here for the same reason boot-health does: it
+      # resolves every href and fetch() against the app's REAL url_map, so it
+      # has to boot the app. It was tagged `static` when introduced and crashed
+      # on every run in that job, which installs no application dependencies.
+      - name: Front-end targets resolve to real routes
+        env:
+          FLASK_CONFIG: testing
+          SECRET_KEY: ci-only-not-secret
+        run: python scripts/verify.py --gate broken-surfaces
       # deployed-deps belongs here, not in static-gates: it compares
       # requirements.txt against what is importable, so it needs the
       # dependencies this job installs.
