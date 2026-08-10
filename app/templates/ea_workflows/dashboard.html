@@ -59,7 +59,7 @@
                 <i data-lucide="play" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
             </div>
             <div>
-                <p class="text-2xl font-bold tracking-tight">{{ status_counts.running or 0 }}</p>
+                <p class="text-2xl font-bold tracking-tight">{{ status_counts.running|dash if status_counts else '—' }}</p>
                 <p class="text-xs text-muted-foreground">Running</p>
             </div>
         </div>
@@ -68,7 +68,7 @@
                 <i data-lucide="clock" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
             </div>
             <div>
-                <p class="text-2xl font-bold tracking-tight">{{ status_counts.waiting_approval or 0 }}</p>
+                <p class="text-2xl font-bold tracking-tight">{{ status_counts.waiting_approval|dash if status_counts else '—' }}</p>
                 <p class="text-xs text-muted-foreground">Waiting Approval</p>
             </div>
             {% if status_counts.waiting_approval %}
@@ -80,7 +80,7 @@
                 <i data-lucide="check-circle" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
             </div>
             <div>
-                <p class="text-2xl font-bold tracking-tight">{{ status_counts.completed or 0 }}</p>
+                <p class="text-2xl font-bold tracking-tight">{{ status_counts.completed|dash if status_counts else '—' }}</p>
                 <p class="text-xs text-muted-foreground">Completed</p>
             </div>
         </div>

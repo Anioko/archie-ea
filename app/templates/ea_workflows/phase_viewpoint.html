@@ -86,11 +86,11 @@
     {% call card_content() %}
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="text-center p-4 rounded-lg bg-muted/50">
-          <p class="text-2xl font-bold" x-text="elementCount">{{ element_count }}</p>
+          <p class="text-2xl font-bold" x-text="elementCount ?? '—'">{{ element_count | dash }}</p>
           <p class="text-sm text-muted-foreground">Elements</p>
         </div>
         <div class="text-center p-4 rounded-lg bg-muted/50">
-          <p class="text-2xl font-bold" x-text="relationshipCount">{{ relationship_count }}</p>
+          <p class="text-2xl font-bold" x-text="relationshipCount ?? '—'">{{ relationship_count | dash }}</p>
           <p class="text-sm text-muted-foreground">Relationships</p>
         </div>
         <div class="text-center p-4 rounded-lg bg-muted/50">
@@ -166,8 +166,8 @@
 document.addEventListener('alpine:init', () => {
     Alpine.data('phaseViewpointData', () => ({
         elements: {{ elements | tojson }},
-        elementCount: {{ element_count }},
-        relationshipCount: {{ relationship_count }},
+        elementCount: {{ element_count | tojson }},
+        relationshipCount: {{ relationship_count | tojson }},
 
         get layerCount() {
             const layers = new Set(this.elements.map(e => e.layer || 'unknown'));

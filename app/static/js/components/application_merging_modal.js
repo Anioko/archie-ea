@@ -234,7 +234,7 @@ function displayMergeSummary(data) {
   let summaryHtml = '';
   if (data.truncated) {
     summaryHtml +=
-      '<div class="col-span-full p-3 rounded bg-amber-50 border border-amber-200 text-amber-800 text-sm">' +
+      '<div class="col-span-full p-3 rounded bg-warning/10 border border-warning/40 text-warning-emphasis text-sm">' +
       (data.truncation_note || 'Results are truncated — not every active application was compared.') +
       '</div>';
   }

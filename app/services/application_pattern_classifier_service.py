@@ -20,7 +20,7 @@ import json
 import logging
 from typing import Dict, List, Optional
 
-from flask import current_app
+from flask import current_app, g
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
@@ -69,7 +69,7 @@ def _log_orphaned_future_exception(future: "concurrent.futures.Future") -> None:
         )
 
 
-def _call_generate_from_prompt_in_app_context(app, prompt: str) -> str:
+def _call_generate_from_prompt_in_app_context(app, prompt: str, org_id) -> str:
     """Run LLMService.generate_from_prompt inside *app*'s application context.
 
     The executor thread has no Flask context of its own. generate_from_prompt
@@ -78,10 +78,21 @@ def _call_generate_from_prompt_in_app_context(app, prompt: str) -> str:
     context" without one — previously this ran bare, so a call that completed
     after its request had already timed out raised inside the thread pool
     with nothing ever observing it (see _log_orphaned_future_exception).
+
+    org_id must be captured on the request thread and passed in explicitly —
+    app/middleware/tenant_context.py sets g.current_org_id in a before_request
+    handler that never runs for this executor thread. Without it,
+    app/middleware/tenant_isolation.py skips tenant filtering entirely (it
+    returns unfiltered when g.current_org_id is absent), so the
+    APISettings.query.filter_by(enabled=True) lookup inside
+    _call_llm_with_key_failover would see every organisation's enabled API
+    keys and could bill this call to another tenant's provider account. Same
+    fix as app/modules/ai_chat/routes/chat_core.py's run_agent() worker.
     """
     from app.services.llm_service import LLMService  # lazy import to avoid circular
 
     with app.app_context():
+        g.current_org_id = org_id
         return LLMService.generate_from_prompt(
             prompt, use_cache=True, timeout=LLM_CLASSIFY_TIMEOUT_SECONDS
         )
@@ -241,8 +252,13 @@ def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
 
     try:
         app = current_app._get_current_object()
+        # Capture the tenant on the request thread before handing off to the
+        # executor - see _call_generate_from_prompt_in_app_context for why.
+        from app.middleware.tenant_context import current_org_id as _current_org_id
+
+        org_id = _current_org_id()
         future = _llm_classify_executor.submit(
-            _call_generate_from_prompt_in_app_context, app, prompt
+            _call_generate_from_prompt_in_app_context, app, prompt, org_id
         )
         future.add_done_callback(_log_orphaned_future_exception)
         try:
