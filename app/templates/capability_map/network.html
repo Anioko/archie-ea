@@ -100,14 +100,19 @@
                 </label>
             </div>
             <div class="text-sm text-muted-foreground">
-                <span x-text="nodeCount"></span> nodes, <span x-text="linkCount"></span> links
+                <span x-text="nodeCount ?? '—'"></span> nodes, <span x-text="linkCount ?? '—'"></span> links
             </div>
         </div>
     </div>
 
     <!-- Network Graph -->
     <div class="bg-card rounded-lg shadow border">
-        <div id="network-graph" class="w-full h-96 lg:h-[600px]"></div>
+        <div x-show="loadError" x-cloak class="p-12 text-center">
+            <p class="text-sm font-medium text-destructive" x-text="loadError"></p>
+            <p class="mt-1 text-sm text-muted-foreground">The graph was never drawn — this is not an empty capability model.</p>
+            <button type="button" class="mt-3 text-sm text-primary underline" @click="loadData()">Retry</button>
+        </div>
+        <div id="network-graph" class="w-full h-96 lg:h-[600px]" x-show="!loadError"></div>
     </div>
 
     <!-- Legend -->
@@ -132,9 +137,11 @@
             capabilities: null,
             showFunctions: true,
             showLabels: true,
-            nodeCount: 0,
-            linkCount: 0,
+            // Nothing counted until the graph renders; null shows as an em dash.
+            nodeCount: null,
+            linkCount: null,
             domains: [],
+            loadError: null,
 
             init() {
                 this.loadData();
@@ -146,13 +153,21 @@
             async loadData() {
                 try {
                     const response = await fetch('/capability-map/api/capabilities');
+                    if (!response.ok) throw new Error('Could not load capability network data (HTTP ' + response.status + ')');
                     const data = await response.json();
                     this.capabilities = data;
                     this.domains = data.statistics.domains;
                     this.renderNetwork();
+                    this.loadError = null;
                 } catch (error) {
-                    console.error('Error loading capabilities:', error);
-                    if (window.Platform && Platform.toast) Platform.toast.error('Could not load capability network data.');
+                    // A blank canvas showing "0 nodes, 0 links" would read as a capability
+                    // model that has nothing in it. Say the graph was never drawn.
+                    this.capabilities = null;
+                    this.domains = [];
+                    this.nodeCount = null;
+                    this.linkCount = null;
+                    this.loadError = error.message || 'Could not load capability network data.';
+                    if (window.Platform && Platform.toast) Platform.toast.error(this.loadError);
                 }
             },
 

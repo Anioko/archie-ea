@@ -281,7 +281,12 @@
         </div>
 
         {# Empty — PLT-040: role-aware CTA #}
-        <div x-show="!loading && elements.length === 0" x-cloak class="p-12 text-center">
+        <div x-show="!loading && elementsError" x-cloak class="p-12 text-center">
+            <p class="text-destructive" x-text="elementsError"></p>
+            <p class="text-sm text-muted-foreground mt-1">The list was not read — this is not "no matches".</p>
+            <button type="button" class="mt-3 text-sm text-primary underline" @click="fetchElements()">Retry</button>
+        </div>
+        <div x-show="!loading && !elementsError && elements.length === 0" x-cloak class="p-12 text-center">
             <p class="text-muted-foreground">No elements match your filters.</p>
             <button @click="clearFilters()" class="mt-2 text-sm text-primary hover:underline">Clear all filters</button>
             {% if current_user.enterprise_role in ('enterprise_architect', 'platform_admin') or current_user.is_admin() %}
@@ -553,6 +558,7 @@ document.addEventListener('alpine:init', () => {
         selectedElement: null,
         detailLoading: false,
         relationshipsError: false,
+        elementsError: null,
         relationships: [],
         showCreateModal: false,
         createSubmitting: false,
@@ -636,6 +642,7 @@ document.addEventListener('alpine:init', () => {
         async fetchLayers() {
             try {
                 const statsResp = await fetch('/capability-map/api/archimate/relationship-health');
+                if (!statsResp.ok) throw new Error('Could not load layer counts (HTTP ' + statsResp.status + ')');
                 const statsJson = await statsResp.json();
                 const byLayer = statsJson.by_layer || [];
                 const layerCounts = {};
@@ -647,8 +654,9 @@ document.addEventListener('alpine:init', () => {
                     count: layerCounts[l.name.toLowerCase()] || l.count,
                 }));
             } catch (e) {
-                console.error('Failed to refresh layer counts:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error('Could not load layer counts.');
+                // The counts already on screen came from the server-rendered layer list,
+                // so they are left alone; only the refresh failed.
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Could not load layer counts.');
             }
         },
 
@@ -665,13 +673,15 @@ document.addEventListener('alpine:init', () => {
                 if (this.filterHasRels) url += '&has_rels=' + encodeURIComponent(this.filterHasRels);
                 if (this.filterHasSolutions) url += '&has_solutions=' + encodeURIComponent(this.filterHasSolutions);
                 const resp = await fetch(url);
+                if (!resp.ok) throw new Error('Could not load elements (HTTP ' + resp.status + ')');
                 const json = await resp.json();
                 this.elements = json.data || [];
                 // Approximate pagination (search endpoint doesn't return total)
                 this.totalPages = this.elements.length < this.perPage ? this.page : this.page + 1;
+                this.elementsError = null;
             } catch (e) {
-                console.error('Failed to fetch elements:', e);
                 this.elements = [];
+                this.elementsError = e.message || 'Could not load elements.';
             }
             this.loading = false;
         },
@@ -737,12 +747,13 @@ document.addEventListener('alpine:init', () => {
             this.relationshipsError = false;
             try {
                 const resp = await fetch('/architecture/api/elements/' + el.id + '/relationships');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const json = await resp.json();
                 const incoming = (json.incoming || []).map(r => ({...r, direction: 'incoming'}));
                 const outgoing = (json.outgoing || []).map(r => ({...r, direction: 'outgoing'}));
                 this.relationships = [...outgoing, ...incoming];
             } catch (e) {
-                console.error('Failed to load relationships:', e);
+                this.relationships = [];
                 this.relationshipsError = true;
             }
             this.detailLoading = false;

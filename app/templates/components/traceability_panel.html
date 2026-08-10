@@ -49,6 +49,7 @@
         (async () => {
             try {
                 const res = await fetch('/api/solutions/{{ entity_id }}/traceability');
+                if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = await res.json();
                 
                 document.getElementById('trace-capabilities-{{ entity_id }}').innerHTML = 
@@ -64,7 +65,6 @@
                 document.getElementById('trace-requirements-{{ entity_id }}').innerHTML = 
                     data.requirements?.length || 0;
             } catch (e) {
-                console.error('Traceability fetch failed:', e);
                 // Otherwise these three panels are stuck reading "Loading..." forever,
                 // which looks like the request is still in flight.
                 ['trace-capabilities-{{ entity_id }}', 'trace-applications-{{ entity_id }}', 'trace-requirements-{{ entity_id }}'].forEach(function(id) {

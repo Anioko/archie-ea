@@ -127,7 +127,14 @@
       <span class="text-xs text-muted-foreground">ArchiMate 3.2 Implementation &amp; Migration Layer</span>
     </div>
     <div class="p-6">
-      <template x-if="plateaus.length === 0">
+      <template x-if="errorMessage">
+        <div class="flex flex-col items-center justify-center py-10 text-center">
+          <i data-lucide="alert-triangle" class="mb-3 h-10 w-10 text-destructive"></i>
+          <p class="text-sm font-medium text-destructive" x-text="errorMessage"></p>
+          <p class="mt-1 text-xs text-muted-foreground">The roadmap could not be read — this is not an empty roadmap.</p>
+        </div>
+      </template>
+      <template x-if="!errorMessage && plateaus.length === 0">
         <div class="flex flex-col items-center justify-center py-10 text-center">
           <i data-lucide="layers" class="mb-3 h-10 w-10 text-muted-foreground/40"></i>
           <p class="text-sm font-medium text-foreground">No plateaus defined</p>
@@ -206,7 +213,14 @@
           </tr>
         </thead>
         <tbody>
-          <template x-if="workPackages.length === 0">
+          <template x-if="errorMessage">
+            <tr>
+              <td colspan="7" class="px-4 py-10 text-center text-sm text-destructive">
+                Work packages could not be read — this is not "none yet".
+              </td>
+            </tr>
+          </template>
+          <template x-if="!errorMessage && workPackages.length === 0">
             <tr>
               <td colspan="7" class="px-4 py-10 text-center text-sm text-muted-foreground">
                 No work packages yet. Add a gap first, then create work packages to resolve it.
@@ -629,33 +643,42 @@
       async loadGaps() {
         try {
           const r = await fetch('/capability-map/api/roadmap/gaps');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
           const d = await r.json();
           this.gaps = d.gaps || [];
           Alpine.store('rdm').gaps = this.gaps;
-        } catch {
-          this.errorMessage = 'Failed to load gaps.';
+        } catch (e) {
+          this.gaps = [];
+          Alpine.store('rdm').gaps = [];
+          this.errorMessage = 'Failed to load gaps (' + e.message + ').';
         }
       },
 
       async loadPlateaus() {
         try {
           const r = await fetch('/capability-map/api/roadmap/plateaus');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
           const d = await r.json();
           this.plateaus = d.plateaus || [];
           Alpine.store('rdm').plateaus = this.plateaus;
-        } catch {
-          this.errorMessage = 'Failed to load plateaus.';
+        } catch (e) {
+          this.plateaus = [];
+          Alpine.store('rdm').plateaus = [];
+          this.errorMessage = 'Failed to load plateaus (' + e.message + ').';
         }
       },
 
       async loadWorkPackages() {
         try {
           const r = await fetch('/capability-map/api/roadmap/work-packages');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
           const d = await r.json();
           this.workPackages = d.work_packages || [];
           Alpine.store('rdm').workPackages = this.workPackages;
-        } catch {
-          this.errorMessage = 'Failed to load work packages.';
+        } catch (e) {
+          this.workPackages = [];
+          Alpine.store('rdm').workPackages = [];
+          this.errorMessage = 'Failed to load work packages (' + e.message + ').';
         }
       },
 
