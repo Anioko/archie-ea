@@ -767,7 +767,7 @@ def register_ea_workflow_routes(main_blueprint):
                 iterations[inst.iteration_number].append(inst)
 
             journeys = []
-            for iter_num in sorted(iterations.keys()):
+            for iter_num in sorted(iterations.keys(), key=lambda k: (k is None, k)):
                 phases = iterations[iter_num]
                 completed = sum(1 for p in phases if p.status == "completed")
                 total = len(phases)
@@ -779,8 +779,8 @@ def register_ea_workflow_routes(main_blueprint):
                         {
                             "id": p.id,
                             "workflow_code": p.definition.workflow_code if p.definition else "unknown",
-                            "workflow_name": p.definition.name if p.definition else "Unknown",
-                            "togaf_phase": p.definition.togaf_phase if p.definition else None,
+                            "workflow_name": p.definition.workflow_name if p.definition else "Unknown",
+                            "togaf_phase": p.definition.adm_phase if p.definition else None,
                             "status": p.status,
                             "created_at": p.created_at.isoformat() if p.created_at else None,
                             "completed_at": p.completed_at.isoformat() if p.completed_at else None,
