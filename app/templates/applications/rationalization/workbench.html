@@ -272,9 +272,11 @@
                             <td class="px-3 py-2 font-medium text-muted-foreground" x-text="dimName"></td>
                             <template x-for="ca in compareApps" :key="ca.id + dimName">
                                 <td class="px-3 py-2">
+                                    {# null = the server did not report this dimension. An em
+                                       dash, never 0 — a 0 here reads as a measured worst score. #}
                                     <span class="font-bold"
-                                          :class="(ca.dims[dimName] || 0) >= 70 ? 'text-emerald-600' : (ca.dims[dimName] || 0) >= 40 ? 'text-amber-600' : 'text-destructive'"
-                                          x-text="ca.dims[dimName] || 0"></span>
+                                          :class="ca.dims[dimName] == null ? 'text-muted-foreground' : (ca.dims[dimName] >= 70 ? 'text-emerald-600' : ca.dims[dimName] >= 40 ? 'text-amber-600' : 'text-destructive')"
+                                          x-text="ca.dims[dimName] == null ? '—' : ca.dims[dimName]"></span>
                                 </td>
                             </template>
                         </tr>
@@ -357,12 +359,12 @@
                                     <span class="text-xs font-medium text-muted-foreground w-28" x-text="dim.label"></span>
                                     <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                                         <div class="h-full rounded-full"
-                                             :class="dim.score >= 70 ? 'bg-emerald-500' : dim.score >= 40 ? 'bg-amber-500' : 'bg-destructive'"
-                                             :style="'width:' + dim.score + '%'"></div>
+                                             :class="dim.score === null ? 'bg-muted' : (dim.score >= 70 ? 'bg-emerald-500' : dim.score >= 40 ? 'bg-amber-500' : 'bg-destructive')"
+                                             :style="'width:' + (dim.score === null ? 0 : dim.score) + '%'"></div>
                                     </div>
                                     <span class="text-xs font-bold w-8 text-right"
-                                          :class="dim.score >= 70 ? 'text-emerald-600' : dim.score >= 40 ? 'text-amber-600' : 'text-destructive'"
-                                          x-text="dim.score"></span>
+                                          :class="dim.score === null ? 'text-muted-foreground' : (dim.score >= 70 ? 'text-emerald-600' : dim.score >= 40 ? 'text-amber-600' : 'text-destructive')"
+                                          x-text="dim.score === null ? '—' : dim.score"></span>
                                 </div>
                             </template>
                         </div>
@@ -377,7 +379,7 @@
                                         <div class="flex items-center gap-2 text-xs text-muted-foreground pl-2">
                                             <span class="w-28 truncate" x-text="f.name"></span>
                                             <span class="font-mono" x-text="f.raw_value != null ? f.raw_value : '—'"></span>
-                                            <span class="ml-auto" x-text="'+' + (f.contribution || 0)"></span>
+                                            <span class="ml-auto" x-text="f.contribution == null ? '—' : '+' + f.contribution"></span>
                                         </div>
                                     </template>
                                 </div>
