@@ -27,6 +27,7 @@ again.
 from __future__ import annotations
 
 import json
+import time
 import uuid
 
 import pytest
@@ -224,3 +225,85 @@ class TestStreamCarriesTheFailureMessage:
         done = done_events[0]
         assert (done.get("response") or "").strip(), "no response text to render"
         assert done.get("error"), "no error reason recorded for the missing API key case"
+
+
+class TestKeepaliveKeepsTheStreamGenuinelyBusy:
+    """Task 3 review fix: the client's 30s idle-read timeout only avoids
+    false-positiving on a legitimately slow turn if the server keeps sending
+    SOMETHING at a shorter interval. Before this fix, chat_core.py's SSE
+    generator only backstopped an empty queue at 95s
+    (event_queue.get(timeout=95)) - well OUTSIDE the 30s window it was
+    supposed to be safely inside, so any turn slower than 30s to first token
+    (not wedged, just busy) got killed by the client as a transport failure.
+
+    This pins the server half of the fix: with the queue genuinely silent
+    (the mocked LLM call sleeps well past one keepalive interval before
+    ever raising), the SSE stream must carry at least one `{"type":
+    "keepalive"}` event before the eventual `done` - proving the interval
+    is actually enacted, not just documented in a comment.
+    """
+
+    def test_keepalive_event_emitted_during_queue_silence(self, app, client):
+        from app import db
+
+        with app.app_context():
+            user_id = _make_user(db)
+        _login(client, user_id)
+
+        from app.modules.ai_chat.routes import chat_core
+        from app.modules.ai_chat.services.agent_runner import AgentRunner
+        from app.modules.ai_chat.services.llm_service_impl import LLMService
+
+        # Shrunk from the 15s production interval so this test does not
+        # itself take 30+ seconds to prove the same thing.
+        _KEEPALIVE_TEST_INTERVAL_S = 0.3
+
+        def _slow_then_raise_call_llm(self, *args, **kwargs):
+            # Long enough to guarantee at least two keepalive intervals pass
+            # with the event_queue genuinely empty, short enough to keep the
+            # test fast.
+            time.sleep(_KEEPALIVE_TEST_INTERVAL_S * 3)
+            raise RuntimeError("simulated slow, then failing, LLM call")
+
+        with app.app_context():
+            _orig_interval = chat_core._STREAM_KEEPALIVE_INTERVAL_S
+            _orig_provider = LLMService._get_configured_provider
+            _orig_keys = LLMService._get_all_api_keys
+            _orig_call = AgentRunner._call_llm
+            try:
+                chat_core._STREAM_KEEPALIVE_INTERVAL_S = _KEEPALIVE_TEST_INTERVAL_S
+                LLMService._get_configured_provider = staticmethod(
+                    lambda: ("anthropic", "claude-3-5-sonnet-20241022")
+                )
+                LLMService._get_all_api_keys = staticmethod(lambda provider: ["fake-test-key"])
+                AgentRunner._call_llm = _slow_then_raise_call_llm
+
+                resp = client.post(
+                    "/ai-chat/message/stream",
+                    data=json.dumps({"message": "Take your time"}),
+                    content_type="application/json",
+                )
+                body = resp.get_data()  # blocks until the background thread's done event
+            finally:
+                chat_core._STREAM_KEEPALIVE_INTERVAL_S = _orig_interval
+                LLMService._get_configured_provider = _orig_provider
+                LLMService._get_all_api_keys = _orig_keys
+                AgentRunner._call_llm = _orig_call
+
+        assert resp.status_code == 200
+        events = _parse_sse_events(body)
+
+        keepalives = [e for e in events if e.get("type") == "keepalive"]
+        assert keepalives, (
+            "no keepalive event was emitted while the queue sat empty for "
+            f"{_KEEPALIVE_TEST_INTERVAL_S * 3}s against a "
+            f"{_KEEPALIVE_TEST_INTERVAL_S}s interval - a client relying on "
+            "these to distinguish 'slow' from 'wedged' would misfire"
+        )
+
+        done_events = [e for e in events if e.get("type") == "done"]
+        assert len(done_events) == 1
+        # The keepalive(s) must precede the done event, not follow it - a
+        # keepalive after the terminal event would be a generator that keeps
+        # looping instead of returning.
+        assert events.index(keepalives[0]) < events.index(done_events[0])

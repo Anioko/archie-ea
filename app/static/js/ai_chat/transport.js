@@ -55,12 +55,23 @@
 
     var _controller = null;
 
-    /* No SSE event — not even a keepalive — for this long means the agent
-       thread has wedged rather than merely being slow (see chat_core.py's
-       own 95s keepalive on the same queue.get(); this is the client's
-       independent backstop, an order of magnitude below that). Idle, not
-       total: reset on every chunk, so a normal multi-second answer that
-       keeps producing tokens is never punished for its total length. */
+    /* No SSE event — not even a keepalive — for this long means the
+       connection itself has gone dead rather than the agent merely being
+       slow. chat_core.py emits a real `keepalive` event at least every 15s
+       even while its own queue is empty (_STREAM_KEEPALIVE_INTERVAL_S) —
+       specifically so this 30s window sits comfortably ABOVE that interval
+       rather than inside it. It used to wrap a 95s server backstop with a
+       30s client timer, which is the false-positive Task 3's review caught:
+       any turn slower than 30s to first token — a legitimately busy model,
+       not a wedge — was killed as a transport failure. Two missed
+       keepalives (30s) plus the wait for a third (up to 15s) puts genuine
+       wedge detection at ~45s, matching the plan's target, with no
+       false positive on a merely-slow turn as long as the server keeps
+       emitting on schedule.
+       Idle, not total: reset on every chunk (see _readWithTimeout), so a
+       normal multi-second answer that keeps producing tokens — or nothing
+       but keepalives while a tool runs — is never punished for its total
+       length. */
     var STREAM_IDLE_TIMEOUT_MS = 30000;
 
     /* Stream a turn over SSE.
