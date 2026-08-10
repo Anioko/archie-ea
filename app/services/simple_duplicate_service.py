@@ -8,6 +8,7 @@ from datetime import datetime
 from .. import db
 from ..models.simple_duplicate_detection import SimpleDuplicateGroup, SimpleDetectionRun
 from ..models.application_portfolio import ApplicationComponent
+from app.utils.tenant_sql import current_org_id
 
 logger = logging.getLogger(__name__)
 
@@ -534,7 +535,27 @@ class SimpleDuplicateService:
             for app in apps_to_delete:
                 try:
                     app_id = app.id
-                    
+
+                    # Ownership gate, ahead of every cascade delete below.
+                    #
+                    # SimpleDuplicateGroup is not a TenantMixin model, so the
+                    # group lookup above is unfiltered. The delete of the
+                    # application itself already carries an org predicate, but it
+                    # runs LAST: without this check the child rows in
+                    # application_capability_mapping and application_data_objects
+                    # were already gone by the time that predicate declined to
+                    # delete another organisation's application. Neither child
+                    # table can be scoped on its own — application_data_objects
+                    # has an organization_id column that is NULL on every row,
+                    # and application_capability_mapping's is NULL too — so the
+                    # check has to happen here, on the parent.
+                    _org = current_org_id()
+                    if _org is not None and getattr(app, "organization_id", None) != _org:
+                        errors.append(
+                            f'Application {app.name} does not belong to this organization'
+                        )
+                        continue
+
                     # Clean the simple duplicate group junction table first (this is the main issue)
                     try:
                         db.session.execute(  # tenant-filtered: scoped via parent FK (app_id)
@@ -558,7 +579,11 @@ class SimpleDuplicateService:
                     
                     # 2. application_data_objects (we know this exists but has different column name)
                     try:
-                        db.session.execute(  # tenant-filtered: scoped via parent FK (app_id)
+                        # tenancy-ok: gated by the app.organization_id == current_org_id
+                        # check at the top of this loop. The table's own
+                        # organization_id is NULL on every row, so a predicate
+                        # here would delete nothing and leak the FK violation.
+                        db.session.execute(
                             db.text("DELETE FROM application_data_objects WHERE application_component_id = :app_id"),
                             {'app_id': app_id}
                         )

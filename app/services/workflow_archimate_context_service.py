@@ -3,6 +3,7 @@
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 from app.models.workflow_models import EAWorkflowInstance
 from app import db
+from app.utils.tenant_sql import org_scope
 
 
 class WorkflowArchiMateContextService:
@@ -19,16 +20,21 @@ class WorkflowArchiMateContextService:
         already wraps this in a handler that logs, or would rather raise than
         render a fabricated empty viewpoint.
         """
-        # Primary path: query junction table (EAW-001)
-        rows = db.session.execute(  # tenant-filtered: scoped via parent FK (instance_id)
+        # Primary path: query junction table (EAW-001).
+        #
+        # Neither workflow_instance_archimate_elements nor ea_workflow_instances
+        # has an organization_id column, so instance_id alone establishes
+        # nothing. archimate_elements does — scope on it.
+        _org_clause, _org_params = org_scope(prefix="ae.")
+        rows = db.session.execute(
             db.text(
                 "SELECT ae.id, ae.name, ae.type, ae.layer, w.element_role, w.adm_phase "
                 "FROM workflow_instance_archimate_elements w "
                 "JOIN archimate_elements ae ON ae.id = w.element_id "
-                "WHERE w.instance_id = :iid "
-                "ORDER BY w.adm_phase, ae.type, ae.name"
+                "WHERE w.instance_id = :iid" + _org_clause +
+                " ORDER BY w.adm_phase, ae.type, ae.name"
             ),
-            {"iid": instance_id},
+            {"iid": instance_id, **_org_params},
         ).fetchall()
 
         if rows:

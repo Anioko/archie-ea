@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from app import db
+from app.utils.tenant_sql import org_scope
 
 
 # Default phase gate chain: phase → list of prior phases whose outputs are required
@@ -167,7 +168,13 @@ class ADMPhaseGateService:
         ``False`` here becomes a "missing element types" gate rejection that
         names a cause which was never established.
         """
-        row = db.session.execute(  # tenant-filtered: scoped via architecture_id FK
+        # Neither junction table nor ea_workflow_instances carries an
+        # organization_id column, so architecture_id proves nothing about
+        # ownership. archimate_elements is in this join and does carry one —
+        # scope there, which also keeps the gate verdict about this tenant's
+        # own outputs rather than another organisation's.
+        _org_clause, _org_params = org_scope(prefix="ae.")
+        row = db.session.execute(
             db.text(
                 "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
                 "JOIN ea_workflow_instances i ON i.id = w.instance_id "
@@ -175,9 +182,10 @@ class ADMPhaseGateService:
                 "WHERE i.architecture_id = :arch_id "
                 "AND w.adm_phase = :phase "
                 "AND ae.type = :etype "
-                "AND w.element_role = 'output'"
+                "AND w.element_role = 'output'" + _org_clause
             ),
-            {"arch_id": architecture_id, "phase": phase_code, "etype": element_type},
+            {"arch_id": architecture_id, "phase": phase_code, "etype": element_type,
+             **_org_params},
         ).scalar()
         return int(row or 0) > 0
 

@@ -1829,14 +1829,28 @@ class RationalizationScoringService:
         # Apps covering more business capabilities are more valuable to the organization.
         try:
             from app import db as _db
+            from app.utils.tenant_sql import org_scope
+
+            # Dual-use path: `flask rationalization score-all` walks every
+            # organisation's applications in one session with no request
+            # context, so g.current_org_id is None here and reaching for it
+            # would leave the query global. Scope on the application being
+            # scored instead — same predicate under a request and under the CLI.
+            #
+            # bc, not acm: application_capability_mapping has an organization_id
+            # column but it is NULL on every row, so a predicate there would
+            # score every application as covering zero capabilities.
+            _org_clause, _org_params = org_scope(
+                prefix="bc.", org_id=getattr(app, "organization_id", None)
+            )
             cap_row = _db.session.execute(_db.text(
                 "SELECT COUNT(*) as cap_count, "
                 "SUM(CASE WHEN bc.level = 1 THEN 1 ELSE 0 END) as l1_count, "
                 "SUM(CASE WHEN bc.level = 2 THEN 1 ELSE 0 END) as l2_count "
                 "FROM application_capability_mapping acm "
                 "JOIN business_capability bc ON bc.id = acm.business_capability_id "
-                "WHERE acm.application_component_id = :app_id"
-            ), {"app_id": app.id}).fetchone()
+                "WHERE acm.application_component_id = :app_id" + _org_clause
+            ), {"app_id": app.id, **_org_params}).fetchone()
             cap_count = cap_row[0] if cap_row else 0
             l1_count = cap_row[1] if cap_row else 0
             l2_count = cap_row[2] if cap_row else 0

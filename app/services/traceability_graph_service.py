@@ -10,6 +10,7 @@ across all 8 layers when a user clicks any chip.
 
 import logging
 from app import db
+from app.utils.tenant_sql import org_scope
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -58,8 +59,15 @@ TRACEABILITY_REL_TYPES = (
 )
 
 
-def build_traceability_graph():
+def build_traceability_graph(organization_id=None):
     """Build the full cross-layer adjacency graph from ArchiMate relationships.
+
+    Args:
+        organization_id: scope the graph to this organisation. Defaults to the
+            request's tenant. There is no id-keyed narrowing anywhere in this
+            function — both statements are whole-table reads — so a caller
+            outside a request context (CLI, scheduler) MUST pass this or the
+            graph spans every tenant.
 
     Returns:
         {
@@ -70,16 +78,19 @@ def build_traceability_graph():
     try:
         rel_types = ", ".join(f"'{t}'" for t in TRACEABILITY_REL_TYPES)
 
-        # Get all relationships between known element types
-        # tenant-filtered: scoped via parent FK (archimate_relationships → archimate_elements)
+        # Both tables carry organization_id and both queries are unbounded, so
+        # without these predicates the traceability page drew one graph over
+        # every organisation's ArchiMate model.
+        _org_clause, _org_params = org_scope(prefix="r.", org_id=organization_id)
         edge_sql = text(f"""
             SELECT r.source_id, r.target_id
             FROM archimate_relationships r
             WHERE r.type IN ({rel_types})
               AND r.source_id IS NOT NULL
               AND r.target_id IS NOT NULL
+              {_org_clause}
         """)
-        rows = db.session.execute(edge_sql).fetchall()  # tenant-filtered: scoped via archimate_relationships
+        rows = db.session.execute(edge_sql, _org_params).fetchall()
         edges = [[r[0], r[1]] for r in rows]
 
         # Collect all element IDs referenced in edges
@@ -88,22 +99,27 @@ def build_traceability_graph():
             ids.add(s)
             ids.add(t)
 
-        # Get element details
-        # tenant-filtered: scoped via parent FK (element IDs from relationships)
         elements = {}
         if ids:
-            el_sql = text("""
+            _org_el_clause, _org_el_params = org_scope(org_id=organization_id)
+            el_sql = text(f"""
                 SELECT id, name, type, layer
                 FROM archimate_elements
                 WHERE id = ANY(:ids)
+                {_org_el_clause}
             """)
             try:
-                el_rows = db.session.execute(el_sql, {"ids": list(ids)}).fetchall()  # tenant-filtered: scoped via parent FK (element IDs from relationships)
+                el_rows = db.session.execute(
+                    el_sql, {"ids": list(ids), **_org_el_params}
+                ).fetchall()
             except Exception:
                 # Fallback for databases that don't support ANY()
                 id_list = ", ".join(str(i) for i in ids)
-                el_sql = text(f"SELECT id, name, type, layer FROM archimate_elements WHERE id IN ({id_list})")
-                el_rows = db.session.execute(el_sql).fetchall()  # tenant-filtered: scoped via archimate_elements
+                el_sql = text(
+                    f"SELECT id, name, type, layer FROM archimate_elements "
+                    f"WHERE id IN ({id_list}){_org_el_clause}"
+                )
+                el_rows = db.session.execute(el_sql, _org_el_params).fetchall()
 
             for r in el_rows:
                 el_type = r[2] or ""
