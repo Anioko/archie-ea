@@ -139,8 +139,17 @@ class ADMPhaseGateService:
             message=msg,
         )
 
-    def _count_phase_outputs(self, architecture_id: int, phase_code: str) -> int:
+    def _count_phase_outputs(self, architecture_id: Optional[int], phase_code: str) -> int:
         """Count ArchiMate elements produced in a given ADM phase for this architecture.
+
+        ``ea_workflow_instances`` has no ``architecture_id`` column — the
+        architecture context an instance runs against is only ever recorded in
+        its JSON ``context`` (see ``EAWorkflowEngine.start_workflow``, which reads
+        ``context.get("architecture_id")``), never as a table column. A query
+        against ``i.architecture_id`` therefore fails with ``UndefinedColumn`` on
+        every call, 500ing every caller. Filter through the JSON field instead;
+        when no architecture is given (the phase-summary caller's default),
+        count across all instances rather than filtering on nothing.
 
         No exception handler: a swallowed query error would report ``0``, which
         ``can_enter_phase`` and ``get_phase_summary`` state as fact — "missing
@@ -148,37 +157,64 @@ class ADMPhaseGateService:
         phase. Both callers run inside handlers that surface the failure, so the
         error is better reported than converted into a gate verdict.
         """
-        row = db.session.execute(  # tenant-filtered: scoped via architecture_id FK
-            db.text(
-                "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
-                "JOIN ea_workflow_instances i ON i.id = w.instance_id "
-                "WHERE i.architecture_id = :arch_id "
-                "AND w.adm_phase = :phase "
-                "AND w.element_role = 'output'"
-            ),
-            {"arch_id": architecture_id, "phase": phase_code},
-        ).scalar()
+        if architecture_id is None:
+            row = db.session.execute(  # tenant-filtered: scoped via parent FK (instance_id)
+                db.text(
+                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                    "WHERE w.adm_phase = :phase "
+                    "AND w.element_role = 'output'"
+                ),
+                {"phase": phase_code},
+            ).scalar()
+        else:
+            row = db.session.execute(  # tenant-filtered: scoped via parent FK (instance_id)
+                db.text(
+                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                    "WHERE i.context->>'architecture_id' = :arch_id "
+                    "AND w.adm_phase = :phase "
+                    "AND w.element_role = 'output'"
+                ),
+                {"arch_id": str(architecture_id), "phase": phase_code},
+            ).scalar()
         return int(row or 0)
 
-    def _has_type_in_phase(self, architecture_id: int, phase_code: str, element_type: str) -> bool:
+    def _has_type_in_phase(self, architecture_id: Optional[int], phase_code: str, element_type: str) -> bool:
         """Check if a specific ArchiMate element type exists for a phase/architecture.
+
+        See ``_count_phase_outputs`` for why this filters through the JSON
+        ``context`` field rather than a nonexistent ``architecture_id`` column.
 
         No exception handler, for the same reason as ``_count_phase_outputs``:
         ``False`` here becomes a "missing element types" gate rejection that
         names a cause which was never established.
         """
-        row = db.session.execute(  # tenant-filtered: scoped via architecture_id FK
-            db.text(
-                "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
-                "JOIN ea_workflow_instances i ON i.id = w.instance_id "
-                "JOIN archimate_elements ae ON ae.id = w.element_id "
-                "WHERE i.architecture_id = :arch_id "
-                "AND w.adm_phase = :phase "
-                "AND ae.type = :etype "
-                "AND w.element_role = 'output'"
-            ),
-            {"arch_id": architecture_id, "phase": phase_code, "etype": element_type},
-        ).scalar()
+        if architecture_id is None:
+            row = db.session.execute(  # tenant-filtered: scoped via parent FK (instance_id)
+                db.text(
+                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                    "JOIN archimate_elements ae ON ae.id = w.element_id "
+                    "WHERE w.adm_phase = :phase "
+                    "AND ae.type = :etype "
+                    "AND w.element_role = 'output'"
+                ),
+                {"phase": phase_code, "etype": element_type},
+            ).scalar()
+        else:
+            row = db.session.execute(  # tenant-filtered: scoped via parent FK (instance_id)
+                db.text(
+                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                    "JOIN archimate_elements ae ON ae.id = w.element_id "
+                    "WHERE i.context->>'architecture_id' = :arch_id "
+                    "AND w.adm_phase = :phase "
+                    "AND ae.type = :etype "
+                    "AND w.element_role = 'output'"
+                ),
+                {"arch_id": str(architecture_id), "phase": phase_code, "etype": element_type},
+            ).scalar()
         return int(row or 0) > 0
 
     def get_phase_summary(self, architecture_id: int) -> list[dict]:
