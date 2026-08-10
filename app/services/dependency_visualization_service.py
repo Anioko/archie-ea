@@ -16,6 +16,7 @@ from sqlalchemy import text  # dead-code-ok
 
 from app import db
 from app.services.decorators import transactional
+from app.utils.tenant_sql import org_scope
 
 
 class DependencyVisualizationService:
@@ -215,15 +216,20 @@ class DependencyVisualizationService:
         graph — "this application has no dependencies" — which is exactly the
         belief that gets something decommissioned.
         """
-        # Query the archimate_relationships table
+        # archimate_relationships is a TenantMixin table, but text() bypasses
+        # do_orm_execute: unfiltered, this whole-table read built one dependency
+        # graph spanning every organisation.
+        _org_clause, _org_params = org_scope()
         result = db.session.execute(
             text(
-                """
+                f"""
             SELECT source_id, target_id, type
             FROM archimate_relationships
             WHERE source_id IS NOT NULL AND target_id IS NOT NULL
+            {_org_clause}
         """
             ),
+            _org_params,
         ).fetchall()
 
         return [

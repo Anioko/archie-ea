@@ -15,21 +15,26 @@ import re
 from dataclasses import dataclass, field
 
 
-def _org_and(prefix=""):
-    """(' AND <prefix>organization_id = :org', {'org': id}) in a tenant request,
-    else ('', {}). Defense-in-depth org scoping for these id/domain-keyed raw
-    queries that enrich the LLM context — they must not surface another org's
-    entities. No-op for system callers (mirrors the ORM tenant filter)."""
-    from flask import g
-    org = getattr(g, "current_org_id", None)
-    if org is None:
-        return "", {}
-    return f" AND {prefix}organization_id = :org", {"org": org}
 from typing import Any, Dict, List, Optional
 
 from app import db
+from app.utils.tenant_sql import org_scope
 
 logger = logging.getLogger(__name__)
+
+
+def _rollback_quietly() -> None:
+    """Clear a failed statement so later queries in the same block can run.
+
+    PostgreSQL aborts the whole transaction on the first error, and every
+    subsequent statement then fails with InFailedSqlTransaction. A handler that
+    catches per-query without rolling back therefore turns one broken query into
+    an empty answer for all of them.
+    """
+    try:
+        db.session.rollback()
+    except Exception:  # noqa: BLE001
+        logger.debug("rollback after a failed context query also failed")
 
 
 # ---------------------------------------------------------------------------
@@ -658,15 +663,15 @@ triggering, flow, specialization, association.
         for r in results:
             app_data = dict(r)
             try:
-                _oc, _op = _org_and()
+                _org_clause, _org_params = org_scope()
                 row = db.session.execute(
                     db.text(
                         "SELECT vendor_name, technology_stack, criticality, "
                         "lifecycle_status, business_domain, integration_methods, "
                         "deployment_model "
-                        "FROM application_components WHERE id = :id" + _oc
+                        "FROM application_components WHERE id = :id" + _org_clause
                     ),
-                    {"id": r["id"], **_op},
+                    {"id": r["id"], **_org_params},
                 ).fetchone()
                 if row:
                     app_data["metadata"] = {
@@ -918,14 +923,14 @@ triggering, flow, specialization, association.
         for r in results:
             cap_data = dict(r)
             try:
-                _oc, _op = _org_and()
+                _org_clause, _org_params = org_scope()
                 row = db.session.execute(
                     db.text(
                         "SELECT current_maturity_level, target_maturity_level, "
                         "strategic_importance, business_value, business_domain "
-                        "FROM business_capability WHERE id = :id" + _oc
+                        "FROM business_capability WHERE id = :id" + _org_clause
                     ),
-                    {"id": r["id"], **_op},
+                    {"id": r["id"], **_org_params},
                 ).fetchone()
                 if row:
                     cap_data["metadata"] = {
@@ -965,9 +970,9 @@ triggering, flow, specialization, association.
                 "WHERE s.governance_status IN ('approved', 'arb_approved', 'deployed') "
             )
             params: Dict[str, Any] = {}
-            _oc, _op = _org_and(prefix="s.")
-            q += _oc + " "
-            params.update(_op)
+            _org_clause, _org_params = org_scope(prefix="s.")
+            q += _org_clause + " "
+            params.update(_org_params)
             if domain:
                 q += "AND s.business_domain = :domain "
                 params["domain"] = domain
@@ -993,42 +998,68 @@ triggering, flow, specialization, association.
         """Get entities already linked to a specific solution."""
         entities: Dict[str, List[Dict]] = {}
 
-        # Linked applications
+        # Linked applications.
+        #
+        # The join column is application_component_id; `sa.application_id` does
+        # not exist on solution_applications and never has. Every call raised
+        # UndefinedColumn here, which aborted the transaction and made the two
+        # queries below fail too with InFailedSqlTransaction — so all three
+        # handlers returned [] and the assembler reported "no entities linked to
+        # this solution" to the LLM for every solution in the system.
         try:
-            _oc, _op = _org_and(prefix="ac.")
+            _org_clause, _org_params = org_scope(prefix="ac.")
             rows = db.session.execute(
                 db.text(
                     "SELECT ac.id, ac.name FROM application_components ac "
-                    "JOIN solution_applications sa ON sa.application_id = ac.id "
-                    "WHERE sa.solution_id = :sid" + _oc
+                    "JOIN solution_applications sa "
+                    "ON sa.application_component_id = ac.id "
+                    "WHERE sa.solution_id = :sid" + _org_clause
                 ),
-                {"sid": solution_id, **_op},
+                {"sid": solution_id, **_org_params},
             ).fetchall()
             entities["applications"] = [{"id": r[0], "name": r[1]} for r in rows]
         except Exception:
+            logger.warning(
+                "Solution %s: linked-application lookup failed", solution_id,
+                exc_info=True,
+            )
             entities["applications"] = []
+            # A failed statement poisons the transaction; without this the next
+            # two blocks cannot run at all.
+            _rollback_quietly()
 
         # Linked ArchiMate elements
+        #
+        # solution_archimate_elements carries no organization_id, so the join
+        # alone proves nothing: a solution_id from another tenant would hand its
+        # elements straight into the LLM prompt. archimate_elements does carry
+        # one — scope on it.
         try:
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
+            _org_clause, _org_params = org_scope(prefix="ae.")
+            rows = db.session.execute(
                 db.text(
                     "SELECT ae.id, ae.name, ae.type, ae.layer "
                     "FROM archimate_elements ae "
                     "JOIN solution_archimate_elements sae ON sae.element_id = ae.id "
-                    "WHERE sae.solution_id = :sid"
+                    "WHERE sae.solution_id = :sid" + _org_clause
                 ),
-                {"sid": solution_id},
+                {"sid": solution_id, **_org_params},
             ).fetchall()
             entities["archimate_elements"] = [
                 {"id": r[0], "name": r[1], "type": r[2], "layer": r[3]}
                 for r in rows
             ]
         except Exception:
+            logger.warning(
+                "Solution %s: linked-element lookup failed", solution_id,
+                exc_info=True,
+            )
             entities["archimate_elements"] = []
+            _rollback_quietly()
 
         # Linked vendor products
         try:
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
+            rows = db.session.execute(  # tenancy-ok: vendor_product_details has no organization_id column and no tenant-scoped parent in this join; solution_vendor_products is keyed by solution_id only
                 db.text(
                     "SELECT vp.id, vp.product_name FROM vendor_product_details vp "
                     "JOIN solution_vendor_products svp ON svp.vendor_product_id = vp.id "
@@ -1038,7 +1069,12 @@ triggering, flow, specialization, association.
             ).fetchall()
             entities["vendor_products"] = [{"id": r[0], "name": r[1]} for r in rows]
         except Exception:
+            logger.warning(
+                "Solution %s: linked-vendor-product lookup failed", solution_id,
+                exc_info=True,
+            )
             entities["vendor_products"] = []
+            _rollback_quietly()
 
         return entities
 

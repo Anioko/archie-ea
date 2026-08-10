@@ -11,6 +11,7 @@ Persona-specific dashboards and views for the unified vendor module.
 """
 
 from flask import render_template, request, redirect, url_for, flash, jsonify
+from app.utils.tenant_sql import org_scope
 from flask_login import login_required, current_user
 from flask import current_app, Blueprint
 from datetime import datetime
@@ -106,15 +107,21 @@ def vendor_mapping_tool():
     """Application-to-vendor mapping tool - renders vendor applications portfolio."""
     vendor = type("Vendor", (), {"id": 0, "name": "All Vendors"})()
     try:
-        rows = db.session.execute(text("""
+        # Neither application_vendor_product_mappings nor vendor_products has an
+        # organization_id, so this listed every tenant's applications. The
+        # predicate belongs on application_components, which does carry one.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_where = " WHERE ac.organization_id = :org" if _org is not None else ""
+        rows = db.session.execute(text(f"""
             SELECT ac.id, ac.name, ac.vendor_name, vp.name AS product_name,
                    m.role_type, ac.description, ac.deployment_status,
                    ac.business_criticality, ac.business_owner
             FROM application_vendor_product_mappings m
             JOIN application_components ac ON ac.id = m.application_component_id
-            JOIN vendor_products vp ON vp.id = m.vendor_product_id
+            JOIN vendor_products vp ON vp.id = m.vendor_product_id{_org_where}
             ORDER BY ac.vendor_name, ac.name
-        """)).fetchall()
+        """), ({"org": _org} if _org is not None else {})).fetchall()
         applications = [_app_portfolio_item(r) for r in rows]
     except Exception:
         applications = []
@@ -186,6 +193,11 @@ def _portfolio_stats(apps):
 def _get_vendor_apps(vendor_id):
     """Return applications and stats for a specific vendor."""
     try:
+        # vendor_organizations carries no organization_id, so filtering on the
+        # vendor alone returned EVERY tenant's applications for that vendor -
+        # names, descriptions, owners and criticality. Scope on the one table
+        # here that does carry it.
+        _org_clause, _org_params = org_scope("ac.")
         rows = db.session.execute(text("""
             SELECT ac.id, ac.name, ac.vendor_name, vp.name AS product_name, m.role_type,
                    ac.description, ac.deployment_status, ac.business_criticality,
@@ -195,8 +207,9 @@ def _get_vendor_apps(vendor_id):
             JOIN vendor_products vp ON vp.id = m.vendor_product_id
             JOIN vendor_organizations vo ON vo.id = vp.vendor_organization_id
             WHERE vo.id = :vid
+            {org_clause}
             ORDER BY vp.name, ac.name
-        """), {"vid": vendor_id}).fetchall()
+        """.format(org_clause=_org_clause)), {"vid": vendor_id, **_org_params}).fetchall()
         apps = [_app_portfolio_item(r) for r in rows]
     except Exception:
         apps = []

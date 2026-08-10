@@ -50,7 +50,14 @@ BATCH_SIZE = 100
 
 
 def _build_inference_sql(source_type, target_type, solution_id=None):
-    """Build the co-occurrence SQL for a given element type pair."""
+    """Build the co-occurrence SQL for a given element type pair.
+
+    Tenancy: both elements are drawn from the same ``solution_archimate_elements``
+    row set for a single ``solution_id``, and ``solutions`` is tenant-scoped, so a
+    pair can never straddle two organisations even though this runs with no
+    request context. That is a property of the join, not of a predicate — hence
+    it is written down here rather than assumed.
+    """
     sql = (
         "SELECT DISTINCT s1.element_id AS source_id, "
         "s2.element_id AS target_id, s1.solution_id "
@@ -68,7 +75,10 @@ def _build_inference_sql(source_type, target_type, solution_id=None):
 
 def _check_duplicate_sql(db, source_id, target_id, rel_type, solution_id):
     """Return True if a relationship already exists for this tuple."""
-    row = db.session.execute(db.text(  # tenant-exempt: CLI command
+    # tenancy-ok: CLI backfill, deliberately global across organisations; no
+    # request context exists. Keyed on a (source, target, solution) triple that
+    # came from one solution's own junction rows.
+    row = db.session.execute(db.text(
         "SELECT 1 FROM archimate_relationships "
         "WHERE source_id = :s AND target_id = :t "
         "AND type = :r AND solution_id = :sol "
@@ -78,19 +88,33 @@ def _check_duplicate_sql(db, source_id, target_id, rel_type, solution_id):
 
 
 def _build_enterprise_sql(source_type, target_type, limit=DEFAULT_ENTERPRISE_LIMIT):
-    """Build SQL to pair elements by type across the entire catalog (enterprise-wide)."""
+    """Build SQL to pair elements by type across the entire catalog (enterprise-wide).
+
+    "Enterprise-wide" means every organisation's catalogue, because there is no
+    request context — but it must not mean *across* organisations. Without the
+    organisation-equality predicate this cross join paired one tenant's
+    ApplicationComponent with another tenant's BusinessProcess and Phase 2 then
+    wrote a relationship row joining two tenants' element graphs. IS NOT DISTINCT
+    FROM rather than = so that legacy rows with a NULL organization_id still pair
+    with each other and only with each other.
+    """
     return (
-        "SELECT e1.id AS source_id, e2.id AS target_id "
+        "SELECT e1.id AS source_id, e2.id AS target_id, "
+        "e1.organization_id AS organization_id "
         "FROM archimate_elements e1, archimate_elements e2 "
         f"WHERE e1.type = '{source_type}' AND e2.type = '{target_type}' "
         "AND e1.id != e2.id "
+        "AND e1.organization_id IS NOT DISTINCT FROM e2.organization_id "
         f"LIMIT {int(limit)}"
     )
 
 
 def _check_duplicate_enterprise_sql(db, source_id, target_id, rel_type):
     """Return True if an enterprise-wide relationship already exists for this tuple."""
-    row = db.session.execute(db.text(  # tenant-exempt: CLI command
+    # tenancy-ok: CLI backfill, deliberately global across organisations; no
+    # request context exists. Keyed on ids that _build_enterprise_sql has already
+    # constrained to a single organisation.
+    row = db.session.execute(db.text(
         "SELECT 1 FROM archimate_relationships "
         "WHERE source_id = :s AND target_id = :t "
         "AND type = :r AND solution_id IS NULL "
@@ -104,9 +128,13 @@ def _load_adjacency_graph(db):
 
     Returns:
         dict: {source_id: [(target_id, rel_type), ...]}
-        dict: {element_id: (element_type, layer)}
+        dict: {element_id: organization_id}
     """
-    rows = db.session.execute(db.text(  # tenant-exempt: CLI command
+    # tenancy-ok: CLI backfill, deliberately global across organisations; no
+    # request context exists. Transitive closure has to see the whole graph to
+    # find A->B->C; the organisations are carried alongside so the inferred edge
+    # can be refused when A and C belong to different tenants.
+    rows = db.session.execute(db.text(
         "SELECT source_id, target_id, type FROM archimate_relationships"
     )).fetchall()
 
@@ -114,18 +142,23 @@ def _load_adjacency_graph(db):
     for row in rows:
         graph.setdefault(row.source_id, []).append((row.target_id, row.type))
 
-    # Load element metadata for validation
-    el_rows = db.session.execute(db.text(  # tenant-exempt: CLI command
-        "SELECT id, type, layer FROM archimate_elements"
+    # Element -> owning organisation, used to reject cross-tenant inferences.
+    # tenancy-ok: CLI backfill, deliberately global across organisations; no
+    # request context exists. This is the lookup that makes the check possible.
+    el_rows = db.session.execute(db.text(
+        "SELECT id, organization_id FROM archimate_elements"
     )).fetchall()
-    elements = {r.id: (r.type, r.layer) for r in el_rows}
+    element_orgs = {r.id: r.organization_id for r in el_rows}
 
-    return graph, elements
+    return graph, element_orgs
 
 
 def _get_existing_relationship_keys(db):
     """Load all existing (source, target, type) tuples for dedup."""
-    rows = db.session.execute(db.text(  # tenant-exempt: CLI command
+    # tenancy-ok: CLI backfill, deliberately global across organisations; no
+    # request context exists. A dedup set that saw only one tenant's rows would
+    # re-create every other tenant's relationships on each run.
+    rows = db.session.execute(db.text(
         "SELECT source_id, target_id, type FROM archimate_relationships"
     )).fetchall()
     return {(r.source_id, r.target_id, r.type) for r in rows}
@@ -149,7 +182,7 @@ def _run_transitive_closure(db, dry_run, max_depth=2):
     total_created = 0
 
     for depth in range(1, max_depth):
-        graph, elements = _load_adjacency_graph(db)
+        graph, element_orgs = _load_adjacency_graph(db)
         existing_keys = _get_existing_relationship_keys(db)
         created_this_pass = 0
 
@@ -162,6 +195,12 @@ def _run_transitive_closure(db, dry_run, max_depth=2):
                 for c_id, bc_type in b_edges:
                     if c_id == a_id:
                         continue  # skip cycles
+
+                    # A→C must stay inside one organisation. The walk sees every
+                    # tenant's edges at once, so without this an existing
+                    # cross-tenant edge would breed more of them.
+                    if element_orgs.get(a_id) != element_orgs.get(c_id):
+                        continue
 
                     # Check if this matches a transitive rule
                     for rule_ab, rule_bc, inferred_ac in _TRANSITIVE_RULES:
@@ -177,10 +216,17 @@ def _run_transitive_closure(db, dry_run, max_depth=2):
             for src, tgt, rel_type in batch:
                 if not dry_run:
                     try:
-                        db.session.execute(db.text(  # tenant-exempt: CLI command
+                        # organization_id inherited from the source element: this
+                        # runs with no request context, so before_flush cannot
+                        # stamp it and the row would otherwise be untenanted and
+                        # invisible to every organisation's ORM queries.
+                        db.session.execute(db.text(
                             "INSERT INTO archimate_relationships "
-                            "(source_id, target_id, type, solution_id, created_at) "
-                            "VALUES (:s, :t, :r, NULL, CURRENT_TIMESTAMP)"
+                            "(source_id, target_id, type, solution_id, "
+                            " organization_id, created_at) "
+                            "SELECT :s, :t, :r, NULL, e.organization_id, "
+                            "       CURRENT_TIMESTAMP "
+                            "FROM archimate_elements e WHERE e.id = :s"
                         ), {"s": src, "t": tgt, "r": rel_type})
                     except Exception:
                         db.session.rollback()
@@ -231,7 +277,7 @@ def backfill_archimate_relationships_command(dry_run, solution_id, enterprise,
         sql = _build_inference_sql(source_type, target_type, solution_id)
 
         try:
-            rows = db.session.execute(db.text(sql)).fetchall()  # tenant-exempt: CLI command
+            rows = db.session.execute(db.text(sql)).fetchall()
         except Exception as exc:
             click.echo(f"  {rule_name:40s}: QUERY ERROR -- {exc}", err=True)
             db.session.rollback()
@@ -251,10 +297,15 @@ def backfill_archimate_relationships_command(dry_run, solution_id, enterprise,
 
             if not dry_run:
                 try:
-                    db.session.execute(db.text(  # tenant-exempt: CLI command
+                    # organization_id inherited from the owning solution — see
+                    # the note on the transitive INSERT below.
+                    db.session.execute(db.text(
                         "INSERT INTO archimate_relationships "
-                        "(source_id, target_id, type, solution_id, created_at) "
-                        "VALUES (:s, :t, :r, :sol, CURRENT_TIMESTAMP)"
+                        "(source_id, target_id, type, solution_id, "
+                        " organization_id, created_at) "
+                        "SELECT :s, :t, :r, :sol, sol.organization_id, "
+                        "       CURRENT_TIMESTAMP "
+                        "FROM solutions sol WHERE sol.id = :sol"
                     ), {"s": src, "t": tgt, "r": rel_type, "sol": sol})
                 except Exception as exc:
                     db.session.rollback()
@@ -282,7 +333,7 @@ def backfill_archimate_relationships_command(dry_run, solution_id, enterprise,
             sql = _build_enterprise_sql(source_type, target_type, limit=limit)
 
             try:
-                rows = db.session.execute(db.text(sql)).fetchall()  # tenant-exempt: CLI command
+                rows = db.session.execute(db.text(sql)).fetchall()
             except Exception as exc:
                 click.echo(f"  {rule_name:40s}: QUERY ERROR -- {exc}", err=True)
                 db.session.rollback()
@@ -306,10 +357,16 @@ def backfill_archimate_relationships_command(dry_run, solution_id, enterprise,
 
                     if not dry_run:
                         try:
-                            db.session.execute(db.text(  # tenant-exempt: CLI command
+                            # organization_id inherited from the source element;
+                            # _build_enterprise_sql has already guaranteed source
+                            # and target share it.
+                            db.session.execute(db.text(
                                 "INSERT INTO archimate_relationships "
-                                "(source_id, target_id, type, solution_id, created_at) "
-                                "VALUES (:s, :t, :r, NULL, CURRENT_TIMESTAMP)"
+                                "(source_id, target_id, type, solution_id, "
+                                " organization_id, created_at) "
+                                "SELECT :s, :t, :r, NULL, e.organization_id, "
+                                "       CURRENT_TIMESTAMP "
+                                "FROM archimate_elements e WHERE e.id = :s"
                             ), {"s": src, "t": tgt, "r": rel_type})
                         except Exception as exc:
                             db.session.rollback()

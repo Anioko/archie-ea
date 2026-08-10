@@ -216,15 +216,21 @@ class DependencyVisualizationService:
         Errors propagate — see `_get_all_elements`. An empty edge list is a
         statement that the architecture has no relationships.
         """
-        # Query the archimate_relationships table
+        # Query the archimate_relationships table. It is tenant-scoped and this
+        # raw statement bypasses the ORM listener, so without the predicate the
+        # dependency graph mixed in every other organisation's edges.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
         result = db.session.execute(
             text(
-                """
+                f"""
             SELECT source_id, target_id, type
             FROM archimate_relationships
-            WHERE source_id IS NOT NULL AND target_id IS NOT NULL
+            WHERE source_id IS NOT NULL AND target_id IS NOT NULL{_org_and}
         """
             ),
+            ({"org": _org} if _org is not None else {}),
         ).fetchall()
 
         return [

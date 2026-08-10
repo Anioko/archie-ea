@@ -329,13 +329,20 @@ def batch_update_maturity():
         domain = request.args.get("domain", "")
         strategic_importance = request.args.get("strategic_importance", "")
 
-        preview_query = """
+        # business_capability is tenant-scoped, but raw SQL bypasses the ORM
+        # listener: without these predicates the batch-update form previewed —
+        # and offered for edit — every organisation's capabilities.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+
+        preview_query = f"""
             SELECT id, name, business_domain, current_maturity_level, target_maturity_level, strategic_importance
             FROM business_capability
-            WHERE 1=1
+            WHERE 1=1{_org_and}
         """
 
-        params = {}
+        params = {"org": _org} if _org is not None else {}
 
         if strategic_importance:
             preview_query += " AND strategic_importance = :strategic_importance"
@@ -350,11 +357,12 @@ def batch_update_maturity():
         # was missing, so this route raised NameError on every request.
         domains = [
             row[0]
-            for row in db.session.execute(  # tenant-filtered
+            for row in db.session.execute(
                 text(
                     "SELECT DISTINCT business_domain FROM business_capability "
-                    "WHERE business_domain IS NOT NULL ORDER BY business_domain"
-                )
+                    f"WHERE business_domain IS NOT NULL{_org_and} ORDER BY business_domain"
+                ),
+                ({"org": _org} if _org is not None else {}),
             ).fetchall()
         ]
 

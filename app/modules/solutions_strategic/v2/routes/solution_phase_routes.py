@@ -2003,8 +2003,12 @@ def get_archimate_drivers(solution_id):
             if elem.element_table == "archimate_elements" and elem.layer_type == "motivation":
                 # Check actual element type from the repository
                 try:
-                    row = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-                        db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),  # tenant-filtered
+                    # tenancy-ok: elem comes from SolutionArchiMateElement rows
+                    # for solution_id, and Solution.query.get_or_404(solution_id)
+                    # above is a TenantMixin query, so a cross-org solution 404s
+                    # before any element id is reachable here.
+                    row = db.session.execute(
+                        db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),
                         {"eid": elem.element_id},
                     ).fetchone()
                     if row and row[2] == "Driver":
@@ -2041,10 +2045,19 @@ def link_archimate_driver(solution_id):
         return jsonify({"success": False, "error": "element_id is required"}), 400
 
     try:
-        # Verify the element exists and is a Driver
-        row = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-            db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),  # tenant-filtered
-            {"eid": element_id},
+        # Verify the element exists and is a Driver.
+        # element_id arrives in the request body and nothing upstream constrains
+        # it, so without the org predicate this both discloses another tenant's
+        # element and links it into this tenant's solution.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+        row = db.session.execute(
+            db.text(
+                "SELECT id, name, type, description FROM archimate_elements "
+                f"WHERE id = :eid{_org_and}"
+            ),
+            {"eid": element_id, **({"org": _org} if _org is not None else {})},
         ).fetchone()
         if not row:
             return jsonify({"success": False, "error": "ArchiMate element not found"}), 404
@@ -2118,8 +2131,12 @@ def get_archimate_goals(solution_id):
         for elem in elements:
             if elem.element_table == "archimate_elements" and elem.layer_type == "motivation":
                 try:
-                    row = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-                        db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),  # tenant-filtered
+                    # tenancy-ok: elem comes from SolutionArchiMateElement rows
+                    # for solution_id, and Solution.query.get_or_404(solution_id)
+                    # above is a TenantMixin query, so a cross-org solution 404s
+                    # before any element id is reachable here.
+                    row = db.session.execute(
+                        db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),
                         {"eid": elem.element_id},
                     ).fetchone()
                     if row and row[2] == "Goal":
@@ -2156,10 +2173,19 @@ def link_archimate_goal(solution_id):
         return jsonify({"success": False, "error": "element_id is required"}), 400
 
     try:
-        # Verify the element exists and is a Goal
-        row = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-            db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),  # tenant-filtered
-            {"eid": element_id},
+        # Verify the element exists and is a Goal.
+        # element_id arrives in the request body and nothing upstream constrains
+        # it, so without the org predicate this both discloses another tenant's
+        # element and links it into this tenant's solution.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+        row = db.session.execute(
+            db.text(
+                "SELECT id, name, type, description FROM archimate_elements "
+                f"WHERE id = :eid{_org_and}"
+            ),
+            {"eid": element_id, **({"org": _org} if _org is not None else {})},
         ).fetchone()
         if not row:
             return jsonify({"success": False, "error": "ArchiMate element not found"}), 404

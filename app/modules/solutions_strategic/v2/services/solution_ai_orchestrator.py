@@ -3719,13 +3719,21 @@ CRITICAL -- TRACEABILITY:
             mappings = SolutionCapabilityMapping.query.filter_by(solution_id=solution.id).all()
             cap_ids = [m.capability_id for m in mappings]
             if cap_ids:
-                coverage_rows = db.session.execute(db.text(  # tenant-filtered: scoped via solution capability FK
+                # solution_capability_mappings has no organization_id, so cap_ids
+                # are not themselves a tenant boundary. business_capability and
+                # application_components both carry one — scope on those.
+                from flask import g as _g
+                _org = getattr(_g, "current_org_id", None)
+                _org_and_bc = " AND bc.organization_id = :org" if _org is not None else ""
+                _org_and_ac = " AND ac.organization_id = :org" if _org is not None else ""
+                _org_params = {"org": _org} if _org is not None else {}
+                coverage_rows = db.session.execute(db.text(
                     "SELECT bc.name, COUNT(DISTINCT acm.application_component_id) as apps "
                     "FROM business_capability bc "
                     "LEFT JOIN application_capability_mapping acm ON acm.business_capability_id = bc.id "
-                    "WHERE bc.id IN :ids "
+                    f"WHERE bc.id IN :ids{_org_and_bc} "
                     "GROUP BY bc.id, bc.name ORDER BY apps DESC"
-                ), {"ids": tuple(cap_ids)}).fetchall()
+                ), {"ids": tuple(cap_ids), **_org_params}).fetchall()
                 if coverage_rows:
                     parts.append("\n- CAPABILITY COVERAGE (real application landscape):")
                     for row in coverage_rows:
@@ -3733,13 +3741,13 @@ CRITICAL -- TRACEABILITY:
                         parts.append(f"  {row[0]}: {row[1]} apps [{status}]")
 
                 # Top apps covering these capabilities
-                app_rows = db.session.execute(db.text(  # tenant-filtered: scoped via solution capability FK
+                app_rows = db.session.execute(db.text(
                     "SELECT DISTINCT ac.name, ac.lifecycle_status "
                     "FROM application_capability_mapping acm "
                     "JOIN application_components ac ON ac.id = acm.application_component_id "
-                    "WHERE acm.business_capability_id IN :ids "
+                    f"WHERE acm.business_capability_id IN :ids{_org_and_ac} "
                     "ORDER BY ac.name LIMIT 10"
-                ), {"ids": tuple(cap_ids)}).fetchall()
+                ), {"ids": tuple(cap_ids), **_org_params}).fetchall()
                 if app_rows:
                     parts.append("- KEY APPLICATIONS involved:")
                     for r in app_rows:

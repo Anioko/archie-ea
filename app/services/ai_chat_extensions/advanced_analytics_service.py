@@ -16,6 +16,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List
 
+from app.utils.tenant_sql import org_scope
+
 logger = logging.getLogger(__name__)
 
 
@@ -154,11 +156,14 @@ class AdvancedAnalyticsService:
             if not app_id:
                 return self._analyze_portfolio_complexity()
 
-            row = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via application_components (tenant-scoped table)
+            # app_id arrives as an LLM tool argument, i.e. ultimately from chat
+            # text — nothing upstream proves it belongs to the caller's org.
+            _org_clause, _org_params = org_scope()
+            row = db.session.execute(text(
                 "SELECT name, number_of_integrations, interfaces_count, dependencies_count, "
                 "technology_stack, programming_languages "
-                "FROM application_components WHERE id = :app_id"
-            ), {"app_id": app_id}).fetchone()
+                "FROM application_components WHERE id = :app_id" + _org_clause
+            ), {"app_id": app_id, **_org_params}).fetchone()
 
             if not row:
                 return {"complexity_score": 0, "complexity_grade": "Unknown", "data_status": "application_not_found"}
@@ -215,10 +220,14 @@ class AdvancedAnalyticsService:
             from app.extensions import db
             from sqlalchemy import text
 
-            rows = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via application_components (tenant-scoped table)
+            # Whole-table read with no key at all. Unfiltered it scored every
+            # organisation's portfolio and handed the result to the assistant as
+            # "your" complexity distribution.
+            _org_clause, _org_params = org_scope(keyword="WHERE")
+            rows = db.session.execute(text(
                 "SELECT id, number_of_integrations, interfaces_count, dependencies_count "
-                "FROM application_components"
-            )).fetchall()
+                "FROM application_components" + _org_clause
+            ), _org_params).fetchall()
 
             if not rows:
                 return {"overall_complexity": 0, "complexity_distribution": {}, "data_status": "no_applications"}
@@ -282,11 +291,15 @@ class AdvancedAnalyticsService:
             from app.extensions import db
             from sqlalchemy import text
 
-            cost_row = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via application_components (tenant-scoped table)
+            # Same shape as the complexity read: an unkeyed SUM. Unfiltered it
+            # reported every organisation's combined spend as this tenant's
+            # current total cost, and 15% of it as their savings opportunity.
+            _org_clause, _org_params = org_scope(keyword="WHERE")
+            cost_row = db.session.execute(text(
                 "SELECT SUM(COALESCE(annual_cost, 0) + COALESCE(maintenance_cost, 0) + "
                 "COALESCE(infrastructure_cost, 0) + COALESCE(support_cost, 0)) "
-                "FROM application_components"
-            )).scalar() or 0
+                "FROM application_components" + _org_clause
+            ), _org_params).scalar() or 0
 
             current_total = float(cost_row)
             potential = round(current_total * 0.15, 2)  # conservative 15% optimization target

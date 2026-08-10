@@ -186,14 +186,14 @@ class PageGuideService:
         """Query live DB data to give the LLM real page context. Returns '' on any error."""
         try:
             # Tenant scoping for these raw-SQL snapshots (they bypass the ORM
-            # filter). _oa/_ow yield an org clause only in a tenant request, so
-            # the LLM never sees another org's portfolio. _op supplies the bind.
+            # filter). _org_and/_org_where yield an org clause only in a tenant
+            # request, so the LLM never sees another org's portfolio; _op binds it.
             from flask import g
             _org = getattr(g, "current_org_id", None)
-            def _oa(col="organization_id"):
+            def _org_and(col="organization_id"):
                 return f" AND {col} = :org" if _org is not None else ""
 
-            def _ow(col="organization_id"):
+            def _org_where(col="organization_id"):
                 return f" WHERE {col} = :org" if _org is not None else ""
             _op = ({"org": _org} if _org is not None else {})
 
@@ -214,7 +214,7 @@ class PageGuideService:
                         FROM solutions s
                         LEFT JOIN solution_applications sa ON sa.solution_id = s.id
                         LEFT JOIN solution_archimate_elements sae ON sae.solution_id = s.id
-                        WHERE s.id = :id{_oa('s.organization_id')}
+                        WHERE s.id = :id{_org_and('s.organization_id')}
                         GROUP BY s.name, s.governance_status, s.maturity_current
                         """
                     ),
@@ -244,7 +244,7 @@ class PageGuideService:
                             ON ars.application_component_id = a.id
                         LEFT JOIN application_capability_mapping cam
                             ON cam.application_component_id = a.id
-                        WHERE a.id = :id{_oa('a.organization_id')}
+                        WHERE a.id = :id{_org_and('a.organization_id')}
                         GROUP BY a.name, a.lifecycle_status,
                                  ars.rationalization_action, ars.overall_health_score
                         """
@@ -266,12 +266,12 @@ class PageGuideService:
                     text(
                         f"""
                         SELECT
-                            (SELECT COUNT(*) FROM application_components{_ow()}) AS total_apps,
-                            (SELECT COUNT(*) FROM solutions{_ow()}) AS total_solutions,
+                            (SELECT COUNT(*) FROM application_components{_org_where()}) AS total_apps,
+                            (SELECT COUNT(*) FROM solutions{_org_where()}) AS total_solutions,
                             (SELECT ROUND(AVG(maturity_current), 1) FROM solutions
-                             WHERE maturity_current > 0{_oa()}) AS avg_maturity_level,
+                             WHERE maturity_current > 0{_org_and()}) AS avg_maturity_level,
                             (SELECT COUNT(*) FROM application_rationalization_scores
-                             WHERE rationalization_action = 'ELIMINATE'{_oa()}) AS eliminate_count
+                             WHERE rationalization_action = 'ELIMINATE'{_org_and()}) AS eliminate_count
                         """
                     ),
                     _op,
@@ -296,7 +296,7 @@ class PageGuideService:
                             COUNT(*) FILTER (WHERE rationalization_action = 'ELIMINATE') AS eliminate,
                             COUNT(*) FILTER (WHERE rationalization_action = 'MIGRATE') AS migrate,
                             COUNT(*) AS total
-                        FROM application_rationalization_scores{_ow()}
+                        FROM application_rationalization_scores{_org_where()}
                         """
                     ),
                     _op,
@@ -318,7 +318,7 @@ class PageGuideService:
                             COUNT(*) FILTER (WHERE governance_status = 'pending_review') AS pending,
                             COUNT(*) FILTER (WHERE governance_status = 'draft' OR governance_status IS NULL) AS draft,
                             ROUND(AVG(maturity_current) FILTER (WHERE maturity_current > 0), 1) AS avg_maturity
-                        FROM solutions{_ow()}
+                        FROM solutions{_org_where()}
                         """
                     ),
                     _op,
@@ -341,7 +341,7 @@ class PageGuideService:
                             COUNT(*) FILTER (WHERE lifecycle_status ILIKE '%strategic%' OR lifecycle_status ILIKE '%invest%') AS strategic,
                             COUNT(*) FILTER (WHERE lifecycle_status ILIKE '%decommission%' OR lifecycle_status ILIKE '%eliminat%') AS decommission,
                             COUNT(*) FILTER (WHERE lifecycle_status IS NULL OR lifecycle_status = '') AS unknown
-                        FROM application_components{_ow()}
+                        FROM application_components{_org_where()}
                         """
                     ),
                     _op,
@@ -363,13 +363,13 @@ class PageGuideService:
                             COUNT(*) AS total,
                             COUNT(*) FILTER (WHERE id NOT IN (
                                 SELECT DISTINCT business_capability_id
-                                FROM application_capability_mapping{_ow()}
+                                FROM application_capability_mapping{_org_where()}
                             )) AS uncovered,
                             COUNT(*) FILTER (WHERE id IN (
                                 SELECT DISTINCT business_capability_id
-                                FROM application_capability_mapping{_ow()}
+                                FROM application_capability_mapping{_org_where()}
                             )) AS covered
-                        FROM business_capability{_ow()}
+                        FROM business_capability{_org_where()}
                         """
                     ),
                     _op,

@@ -542,9 +542,17 @@ def simple_group_detail(group_id):
             "applications": [],
         }
 
-        app_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (group_id)
-            db.text(  # tenant-filtered
-                """
+        # UnifiedDuplicateGroup is a plain db.Model (no TenantMixin) and
+        # unified_duplicate_groups/unified_group_members have no
+        # organization_id, so get_or_404(group_id) is NOT org-filtered and
+        # group_id does not scope this join. application_components does carry
+        # organization_id — put the predicate there.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND ac.organization_id = :org" if _org is not None else ""
+        app_rows = db.session.execute(
+            db.text(
+                f"""
                 SELECT
                     ac.id,
                     ac.name,
@@ -554,12 +562,12 @@ def simple_group_detail(group_id):
                     ac.technology_stack
                 FROM unified_group_members ugm
                 JOIN application_components ac ON ac.id = ugm.application_id
-                WHERE ugm.group_id = :group_id
+                WHERE ugm.group_id = :group_id{_org_and}
                 ORDER BY ac.name
                 LIMIT 500
                 """
             ),
-            {"group_id": group.id},
+            {"group_id": group.id, **({"org": _org} if _org is not None else {})},
         ).mappings()
 
         for app in app_rows:

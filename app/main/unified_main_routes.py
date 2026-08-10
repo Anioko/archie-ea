@@ -42,8 +42,16 @@ from app import db
 
 # Import main blueprint
 from app.main.views import main
+from app.utils.tenant_sql import org_scope
 
 logger = logging.getLogger(__name__)
+
+# NOTE: this module is not imported by anything — no `import
+# app.main.unified_main_routes` exists in the tree, and none of its @main.route
+# decorators appear in app.view_functions at boot. It is dead code that shadows
+# live twins in routes_hybrid_mapping.py and routes_vendor_analysis.py. It is
+# left in place and scoped rather than trusted-because-unreachable: reachability
+# is a property of one missing import line.
 
 
 # =============================================================================
@@ -985,19 +993,26 @@ def get_mapping_statistics():
     """API endpoint for mapping statistics"""
 
     try:
-        # Application-Centric Coverage
-        app_result = db.session.execute(  # tenant-filtered: scoped via parent FK (unified_capabilities + junction tables)
+        # Application-Centric Coverage.
+        # See the module note above: this file is not imported anywhere, so these
+        # queries do not run today. They are scoped anyway — the twin that IS
+        # registered (app/main/routes_hybrid_mapping.py) served every
+        # organisation's rows for exactly this reason, and an unscoped statement
+        # sitting here is one blueprint registration away from doing the same.
+        _org_ac, _org_params = org_scope(prefix="ac.", keyword="AND")
+        app_result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 COUNT(DISTINCT uc.id) as total_capabilities,
-                COUNT(DISTINCT uacm.unified_capability_id) as capabilities_with_apps,
-                COUNT(DISTINCT CASE WHEN uacm.archimate_element_id IS NOT NULL THEN uacm.unified_capability_id END) as apps_with_archimate
+                COUNT(DISTINCT CASE WHEN ac.id IS NOT NULL THEN uacm.unified_capability_id END) as capabilities_with_apps,
+                COUNT(DISTINCT CASE WHEN ac.id IS NOT NULL AND uacm.archimate_element_id IS NOT NULL THEN uacm.unified_capability_id END) as apps_with_archimate
             FROM unified_capabilities uc
             LEFT JOIN unified_application_capability_mapping uacm ON uc.id = uacm.unified_capability_id
-            LEFT JOIN application_components ac ON uacm.application_component_id = ac.id
+            LEFT JOIN application_components ac ON uacm.application_component_id = ac.id{_org_ac}
         """
-            )
+            ),
+            _org_params,
         ).fetchone()
 
         # Product-Centric Coverage
@@ -1080,9 +1095,12 @@ def get_mapping_statistics():
 def get_application_mappings():
     """Get application-capability mappings"""
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK (unified_capabilities + application_components)
+        # ac is inner-joined and projected, so an unscoped form lists every
+        # organisation's applications by name.
+        _org_ac, _org_params = org_scope(prefix="ac.", keyword="WHERE")
+        result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 uc.id as capability_id,
                 uc.name as capability_name,
@@ -1097,9 +1115,11 @@ def get_application_mappings():
             JOIN unified_application_capability_mapping uacm ON uc.id = uacm.unified_capability_id
             JOIN application_components ac ON uacm.application_component_id = ac.id
             LEFT JOIN business_domains bd ON uc.domain_id = bd.id
+            {_org_ac}
             ORDER BY bd.strategic_weight DESC, uc.strategic_importance DESC, ac.name
         """
-            )
+            ),
+            _org_params,
         )
         return [dict(row) for row in result]
     except Exception as e:
@@ -1243,9 +1263,12 @@ def get_unmapped_vendor_products():
 def get_unmapped_archimate_elements():
     """Get ArchiMate elements with no capability mappings"""
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK (archimate_elements)
+        # archimate_elements is the driving table: unscoped, this listed every
+        # organisation's element catalogue.
+        _org_ae, _org_params = org_scope(prefix="ae.", keyword="AND")
+        result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 ae.id,
                 ae.name,
@@ -1255,10 +1278,11 @@ def get_unmapped_archimate_elements():
             FROM archimate_elements ae
             WHERE NOT EXISTS (
                 SELECT 1 FROM unified_capability_archimate_mapping ucam WHERE ucam.archimate_element_id = ae.id
-            )
+            ){_org_ae}
             ORDER BY ae.layer, ae.element_type, ae.name
         """
-            )
+            ),
+            _org_params,
         )
         return [dict(row) for row in result]
     except Exception as e:

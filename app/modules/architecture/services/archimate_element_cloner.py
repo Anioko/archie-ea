@@ -94,17 +94,28 @@ class ArchiMateElementCloner:
     def _get_template_elements(self):
         """Get all template elements linked to this vendor product."""
         # Query through application_vendor_products junction table
+        # vendor_products carries no organization_id, so vendor_product_id does
+        # not scope anything — the template elements it reaches do belong to an
+        # org, and without this predicate another tenant's templates are read
+        # (and then cloned into this tenant's application).
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND ae.organization_id = :org" if _org is not None else ""
         query = text(
-            """
+            f"""
             SELECT ae.id FROM archimate_elements ae
             JOIN application_vendor_products avp ON ae.id = avp.archimate_element_id
             WHERE avp.vendor_product_id = :vendor_product_id
-            AND ae.application_component_id IS NULL
+            AND ae.application_component_id IS NULL{_org_and}
             ORDER BY ae.type, ae.name
         """
         )
 
-        result = db.session.execute(query, {"vendor_product_id": self.vendor_product_id})  # tenant-filtered: scoped via parent FK (vendor_product_id)
+        result = db.session.execute(
+            query,
+            {"vendor_product_id": self.vendor_product_id,
+             **({"org": _org} if _org is not None else {})},
+        )
         return [ArchiMateElement.query.get(row[0]) for row in result]
 
     def _clone_element(self, template_element):
@@ -147,15 +158,24 @@ class ArchiMateElementCloner:
         if len(template_element_ids) < 2:
             return
 
+        # template_element_ids already come from the org-scoped template query
+        # above; the explicit predicate is defence in depth for the raw path.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
         query = text(
-            """
+            f"""
             SELECT * FROM archimate_relationships
             WHERE source_id IN :template_ids
-            AND target_id IN :template_ids
+            AND target_id IN :template_ids{_org_and}
         """
         )
 
-        result = db.session.execute(query, {"template_ids": tuple(template_element_ids)})  # tenant-filtered: scoped via parent FK (template element IDs)
+        result = db.session.execute(
+            query,
+            {"template_ids": tuple(template_element_ids),
+             **({"org": _org} if _org is not None else {})},
+        )
 
         for row in result:
             source_id = row["source_id"]
@@ -245,15 +265,24 @@ def get_vendor_template_elements(vendor_product_id):
     Returns:
         list: Template ArchiMateElement objects
     """
+    # vendor_products has no organization_id, so vendor_product_id alone does
+    # not confine the result to one tenant; archimate_elements does carry it.
+    from flask import g as _g
+    _org = getattr(_g, "current_org_id", None)
+    _org_and = " AND ae.organization_id = :org" if _org is not None else ""
     query = text(
-        """
+        f"""
         SELECT ae.id FROM archimate_elements ae
         JOIN application_vendor_products avp ON ae.id = avp.archimate_element_id
         WHERE avp.vendor_product_id = :vendor_product_id
-        AND ae.application_component_id IS NULL
+        AND ae.application_component_id IS NULL{_org_and}
         ORDER BY ae.type, ae.name
     """
     )
 
-    result = db.session.execute(query, {"vendor_product_id": vendor_product_id})  # tenant-filtered: scoped via parent FK (vendor_product_id)
+    result = db.session.execute(
+        query,
+        {"vendor_product_id": vendor_product_id,
+         **({"org": _org} if _org is not None else {})},
+    )
     return [ArchiMateElement.query.get(row[0]) for row in result]

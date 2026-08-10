@@ -68,6 +68,12 @@ SQL_VERB = re.compile(r"\b(SELECT|UPDATE|DELETE\s+FROM|INSERT\s+INTO)\b", re.I)
 FROM_TABLE = re.compile(r"\b(?:FROM|JOIN|UPDATE|INTO)\s+([a-z_][a-z0-9_]*)", re.I)
 
 
+# `organization_id` as a WHOLE identifier. Without the leading boundary,
+# `vendor_organization_id` matched and was accepted as tenant scoping,
+# which silently passed two live cross-tenant leaks.
+_ORG_COL = re.compile(r"(?<![A-Za-z0-9_])organization_id(?![A-Za-z0-9_])")
+
+
 def tenant_tables() -> set[str]:
     try:
         from app import create_app, db  # noqa: F401
@@ -130,7 +136,24 @@ def scan_file(path: str, tables: set[str]) -> list[tuple[int, str, str]]:
             continue
         # The whole statement, not just the string: the predicate is often built
         # into a variable interpolated in, or passed as a bound parameter.
-        seg = "\n".join(lines[max(0, node.lineno - 10): node.lineno + 12])
+        # Strip Python comments before looking for the predicate. The window is
+        # searched because the clause is often built into a variable a few lines
+        # up - but a COMMENT mentioning organization_id is not scoping, and this
+        # gate accepted one. Proved by mutation: deleting a real org_scope() call
+        # left the count at zero, because the comment above it explaining the fix
+        # contained the word. This file's own docstring says 'a comment is not a
+        # control'. It was one here.
+        _window = lines[max(0, node.lineno - 10): node.lineno + 12]
+        # Two different questions, two different windows.
+        #   seg_raw  - does a deliberate `tenancy-ok:` marker exist? Markers
+        #              live in comments by design, like the repo's other
+        #              per-line hatches, so this must keep them.
+        #   seg      - is there an actual organization_id predicate? A
+        #              comment merely MENTIONING the column is not one, and
+        #              accepting it made this gate satisfiable by prose -
+        #              the precise failure its own docstring names.
+        seg_raw = "".join(_window)
+        seg = "\n".join(re.sub(r"#.*$", "", ln) for ln in _window)
         # Scoping evidence, in order of directness:
         #   - the predicate is written into the statement, or
         #   - a clause built by a helper is interpolated into it.
@@ -139,7 +162,13 @@ def scan_file(path: str, tables: set[str]) -> list[tuple[int, str, str]]:
         # identically before and after that fix, which is the definition of a
         # check that measures nothing. Caught by reverting a known fix and
         # seeing the number not move.
-        if "organization_id" in seg or "organization_id" in sql:
+        # A WORD-boundary match, not a substring. `vendor_organization_id` is a
+        # different column on a different table, and the substring test accepted
+        # it as proof of tenant scoping: it silently passed two live leaks in
+        # routes_vendor_analysis.py and routes_hybrid_mapping.py, each of which
+        # listed every organisation's elements by name. A false negative in a
+        # gate is worse than a false positive, because nobody goes looking.
+        if _ORG_COL.search(seg) or _ORG_COL.search(sql):
             continue
         # A clause built by the canonical helper and interpolated INTO this
         # statement. Both halves are required. An earlier version accepted any
@@ -157,7 +186,7 @@ def scan_file(path: str, tables: set[str]) -> list[tuple[int, str, str]]:
         # regex and makes the convention explicit.
         if re.search(r"\{[A-Za-z0-9_]*org[A-Za-z0-9_]*\}", sql, re.I):
             continue
-        if "tenancy-ok" in seg:
+        if "tenancy-ok" in seg_raw:
             continue
         findings.append((node.lineno, sorted(hit)[0], sql.strip()[:90]))
     return findings

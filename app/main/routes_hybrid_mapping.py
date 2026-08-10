@@ -6,6 +6,22 @@ from sqlalchemy import text
 
 from app import db
 from app.main.views import main
+from app.utils.tenant_sql import org_scope
+
+# Tenancy note for this whole module.
+#
+# unified_capabilities and the three mapping junctions
+# (unified_application_capability_mapping, capability_vendor_product_mapping,
+# unified_capability_archimate_mapping) carry NO organization_id column, and
+# neither do vendor_products / vendor_organizations / business_domains. They are
+# global by schema, so a per-capability count taken from them alone cannot be
+# scoped to a tenant from here.
+#
+# The two tables in these queries that ARE tenant-scoped — application_components
+# and archimate_elements — are scoped below, so no row belonging to another
+# organisation's application or element catalogue reaches the response. Comments
+# on these queries previously read "tenant-filtered: scoped via parent FK", which
+# was not true of any of them.
 
 
 @main.route("/hybrid-mapping-dashboard")
@@ -65,23 +81,34 @@ def get_mapping_statistics():
     """API endpoint for mapping statistics"""
 
     try:
-        # Application-Centric Coverage
-        app_result = db.session.execute(  # tenant-filtered: scoped via parent FK
+        _org_ac, _org_params = org_scope(prefix="ac.", keyword="AND")
+
+        # Application-Centric Coverage.
+        #
+        # The application join was previously a decoration: `ac` was joined and
+        # then never referenced, so "capabilities_with_apps" counted mappings to
+        # EVERY organisation's applications and the coverage percentage was
+        # inflated by other tenants' data. The org predicate now lives in the ON
+        # clause and the counted expression is gated on a matching `ac` row, so a
+        # capability counts only when it is mapped to an application this
+        # organisation owns.
+        app_result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 COUNT(DISTINCT uc.id) as total_capabilities,
-                COUNT(DISTINCT uacm.unified_capability_id) as capabilities_with_apps,
-                COUNT(DISTINCT CASE WHEN uc.archimate_element_id IS NOT NULL THEN uacm.unified_capability_id END) as apps_with_archimate
+                COUNT(DISTINCT CASE WHEN ac.id IS NOT NULL THEN uacm.unified_capability_id END) as capabilities_with_apps,
+                COUNT(DISTINCT CASE WHEN ac.id IS NOT NULL AND uc.archimate_element_id IS NOT NULL THEN uacm.unified_capability_id END) as apps_with_archimate
             FROM unified_capabilities uc
             LEFT JOIN unified_application_capability_mapping uacm ON uc.id = uacm.unified_capability_id
-            LEFT JOIN application_components ac ON uacm.application_component_id = ac.id
+            LEFT JOIN application_components ac ON uacm.application_component_id = ac.id{_org_ac}
         """
-            )
+            ),
+            _org_params,
         ).fetchone()
 
         # Product-Centric Coverage
-        prod_result = db.session.execute(  # tenant-filtered: scoped via parent FK
+        prod_result = db.session.execute(
             text(
                 """
             SELECT
@@ -94,7 +121,7 @@ def get_mapping_statistics():
         ).fetchone()
 
         # Products with ArchiMate (capability-product mappings where product has archimate link)
-        prod_archimate_result = db.session.execute(  # tenant-filtered: scoped via parent FK
+        prod_archimate_result = db.session.execute(
             text(
                 """
             SELECT COUNT(DISTINCT cvpm.unified_capability_id) as capabilities_with_products_archimate
@@ -106,7 +133,7 @@ def get_mapping_statistics():
         ).fetchone()
 
         # Direct ArchiMate Coverage
-        arch_result = db.session.execute(  # tenant-filtered: scoped via parent FK
+        arch_result = db.session.execute(
             text(
                 """
             SELECT
@@ -119,7 +146,7 @@ def get_mapping_statistics():
         ).fetchone()
 
         # Multi-path coverage
-        multi_path_caps = db.session.execute(  # tenant-filtered: scoped via parent FK
+        multi_path_caps = db.session.execute(
             text(
                 """
             SELECT COUNT(*) FROM (
@@ -139,7 +166,7 @@ def get_mapping_statistics():
         ).scalar()
 
         # Quality metrics
-        high_quality_mappings = db.session.execute(  # tenant-filtered: scoped via parent FK
+        high_quality_mappings = db.session.execute(
             text(
                 """
             SELECT COUNT(*) FROM (
@@ -156,7 +183,7 @@ def get_mapping_statistics():
             )
         ).scalar()
 
-        total_mappings = db.session.execute(  # tenant-filtered: scoped via parent FK
+        total_mappings = db.session.execute(
             text(
                 """
             SELECT SUM(cnt) FROM (
@@ -237,9 +264,15 @@ def get_application_mappings():
     """Get detailed application-centric mappings"""
 
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK
+        # ac is an inner join, so its predicate belongs in WHERE; ae is an outer
+        # join, so its predicate belongs in the ON clause (a WHERE predicate on
+        # an outer-joined table silently turns the join inner and would drop
+        # capabilities that have no ArchiMate element at all).
+        _org_ac, _org_params = org_scope(prefix="ac.", keyword="WHERE")
+        _org_ae, _ = org_scope(prefix="ae.", keyword="AND")
+        result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 uacm.id,
                 uc.name as capability_name,
@@ -255,10 +288,12 @@ def get_application_mappings():
             FROM unified_application_capability_mapping uacm
             JOIN unified_capabilities uc ON uacm.unified_capability_id = uc.id
             JOIN application_components ac ON uacm.application_component_id = ac.id
-            LEFT JOIN archimate_elements ae ON uc.archimate_element_id = ae.id
+            LEFT JOIN archimate_elements ae ON uc.archimate_element_id = ae.id{_org_ae}
+            {_org_ac}
             ORDER BY uc.strategic_importance DESC, uc.name
         """
-            )
+            ),
+            _org_params,
         )
 
         return [
@@ -292,9 +327,12 @@ def get_product_mappings():
     """Get detailed product-centric mappings"""
 
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK
+        # ae is outer-joined; its predicate goes in the ON clause so a product
+        # with no ArchiMate element still appears (see get_application_mappings).
+        _org_ae, _org_params = org_scope(prefix="ae.", keyword="AND")
+        result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 cvpm.id,
                 uc.name as capability_name,
@@ -314,10 +352,11 @@ def get_product_mappings():
             JOIN vendor_products vp ON cvpm.vendor_product_id = vp.id
             JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id
             LEFT JOIN vendor_product_families vpf ON vp.family_id = vpf.id
-            LEFT JOIN archimate_elements ae ON vp.archimate_product_element_id = ae.id
+            LEFT JOIN archimate_elements ae ON vp.archimate_product_element_id = ae.id{_org_ae}
             ORDER BY uc.strategic_importance DESC, uc.name
         """
-            )
+            ),
+            _org_params,
         )
 
         return [
@@ -353,9 +392,12 @@ def get_archimate_mappings():
     """Get detailed direct ArchiMate mappings"""
 
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK
+        # ae is inner-joined and every projected column comes from it, so the
+        # unscoped form listed every organisation's ArchiMate elements by name.
+        _org_ae, _org_params = org_scope(prefix="ae.", keyword="WHERE")
+        result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 ucam.id,
                 uc.name as capability_name,
@@ -371,9 +413,11 @@ def get_archimate_mappings():
             FROM unified_capability_archimate_mapping ucam
             JOIN unified_capabilities uc ON ucam.unified_capability_id = uc.id
             JOIN archimate_elements ae ON ucam.archimate_element_id = ae.id
+            {_org_ae}
             ORDER BY uc.strategic_importance DESC, uc.name
         """
-            )
+            ),
+            _org_params,
         )
 
         return [
@@ -407,7 +451,7 @@ def get_unmapped_capabilities():
     """Get capabilities without any mappings"""
 
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK
+        result = db.session.execute(
             text(
                 """
             SELECT
@@ -444,7 +488,9 @@ def get_unmapped_vendor_products():
     """Get vendor products without capability mappings"""
 
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor_products)
+        # Global by schema: neither vendor_products nor vendor_organizations nor
+        # vendor_product_families carries an organization_id column.
+        result = db.session.execute(
             text(
                 """
             SELECT
@@ -478,9 +524,12 @@ def get_unmapped_archimate_elements():
     """Get ArchiMate elements without capability mappings"""
 
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK (archimate_elements)
+        # archimate_elements is the driving table here, so with no predicate this
+        # listed 20 elements drawn from every organisation's catalogue.
+        _org_ae, _org_params = org_scope(prefix="ae.", keyword="AND")
+        result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 ae.id,
                 ae.name,
@@ -491,11 +540,12 @@ def get_unmapped_archimate_elements():
             WHERE ae.id NOT IN (
                 SELECT DISTINCT archimate_element_id FROM unified_capability_archimate_mapping
             )
-            AND ae.type IN ('ApplicationComponent', 'ApplicationService', 'TechnologyService', 'BusinessProcess')
+            AND ae.type IN ('ApplicationComponent', 'ApplicationService', 'TechnologyService', 'BusinessProcess'){_org_ae}
             ORDER BY ae.type, ae.name
             LIMIT 20
         """
-            )
+            ),
+            _org_params,
         )
 
         return [dict(zip(["id", "name", "type", "layer", "description"], row)) for row in result]

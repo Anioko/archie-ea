@@ -1525,13 +1525,24 @@ def _delete_archimate_element(element_id, rel_type="realization"):
             if _owner is not None and _owner != _org:
                 _abort(404)
 
+        # Every statement below is keyed on `eid`, and `eid` is `int(element_id)`
+        # for an element whose `organization_id` was just read straight from the
+        # table and compared against `g.current_org_id` above. Re-scoping the
+        # cascade by organisation would be worse than useless: it would leave a
+        # row in another organisation still pointing at the element being
+        # deleted, and the NO ACTION foreign keys these statements exist to
+        # clear would then abort the delete.
+        #
         # ------------------------------------------------------------------
         # 1. Self-referential: clear children that point to this as parent/template
         # ------------------------------------------------------------------
+        # tenancy-ok: keyed on eid, whose organization_id was asserted against
+        # g.current_org_id immediately above; scoping the cascade would strand FKs
         db.session.execute(
             text("UPDATE archimate_elements SET parent_id = NULL WHERE parent_id = :id"),
             {"id": eid},
         )
+        # tenancy-ok: keyed on the same ownership-checked eid
         db.session.execute(
             text("UPDATE archimate_elements SET template_element_id = NULL WHERE template_element_id = :id"),
             {"id": eid},
@@ -1544,6 +1555,7 @@ def _delete_archimate_element(element_id, rel_type="realization"):
         # ------------------------------------------------------------------
         # saved_diagram_relationships references archimate_relationships, so
         # delete those first before deleting the relationships themselves.
+        # tenancy-ok: keyed on the same ownership-checked eid
         db.session.execute(
             text("""
                 DELETE FROM saved_diagram_relationships
@@ -1554,6 +1566,9 @@ def _delete_archimate_element(element_id, rel_type="realization"):
             """),
             {"id": eid},
         )
+        # tenancy-ok: keyed on the same ownership-checked eid. A relationship
+        # touching this element must go regardless of which organisation owns the
+        # relationship row, or the element delete fails on its FK.
         db.session.execute(
             text("DELETE FROM archimate_relationships WHERE source_id = :id OR target_id = :id"),
             {"id": eid},

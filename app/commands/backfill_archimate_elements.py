@@ -17,14 +17,23 @@ Covers:
 import click
 from flask.cli import with_appcontext
 
-# SQL to fetch (entity_id, name, solution_id) for each motivation entity type.
+# SQL to fetch (entity_id, name, solution_id, organization_id) for each motivation
+# entity type.
 # All queries avoid ORM to prevent column-drift errors from unapplied migrations.
+#
+# organization_id is carried through from the owning solution because this command
+# runs with no request context: the before_flush listener in
+# app/middleware/tenant_isolation.py only stamps organization_id when
+# g.current_org_id is set, so a CLI-created ArchiMateElement would otherwise be
+# written with a NULL organization_id and be invisible to every tenant's ORM
+# queries afterwards. The three formerly solution_id-only queries now join
+# solutions for the same reason.
 _ENTITY_QUERIES = {
     # via solution.analysis_session_id chain
     "Driver": (
         "Driver", "Motivation",
         """
-        SELECT d.id, d.name, s.id AS solution_id
+        SELECT d.id, d.name, s.id AS solution_id, s.organization_id AS organization_id
         FROM solution_drivers d
         JOIN solution_problem_definitions spd ON d.problem_id = spd.id
         JOIN solution_analysis_sessions sas ON spd.session_id = sas.id
@@ -34,7 +43,7 @@ _ENTITY_QUERIES = {
     "Goal": (
         "Goal", "Motivation",
         """
-        SELECT g.id, g.name, s.id AS solution_id
+        SELECT g.id, g.name, s.id AS solution_id, s.organization_id AS organization_id
         FROM solution_goals g
         JOIN solution_problem_definitions spd ON g.problem_id = spd.id
         JOIN solution_analysis_sessions sas ON spd.session_id = sas.id
@@ -44,7 +53,7 @@ _ENTITY_QUERIES = {
     "Constraint": (
         "Constraint", "Motivation",
         """
-        SELECT c.id, c.name, s.id AS solution_id
+        SELECT c.id, c.name, s.id AS solution_id, s.organization_id AS organization_id
         FROM solution_constraints c
         JOIN solution_problem_definitions spd ON c.problem_id = spd.id
         JOIN solution_analysis_sessions sas ON spd.session_id = sas.id
@@ -54,7 +63,7 @@ _ENTITY_QUERIES = {
     "Requirement": (
         "Requirement", "Motivation",
         """
-        SELECT r.id, r.name, s.id AS solution_id
+        SELECT r.id, r.name, s.id AS solution_id, s.organization_id AS organization_id
         FROM solution_requirements r
         JOIN solutions s ON (
             r.solution_id = s.id
@@ -70,22 +79,39 @@ _ENTITY_QUERIES = {
     # direct solution_id
     "Assessment": (
         "Assessment", "Motivation",
-        "SELECT id, risk_description AS name, solution_id FROM solution_risks",
+        """
+        SELECT x.id, x.risk_description AS name, x.solution_id,
+               s.organization_id AS organization_id
+        FROM solution_risks x
+        JOIN solutions s ON x.solution_id = s.id
+        """,
     ),
     "Outcome": (
         "Outcome", "Motivation",
-        "SELECT id, name, solution_id FROM solution_metrics",
+        """
+        SELECT x.id, x.name, x.solution_id, s.organization_id AS organization_id
+        FROM solution_metrics x
+        JOIN solutions s ON x.solution_id = s.id
+        """,
     ),
     "Plateau": (
         "Plateau", "Implementation",
-        "SELECT id, name, solution_id FROM solution_plateaus",
+        """
+        SELECT x.id, x.name, x.solution_id, s.organization_id AS organization_id
+        FROM solution_plateaus x
+        JOIN solutions s ON x.solution_id = s.id
+        """,
     ),
 }
 
 
 def _already_linked_sql(db, solution_id, ae_type, name):
     """True if (solution_id, ae_type, name) already has a join record."""
-    row = db.session.execute(db.text(  # tenant-exempt: CLI command
+    # tenancy-ok: CLI backfill, deliberately global across organisations; no
+    # request context exists. The lookup is keyed on solution_id, which came from
+    # the solutions row driving this iteration, so it cannot reach past that
+    # solution's own elements even though nothing filters by organisation.
+    row = db.session.execute(db.text(
     """
         SELECT 1 FROM solution_elements se
         JOIN archimate_elements ae ON se.archimate_element_id = ae.id
@@ -139,6 +165,9 @@ def backfill_archimate_elements_command(dry_run, motivation_only):
                         type="ApplicationComponent",
                         layer="Application",
                         description=app_comp.description or f"Application: {app_comp.name}",
+                        # No request context here, so before_flush will not stamp
+                        # this — inherit the organisation of the row it mirrors.
+                        organization_id=getattr(app_comp, "organization_id", None),
                     )
                     db.session.add(ae)
                     db.session.flush()
@@ -161,6 +190,7 @@ def backfill_archimate_elements_command(dry_run, motivation_only):
                         type="Capability",
                         layer="Strategy",
                         description=cap.description or f"Capability: {cap.name}",
+                        organization_id=getattr(cap, "organization_id", None),
                     )
                     db.session.add(ae)
                     db.session.flush()
@@ -174,7 +204,10 @@ def backfill_archimate_elements_command(dry_run, motivation_only):
     click.echo("\nMotivation / Implementation entity backfill:")
     for key, (ae_type, ae_layer, sql) in _ENTITY_QUERIES.items():
         try:
-            rows = db.session.execute(db.text(sql)).fetchall()  # tenant-exempt: CLI command
+            # tenancy-ok: CLI backfill, deliberately global across organisations;
+            # no request context exists. Each row carries its solution's
+            # organization_id so the element created from it is attributed.
+            rows = db.session.execute(db.text(sql)).fetchall()
         except Exception as exc:
             click.echo(f"  {key:16s}: QUERY ERROR — {exc}", err=True)
             db.session.rollback()
@@ -195,6 +228,7 @@ def backfill_archimate_elements_command(dry_run, motivation_only):
                     ae = ArchiMateElement(
                         name=name, type=ae_type, layer=ae_layer,
                         description=f"{ae_type}: {name}",
+                        organization_id=row.organization_id,
                     )
                     db.session.add(ae)
                     db.session.flush()

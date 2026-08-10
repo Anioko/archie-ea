@@ -1461,15 +1461,20 @@ class VendorProductService:
     def get_product_applications(self, product_id: int) -> List[Dict[str, Any]]:
         """Get all applications mapped to a product via application_vendor_product_mappings."""
         try:
+            # vendor_products is shared reference data with no organization_id,
+            # so product_id does not scope this — application_components does.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_and = " AND ac.organization_id = :org" if _org is not None else ""
             rows = db.session.execute(
-                db.text("""
+                db.text(f"""
                     SELECT ac.id, ac.name, m.role_type
                     FROM application_vendor_product_mappings m
                     JOIN application_components ac ON ac.id = m.application_component_id
-                    WHERE m.vendor_product_id = :pid
+                    WHERE m.vendor_product_id = :pid{_org_and}
                     ORDER BY ac.name
                 """),
-                {"pid": product_id},
+                {"pid": product_id, **({"org": _org} if _org is not None else {})},
             ).fetchall()
             return [{"id": r[0], "name": r[1], "role_type": r[2]} for r in rows]
         except Exception as e:

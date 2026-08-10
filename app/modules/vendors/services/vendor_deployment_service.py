@@ -117,10 +117,16 @@ class VendorDeploymentService:
         criticality = deployment_config.get("criticality", "business_critical")
         hosting_model = deployment_config.get("hosting_model", "cloud")
 
-        # Update junction table with deployment metadata
-        # tenant-filtered: scoped via parent FK (vendor_product_id, archimate_element_id)
+        # Update junction table with deployment metadata.
+        # application_vendor_products has no organization_id of its own, so the
+        # org predicate goes on the archimate_elements sub-select, which does.
+        # Without it a cross-org application_id would rewrite another tenant's
+        # junction rows.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
         update_query = text(
-            """
+            f"""
             UPDATE application_vendor_products
             SET deployment_type = :deployment_type,
                 criticality = :criticality,
@@ -130,16 +136,17 @@ class VendorDeploymentService:
             WHERE vendor_product_id = :vendor_product_id
             AND archimate_element_id IN (
                 SELECT id FROM archimate_elements
-                WHERE application_component_id = :application_id
+                WHERE application_component_id = :application_id{_org_and}
             )
         """
         )
 
-        db.session.execute(  # tenant-filtered: scoped via parent FK (vendor_product_id, archimate_element_id)
+        db.session.execute(
             update_query,
             {
                 "vendor_product_id": vendor_product_id,
                 "application_id": application_id,
+                **({"org": _org} if _org is not None else {}),
                 "deployment_type": deployment_type,
                 "criticality": criticality,
                 "hosting_model": hosting_model,
@@ -168,34 +175,44 @@ class VendorDeploymentService:
             # Add additional deployment-specific information
             from sqlalchemy import text
 
+            # application_component_id is not, on its own, a tenant boundary —
+            # archimate_elements carries organization_id, so scope on that.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_and_ae = " AND ae.organization_id = :org" if _org is not None else ""
+            _org_and = " AND organization_id = :org" if _org is not None else ""
+            _org_params = {"org": _org} if _org is not None else {}
+
             # Count vendor products linked to this application
-            # tenant-filtered: scoped via parent FK (application_component_id)
             vendor_products_query = text(
-                """
+                f"""
                 SELECT COUNT(DISTINCT vp.id) as vendor_product_count
                 FROM application_vendor_products avp
                 JOIN vendor_products vp ON avp.vendor_product_id = vp.id
                 JOIN archimate_elements ae ON avp.archimate_element_id = ae.id
-                WHERE ae.application_component_id = :application_id
+                WHERE ae.application_component_id = :application_id{_org_and_ae}
             """
             )
 
-            result = db.session.execute(vendor_products_query, {"application_id": application_id})  # tenant-filtered
+            result = db.session.execute(
+                vendor_products_query, {"application_id": application_id, **_org_params}
+            )
             vendor_product_count = result.fetchone()["vendor_product_count"]
 
             # Get ArchiMate element breakdown by type
-            # tenant-filtered: scoped via parent FK (application_component_id)
             elements_by_type_query = text(
-                """
+                f"""
                 SELECT type, COUNT(*) as count
                 FROM archimate_elements
-                WHERE application_component_id = :application_id
+                WHERE application_component_id = :application_id{_org_and}
                 GROUP BY type
                 ORDER BY count DESC
             """
             )
 
-            result = db.session.execute(elements_by_type_query, {"application_id": application_id})  # tenant-filtered
+            result = db.session.execute(
+                elements_by_type_query, {"application_id": application_id, **_org_params}
+            )
             elements_by_type = {row["type"]: row["count"] for row in result}
 
             # Enhance summary
@@ -234,8 +251,13 @@ class VendorDeploymentService:
             if not vendor:
                 raise ValueError(f"Vendor {vendor_id} not found")
 
-            # Get all deployed applications from this vendor (using vendor_product_id FK)
-            # tenant-filtered: scoped via parent FK (vendor_organization_id)
+            # Get all deployed applications from this vendor.
+            # The comment here used to claim "scoped via parent FK
+            # (vendor_organization_id)". That is a column on vendor_products,
+            # not a tenant boundary - vendor_products carries no
+            # organization_id - so this listed EVERY tenant's production
+            # applications, with names, descriptions, owners and criticality.
+            _org_clause, _org_params = org_scope("ac.")
             portfolio_query = text(
                 """
                 SELECT
@@ -256,12 +278,14 @@ class VendorDeploymentService:
                 LEFT JOIN archimate_elements ae ON ac.id = ae.application_component_id
                 WHERE vp.vendor_organization_id = :vendor_id
                 AND ac.deployment_status = 'production'
+                """ + _org_clause + """
                 GROUP BY ac.id, vp.id
                 ORDER BY ac.created_at DESC
             """
             )
 
-            result = db.session.execute(portfolio_query, {"vendor_id": vendor_id})  # tenant-filtered
+            result = db.session.execute(
+                portfolio_query, {"vendor_id": vendor_id, **_org_params})
             applications = []
 
             for row in result:
@@ -394,3 +418,4 @@ def deploy_vendor_product(vendor_product_id, deployment_config):
     return VendorDeploymentService.deploy_vendor_product_complete(
         vendor_product_id, deployment_config
     )
+from app.utils.tenant_sql import org_scope
