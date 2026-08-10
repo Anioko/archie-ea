@@ -680,6 +680,7 @@
                      bpData: null,
                      bpLoading: false,
                      bpLoaded: false,
+                     bpError: null,
                      get bpSid() { return (window.__SOLUTION_CONFIG__ || {}).solutionId; },
                      toneClass(tone) {
                          return tone === 'good'  ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'
@@ -691,11 +692,14 @@
                          this.bpLoading = true;
                          try {
                              const r = await fetch('/api/solutions/' + this.bpSid + '/chief-packet', { credentials: 'same-origin' });
+                             if (!r.ok) throw new Error('the synthesis could not be generated (HTTP ' + r.status + ')');
                              this.bpData = await r.json();
                              this.bpLoaded = true;
+                             this.bpError = null;
                          } catch(e) {
-                             console.warn('[AI-7] chief-packet error:', e);
-                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate board packet');
+                             this.bpData = null;
+                             this.bpError = 'Board packet failed: ' + e.message;
+                             if (window.Platform && Platform.toast) Platform.toast.error(this.bpError);
                          }
                          this.bpLoading = false;
                          if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
@@ -771,7 +775,17 @@
                     </div>
                 </template>
 
-                <div x-show="!bpLoading && (!bpData || !bpData.success)" x-cloak
+                <div x-show="!bpLoading && bpError" x-cloak
+                     class="rounded-lg border border-destructive p-6 text-center">
+                    <i data-lucide="alert-triangle" class="h-8 w-8 mx-auto mb-2 text-destructive" aria-hidden="true"></i>
+                    <p class="text-sm text-destructive" x-text="bpError"></p>
+                    <p class="text-xs text-muted-foreground mt-1">Nothing was synthesised — do not read this as "no findings".</p>
+                    <button type="button" @click="bpLoaded = false; load()" class="mt-3 inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">
+                        <i data-lucide="refresh-cw" class="h-3 w-3" aria-hidden="true"></i>Try again
+                    </button>
+                </div>
+
+                <div x-show="!bpLoading && !bpError && (!bpData || !bpData.success)" x-cloak
                      class="rounded-lg border border-dashed border-border p-6 text-center">
                     <i data-lucide="layout-dashboard" class="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" aria-hidden="true"></i>
                     <p class="text-sm text-muted-foreground">No board packet available yet.</p>

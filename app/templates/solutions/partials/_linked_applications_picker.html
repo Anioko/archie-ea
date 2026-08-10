@@ -51,7 +51,11 @@
             </ul>
         </template>
 
-        <template x-if="searchQuery.length >= 2 && results.length === 0 && !searching">
+        <template x-if="searchError && !searching">
+            <p class="text-xs text-destructive" x-text="searchError + ' — nothing was searched.'"></p>
+        </template>
+
+        <template x-if="!searchError && searchQuery.length >= 2 && results.length === 0 && !searching">
             <p class="text-xs text-muted-foreground/70 italic">No matching applications found.</p>
         </template>
     </div>
@@ -113,6 +117,7 @@ function appPicker(solutionId, initialApps) {
         showPicker: false,
         searchQuery: '',
         results: [],
+        searchError: '',
         searching: false,
         linking: false,
         errorMsg: '',
@@ -125,14 +130,18 @@ function appPicker(solutionId, initialApps) {
 
         async search() {
             const q = this.searchQuery.trim();
-            if (q.length < 2) { this.results = []; return; }
+            if (q.length < 2) { this.results = []; this.searchError = ''; return; }
             this.searching = true;
             try {
                 const res = await fetch('/api/enterprise/applications?search=' + encodeURIComponent(q) + '&limit=20');
+                if (!res.ok) throw new Error('Application search failed (HTTP ' + res.status + ')');
                 const data = await res.json();
                 this.results = data.applications || data.results || data || [];
+                this.searchError = '';
             } catch (e) {
+                // Debounced typeahead: inline message, not a toast per keystroke.
                 this.results = [];
+                this.searchError = e.message || 'Application search failed';
             } finally {
                 this.searching = false;
             }

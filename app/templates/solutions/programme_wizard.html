@@ -277,7 +277,10 @@
       <input type="text" x-model="capSearch" @input.debounce.300ms="searchCapabilities()"
              class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
              placeholder="Search 516 enterprise capabilities..." aria-label="Search 516 enterprise capabilities...">
-      <div x-show="capResults.length > 0" x-cloak
+      <div x-show="capSearchError" x-cloak
+           class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg px-4 py-2.5 text-sm text-destructive"
+           x-text="capSearchError"></div>
+      <div x-show="!capSearchError && capResults.length > 0" x-cloak
            class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-48 overflow-y-auto">
         <template x-for="cap in capResults" :key="cap.id">
           <div @click="addCapability(cap)"
@@ -326,7 +329,10 @@
       <input type="text" x-model="appSearch" @input.debounce.300ms="searchApplications()"
              class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
              placeholder="Search applications..." aria-label="Search applications">
-      <div x-show="appResults.length > 0" x-cloak
+      <div x-show="appSearchError" x-cloak
+           class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg px-4 py-2.5 text-sm text-destructive"
+           x-text="appSearchError"></div>
+      <div x-show="!appSearchError && appResults.length > 0" x-cloak
            class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-48 overflow-y-auto">
         <template x-for="app in appResults" :key="app.id">
           <div @click="addApplication(app)"
@@ -583,10 +589,12 @@ function programmeJourney() {
 
     capSearch: '',
     capResults: [],
+    capSearchError: '',
     capSearching: false,
 
     appSearch: '',
     appResults: [],
+    appSearchError: '',
     appSearching: false,
 
     canAdvance() {
@@ -634,15 +642,19 @@ function programmeJourney() {
     },
 
     async searchCapabilities() {
-      if (this.capSearch.length < 2) { this.capResults = []; return; }
+      if (this.capSearch.length < 2) { this.capResults = []; this.capSearchError = ''; return; }
       this.capSearching = true;
       try {
         const r = await fetch(`/solutions/capabilities/search?q=${encodeURIComponent(this.capSearch)}&limit=10`);
+        if (!r.ok) throw new Error('Capability search failed (HTTP ' + r.status + ')');
         const data = await r.json();
-        if (data.success) {
-          const selectedIds = new Set(this.form.capabilities.map(c => c.id));
-          this.capResults = (data.capabilities || []).filter(c => !selectedIds.has(c.id));
-        }
+        if (!data.success) throw new Error(data.error || 'Capability search failed');
+        const selectedIds = new Set(this.form.capabilities.map(c => c.id));
+        this.capResults = (data.capabilities || []).filter(c => !selectedIds.has(c.id));
+        this.capSearchError = '';
+      } catch (e) {
+        this.capResults = [];
+        this.capSearchError = e.message || 'Capability search failed';
       } finally { this.capSearching = false; }
     },
 
@@ -650,6 +662,7 @@ function programmeJourney() {
       this.form.capabilities.push({ id: cap.id, name: cap.name, domain: cap.business_domain, level: cap.level, accepted: true });
       this.capSearch = '';
       this.capResults = [];
+      this.capSearchError = '';
     },
 
     removeCapability(idx) {
@@ -657,13 +670,19 @@ function programmeJourney() {
     },
 
     async searchApplications() {
-      if (this.appSearch.length < 2) { this.appResults = []; return; }
+      if (this.appSearch.length < 2) { this.appResults = []; this.appSearchError = ''; return; }
       this.appSearching = true;
       try {
         const r = await fetch(`/api/enterprise/applications?search=${encodeURIComponent(this.appSearch)}&limit=10`);
+        if (!r.ok) throw new Error('Application search failed (HTTP ' + r.status + ')');
         const data = await r.json();
         const selectedIds = new Set(this.form.applications.map(a => a.id));
         this.appResults = (data.applications || []).filter(a => !selectedIds.has(a.id));
+        this.appSearchError = '';
+      } catch (e) {
+        // Silence here would look like "no application by that name exists".
+        this.appResults = [];
+        this.appSearchError = e.message || 'Application search failed';
       } finally { this.appSearching = false; }
     },
 
@@ -671,6 +690,7 @@ function programmeJourney() {
       this.form.applications.push({ id: app.id, name: app.name });
       this.appSearch = '';
       this.appResults = [];
+      this.appSearchError = '';
     },
 
     removeApplication(idx) {

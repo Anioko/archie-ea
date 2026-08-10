@@ -119,6 +119,7 @@
         try {
             loadingIndicator.textContent = 'Loading...';
             const statusRes = await fetch(`/api/solutions/${solutionId}/suggestions/status`);
+            if (!statusRes.ok) throw new Error('HTTP ' + statusRes.status);
             const statusData = await statusRes.json();
 
             if (!statusData.enhanced) {
@@ -143,9 +144,10 @@
             feedbackSection.classList.remove('hidden');
             attachFeedbackHandlers();
         } catch (err) {
-            console.error('Suggestion load error:', err);
+            // Without this the panel sits on "Pending AI enhancement..." forever and
+            // every section stays hidden, which reads as "the AI had no suggestions".
             errorDiv.classList.remove('hidden');
-            loadingIndicator.textContent = 'Error';
+            loadingIndicator.textContent = 'Could not load suggestions (' + err.message + ')';
         }
     }
 

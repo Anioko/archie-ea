@@ -2068,10 +2068,11 @@ function openSectionComments(section, label) {
             this.error = '';
             try {
                 const resp = await fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20');
+                if (!resp.ok) throw new Error('Search unavailable (HTTP ' + resp.status + ')');
                 const json = await resp.json();
                 this.results = json.data || json.results || [];
             } catch (e) {
-                this.error = 'Search unavailable';
+                this.error = e.message || 'Search unavailable';
                 this.results = [];
             }
             this.loading = false;
