@@ -86,7 +86,7 @@
       </div>
       <div class="flex-1 overflow-auto">
         <pre
-          class="p-4 text-xs font-mono bg-gray-950 text-foreground/90 min-h-full"
+          class="p-4 text-xs font-mono bg-muted text-foreground/90 min-h-full"
           x-html="renderDiff(patches[activeIndex]?.diff || '')"
         ></pre>
       </div>
@@ -151,9 +151,9 @@ function wbDiffReview() {
     renderDiff(diff) {
       return diff.split('\n').map(line => {
         const escaped = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="text-green-400">${escaped}</span>`;
-        if (line.startsWith('-') && !line.startsWith('---')) return `<span class="text-red-400">${escaped}</span>`;
-        if (line.startsWith('@@')) return `<span class="text-info">${escaped}</span>`;
+        if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="text-emerald-600 dark:text-emerald-400">${escaped}</span>`;
+        if (line.startsWith('-') && !line.startsWith('---')) return `<span class="text-destructive-emphasis">${escaped}</span>`;
+        if (line.startsWith('@@')) return `<span class="text-info-emphasis">${escaped}</span>`;
         if (line.startsWith('---') || line.startsWith('+++')) return `<span class="text-muted-foreground/60">${escaped}</span>`;
         return `<span class="text-foreground/70">${escaped}</span>`;
       }).join('\n');

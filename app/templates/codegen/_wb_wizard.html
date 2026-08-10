@@ -59,7 +59,7 @@
                 Applying confirmed specs overwrites the LLM's field inference with your architect-verified definitions — making them binding for Phase 4 code generation.
             </div>
             <button @click="applySpecs()" :disabled="applyingSpecs"
-                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-blue-600 text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                 <i data-lucide="lock" class="h-3 w-3"></i>
                 Apply Specs
             </button>
@@ -71,7 +71,7 @@
             <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">
                 <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
                 <span x-text="err.text" class="flex-1"></span>
-                <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-destructive">
+                <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-destructive-emphasis/70 hover:text-destructive-emphasis">
                     <i data-lucide="x" class="h-3.5 w-3.5"></i>
                 </button>
             </div>
@@ -315,7 +315,7 @@
                             <template x-for="(el, i) in (nlResult && nlResult.elements || [])" :key="i">
                                 <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-background border border-border text-xs">
                                     <span class="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                                          :class="{'bg-info':el.layer==='Business','bg-violet-500':el.layer==='Application','bg-orange-500':el.layer==='Technology','bg-gray-400':el.layer==='Implementation'}"></span>
+                                          :class="{'bg-info':el.layer==='Business','bg-violet-500':el.layer==='Application','bg-orange-500':el.layer==='Technology','bg-muted-foreground':el.layer==='Implementation'}"></span>
                                     <span class="truncate font-mono text-foreground" x-text="el.name" :title="el.name + ' (' + el.type + ')'"></span>
                                 </div>
                             </template>
@@ -742,10 +742,10 @@
             <div x-show="phase >= 4" x-collapse class="border-t border-border px-5 pb-5 pt-4">
                 <!-- Error banners -->
                 <template x-for="err in errors" :key="err.id">
-                    <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">
                         <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
                         <span x-text="err.text" class="flex-1"></span>
-                        <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-destructive"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
+                        <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-destructive-emphasis/70 hover:text-destructive-emphasis"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
                     </div>
                 </template>
                 <div class="flex flex-wrap items-center gap-3 mb-4">

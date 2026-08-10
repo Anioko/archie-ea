@@ -255,7 +255,7 @@
                                     <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-width="3" class="text-muted/40"/>
                                     <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-width="3"
                                             stroke-dasharray="{{ _score }}, 100"
-                                            class="{{ 'text-emerald-500' if _score >= 80 else ('text-amber-500' if _score >= 40 else 'text-red-400') }}"/>
+                                            class="{{ 'text-emerald-500' if _score >= 80 else ('text-amber-500' if _score >= 40 else 'text-destructive') }}"/>
                                   </svg>
                                   <span class="absolute text-[11px] font-bold leading-none">{{ _score }}%</span>
                                 </div>

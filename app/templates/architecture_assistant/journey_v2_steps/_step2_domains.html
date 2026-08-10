@@ -172,7 +172,7 @@
                                                   'bg-muted text-muted-foreground': el.source === 'baseline',
                                                   'bg-purple-100 text-purple-600': el.source === 'llm',
                                                   'bg-amber-100 text-amber-600': el.source === 'industry_overlay',
-                                                  'bg-blue-100 text-info': el.source === 'cross_domain',
+                                                  'bg-info/10 text-info-emphasis': el.source === 'cross_domain',
                                                   'bg-emerald-100 text-emerald-600': el.source === 'user'
                                               }"
                                               x-text="el.source === 'industry_overlay' ? 'Ins.' : (el.source === 'cross_domain' ? 'Chain' : el.source)"></span>
@@ -201,7 +201,7 @@
                                                     </button>
                                                 </template>
                                                 <template x-if="!el.is_baseline && el.source !== 'industry_overlay'">
-                                                    <button type="button" @click="rejectDomainElement(code, el.id)" class="p-0.5 rounded hover:bg-red-100" title="Reject">
+                                                    <button type="button" @click="rejectDomainElement(code, el.id)" class="p-0.5 rounded hover:bg-destructive/10" title="Reject">
                                                         <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                                                     </button>
                                                 </template>
@@ -211,7 +211,7 @@
                                             <div class="flex items-center gap-0.5" @click.stop>
                                                 <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                                 <button type="button" @click="rejectDomainElement(code, el.id)"
-                                                        class="p-0.5 rounded hover:bg-red-100 transition-colors"
+                                                        class="p-0.5 rounded hover:bg-destructive/10 transition-colors"
                                                         title="Remove this element">
                                                     <svg class="w-3 h-3 text-muted-foreground/40 hover:text-destructive" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                                                 </button>

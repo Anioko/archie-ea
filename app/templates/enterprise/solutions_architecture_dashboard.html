@@ -439,7 +439,7 @@ function solutionWorkspace() {
             return 'bg-destructive/10 text-destructive';
         },
         optionBadgeClass(type) {
-            return { REUSE: 'bg-emerald-600', BUY: 'bg-primary', BUILD: 'bg-orange-600', HYBRID: 'bg-primary' }[type] || 'bg-slate-600';
+            return { REUSE: 'bg-emerald-600', BUY: 'bg-primary', BUILD: 'bg-orange-600', HYBRID: 'bg-primary' }[type] || 'bg-muted-foreground';
         },
         formatCost(v) {
             if (!v && v !== 0) return '';

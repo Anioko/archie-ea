@@ -230,7 +230,7 @@
                 {# ENT-111: Staleness badge #}
                 <span x-show="staleRelationships && staleRelationships.length > 0" x-cloak
                       @click.stop="showStalenessReview = true; saveDropdownOpen = false"
-                      class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-orange-500 border border-white"
+                      class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-orange-500 border border-background"
                       title="Stale relationships detected — click to review"></span>
                 <i data-lucide="chevron-down" class="w-3 h-3"></i>
             </button>

@@ -91,7 +91,7 @@
                       <span class="text-amber-500 text-[10px]">⚠ security warning</span>
                     </template>
                   </div>
-                  <pre class="p-2 text-[10px] font-mono overflow-x-auto max-h-40 bg-gray-950 text-foreground/90" x-text="patch.diff.substring(0, 800) + (patch.diff.length > 800 ? '\n...' : '')"></pre>
+                  <pre class="p-2 text-[10px] font-mono overflow-x-auto max-h-40 bg-muted text-foreground/90" x-text="patch.diff.substring(0, 800) + (patch.diff.length > 800 ? '\n...' : '')"></pre>
                   <div class="flex gap-1 p-1.5 bg-[var(--color-surface-tertiary)]">
                     <button
                       @click="applyPatch(msg, patch, pi)"

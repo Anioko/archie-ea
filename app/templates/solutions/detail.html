@@ -694,7 +694,7 @@
               </div>
             </div>
           </template>
-          <p x-show="aiError" x-cloak class="mt-2 text-xs text-red-400" x-text="aiError"></p>
+          <p x-show="aiError" x-cloak class="mt-2 text-xs text-destructive" x-text="aiError"></p>
         </div>
       </div>
     </div>
@@ -721,7 +721,7 @@
             <span x-text="tab.label"></span>
             <span class="ml-1 text-[10px] text-muted-foreground" x-text="'(' + tab.phase + ')'"></span>
             <span class="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 rounded-full text-[10px] font-bold px-1"
-                  :class="tab.pct === 100 ? 'bg-emerald-500/15 text-emerald-400' : tab.pct >= 40 ? 'bg-amber-500/15 text-amber-400' : tab.pct > 0 ? 'bg-destructive/15 text-red-400' : 'bg-muted text-muted-foreground'"
+                  :class="tab.pct === 100 ? 'bg-emerald-500/15 text-emerald-400' : tab.pct >= 40 ? 'bg-amber-500/15 text-amber-400' : tab.pct > 0 ? 'bg-destructive/15 text-destructive-emphasis' : 'bg-muted text-muted-foreground'"
                   x-html="tab.pct === 100 ? '&#10003;' : tab.pct + '%'"></span>
           </button>
         </template>
@@ -825,7 +825,7 @@
           <div class="rounded-xl border border-border bg-card p-4">
             <div class="flex items-center gap-3">
               <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-destructive/10 border border-destructive/20 shrink-0">
-                <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                <svg class="w-5 h-5 text-destructive-emphasis" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
               </span>
               <div>
                 <p class="text-2xl font-bold text-foreground">{{ constraints | length }}</p>
@@ -964,7 +964,7 @@
               <tr class="hover:bg-muted/20">
                 <td class="px-5 py-2.5">{{ r.get('name') or r.get('title') or r.get('description', 'Untitled') }}</td>
                 <td class="px-3 py-2.5"><span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{{ (r.get('requirement_type') or r.get('type') or 'Functional') | title }}</span></td>
-                <td class="px-3 py-2.5"><span class="text-[10px] {% if r_priority == 'critical' %}text-red-400{% elif r_priority == 'high' %}text-amber-400{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
+                <td class="px-3 py-2.5"><span class="text-[10px] {% if r_priority == 'critical' %}text-destructive{% elif r_priority == 'high' %}text-amber-400{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
                 <td class="px-3 py-2.5">
                   <span class="flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full {% if r_status == 'met' or r_status == 'closed' %}bg-emerald-400{% elif r_status == 'in_progress' or r_status == 'in progress' %}bg-amber-400{% else %}bg-muted-foreground{% endif %}"></span>
@@ -997,7 +997,7 @@
             <span class="text-xs text-muted-foreground">Target: {{ qa.get('target_value') or qa.get('target') }}</span>
             {% endif %}
             {% if qa.get('priority') %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-destructive/10 text-red-400{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-destructive/10 text-destructive-emphasis{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
             {% endif %}
           </div>
           {% endfor %}
@@ -1057,7 +1057,7 @@
                 <div class="flex items-center gap-2 mt-2">
                   {% set mat = cap.get('maturity_level') or cap.get('level') %}
                   {% if mat %}
-                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-emerald-500/10 text-emerald-400{% elif mat >= 3 %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-red-400{% endif %}">L{{ mat }}</span>
+                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-emerald-500/10 text-emerald-400{% elif mat >= 3 %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">L{{ mat }}</span>
                   {% endif %}
                 </div>
               </div>
@@ -1615,7 +1615,7 @@
         {% endfor %}
         {% if ns_risk.unmitigated_high > 0 %}
         <div class="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+          <svg class="w-3.5 h-3.5 text-destructive-emphasis shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
           <p class="text-xs text-foreground/80"><strong>{{ ns_risk.unmitigated_high }}</strong> high/critical risk{{ 's' if ns_risk.unmitigated_high != 1 }} without mitigation plan. ARB will not approve with unaddressed high-severity risks.</p>
         </div>
         {% endif %}
@@ -1637,7 +1637,7 @@
                 <td class="px-3 py-2.5">
                   <span class="inline-flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full {% if sev == 'high' or sev == 'critical' %}bg-destructive{% elif sev == 'medium' %}bg-amber-400{% else %}bg-muted-foreground{% endif %}"></span>
-                    <span class="text-xs {% if sev == 'high' or sev == 'critical' %}text-red-400{% elif sev == 'medium' %}text-amber-400{% endif %}">{{ sev | title }}</span>
+                    <span class="text-xs {% if sev == 'high' or sev == 'critical' %}text-destructive{% elif sev == 'medium' %}text-amber-400{% endif %}">{{ sev | title }}</span>
                   </span>
                 </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (risk.get('likelihood') or risk.get('probability') or '&mdash;') | title }}</td>
@@ -1736,7 +1736,7 @@
           <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
             <span class="flex-1">{{ cm.get('framework') or cm.get('regulation') or cm.get('name') or 'Unnamed' }}{% if cm.get('control_id') %} &middot; {{ cm.get('control_id') }}{% endif %}</span>
             {% set cm_status = (cm.get('status') or cm.get('compliance_status') or 'pending') | lower %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-emerald-500/10 text-emerald-400{% elif cm_status in ('partial', 'in_progress') %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-red-400{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-emerald-500/10 text-emerald-400{% elif cm_status in ('partial', 'in_progress') %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
           </div>
           {% endfor %}
         </div>
@@ -1782,7 +1782,7 @@
           <div class="px-5 py-3 {% if chain.pct < 100 %}bg-destructive/5{% endif %}">
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-sm">{{ chain.label }}</span>
-              <span class="text-xs font-medium {% if chain.pct == 100 %}text-emerald-400{% elif chain.pct >= 50 %}text-amber-400{% else %}text-red-400{% endif %}">{{ chain.pct }}%</span>
+              <span class="text-xs font-medium {% if chain.pct == 100 %}text-emerald-400{% elif chain.pct >= 50 %}text-amber-400{% else %}text-destructive{% endif %}">{{ chain.pct }}%</span>
             </div>
             <div class="w-full bg-muted rounded-full h-1.5">
               <div class="h-1.5 rounded-full {% if chain.pct == 100 %}bg-emerald-400{% elif chain.pct >= 50 %}bg-amber-400{% else %}bg-destructive{% endif %}" style="width:{{ chain.pct }}%"></div>
@@ -1847,7 +1847,7 @@
             </template>
           </div>
         </template>
-        <p x-show="modal.error" x-cloak class="text-xs text-red-400" x-text="modal.error"></p>
+        <p x-show="modal.error" x-cloak class="text-xs text-destructive" x-text="modal.error"></p>
       </div>
       <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
         <button @click="modal.open = false"

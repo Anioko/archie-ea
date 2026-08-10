@@ -162,7 +162,13 @@ def check() -> int:
         return 1
 
     before = OUTPUT_CSS.read_bytes()
-    backup = OUTPUT_CSS.with_suffix(".css.checkbak")
+    # A per-process backup path. This was a fixed ".css.checkbak", so two
+    # concurrent --check runs raced: the second copied over the first's backup,
+    # and whichever finished first unlinked it, leaving the other's restore step
+    # to die with FileNotFoundError - and the working tree holding a fresh build
+    # instead of the restored one. Observed with parallel agents; the failure is
+    # silent enough to be mistaken for a genuine stale-CSS result.
+    backup = OUTPUT_CSS.with_suffix(".css.checkbak.%d" % os.getpid())
     shutil.copy2(OUTPUT_CSS, backup)
     try:
         cli = find_tailwind()

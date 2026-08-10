@@ -1118,10 +1118,10 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                 <div>
                                     <div class="text-xs font-semibold text-destructive mb-1">Errors</div>
                                     <template x-for="(e, idx) in validationReport.errors" :key="'err-' + idx">
-                                        <div class="p-2 bg-destructive/5 dark:bg-red-950/20 border border-destructive/20 dark:border-red-800 rounded text-xs mb-1 cursor-pointer"
+                                        <div class="p-2 bg-destructive/5 border border-destructive/20 rounded text-xs mb-1 cursor-pointer"
                                              @click="highlightValidationElements(e.element_ids)">
-                                            <div class="font-medium text-destructive dark:text-red-400" x-text="e.message"></div>
-                                            <div x-show="e.fix_suggestion" x-cloak class="text-destructive/70 dark:text-red-400/60 mt-0.5" x-text="e.fix_suggestion"></div>
+                                            <div class="font-medium text-destructive-emphasis" x-text="e.message"></div>
+                                            <div x-show="e.fix_suggestion" x-cloak class="text-destructive-emphasis/80 mt-0.5" x-text="e.fix_suggestion"></div>
                                         </div>
                                     </template>
                                 </div>
