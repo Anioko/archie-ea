@@ -187,6 +187,9 @@ async function loadApplicationsForVendorMapping() {
 
     try {
         const response = await fetch('/api/enterprise/applications');
+        // Unchecked, a 500 parsed to `{}`: `data.error` was undefined and the list
+        // rendered empty, as though the portfolio held no applications.
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
 
         if (data.error) {
@@ -229,6 +232,9 @@ async function loadApplicationsForVendorMapping() {
 async function loadVendorMappings() {
     try {
         const response = await fetch('/api/acm/capabilities/' + UnifiedMappingModal.targetId + '/vendor-mappings');
+        // Unchecked, a 500 parsed to `{}` and every application stayed `mapped: false` —
+        // existing vendor mappings looked as though they had never been made.
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
 
         if (data.mappings) {

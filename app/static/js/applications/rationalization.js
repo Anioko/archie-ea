@@ -113,6 +113,11 @@ function setupAppAutocomplete(searchInputId, hiddenInputId, dropdownId, onSelect
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error('Autocomplete error:', err);
+      /* The !response.ok branch above paints "Search failed"; a network failure used
+         to paint nothing, leaving the previous query's results (or an empty dropdown)
+         on screen as though they were the answer for what was just typed. */
+      safeHTML(dropdown, '<div class="px-3 py-2 text-sm text-destructive">Search failed. Please try again.</div>');
+      dropdown.classList.remove('hidden');
     }
   }
 
@@ -3072,16 +3077,30 @@ function workflowProgress() {
       const self = this;
       self.currentAppId = appId;
       fetch('/applications/rationalization/api/workflow-status/' + appId)
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.success) {
-            self.steps = data.steps;
-            self.completionPct = data.completion_pct;
-            self.currentPhase = data.current_phase;
-            self.loaded = true;
-          }
+        .then(function(r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
         })
-        .catch(function() { self.loaded = false; });
+        .then(function(data) {
+          if (!data.success) throw new Error(data.error || 'workflow status unavailable');
+          self.steps = data.steps;
+          self.completionPct = data.completion_pct;
+          self.currentPhase = data.current_phase;
+          self.loaded = true;
+        })
+        .catch(function(e) {
+          /* `loaded = false` is the panel's "Select an application to view workflow
+             progress" state — so a failed load told the user they had not picked an
+             application, for an application they had just picked. */
+          console.error('workflow loadStatus error:', e);
+          self.steps = [];
+          self.completionPct = null;
+          self.currentPhase = null;
+          self.loaded = false;
+          if (window.Platform && window.Platform.toast) {
+            window.Platform.toast.error('Could not load workflow progress for this application.');
+          }
+        });
     },
 
     init: function() {

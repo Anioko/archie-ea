@@ -25,6 +25,9 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
             try {
                 const resp = await fetch('/organization/chart/api/data');
+                // Unchecked, a 500 parsed to `{}`: roots and groups came out empty and
+                // the chart rendered blank, reading as "no org structure modelled".
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const json = await resp.json();
                 const data = json.data ?? json;
 
@@ -40,8 +43,15 @@ document.addEventListener('alpine:init', () => {
                 }
             } catch (e) {
                 console.error('Failed to load org chart data:', e);
+                // Counts are null, not 0: nothing was counted.
+                this.roots = [];
+                this.groups = [];
+                this.actorCount = null;
+                this.relationshipCount = null;
                 if (window.Platform && Platform.toast) {
-                    Platform.toast.error('Failed to load org chart data.');
+                    // duration 0: with counts null the page renders nothing at all, so
+                    // this toast is the only thing on screen — it must not time out.
+                    Platform.toast.error('Could not load the org chart — the canvas is blank because the request failed.', { duration: 0 });
                 }
             } finally {
                 this.loading = false;

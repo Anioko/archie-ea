@@ -793,6 +793,10 @@ function blueprintPage() {
                 headers: { 'X-CSRFToken': this.csrfToken },
                 body: fd
             });
+            /* Unchecked, a 500 parsed to `{}`: `d.created` was undefined, so the else
+               branch fired and told the user "No risks imported" — an import that
+               never ran, reported as an import that found nothing. */
+            if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
             this.riskImportResult = d;
             if (d.created > 0) {
@@ -807,7 +811,8 @@ function blueprintPage() {
                 window.dispatchEvent(new CustomEvent('bp-toast', { detail: { message: errMsg, type: 'error' } }));
             }
         } catch(e) {
-            window.dispatchEvent(new CustomEvent('bp-toast', { detail: { message: 'Import failed', type: 'error' } }));
+            this.riskImportResult = null;
+            window.dispatchEvent(new CustomEvent('bp-toast', { detail: { message: 'Risk import failed — nothing was imported (' + ((e && e.message) || 'request failed') + ')', type: 'error' } }));
         } finally {
             this.riskImporting = false;
             event.target.value = '';
@@ -831,17 +836,29 @@ function blueprintPage() {
         const self = this;
         self.complianceGapLoading = true;
         fetch('/solutions/' + self.solutionId + '/api/compliance-gap')
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function(data) {
-                if (data.success) {
-                    self.complianceGap = data.gap;
-                }
+                if (!data.success) throw new Error(data.error || 'the analysis did not complete');
+                self.complianceGap = data.gap;
                 self.complianceGapLoaded = true;
                 self.complianceGapLoading = false;
             })
-            .catch(function() {
-                self.complianceGapLoaded = true;
+            .catch(function(e) {
+                /* This used to set complianceGapLoaded = true with complianceGap still
+                   null. The panel's only two branches are "loading" and
+                   "loaded && complianceGap", and the Run Analysis button hides once
+                   loaded — so a failure erased the whole section and left no way to
+                   retry. Staying "not loaded" puts the button back. */
+                console.error('[blueprint] loadComplianceGap error:', e);
+                self.complianceGap = null;
+                self.complianceGapLoaded = false;
                 self.complianceGapLoading = false;
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Compliance gap analysis failed — nothing was assessed. Use Run Analysis to try again.');
+                }
             });
     };
 

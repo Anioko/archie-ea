@@ -349,9 +349,24 @@ document.addEventListener('alpine:init', () => {
                     elementsLinked,
                     relsCreated,
                     errors: errors.length,
+                    // The messages were being thrown away and only the count kept, so a
+                    // partial save could not be diagnosed or retried.
+                    errorMessages: errors,
                 };
+                /* Every per-item failure above was collected and then reported to
+                   nobody: the wizard closed on a save where half the relationships
+                   had not been written. */
+                if (errors.length && window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error(
+                        errors.length + ' of the selected items were NOT saved.',
+                        { description: errors.slice(0, 3).join('; '), duration: 0 }
+                    );
+                }
             } catch (e) {
-                this.saveError = e.message;
+                this.saveError = 'Nothing further was saved — ' + ((e && e.message) || 'request failed');
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error(this.saveError);
+                }
             } finally {
                 this.saving = false;
             }

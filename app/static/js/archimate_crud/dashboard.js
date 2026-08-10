@@ -433,15 +433,24 @@ document.addEventListener('alpine:init', function() {
                         headers: { 'Content-Type': 'application/json' },
                         body: '{}',
                     });
+                    // Unchecked, a 500 parsed to `{}` and the panel opened claiming
+                    // zero errors and zero warnings — a validation that never ran,
+                    // reported as a clean model.
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
                     this.validationResults = await r.json();
                     this.showValidationPanel = true;
                 } catch (e) {
-                    this.validationResults = { element_errors: 0, element_warnings: 0,
-                        relationship_errors: 0, relationship_warnings: 0,
-                        element_issues: [{ element: { id: 0, name: 'Error', layer: '' },
+                    // Counts are null, not 0: validation did not run, so there is no
+                    // measurement to report. A 0 here would read as "model is clean".
+                    this.validationResults = { element_errors: null, element_warnings: null,
+                        relationship_errors: null, relationship_warnings: null,
+                        element_issues: [{ element: { id: 0, name: 'Validation did not run', layer: '' },
                             issues: [{ severity: 'error', message: e.message }] }],
                         relationship_issues: [] };
                     this.showValidationPanel = true;
+                    if (window.Platform && window.Platform.toast) {
+                        window.Platform.toast.error('Model validation could not run — the counts below are not a result.');
+                    }
                 }
                 this.validating = false;
             },
@@ -620,9 +629,17 @@ document.addEventListener('alpine:init', function() {
                     let resp = await fetch('/architecture/api/elements/' + el.id + '/detail', {
                         headers: { 'X-Requested-With': 'XMLHttpRequest' }
                     });
+                    // Unchecked, a 500 parsed to `{}` and the detail panel rendered
+                    // every field blank, as if the element had no content.
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     this.detailData = await resp.json();
                 } catch (e) {
+                    // The panel has no slot for detailData.error, so the toast is the
+                    // only thing standing between a failed load and a panel of dashes.
                     this.detailData = { error: e.message };
+                    if (window.Platform && window.Platform.toast) {
+                        window.Platform.toast.error('Could not load details for this element — the panel is empty because the request failed.');
+                    }
                 } finally {
                     this.detailLoading = false;
                     this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });

@@ -293,6 +293,9 @@ function capabilityRoadmapManager() {
             this.loadingMessage = 'Loading work packages...';
             try {
                 let response = await fetch('/api/capability-work-packages');
+                // Unchecked, a 500 parsed to `{}` and the timeline rendered empty —
+                // indistinguishable from a roadmap with no work packages.
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 let data = await response.json();
                 this.workPackages = data.work_packages || [];
                 this.filteredWorkPackages = [...this.workPackages];

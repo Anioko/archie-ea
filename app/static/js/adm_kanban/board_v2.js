@@ -753,12 +753,22 @@
                 });
             },
 
+            /* Every picker below reports a lookup failure through `error`, which the
+               modal already renders as a destructive banner. Unguarded, a 500 parsed
+               to `{}` and the dropdown showed "no matches" — the user concludes the
+               person or requirement does not exist and files the task without it. */
+            _searchFailed: function (what, e) {
+                this.error = 'Could not search ' + what + ' — ' + ((e && e.message) || 'request failed') +
+                             '. This is a lookup failure, not an empty result.';
+            },
+
             searchUsers: async function () {
                 try {
                     const res = await fetch('/api/adm-kanban/v2/suggestions/users?q=' + encodeURIComponent(this.assigneeSearch));
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     this.userResults = data.results || [];
-                } catch (e) { this.userResults = []; }
+                } catch (e) { this.userResults = []; this._searchFailed('users', e); }
             },
             selectUser: function (u) {
                 this.form.assignee = u.id;
@@ -769,10 +779,11 @@
             searchRequirements: async function () {
                 try {
                     const res = await fetch('/api/adm-kanban/v2/suggestions/requirements?q=' + encodeURIComponent(this.requirementSearch));
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     const selected = this.form.requirement_ids.map(function (x) { return x.id; });
                     this.requirementResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
-                } catch (e) { this.requirementResults = []; }
+                } catch (e) { this.requirementResults = []; this._searchFailed('requirements', e); }
             },
             addRequirement: function (item) {
                 if (!this.form.requirement_ids.find(function (x) { return x.id === item.id; })) {
@@ -788,10 +799,11 @@
             searchGoals: async function () {
                 try {
                     const res = await fetch('/api/adm-kanban/v2/suggestions/goals?q=' + encodeURIComponent(this.goalSearch));
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     const selected = this.form.goal_ids.map(function (x) { return x.id; });
                     this.goalResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
-                } catch (e) { this.goalResults = []; }
+                } catch (e) { this.goalResults = []; this._searchFailed('goals', e); }
             },
             addGoal: function (item) {
                 if (!this.form.goal_ids.find(function (x) { return x.id === item.id; })) {
@@ -807,10 +819,11 @@
             searchDrivers: async function () {
                 try {
                     const res = await fetch('/api/adm-kanban/v2/suggestions/drivers?q=' + encodeURIComponent(this.driverSearch));
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     const selected = this.form.driver_ids.map(function (x) { return x.id; });
                     this.driverResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
-                } catch (e) { this.driverResults = []; }
+                } catch (e) { this.driverResults = []; this._searchFailed('drivers', e); }
             },
             addDriver: function (item) {
                 if (!this.form.driver_ids.find(function (x) { return x.id === item.id; })) {
@@ -826,10 +839,11 @@
             searchPrinciples: async function () {
                 try {
                     const res = await fetch('/api/adm-kanban/v2/suggestions/principles?q=' + encodeURIComponent(this.principleSearch));
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     const selected = this.form.principle_ids.map(function (x) { return x.id; });
                     this.principleResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
-                } catch (e) { this.principleResults = []; }
+                } catch (e) { this.principleResults = []; this._searchFailed('principles', e); }
             },
             addPrinciple: function (item) {
                 if (!this.form.principle_ids.find(function (x) { return x.id === item.id; })) {
@@ -845,9 +859,10 @@
                 try {
                     const q = (this.editAssigneeSearch || '');
                     const res = await fetch('/api/adm-kanban/v2/suggestions/users?q=' + encodeURIComponent(q));
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     this.editUserResults = data.results || [];
-                } catch (e) { this.editUserResults = []; }
+                } catch (e) { this.editUserResults = []; this._searchFailed('users', e); }
             },
             selectEditUser: function (u) {
                 this.editFields.assignee = u.id;

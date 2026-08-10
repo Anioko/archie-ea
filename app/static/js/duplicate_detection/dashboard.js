@@ -221,6 +221,9 @@ function duplicateDetection() {
         async loadStats() {
             try {
                 let response = await fetch('/duplicate-detection/simple/api/statistics');
+                // Unchecked, a 500 parsed to `{}` and every `|| 0` below fired, so the
+                // KPI tiles showed a measured-looking zero for figures never computed.
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 let data = await response.json();
                 let self = this;
                 let latestRun = data.latest_run || null;
@@ -247,6 +250,14 @@ function duplicateDetection() {
                 this.$nextTick(function() { lucide.createIcons(); });
             } catch (error) {
                 console.error('Error loading stats:', error);
+                // null, not 0 — nothing was measured, so the tiles must render an em dash.
+                this.stats = {
+                    total_groups: null,
+                    total_estimated_savings: null,
+                    high_priority_groups: null,
+                    last_run_date: null,
+                    last_run_summary: null
+                };
                 if (window.Platform && Platform.toast) Platform.toast.error('Could not load duplicate detection statistics.');
             }
         },
@@ -255,12 +266,16 @@ function duplicateDetection() {
             this.isLoading = true;
             try {
                 let response = await fetch('/duplicate-detection/simple/api/groups');
+                // Unchecked, a 500 parsed to `{}` and the table rendered "no duplicate
+                // groups found" — a detection failure dressed up as a clean portfolio.
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 let data = await response.json();
                 this.allGroups = data.groups || [];
                 this.currentPage = 1;
                 this.$nextTick(function() { lucide.createIcons(); });
             } catch (error) {
                 console.error('Error loading groups:', error);
+                this.allGroups = [];
                 if (window.Platform && Platform.toast) Platform.toast.error('Could not load duplicate groups.');
             } finally {
                 this.isLoading = false;

@@ -55,7 +55,12 @@
         if (!loading || !container) return;
 
         fetch('/capability-map/api/unified-capabilities')
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                // Unchecked, a 500 parsed cleanly, `caps` came out empty and the tab
+                // showed its "no capabilities" empty state for a load that failed.
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function (data) {
                 var caps = data.unified_capabilities || data.capabilities || [];
                 loading.classList.add('hidden');

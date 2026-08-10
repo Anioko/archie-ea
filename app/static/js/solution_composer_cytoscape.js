@@ -9,10 +9,16 @@ document.addEventListener('DOMContentLoaded', function() {
   async function fetchPalette() {
     try {
       const res = await fetch('/api/solution-composer/palette', { credentials: 'same-origin' });
+      // Unchecked, a 500 parsed to `{}` and the composer rendered an empty palette —
+      // the user reads that as "this canvas has no element types".
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       return data.data || data;
     } catch (e) {
       console.warn('Failed to fetch palette', e);
+      if (window.Platform && window.Platform.toast) {
+        window.Platform.toast.error('Could not load the element palette — it is empty because the request failed.');
+      }
       return {};
     }
   }
@@ -20,10 +26,16 @@ document.addEventListener('DOMContentLoaded', function() {
   async function fetchRelationshipTypes() {
     try {
       const res = await fetch('/api/solution-composer/relationship-types', { credentials: 'same-origin' });
+      // Unchecked, a 500 left the relationship-type list empty, so drawing a link
+      // offered no types to choose from and looked like a broken control.
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       return (data.data && data.data.relationship_types) || data.relationship_types || [];
     } catch (e) {
       console.warn('Failed to fetch relationship types', e);
+      if (window.Platform && window.Platform.toast) {
+        window.Platform.toast.error('Could not load relationship types — none are available because the request failed.');
+      }
       return [];
     }
   }

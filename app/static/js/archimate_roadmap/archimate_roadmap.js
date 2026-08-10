@@ -264,13 +264,21 @@ function archimateRoadmapManager() {
         async loadWorkPackages() {
             try {
                 let response = await fetch('/api/archimate-work-packages');
+                // Unchecked, a 500 parsed to `{}` and the roadmap rendered an empty
+                // timeline — indistinguishable from a plan with no work packages.
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 let data = await response.json();
                 this.workPackages = data.work_packages || [];
                 this.filteredWorkPackages = [].concat(this.workPackages);
             } catch (error) {
                 console.error('Error loading work packages:', error);
-                this.workPackages = APP_CONFIG.archimateWorkPackages || [];
-                this.filteredWorkPackages = [].concat(this.workPackages);
+                // APP_CONFIG.archimateWorkPackages was never set by any template, so
+                // this fallback only ever produced []. Say so instead of pretending.
+                this.workPackages = [];
+                this.filteredWorkPackages = [];
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error('Could not load work packages — the timeline is empty because the request failed, not because the roadmap is.');
+                }
             }
         },
 
