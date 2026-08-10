@@ -50,6 +50,8 @@ document.addEventListener('alpine:init', () => {
                     },
                     body: JSON.stringify({ step, field_name: fieldName, field_value: fieldValue }),
                 });
+                // fetch-guard-ok: unsolicited background advisory fired 2s after typing; a failure adds nothing the user must act on
+                if (!resp.ok) return;
 
                 const json = await resp.json();
                 const data = json.data || json;
@@ -87,6 +89,10 @@ document.addEventListener('alpine:init', () => {
                     },
                     body: JSON.stringify({ step, step_data: stepData }),
                 });
+                /* "Enhance All" is something the user clicked. Unguarded, a 500 parsed
+                   to `{}`, suggestions stayed empty and the sidebar never opened — the
+                   button looked like it had run and found nothing to improve. */
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
                 const json = await resp.json();
                 const data = json.data || json;
@@ -100,7 +106,12 @@ document.addEventListener('alpine:init', () => {
 
             } catch (e) {
                 console.error('Copilot step review failed:', e);
+                this.suggestions = [];
                 this.error = 'AI suggestions unavailable';
+                // No template renders store.error, so without this the click is silent.
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error('AI review is unavailable right now — no suggestions were generated for this step.');
+                }
                 return null;
             } finally {
                 this.loading = false;

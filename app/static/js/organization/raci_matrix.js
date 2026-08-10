@@ -27,6 +27,9 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
             try {
                 const resp = await fetch('/organization/raci/api/data');
+                // Unchecked, a 500 parsed to `{}` and the matrix rendered with no rows
+                // and no stakeholders — an unassigned-looking RACI that was never read.
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const json = await resp.json();
                 const data = json.data ?? json;
 
@@ -35,8 +38,11 @@ document.addEventListener('alpine:init', () => {
                 this.stakeholders = this.deriveStakeholders(this.assignments);
             } catch (e) {
                 console.error('Failed to load RACI matrix data:', e);
+                this.capabilities = [];
+                this.assignments = [];
+                this.stakeholders = [];
                 if (window.Platform && Platform.toast) {
-                    Platform.toast.error('Failed to load RACI matrix data.');
+                    Platform.toast.error('Could not load the RACI matrix — the grid is empty because the request failed.');
                 }
             } finally {
                 this.loading = false;
@@ -147,11 +153,15 @@ document.addEventListener('alpine:init', () => {
             this.searching = true;
             try {
                 const resp = await fetch(`/organization/api/stakeholders/search?q=${encodeURIComponent(q)}`);
+                // Unchecked, a 500 rendered as "no stakeholders match" and the user
+                // concluded the person was not in the directory.
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const json = await resp.json();
                 this.searchResults = json.results || [];
                 this._searchErrorShown = false;
             } catch (e) {
                 console.error('Stakeholder search failed:', e);
+                this.searchResults = [];
                 // Debounced on every keystroke — toast once per outage, not on every retry.
                 if (!this._searchErrorShown) {
                     this._searchErrorShown = true;

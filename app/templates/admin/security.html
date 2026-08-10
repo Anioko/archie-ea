@@ -3,18 +3,36 @@
 <div class="max-w-3xl mx-auto py-8">
   <h1 class="text-2xl font-bold mb-4">Security Dashboard</h1>
   <div class="bg-background shadow rounded p-6 mb-6">
-    <h2 class="text-lg font-semibold mb-2">Security Headers</h2>
+    <h2 class="text-lg font-semibold mb-2">Response Headers</h2>
+    {% if headers %}
+    <p class="text-sm text-muted-foreground mb-3">
+      The headers this page's own response carries, read from the live
+      after-request handler.
+    </p>
     <table class="min-w-full text-sm">
       <thead><tr><th class="text-left">Header</th><th class="text-left">Value</th></tr></thead>
       <tbody>
         {% for k, v in headers.items() %}
-        <tr><td class="font-mono">{{ k }}</td><td class="font-mono">{{ v }}</td></tr>
+        <tr><td class="font-mono">{{ k }}</td><td class="font-mono break-all">{{ v }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
+    {% else %}
+    <p class="text-sm text-muted-foreground">
+      &mdash; Not determined: this app has no registered security-header handler,
+      so there is nothing to report.
+    </p>
+    {% endif %}
   </div>
   <div class="bg-background shadow rounded p-6 mb-6">
     <h2 class="text-lg font-semibold mb-2">Rate Limit Stats</h2>
+    {% if rate_limit_stats is none %}
+    <p class="text-sm text-muted-foreground">
+      &mdash; Not measured: the in-process rate limiter is not installed in the
+      request pipeline, so no counters exist. This is not the same as "nothing
+      was rate limited".
+    </p>
+    {% elif rate_limit_stats %}
     <table class="min-w-full text-sm">
       <thead><tr><th class="text-left">Key</th><th class="text-left">Count, Timestamp</th></tr></thead>
       <tbody>
@@ -23,6 +41,11 @@
         {% endfor %}
       </tbody>
     </table>
+    {% else %}
+    <p class="text-sm text-muted-foreground">
+      No requests have been counted by the rate limiter in this process yet.
+    </p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

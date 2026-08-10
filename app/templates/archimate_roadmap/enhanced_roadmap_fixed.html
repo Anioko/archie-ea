@@ -96,23 +96,32 @@
         </div>
     </div>
 
+    <!-- Load failure: the tiles below read "—", this says why -->
+    <div x-show="loadError" x-cloak class="rounded-lg border border-destructive bg-background px-6 py-4 mb-6">
+        <p class="text-sm font-semibold text-destructive" x-text="loadError"></p>
+        <p class="text-sm text-muted-foreground mt-1">
+            The roadmap could not be read. An empty timeline below is not an empty roadmap.
+        </p>
+        <button type="button" class="mt-3 text-sm text-primary underline" @click="loadData()">Retry</button>
+    </div>
+
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div class="bg-background rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-foreground/80">Total Work Packages</h3>
-            <p class="text-3xl font-bold text-primary" x-text="statistics.totalWorkPackages"></p>
+            <p class="text-3xl font-bold" :class="statistics.totalWorkPackages == null ? 'text-muted-foreground' : 'text-primary'" x-text="statistics.totalWorkPackages ?? '—'"></p>
         </div>
         <div class="bg-background rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-foreground/80">Active Initiatives</h3>
-            <p class="text-3xl font-bold text-success" x-text="statistics.activeInitiatives"></p>
+            <p class="text-3xl font-bold" :class="statistics.activeInitiatives == null ? 'text-muted-foreground' : 'text-success'" x-text="statistics.activeInitiatives ?? '—'"></p>
         </div>
         <div class="bg-background rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-foreground/80">Total Investment</h3>
-            <p class="text-2xl font-bold text-primary" x-text="'$' + statistics.totalInvestment.toLocaleString() + 'K'"></p>
+            <p class="text-2xl font-bold" :class="statistics.totalInvestment == null ? 'text-muted-foreground' : 'text-primary'" x-text="statistics.totalInvestment == null ? '—' : '$' + statistics.totalInvestment.toLocaleString() + 'K'"></p>
         </div>
         <div class="bg-background rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-foreground/80">Completion Rate</h3>
-            <p class="text-3xl font-bold text-warning" x-text="statistics.completionRate + '%'"></p>
+            <p class="text-3xl font-bold" :class="statistics.completionRate == null ? 'text-muted-foreground' : 'text-warning'" x-text="statistics.completionRate == null ? '—' : statistics.completionRate + '%'"></p>
         </div>
     </div>
 
@@ -403,12 +412,14 @@ function archimateRoadmapApp() {
             strategic_importance: '',
             description: ''
         },
+        // Nothing counted yet — null renders as an em dash, a 0 would look measured.
         statistics: {
-            totalWorkPackages: 0,
-            activeInitiatives: 0,
-            totalInvestment: 0,
-            completionRate: 0
+            totalWorkPackages: null,
+            activeInitiatives: null,
+            totalInvestment: null,
+            completionRate: null
         },
+        loadError: null,
 
         init() {
             this.loadData();
@@ -418,16 +429,19 @@ function archimateRoadmapApp() {
             try {
                 // Load work packages
                 const workPackagesResponse = await fetch('/api/archimate-work-packages');
+                if (!workPackagesResponse.ok) throw new Error('work packages request failed (HTTP ' + workPackagesResponse.status + ')');
                 const wpData = await workPackagesResponse.json();
                 this.workPackages = wpData.work_packages || wpData;
 
                 // Load capabilities
                 const capabilitiesResponse = await fetch('/api/capabilities');
+                if (!capabilitiesResponse.ok) throw new Error('capabilities request failed (HTTP ' + capabilitiesResponse.status + ')');
                 const capData = await capabilitiesResponse.json();
                 this.capabilities = capData.capabilities || capData;
 
                 // Load users
                 const usersResponse = await fetch('/api/users');
+                if (!usersResponse.ok) throw new Error('users request failed (HTTP ' + usersResponse.status + ')');
                 const usersData = await usersResponse.json();
                 this.users = usersData.users || usersData;
 
@@ -439,9 +453,20 @@ function archimateRoadmapApp() {
 
                 this.updateStatistics();
                 this.renderTimeline();
+                this.loadError = null;
             } catch (error) {
-                console.error('Error loading data:', error);
-                Platform.toast.error('Failed to load roadmap data — try refreshing the page');
+                // Nothing was measured, so the tiles must read "—". A 0 here is
+                // indistinguishable from a roadmap that genuinely has no work packages.
+                this.workPackages = [];
+                this.capabilities = [];
+                this.users = [];
+                this.availableDomains = [];
+                this.availableCapabilities = [];
+                this.availableUsers = [];
+                this.filteredWorkPackages = [];
+                this.statistics = { totalWorkPackages: null, activeInitiatives: null, totalInvestment: null, completionRate: null };
+                this.loadError = 'Failed to load roadmap data: ' + error.message;
+                Platform.toast.error(this.loadError);
             }
         },
 

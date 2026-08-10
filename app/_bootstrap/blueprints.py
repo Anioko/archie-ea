@@ -187,6 +187,10 @@ def _register_optional_standalone(app):
         # (module_path, attr, url_prefix or None to use the blueprint's own)
         ("app.modules.governance.routes.governance_dashboard_routes", "governance_bp", None),
         ("app.modules.portfolio.routes.portfolio_routes", "portfolio_bp", None),
+        # Declared since forever, imported by nothing: /admin/security 404'd in
+        # every tier. Registered here (not in admin v1/v2) because it is
+        # tier-independent, like billing and team below.
+        ("app.modules.admin.security_routes", "admin_security_bp", None),
         ("app.modules.admin.billing_routes", "billing_bp", "/admin/billing"),
         ("app.modules.admin.team_routes", "team_bp", "/admin"),
         ("app.modules.business_model_canvas.routes", "business_model_bp", "/business-model"),

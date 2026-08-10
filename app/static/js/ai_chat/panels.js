@@ -57,6 +57,10 @@
     async function loadDomainContext(domain) {
         try {
             const response = await fetch(`/ai-chat/context/${domain}`);
+            // Unchecked, a 500 fell through to the else-branch below and rendered
+            // "No specific context available for <domain>" — a load failure dressed
+            // up as an empty model.
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             const contextContainer = document.getElementById('domain-context');

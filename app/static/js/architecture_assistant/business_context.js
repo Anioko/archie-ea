@@ -351,21 +351,29 @@ function businessContextApp() {
 
             try {
                 // Generate heatmap
+                /* Each response is checked: unguarded, a 500 parsed cleanly, `.success`
+                   was undefined, and the results panel opened with a null heatmap and
+                   the literal strings "Error generating problem statement"/"…scope
+                   definition" sitting where the analysis should be — a failure
+                   presented as an analysis result. */
                 let heatmapResponse = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/heatmap', {
                     method: 'POST'
                 });
+                if (!heatmapResponse.ok) throw new Error('capability heatmap (HTTP ' + heatmapResponse.status + ')');
                 let heatmapResult = await heatmapResponse.json();
 
                 // Generate problem statement
                 let problemResponse = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/problem-statement', {
                     method: 'POST'
                 });
+                if (!problemResponse.ok) throw new Error('problem statement (HTTP ' + problemResponse.status + ')');
                 let problemResult = await problemResponse.json();
 
                 // Generate scope definition
                 let scopeResponse = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/scope', {
                     method: 'POST'
                 });
+                if (!scopeResponse.ok) throw new Error('scope definition (HTTP ' + scopeResponse.status + ')');
                 let scopeResult = await scopeResponse.json();
 
                 this.analysisResults = {
@@ -379,7 +387,8 @@ function businessContextApp() {
 
             } catch (error) {
                 console.error('Error generating analysis:', error);
-                Platform.toast.error('Error generating analysis');
+                // Leave analysisResults untouched — a half-built result is worse than none.
+                Platform.toast.error('Could not generate the analysis — ' + ((error && error.message) || 'request failed') + '. Nothing was produced.');
             }
         },
 

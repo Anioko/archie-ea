@@ -3740,6 +3740,10 @@
                     `).join(''));
                     lucide.createIcons();
                 }
+            } else {
+                // Without this the container was left reading "Loading work packages…"
+                // forever whenever the payload came back without a work_packages list.
+                safeHTML(container, '<p class="text-sm text-destructive">Could not read the work package list for this gap.</p>');
             }
         } catch (error) {
             safeHTML(container, '<p class="text-sm text-destructive">Error loading work packages</p>');

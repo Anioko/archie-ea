@@ -56,6 +56,10 @@
                         },
                         body: JSON.stringify({ phases: [phase] })
                     });
+                    // Unchecked, a 500 parsed to `{}`: neither `suggestions` nor `error`
+                    // was set, so nothing happened at all and the button looked as
+                    // though the AI had simply found nothing to suggest.
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     let data = await resp.json();
                     if (data.suggestions && data.suggestions[phase]) {
                         let phaseSuggestions = data.suggestions[phase];
@@ -95,6 +99,7 @@
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
                             body: JSON.stringify({ phase: phase })
                         });
+                        if (!fallback.ok) throw new Error('fallback HTTP ' + fallback.status);
                         let fbData = await fallback.json();
                         if (fbData.success && fbData.suggestions) {
                             let layers = this._phaseToLayers(phase);
@@ -112,7 +117,8 @@
                     }
                 } catch (err) {
                     console.error('[solutionDetail] AI suggest error:', err);
-                    Platform.toast.error('AI suggestion failed. Check console for details.');
+                    this.aiSuggestions = [];
+                    Platform.toast.error('AI suggestion failed — no suggestions were produced (' + ((err && err.message) || 'request failed') + ').');
                 }
                 this.suggestingElements = false;
             },

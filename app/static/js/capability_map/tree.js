@@ -27,12 +27,17 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
             try {
                 const resp = await fetch('/capability-map/api/trees/capability');
+                // Unchecked, a 500 body became the tree: countNodes returned 0 and the
+                // dendrogram rendered blank, reading as "no capabilities modelled".
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 this.treeData = await resp.json();
                 this.nodeCount = this.countNodes(this.treeData);
                 this.renderTree();
             } catch (e) {
                 console.error('Failed to load tree:', e);
-                Platform.toast.error('Failed to load capability tree');
+                this.treeData = null;
+                this.nodeCount = 0;
+                Platform.toast.error('Could not load the capability tree — the canvas is blank because the request failed.');
             } finally {
                 this.loading = false;
             }

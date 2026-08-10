@@ -29,7 +29,13 @@ function vendorSuggestionsMixin() {
                     return h;
                 }())
             })
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    // fetch does not reject on 4xx/5xx: without this the error body
+                    // parses cleanly, capability_suggestions is undefined, and the
+                    // step renders "no vendor suggestions" for a server failure.
+                    if (!r.ok) throw new Error('Could not load vendor suggestions (HTTP ' + r.status + ')');
+                    return r.json();
+                })
                 .then(function(data) {
                     // Unwrap api_success envelope if present
                     let payload = (data && data.data !== undefined) ? data.data : data;
@@ -37,8 +43,10 @@ function vendorSuggestionsMixin() {
                     self.vendorLoading = false;
                 })
                 .catch(function(err) {
-                    self.vendorError = 'Failed to load vendor suggestions';
+                    self.vendorSuggestions = [];
+                    self.vendorError = 'Could not load vendor suggestions — ' + (err && err.message ? err.message : 'request failed');
                     self.vendorLoading = false;
+                    if (window.Platform && Platform.toast) Platform.toast.error(self.vendorError);
                     console.error('Vendor suggestions error:', err);
                 });
         },
@@ -55,7 +63,11 @@ function vendorSuggestionsMixin() {
                 headers: headers,
                 body: JSON.stringify({pricing_id: pricingId})
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                // A failed confirm must not slip past `if (payload.success)` unreported.
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function(data) {
                 let payload = (data && data.data !== undefined) ? data.data : data;
                 if (payload.success) {
@@ -132,7 +144,10 @@ function vendorSuggestionsMixin() {
                 headers: headers,
                 body: JSON.stringify({pricing_id: vendor.pricing_id, annual_cost: parseFloat(edit.value)})
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function(data) {
                 let payload = (data && data.data !== undefined) ? data.data : data;
                 if (payload.success) {
@@ -143,7 +158,10 @@ function vendorSuggestionsMixin() {
                 self.editingPrice = null;
             })
             .catch(function(err) {
+                // The edit box used to just close, leaving the old price on screen and
+                // the user believing the correction was saved.
                 console.error('Price update error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not save the corrected price — it was not recorded.');
                 self.editingPrice = null;
             });
         },
@@ -161,7 +179,10 @@ function vendorSuggestionsMixin() {
                 headers: headers,
                 body: JSON.stringify({mapping_id: mappingId, vote_up: voteUp})
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function(data) {
                 let payload = (data && data.data !== undefined) ? data.data : data;
                 if (payload.success && self.vendorSuggestions[index] && self.vendorSuggestions[index].vendors[vendorIndex]) {

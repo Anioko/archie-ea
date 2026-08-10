@@ -120,11 +120,17 @@
                     var resp = await fetch(
                         '/value-streams/' + this.valueStreamId + '/api/unmapped-capabilities?q=' + encodeURIComponent(q)
                     );
+                    // Unchecked, a 500 rendered as "no unmapped capabilities match" and
+                    // the user concluded the capability was already mapped.
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     var data = await resp.json();
                     this.capabilityResults = data.capabilities || [];
                 } catch (err) {
                     console.error('Capability search failed', err);
                     this.capabilityResults = [];
+                    if (window.Platform && window.Platform.toast) {
+                        window.Platform.toast.error('Capability search failed — this is a lookup failure, not an empty result.');
+                    }
                 }
             },
 

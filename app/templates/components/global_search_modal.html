@@ -18,6 +18,7 @@
         query: '',
         results: [],
         loading: false,
+        searchError: null,
         selectedIndex: 0,
         
         openSearch() {
@@ -34,23 +35,28 @@
             this.open = false;
             this.query = '';
             this.results = [];
+            this.searchError = null;
         },
         
         async search() {
             if (this.query.length < 2) {
                 this.results = [];
+                this.searchError = null;
                 return;
             }
             
             this.loading = true;
             try {
                 const response = await fetch(`/api/sidebar/search?q=${encodeURIComponent(this.query)}`);
+                if (!response.ok) throw new Error('Search failed (HTTP ' + response.status + ')');
                 const data = await response.json();
                 this.results = data.results || [];
                 this.selectedIndex = 0;
+                this.searchError = null;
             } catch (error) {
-                console.error('Search error:', error);
+                // A search that never ran must not read as "No results found".
                 this.results = [];
+                this.searchError = error.message || 'Search failed';
             } finally {
                 this.loading = false;
             }
@@ -143,8 +149,15 @@
                     <p class="text-sm">Searching...</p>
                 </div>
                 
+                <!-- Search Failed -->
+                <div x-show="!loading && searchError" class="px-4 py-10 text-center text-destructive">
+                    <i data-lucide="alert-triangle" class="h-5 w-5 mx-auto mb-2"></i>
+                    <p class="text-sm" x-text="searchError"></p>
+                    <p class="text-sm text-muted-foreground mt-1">Nothing was searched — this is not "no matches".</p>
+                </div>
+
                 <!-- No Results -->
-                <div x-show="!loading && query.length >= 2 && results.length === 0" class="px-4 py-10 text-center text-muted-foreground">
+                <div x-show="!loading && !searchError && query.length >= 2 && results.length === 0" class="px-4 py-10 text-center text-muted-foreground">
                     <i data-lucide="search-x" class="h-5 w-5 mx-auto mb-2"></i>
                     <p class="text-sm">No results found for "<span x-text="query" class="text-foreground font-medium"></span>"</p>
                 </div>

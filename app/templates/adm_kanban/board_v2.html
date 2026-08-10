@@ -1334,7 +1334,10 @@
                                            placeholder="Search requirements..."
                                            autocomplete="off"
                                            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search requirements..."/>
-                                    <div x-show="detailRequirementResults.length > 0" x-cloak
+                                    <div x-show="typeaheadError.requirements" x-cloak
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive"
+                                         x-text="typeaheadError.requirements"></div>
+                                    <div x-show="!typeaheadError.requirements && detailRequirementResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailRequirementResults" :key="item.id">
                                             <button type="button" @click="addDetailRequirement(item)"
@@ -1356,7 +1359,10 @@
                                            placeholder="Search goals..."
                                            autocomplete="off"
                                            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search goals..."/>
-                                    <div x-show="detailGoalResults.length > 0" x-cloak
+                                    <div x-show="typeaheadError.goals" x-cloak
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive"
+                                         x-text="typeaheadError.goals"></div>
+                                    <div x-show="!typeaheadError.goals && detailGoalResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailGoalResults" :key="item.id">
                                             <button type="button" @click="addDetailGoal(item)"
@@ -1378,7 +1384,10 @@
                                            placeholder="Search drivers..."
                                            autocomplete="off"
                                            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search drivers..."/>
-                                    <div x-show="detailDriverResults.length > 0" x-cloak
+                                    <div x-show="typeaheadError.drivers" x-cloak
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive"
+                                         x-text="typeaheadError.drivers"></div>
+                                    <div x-show="!typeaheadError.drivers && detailDriverResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailDriverResults" :key="item.id">
                                             <button type="button" @click="addDetailDriver(item)"
@@ -1400,7 +1409,10 @@
                                            placeholder="Search principles..."
                                            autocomplete="off"
                                            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search principles..."/>
-                                    <div x-show="detailPrincipleResults.length > 0" x-cloak
+                                    <div x-show="typeaheadError.principles" x-cloak
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive"
+                                         x-text="typeaheadError.principles"></div>
+                                    <div x-show="!typeaheadError.principles && detailPrincipleResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailPrincipleResults" :key="item.id">
                                             <button type="button" @click="addDetailPrinciple(item)"
@@ -1797,6 +1809,7 @@
             detailDriverResults: [],
             detailPrincipleSearch: '',
             detailPrincipleResults: [],
+            typeaheadError: { requirements: null, goals: null, drivers: null, principles: null },
 
             open: function(data) {
                 this.card = data.card;
@@ -1819,6 +1832,7 @@
                 this.detailDriverResults = [];
                 this.detailPrincipleSearch = '';
                 this.detailPrincipleResults = [];
+                this.typeaheadError = { requirements: null, goals: null, drivers: null, principles: null };
             },
             onMoved: function(data) {
                 if (this.card && this.card.id === data.id) {
@@ -1949,17 +1963,28 @@
                 return p ? p.label : code;
             },
 
+            // -- Typeahead: shared loader -----------------------------------
+            // A failed suggestion lookup must not look like "nothing matched" — the
+            // caller records the message and the dropdown renders it in its place.
+            _loadSuggestions: async function(kind, query, existingIds) {
+                let res = await fetch('/api/adm-kanban/v2/suggestions/' + kind + '?q=' + encodeURIComponent(query || ''));
+                if (!res.ok) throw new Error('Could not search ' + kind + ' (HTTP ' + res.status + ')');
+                let data = await res.json();
+                let existing = existingIds || [];
+                return (data.results || []).filter(function(r) {
+                    return !existing.includes(r.id);
+                });
+            },
+
             // -- Typeahead: Requirements ------------------------------------
             searchDetailRequirements: async function() {
                 try {
-                    let q = this.detailRequirementSearch || '';
-                    let res = await fetch('/api/adm-kanban/v2/suggestions/requirements?q=' + encodeURIComponent(q));
-                    let data = await res.json();
-                    let existing = (this.card && this.card.requirement_ids) || [];
-                    this.detailRequirementResults = (data.results || []).filter(function(r) {
-                        return !existing.includes(r.id);
-                    });
-                } catch (e) { this.detailRequirementResults = []; }
+                    this.detailRequirementResults = await this._loadSuggestions('requirements', this.detailRequirementSearch, this.card && this.card.requirement_ids);
+                    this.typeaheadError.requirements = null;
+                } catch (e) {
+                    this.detailRequirementResults = [];
+                    this.typeaheadError.requirements = e.message;
+                }
             },
             addDetailRequirement: function(item) {
                 if (!this.card) return;
@@ -1975,14 +2000,12 @@
             // -- Typeahead: Goals -------------------------------------------
             searchDetailGoals: async function() {
                 try {
-                    let q = this.detailGoalSearch || '';
-                    let res = await fetch('/api/adm-kanban/v2/suggestions/goals?q=' + encodeURIComponent(q));
-                    let data = await res.json();
-                    let existing = (this.card && this.card.goal_ids) || [];
-                    this.detailGoalResults = (data.results || []).filter(function(r) {
-                        return !existing.includes(r.id);
-                    });
-                } catch (e) { this.detailGoalResults = []; }
+                    this.detailGoalResults = await this._loadSuggestions('goals', this.detailGoalSearch, this.card && this.card.goal_ids);
+                    this.typeaheadError.goals = null;
+                } catch (e) {
+                    this.detailGoalResults = [];
+                    this.typeaheadError.goals = e.message;
+                }
             },
             addDetailGoal: function(item) {
                 if (!this.card) return;
@@ -1998,14 +2021,12 @@
             // -- Typeahead: Drivers -----------------------------------------
             searchDetailDrivers: async function() {
                 try {
-                    let q = this.detailDriverSearch || '';
-                    let res = await fetch('/api/adm-kanban/v2/suggestions/drivers?q=' + encodeURIComponent(q));
-                    let data = await res.json();
-                    let existing = (this.card && this.card.driver_ids) || [];
-                    this.detailDriverResults = (data.results || []).filter(function(r) {
-                        return !existing.includes(r.id);
-                    });
-                } catch (e) { this.detailDriverResults = []; }
+                    this.detailDriverResults = await this._loadSuggestions('drivers', this.detailDriverSearch, this.card && this.card.driver_ids);
+                    this.typeaheadError.drivers = null;
+                } catch (e) {
+                    this.detailDriverResults = [];
+                    this.typeaheadError.drivers = e.message;
+                }
             },
             addDetailDriver: function(item) {
                 if (!this.card) return;
@@ -2021,14 +2042,12 @@
             // -- Typeahead: Principles --------------------------------------
             searchDetailPrinciples: async function() {
                 try {
-                    let q = this.detailPrincipleSearch || '';
-                    let res = await fetch('/api/adm-kanban/v2/suggestions/principles?q=' + encodeURIComponent(q));
-                    let data = await res.json();
-                    let existing = (this.card && this.card.principle_ids) || [];
-                    this.detailPrincipleResults = (data.results || []).filter(function(r) {
-                        return !existing.includes(r.id);
-                    });
-                } catch (e) { this.detailPrincipleResults = []; }
+                    this.detailPrincipleResults = await this._loadSuggestions('principles', this.detailPrincipleSearch, this.card && this.card.principle_ids);
+                    this.typeaheadError.principles = null;
+                } catch (e) {
+                    this.detailPrincipleResults = [];
+                    this.typeaheadError.principles = e.message;
+                }
             },
             addDetailPrinciple: function(item) {
                 if (!this.card) return;

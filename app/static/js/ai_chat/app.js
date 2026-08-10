@@ -978,6 +978,10 @@ Would you like me to provide more details about the extracted elements or help y
     if (window.lucide) lucide.createIcons();
     try {
       var r = await transport.listThreads();
+      /* Without this check a 500 parses as `{}`, `j.threads` is undefined, and
+         the rail renders "No conversations yet" — the user is told their chat
+         history is empty when in fact it could not be read. */
+      if (!r.ok) throw new Error('Could not load conversations (HTTP ' + r.status + ')');
       var j = await r.json();
       var t = (j && j.threads) || [];
       if (!t.length) {

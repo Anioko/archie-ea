@@ -230,7 +230,10 @@
                                @focus="searchSolutions()"
                                placeholder="Add solution — search…"
                                class="h-8 w-56 rounded-md border border-input bg-background px-3 text-xs" aria-label="Add solution — search…">
-                        <div x-cloak x-show="pickerOpen && pickerResults.length"
+                        <div x-cloak x-show="pickerOpen && pickerError"
+                             class="absolute right-0 top-9 z-20 w-72 border border-border rounded-md bg-popover shadow-md px-3 py-2 text-xs text-destructive"
+                             x-text="pickerError"></div>
+                        <div x-cloak x-show="pickerOpen && !pickerError && pickerResults.length"
                              class="absolute right-0 top-9 z-20 w-72 border border-border rounded-md bg-popover shadow-md max-h-56 overflow-y-auto divide-y divide-border">
                             <template x-for="s in pickerResults" :key="s.id">
                                 <button type="button" @click="assignSolution(s.id)"
@@ -379,7 +382,8 @@
                         </template>
                     </ol>
                 </template>
-                <p x-cloak x-show="!snapshots.length" class="text-xs text-muted-foreground">
+                <p x-cloak x-show="loadError" class="text-xs text-destructive" x-text="loadError + ' — the history was not read, so this is not the same as having no snapshots.'"></p>
+                <p x-cloak x-show="!loadError && !snapshots.length" class="text-xs text-muted-foreground">
                     No snapshots yet — captured automatically on landscape imports, or take one now.
                 </p>
             </div>
@@ -407,14 +411,20 @@
         return {
             programmeId: programmeId,
             snapshots: [],
+            loadError: null,
             busy: false,
             _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
             async load() {
                 try {
                     const r = await fetch('/solutions/programmes/' + this.programmeId + '/api/snapshots');
+                    if (!r.ok) throw new Error('Could not load snapshots (HTTP ' + r.status + ')');
                     const d = await r.json();
                     this.snapshots = d.snapshots || [];
-                } catch (e) { this.snapshots = []; }
+                    this.loadError = null;
+                } catch (e) {
+                    this.snapshots = [];
+                    this.loadError = e.message || 'Could not load snapshots.';
+                }
             },
             async takeSnapshot() {
                 this.busy = true;
@@ -437,12 +447,21 @@
             programmeId: programmeId,
             pickerQuery: '',
             pickerResults: [],
+            pickerError: null,
             pickerOpen: false,
             _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
             async searchSolutions() {
-                const r = await fetch('/solutions/programmes/api/unassigned-solutions?q=' + encodeURIComponent(this.pickerQuery));
-                const d = await r.json();
-                this.pickerResults = d.results || [];
+                try {
+                    const r = await fetch('/solutions/programmes/api/unassigned-solutions?q=' + encodeURIComponent(this.pickerQuery));
+                    if (!r.ok) throw new Error('Could not search unassigned solutions (HTTP ' + r.status + ')');
+                    const d = await r.json();
+                    this.pickerResults = d.results || [];
+                    this.pickerError = null;
+                } catch (e) {
+                    // An empty dropdown would read as "every solution is already assigned".
+                    this.pickerResults = [];
+                    this.pickerError = e.message || 'Could not search unassigned solutions.';
+                }
                 this.pickerOpen = true;
             },
             async assignSolution(solutionId) {

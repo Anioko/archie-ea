@@ -18,43 +18,25 @@ from .chat_views import get_chat_service
 logger = logging.getLogger(__name__)
 
 
-def _default_usage_analytics() -> dict:
-    return {
-        "total_conversations": 0,
-        "total_messages": 0,
-        "active_days": 0,
-        "avg_messages_per_session": 0,
-    }
+def _require_chat_service():
+    """Return the chat service, or raise so the caller answers with an error.
 
+    ``get_chat_service()`` returns ``None`` when construction fails. Answering
+    that with an all-zero analytics payload and ``success: true`` presented a
+    failure as a measurement — see "Never invent data" in CLAUDE.md.
+    """
+    chat_service = get_chat_service()
+    if chat_service is None:
+        raise RuntimeError("chat service unavailable")
+    return chat_service
 
-def _default_domain_analytics() -> dict:
-    return {
-        "domains": [],
-        "total_domains": 0,
-        "total_messages": 0,
-    }
-
-
-def _default_quality_metrics() -> dict:
-    return {
-        "response_quality_score": None,
-        "avg_response_time_ms": None,
-        "success_rate": 0,
-        "feedback_count": 0,
-    }
 
 @unified_ai_chat_bp.route("/analytics/usage", methods=["GET"])
 @login_required
 def get_usage_analytics():
     """Get AI chat usage analytics for the current user."""
     try:
-        chat_service = get_chat_service()
-        if hasattr(chat_service, "get_usage_analytics"):
-            analytics = chat_service.get_usage_analytics(current_user.id)
-        else:
-            logger.warning("MultiDomainChatService missing get_usage_analytics; returning defaults")
-            analytics = _default_usage_analytics()
-
+        analytics = _require_chat_service().get_usage_analytics(current_user.id)
         return jsonify({"success": True, "analytics": analytics})
 
     except Exception as e:
@@ -67,13 +49,7 @@ def get_usage_analytics():
 def get_domain_analytics():
     """Get usage analytics by domain."""
     try:
-        chat_service = get_chat_service()
-        if hasattr(chat_service, "get_domain_analytics"):
-            analytics = chat_service.get_domain_analytics()
-        else:
-            logger.warning("MultiDomainChatService missing get_domain_analytics; returning defaults")
-            analytics = _default_domain_analytics()
-
+        analytics = _require_chat_service().get_domain_analytics()
         return jsonify({"success": True, "analytics": analytics})
 
     except Exception as e:
@@ -86,13 +62,7 @@ def get_domain_analytics():
 def get_quality_metrics():
     """Get AI response quality metrics."""
     try:
-        chat_service = get_chat_service()
-        if hasattr(chat_service, "get_quality_metrics"):
-            metrics = chat_service.get_quality_metrics()
-        else:
-            logger.warning("MultiDomainChatService missing get_quality_metrics; returning defaults")
-            metrics = _default_quality_metrics()
-
+        metrics = _require_chat_service().get_quality_metrics()
         return jsonify({"success": True, "metrics": metrics})
 
     except Exception as e:

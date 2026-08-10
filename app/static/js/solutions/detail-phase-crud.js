@@ -37,8 +37,13 @@
                     capability: this.apiBase + '/all-capabilities',
                     requirement: this.apiBase + '/all-requirements',
                 };
+                this.manageLoadError = '';
                 try {
                     let resp = await fetch(urlMap[type]);
+                    /* Unchecked, a 500 body parsed to `{}` and the picker opened
+                       showing "nothing available to link" — indistinguishable from
+                       an org that genuinely has no applications yet. */
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     let data = await resp.json();
                     if (type === 'archimate_element') {
                         this.manageAllItems = (data.elements || []).map(function(el) {
@@ -50,6 +55,8 @@
                 } catch (err) {
                     console.error('[solutionDetail] load all items error:', err);
                     this.manageAllItems = [];
+                    this.manageLoadError = 'Could not load the list to choose from. Nothing is missing from your solution — close and try again.';
+                    if (window.Platform && window.Platform.toast) window.Platform.toast.error(this.manageLoadError);
                 }
                 this.manageLoading = false;
             },
@@ -509,6 +516,7 @@
                         let url = '/archimate/api/elements/search?q=' + encodeURIComponent(query) +
                                   '&type=' + encodeURIComponent(archType) + '&limit=15';
                         let resp = await fetch(url);
+                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
                         let json = await resp.json();
                         self.archimateSearchResults = json.data || [];
                         self.archimateDropdownOpen = true;

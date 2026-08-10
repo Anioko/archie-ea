@@ -43,6 +43,11 @@ document.addEventListener('alpine:init', () => {
                     },
                     body: JSON.stringify({ step, step_data: stepData }),
                 });
+                /* Unguarded, a 500 parsed to `{}`: `passed` and `hard_block` were both
+                   undefined, so `canAdvance` came out true and the overlay was shown
+                   with a blank score — an assessment that never ran, displayed as a
+                   passing one. */
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
                 const json = await resp.json();
                 const data = json.data || json;
@@ -55,8 +60,14 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 console.error('Quality gate assessment failed:', e);
                 this.error = 'Quality assessment unavailable';
-                // Degrade gracefully — allow advancement
+                // No assessment exists, so nothing may be rendered as one.
+                this.assessment = null;
+                this.visible = false;
+                // Degrade gracefully — allow advancement, but say why the gate is absent.
                 this.canAdvance = true;
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.warning('Quality assessment is unavailable — this step was not checked. You can continue, but it has not been reviewed.');
+                }
                 return null;
             } finally {
                 this.loading = false;
@@ -90,6 +101,10 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
 
+                // A 500 here parsed to `{}`, leaving can_advance undefined and the
+                // overlay hidden — the gate silently did not run.
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
                 const json = await resp.json();
                 const data = json.data || json;
 
@@ -111,6 +126,9 @@ document.addEventListener('alpine:init', () => {
                     return false;
                 }
                 this.canAdvance = true;
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.warning('The quality gate could not be checked — you are being let through unchecked.');
+                }
                 return true;
             } finally {
                 this.loading = false;

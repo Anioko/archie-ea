@@ -6,6 +6,19 @@
  */
 'use strict';
 
+/**
+ * Coerce a score the server sent into a number, or null when it sent nothing.
+ *
+ * `|| 0` used to stand in here, which turned an absent dimension into a
+ * measured zero — the worst possible score, indistinguishable from a real one.
+ * null instead: the template renders an em dash and Chart.js skips the point.
+ */
+function planningScore(value) {
+    return (value === null || value === undefined || value === '' || isNaN(Number(value)))
+        ? null
+        : Math.round(Number(value));
+}
+
 function planningApp() {
     const appId = window.__PLANNING_APP_ID__;
     let csrfToken = document.querySelector('meta[name="csrf-token"]');
@@ -74,21 +87,21 @@ function planningApp() {
                         disposition_confidence: evidenceRaw.disposition_confidence || null,
                         confidence_reasons: evidenceRaw.confidence_reasons || [],
                         dimension_summary: [
-                            { name: 'technical', label: 'Technical Health', score: Math.round(scores.technical_health || 0) },
-                            { name: 'business', label: 'Business Value', score: Math.round(scores.business_value || 0) },
-                            { name: 'cost', label: 'Cost Efficiency', score: Math.round(scores.cost_efficiency || 0) },
-                            { name: 'vendor', label: 'Vendor Risk', score: Math.round(scores.vendor_risk || 0) }
+                            { name: 'technical', label: 'Technical Health', score: planningScore(scores.technical_health) },
+                            { name: 'business', label: 'Business Value', score: planningScore(scores.business_value) },
+                            { name: 'cost', label: 'Cost Efficiency', score: planningScore(scores.cost_efficiency) },
+                            { name: 'vendor', label: 'Vendor Risk', score: planningScore(scores.vendor_risk) }
                         ],
                         readiness_dimensions: (evidenceRaw.readiness || {}).dimensions || {},
                         evidence_trail: (evidenceRaw.evidence_trail || []).map(function(dim) {
                             return {
                                 dimension: dim.dimension || dim.name || '—',
-                                score: Math.round(dim.score || dim.weighted_contribution || 0),
+                                score: dim.score != null ? planningScore(dim.score) : planningScore(dim.weighted_contribution),
                                 sub_factors: (dim.sub_factors || dim.factors || []).map(function(f) {
                                     return {
                                         name: f.factor || f.name || '—',
                                         raw_value: f.raw_value != null ? f.raw_value : '—',
-                                        contribution: f.contribution || f.points || 0,
+                                        contribution: f.contribution != null ? f.contribution : (f.points != null ? f.points : null),
                                         source: f.source || f.field || ''
                                     };
                                 })

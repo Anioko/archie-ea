@@ -132,7 +132,8 @@
             </div>
 
             <!-- Search results dropdown -->
-            <div x-show="searchResults.length > 0" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md divide-y divide-border max-h-48 overflow-y-auto">
+            <div x-show="searchError" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md px-3 py-2 text-sm text-destructive" x-text="searchError"></div>
+            <div x-show="!searchError && searchResults.length > 0" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md divide-y divide-border max-h-48 overflow-y-auto">
                 <template x-for="el in searchResults" :key="el.id">
                     <button type="button" @click="addElement(el)"
                             class="w-full text-left flex items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors">
@@ -166,6 +167,7 @@ function elementPicker() {
     return {
         searchQuery: '',
         searchResults: [],
+        searchError: null,
         selectedElements: {{ (selected_elements | map(attribute='id') | list | tojson) if selected_elements else '[]' }}.map ? [] : [],
 
         init() {
@@ -187,13 +189,17 @@ function elementPicker() {
             try {
                 // Canonical element search (the old /architecture/decisions/api/element-search route no longer exists)
                 const resp = await fetch(`/archimate/api/elements/search?q=${encodeURIComponent(this.searchQuery)}&limit=20`);
+                if (!resp.ok) throw new Error('Element search failed (HTTP ' + resp.status + ')');
                 const payload = await resp.json();
                 const data = Array.isArray(payload) ? payload : (payload.data || []);
                 this.searchResults = data
                     .map(el => ({ id: el.id, name: el.name, layer: el.layer || '', element_type: el.element_type || el.type || '' }))
                     .filter(el => !this.selectedIds.includes(el.id));
+                this.searchError = null;
             } catch (e) {
+                // Debounced typeahead: an inline message, not a toast on every keystroke.
                 this.searchResults = [];
+                this.searchError = e.message || 'Element search failed';
             }
         },
 

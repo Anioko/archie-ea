@@ -150,7 +150,7 @@ API_REGISTRY: Dict[str, BlueprintInfo] = {
     # ========================================================================
     "unified_ai_chat": BlueprintInfo(
         name="unified_ai_chat",
-        module="app.routes.unified_ai_chat_routes",
+        module="app.modules.ai_chat.routes",
         url_prefix="/ai-chat",
         status=BlueprintStatus.ACTIVE,
         endpoints_count=18,
@@ -207,7 +207,7 @@ API_REGISTRY: Dict[str, BlueprintInfo] = {
     # ========================================================================
     "capability_map": BlueprintInfo(
         name="capability_map",
-        module="app.routes.capability_map_routes",
+        module="app.modules.capabilities.routes",
         url_prefix="/capability-map",
         status=BlueprintStatus.ACTIVE,
         endpoints_count=12,

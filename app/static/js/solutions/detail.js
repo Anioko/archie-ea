@@ -884,6 +884,9 @@ document.addEventListener('alpine:init', function () {
             manageAllItems: [],
             manageSelectedIds: new Set(),
             manageLoading: false,
+            // Set when the picker's list could not be fetched, so the modal can say
+            // "could not load" instead of rendering the failure as an empty list.
+            manageLoadError: '',
             manageSaving: false,
             manageFilter: '',
             manageLayerFilter: '',
@@ -1471,6 +1474,9 @@ document.addEventListener('alpine:init', function () {
                     const resp = await fetch(`${this.apiBase}/versions`, {
                         headers: {'X-CSRFToken': this.csrfToken}
                     });
+                    // Unchecked, a 500 parsed to `{}`: `data.versions` was undefined, so
+                    // nothing was assigned and the tab showed no version history at all.
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     const data = await resp.json();
                     if (data.versions) {
                         this.versionHistory = data.versions;
@@ -1800,6 +1806,10 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                         body: JSON.stringify({ dry_run: true }),
                     });
+                    /* Unchecked, a 500 parsed to `{}` and `data.defaults` was undefined,
+                       so the forEach below threw a TypeError into the catch — the user
+                       saw "Cannot read properties of undefined" rather than the failure. */
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     let data = await resp.json();
                     if (data.error) {
                         this.smartDefaultsError = data.error;
@@ -1812,7 +1822,8 @@ document.addEventListener('alpine:init', function () {
                         this.smartDefaultsPreview = preview;
                     }
                 } catch (e) {
-                    this.smartDefaultsError = e.message || 'Failed to load suggestions';
+                    this.smartDefaultsPreview = null;
+                    this.smartDefaultsError = 'Could not build suggestions — ' + ((e && e.message) || 'request failed') + '. Nothing was proposed.';
                 } finally {
                     this.smartDefaultsLoading = false;
                     this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
@@ -1879,6 +1890,10 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                         body: JSON.stringify({ dry_run: false, selected: selected }),
                     });
+                    /* Unchecked, a 500 parsed to `{}`: `data.error` was undefined, so the
+                       else branch fired and the panel reported the defaults as applied
+                       with an undefined count, when nothing had been written. */
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     let data = await resp.json();
                     if (data.error) {
                         this.smartDefaultsError = data.error;
@@ -1893,7 +1908,7 @@ document.addEventListener('alpine:init', function () {
                         }
                     }
                 } catch (e) {
-                    this.smartDefaultsError = e.message || 'Failed to apply defaults';
+                    this.smartDefaultsError = 'Nothing was applied — ' + ((e && e.message) || 'request failed');
                 } finally {
                     this.smartDefaultsLoading = false;
                     this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
@@ -1915,6 +1930,9 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                         body: JSON.stringify({ created_ids: this.smartDefaultsCreatedIds }),
                     });
+                    /* Unchecked, a 500 fell into the else branch and reloaded the page as
+                       though the revert had succeeded, leaving the rows in place. */
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     let data = await resp.json();
                     if (data.error) {
                         this.smartDefaultsError = data.error;
@@ -1926,7 +1944,7 @@ document.addEventListener('alpine:init', function () {
                         window.location.reload();
                     }
                 } catch (e) {
-                    this.smartDefaultsError = e.message || 'Failed to revert';
+                    this.smartDefaultsError = 'Nothing was reverted — ' + ((e && e.message) || 'request failed');
                 } finally {
                     this.smartDefaultsLoading = false;
                 }
@@ -3266,6 +3284,10 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                         body: JSON.stringify({ phases: [phase] })
                     });
+                    /* Unchecked, a 500 parsed to `{}` and `data.suggestions[phase]` threw
+                       a TypeError, so the panel said "Failed to load suggestions" with no
+                       indication the server had answered with an error at all. */
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     let data = await resp.json();
                     if (data.error) {
                         this.statusMsg = data.error;
@@ -3281,7 +3303,8 @@ document.addEventListener('alpine:init', function () {
                         });
                     }
                 } catch (e) {
-                    this.statusMsg = 'Failed to load suggestions';
+                    this.suggestions = { existing_elements: [], new_elements: [] };
+                    this.statusMsg = 'Could not load suggestions — ' + ((e && e.message) || 'request failed') + '. Nothing was proposed.';
                     console.error(e);
                 } finally {
                     this.loading = false;
@@ -3303,6 +3326,10 @@ document.addEventListener('alpine:init', function () {
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                         body: JSON.stringify({ accepted: accepted, new_elements: newEls })
                     });
+                    /* Unchecked, a 500 parsed to `{}` and the panel reported
+                       "NaN elements added" before reloading the page — a write that
+                       never happened, announced as a success. */
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     let data = await resp.json();
                     if (data.error) {
                         this.statusMsg = data.error;
@@ -3313,7 +3340,7 @@ document.addEventListener('alpine:init', function () {
                         setTimeout(function () { location.reload(); }, 1500);
                     }
                 } catch (e) {
-                    this.statusMsg = 'Failed to apply selections';
+                    this.statusMsg = 'Nothing was added — ' + ((e && e.message) || 'request failed');
                 } finally {
                     this.applying = false;
                 }

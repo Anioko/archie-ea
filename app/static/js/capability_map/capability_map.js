@@ -39,6 +39,9 @@
             try {
                 // Load domains
                 const domainsResponse = await fetch('/capability-map/api/acm/domains');
+                // Unchecked, a 500 parsed to `{}`: `domainsData.domains` was falsy, the
+                // render was skipped, and the tab sat empty as if no domains existed.
+                if (!domainsResponse.ok) throw new Error('technical domains (HTTP ' + domainsResponse.status + ')');
                 const domainsData = await domainsResponse.json();
 
                 if (domainsData.domains) {
@@ -48,6 +51,7 @@
 
                 // Load capabilities
                 const capsResponse = await fetch('/capability-map/api/acm/capabilities');
+                if (!capsResponse.ok) throw new Error('technical capabilities (HTTP ' + capsResponse.status + ')');
                 const capsData = await capsResponse.json();
 
                 if (capsData.capabilities) {
@@ -75,6 +79,9 @@
         async function loadApplicationsForACMMapping() {
             try {
                 const response = await fetch('/capability-map/api/applications');
+                // Unchecked, a 500 left the mapping dropdown holding only its
+                // "Choose an application..." placeholder.
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 const data = await response.json();
                 if (data.applications) {
                     acmApplicationsList = data.applications;
@@ -443,6 +450,9 @@
             try {
                 const id = String(capabilityId);
                 const response = await fetch(`/capability-map/api/acm/capability/${id}/applications`);
+                // Unchecked, a 500 opened the mapping modal with an empty application
+                // list — the existing mappings looked as though they had been cleared.
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 const data = await response.json();
 
                 if (data.error) {
@@ -890,6 +900,9 @@
             try {
                 const id = String(processId);
                 const response = await fetch(`/capability-map/api/process-gaps/process/${id}/applications`);
+                // Unchecked, a 500 opened the mapping modal with an empty application
+                // list — the existing mappings looked as though they had been cleared.
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 const data = await response.json();
 
                 if (data.error) {
@@ -1139,6 +1152,9 @@
             try {
                 // Check authentication before saving
                 const authResponse = await fetch('/capability-map/api/check-auth');
+                // Unchecked, a 500 made `authenticated` undefined and the save aborted
+                // with "Please log in" at a user who was logged in the whole time.
+                if (!authResponse.ok) throw new Error('could not verify your session (HTTP ' + authResponse.status + ')');
                 const authData = await authResponse.json();
 
                 if (!authData.authenticated) {
@@ -1174,6 +1190,7 @@
                     })
                 });
 
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 const result = await response.json();
 
                 if (result.success) {
@@ -1186,7 +1203,7 @@
                 }
             } catch (error) {
                 console.error('Error saving process mappings:', error);
-                showProcessNotification('Error saving mappings', 'error');
+                showProcessNotification('Mappings were NOT saved — ' + ((error && error.message) || 'request failed'), 'error');
             }
         }
 

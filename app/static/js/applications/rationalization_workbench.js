@@ -5,6 +5,21 @@
  */
 'use strict';
 
+/**
+ * Coerce a score the server sent into a number, or null when it sent nothing.
+ *
+ * `|| 0` used to stand in here, which turned an absent dimension into a
+ * measured zero — the worst possible score, plotted next to real applications
+ * and impossible to tell apart from one. null instead: the template renders an
+ * em dash and Chart.js skips the point rather than pulling the polygon to the
+ * centre.
+ */
+function workbenchScore(value) {
+    return (value === null || value === undefined || value === '' || isNaN(Number(value)))
+        ? null
+        : Math.round(Number(value));
+}
+
 function workbenchApp() {
     let csrfToken = document.querySelector('meta[name="csrf-token"]');
     csrfToken = csrfToken ? csrfToken.getAttribute('content') : '';
@@ -247,10 +262,10 @@ function workbenchApp() {
                         id: app.id,
                         name: app.name,
                         dims: {
-                            'Technical Health': Math.round(scores.technical_health || 0),
-                            'Business Value': Math.round(scores.business_value || 0),
-                            'Cost Efficiency': Math.round(scores.cost_efficiency || 0),
-                            'Vendor Risk': Math.round(scores.vendor_risk || 0)
+                            'Technical Health': workbenchScore(scores.technical_health),
+                            'Business Value': workbenchScore(scores.business_value),
+                            'Cost Efficiency': workbenchScore(scores.cost_efficiency),
+                            'Vendor Risk': workbenchScore(scores.vendor_risk)
                         }
                     });
                     if (self.compareApps.length >= 2) {
@@ -294,7 +309,9 @@ function workbenchApp() {
                 const c = colors[i % colors.length];
                 return {
                     label: ca.name,
-                    data: labels.map(function(l) { return ca.dims[l] || 0; }),
+                    // null, not 0: Chart.js skips an unknown dimension rather than
+                    // plotting it at the origin as if it had been measured.
+                    data: labels.map(function(l) { return ca.dims[l] != null ? ca.dims[l] : null; }),
                     backgroundColor: c.bg,
                     borderColor: c.border,
                     borderWidth: 2,
@@ -339,10 +356,10 @@ function workbenchApp() {
             .then(function(data) {
                 const scores = data.scores || {};
                 const dims = [
-                    { name: 'technical', label: 'Technical Health', score: Math.round(scores.technical_health || 0) },
-                    { name: 'business', label: 'Business Value', score: Math.round(scores.business_value || 0) },
-                    { name: 'cost', label: 'Cost Efficiency', score: Math.round(scores.cost_efficiency || 0) },
-                    { name: 'vendor', label: 'Vendor Risk', score: Math.round(scores.vendor_risk || 0) }
+                    { name: 'technical', label: 'Technical Health', score: workbenchScore(scores.technical_health) },
+                    { name: 'business', label: 'Business Value', score: workbenchScore(scores.business_value) },
+                    { name: 'cost', label: 'Cost Efficiency', score: workbenchScore(scores.cost_efficiency) },
+                    { name: 'vendor', label: 'Vendor Risk', score: workbenchScore(scores.vendor_risk) }
                 ];
 
                 // Extract top 3 factors per dimension
@@ -351,7 +368,11 @@ function workbenchApp() {
                         .sort(function(a, b) { return Math.abs(b.contribution || 0) - Math.abs(a.contribution || 0); })
                         .slice(0, 3)
                         .map(function(f) {
-                            return { name: f.factor || f.name || '—', raw_value: f.raw_value, contribution: f.contribution || f.points || 0 };
+                            return {
+                                name: f.factor || f.name || '—',
+                                raw_value: f.raw_value,
+                                contribution: f.contribution != null ? f.contribution : (f.points != null ? f.points : null)
+                            };
                         });
                     return { dimension: dim.dimension || dim.name || '—', factors: factors };
                 });

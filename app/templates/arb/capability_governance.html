@@ -18,11 +18,23 @@
 
     <div x-data="{
         loading: true,
+        loadError: null,
         data: null,
         async init() {
-            const r = await fetch('/api/arb/capabilities/{{ capability_id }}/governance');
-            this.data = await r.json();
-            this.loading = false;
+            try {
+                const r = await fetch('/api/arb/capabilities/{{ capability_id }}/governance');
+                if (!r.ok) throw new Error('Could not load capability governance (HTTP ' + r.status + ')');
+                this.data = await r.json();
+                this.loadError = null;
+            } catch (e) {
+                // data stays null so every panel below shows its own empty state; the
+                // banner is what tells the user those panels are unread, not empty.
+                this.data = null;
+                this.loadError = e.message || 'Could not load capability governance.';
+                Platform.toast.error(this.loadError);
+            } finally {
+                this.loading = false;
+            }
         }
     }">
         <!-- Loading spinner -->
@@ -30,7 +42,18 @@
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
 
-        <div x-show="!loading" x-cloak class="space-y-6">
+        <div x-show="!loading && loadError" x-cloak
+             class="rounded-lg border border-destructive bg-card px-6 py-4 flex items-start gap-3">
+            <i data-lucide="alert-triangle" class="w-5 h-5 text-destructive shrink-0" aria-hidden="true"></i>
+            <div>
+                <p class="text-sm font-semibold text-destructive" x-text="loadError"></p>
+                <p class="text-sm text-muted-foreground mt-1">
+                    Nothing below has been read from the register — an empty panel here does not mean an empty record.
+                </p>
+            </div>
+        </div>
+
+        <div x-show="!loading && !loadError" x-cloak class="space-y-6">
 
             <!-- Active Strategic Decision -->
             <div class="bg-card border border-border rounded-lg overflow-hidden">

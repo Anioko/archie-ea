@@ -4036,6 +4036,7 @@
               const res = await fetch(`/api/enterprise/applications?search=${encodeURIComponent(q)}&limit=10`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
               });
+              if (!res.ok) throw new Error('Application search failed (HTTP ' + res.status + ')');
               const data = await res.json();
               const apps = data.applications || data.results || data || [];
               results.innerHTML = '';
@@ -4058,8 +4059,14 @@
                 });
               }
               results.classList.remove('hidden');
-            } catch (_) {
-              results.classList.add('hidden');
+            } catch (err) {
+              // A search that failed must not read as "No results".
+              const li = document.createElement('li');
+              li.className = 'px-3 py-2 text-sm text-destructive';
+              li.textContent = err.message || 'Application search failed';
+              results.innerHTML = '';
+              results.appendChild(li);
+              results.classList.remove('hidden');
             }
           }, 280);
         });

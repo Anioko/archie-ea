@@ -1479,15 +1479,21 @@ function codegenModal() {
         {# Results list #}
         <div class="flex-1 overflow-y-auto px-5 pb-4 space-y-1">
 
+            {# Search failed — must not read as "no elements found" #}
+            <div x-show="!loading && searchError" class="py-8 text-center">
+                <p class="text-sm text-destructive" x-text="searchError"></p>
+                <p class="text-xs text-muted-foreground mt-1">Nothing was searched.</p>
+            </div>
+
             {# Empty state — no search yet #}
-            <div x-show="!loading && results.length === 0 && !query.trim()" class="py-8 text-center">
+            <div x-show="!loading && !searchError && results.length === 0 && !query.trim()" class="py-8 text-center">
                 <svg class="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 <p class="text-sm text-muted-foreground">Type to search ArchiMate elements</p>
                 <p class="text-xs text-muted-foreground/60 mt-1">Showing types relevant to this viewpoint section</p>
             </div>
 
             {# Empty state — searched, no results #}
-            <div x-show="!loading && results.length === 0 && query.trim()" class="py-8 text-center">
+            <div x-show="!loading && !searchError && results.length === 0 && query.trim()" class="py-8 text-center">
                 <p class="text-sm text-muted-foreground">No elements found for "<span x-text="query" class="font-medium"></span>"</p>
             </div>
 
@@ -1559,6 +1565,7 @@ function linkElementsPicker() {
         sectionName: '',
         query: '',
         results: [],
+        searchError: null,
         linked: [],   // element IDs already linked to this solution (via SolutionArchiMateElement)
         loading: false,
         _searchTimer: null,
@@ -1578,6 +1585,7 @@ function linkElementsPicker() {
             this.sectionName = (defs[sectionId] || {}).name || sectionId;
             this.query = '';
             this.results = [];
+            this.searchError = null;
             this.open = true;
             this.loadLinked();
             this.$nextTick(() => {
@@ -1593,13 +1601,14 @@ function linkElementsPicker() {
             const sid = window.__BLUEPRINT_CONFIG__?.solutionId;
             try {
                 const res = await fetch(`/api/solutions/${sid}/archimate-elements`);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
                 const json = await res.json();
                 const all = Object.values(json.elements_by_layer || {}).flat();
                 this.linked = all.map(e => e.id);
             } catch (err) {
-                console.error('linkElementsPicker: failed to load linked elements', err);
+                this.linked = [];
                 if (window.Platform && Platform.toast) {
-                    Platform.toast.error('Failed to load linked elements — link status shown below may be inaccurate');
+                    Platform.toast.error('Failed to load linked elements (' + err.message + ') — every element below will show as unlinked whether it is or not');
                 }
             }
         },
@@ -1617,11 +1626,14 @@ function linkElementsPicker() {
             this.loading = true;
             try {
                 const res = await fetch(`/api/solutions/archimate/search?${params}`);
+                if (!res.ok) throw new Error('Element search failed (HTTP ' + res.status + ')');
                 const json = await res.json();
                 this.results = json.data || json.elements || [];
+                this.searchError = null;
             } catch (err) {
-                console.error('linkElementsPicker: search failed', err);
+                // Debounced typeahead: an inline message, not a toast per keystroke.
                 this.results = [];
+                this.searchError = err.message || 'Element search failed';
             } finally {
                 this.loading = false;
             }
@@ -1764,10 +1776,11 @@ document.addEventListener('click', function(e) {
             this.error = '';
             try {
                 const resp = await fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20');
+                if (!resp.ok) throw new Error('Search unavailable (HTTP ' + resp.status + ')');
                 const json = await resp.json();
                 this.results = json.data || json.results || [];
             } catch (e) {
-                this.error = 'Search unavailable';
+                this.error = e.message || 'Search unavailable';
                 this.results = [];
             }
             this.loading = false;

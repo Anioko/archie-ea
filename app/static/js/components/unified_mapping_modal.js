@@ -196,6 +196,9 @@ async function loadTargets() {
         }
 
         let response = await fetch(url);
+        /* Unchecked, a 500 parsed cleanly and every `data.x || []` below fell back to
+           an empty array — the picker opened saying there was nothing to map to. */
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         let data = await response.json();
 
         if (data.error) {
@@ -741,6 +744,9 @@ async function loadUnifiedApplications(targetId) {
         }
 
         let response = await fetch(url);
+        /* Unchecked, a 500 left applicationsData empty and the modal listed no
+           applications — the existing mappings looked as though they were gone. */
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         let data = await response.json();
 
         if (data.error) {
@@ -1310,6 +1316,9 @@ window.saveUnifiedMappings = async function() {
             body: JSON.stringify(body)
         });
 
+        // Unchecked, a 500 parsed to `{}`: `data.error` was undefined, so the code fell
+        // through and reported "Successfully saved mapping(s)" for a save that failed.
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         let data = await response.json();
 
         if (data.error) {
@@ -1382,6 +1391,7 @@ async function saveReverseMappings() {
                 body: JSON.stringify(body)
             });
 
+            if (!response.ok) { errorCount++; continue; }
             let data = await response.json();
             if (data.success || data.created > 0) {
                 successCount++;
@@ -1392,6 +1402,10 @@ async function saveReverseMappings() {
 
         if (successCount > 0) {
             Platform.toast.success('Successfully mapped ' + successCount + ' capability(s) to ' + UnifiedMappingModal.reverseAppName);
+            // A partial failure used to be reported as an unqualified success.
+            if (errorCount > 0) {
+                Platform.toast.error(errorCount + ' capability(s) were NOT mapped — retry those.');
+            }
             if (UnifiedMappingModal.onSaveCallback) {
                 UnifiedMappingModal.onSaveCallback({ success: true, created: successCount });
             }
@@ -1429,6 +1443,9 @@ window.deleteUnifiedMapping = async function(mappingId, appId) {
             }
         });
 
+        // Unchecked, a 500 parsed to `{}` and the row disappeared from the modal as
+        // though the mapping had been deleted, while it was still in the database.
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         let data = await response.json();
 
         if (data.error) {

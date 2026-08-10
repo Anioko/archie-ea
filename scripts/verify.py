@@ -254,6 +254,30 @@ def gate_template_syntax() -> Result:
     return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_fetch_guards(baseline: int) -> Result:
+    """A raw fetch() whose body is parsed without checking the response. RATCHET.
+
+    The client half of `error-signalling`. That gate made ~64 endpoints answer a
+    failure with an honest 4xx/5xx instead of 200 - and a caller that never
+    looks at the response throws that away: `fetch` does not reject on 4xx/5xx,
+    so the error body parses cleanly, `data.items || []` yields an empty list,
+    and the user sees "no results" exactly as before. Both halves are required.
+
+    A ratchet at first because 107 call sites carry it and triage is judgement
+    work - some are genuinely best-effort. It tightens to zero once the tail is
+    cleared. Hatch: `fetch-guard-ok: <reason>`.
+    """
+    proc = _run([sys.executable, "scripts/check_fetch_guards.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("fetch-guards", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_fetch_guards.py to list them"
+    return Result("fetch-guards", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 def gate_error_signalling() -> Result:
     """API error paths that answer a failure with HTTP 200. MUST BE ZERO.
 
@@ -866,6 +890,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_broken_surfaces(baseline.get("broken_surfaces", 479)),
              remediation="run scripts/check_broken_surfaces.py; repoint the URL, "
                          "remove the dead control, or report the failure to the user",
+             tags=["static", "ui"]),
+        Gate("fetch-guards", "no fetch parsed without checking the response", "ratchet",
+             lambda: gate_fetch_guards(baseline.get("fetch_guards", 107)),
+             remediation="run scripts/check_fetch_guards.py; add if (!resp.ok) throw, "
+                         "and make the catch tell the user",
              tags=["static", "ui"]),
         Gate("error-signalling", "no API error path that answers 200", "zero",
              gate_error_signalling,

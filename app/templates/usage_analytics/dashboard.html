@@ -134,10 +134,26 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAnalyticsData();
 });
 
+function showTableError(tbodyId, colspan, message) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = colspan;
+    td.className = 'px-6 py-8 text-center text-sm text-destructive';
+    td.textContent = message;
+    tr.appendChild(td);
+    tbody.innerHTML = '';
+    tbody.appendChild(tr);
+}
+
 async function loadAnalyticsData() {
+    // Two independent sections: a failure in one must not blank the other, and
+    // neither may leave its table looking merely empty.
     try {
         // Load summary data
         const summaryResponse = await fetch('/usage-analytics/api/summary');
+        if (!summaryResponse.ok) throw new Error('HTTP ' + summaryResponse.status);
         const summary = await summaryResponse.json();
 
         // Update summary cards
@@ -204,9 +220,17 @@ async function loadAnalyticsData() {
             `;
             tableBody.innerHTML += row;
         });
+    } catch (error) {
+        // The four cards keep their "-" placeholder rather than showing a measured-
+        // looking 0, and the table says why it is blank.
+        showTableError('usage-table-body', 6, 'Feature usage could not be loaded (' + error.message + '). This is not "no usage".');
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load usage analytics data.');
+    }
 
+    try {
         // Load recent events
         const eventsResponse = await fetch('/usage-analytics/api/events?limit=50');
+        if (!eventsResponse.ok) throw new Error('HTTP ' + eventsResponse.status);
         const events = await eventsResponse.json();
 
         const eventsTableBody = document.getElementById('events-table-body');
@@ -225,10 +249,9 @@ async function loadAnalyticsData() {
             `;
             eventsTableBody.innerHTML += row;
         });
-
     } catch (error) {
-        console.error('Failed to load analytics data:', error);
-        if (window.Platform && Platform.toast) Platform.toast.error('Could not load usage analytics data.');
+        showTableError('events-table-body', 5, 'Recent events could not be loaded (' + error.message + '). This is not "no events".');
+        if (window.Platform && Platform.toast) Platform.toast.error('Could not load recent usage events.');
     }
 }
 </script>
