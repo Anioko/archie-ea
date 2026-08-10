@@ -63,6 +63,25 @@ repos:
         language: system
         files: ^app/(templates/.*\.html|static/js/.*\.js)$
 
+      # These three run whole-repo rather than on changed files: each resolves
+      # findings against the app's real route table or the Python AST, so a
+      # per-file view would miss the cross-file cases that are the whole point.
+      # They are the commit-time half of gates CI already enforces via
+      # `verify.py --tag static`; catching them here saves a red build.
+      - id: silent-data
+        name: no server failure returned to the caller as data
+        entry: python scripts/check_silent_data.py
+        language: system
+        files: ^app/.*\.py$
+        pass_filenames: false
+
+      - id: error-signalling
+        name: no API error path that answers HTTP 200
+        entry: python scripts/check_error_signalling.py
+        language: system
+        files: ^app/.*\.py$
+        pass_filenames: false
+
       - id: sqlalchemy-raw-execute
         name: no bare-string db.session.execute (SQLAlchemy 2.0 raises)
         entry: bash -c 'if grep -nE "session\.execute\(\s*[\x27\"]" "$@" /dev/null; then echo "Wrap in db.text(...) — see CLAUDE.md"; exit 1; fi' --

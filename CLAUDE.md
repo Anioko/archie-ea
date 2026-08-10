@@ -277,6 +277,31 @@ map is in `DESIGN.md`. A plain textarea is not an acceptable substitute — the 
   working, but **do not copy that pattern** — it is flaky by construction, which is why the
   shared fixtures exist.
 
+## `docs/known-issues/` is a decision record, not a backlog
+
+A file here documents something that **cannot be fixed in code** — a product
+decision about whether a feature is wanted, an external constraint, a schema
+change that needs a maintenance window. If a defect can be fixed, fix it;
+writing it down instead converts a bug into a bug *plus* a note, and the note
+gets read by the next person as a decision someone made deliberately.
+
+This is not hypothetical. Every one of these was documented and left, and every
+one was a live defect the whole time:
+
+- 73 catch blocks that told nobody, recorded as "the next slice"
+- `conversation_threads` / `conversation_messages` have no model, so chat
+  history is broken on every fresh install
+- five blueprint name collisions, one of which makes `/admin/security`
+  unreachable
+- ~107 `fetch()` calls whose response is never checked
+
+Each was fixed only when someone asked why the list still existed.
+
+If you must record something unfixed, say what would fix it and why it is not
+being done *now* — and prefer a gate that counts it (see `verify.py`) over prose
+that does not. A ratchet keeps the number from growing while the work is
+outstanding; a paragraph does not.
+
 ## Documentation accuracy
 
 The repo is an extract of a larger private codebase, so some docs reference files that aren't here.
