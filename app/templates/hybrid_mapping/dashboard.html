@@ -11,6 +11,12 @@
         description='Comprehensive analysis of capability-to-product mappings across all three approaches'
     ) }}
 
+    {# `stats` is None when the view could not compute coverage. These panels
+       divide, format and compare every figure, so None is a TypeError here -
+       and a zeroed stats structure would be worse still, reporting "0%
+       coverage" as a finding about the portfolio rather than a failed query.
+       The banner from layouts/admin_base.html says why they are missing. #}
+    {% if stats %}
     <!-- Key Statistics -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {{ metrics_card(title='Total Capabilities', value=stats.application_centric.total_capabilities, icon='layers') }}
@@ -128,6 +134,12 @@
             </div>
         </div>
     </div>
+    {% else %}
+    <div class="bg-card border border-border rounded-lg p-6 mb-6 text-center">
+        <p class="text-2xl font-semibold text-muted-foreground">&mdash;</p>
+        <p class="text-sm text-muted-foreground mt-1">Mapping coverage could not be calculated.</p>
+    </div>
+    {% endif %}
 
     <!-- Unmapped Items Alert -->
     {% if unmapped_caps or unmapped_products or unmapped_archimate %}

@@ -1,6 +1,6 @@
 """Unmapped Capabilities Analysis Routes"""
 
-from flask import flash, jsonify, render_template  # dead-code-ok
+from flask import current_app, flash, jsonify, render_template  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -105,16 +105,21 @@ def unmapped_capabilities():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading unmapped capabilities")
         flash("Error loading unmapped capabilities. Please try again.", "error")
+        # None, not 0: "0 capabilities, 0% coverage" is a claim about the
+        # user's portfolio, and here nothing was measured at all.
         return render_template(
             "capability_analysis/unmapped_capabilities.html",
             unmapped_capabilities=[],
-            total_capabilities=0,
-            mapped_capabilities=0,
-            unmapped_count=0,
-            mapping_coverage=0,
+            total_capabilities=None,
+            mapped_capabilities=None,
+            unmapped_count=None,
+            mapping_coverage=None,
             domain_stats=[],
             priority_breakdown=[],
+            load_error="Capability mapping coverage could not be calculated.",
         )
 
 

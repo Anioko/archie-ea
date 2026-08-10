@@ -140,6 +140,10 @@
                 <div class="container mx-auto px-6 py-8">
                     {% block breadcrumb %}{% endblock %}
                     {% include 'partials/_flashes.html' %}
+                    {# Set load_error in a view's except handler: a flash disappears
+                       and never reaches a screenshot or an export, so an empty page
+                       needs a persistent marker that its data failed to load. #}
+                    {% include 'partials/_data_load_error.html' %}
                     {# Inline page hints — templates fill this block with the inline_hint macro #}
                     {% block page_hint %}{% endblock %}
                     {% block content %}{% endblock %}

@@ -1,6 +1,6 @@
 """Hybrid Multi-Path Mapping Dashboard Routes"""
 
-from flask import flash, jsonify, render_template  # dead-code-ok
+from flask import current_app, flash, jsonify, render_template  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -40,24 +40,22 @@ def hybrid_mapping_dashboard():
 
     except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
+        current_app.logger.exception("Error loading hybrid mapping dashboard")
         flash("Error loading hybrid mapping dashboard. Please try again.", "error")
-        empty_stats = {
-            "total_capabilities": 0,
-            "application_centric": {"total_capabilities": 0, "capabilities_with_apps": 0, "apps_with_archimate": 0, "coverage_percentage": 0, "archimate_coverage_percentage": 0, "end_to_end_coverage": 0},
-            "product_centric": {"total_capabilities": 0, "capabilities_with_products": 0, "capabilities_with_products_archimate": 0, "coverage_percentage": 0, "archimate_coverage_percentage": 0},
-            "direct_archimate": {"total_capabilities": 0, "capabilities_with_archimate": 0, "coverage_percentage": 0},
-            "multi_path": {"total_capabilities": 0, "capabilities_with_multi_path": 0, "coverage_percentage": 0},
-            "quality_metrics": {"total_mappings": 0, "high_quality_mappings": 0, "quality_score": 0},
-        }
+        # stats=None, not a zeroed structure. Every percentage in that
+        # structure reads as a measurement of the user's mapping coverage;
+        # produced by a database error, all of them are false. The template
+        # renders an em dash for the whole stats region when stats is falsy.
         return render_template(
             "hybrid_mapping/dashboard.html",
-            stats=empty_stats,
+            stats=None,
             app_mappings=[],
             product_mappings=[],
             archimate_mappings=[],
             unmapped_caps=[],
             unmapped_products=[],
             unmapped_archimate=[],
+            load_error="Hybrid mapping coverage could not be calculated.",
         )
 
 

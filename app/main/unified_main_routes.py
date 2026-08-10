@@ -26,7 +26,15 @@ All routes maintain backward compatibility and include proper error handling.
 import logging
 from datetime import datetime
 
-from flask import flash, jsonify, redirect, render_template, request, url_for  # dead-code-ok
+from flask import (  # dead-code-ok
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -263,8 +271,10 @@ def _archimate_roadmap_legacy():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading ArchiMate roadmap")
         flash("Error loading ArchiMate roadmap. Please try again.", "error")
-        # Provide default timeline dates even in error case
+        # The timeline axis is a display range, not a measurement, so it stays.
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2028, 12, 31)
         return render_template(
@@ -277,6 +287,8 @@ def _archimate_roadmap_legacy():
             months=[],
             start_date=start_date,
             end_date=end_date,
+            gaps_summary=None,
+            load_error="The ArchiMate roadmap could not be read.",
         )
 
 
@@ -595,16 +607,21 @@ def unmapped_capabilities():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading unmapped capabilities")
         flash("Error loading unmapped capabilities. Please try again.", "error")
+        # None, not 0: "0 capabilities, 0% coverage" is a claim about the
+        # user's portfolio, and here nothing was measured at all.
         return render_template(
             "capability_analysis/unmapped_capabilities.html",
             unmapped_capabilities=[],
-            total_capabilities=0,
-            mapped_capabilities=0,
-            unmapped_count=0,
-            mapping_coverage=0,
+            total_capabilities=None,
+            mapped_capabilities=None,
+            unmapped_count=None,
+            mapping_coverage=None,
             domain_stats=[],
             priority_breakdown=[],
+            load_error="Capability mapping coverage could not be calculated.",
         )
 
 
@@ -801,8 +818,11 @@ def _capability_roadmap_legacy():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading capability roadmap")
         flash("Error loading capability roadmap. Please try again.", "error")
-        # Provide default data even in error case
+        # The timeline axis is a display range, not a measurement, so it stays;
+        # every counted figure becomes None.
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2026, 12, 31)
         return render_template(
@@ -811,12 +831,13 @@ def _capability_roadmap_legacy():
             capabilities=[],
             unmapped_capabilities=[],
             work_packages=[],
-            total_capabilities=0,
-            mapped_capabilities=0,
-            mapping_coverage=0,
+            total_capabilities=None,
+            mapped_capabilities=None,
+            mapping_coverage=None,
             start_date=start_date,
             end_date=end_date,
             months=[],
+            load_error="The capability roadmap could not be read.",
         )
 
 
@@ -939,16 +960,22 @@ def hybrid_mapping_dashboard():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading hybrid mapping dashboard")
         flash("Error loading hybrid mapping dashboard. Please try again.", "error")
+        # stats=None rather than {}: an empty dict left every stats lookup
+        # Undefined, and "%.1f"|format(Undefined) is a TypeError, so this
+        # handler used to 500 on its way to rendering the page.
         return render_template(
             "hybrid_mapping/dashboard.html",
-            stats={},
+            stats=None,
             app_mappings=[],
             product_mappings=[],
             archimate_mappings=[],
             unmapped_caps=[],
             unmapped_products=[],
             unmapped_archimate=[],
+            load_error="Hybrid mapping coverage could not be calculated.",
         )
 
 

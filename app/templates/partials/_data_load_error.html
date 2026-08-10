@@ -1,0 +1,26 @@
+{# Banner shown when a view could not read the data behind the page.
+
+   Archie is a system of record. A page that renders normally after its query
+   failed is indistinguishable from a page reporting a genuinely empty
+   portfolio - and a screenshot or an export carries no flash message. Views
+   set `load_error` in their except handler and pass None (not 0) for every
+   figure they could not compute; this banner is what makes the resulting
+   empty state legible as a failure.
+
+   layouts/admin_base.html includes this on every page, so no page template
+   has to opt in. `load_error` is normally undefined, which is falsy. #}
+{% if load_error %}
+<div class="relative w-full rounded-lg border border-destructive/50 bg-destructive/10 p-4 mb-4 shadow-sm" role="alert">
+    <div class="flex items-start gap-3">
+        <i data-lucide="alert-circle" class="flex-shrink-0 w-5 h-5 text-destructive-emphasis" aria-hidden="true"></i>
+        <div class="flex-1 text-sm leading-relaxed text-destructive-emphasis">
+            <p class="font-semibold">This page could not load its data</p>
+            <p class="mt-1">
+                {% if load_error is string %}{{ load_error }}{% else %}The query behind this page failed.{% endif %}
+                Figures below show &mdash; and lists are empty because nothing could be
+                read, not because there is nothing to show. Reload to try again.
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}

@@ -1,6 +1,6 @@
 """Vendor-ArchiMate Mapping Analysis Routes"""
 
-from flask import flash, jsonify, render_template  # dead-code-ok
+from flask import current_app, flash, jsonify, render_template  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -158,24 +158,29 @@ def vendor_archimate_analysis():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading vendor-ArchiMate analysis")
         flash("Error loading vendor-ArchiMate analysis. Please try again.", "error")
+        # None throughout: "0% vendor coverage" is a conclusion an architect
+        # would act on, and nothing here was actually counted.
         return render_template(
             "vendor_analysis/archimate_mapping.html",
-            vendor_orgs=0,
-            vendor_products=0,
-            archimate_elements=0,
-            with_archimate=0,
-            without_archimate=0,
-            vendor_coverage=0,
-            with_source_product=0,
-            without_source_product=0,
-            archimate_coverage=0,
-            orphaned_elements=0,
+            vendor_orgs=None,
+            vendor_products=None,
+            archimate_elements=None,
+            with_archimate=None,
+            without_archimate=None,
+            vendor_coverage=None,
+            with_source_product=None,
+            without_source_product=None,
+            archimate_coverage=None,
+            orphaned_elements=None,
             orphaned_details=[],
-            app_vendor_products=0,
+            app_vendor_products=None,
             product_types=[],
             element_types=[],
             unmapped_products=[],
+            load_error="Vendor-to-ArchiMate mapping coverage could not be calculated.",
         )
 
 

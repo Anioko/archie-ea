@@ -81,9 +81,14 @@ def architecture_models():
         models = ArchitectureModel.query.order_by(ArchitectureModel.name).all()
         return render_template("architecture/models.html", models=models)
     except Exception as e:
-        current_app.logger.error(f"Architecture models error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Architecture models error: %s", e)
         flash("Error loading architecture models", "error")
-        return render_template("architecture/models.html", models=[])
+        return render_template(
+            "architecture/models.html",
+            models=[],
+            load_error="Architecture models could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/architecture/elements")
@@ -94,9 +99,14 @@ def architecture_elements():
         elements = ArchiMateElement.query.order_by(ArchiMateElement.name).all()
         return render_template("architecture/elements.html", elements=elements)
     except Exception as e:
-        current_app.logger.error(f"Architecture elements error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Architecture elements error: %s", e)
         flash("Error loading architecture elements", "error")
-        return render_template("architecture/elements.html", elements=[])
+        return render_template(
+            "architecture/elements.html",
+            elements=[],
+            load_error="ArchiMate elements could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/architecture/relationships")
@@ -111,9 +121,14 @@ def architecture_relationships():
             "architecture/relationships.html", relationships=relationships
         )
     except Exception as e:
-        current_app.logger.error(f"Architecture relationships error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Architecture relationships error: %s", e)
         flash("Error loading architecture relationships", "error")
-        return render_template("architecture/relationships.html", relationships=[])
+        return render_template(
+            "architecture/relationships.html",
+            relationships=[],
+            load_error="ArchiMate relationships could not be read.",
+        )
 
 
 # === CAPABILITY MAP ROUTES ===
@@ -140,9 +155,17 @@ def capability_map_dashboard():
             categories=categories,
         )
     except Exception as e:
-        current_app.logger.error(f"Capability map dashboard error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Capability map dashboard error: %s", e)
         flash("Error loading capability map dashboard", "error")
-        return render_template("capability_map/index.html")
+        # None, not 0: a counted zero and an uncounted one must not look alike.
+        return render_template(
+            "capability_map/index.html",
+            capability_count=None,
+            application_count=None,
+            categories=[],
+            load_error="Capability map statistics could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/capability-map/capabilities")
@@ -155,9 +178,14 @@ def capability_map_capabilities():
             "capability_map/capabilities.html", capabilities=capabilities
         )
     except Exception as e:
-        current_app.logger.error(f"Capability map capabilities error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Capability map capabilities error: %s", e)
         flash("Error loading capabilities", "error")
-        return render_template("capability_map/capabilities.html", capabilities=[])
+        return render_template(
+            "capability_map/capabilities.html",
+            capabilities=[],
+            load_error="Capabilities could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/capability-map/applications")
@@ -172,9 +200,14 @@ def capability_map_applications():
             "capability_map/applications.html", applications=applications
         )
     except Exception as e:
-        current_app.logger.error(f"Capability map applications error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Capability map applications error: %s", e)
         flash("Error loading applications", "error")
-        return render_template("capability_map/applications.html", applications=[])
+        return render_template(
+            "capability_map/applications.html",
+            applications=[],
+            load_error="Applications could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/capability-map/mapping")
@@ -193,10 +226,14 @@ def capability_map_mapping():
             applications=applications,
         )
     except Exception as e:
-        current_app.logger.error(f"Capability mapping error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Capability mapping error: %s", e)
         flash("Error loading capability mapping", "error")
         return render_template(
-            "capability_map/mapping.html", capabilities=[], applications=[]
+            "capability_map/mapping.html",
+            capabilities=[],
+            applications=[],
+            load_error="The capability mapping data could not be read.",
         )
 
 
@@ -250,7 +287,8 @@ def strategic_roadmap():
             quarter=quarter,
         )
     except Exception as e:
-        current_app.logger.error(f"Strategic roadmap error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Strategic roadmap error: %s", e)
         flash("Error loading strategic roadmap", "error")
         return render_template(
             "strategic/roadmap.html",
@@ -259,6 +297,7 @@ def strategic_roadmap():
             health_scores=[],
             year=None,
             quarter=None,
+            load_error="The strategic roadmap could not be read.",
         )
 
 
@@ -292,13 +331,15 @@ def strategic_initiatives():
             status_filter=status_filter,
         )
     except Exception as e:
-        current_app.logger.error(f"Strategic initiatives error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Strategic initiatives error: %s", e)
         flash("Error loading strategic initiatives", "error")
         return render_template(
             "strategic/initiatives.html",
             initiatives=[],
             health_scores=[],
             status_filter=None,
+            load_error="Strategic initiatives could not be read.",
         )
 
 
@@ -357,9 +398,14 @@ def consolidation_candidates():
         )
         return render_template("consolidation/candidates.html", candidates=candidates)
     except Exception as e:
-        current_app.logger.error(f"Consolidation candidates error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Consolidation candidates error: %s", e)
         flash("Error loading consolidation candidates", "error")
-        return render_template("consolidation/candidates.html", candidates=[])
+        return render_template(
+            "consolidation/candidates.html",
+            candidates=[],
+            load_error="Consolidation candidates could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/consolidation/opportunities")
@@ -390,9 +436,14 @@ def consolidation_opportunities():
             savings_forecast=savings,
         )
     except Exception as e:
-        current_app.logger.error(f"Consolidation opportunities error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Consolidation opportunities error: %s", e)
         flash("Error loading consolidation opportunities", "error")
-        return render_template("consolidation/opportunities.html", opportunities=[])
+        return render_template(
+            "consolidation/opportunities.html",
+            opportunities=[],
+            load_error="Consolidation opportunities could not be read.",
+        )
 
 
 # === POLICY MONITORING ROUTES ===
