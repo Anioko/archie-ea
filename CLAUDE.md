@@ -255,6 +255,15 @@ map is in `DESIGN.md`. A plain textarea is not an acceptable substitute — the 
   live-search picker against the documented endpoint, not a free-text input (see `DESIGN.md`).
 - **Staging:** `git add <file>` — never `git add -A`. Untracked scratch scripts are common at the repo
   root, and CI runs `gitleaks` over full history, so an accidental commit is expensive to undo.
+- **Commit messages:** write multi-line messages with `git commit -F <file>`, or a heredoc
+  (`git commit -F- <<'MSG' … MSG`). Do **not** use a PowerShell here-string (`@'…'@`): the Bash tool
+  is Git Bash, which does not parse it, and the result is a commit whose *subject line is a bare
+  `@`* with the real subject on line two. That has happened three times in this repo. Backticks in a
+  `-m` message are worse — the shell runs them as command substitution and silently deletes the
+  quoted term, leaving sentences with holes.
+  Repairing a subject line needs `--amend`, which is unsafe in a shared worktree because it sweeps in
+  whatever another agent has staged. `git commit-tree` + `git update-ref HEAD` rewrites the message
+  while touching neither the index nor the working tree, and is the safe repair.
 - New behaviour needs a test. There are **three** conftest files: `tests/conftest.py` (shared
   fixtures), `tests/smoke/conftest.py` (Playwright live-server harness) and
   `tests/journeys/conftest.py`.
