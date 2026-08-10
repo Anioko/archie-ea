@@ -100,10 +100,12 @@ def application_list():
         qs_include_decom_false  str — query string to disable toggle (page reset to 1)
         currency_symbol    str
     """
+    # Counts are None, not 0: this context is only ever rendered after the
+    # query failed, and "0 applications" is a claim about the estate.
     _EMPTY_CONTEXT = dict(
         applications=[],
-        total_count=0,
-        portfolio_total=0,
+        total_count=None,
+        portfolio_total=None,
         current_page=1,
         total_pages=1,
         page_size=25,
@@ -120,13 +122,14 @@ def application_list():
             domains=[],
         ),
         stats=dict(
-            total=0,
-            active_portfolio=0,
-            strategic=0,
-            tactical=0,
-            sunset_decom_pipeline=0,
-            decommissioned=0,
+            total=None,
+            active_portfolio=None,
+            strategic=None,
+            tactical=None,
+            sunset_decom_pipeline=None,
+            decommissioned=None,
         ),
+        load_error="The application portfolio could not be read.",
         currency_symbol="\u00a3",
         bu_filter_active=False,
         bu_name=None,

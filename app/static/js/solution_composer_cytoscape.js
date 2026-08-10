@@ -208,11 +208,13 @@ document.addEventListener('DOMContentLoaded', function() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-          .then((r) => r.json())
+          .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
           .then((rj) => {
             if (!rj.success) Platform.toast.error('Connection failed: ' + (rj.error || 'unknown'));
           })
-          .catch((e) => console.warn('Connection error', e));
+          // The connection the user just drew is not saved. Logging that to the
+          // console left the canvas looking exactly as if it had been.
+          .catch((e) => Platform.toast.error('Connection failed: ' + (e.message || 'request failed')));
       }
     });
 

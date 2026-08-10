@@ -67,17 +67,16 @@ def vendors():
             per_page,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading vendor list: {e}")
+        db.session.rollback()
+        current_app.logger.exception("Error loading vendor list: %s", e)
+        flash("Error loading vendors. Please try again.", "error")
+        # stats=None so every card shows an em dash. A zeroed vendor count
+        # reads as "we have no vendors", which is a different fact entirely.
         return render_template(
             "vendors/list.html",
             vendors=[],
-            stats={
-                "total": 0,
-                "active": 0,
-                "strategic": 0,
-                "total_products": 0,
-                "domain_distribution": {},
-            },
+            stats=None,
+            load_error="The vendor catalogue could not be read.",
             vendor_type_filter=vendor_type_filter,
             domain_filter=domain_filter,
             contract_status_filter=contract_status_filter,

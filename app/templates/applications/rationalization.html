@@ -248,7 +248,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Apps</p>
-            <p class="text-3xl font-bold tabular-nums leading-none">{{ stats.total_applications|default(0) }}</p>
+            <p class="text-3xl font-bold tabular-nums leading-none">{{ stats.total_applications|dash }}</p>
           </div>
         </div>
         <a href="{{ url_for('unified_applications.application_list') }}" class="text-xs text-primary hover:text-primary font-medium inline-flex items-center gap-1">
@@ -271,7 +271,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Duplicate Groups</p>
-            <p class="text-3xl font-bold tabular-nums text-warning leading-none">{{ stats.duplicate_groups|default(0) }}</p>
+            <p class="text-3xl font-bold tabular-nums text-warning leading-none">{{ stats.duplicate_groups|dash }}</p>
           </div>
         </div>
         <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="text-xs text-warning hover:text-warning font-medium inline-flex items-center gap-1">
@@ -294,7 +294,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Pending Review</p>
-            <p class="text-3xl font-bold tabular-nums text-primary leading-none">{{ stats.pending_groups|default(0) }}</p>
+            <p class="text-3xl font-bold tabular-nums text-primary leading-none">{{ stats.pending_groups|dash }}</p>
           </div>
         </div>
         <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="text-xs text-primary hover:text-primary font-medium inline-flex items-center gap-1">
@@ -317,7 +317,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Resolved</p>
-            <p class="text-3xl font-bold tabular-nums text-success leading-none">{{ stats.resolved_groups|default(0) }}</p>
+            <p class="text-3xl font-bold tabular-nums text-success leading-none">{{ stats.resolved_groups|dash }}</p>
           </div>
         </div>
         <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="text-xs text-success hover:text-success font-medium inline-flex items-center gap-1">
@@ -340,7 +340,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Potential Savings</p>
-            <p class="text-3xl font-bold tabular-nums text-success leading-none">{{ currency_symbol|default("£") }}{{ "{:,.0f}".format(stats.estimated_savings|default(0)) }}</p>
+            <p class="text-3xl font-bold tabular-nums text-success leading-none">{% if stats and stats.estimated_savings is not none %}{{ currency_symbol|default("£") }}{{ "{:,.0f}".format(stats.estimated_savings) }}{% else %}&mdash;{% endif %}</p>
           </div>
         </div>
         <p class="text-xs text-muted-foreground font-medium">Annual estimate</p>
@@ -380,7 +380,7 @@
         <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.duplicate_groups|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline" {{ 'aria-current=step' if stats.duplicate_groups|default(0) > 0 else '' }}>
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.duplicate_groups|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">1</span>
           Detect
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.duplicate_groups|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.duplicate_groups|default(0) }} groups</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.duplicate_groups|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.duplicate_groups|dash }} groups</span>
         </a>
       </li>
       <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground hidden sm:block" aria-hidden="true"></i>
@@ -388,7 +388,7 @@
         <a href="{{ url_for('dashboard_pages.rationalization_scorecard') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.time_scored_count|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline">
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.time_scored_count|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">2</span>
           Score
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.time_scored_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.time_scored_count|default(0) }}/{{ stats.total_applications|default(0) }}</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.time_scored_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.time_scored_count|dash }}/{{ stats.total_applications|dash }}</span>
         </a>
       </li>
       <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground hidden sm:block" aria-hidden="true"></i>
@@ -396,7 +396,7 @@
         <a href="{{ url_for('consolidation_list.dashboard') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.consolidation_count|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline">
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.consolidation_count|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">3</span>
           Plan
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.consolidation_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.consolidation_count|default(0) }} entries</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.consolidation_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.consolidation_count|dash }} entries</span>
         </a>
       </li>
       <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground hidden sm:block" aria-hidden="true"></i>
@@ -404,7 +404,7 @@
         <a href="{{ url_for('main.capability_roadmap') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.roadmap_count|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline">
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.roadmap_count|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">4</span>
           Roadmap
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.roadmap_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.roadmap_count|default(0) }} tasks</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.roadmap_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.roadmap_count|dash }} tasks</span>
         </a>
       </li>
       <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground hidden sm:block" aria-hidden="true"></i>
@@ -412,7 +412,7 @@
         <a href="#savings-stat" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.estimated_savings|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline">
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.estimated_savings|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">5</span>
           Track
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.estimated_savings|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ currency_symbol|default("£") }}{{ "{:,.0f}".format(stats.estimated_savings|default(0)) }}</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.estimated_savings|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{% if stats and stats.estimated_savings is not none %}{{ currency_symbol|default("£") }}{{ "{:,.0f}".format(stats.estimated_savings) }}{% else %}&mdash;{% endif %}</span>
         </a>
       </li>
     </ol>

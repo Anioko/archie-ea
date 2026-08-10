@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function loadMatrixData() {
     fetch('/api/vendors/capability-matrix')
-        .then(function(response) { return response.json(); })
+        .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function(data) {
             matrixData = data;
             filteredData = data;

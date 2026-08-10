@@ -124,7 +124,7 @@ function trackingApp() {
                     headers: { 'X-CSRFToken': csrfToken },
                     body: formData
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) { self.importResult = data; self.importLoading = false; })
                 .catch(function(err) { self.importResult = { success: false, error: err.message }; self.importLoading = false; });
             } else {
@@ -139,7 +139,7 @@ function trackingApp() {
                             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                             body: JSON.stringify({ dependencies: deps })
                         })
-                        .then(function(r) { return r.json(); })
+                        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                         .then(function(data) { self.importResult = data; self.importLoading = false; })
                         .catch(function(err) { self.importResult = { success: false, error: err.message }; self.importLoading = false; });
                     } catch (err) {

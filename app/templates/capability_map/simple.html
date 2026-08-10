@@ -463,7 +463,9 @@
                                             method: 'POST',
                                             headers: {'Content-Type': 'application/json'},
                                             body: JSON.stringify({apqc_id: sug.apqc_id, capability_id: sug.suggested_capability_id, level: sug.suggested_level})
-                                        }).then(r => r.json()).then(d => { if (d.success) sug.already_linked = true; })
+                                        }).then(r => { if (!r.ok) throw new Error('Could not link the APQC process (HTTP ' + r.status + ')'); return r.json(); })
+                                          .then(d => { if (!d.success) throw new Error(d.error || 'Could not link the APQC process'); sug.already_linked = true; })
+                                          .catch(err => { Platform.toast.error(err.message); })
                                     " class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                                         Apply
                                     </button>

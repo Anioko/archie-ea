@@ -236,7 +236,7 @@ function planningApp() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.success && data.score) {
                     self.score = data.score;

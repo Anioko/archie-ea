@@ -60,7 +60,7 @@ function fetchModelsFromAPI(freeOnly, search) {
     if (freeOnly) params.set('free_only', 'true');
     if (search) params.set('search', search);
     params.set('limit', '100');
-    return fetch('/api/v1/llm/openrouter/models?' + params.toString()).then(function(r) { return r.json(); });
+    return fetch('/api/v1/llm/openrouter/models?' + params.toString()).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
 }
 
 // ===== Inline model browser (inside the form) =====

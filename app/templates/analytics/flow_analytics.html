@@ -94,8 +94,22 @@
         </div>
     </template>
 
+    <!-- Load Failure — a dashed "no data yet" panel and a failed request must
+         not look alike; the cards above already read as em dashes, not zeros. -->
+    <template x-if="loadError">
+        <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-12 text-center">
+            <i data-lucide="alert-triangle" class="h-12 w-12 mx-auto text-destructive mb-4"></i>
+            <h2 class="text-lg font-semibold text-destructive">Flow metrics could not be loaded</h2>
+            <p class="text-muted-foreground mt-1 text-sm" x-text="loadError"></p>
+            <button type="button" @click="loadAll()"
+                    class="mt-4 inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                Retry
+            </button>
+        </div>
+    </template>
+
     <!-- Charts Row -->
-    <template x-if="!noData">
+    <template x-if="!noData && !loadError">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             <!-- Cycle Time Chart -->
@@ -163,9 +177,11 @@ function flowAnalytics(initialBoardId) {
         leadData: null,
         wipData: null,
         loading: false,
+        loadError: null,
         get noData() {
             return (
                 !this.loading &&
+                !this.loadError &&
                 this.boardId &&
                 this.cycleData !== null &&
                 this.cycleData.data_points.length === 0 &&
@@ -187,22 +203,46 @@ function flowAnalytics(initialBoardId) {
             if (this.boardId) await this.loadAll();
         },
 
+        // `fetch` resolves on 4xx/5xx, so every leg needs its own .ok check —
+        // without one, an error body parses fine and Promise.all "succeeds".
+        _leg(url, what) {
+            return fetch(url).then(r => {
+                if (!r.ok) throw new Error('Could not load ' + what + ' (HTTP ' + r.status + ')');
+                return r.json();
+            }).then(d => {
+                if (d && d.error) throw new Error('Could not load ' + what + ': ' + d.error);
+                return d;
+            });
+        },
+
         async loadAll() {
             if (!this.boardId) return;
             this.loading = true;
+            this.loadError = null;
             try {
                 const [cycle, throughput, lead, wip] = await Promise.all([
-                    fetch(`/api/analytics/cycle-time?board_id=${this.boardId}&days=90`).then(r => r.json()),
-                    fetch(`/api/analytics/throughput?board_id=${this.boardId}&granularity=week`).then(r => r.json()),
-                    fetch(`/api/analytics/lead-time?board_id=${this.boardId}&days=90`).then(r => r.json()),
-                    fetch(`/api/analytics/wip?board_id=${this.boardId}`).then(r => r.json()),
+                    this._leg(`/api/analytics/cycle-time?board_id=${this.boardId}&days=90`, 'cycle time'),
+                    this._leg(`/api/analytics/throughput?board_id=${this.boardId}&granularity=week`, 'throughput'),
+                    this._leg(`/api/analytics/lead-time?board_id=${this.boardId}&days=90`, 'lead time'),
+                    this._leg(`/api/analytics/wip?board_id=${this.boardId}`, 'WIP'),
                 ]);
-                this.cycleData = cycle.error ? { average_cycle_time_days: 0, percentile_85: 0, data_points: [] } : cycle;
-                this.throughputData = throughput.error ? { periods: [], average_throughput: 0 } : throughput;
-                this.leadData = lead.error ? { average_lead_time_days: 0, data_points: [] } : lead;
-                this.wipData = wip.error ? { columns: [], total_wip: 0 } : wip;
+                this.cycleData = cycle;
+                this.throughputData = throughput;
+                this.leadData = lead;
+                this.wipData = wip;
                 await this.$nextTick();
                 this._renderCharts();
+            } catch (e) {
+                // null, never 0: a measured zero cycle time and a metric that
+                // failed to load must not render as the same number. null → —.
+                this.cycleData = null;
+                this.throughputData = null;
+                this.leadData = null;
+                this.wipData = null;
+                if (this._cycleChart) { this._cycleChart.destroy(); this._cycleChart = null; }
+                if (this._throughputChart) { this._throughputChart.destroy(); this._throughputChart = null; }
+                this.loadError = e.message || 'Flow metrics could not be loaded.';
+                Platform.toast.error(this.loadError);
             } finally {
                 this.loading = false;
             }

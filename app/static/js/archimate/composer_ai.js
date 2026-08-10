@@ -135,7 +135,7 @@ let ComposerAI = (function() {
                     viewpoint_type: self.activeViewpoint || '',
                 }),
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
             .then(function(data) {
                 let items = [];
                 (data.missing_elements || []).forEach(function(s) {
@@ -199,7 +199,7 @@ let ComposerAI = (function() {
                     solution_id: self.solutionId || null,
                 }),
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
             .then(function(data) {
                 if (data.id) {
                     let sourceCell = null;
@@ -278,7 +278,7 @@ let ComposerAI = (function() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             })
-            .then(function(resp) { return resp.json(); })
+            .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
             .then(function(data) {
                 self.validationReport = {
                     passed: data.passed || [],
@@ -398,14 +398,17 @@ let ComposerAI = (function() {
                     business_domain: self.generateDomain || '',
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.generateContextLoading = false;
                 if (!data.error) {
                     self.generateContextPreview = data;
                 }
             })
-            .catch(function() {
+            /* Unsolicited advisory fired by a debounce while the user is still typing
+               the description. On failure the preview panel simply does not appear —
+               the guard above keeps a 4xx/5xx body from being rendered as counts. */
+            .catch(function() { /* swallow-ok: debounced background context preview; a failure leaves the panel hidden and the user is not waiting on it */
                 self.generateContextLoading = false;
             });
         },
@@ -464,7 +467,7 @@ let ComposerAI = (function() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify(body),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.generateLoading = false;
                 if (data.error) {
@@ -565,7 +568,7 @@ let ComposerAI = (function() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify({ name: elName, type: el.type, layer: layer }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let d = data.element || data;
                 if (d.id) {
@@ -666,7 +669,7 @@ let ComposerAI = (function() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify({ name: el.name, type: el.type, layer: layer }),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     created++;
                     let d = data.element || data;
@@ -734,7 +737,7 @@ let ComposerAI = (function() {
                     solution_id: self.solutionId || null,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.id) {
                     let sourceCell = null;
@@ -813,7 +816,7 @@ let ComposerAI = (function() {
                     viewpoint_type: self.activeViewpoint || '',
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.extractLoading = false;
                 if (data.error) {
@@ -845,7 +848,7 @@ let ComposerAI = (function() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify({ name: el.name, type: el.suggested_type, layer: layer }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let d = data.element || data;
                 if (d.id) {
@@ -905,7 +908,7 @@ let ComposerAI = (function() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify({ name: el.name, type: el.suggested_type, layer: layer }),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     created++;
                     let d = data.element || data;
@@ -963,7 +966,7 @@ let ComposerAI = (function() {
             fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.intelligenceData = data.enrichment || {};
                 self.intelligenceLoading = false;
@@ -1048,7 +1051,7 @@ let ComposerAI = (function() {
             self.patternLoading = true;
 
             fetch('/archimate/api/patterns', { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.patternLoading = false;
                 self.patterns = data.patterns || [];
@@ -1080,7 +1083,7 @@ let ComposerAI = (function() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify({ context: self.patternContext.trim() }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.patternLoading = false;
                 if (data.error) {
@@ -1126,7 +1129,7 @@ let ComposerAI = (function() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: JSON.stringify({ name: el.label, type: el.type, layer: layer }),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     let d = data.element || data;
                     if (d.id) {
@@ -1188,7 +1191,7 @@ let ComposerAI = (function() {
                         solution_id: self.solutionId || null,
                     }),
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     if (data.id) {
                         created++;
@@ -1295,7 +1298,7 @@ let ComposerAI = (function() {
                     pattern_json: { elements: elements, relationships: relationships },
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Save pattern failed: ' + data.error;
@@ -1325,7 +1328,7 @@ let ComposerAI = (function() {
             let url = '/archimate/api/saved-viewpoints';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
             fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let vps = (data.viewpoints || []).filter(function(v) {
                     return v.id !== self.currentSavedVpId;
@@ -1357,7 +1360,7 @@ let ComposerAI = (function() {
                     target_viewpoint_id: self.currentSavedVpId,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Delta error: ' + data.error;
@@ -1456,7 +1459,7 @@ let ComposerAI = (function() {
                 headers: headers,
                 body: JSON.stringify({ delta: self.deltaData.delta }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Plateau error: ' + data.error;
@@ -1533,7 +1536,7 @@ let ComposerAI = (function() {
                     audience: self.explanationAudience,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.explanationText = data.narration || 'No narration generated.';
                 self.explanationLoading = false;
@@ -1584,7 +1587,7 @@ let ComposerAI = (function() {
                     relationships: relationships,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.impactData = data;
                 self._highlightImpact(data.affected_element_ids || []);
@@ -1603,7 +1606,7 @@ let ComposerAI = (function() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify(relData),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.statusText = data.explanation || 'No explanation available.';
             })
@@ -1689,7 +1692,7 @@ let ComposerAI = (function() {
             fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.heatmapLoading = false;
                 let enrichment = data.enrichment || {};
@@ -1818,7 +1821,7 @@ let ComposerAI = (function() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfTok },
                 body: JSON.stringify({ elements: elements, relationships: relationships }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.derivedLoading = false;
                 let derived = data.derived || [];
@@ -2148,7 +2151,7 @@ let ComposerAI = (function() {
             fetch('/archimate/api/composer/element-metrics?element_ids=' + ids.join(','), {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.metricsLoading = false;
                 self.metricsData = data.metrics || {};

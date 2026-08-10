@@ -16,7 +16,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-muted-foreground">Total Capabilities</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ total_capabilities }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ total_capabilities|dash }}</p>
                 </div>
                 <i data-lucide="layers" class="h-8 w-8 text-primary" aria-hidden="true"></i>
             </div>
@@ -26,7 +26,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-muted-foreground">Mapped Capabilities</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ mapped_capabilities }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ mapped_capabilities|dash }}</p>
                 </div>
                 <i data-lucide="link" class="h-8 w-8 text-success" aria-hidden="true"></i>
             </div>
@@ -36,7 +36,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-muted-foreground">Unmapped Capabilities</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ unmapped_count }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ unmapped_count|dash }}</p>
                 </div>
                 <i data-lucide="alert-triangle" class="h-8 w-8 text-warning" aria-hidden="true"></i>
             </div>
@@ -46,10 +46,12 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-muted-foreground">Coverage</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ mapping_coverage }}%</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ mapping_coverage|dash('%') }}</p>
                 </div>
                 <div class="flex items-center gap-1">
-                    <i data-lucide="pie-chart" class="h-8 w-8 {% if mapping_coverage >= 80 %}text-success{% elif mapping_coverage >= 60 %}text-warning{% else %}text-destructive{% endif %}" aria-hidden="true"></i>
+                    {# `none >= 80` is a TypeError in Jinja as in Python, so the
+                       null case has to be tested before any comparison. #}
+                    <i data-lucide="pie-chart" class="h-8 w-8 {% if mapping_coverage is none %}text-muted-foreground{% elif mapping_coverage >= 80 %}text-success{% elif mapping_coverage >= 60 %}text-warning{% else %}text-destructive{% endif %}" aria-hidden="true"></i>
                 </div>
             </div>
         </div>

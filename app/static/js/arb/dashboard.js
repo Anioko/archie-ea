@@ -56,7 +56,7 @@ function arbReviewCreateModal() {
         method: 'GET',
         headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' }
       })
-        .then(r => r.json())
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(data => {
           if (data.success) {
             this.formOptions.solutions = data.solutions || [];

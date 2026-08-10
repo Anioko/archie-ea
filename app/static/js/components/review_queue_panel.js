@@ -27,7 +27,7 @@ function loadReviewQueue(previewData) {
         return Promise.resolve();
     } else {
         return fetch('/api/review-queue')
-            .then(function(response) { return response.json(); })
+            .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
             .then(function(data) {
                 if (data.success) {
                     reviewQueueItems = data.items || [];

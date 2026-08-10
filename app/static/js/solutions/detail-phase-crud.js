@@ -386,7 +386,7 @@
                             element_name: el.name,
                             relationship_type: el.relationship_type || 'realizes'
                         })
-                    }).then(function(r) { return r.json(); });
+                    }).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
                 });
                 try {
                     const results = await Promise.all(promises);

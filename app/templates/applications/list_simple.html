@@ -111,11 +111,11 @@
 
   {# ─ STATS CARDS ─ #}
   <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" role="region" aria-label="Portfolio statistics">
-    {{ metrics_card(title='Active Portfolio', value=stats.active_portfolio, icon='layout-grid', description='All non-decommissioned applications', class='min-h-[120px]') }}
-    {{ metrics_card(title='Strategic', value=stats.strategic, icon='check-circle', value_class='text-success', description='Strategic investments', class='min-h-[120px]') }}
-    {{ metrics_card(title='Tactical', value=stats.tactical, icon='code-2', value_class='text-primary', description='Tactical / maintain', class='min-h-[120px]') }}
-    {{ metrics_card(title='Sunset/Decom Pipeline', value=stats.sunset_decom_pipeline, icon='archive', value_class='text-warning', description='Sunset or decommission planned', class='min-h-[120px]') }}
-    {{ metrics_card(title='Decommissioned', value=stats.decommissioned, icon='alert-triangle', value_class='text-destructive', description='Retired from the estate', class='min-h-[120px]') }}
+    {{ metrics_card(title='Active Portfolio', value=stats.active_portfolio|dash, icon='layout-grid', description='All non-decommissioned applications', class='min-h-[120px]') }}
+    {{ metrics_card(title='Strategic', value=stats.strategic|dash, icon='check-circle', value_class='text-success', description='Strategic investments', class='min-h-[120px]') }}
+    {{ metrics_card(title='Tactical', value=stats.tactical|dash, icon='code-2', value_class='text-primary', description='Tactical / maintain', class='min-h-[120px]') }}
+    {{ metrics_card(title='Sunset/Decom Pipeline', value=stats.sunset_decom_pipeline|dash, icon='archive', value_class='text-warning', description='Sunset or decommission planned', class='min-h-[120px]') }}
+    {{ metrics_card(title='Decommissioned', value=stats.decommissioned|dash, icon='alert-triangle', value_class='text-destructive', description='Retired from the estate', class='min-h-[120px]') }}
   </div>
 
   {# ─ DATA QUALITY BANNER ─ #}
@@ -125,9 +125,9 @@
       <span class="text-sm font-medium text-amber-700">Data Quality</span>
     </div>
     <div class="flex flex-wrap gap-4 text-xs text-muted-foreground">
-      <span>Owner: 0/{{ stats.total }}</span>
-      <span>Vendor: 0/{{ stats.total }}</span>
-      <span>Decommissioned: {{ stats.decommissioned }}/{{ stats.total }}</span>
+      <span>Owner: 0/{{ stats.total|dash }}</span>
+      <span>Vendor: 0/{{ stats.total|dash }}</span>
+      <span>Decommissioned: {{ stats.decommissioned|dash }}/{{ stats.total|dash }}</span>
     </div>
   </div>
 
@@ -177,13 +177,13 @@
     {% if bu_filter_active and not show_all_override %}
     <div class="flex items-center gap-2 px-4 py-2 border-b bg-primary/5" data-testid="bu-scope-indicator" role="status" aria-live="polite">
         <i data-lucide="filter" class="h-3.5 w-3.5 text-primary shrink-0" aria-hidden="true"></i>
-        <span class="text-xs text-primary font-medium">Showing: {{ bu_name }} ({{ total_count }} app{{ 's' if total_count != 1 else '' }})</span>
+        <span class="text-xs text-primary font-medium">Showing: {{ bu_name }} ({{ total_count|dash }} app{{ 's' if total_count != 1 else '' }})</span>
         <a href="{{ request.path }}?bu=all" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline underline-offset-2" aria-label="Show all applications across all business units">Show all</a>
     </div>
     {% elif show_all_override %}
     <div class="flex items-center gap-2 px-4 py-2 border-b bg-muted/30" data-testid="bu-scope-indicator-all" role="status">
         <i data-lucide="globe" class="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i>
-        <span class="text-xs text-muted-foreground">Showing: All ({{ total_count }} app{{ 's' if total_count != 1 else '' }})</span>
+        <span class="text-xs text-muted-foreground">Showing: All ({{ total_count|dash }} app{{ 's' if total_count != 1 else '' }})</span>
     </div>
     {% endif %}
     <div x-show="loading" x-cloak class="p-6" aria-hidden="true" data-testid="skeleton-loader">
@@ -249,7 +249,7 @@
               data-href-on="{{ request.path }}?{{ qs_include_decom_true|e }}"
               data-href-off="{{ request.path }}?{{ qs_include_decom_false|e }}"
               @change="window.location.href = $event.target.checked ? $event.target.dataset.hrefOn : $event.target.dataset.hrefOff">
-            <span>Include decommissioned (<span data-testid="decom-count-label">{{ stats.decommissioned }}</span>)</span>
+            <span>Include decommissioned (<span data-testid="decom-count-label">{{ stats.decommissioned|dash }}</span>)</span>
           </label>
         </div>
       </div>

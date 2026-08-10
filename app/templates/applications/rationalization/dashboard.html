@@ -56,6 +56,9 @@
 
     {# ── 1. Pipeline Stepper (RATA-017: percentages + links) ────── #}
     {% set total_apps = stats.total_applications|default(1) %}
+    {# The stepper prints a count, a total and a percentage for every stage.
+       With no stats it would draw a complete, all-zero pipeline. #}
+    {% if stats %}
     <nav class="mb-8 rounded-xl border bg-card p-4" aria-label="Rationalization pipeline">
         <div class="flex items-center justify-between">
             {% set steps = [
@@ -80,6 +83,7 @@
             {% endfor %}
         </div>
     </nav>
+    {% endif %}
 
     {# ── 1b. First-Run Wizard (RATA-016) ─────────────────────────── #}
     <div x-show="showWizard" x-cloak class="rounded-xl border-2 border-primary/30 bg-primary/5 p-6 mb-8"
@@ -97,7 +101,7 @@
             <div class="rounded-lg border bg-card p-4 flex flex-col items-center text-center">
                 <div class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold mb-3">1</div>
                 <p class="text-sm font-medium text-foreground mb-1">Score Your Portfolio</p>
-                <p class="text-xs text-muted-foreground mb-3">You have {{ stats.total_applications }} apps. Score them using the TIME framework.</p>
+                <p class="text-xs text-muted-foreground mb-3">You have {{ stats.total_applications|dash }} apps. Score them using the TIME framework.</p>
                 <button @click="scorePortfolio()" :disabled="isScoring"
                         class="inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-4 disabled:opacity-50">
                     <span x-show="isScoring" x-cloak class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block mr-1.5"></span>
@@ -107,7 +111,7 @@
             <div class="rounded-lg border bg-card p-4 flex flex-col items-center text-center">
                 <div class="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-muted-foreground text-sm font-bold mb-3">2</div>
                 <p class="text-sm font-medium text-foreground mb-1">Review Duplicates</p>
-                <p class="text-xs text-muted-foreground mb-3">{{ stats.duplicate_groups }} duplicate groups detected. Review them.</p>
+                <p class="text-xs text-muted-foreground mb-3">{{ stats.duplicate_groups|dash }} duplicate groups detected. Review them.</p>
                 <a href="{{ url_for('unified_applications.rationalization_workbench') }}"
                    class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-background hover:bg-accent h-8 px-4">
                     Open Workbench
@@ -143,7 +147,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Apps</p>
-                    <p class="text-2xl font-bold text-foreground">{{ stats.total_applications|default(0) }}</p>
+                    <p class="text-2xl font-bold text-foreground">{{ stats.total_applications|dash }}</p>
                 </div>
             </div>
             <a href="/applications" class="text-xs text-primary hover:underline mt-2 inline-block">View portfolio &rarr;</a>
@@ -157,7 +161,7 @@
                 <div>
                     {# Active Portfolio = total apps minus resolved duplicates #}
                     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Portfolio</p>
-                    <p class="text-2xl font-bold text-foreground">{{ (stats.total_applications|default(0)) - (stats.resolved_groups|default(0)) }}</p>
+                    <p class="text-2xl font-bold text-foreground">{% if stats %}{{ (stats.total_applications|default(0)) - (stats.resolved_groups|default(0)) }}{% else %}&mdash;{% endif %}</p>
                 </div>
             </div>
             <a href="/applications" class="text-xs text-primary hover:underline mt-2 inline-block">View active apps &rarr;</a>
@@ -170,7 +174,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Scored</p>
-                    <p class="text-2xl font-bold text-foreground">{{ stats.time_scored_count|default(0) }}</p>
+                    <p class="text-2xl font-bold text-foreground">{{ stats.time_scored_count|dash }}</p>
                 </div>
             </div>
         </div>
@@ -182,7 +186,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Insufficient Evidence</p>
-                    <p class="text-2xl font-bold text-foreground">{{ insufficient_count|default(0) }}</p>
+                    <p class="text-2xl font-bold text-foreground">{{ insufficient_count|dash }}</p>
                 </div>
             </div>
         </div>
@@ -194,7 +198,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Est. Savings</p>
-                    <p class="text-2xl font-bold text-foreground">{{ currency_symbol }}{{ '{:,.0f}'.format(stats.estimated_savings|default(0)) }}</p>
+                    <p class="text-2xl font-bold text-foreground">{% if stats and stats.estimated_savings is not none %}{{ currency_symbol }}{{ '{:,.0f}'.format(stats.estimated_savings) }}{% else %}&mdash;{% endif %}</p>
                 </div>
             </div>
         </div>
@@ -408,8 +412,8 @@
                 <span class="text-xs font-semibold w-10 text-right">{{ lifecycle_pct }}%</span>
             </div>
         </div>
-        {% set insuf = insufficient_count|default(0) %}
-        {% set scored = stats.time_scored_count|default(0) %}
+        {% set insuf = insufficient_count or 0 %}
+        {% set scored = stats.time_scored_count or 0 %}
         {% if insuf > 0 and insuf >= scored %}
         <div class="mt-4 pt-4 border-t border-border">
             <p class="text-sm text-muted-foreground">

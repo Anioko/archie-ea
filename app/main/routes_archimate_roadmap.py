@@ -239,9 +239,12 @@ def archimate_roadmap():
         )
 
     except Exception as e:
+        db.session.rollback()
         logger.error("Error loading ArchiMate roadmap: %s", e, exc_info=True)
         flash("Error loading ArchiMate roadmap. Please try again.", "error")
-        # Provide default timeline dates even in error case (use current year)
+        # The timeline axis is a display range, not a measurement, so it stays.
+        # Every counted figure becomes None: "0 gaps" here would read as an
+        # all-clear produced by a database error.
         current_year = datetime.now().year
         start_date = datetime(current_year, 1, 1)
         end_date = datetime(current_year + 5, 12, 31)
@@ -253,17 +256,18 @@ def archimate_roadmap():
             work_packages=[],
             months=[],
             unmapped_capabilities=[],
-            total_capabilities=0,
-            mapped_capabilities=0,
-            mapping_coverage=0,
+            total_capabilities=None,
+            mapped_capabilities=None,
+            mapping_coverage=None,
             start_date=start_date,
             end_date=end_date,
-            gaps_summary={"total": 0, "by_severity": {}, "open_gaps": []},
+            gaps_summary=None,
             plateaus=[],
             selected_levels=["L1", "L2", "L3"],  # Ensure always defined
             selected_domain="",  # Ensure always defined
-            selected_importance="",
-        )  # Ensure always defined
+            selected_importance="",  # Ensure always defined
+            load_error="The ArchiMate roadmap could not be read.",
+        )
 
 
 @main.route("/api/archimate-work-packages", methods=["GET"])

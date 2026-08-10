@@ -113,7 +113,7 @@ let ComposerGraph = (function() {
                     custom_label: pendingLink.get('customLabel') || undefined,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.id) {
                     let style = REL_STYLES[relType] || REL_STYLES.association;
@@ -421,7 +421,7 @@ let ComposerGraph = (function() {
                     method: 'POST', credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                     body: '{}',
-                }).then(function(r) { return r.json(); })
+                }).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function(data) {
                     if (data.stale_count > 0) {
                         self._staleElementIds = data.stale_ids || [];
@@ -987,7 +987,7 @@ let ComposerGraph = (function() {
             fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let validDetailed = data.valid_types_detailed || [];
                 self.relPickerTypes = validDetailed.length > 0
@@ -1755,7 +1755,7 @@ let ComposerGraph = (function() {
             if (self.bulkImportLayerFilter) url += '&layer=' + encodeURIComponent(self.bulkImportLayerFilter);
             if (self.solutionId) url += '&solution_id=' + encodeURIComponent(self.solutionId);
             fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 const items = data.elements || data.items || data.results || [];
                 /* Mark items already on canvas as disabled */

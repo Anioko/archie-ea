@@ -30,10 +30,10 @@
 
     <!-- Metrics Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-        {{ metrics_card(title='Conceptual Models', value=conceptual_count or 0, icon='brain') }}
-        {{ metrics_card(title='Logical Models', value=logical_count or 0, icon='git-branch') }}
-        {{ metrics_card(title='Physical Models', value=physical_count or 0, icon='server') }}
-        {{ metrics_card(title='Data Lineage Flows', value=data_lineage_count or 0, icon='git-merge') }}
+        {{ metrics_card(title='Conceptual Models', value=conceptual_count|dash, icon='brain') }}
+        {{ metrics_card(title='Logical Models', value=logical_count|dash, icon='git-branch') }}
+        {{ metrics_card(title='Physical Models', value=physical_count|dash, icon='server') }}
+        {{ metrics_card(title='Data Lineage Flows', value=data_lineage_count|dash, icon='git-merge') }}
     </div>
 
     <!-- Quick Actions -->
@@ -139,8 +139,8 @@
         </div>
         <div class="p-6">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {{ metrics_card(title='Data & Application Elements', value=archimate_data_count or 0, icon='box') }}
-                {{ metrics_card(title='Architecture Relationships', value=archimate_rel_count or 0, icon='git-pull-request') }}
+                {{ metrics_card(title='Data & Application Elements', value=archimate_data_count|dash, icon='box') }}
+                {{ metrics_card(title='Architecture Relationships', value=archimate_rel_count|dash, icon='git-pull-request') }}
             </div>
         </div>
     </div>

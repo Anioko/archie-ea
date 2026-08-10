@@ -1105,12 +1105,15 @@ def enterprise_dashboard():
             gaps_count=gaps_count,
         )
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Enterprise dashboard stats error: {e}", exc_info=True)
         flash("Error loading dashboard", "error")
+        # None, not 0. "0 gaps" on this page is read as an all-clear.
         return render_template(
             "enterprise/enterprise_dashboard.html",
-            data_models_count=0,
-            solutions_count=0,
-            software_modules_count=0,
-            gaps_count=0,
+            data_models_count=None,
+            solutions_count=None,
+            software_modules_count=None,
+            gaps_count=None,
+            load_error="Enterprise dashboard counts could not be read.",
         )

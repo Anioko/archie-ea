@@ -292,3 +292,4 @@ qc.py
 si.py
 readgen.py
 recheck.py
+.worktrees/

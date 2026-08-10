@@ -149,6 +149,13 @@ function batchReview(jobId, batchId) {
                 fetch('/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId),
                 fetch('/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId + '/elements')
             ]).then(function(responses) {
+                // fetch does not reject on 4xx/5xx. Unchecked, the error body parsed
+                // cleanly, every success check below was false, and the page kept
+                // its initialisers — an empty batch with no elements and no error,
+                // indistinguishable from a batch that genuinely has nothing in it.
+                responses.forEach(function(r) {
+                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                });
                 return Promise.all(responses.map(function(r) { return r.json(); }));
             }).then(function(results) {
                 let jobData = results[0];

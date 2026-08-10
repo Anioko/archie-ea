@@ -16,6 +16,24 @@ from flask_login import current_user, login_required
 from app import db
 
 
+def _sort_iteration_keys(keys):
+    """Sort iteration keys, placing None last to ensure None-safe ordering.
+
+    When grouping workflow instances by iteration_number, some real data may
+    have None as a key. Python's sorted() cannot compare None with integers,
+    so we use a custom key function: (k is None, k) converts None to (True, None)
+    and integers to (False, n), ensuring None sorts after all numeric keys
+    while preserving numeric ordering.
+
+    Args:
+        keys: An iterable of iteration number keys (may include None)
+
+    Returns:
+        A sorted list with None values (if any) at the end
+    """
+    return sorted(keys, key=lambda k: (k is None, k))
+
+
 def _build_arch_review_report(exec_steps, instance_data):
     """Build a consolidated Architecture Review Report from step outputs.
 
@@ -277,19 +295,24 @@ def register_ea_workflow_routes(main_blueprint):
                 phase_available=phase_available,
             )
         except Exception as e:
+            db.session.rollback()
+            current_app.logger.exception("Error loading EA workflow dashboard: %s", e)
+            # status_counts=None, not {}: `{{ status_counts.running or 0 }}`
+            # turned an empty dict into a confident "0 running workflows".
             return render_template(
                 "ea_workflows/dashboard.html",
                 definitions=[],
                 workflow_groups=[],
                 featured_definitions=[],
                 recent_instances=[],
-                status_counts={},
+                status_counts=None,
                 applications=[],
                 linkable_instances=[],
-                phase_counts={},
+                phase_counts=None,
                 togaf_phases=[],
                 phase_available={"phase_d": False, "phase_e": False, "phase_f": False, "phase_g": False, "phase_h": False},
                 error=str(e),
+                load_error="Workflow status counts could not be read.",
             )
 
     @main_blueprint.route("/ea-workflows/definitions")
@@ -767,7 +790,7 @@ def register_ea_workflow_routes(main_blueprint):
                 iterations[inst.iteration_number].append(inst)
 
             journeys = []
-            for iter_num in sorted(iterations.keys()):
+            for iter_num in _sort_iteration_keys(iterations.keys()):
                 phases = iterations[iter_num]
                 completed = sum(1 for p in phases if p.status == "completed")
                 total = len(phases)
@@ -779,8 +802,8 @@ def register_ea_workflow_routes(main_blueprint):
                         {
                             "id": p.id,
                             "workflow_code": p.definition.workflow_code if p.definition else "unknown",
-                            "workflow_name": p.definition.name if p.definition else "Unknown",
-                            "togaf_phase": p.definition.togaf_phase if p.definition else None,
+                            "workflow_name": p.definition.workflow_name if p.definition else "Unknown",
+                            "togaf_phase": p.definition.adm_phase if p.definition else None,
                             "status": p.status,
                             "created_at": p.created_at.isoformat() if p.created_at else None,
                             "completed_at": p.completed_at.isoformat() if p.completed_at else None,
@@ -1844,6 +1867,10 @@ def register_ea_workflow_routes(main_blueprint):
                 relationship_count=viewpoint.get("relationship_count", 0),
             )
         except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Error loading phase viewpoint %s", phase_code
+            )
             return render_template(
                 "ea_workflows/phase_viewpoint.html",
                 phase_code=phase_code,
@@ -1854,6 +1881,7 @@ def register_ea_workflow_routes(main_blueprint):
                 input_types=[],
                 derived_types=[],
                 elements=[],
-                element_count=0,
-                relationship_count=0,
+                element_count=None,
+                relationship_count=None,
+                load_error="The phase viewpoint could not be read.",
             )

@@ -34,10 +34,10 @@
 
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-        {{ metrics_card(title='Industry Frameworks', value=frameworks|length, icon='building-2') }}
-        {{ metrics_card(title='Total Processes', value=framework_stats|sum(attribute='stats.total_processes') if framework_stats else 0, icon='workflow') }}
-        {{ metrics_card(title='Industry-Unique Processes', value=framework_stats|sum(attribute='stats.unique_processes') if framework_stats else 0, icon='star') }}
-        {{ metrics_card(title='Regulatory Processes', value=framework_stats|sum(attribute='stats.regulatory_processes') if framework_stats else 0, icon='shield-check') }}
+        {{ metrics_card(title='Industry Frameworks', value=frameworks|length if frameworks is not none else '—', icon='building-2') }}
+        {{ metrics_card(title='Total Processes', value=framework_stats|sum(attribute='stats.total_processes') if framework_stats else '—', icon='workflow') }}
+        {{ metrics_card(title='Industry-Unique Processes', value=framework_stats|sum(attribute='stats.unique_processes') if framework_stats else '—', icon='star') }}
+        {{ metrics_card(title='Regulatory Processes', value=framework_stats|sum(attribute='stats.regulatory_processes') if framework_stats else '—', icon='shield-check') }}
     </div>
 
     <!-- Industry Frameworks Grid -->

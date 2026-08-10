@@ -168,8 +168,12 @@ def strategic_roadmap():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading strategic roadmap")
         flash("Error loading strategic roadmap. Please try again.", "error")
-        # Provide default timeline dates even in error case (use current year)
+        # The timeline axis is a display range, not a measurement, so it stays.
+        # Coverage figures become None - a zeroed coverage would be read as a
+        # finding about the portfolio rather than a failed query.
         current_year = datetime.now().year
         start_date = datetime(current_year, 1, 1)
         end_date = datetime(current_year + 5, 12, 31)
@@ -181,15 +185,16 @@ def strategic_roadmap():
             work_packages=[],
             months=[],
             unmapped_capabilities=[],
-            total_capabilities=0,
-            mapped_capabilities=0,
-            mapping_coverage=0,
+            total_capabilities=None,
+            mapped_capabilities=None,
+            mapping_coverage=None,
             start_date=start_date,
             end_date=end_date,
             selected_levels=["L1", "L2", "L3"],  # Ensure always defined
             selected_domain="",  # Ensure always defined
-            selected_importance="",
-        )  # Ensure always defined
+            selected_importance="",  # Ensure always defined
+            load_error="The strategic roadmap could not be read.",
+        )
 
 
 @main.route("/api/strategic-work-packages")

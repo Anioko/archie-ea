@@ -118,6 +118,28 @@ def _register(app):
         except (AttributeError, TypeError):
             return default
 
+    @app.template_filter("dash")
+    def dash_filter(value, suffix=""):
+        """Render a figure that could not be computed as an em dash.
+
+        DESIGN.md mandates the em dash for null display, and CLAUDE.md forbids
+        substituting a plausible number: a printed `0` is indistinguishable
+        from a measured zero, so a view whose query failed passes None and
+        lets this filter say so. Jinja's `|default` will not do - it only
+        fires on Undefined unless given a second argument.
+
+        `suffix` is appended only when there is a real value, so
+        `{{ coverage|dash('%') }}` renders an em dash rather than "-%".
+
+        Undefined is treated as None: a view that never passed the name did
+        not measure it either, and Jinja would render it as empty.
+        """
+        from jinja2 import Undefined
+
+        if value is None or isinstance(value, Undefined):
+            return "—"
+        return "%s%s" % (value, suffix)
+
     def index_for_role(role):
         return url_for(role.index)
 

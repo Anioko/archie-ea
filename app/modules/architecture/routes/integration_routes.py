@@ -15,6 +15,7 @@ from datetime import datetime
 
 from flask import (
     Blueprint,
+    current_app,
     flash,
     jsonify,
     redirect,
@@ -76,12 +77,17 @@ def workflow_dashboard():
             },
         )
     except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Error loading workflow dashboard: %s", e)
         flash(f"Error loading workflow dashboard: {str(e)}", "error")
+        # stats=None so the cards render an em dash; {} left them blank, which
+        # is just as misleading as a zero once the flash has faded.
         return render_template(
             "integration/dashboard.html",
             definitions=[],
             active_instances=[],
-            stats={},
+            stats=None,
+            load_error="Workflow statistics could not be read.",
         )
 
 
@@ -111,11 +117,14 @@ def list_workflows():
             selected_category=category,
         )
     except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Error loading workflows: %s", e)
         flash(f"Error loading workflows: {str(e)}", "error")
         return render_template(
             "integration/workflow_list.html",
             workflows_by_category={},
             selected_category=None,
+            load_error="The workflow catalog could not be read.",
         )
 
 
@@ -155,6 +164,8 @@ def list_instances():
             selected_workflow=workflow_code,
         )
     except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Error loading workflow instances: %s", e)
         flash(f"Error loading workflow instances: {str(e)}", "error")
         return render_template(
             "integration/instance_list.html",
@@ -162,6 +173,7 @@ def list_instances():
             definitions=[],
             selected_status="all",
             selected_workflow=None,
+            load_error="Workflow instances could not be read.",
         )
 
 

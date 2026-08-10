@@ -14,7 +14,7 @@ Helpers:
     - build_nodes_edges(catalog)   — used by mapping_routes.api_nodes_edges()
 """
 
-from flask import current_app, render_template  # dead-code-ok
+from flask import current_app, flash, render_template  # dead-code-ok
 from flask_login import login_required
 
 from app.extensions.cache import cached
@@ -67,9 +67,18 @@ def hierarchy():
 
         return render_template("capability_map/hierarchy.html", catalog=catalog)
     except Exception as e:
-        current_app.logger.error(f"Unexpected error loading hierarchy: {e}")
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception("Unexpected error loading hierarchy: %s", e)
+        flash("Error loading the capability hierarchy. Please try again.", "error")
+        # The catalog shape is required by the Alpine tree, so it stays a dict
+        # with an empty children list - no invented nodes. load_error is what
+        # tells the user the tree is empty because nothing could be read.
         return render_template(
-            "capability_map/hierarchy.html", catalog={"children": []}
+            "capability_map/hierarchy.html",
+            catalog={"children": []},
+            load_error="The capability hierarchy could not be read.",
         )
 
 

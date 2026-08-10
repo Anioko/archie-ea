@@ -36,10 +36,10 @@
 
   {# Metrics Cards #}
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6 mb-8">
-    {{ data_card(icon='building', icon_color='blue', value=stats.total|default(0), label='Total Vendors', subtitle='In vendor catalogue') }}
-    {{ data_card(icon='check-circle', icon_color='green', value=stats.active|default(0), label='Active Vendors', subtitle=(((stats.active / stats.total) * 100)|round(0)|string ~ '% of total') if stats.total|default(0) > 0 else '0% of total') }}
-    {{ data_card(icon='star', icon_color='purple', value=stats.strategic|default(0), label='Strategic Vendors', subtitle='High-value partnerships') }}
-    {{ data_card(icon='package', icon_color='amber', value=stats.total_products|default(0), label='Product Portfolio', subtitle='Across all vendors') }}
+    {{ data_card(icon='building', icon_color='blue', value=stats.total|dash, label='Total Vendors', subtitle='In vendor catalogue') }}
+    {{ data_card(icon='check-circle', icon_color='green', value=stats.active|dash, label='Active Vendors', subtitle=(((stats.active / stats.total) * 100)|round(0)|string ~ '% of total') if stats.total|default(0) > 0 else '—') }}
+    {{ data_card(icon='star', icon_color='purple', value=stats.strategic|dash, label='Strategic Vendors', subtitle='High-value partnerships') }}
+    {{ data_card(icon='package', icon_color='amber', value=stats.total_products|dash, label='Product Portfolio', subtitle='Across all vendors') }}
     {# Portfolio ACV card #}
     {% if stats.total_acv|default(0) > 1000000 %}
       {% set acv_display = '$' ~ ('%.1f'|format(stats.total_acv / 1000000)) ~ 'M' %}
@@ -52,7 +52,7 @@
     {% endif %}
     {{ data_card(icon='banknote', icon_color='cyan', value=acv_display, label='Portfolio ACV', subtitle='Contracted + deployed ACV') }}
     {# Renewals due card #}
-    {{ data_card(icon='calendar-clock', icon_color='amber' if stats.renewals_due|default(0) > 0 else 'gray', value=stats.renewals_due|default(0), label='Renewals Due (90d)', subtitle='Contracts expiring within 90 days') }}
+    {{ data_card(icon='calendar-clock', icon_color='amber' if stats.renewals_due|default(0) > 0 else 'gray', value=stats.renewals_due|dash, label='Renewals Due (90d)', subtitle='Contracts expiring within 90 days') }}
   </div>
 
   {# Main layout: table + side panel #}

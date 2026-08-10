@@ -1484,10 +1484,20 @@ function requirementsBacklog() {
                     wsjf_job_duration: this.activeReq.wsjf_job_duration,
                     story_points: this.activeReq.story_points,
                 }),
-                }).then(r => r.json()).then(d => {
-                    this.activeReq.rice_score = d.rice_score;
-                    this.activeReq.wsjf_score = d.wsjf_score;
-                });
+            }).then(r => {
+                if (!r.ok) throw new Error('Could not save the score (HTTP ' + r.status + ')');
+                return r.json();
+            }).then(d => {
+                this.activeReq.rice_score = d.rice_score;
+                this.activeReq.wsjf_score = d.wsjf_score;
+            }).catch(e => {
+                // The scores on screen were computed from the *previous* inputs;
+                // leaving them next to the edited ones would read as a result.
+                // null renders as an em dash — see DESIGN.md.
+                this.activeReq.rice_score = null;
+                this.activeReq.wsjf_score = null;
+                Platform.toast.error(e.message || 'Could not save the score.');
+            });
         },
     };
 }

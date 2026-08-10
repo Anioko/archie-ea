@@ -329,13 +329,20 @@ function activateExtension() {
             extension_name: extensionName
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) throw new Error('Could not activate the extension (HTTP ' + response.status + ')');
+        return response.json();
+    })
     .then(data => {
-        if (data.success) {
-            document.getElementById('extensionStatus').textContent = 'Active';
-            document.getElementById('extensionStatus').className = 'px-2 py-1 text-xs rounded-full bg-success/10 text-success';
-            loadActivityLog();
-        }
+        if (!data.success) throw new Error(data.error || 'Could not activate the extension');
+        document.getElementById('extensionStatus').textContent = 'Active';
+        document.getElementById('extensionStatus').className = 'px-2 py-1 text-xs rounded-full bg-success/10 text-success';
+        loadActivityLog();
+    })
+    .catch(err => {
+        // The badge is left as it was — claiming "Active" for a call that never
+        // landed is worse than the button appearing to do nothing.
+        Platform.toast.error(err.message);
     });
 }
 

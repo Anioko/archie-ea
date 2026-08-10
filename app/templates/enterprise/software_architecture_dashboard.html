@@ -31,10 +31,10 @@
 
     <!-- Metrics Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {{ metrics_card(title='Application Components', value=component_count or 0, icon='layout-grid') }}
-        {{ metrics_card(title='Application Services', value=service_count or 0, icon='zap') }}
-        {{ metrics_card(title='Application Interfaces', value=interface_count or 0, icon='plug') }}
-        {{ metrics_card(title='App-to-App Dependencies', value=dependency_count or 0, icon='git-merge') }}
+        {{ metrics_card(title='Application Components', value=component_count|dash, icon='layout-grid') }}
+        {{ metrics_card(title='Application Services', value=service_count|dash, icon='zap') }}
+        {{ metrics_card(title='Application Interfaces', value=interface_count|dash, icon='plug') }}
+        {{ metrics_card(title='App-to-App Dependencies', value=dependency_count|dash, icon='git-merge') }}
     </div>
 
     <!-- ArchiMate Layer Context Banner -->

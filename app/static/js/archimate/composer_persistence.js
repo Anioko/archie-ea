@@ -396,7 +396,7 @@ let ComposerPersistence = (function() {
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
 
             fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.savedViewpoints = data.viewpoints || [];
             })
@@ -2072,7 +2072,7 @@ let ComposerPersistence = (function() {
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify({ name: name.trim() }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.id) {
                     self.statusText = 'Snapshot created: ' + data.name;
@@ -2096,7 +2096,7 @@ let ComposerPersistence = (function() {
             fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots', {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.snapshots = data.snapshots || [];
             })
@@ -2112,7 +2112,7 @@ let ComposerPersistence = (function() {
             fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots/' + sid, {
                 credentials: 'same-origin',
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (!data.data) {
                     self.statusText = 'Snapshot load failed';
@@ -2218,7 +2218,7 @@ let ComposerPersistence = (function() {
                 method: 'POST', credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.restored) {
                     self.statusText = 'Restored: ' + data.snapshot_name;
@@ -2273,7 +2273,7 @@ let ComposerPersistence = (function() {
                     template_json: templateData,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.id) {
                     self.statusText = 'Template saved: ' + data.name;
@@ -2291,7 +2291,7 @@ let ComposerPersistence = (function() {
             if (!self.templateListOpen) return;
 
             fetch('/archimate/api/templates', { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.templates = BUILT_IN_TEMPLATES.concat(data.templates || []);
             })
@@ -2362,7 +2362,7 @@ let ComposerPersistence = (function() {
                     solution_id: self.solutionId || null,
                 }),
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 if (data.id) {
                     self.statusText = 'Created viewpoint: ' + data.name;
@@ -2388,7 +2388,7 @@ let ComposerPersistence = (function() {
             self.portfolioTemplates = [];
 
             fetch('/archimate/api/composer/portfolio-templates', { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 self.portfolioTemplates = data.portfolio_templates || [];
                 self.portfolioTemplatesLoading = false;
@@ -2457,8 +2457,8 @@ let ComposerPersistence = (function() {
             let baseUrl = '/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots/';
 
             Promise.all([
-                fetch(baseUrl + snapshotIdA, { credentials: 'same-origin' }).then(function(r) { return r.json(); }),
-                fetch(baseUrl + snapshotIdB, { credentials: 'same-origin' }).then(function(r) { return r.json(); }),
+                fetch(baseUrl + snapshotIdA, { credentials: 'same-origin' }).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
+                fetch(baseUrl + snapshotIdB, { credentials: 'same-origin' }).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
             ])
             .then(function(results) {
                 let snapA = results[0];
@@ -2912,6 +2912,7 @@ let ComposerPersistence = (function() {
             let diagramId = self.savedViewpointId;
             if (!diagramId) return;
             let csrfToken = helpers.csrfToken;
+            // fetch-guard-ok: presence ping the user never asked for; a failure leaves the other-editors indicator dark and there is nothing to act on
             fetch('/archimate/api/diagrams/' + diagramId + '/editors/join', {
                 method: 'POST',
                 headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
@@ -2945,6 +2946,7 @@ let ComposerPersistence = (function() {
             let self = this;
             let diagramId = self.savedViewpointId;
             if (!diagramId) return;
+            // fetch-guard-ok: presence refresh the user never asked for; see collaborationJoin above
             fetch('/archimate/api/diagrams/' + diagramId + '/active-editors')
             .then(function(r) { return r.json(); })
             .then(function(data) {

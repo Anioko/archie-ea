@@ -214,7 +214,7 @@
         </div>
 
         <!-- Empty State -->
-        <div x-show="duplicates.length === 0" x-cloak class="px-6 py-12 text-center">
+        <div x-show="duplicates.length === 0 && !loadError" x-cloak class="px-6 py-12 text-center">
             <svg class="mx-auto h-12 w-12 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
@@ -222,6 +222,20 @@
             <p class="mt-1 text-sm text-muted-foreground">
                 Try lowering the similarity threshold to find more potential matches.
             </p>
+        </div>
+
+        <!-- Load Failure — deliberately NOT the empty state: "none found" and
+             "we could not look" must not read the same. -->
+        <div x-show="loadError" x-cloak class="px-6 py-12 text-center bg-destructive/5 border-t border-destructive/20">
+            <svg class="mx-auto h-12 w-12 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-destructive">Candidates could not be loaded</h3>
+            <p class="mt-1 text-sm text-muted-foreground" x-text="loadError"></p>
+            <button type="button" @click="loadCandidates()"
+                    class="mt-4 inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                Retry
+            </button>
         </div>
     </div>
 
@@ -265,12 +279,24 @@ function consolidationManager() {
         selectedPairs: [],
         statusMessage: '',
         statusType: 'success',
+        loadError: null,
 
         loadCandidates() {
+            this.loadError = null;
             fetch('{{ url_for("abacus_consolidation.get_candidates") }}?threshold=' + this.threshold)
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error('Could not load duplicate candidates (HTTP ' + res.status + ')');
+                    return res.json();
+                })
                 .then(data => {
-                    this.duplicates = data.candidates;
+                    this.duplicates = data.candidates || [];
+                })
+                .catch(err => {
+                    // Empty, not stale, and flagged: the list below must never
+                    // pass off the previous threshold's results as this one's.
+                    this.duplicates = [];
+                    this.loadError = err.message;
+                    Platform.toast.error(err.message);
                 });
         },
 

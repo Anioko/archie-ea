@@ -16,7 +16,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-muted-foreground">Vendor Organizations</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ vendor_orgs }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ vendor_orgs|dash }}</p>
                 </div>
                 <i data-lucide="building-2" class="h-8 w-8 text-primary" aria-hidden="true"></i>
             </div>
@@ -26,8 +26,8 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-muted-foreground">Vendor Products</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ vendor_products }}</p>
-                    <p class="text-xs text-muted-foreground">{{ with_archimate }} mapped</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ vendor_products|dash }}</p>
+                    <p class="text-xs text-muted-foreground">{{ with_archimate|dash }} mapped</p>
                 </div>
                 <i data-lucide="package" class="h-8 w-8 text-warning" aria-hidden="true"></i>
             </div>
@@ -37,8 +37,8 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-muted-foreground">ArchiMate Elements</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ archimate_elements }}</p>
-                    <p class="text-xs text-muted-foreground">{{ with_source_product }} with vendor mapping</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ archimate_elements|dash }}</p>
+                    <p class="text-xs text-muted-foreground">{{ with_source_product|dash }} with vendor mapping</p>
                 </div>
                 <i data-lucide="layers" class="h-8 w-8 text-success" aria-hidden="true"></i>
             </div>
@@ -51,23 +51,26 @@
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-foreground">Vendor Products Coverage</h3>
-                <div class="text-2xl font-bold {% if vendor_coverage >= 80 %}text-success{% elif vendor_coverage >= 50 %}text-warning{% else %}text-destructive{% endif %}">
-                    {{ vendor_coverage }}%
+                <div class="text-2xl font-bold {% if vendor_coverage is none %}text-muted-foreground{% elif vendor_coverage >= 80 %}text-success{% elif vendor_coverage >= 50 %}text-warning{% else %}text-destructive{% endif %}">
+                    {{ vendor_coverage|dash('%') }}
                 </div>
             </div>
             
             <div class="space-y-3">
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Mapped to ArchiMate</span>
-                    <span class="font-medium">{{ with_archimate }}</span>
+                    <span class="font-medium">{{ with_archimate|dash }}</span>
                 </div>
+                {# A bar drawn at 0% is a claim; when coverage is unknown there is no bar. #}
+                {% if vendor_coverage is not none %}
                 <div class="w-full bg-muted rounded-full h-2">
-                    <div class="h-2 rounded-full {% if vendor_coverage >= 80 %}bg-success{% elif vendor_coverage >= 50 %}bg-warning{% else %}bg-destructive{% endif %}" 
+                    <div class="h-2 rounded-full {% if vendor_coverage >= 80 %}bg-success{% elif vendor_coverage >= 50 %}bg-warning{% else %}bg-destructive{% endif %}"
                          style="width: {{ vendor_coverage }}%"></div>
                 </div>
+                {% endif %}
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Not Mapped</span>
-                    <span class="font-medium text-destructive">{{ without_archimate }}</span>
+                    <span class="font-medium text-destructive">{{ without_archimate|dash }}</span>
                 </div>
             </div>
         </div>
@@ -76,30 +79,32 @@
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-foreground">ArchiMate Elements Coverage</h3>
-                <div class="text-2xl font-bold {% if archimate_coverage >= 80 %}text-success{% elif archimate_coverage >= 50 %}text-warning{% else %}text-destructive{% endif %}">
-                    {{ archimate_coverage }}%
+                <div class="text-2xl font-bold {% if archimate_coverage is none %}text-muted-foreground{% elif archimate_coverage >= 80 %}text-success{% elif archimate_coverage >= 50 %}text-warning{% else %}text-destructive{% endif %}">
+                    {{ archimate_coverage|dash('%') }}
                 </div>
             </div>
             
             <div class="space-y-3">
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">With Vendor Mapping</span>
-                    <span class="font-medium">{{ with_source_product }}</span>
+                    <span class="font-medium">{{ with_source_product|dash }}</span>
                 </div>
+                {% if archimate_coverage is not none %}
                 <div class="w-full bg-muted rounded-full h-2">
-                    <div class="h-2 rounded-full {% if archimate_coverage >= 80 %}bg-success{% elif archimate_coverage >= 50 %}bg-warning{% else %}bg-destructive{% endif %}" 
+                    <div class="h-2 rounded-full {% if archimate_coverage >= 80 %}bg-success{% elif archimate_coverage >= 50 %}bg-warning{% else %}bg-destructive{% endif %}"
                          style="width: {{ archimate_coverage }}%"></div>
                 </div>
+                {% endif %}
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Without Vendor Mapping</span>
-                    <span class="font-medium text-warning">{{ without_source_product }}</span>
+                    <span class="font-medium text-warning">{{ without_source_product|dash }}</span>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Critical Issues Alert -->
-    {% if orphaned_elements > 0 or without_archimate > 0 %}
+    {% if (orphaned_elements or 0) > 0 or (without_archimate or 0) > 0 %}
     <div class="bg-destructive/5 border border-destructive/20 rounded-lg p-4 mb-6">
         <div class="flex items-start gap-3">
             <div class="flex-shrink-0">
@@ -109,13 +114,13 @@
                 <h3 class="text-lg font-semibold text-destructive">Critical Mapping Issues Detected</h3>
                 <div class="mt-2 text-destructive">
                     <ul class="list-disc list-inside space-y-1">
-                        {% if orphaned_elements > 0 %}
+                        {% if (orphaned_elements or 0) > 0 %}
                         <li><strong>{{ orphaned_elements }}</strong> ArchiMate elements reference non-existent vendor products</li>
                         {% endif %}
-                        {% if without_archimate > 0 %}
+                        {% if (without_archimate or 0) > 0 %}
                         <li><strong>{{ without_archimate }}</strong> vendor products have no ArchiMate element mapping</li>
                         {% endif %}
-                        <li>Overall mapping coverage is only {{ vendor_coverage }}% for vendor products</li>
+                        {% if vendor_coverage is not none %}<li>Overall mapping coverage is only {{ vendor_coverage }}% for vendor products</li>{% endif %}
                     </ul>
                 </div>
             </div>
