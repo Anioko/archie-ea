@@ -1748,8 +1748,10 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
             }).then(function (r) {
-                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('Submitted to ARB');
-                else if (window.Platform && Platform.toast) Platform.toast.error('Submission failed');
+                if (!r.ok) throw new Error('Submission failed (HTTP ' + r.status + ')');
+                if (window.Platform && Platform.toast) Platform.toast.success('Submitted to ARB');
+            }).catch(function (e) {
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Submission failed');
             });
         });
     }
@@ -1762,8 +1764,10 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
             }).then(function (r) {
-                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('API specs generated');
-                else if (window.Platform && Platform.toast) Platform.toast.error('Generation failed');
+                if (!r.ok) throw new Error('API spec generation failed (HTTP ' + r.status + ')');
+                if (window.Platform && Platform.toast) Platform.toast.success('API specs generated');
+            }).catch(function (e) {
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'API spec generation failed');
             });
         });
     }
@@ -1776,8 +1780,10 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
             }).then(function (r) {
-                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('Code specs inferred');
-                else if (window.Platform && Platform.toast) Platform.toast.error('Inference failed');
+                if (!r.ok) throw new Error('Code spec inference failed (HTTP ' + r.status + ')');
+                if (window.Platform && Platform.toast) Platform.toast.success('Code specs inferred');
+            }).catch(function (e) {
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Code spec inference failed');
             });
         });
     }

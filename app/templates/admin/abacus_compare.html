@@ -263,14 +263,12 @@
                             field_rules: fieldRules
                         })
                     })
-                    .then(res => res.json())
+                    .then(res => { if (!res.ok) throw new Error('Merge failed (HTTP ' + res.status + ')'); return res.json(); })
                     .then(data => {
-                        if (data.success) {
-                            window.location.href = '{{ url_for('abacus_consolidation.index') }}';
-                        } else {
-                            Platform.toast.error('Merge failed: ' + data.error);
-                        }
-                    });
+                        if (!data.success) throw new Error(data.error || 'Merge failed');
+                        window.location.href = '{{ url_for('abacus_consolidation.index') }}';
+                    })
+                    .catch(err => { Platform.toast.error(err.message); });
                 }"
                 class="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium"
              aria-label="Confirm">

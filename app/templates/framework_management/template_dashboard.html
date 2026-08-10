@@ -473,14 +473,20 @@ function confirmApplyTemplate() {
             organization_name: orgName
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) throw new Error('Could not apply the template (HTTP ' + response.status + ')');
+        return response.json();
+    })
     .then(data => {
-        if (data.success) {
-            const applyModal = document.getElementById('apply-framework-template');
-            if (applyModal) applyModal.remove();
-            Platform.toast.info('Template applied successfully!');
-            loadRecentDeployments();
-        }
+        if (!data.success) throw new Error(data.error || 'Could not apply the template');
+        const applyModal = document.getElementById('apply-framework-template');
+        if (applyModal) applyModal.remove();
+        Platform.toast.info('Template applied successfully!');
+        loadRecentDeployments();
+    })
+    .catch(err => {
+        // The modal deliberately stays open so the entered names are not lost.
+        Platform.toast.error(err.message);
     });
 }
 
