@@ -789,7 +789,15 @@ def create_roadmap_task():
             )
 
         except ImportError:
-            # If RoadmapTask not available, just update the entry
+            # error-signalling-ok: this branch still commits the entry, so success is true and the message discloses that no roadmap task was created
+            #
+            # Note it is currently UNREACHABLE:
+            # app.modules.governance.models.roadmap.RoadmapTask exists and
+            # imports cleanly, so the ImportError never fires. Kept rather than
+            # deleted because the branch is honest if it ever does - unlike the
+            # three guarded imports found elsewhere in this audit, which named
+            # modules that have never existed and silently disabled a feature
+            # apiece.
             entry.recommended_action = "add_to_roadmap"
             entry.status = "approved"
             entry.target_date = end_date_str
@@ -797,6 +805,7 @@ def create_roadmap_task():
             entry.updated_at = datetime.utcnow()
             db.session.commit()
 
+            # error-signalling-ok: the entry above is committed, so success is true; the message discloses that no roadmap task was created
             return jsonify(
                 {
                     "success": True,

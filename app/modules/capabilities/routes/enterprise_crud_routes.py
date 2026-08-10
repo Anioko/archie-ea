@@ -94,8 +94,8 @@ def capability_app_counts():
         counts = {str(cid): cnt for cid, cnt in rows}
         return jsonify({"success": True, "counts": counts})
     except Exception as e:
-        logger.error(f"Error getting app counts: {e}")
-        return jsonify({"success": True, "counts": {}})
+        logger.exception(f"Error getting app counts: {e}")
+        return jsonify({"success": False, "error": "Could not load capability app counts"}), 500
 
 
 @enterprise_crud_bp.route("/capabilities/<int:capability_id>", methods=["GET"])

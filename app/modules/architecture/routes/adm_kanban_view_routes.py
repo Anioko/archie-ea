@@ -229,5 +229,5 @@ def search_elements():
             ]
         })
     except Exception as e:
-        current_app.logger.error(f"Element search error: {str(e)}")
-        return jsonify({"results": []})
+        current_app.logger.exception(f"Element search error: {str(e)}")
+        return jsonify({"error": "Could not search ArchiMate elements"}), 500

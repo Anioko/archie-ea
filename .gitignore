@@ -203,6 +203,7 @@ scripts/check_*.py
 !scripts/check_broken_surfaces.py
 !scripts/check_template_syntax.py
 !scripts/check_silent_data.py
+!scripts/check_error_signalling.py
 !scripts/check_null_filters.py
 !scripts/check_template_references.py
 scripts/patch_*.py

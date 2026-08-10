@@ -166,6 +166,7 @@ def scan() -> dict[str, list[str]]:
 
     href_re = re.compile(r'href\s*=\s*"([^"]+)"')
     fetch_re = re.compile(r"""fetch\(\s*['"]([^'"]+)['"]""")
+    fetch_tpl_re = re.compile(r"fetch\(\s*`([^`]+)`")
     form_re = re.compile(r"<form\b([^>]*)>", re.I)
     # The comment and console-call groups must not cross a brace. With re.S and
     # a lazy .*? they could reach a LATER */ further down the file, matching a
@@ -273,6 +274,30 @@ def scan() -> dict[str, list[str]]:
                 out["dead-fetch"].append(
                     "%s:%d: dead-fetch: fetch(\"%s\") matches no route — the request 404s"
                     % (rel(path), line_of(text, m.start()), url))
+
+        # Backtick template literals were invisible to the pattern above, which
+        # only matches quoted strings — so all 254 of them went unchecked, and
+        # 10 pointed at no route at all. One pair was admin/ai_corrections.html
+        # calling /api/archimate-elements/<id>/correct when the route is
+        # /dashboard/api/... (the application_mgmt blueprint carries a
+        # url_prefix); every AI correction submitted from that screen 404d.
+        #
+        # Substituting a plausible segment for each interpolation is what makes
+        # them resolvable: ${id} and a Jinja {{ id }} both stand in for one
+        # path segment. Jinja must be substituted too, or a server-rendered id
+        # is left in the probe as literal braces and never matches.
+        for m in fetch_tpl_re.finditer(text):
+            raw_url = m.group(1).strip()
+            if not raw_url.startswith("/"):
+                continue
+            probe = re.sub(r"\$\{[^}]*\}", "1", raw_url)
+            probe = re.sub(r"\{\{[^}]*\}\}", "1", probe)
+            if "${" in probe or "{{" in probe:
+                continue                      # nested braces — cannot resolve
+            if not resolves(probe):
+                out["dead-fetch"].append(
+                    "%s:%d: dead-fetch: fetch(`%s`) matches no route — the request 404s"
+                    % (rel(path), line_of(text, m.start()), raw_url))
         # Deliberately the RAW text, not the comment-blanked copy: a catch
         # containing only a comment is DOCUMENTED intent, which is materially
         # different from a bare `catch {}`. Blanking the comment first turned

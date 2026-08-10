@@ -1471,8 +1471,8 @@ def api_traceability_sankey():
         return _build_traceability_sankey_response()
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error("Traceability sankey API error: %s", e)
-        return jsonify({"nodes": [], "links": [], "layer_counts": {}, "error": str(e)}), 200
+        current_app.logger.exception("Traceability sankey API error: %s", e)
+        return jsonify({"error": "Could not build the traceability diagram"}), 500
 
 
 def _build_traceability_sankey_response():

@@ -729,7 +729,11 @@ document.addEventListener('DOMContentLoaded', function() {
     async function loadSettings() {
         try {
             const resp = await fetch('/api/system-settings');
-            const data = resp.ok ? await resp.json() : { settings: {} };
+            // The endpoint now answers a failure with 500 rather than an empty
+            // "ok" payload, so this must throw: silently substituting {} would
+            // present the defaults below as if they were the saved settings.
+            if (!resp.ok) throw new Error('system-settings request failed: ' + resp.status);
+            const data = await resp.json();
             const saved = data.settings || {};
 
             // Default values merged with any saved values

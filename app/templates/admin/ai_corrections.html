@@ -110,7 +110,7 @@
                                         <!-- Correct button -->
                                         <button
                                             type="button"
-                                            onclick="markCorrect({{ row.element_id }}, {{ row.app_id }})"
+                                            onclick="markCorrect({{ row.element_id }})"
                                             class="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/30 text-success px-2.5 py-1 text-xs font-medium hover:bg-success/20 transition-colors"
                                             aria-label="Mark element {{ row.element_id }} as correct">
                                             <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
@@ -154,7 +154,7 @@
                                             <div class="flex gap-2">
                                                 <button
                                                     type="button"
-                                                    onclick="submitFix({{ row.element_id }}, {{ row.app_id }})"
+                                                    onclick="submitFix({{ row.element_id }})"
                                                     class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-xs font-medium hover:bg-primary/90 transition-colors"
                                                     aria-label="Submit fix for element {{ row.element_id }}">
                                                     Submit Fix
@@ -195,17 +195,14 @@
 <script>
 const CSRF_TOKEN = "{{ csrf_token() }}";
 
-function markCorrect(elementId, appId) {
-    fetch(`/api/archimate-elements/${elementId}/correct`, {
+function markCorrect(elementId) {
+    fetch(`/dashboard/api/archimate-elements/${elementId}/correct`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': CSRF_TOKEN,
         },
-        body: JSON.stringify({
-            app_id: appId,
-            correction_type: 'confirm',
-        }),
+        body: JSON.stringify({ action: 'approve' }),
     })
     .then(res => res.json())
     .then(data => {
@@ -233,7 +230,7 @@ function toggleFixForm(elementId) {
     }
 }
 
-function submitFix(elementId, appId) {
+function submitFix(elementId) {
     const nameInput = document.getElementById(`fix-name-${elementId}`);
     const typeInput = document.getElementById(`fix-type-${elementId}`);
 
@@ -244,20 +241,20 @@ function submitFix(elementId, appId) {
         return;
     }
 
-    fetch(`/api/archimate-elements/${elementId}/correct`, {
+    // Only send the fields the user actually filled in — the endpoint falls back to
+    // the element's current value for any key that is absent, so sending an explicit
+    // null would blank it.
+    const payload = { action: 'correct' };
+    if (correctedName) { payload.name = correctedName; }
+    if (correctedType) { payload.type = correctedType; }
+
+    fetch(`/dashboard/api/archimate-elements/${elementId}/correct`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': CSRF_TOKEN,
         },
-        body: JSON.stringify({
-            app_id: appId,
-            correction_type: 'fix',
-            corrected_element: {
-                name: correctedName,
-                type: correctedType,
-            },
-        }),
+        body: JSON.stringify(payload),
     })
     .then(res => res.json())
     .then(data => {

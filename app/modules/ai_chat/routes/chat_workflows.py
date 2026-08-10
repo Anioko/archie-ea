@@ -2043,12 +2043,14 @@ def workflow_evidence_gate():
         result = kernel.check_evidence_gate(workspace_id, workflow_type)
         return jsonify(result)
     except Exception as e:
-        current_app.logger.error("AIC-318: evidence gate failed: %s", e, exc_info=True)
+        current_app.logger.exception("AIC-318: evidence gate failed: %s", e)
+        # The empty artifact_summary and the synthetic "exception: ..." entry in
+        # `missing` read as gate findings, which they are not — they are the gate
+        # failing to run. Only the verdict and the reason are reported now.
+        # error-signalling-ok: fail-closed gate; denying ARB readiness on error is the honest answer and the caller renders the denial
         return jsonify({
             "pass": False,
             "workspace_id": workspace_id,
             "workflow_type": workflow_type,
-            "missing": [f"exception: {e}"],
-            "artifact_summary": {},
-            "suggested_actions": ["Investigate error and retry"],
+            "error": "The evidence gate could not be evaluated.",
         })

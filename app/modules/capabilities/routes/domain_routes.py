@@ -139,8 +139,8 @@ def api_unified_domains():
         )
 
     except Exception as e:
-        current_app.logger.error(f"Error loading business domains: {e}")
-        return jsonify({"success": False, "error": "An internal error occurred", "domains": []})
+        current_app.logger.exception(f"Error loading business domains: {e}")
+        return jsonify({"success": False, "error": "Could not load business domains"}), 500
 
 
 # =============================================================================
@@ -227,18 +227,10 @@ def api_manufacturing_domains():
         )
 
     except Exception as e:
-        current_app.logger.error(f"Error loading manufacturing domains: {e}")
+        current_app.logger.exception(f"Error loading manufacturing domains: {e}")
         return jsonify(
-            {
-                "success": False,
-                "error": "An internal error occurred",
-                "total_capabilities": 0,
-                "mapped_count": 0,
-                "coverage": 0,
-                "avg_oee": 0,
-                "domains": {},
-            }
-        )
+            {"success": False, "error": "Could not load manufacturing domains"}
+        ), 500
 
 
 # =============================================================================
@@ -295,5 +287,5 @@ def api_process_categories():
         return jsonify({"success": True, "categories": categories})
 
     except Exception as e:
-        current_app.logger.error(f"Error loading process categories: {e}")
-        return jsonify({"success": False, "error": "An internal error occurred", "categories": {}})
+        current_app.logger.exception(f"Error loading process categories: {e}")
+        return jsonify({"success": False, "error": "Could not load process categories"}), 500

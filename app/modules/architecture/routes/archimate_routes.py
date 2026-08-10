@@ -4946,8 +4946,12 @@ def api_list_element_comments(element_id):
         from app.models.archimate_viewpoint import ArchimateElementComment
     except ImportError:
         # Comment storage isn't provisioned (no ArchimateElementComment model).
-        # Degrade to "no comments" instead of 500ing the element view.
-        return jsonify({"comments": []})
+        # An empty list here was indistinguishable from "this element has no
+        # comments", so the panel silently claimed there were none.
+        current_app.logger.exception(
+            "ArchimateElementComment model unavailable; comments cannot be listed"
+        )
+        return jsonify({"error": "Comments are unavailable"}), 500
 
     viewpoint_id = request.args.get("viewpoint_id", type=int)
     query = ArchimateElementComment.query.options(

@@ -281,13 +281,12 @@ def ai_status():
             }
         )
     except Exception as e:
-        current_app.logger.error(f"AI status check failed: {e}")
+        current_app.logger.exception(f"AI status check failed: {e}")
+        # "ai_available: false" at 200 is indistinguishable from a genuine
+        # "no provider configured", and str(e) leaked the internals besides.
         return jsonify(
-            {
-                "ai_available": False,
-                "error": str(e),
-            }
-        )
+            {"success": False, "error": "Could not determine AI configuration status"}
+        ), 500
 
 
 def _format_impacted_services(dependency_analysis):

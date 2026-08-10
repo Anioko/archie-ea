@@ -396,8 +396,8 @@ def get_system_settings():
         result = {row[0]: _parse(row[1]) for row in rows}
         return jsonify({"settings": result, "status": "ok"})
     except Exception as e:
-        current_app.logger.error(f"Error loading system settings: {e}")
-        return jsonify({"settings": {}, "status": "ok"})
+        current_app.logger.exception(f"Error loading system settings: {e}")
+        return jsonify({"status": "error", "error": "Failed to load system settings"}), 500
 
 
 @main.route("/api/system-settings/save", methods=["POST"])

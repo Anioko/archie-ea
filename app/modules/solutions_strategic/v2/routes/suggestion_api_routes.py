@@ -121,18 +121,14 @@ def get_vendor_suggestions(solution_id, solution):
         }), 200
 
     except Exception as e:
-        logger.error("Unhandled error in vendor suggestions for solution %s: %s", solution_id, e, exc_info=True)
+        logger.exception("Unhandled error in vendor suggestions for solution %s: %s", solution_id, e)
+        # No empty suggestion lists here: "we found no vendors" and "the lookup
+        # failed" are different answers and the caller must be able to tell them
+        # apart.
         return jsonify({
             'solution_id': solution_id,
-            'suggestions': [],
-            'capability_suggestions': [],
-            'confidence': None,
-            'phase': None,
-            'generated_at': None,
-            'count': 0,
-            'capability_count': 0,
             'error': 'Internal error fetching vendor suggestions',
-        }), 200
+        }), 500
 
 
 @api_bp.route('/<int:solution_id>/suggestions/vendors/confirm', methods=['POST'])

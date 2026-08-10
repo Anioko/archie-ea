@@ -768,6 +768,20 @@ def _register_solutions_strategic(app, csrf):
 
 
 def _register_architecture(app, csrf):
+    # SA-008 completeness routes are tier-independent: they have no v2 equivalent, so
+    # registering them only in the Tier-3 fallback below left both the page
+    # (/solutions/<id>/completeness) and the API it fetches
+    # (/api/solutions/<id>/completeness) unrouted whenever USE_ARCHITECTURE_GUARDRAILS
+    # is on — which is the default. Register before the tier branches, all of which
+    # can return early.
+    try:
+        from app.modules.architecture.routes.completeness_routes import completeness_bp
+
+        app.register_blueprint(completeness_bp)
+        app.logger.info("[BLUEPRINT] SA-008 completeness routes registered")
+    except ImportError as e:
+        app.logger.warning(f"Completeness blueprint not available: {e}")
+
     # --- Tier 1: v2 (guardrail-enabled) ---
     if _is_flag("USE_ARCHITECTURE_GUARDRAILS"):
         try:
@@ -830,14 +844,6 @@ def _register_architecture(app, csrf):
         app.logger.info("[BLUEPRINT] ArchiMate routes registered at /archimate")
     except ImportError as e:
         app.logger.warning(f"ArchiMate routes blueprint not available: {e}")
-
-    try:
-        from app.modules.architecture.routes.completeness_routes import completeness_bp
-
-        app.register_blueprint(completeness_bp)
-        app.logger.info("[BLUEPRINT] SA-008 completeness routes registered")
-    except ImportError as e:
-        app.logger.warning(f"Completeness blueprint not available: {e}")
 
     try:
         from app.archimate_crud import archimate_crud

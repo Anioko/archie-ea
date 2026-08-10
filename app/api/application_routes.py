@@ -304,7 +304,7 @@ def api_application_solutions(app_id):
     except Exception as exc:
         db.session.rollback()
         logger.error(f"Error fetching solutions for application {app_id}: {exc}", exc_info=True)
-        return jsonify({"solutions": [], "error": "Failed to load linked solutions"}), 200
+        return jsonify({"success": False, "error": "Failed to load linked solutions"}), 500
 
 
 # =============================================================================

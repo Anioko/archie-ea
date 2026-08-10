@@ -295,26 +295,16 @@ def api_process_gaps():
             }
         )
     except ImportError as e:
-        # Models not available - return empty data gracefully
-        current_app.logger.warning(f"Process models not available: {e}")
+        # The zeroed statistics here were indistinguishable from a measured "no
+        # gaps, 0% coverage" reading. The caller throws on `error` and renders a
+        # retry panel carrying this message.
+        current_app.logger.exception(f"Process models not available: {e}")
         return jsonify(
             {
-                "process_gaps": [],
-                "statistics": {
-                    "total_processes": 0,
-                    "unmapped_processes": 0,
-                    "partially_automated": 0,
-                    "minimal_automation": 0,
-                    "well_automated": 0,
-                    "coverage_percentage": 0,
-                    "automation_coverage": 0,
-                    "critical_gaps": 0,
-                    "high_gaps": 0,
-                },
-                "filters": {"process_types": [], "process_categories": [], "levels": []},
-                "message": "Process models not configured. Please set up BusinessProcess and ApplicationProcessSupport tables.",
+                "error": "Process models not configured. Please set up BusinessProcess "
+                         "and ApplicationProcessSupport tables.",
             }
-        )
+        ), 500
     except Exception as e:
         current_app.logger.error(f"Error in process gap analysis: {e}")
         return jsonify({"error": "An internal error occurred", "process_gaps": [], "statistics": {}}), 500

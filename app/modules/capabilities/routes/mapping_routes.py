@@ -281,9 +281,12 @@ def api_capabilities_semantic_search():
                 db.or_(BusinessCapability.name.ilike(f"%{query}%"),
                        BusinessCapability.description.ilike(f"%{query}%"))
             ).limit(top_k).all()
+            # similarity is None, not 0.5: a keyword hit has no cosine score, and a
+            # literal 0.5 is indistinguishable from a measured one.
+            # error-signalling-ok: the keyword fallback returns real matches, so the search did succeed; method=keyword_fallback tells the caller the ranking is not vector-based
             return jsonify({"capabilities": [
                 {"id": c.id, "name": c.name, "level": c.level, "code": c.code or "",
-                 "description": c.description or "", "similarity": 0.5}
+                 "description": c.description or "", "similarity": None}
                 for c in caps
             ], "method": "keyword_fallback"})
 

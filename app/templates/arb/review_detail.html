@@ -220,7 +220,7 @@
 
     {% if review.decision == 'approved_with_conditions' and conditions_with_flags %}
     <!-- ARB-102: Conditions Tracker -->
-    <div x-data="conditionsTracker({{ conditions_with_flags | tojson }}, {{ review.id }})"
+    <div x-data="conditionsTracker({{ conditions_with_flags | tojson }})"
          class="mb-6 rounded-lg border border-amber-200 bg-amber-50">
         <div class="flex items-center justify-between px-4 py-3 border-b border-amber-200">
             <div class="flex items-center gap-2">
@@ -251,28 +251,17 @@
                             </span>
                         </div>
                     </div>
-                    <!-- Status select -->
+                    {# Status is read-only: conditions are recorded with the ARB decision
+                       (arb.record_decision) and there is no endpoint to edit an individual
+                       condition afterwards. #}
                     <div class="flex items-center gap-2 flex-shrink-0">
-                        <select class="text-xs border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                                :class="{
- 'text-emerald-700 border-green-300': cond.status === 'done',
- 'text-amber-700 border-amber-300': cond.status === 'in_progress',
- 'text-muted-foreground border-border': cond.status === 'open'
+                        <span class="text-xs px-2 py-0.5 rounded-full"
+                              :class="{
+ 'bg-emerald-100 text-emerald-700': cond.status === 'done',
+ 'bg-amber-100 text-amber-700': cond.status === 'in_progress',
+ 'bg-muted text-muted-foreground': cond.status !== 'done' && cond.status !== 'in_progress'
  }"
-                                @change="patch(idx, 'status', $event.target.value)">
-                            <option value="open" :selected="cond.status === 'open'">Open</option>
-                            <option value="in_progress" :selected="cond.status === 'in_progress'">In Progress</option>
-                            <option value="done" :selected="cond.status === 'done'">Done</option>
-                        </select>
-                        <!-- Due date -->
-                        <input type="date" class="text-xs border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                               :value="cond.due_date || ''"
-                               @change="patch(idx, 'due_date', $event.target.value)">
-                        <!-- Evidence URL -->
-                        <input type="url" placeholder="Evidence URL" title="Evidence URL"
-                               class="hidden sm:block text-xs border rounded px-2 py-1 bg-background w-32 focus:outline-none focus:ring-1 focus:ring-primary"
-                               :value="cond.evidence_url || ''"
-                               @blur="patch(idx, 'evidence_url', $event.target.value)" aria-label="Evidence URL">
+                              x-text="cond.status === 'done' ? 'Done' : (cond.status === 'in_progress' ? 'In Progress' : 'Open')"></span>
                     </div>
                 </div>
             </template>
@@ -285,8 +274,6 @@
             </div>
             <span class="text-xs text-amber-700"
                   x-text="conditions.filter(c=>c.status==='done').length + '/' + conditions.length + ' done'"></span>
-            <span x-show="saveMsg" x-text="saveMsg"
-                  class="text-xs text-emerald-600 transition-opacity"></span>
         </div>
     </div>
     {% endif %}
@@ -789,43 +776,14 @@ function arbDocPanel(parentType, parentId) {
 </script>
 
 <script>
-/* ARB-102: conditions tracker Alpine component */
-function conditionsTracker(initialConditions, reviewId) {
+/* ARB-102: conditions tracker Alpine component (read-only).
+   The per-condition editors were removed: they PATCHed
+   /arb/api/reviews/<id>/conditions/<idx>, which was never implemented, so every
+   change 404ed and silently reverted on reload. Conditions are set when the ARB
+   decision is recorded (arb.record_decision). */
+function conditionsTracker(initialConditions) {
     return {
-        conditions: initialConditions || [],
-        reviewId: reviewId,
-        saveMsg: '',
-        _saveTimer: null,
-
-        async patch(idx, field, value) {
-            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
-            try {
-                const r = await fetch(`/arb/api/reviews/${this.reviewId}/conditions/${idx}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                    body: JSON.stringify({ field, value: value || null })
-                });
-                const d = await r.json();
-                if (r.ok && d.success) {
-                    this.conditions[idx][field] = value || null;
-                    const today = new Date().toISOString().slice(0, 10);
-                    const c = this.conditions[idx];
-                    c.overdue = !!(c.due_date && c.status !== 'done' && c.due_date < today);
-                    this.conditions = [...this.conditions];
-                    this._flash('Saved');
-                } else {
-                    this._flash('Error: ' + (d.error || 'save failed'));
-                }
-            } catch(e) {
-                this._flash('Network error');
-            }
-        },
-
-        _flash(msg) {
-            this.saveMsg = msg;
-            clearTimeout(this._saveTimer);
-            this._saveTimer = setTimeout(() => { this.saveMsg = ''; }, 2500);
-        }
+        conditions: initialConditions || []
     };
 }
 </script>

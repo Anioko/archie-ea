@@ -1588,14 +1588,13 @@ def add_sophisticated_import_routes(blueprint):
             }), 200
         except Exception as e:
             db.session.rollback()
-            current_app.logger.debug("Import history query failed: %s", e)
+            # An empty history at 200 reads as "you have never imported
+            # anything", which is a claim about the audit trail, not an error.
+            current_app.logger.exception("Import history query failed: %s", e)
             return jsonify({
-                "history": [],
-                "total": 0,
-                "page": page,
-                "per_page": per_page,
-                "pages": 0,
-            }), 200
+                "success": False,
+                "error": "Failed to load import history",
+            }), 500
 
     @blueprint.route("/import-history/<string:session_id>/rollback", methods=["POST"])
     @login_required

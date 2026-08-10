@@ -1795,8 +1795,8 @@ def register_ea_workflow_routes(main_blueprint):
             return jsonify({"phases": phases})
         except Exception as e:
             import logging
-            logging.getLogger(__name__).debug("AV-008 archimate summary error: %s", e)
-            return jsonify({"phases": []}), 200
+            logging.getLogger(__name__).exception("AV-008 archimate summary error: %s", e)
+            return jsonify({"success": False, "error": "Failed to load ArchiMate phase summary"}), 500
 
     @main_blueprint.route("/ea-workflows/phase/<string:phase_code>/viewpoint", methods=["GET"])
     @login_required
