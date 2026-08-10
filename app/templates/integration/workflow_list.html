@@ -58,7 +58,7 @@
                             
                             <div class="mt-4 flex flex-wrap gap-1">
                                 {% for step in def.steps %}
-                                    <span class="inline-flex items-center rounded-sm bg-muted px-2 py-1 text-xs font-medium text-muted-foreground ring-1 ring-inset ring-gray-500/10" title="{{ step.step_name }}">
+                                    <span class="inline-flex items-center rounded-sm bg-muted px-2 py-1 text-xs font-medium text-muted-foreground ring-1 ring-inset ring-border" title="{{ step.step_name }}">
                                         {{ loop.index }}
                                     </span>
                                 {% endfor %}

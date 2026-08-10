@@ -1546,7 +1546,7 @@
                     </thead>
                     <tbody class="divide-y divide-border">
                         {% for item in impact_register.remediation_plan %}
-                        <tr class="hover:bg-muted/30 {% if item.get('go_live_blocker') %}bg-red-50/50{% endif %}">
+                        <tr class="hover:bg-muted/30 {% if item.get('go_live_blocker') %}bg-destructive/5{% endif %}">
                             <td class="px-3 py-2 font-mono text-xs">{{ item.get('app_id','—') }}</td>
                             <td class="px-3 py-2 text-xs">{{ item.get('classification','—')|replace('_',' ')|title }}</td>
                             <td class="px-3 py-2 text-xs font-medium">{{ item.get('action','—')|replace('_',' ')|title }}</td>
@@ -1570,7 +1570,7 @@
             <h4 class="font-medium text-sm mb-3">Cutover Sequence</h4>
             <div class="space-y-2">
                 {% for phase in impact_register.cutover_sequence %}
-                <div class="p-3 border rounded-lg {% if phase.get('prerequisite') %}border-red-300/50 bg-red-50/30{% else %}border-border{% endif %}">
+                <div class="p-3 border rounded-lg {% if phase.get('prerequisite') %}border-destructive/30 bg-destructive/5{% else %}border-border{% endif %}">
                     <div class="flex items-center gap-2">
                         {% if phase.get('prerequisite') %}
                         <i data-lucide="alert-circle" class="h-4 w-4 text-destructive shrink-0" aria-hidden="true"></i>
