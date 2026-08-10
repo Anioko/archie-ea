@@ -181,6 +181,96 @@ def test_custom_field_edit_does_not_render_a_wtforms_template_without_a_form():
     )
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Encoding contract: a template Jinja cannot decode has no tags at all.
+#
+# strategic_roadmap/enhanced_roadmap_fixed.html shipped as UTF-16LE with
+# no BOM. Jinja reads templates as UTF-8, so every second byte was a NUL
+# and not one `{%` matched: the page did not extend a layout, no block
+# was defined, and the route emitted ~59 KB of literal template text to
+# the browser. `template-syntax` cannot catch it - a template with zero
+# tags parses perfectly - which is why it survived. These tests assert
+# the bytes AND the parsed tags, because either alone is satisfiable by
+# a file that renders nothing.
+# ─────────────────────────────────────────────────────────────────────
+
+_ROADMAP_TEMPLATE = "strategic_roadmap/enhanced_roadmap_fixed.html"
+
+
+def _template_bytes(app, name):
+    _src, filename, _uptodate = app.jinja_env.loader.get_source(app.jinja_env, name)
+    from pathlib import Path
+
+    return Path(filename).read_bytes()
+
+
+def test_every_template_is_decodable_utf8(app):
+    """A NUL byte or a non-UTF-8 sequence anywhere in the tree is this bug."""
+    from pathlib import Path
+
+    root = Path(app.root_path) / "templates"
+    broken = []
+    for path in sorted(root.rglob("*.html")):
+        raw = path.read_bytes()
+        if b"\x00" in raw:
+            broken.append("%s: NUL bytes (UTF-16?)" % path.relative_to(root).as_posix())
+            continue
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            broken.append("%s: not UTF-8 (%s)" % (path.relative_to(root).as_posix(), exc))
+    assert not broken, (
+        "templates Jinja cannot decode - it reads UTF-8, so these render as "
+        "literal markup with no tags:\n  " + "\n  ".join(broken)
+    )
+
+
+def test_enhanced_roadmap_parses_its_jinja_tags(app):
+    """The tags must exist after parsing, not merely appear in the bytes."""
+    from jinja2 import nodes
+
+    raw = _template_bytes(app, _ROADMAP_TEMPLATE)
+    assert b"\x00" not in raw, "%s is UTF-16 again" % _ROADMAP_TEMPLATE
+    source = raw.decode("utf-8")
+
+    ast = app.jinja_env.parse(source)
+    extends = list(ast.find_all(nodes.Extends))
+    blocks = {b.name for b in ast.find_all(nodes.Block)}
+    assert extends, "%s no longer extends a layout" % _ROADMAP_TEMPLATE
+    assert extends[0].template.value == "layouts/admin_base.html"
+    assert {"title", "content"} <= blocks, (
+        "%s lost its blocks - it would render as literal text" % _ROADMAP_TEMPLATE
+    )
+
+
+def test_enhanced_roadmap_renders_with_its_view_kwargs(app):
+    """Exactly the keywords app/main/routes_strategic_roadmap.py passes."""
+    html = _render_none_safe(
+        app,
+        _ROADMAP_TEMPLATE,
+        domains=[],
+        capabilities=[],
+        users=[],
+        unmapped_capabilities=[],
+        total_capabilities=None,
+        mapped_capabilities=None,
+        mapping_coverage=None,
+        work_packages=[],
+        start_date=None,
+        end_date=None,
+        months=[],
+        selected_levels=["L1", "L2", "L3"],
+        selected_domain="",
+        selected_importance="",
+    )
+    if html is None:
+        pytest.skip("layout needs request-scoped state unavailable here")
+    assert "{% block" not in html and "{% extends" not in html, (
+        "%s emitted its own tags as text - it is mis-encoded again"
+        % _ROADMAP_TEMPLATE
+    )
+    assert "roadmapApp()" in html, "%s content block did not render" % _ROADMAP_TEMPLATE
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Error-path contract: a view whose query failed passes None for every
