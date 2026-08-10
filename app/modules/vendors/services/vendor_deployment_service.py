@@ -251,8 +251,13 @@ class VendorDeploymentService:
             if not vendor:
                 raise ValueError(f"Vendor {vendor_id} not found")
 
-            # Get all deployed applications from this vendor (using vendor_product_id FK)
-            # tenant-filtered: scoped via parent FK (vendor_organization_id)
+            # Get all deployed applications from this vendor.
+            # The comment here used to claim "scoped via parent FK
+            # (vendor_organization_id)". That is a column on vendor_products,
+            # not a tenant boundary - vendor_products carries no
+            # organization_id - so this listed EVERY tenant's production
+            # applications, with names, descriptions, owners and criticality.
+            _org_clause, _org_params = org_scope("ac.")
             portfolio_query = text(
                 """
                 SELECT
@@ -273,12 +278,14 @@ class VendorDeploymentService:
                 LEFT JOIN archimate_elements ae ON ac.id = ae.application_component_id
                 WHERE vp.vendor_organization_id = :vendor_id
                 AND ac.deployment_status = 'production'
+                """ + _org_clause + """
                 GROUP BY ac.id, vp.id
                 ORDER BY ac.created_at DESC
             """
             )
 
-            result = db.session.execute(portfolio_query, {"vendor_id": vendor_id})  # tenant-filtered
+            result = db.session.execute(
+                portfolio_query, {"vendor_id": vendor_id, **_org_params})
             applications = []
 
             for row in result:
@@ -411,3 +418,4 @@ def deploy_vendor_product(vendor_product_id, deployment_config):
     return VendorDeploymentService.deploy_vendor_product_complete(
         vendor_product_id, deployment_config
     )
+from app.utils.tenant_sql import org_scope

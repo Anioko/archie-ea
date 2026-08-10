@@ -36,6 +36,7 @@ _RAG_CACHE_TTL = 300  # 5 minutes
 
 from app import db
 from app.models import User
+from app.utils.tenant_sql import org_scope
 from app.models.vector_embeddings import ChatMessageEmbedding
 
 # Import AI Chat Extension Services
@@ -6574,15 +6575,20 @@ Instructions:
                     VendorProduct.vendor_organization_id == vid
                 ).scalar() or 0
 
-                # App coverage via direct FK
-                # tenant-filtered: scoped via parent FK (application_components + vendor_products)
-                app_count = db.session.execute(text(  # tenant-filtered: scoped via parent FK (application_components + vendor_products)
+                # App coverage via direct FK.
+                # This carried "tenant-filtered: scoped via parent FK
+                # (application_components + vendor_products)". That was false -
+                # vendor_products has no organization_id - so it counted EVERY
+                # tenant's applications and handed the total to the assistant as
+                # this organisation's vendor coverage.
+                _org_clause, _org_params = org_scope("ac.")
+                app_count = db.session.execute(text(
                     """
                     SELECT COUNT(DISTINCT ac.id)
                     FROM application_components ac
                     JOIN vendor_products vp ON ac.vendor_product_id = vp.id
                     WHERE vp.vendor_organization_id = :vid
-                """), {"vid": vid}).scalar() or 0
+                """ + _org_clause), {"vid": vid, **_org_params}).scalar() or 0
 
                 # Capability coverage
                 # tenant-filtered: scoped via parent FK (vendor_product_capabilities)

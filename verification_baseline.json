@@ -7,7 +7,7 @@
     "lint_core": 0,
     "design_tokens": 88,
     "air_gap": 0,
-    "raw_sql_tenancy": 98,
+    "raw_sql_tenancy": 0,
     "broken_surfaces": 0,
     "fetch_guards": 0
   }
