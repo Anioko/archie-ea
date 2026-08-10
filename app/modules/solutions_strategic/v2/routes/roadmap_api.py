@@ -1502,39 +1502,49 @@ def get_statistics():
         description: Unauthorized
     """
     try:
+        # These are per-user roadmap statistics, not a system-wide aggregate:
+        # the "tenant-exempt: aggregate stats" note they carried was wrong, and
+        # work_packages / gaps are both tenant tables. Raw SQL bypasses the ORM
+        # listener, so the predicate has to be written out.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_where = " WHERE organization_id = :org" if _org is not None else ""
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+        _org_params = {"org": _org} if _org is not None else {}
+
         stats = {
             "work_packages": {
                 "total": ImplementationWorkPackage.query.count(),
                 "by_status": dict(
-                    db.session.execute(  # tenant-exempt: system table (aggregate stats)
+                    db.session.execute(
                         text(
-                            """
+                            f"""
                     SELECT status, COUNT(*)
-                    FROM work_packages
+                    FROM work_packages{_org_where}
                     GROUP BY status
                 """
-                        )
+                        ), _org_params
                     ).fetchall()
                 ),
                 "by_priority": dict(
-                    db.session.execute(  # tenant-exempt: aggregate stats
+                    db.session.execute(
                         text(
-                            """
+                            f"""
                     SELECT COALESCE(priority, 'unset'), COUNT(*)
-                    FROM work_packages
+                    FROM work_packages{_org_where}
                     GROUP BY priority
                 """
-                        )
+                        ), _org_params
                     ).fetchall()
                 ),
-                "total_cost": db.session.execute(  # tenant-exempt: aggregate stats
+                "total_cost": db.session.execute(
                     text(
-                        """
+                        f"""
                     SELECT COALESCE(SUM(estimated_cost), 0)
                     FROM work_packages
-                    WHERE estimated_cost IS NOT NULL
+                    WHERE estimated_cost IS NOT NULL{_org_and}
                 """
-                    )
+                    ), _org_params
                 ).fetchone()[0]
                 or 0,
             },
@@ -1555,25 +1565,25 @@ def get_statistics():
             "gaps": {
                 "total": ImplementationGap.query.count(),
                 "by_priority": dict(
-                    db.session.execute(  # tenant-exempt: system table (aggregate stats)
+                    db.session.execute(
                         text(
-                            """
+                            f"""
                     SELECT COALESCE(priority, 'unset'), COUNT(*)
-                    FROM gaps
+                    FROM gaps{_org_where}
                     GROUP BY priority
                 """
-                        )
+                        ), _org_params
                     ).fetchall()
                 ),
                 "by_type": dict(
-                    db.session.execute(  # tenant-exempt: aggregate stats
+                    db.session.execute(
                         text(
-                            """
+                            f"""
                     SELECT COALESCE(gap_type, 'unset'), COUNT(*)
-                    FROM gaps
+                    FROM gaps{_org_where}
                     GROUP BY gap_type
                 """
-                        )
+                        ), _org_params
                     ).fetchall()
                 ),
             },

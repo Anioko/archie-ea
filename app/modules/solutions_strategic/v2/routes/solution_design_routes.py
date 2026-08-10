@@ -4671,6 +4671,12 @@ def _engine_archimate_cleanup(solution_ids):
                 logger.debug("archimate cleanup skip: %s … %s", sql[:80], _e)
 
         # ── Collect target architecture_model and element IDs ──────────────
+        # tenancy-ok: sids come from Solution.query.get_or_404() /
+        # Solution.query.filter(Solution.id.in_(...)) in the three callers —
+        # Solution is a TenantMixin model, so do_orm_execute has already
+        # org-filtered them — plus a created_by_id/is_admin ownership check, and
+        # they are cast with int() above. Every statement below is keyed off
+        # these ids, so the whole cascade is scoped by its input.
         mids = [r[0] for r in conn.execute(
             text(f"SELECT id FROM architecture_models WHERE solution_id IN ({sids_str})")
         ).fetchall()]
@@ -4678,6 +4684,7 @@ def _engine_archimate_cleanup(solution_ids):
             return
         mids_str = ",".join(str(i) for i in mids)
 
+        # tenancy-ok: mids derive from the org-scoped solution ids above.
         eids = [r[0] for r in conn.execute(
             text(f"SELECT id FROM archimate_elements WHERE architecture_id IN ({mids_str})")
         ).fetchall()]
@@ -4855,6 +4862,7 @@ def _engine_archimate_cleanup(solution_ids):
             _sp_exe(f"DELETE FROM archimate_resources           WHERE archimate_element_id IN ({eids_str})")
 
             # ── Now safe to delete archimate_elements ───────────────────────
+            # tenancy-ok: mids derive from the org-scoped solution ids above.
             conn.execute(text(f"DELETE FROM archimate_elements WHERE architecture_id IN ({mids_str})"))
 
         # ── Architecture model child tables (model_id / architecture_id) ───
@@ -4905,6 +4913,7 @@ def _engine_archimate_cleanup(solution_ids):
         _sp_exe(f"DELETE FROM workflow_pipelines        WHERE architecture_id   IN ({mids_str})")
 
         # ── Now safe to delete architecture_models ──────────────────────────
+        # tenancy-ok: mids derive from the org-scoped solution ids above.
         conn.execute(text(f"DELETE FROM architecture_models WHERE id IN ({mids_str})"))
 
     # engine transaction committed — all archimate data is cleanly gone

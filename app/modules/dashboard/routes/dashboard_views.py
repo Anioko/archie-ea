@@ -203,15 +203,20 @@ def api_coverage_debug():
     """Temp debug: returns raw coverage query result or error."""
     try:
         from sqlalchemy import text
-        row = db.session.execute(text("""
+        # Raw SQL bypasses the tenant listener, so these coverage counts spanned
+        # every organisation's portfolio.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_where = " WHERE organization_id = :org" if _org is not None else ""
+        row = db.session.execute(text(f"""
             SELECT
                 COUNT(*) FILTER (WHERE application_owner IS NOT NULL OR business_owner IS NOT NULL) AS owner_n,
                 COUNT(*) FILTER (WHERE vendor_product_id IS NOT NULL OR vendor_name IS NOT NULL) AS vendor_n,
                 COUNT(*) FILTER (WHERE total_cost_of_ownership IS NOT NULL OR license_cost IS NOT NULL OR maintenance_cost IS NOT NULL) AS cost_n,
                 COUNT(*) FILTER (WHERE business_criticality IS NOT NULL) AS crit_n,
                 COUNT(*) AS total_n
-            FROM application_components
-        """)).fetchone()
+            FROM application_components{_org_where}
+        """), ({"org": _org} if _org is not None else {})).fetchone()
         return jsonify({"ok": True, "owner": row[0], "vendor": row[1], "cost": row[2], "crit": row[3], "total": row[4]})
     except Exception:
         db.session.rollback()

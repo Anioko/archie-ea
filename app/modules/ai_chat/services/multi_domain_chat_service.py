@@ -4366,15 +4366,19 @@ Use enterprise architecture terminology appropriate for this role."""
                 "by_type": [{"type": t, "layer": item, "count": c} for t, item, c in type_counts if t],
             }
 
-            # Step 2: Load relationship counts per element (batch query)
-            # tenant-filtered: scoped via parent FK (archimate_relationships)
+            # Step 2: Load relationship counts per element (batch query).
+            # Unscoped this counted every organisation's relationships and used
+            # them to rank THIS org's elements for the prompt.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_where = " WHERE organization_id = :org" if _org is not None else ""
             rel_counts = {}
             try:
-                rows = _db.session.execute(text(  # tenant-filtered: scoped via parent FK (archimate_relationships)
-                    "SELECT source_id, COUNT(*) FROM archimate_relationships GROUP BY source_id "
+                rows = _db.session.execute(text(
+                    f"SELECT source_id, COUNT(*) FROM archimate_relationships{_org_where} GROUP BY source_id "
                     "UNION ALL "
-                    "SELECT target_id, COUNT(*) FROM archimate_relationships GROUP BY target_id"
-                )).fetchall()
+                    f"SELECT target_id, COUNT(*) FROM archimate_relationships{_org_where} GROUP BY target_id"
+                ), ({"org": _org} if _org is not None else {})).fetchall()
                 for eid, cnt in rows:
                     rel_counts[eid] = rel_counts.get(eid, 0) + cnt
             except Exception:  # fabricated-values-ok
@@ -4520,15 +4524,25 @@ Use enterprise architecture terminology appropriate for this role."""
 
             capabilities = BusinessCapability.query.all()
 
+            # These counts are joined onto the org-filtered `capabilities` list
+            # above, so leaving them global inflates coverage with other
+            # tenants' rows — the exact failure the raw-SQL tenancy gate exists
+            # for.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_where_m = " WHERE m.organization_id = :org" if _org is not None else ""
+            _org_and = " AND organization_id = :org" if _org is not None else ""
+            _org_params = {"org": _org} if _org is not None else {}
+
             # Get application counts per capability
             app_counts = {}
             try:
-                rows = db.session.execute(  # tenant-filtered: scoped via parent FK (application_capability_mapping)
-                    text("""
+                rows = db.session.execute(
+                    text(f"""
                         SELECT m.business_capability_id, COUNT(DISTINCT m.application_component_id) as app_count
-                        FROM application_capability_mapping m
+                        FROM application_capability_mapping m{_org_where_m}
                         GROUP BY m.business_capability_id
-                    """)
+                    """), _org_params
                 ).fetchall()
                 app_counts = {row[0]: row[1] for row in rows}
             except Exception as e:
@@ -4537,13 +4551,13 @@ Use enterprise architecture terminology appropriate for this role."""
             # Batch-load children counts for all capabilities in a single query
             children_counts = {}
             try:
-                children_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (business_capability)
-                    text("""
+                children_rows = db.session.execute(
+                    text(f"""
                         SELECT parent_capability_id, COUNT(*) as child_count
                         FROM business_capability
-                        WHERE parent_capability_id IS NOT NULL
+                        WHERE parent_capability_id IS NOT NULL{_org_and}
                         GROUP BY parent_capability_id
-                    """)
+                    """), _org_params
                 ).fetchall()
                 children_counts = {row[0]: row[1] for row in children_rows}
             except Exception as e:
@@ -7079,9 +7093,12 @@ End with: "Type **'next'** to complete the design workflow."
             if not app_id:
                 return ""
 
-            # Find capabilities this app supports
-            # tenant-filtered: scoped via parent FK (business_capability + application_capability_mapping)
-            cap_rows = db.session.execute(text(  # tenant-filtered: scoped via parent FK (business_capability + application_capability_mapping)
+            # Find capabilities this app supports.
+            # tenancy-ok: app_id comes from _resolve_entities_from_message(),
+            # which reads ApplicationComponent.query — a TenantMixin model, so
+            # the do_orm_execute listener has already org-filtered it. Only
+            # capabilities mapped to this org's application are reachable.
+            cap_rows = db.session.execute(text(
                 """
                 SELECT bc.id, bc.name, bc.level, bc.category
                 FROM business_capability bc

@@ -926,10 +926,14 @@ def composer_page():
     viewpoint = request.args.get("viewpoint", "")
     solution_name = None
     if solution_id:
-        # tenant-filtered: scoped via parent FK (solution_id from request)
-        row = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id from request)
-            db.text("SELECT name FROM solutions WHERE id = :sid"),  # tenant-filtered
-            {"sid": solution_id},
+        # solution_id is an unvalidated query parameter, so the raw lookup must
+        # carry the org predicate itself — nothing upstream constrains it.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+        row = db.session.execute(
+            db.text(f"SELECT name FROM solutions WHERE id = :sid{_org_and}"),
+            {"sid": solution_id, **({"org": _org} if _org is not None else {})},
         ).fetchone()
         solution_name = row.name if row else f"Solution #{solution_id}"
 
@@ -2004,16 +2008,21 @@ def api_element_detail(element_id):
     # REQ-CMP-001: Enrich with linked solutions, governance, capabilities
     linked_solutions = []
     try:
-        sol_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-            db.text(  # tenant-filtered
+        # solution_archimate_elements carries no organization_id, so the org
+        # predicate goes on the joined solutions row. element_id is already
+        # ownership-checked above; this stops a shared element from listing
+        # another org's solutions.
+        _org_and_sol = " AND s.organization_id = :org" if _org is not None else ""
+        sol_rows = db.session.execute(
+            db.text(
                 "SELECT sae.solution_id, s.name, s.adm_phase, sae.element_role "
                 "FROM solution_archimate_elements sae "
                 "JOIN solutions s ON s.id = sae.solution_id "
-                "WHERE sae.element_id = :eid "
+                f"WHERE sae.element_id = :eid{_org_and_sol} "
                 "ORDER BY s.name "
                 "LIMIT 20"
             ),
-            {"eid": element_id},
+            {"eid": element_id, **({"org": _org} if _org is not None else {})},
         ).fetchall()
         for row in sol_rows:
             linked_solutions.append({
@@ -2651,13 +2660,19 @@ def api_composer_generate():
     existing_names: set = set()
     if solution_id:
         try:
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
-                db.text(  # tenant-filtered
+            # solution_id arrives in the request body unvalidated, and
+            # solution_archimate_elements has no organization_id — put the
+            # predicate on archimate_elements, which does.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_and = " AND ae.organization_id = :org" if _org is not None else ""
+            rows = db.session.execute(
+                db.text(
                     "SELECT ae.name FROM archimate_elements ae "
                     "JOIN solution_archimate_elements sae ON sae.element_id = ae.id "
-                    "WHERE sae.solution_id = :sid"
+                    f"WHERE sae.solution_id = :sid{_org_and}"
                 ),
-                {"sid": solution_id},
+                {"sid": solution_id, **({"org": _org} if _org is not None else {})},
             ).fetchall()
             existing_names = {(r.name or "").lower() for r in rows}
         except Exception:  # noqa: BLE001
@@ -2797,13 +2812,19 @@ def api_composer_generate_contextual():
         existing_names: set = set()
         if solution_id:
             try:
-                rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
-                    db.text(  # tenant-filtered
+                # Same reasoning as the dedup query in generate_from_description:
+                # solution_id is unvalidated request input and
+                # solution_archimate_elements has no organization_id.
+                from flask import g as _g
+                _org = getattr(_g, "current_org_id", None)
+                _org_and = " AND ae.organization_id = :org" if _org is not None else ""
+                rows = db.session.execute(
+                    db.text(
                         "SELECT ae.name FROM archimate_elements ae "
                         "JOIN solution_archimate_elements sae ON sae.element_id = ae.id "
-                        "WHERE sae.solution_id = :sid"
+                        f"WHERE sae.solution_id = :sid{_org_and}"
                     ),
-                    {"sid": solution_id},
+                    {"sid": solution_id, **({"org": _org} if _org is not None else {})},
                 ).fetchall()
                 existing_names = {(r.name or "").lower() for r in rows}
             except Exception as exc:

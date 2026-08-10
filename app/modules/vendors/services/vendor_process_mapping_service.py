@@ -536,15 +536,31 @@ class VendorProcessMappingService:
     def save_mapping_to_database(self, mapping: Dict, validated_by: Optional[int] = None) -> bool:
         """Save a single mapping to the database."""
         try:
+            # business_process_id originates in get_all_processes(), which reads
+            # apqc_process — global reference data with no organization_id — so
+            # it carries no tenant scope of its own. business_processes is
+            # tenant-owned, so scope the existence check. The same reasoning
+            # covers the vendor_process_mappings statements below: neither
+            # vendor_products nor apqc_process carries organization_id, so the
+            # (product, process) pair is not a tenant boundary — without the
+            # predicate another org's mapping reads as "already exists" and this
+            # org silently never gets one.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_and_bp = " AND organization_id = :org" if _org is not None else ""
+            _org_and = _org_and_bp
+            _org_params = {"org": _org} if _org is not None else {}
+
             # Validate that business process exists
-            process_exists = db.session.execute(  # tenant-exempt: system table (business_processes reference data)
+            process_exists = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT id FROM business_processes
-                WHERE id = :process_id
+                WHERE id = :process_id{_org_and_bp}
             """
                 ),
-                {"process_id": mapping["business_process_id"]},
+                {"process_id": mapping["business_process_id"],
+                 **({"org": _org} if _org is not None else {})},
             ).fetchone()
 
             if not process_exists:
@@ -554,16 +570,17 @@ class VendorProcessMappingService:
                 return False
 
             # Check if mapping already exists
-            existing = db.session.execute(  # tenant-filtered: scoped via parent FK (product_id + process_id)
+            existing = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT id FROM vendor_process_mappings
-                WHERE vendor_product_id = :product_id AND business_process_id = :process_id
+                WHERE vendor_product_id = :product_id AND business_process_id = :process_id{_org_and}
             """
                 ),
                 {
                     "product_id": mapping["vendor_product_id"],
                     "process_id": mapping["business_process_id"],
+                    **_org_params,
                 },
             ).fetchone()
 
@@ -573,11 +590,15 @@ class VendorProcessMappingService:
                 )
                 return False  # Already exists
 
-            # Insert new mapping
-            db.session.execute(  # tenant-filtered: scoped via parent FK (product_id + process_id)
+            # Insert new mapping. Stamp organization_id explicitly — a raw
+            # INSERT bypasses the TenantMixin flush hook, so without it the row
+            # is unowned and visible to no org (the batch path below already
+            # does this).
+            db.session.execute(
                 text(
                     """
                 INSERT INTO vendor_process_mappings (
+                    organization_id,
                     vendor_product_id, business_process_id, support_level,
                     automation_coverage, out_of_box_fit, integration_complexity,
                     customization_required, expected_cycle_time_reduction,
@@ -585,6 +606,7 @@ class VendorProcessMappingService:
                     implementation_effort_weeks, configuration_complexity,
                     change_management_impact, validated_by_id, created_at, updated_at
                 ) VALUES (
+                    :org,
                     :product_id, :process_id, :support_level,
                     :automation_coverage, :out_of_box_fit, :integration_complexity,
                     :customization_required, :cycle_time_reduction,
@@ -595,6 +617,7 @@ class VendorProcessMappingService:
             """
                 ),
                 {
+                    "org": _org,
                     "product_id": mapping["vendor_product_id"],
                     "process_id": mapping["business_process_id"],
                     "support_level": self._estimate_support_level(mapping["confidence"]),
@@ -680,15 +703,21 @@ class VendorProcessMappingService:
             return {"saved_count": 0, "skipped_count": 0, "error_count": 0}
 
         try:
-            # Get all existing mapping pairs in one query
+            # Get all existing mapping pairs in one query. Unfiltered, this read
+            # every organisation's pairs and then skipped this org's inserts as
+            # "already existing".
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_where = " WHERE organization_id = :org" if _org is not None else ""
             existing_pairs = set()
-            existing_result = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor product relationships)
+            existing_result = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT vendor_product_id, business_process_id
-                FROM vendor_process_mappings
+                FROM vendor_process_mappings{_org_where}
             """
-                )
+                ),
+                ({"org": _org} if _org is not None else {}),
             ).fetchall()
             for row in existing_result:
                 existing_pairs.add((row[0], row[1]))
