@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from app import db
 from app.main.views import main
+from app.utils.tenant_sql import org_scope
 
 
 @main.route("/vendor-archimate-analysis")
@@ -14,15 +15,24 @@ def vendor_archimate_analysis():
     """Comprehensive vendor-ArchiMate mapping analysis page"""
 
     try:
+        # archimate_elements is tenant-scoped; every count below must carry the
+        # predicate or one org's page reports another org's element catalogue.
+        _org_where, _org_params = org_scope(keyword="WHERE")
+        _org_and, _ = org_scope(keyword="AND")
+        _org_and_ae, _ = org_scope(prefix="ae.", keyword="AND")
+
         # Basic Statistics
-        vendor_orgs = db.session.execute(text("SELECT COUNT(*) FROM vendor_organizations")).scalar()  # raw-sql-ok: tenant-filtered
-        vendor_products = db.session.execute(text("SELECT COUNT(*) FROM vendor_products")).scalar()  # raw-sql-ok: tenant-filtered
-        archimate_elements = db.session.execute(  # tenant-filtered
-            text("SELECT COUNT(*) FROM archimate_elements")  # tenant-filtered
+        # vendor_organizations / vendor_products carry no organization_id column,
+        # so these two are global by schema, not by choice. Recorded here because
+        # the comment that used to sit on them claimed they were tenant-filtered.
+        vendor_orgs = db.session.execute(text("SELECT COUNT(*) FROM vendor_organizations")).scalar()
+        vendor_products = db.session.execute(text("SELECT COUNT(*) FROM vendor_products")).scalar()
+        archimate_elements = db.session.execute(
+            text(f"SELECT COUNT(*) FROM archimate_elements{_org_where}"), _org_params
         ).scalar()
 
-        # Vendor Products Mapping Status
-        with_archimate = db.session.execute(  # tenant-filtered
+        # Vendor Products Mapping Status (global: vendor_products has no org column)
+        with_archimate = db.session.execute(
             text(
                 """
             SELECT COUNT(*) FROM vendor_products
@@ -37,13 +47,14 @@ def vendor_archimate_analysis():
         )
 
         # ArchiMate Elements Mapping Status
-        with_source_product = db.session.execute(  # tenant-filtered
+        with_source_product = db.session.execute(
             text(
-                """
+                f"""
             SELECT COUNT(*) FROM archimate_elements
-            WHERE source_product_id IS NOT NULL
+            WHERE source_product_id IS NOT NULL{_org_and}
         """
-            )
+            ),
+            _org_params,
         ).scalar()
 
         without_source_product = archimate_elements - with_source_product
@@ -54,26 +65,27 @@ def vendor_archimate_analysis():
         )
 
         # Orphaned Elements Analysis
-        orphaned_elements = db.session.execute(  # tenant-filtered
+        orphaned_elements = db.session.execute(
             text(
-                """
+                f"""
             SELECT COUNT(*) FROM archimate_elements ae
-            WHERE ae.source_product_id IS NOT NULL
+            WHERE ae.source_product_id IS NOT NULL{_org_and_ae}
             AND NOT EXISTS (
                 SELECT 1 FROM vendor_products vp
                 WHERE vp.id = ae.source_product_id
             )
         """
-            )
+            ),
+            _org_params,
         ).scalar()
 
         # Get orphaned elements details
-        orphaned_details = db.session.execute(  # tenant-filtered
+        orphaned_details = db.session.execute(
             text(
-                """
+                f"""
             SELECT ae.id, ae.name, ae.type, ae.source_product_id
             FROM archimate_elements ae
-            WHERE ae.source_product_id IS NOT NULL
+            WHERE ae.source_product_id IS NOT NULL{_org_and_ae}
             AND NOT EXISTS (
                 SELECT 1 FROM vendor_products vp
                 WHERE vp.id = ae.source_product_id
@@ -81,11 +93,13 @@ def vendor_archimate_analysis():
             ORDER BY ae.name
             LIMIT 20
         """
-            )
+            ),
+            _org_params,
         ).fetchall()
 
         # Application Vendor Products Analysis
-        app_vendor_products = db.session.execute(  # tenant-filtered
+        # (application_vendor_products has no organization_id column — global by schema)
+        app_vendor_products = db.session.execute(
             text(
                 """
             SELECT COUNT(*) FROM application_vendor_products
@@ -93,8 +107,8 @@ def vendor_archimate_analysis():
             )
         ).scalar()
 
-        # Get vendor products by type
-        product_types = db.session.execute(  # tenant-filtered
+        # Get vendor products by type (global: vendor_products has no org column)
+        product_types = db.session.execute(
             text(
                 """
             SELECT product_type, COUNT(*) as count
@@ -107,20 +121,21 @@ def vendor_archimate_analysis():
         ).fetchall()
 
         # Get ArchiMate elements by type with vendor mapping
-        element_types = db.session.execute(  # tenant-filtered
+        element_types = db.session.execute(
             text(
-                """
+                f"""
             SELECT type, COUNT(*) as count
             FROM archimate_elements
-            WHERE source_product_id IS NOT NULL
+            WHERE source_product_id IS NOT NULL{_org_and}
             GROUP BY type
             ORDER BY count DESC
         """
-            )
+            ),
+            _org_params,
         ).fetchall()
 
-        # Get unmapped vendor products
-        unmapped_products = db.session.execute(  # tenant-filtered
+        # Get unmapped vendor products (global: vendor_products has no org column)
+        unmapped_products = db.session.execute(
             text(
                 """
             SELECT vp.id, vp.name, vp.product_type, vo.name as vendor_name
@@ -190,7 +205,11 @@ def export_vendor_archimate_analysis():
     """Export vendor-ArchiMate mapping analysis as JSON"""
 
     try:
+        _org_and_ae, _org_params = org_scope(prefix="ae.", keyword="AND")
+
         # Get all unmapped vendor products
+        # (global: neither vendor_products nor vendor_organizations has an
+        # organization_id column, so there is nothing here to scope against)
         unmapped_products = db.session.execute(
             text(
                 """
@@ -204,19 +223,20 @@ def export_vendor_archimate_analysis():
         ).fetchall()
 
         # Get all orphaned ArchiMate elements
-        orphaned_elements = db.session.execute(  # tenant-filtered
+        orphaned_elements = db.session.execute(
             text(
-                """
+                f"""
             SELECT ae.id, ae.name, ae.type, ae.source_product_id
             FROM archimate_elements ae
-            WHERE ae.source_product_id IS NOT NULL
+            WHERE ae.source_product_id IS NOT NULL{_org_and_ae}
             AND NOT EXISTS (
                 SELECT 1 FROM vendor_products vp
                 WHERE vp.id = ae.source_product_id
             )
             ORDER BY ae.name
         """
-            )
+            ),
+            _org_params,
         ).fetchall()
 
         # Format data for export
