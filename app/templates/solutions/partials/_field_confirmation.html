@@ -362,7 +362,7 @@
               <div class="flex items-center gap-2">
                 <button @click="confirmFields(el)"
                         :disabled="el._saving"
-                        class="px-2.5 py-1 rounded bg-blue-600 text-primary-foreground text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        class="px-2.5 py-1 rounded bg-primary text-primary-foreground text-[11px] font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                   <span x-text="el._saving ? 'Saving…' : 'Confirm fields'"></span>
                 </button>
                 <button @click="el._editing = true"
