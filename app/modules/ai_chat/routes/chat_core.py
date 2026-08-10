@@ -537,6 +537,13 @@ def send_message():
                 # reader can check the answer against the rows rather than
                 # trusting it.
                 "sources": agent_result.get("sources", []),
+                # AgentRunner._fallback() persists a friendly "couldn't be
+                # completed" response AND keeps the raw failure reason on the
+                # same dict; this endpoint always reports success:True for
+                # that case (there is an answer to show), so without this
+                # field the UI could not tell an ordinary answer from one
+                # that only exists because the LLM call failed.
+                "agent_error": agent_result.get("error"),
                 # Was hardcoded True on every response regardless of whether any
                 # context was built - _build_system_prompt swallows a context
                 # failure into an empty string, so the API asserted grounding
