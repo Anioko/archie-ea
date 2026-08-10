@@ -20,6 +20,8 @@ import json
 import logging
 from typing import Dict, List, Optional
 
+from flask import current_app
+
 from app import db
 from app.models.application_portfolio import ApplicationComponent
 
@@ -42,6 +44,48 @@ class LLMClassificationTimeoutError(RuntimeError):
     """Raised when the LLM call behind application pattern classification exceeds
     LLM_CLASSIFY_TIMEOUT_SECONDS. Callers must surface this as an error response —
     never silently substitute fabricated/fallback data for a timed-out call."""
+
+
+def _log_orphaned_future_exception(future: "concurrent.futures.Future") -> None:
+    """Done-callback for the classify-batch future.
+
+    Once the caller times out (route already returned a 504), nobody else
+    ever calls .result()/.exception() on this future — so without this
+    callback, any exception the background call eventually raises (e.g. the
+    LLMInteraction/cache writes in llm_service_impl.py failing without an app
+    context) is silently dropped: exactly the "73 catch blocks that told
+    nobody" anti-pattern CLAUDE.md calls out. Log it instead so it is at
+    least observable, even though the request it belonged to is long gone.
+    """
+    if future.cancelled():
+        return
+    exc = future.exception()
+    if exc is not None:
+        logger.error(
+            "Orphaned application-pattern LLM call failed after the request "
+            "that started it had already timed out: %s",
+            exc,
+            exc_info=exc,
+        )
+
+
+def _call_generate_from_prompt_in_app_context(app, prompt: str) -> str:
+    """Run LLMService.generate_from_prompt inside *app*'s application context.
+
+    The executor thread has no Flask context of its own. generate_from_prompt
+    (and the interaction-logging/cache-write paths it calls into) use
+    db.session and current_app, which raise "working outside of application
+    context" without one — previously this ran bare, so a call that completed
+    after its request had already timed out raised inside the thread pool
+    with nothing ever observing it (see _log_orphaned_future_exception).
+    """
+    from app.services.llm_service import LLMService  # lazy import to avoid circular
+
+    with app.app_context():
+        return LLMService.generate_from_prompt(
+            prompt, use_cache=True, timeout=LLM_CLASSIFY_TIMEOUT_SECONDS
+        )
+
 
 VALID_PATTERNS = frozenset(
     {"monolith", "modular_monolith", "microservice", "saas", "legacy", "api_gateway", "unknown"}
@@ -156,8 +200,6 @@ def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
     Returns a list of dicts with keys: id, arch_pattern, confidence, source='llm'.
     Falls back to rule-based on any LLM failure.
     """
-    from app.services.llm_service import LLMService  # lazy import to avoid circular
-
     app_summaries = []
     for app in apps:
         tech_preview = ""
@@ -198,9 +240,11 @@ def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
     )
 
     try:
+        app = current_app._get_current_object()
         future = _llm_classify_executor.submit(
-            LLMService.generate_from_prompt, prompt, use_cache=True
+            _call_generate_from_prompt_in_app_context, app, prompt
         )
+        future.add_done_callback(_log_orphaned_future_exception)
         try:
             raw = future.result(timeout=LLM_CLASSIFY_TIMEOUT_SECONDS)
         except concurrent.futures.TimeoutError as exc:

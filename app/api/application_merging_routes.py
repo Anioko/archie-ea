@@ -52,11 +52,18 @@ def get_merge_candidates():
     Query Parameters:
     - threshold: Similarity threshold (default: 0.7)
     - limit: Maximum number of candidates to return (default: 50)
+    - offset: Position (by id order) to start the compared window at (default: 0).
+      Comparisons only happen *within* a window — an app in one window is never
+      compared against an app in another — so covering the whole portfolio means
+      repeating the call with successive offsets (see "next_offset" in the
+      response). This does not find duplicate pairs that straddle two windows;
+      see the truncation_note for that caveat when it applies.
     """
     try:
         threshold = float(request.args.get("threshold", 0.7))
         limit = int(request.args.get("limit", 50))
         mode = request.args.get("mode", "balanced")
+        offset = max(0, int(request.args.get("offset", 0)))
 
         # Adjust threshold based on merge mode
         mode_multipliers = {
@@ -75,13 +82,26 @@ def get_merge_candidates():
         )
         total_active_applications = active_applications_query.count()
 
-        # Bound the O(n^2) comparison set — see MAX_MERGE_CANDIDATE_APPLICATIONS above.
+        # Bound the O(n^2) comparison set — see MAX_MERGE_CANDIDATE_APPLICATIONS
+        # above — with an offset so successive calls can walk the whole
+        # portfolio instead of always re-scanning the same lowest-id window
+        # (that was the bug: offset-less limit() made every app past the cap
+        # permanently invisible to merge detection, however many times this
+        # was re-run).
         applications = (
             active_applications_query.order_by(ApplicationComponent.id)
+            .offset(offset)
             .limit(MAX_MERGE_CANDIDATE_APPLICATIONS)
             .all()
         )
-        truncated = total_active_applications > len(applications)
+        window_end = offset + len(applications)
+        has_more = window_end < total_active_applications
+        next_offset = window_end if has_more else None
+        # "Truncated" whenever the portfolio doesn't fit in one window — even on
+        # the last window, cross-window pairs (e.g. app #5 vs app #250) were
+        # never compared, so the result set is never a complete duplicate scan
+        # of a portfolio bigger than the cap.
+        truncated = total_active_applications > MAX_MERGE_CANDIDATE_APPLICATIONS
 
         # Configure matching service
         config = MergeConfig(similarity_threshold=threshold)
@@ -117,12 +137,27 @@ def get_merge_candidates():
             "threshold_used": threshold,
             "total_candidates": len(candidates),
             "truncated": truncated,
+            "offset": offset,
+            "next_offset": next_offset,
         }
         if truncated:
+            if has_more:
+                coverage_hint = (
+                    f"Pass offset={next_offset} to scan the next "
+                    f"{min(MAX_MERGE_CANDIDATE_APPLICATIONS, total_active_applications - next_offset)} "
+                    f"applications; repeat until next_offset is null to reach all "
+                    f"{total_active_applications}."
+                )
+            else:
+                coverage_hint = (
+                    "This was the last window (offset resets to 0 to scan again)."
+                )
             response_data["truncation_note"] = (
-                f"Portfolio has {total_active_applications} active applications; "
-                f"only the first {len(applications)} (by id) were compared for merge "
-                f"candidates. Narrow the portfolio or re-run to cover the rest."
+                f"Portfolio has {total_active_applications} active applications; this "
+                f"response compared only the {len(applications)} at offset {offset} "
+                f"(ordered by id) against each other — apps in a different window are "
+                f"NOT compared against apps in this one, so a duplicate pair split "
+                f"across two windows will not be found. {coverage_hint}"
             )
 
         for candidate in candidates:

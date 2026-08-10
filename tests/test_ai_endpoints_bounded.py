@@ -28,6 +28,38 @@ Follows the pattern in tests/test_adm_phase_viewpoints.py: shared fixtures from
 tests/conftest.py, and the ``_login`` helper from
 tests/test_ba_tenant_and_authz.py::_login (pytest-flask reuses one request
 context across client calls, so Flask-Login's g-cache must be cleared).
+
+FIX-REPORT ADDENDUM (post-review)
+----------------------------------
+A review of the first pass found a spec gap and two Important defects, all
+fixed here and covered by the tests added at the bottom of this file:
+
+1. SPEC GAP — only DeepSeek got a client-level timeout; OpenAI (90s),
+   Anthropic (85s), OpenRouter (10s/80s) stayed above the brief's ``<=60s``
+   ceiling on this path. Fixed by threading an optional ``timeout`` override
+   through ``generate_from_prompt`` -> ``_call_llm`` ->
+   ``_call_llm_with_failover`` -> every per-provider ``_call_*`` function in
+   llm_service_impl.py, defaulting to each provider's previous value when
+   unset (so every OTHER caller is unaffected), and having the classifier
+   pass ``timeout=LLM_CLASSIFY_TIMEOUT_SECONDS`` (60s) explicitly.
+2. IMPORTANT — the background ``ThreadPoolExecutor`` call ran with no Flask
+   app context, so a call that completed *after* its request had already
+   timed out (504 returned) would raise inside ``_call_llm``'s db.session
+   writes (interaction logging / cache write) with nothing ever observing
+   it. Fixed by wrapping the submitted callable in
+   ``app.app_context()`` (app captured via
+   ``current_app._get_current_object()`` at submit time) and attaching
+   ``future.add_done_callback(_log_orphaned_future_exception)`` so any
+   exception from the orphaned call is logged instead of silently dropped.
+3. IMPORTANT — the merge-candidates truncation note said "re-run to cover
+   the rest", but the cap was ``order_by(id).limit(200)`` with no offset:
+   re-running returned the identical lowest-id window forever, and any app
+   past the 200th-lowest id was permanently invisible to merge detection.
+   Fixed by adding an ``offset`` query parameter (``order_by(id).offset(...)
+   .limit(...)``) plus ``next_offset``/``offset`` in the response, and
+   rewriting the note to say plainly that windows don't cross-compare
+   (a duplicate pair split across two windows still won't be found) and how
+   to page through with ``offset`` to reach every application.
 """
 
 from __future__ import annotations
@@ -223,6 +255,154 @@ def test_merge_candidates_bounds_comparison_set_and_flags_truncation(
     assert body["total_analyzed"] == 2
     assert "truncation_note" in body
     assert body["truncation_note"]
+    # The note must not claim a plain re-run covers more ground than a
+    # deterministic order_by(id).limit(cap) can (Important 2) — it must
+    # instead point at the actual mechanism (offset) that does.
+    assert "offset" in body["truncation_note"]
+    assert body["offset"] == 0
+    assert body["next_offset"] == 2
+
+
+def test_merge_candidates_offset_pages_through_the_portfolio(
+    app, db_session, make_org, monkeypatch
+):
+    """Important 2 regression: re-running with the reported next_offset must
+    reach applications past the first window — the old deterministic
+    order_by(id).limit(cap) with no offset made anything past the cap
+    permanently invisible no matter how many times the endpoint was called."""
+    import app.api.application_merging_routes as merging_mod
+
+    client, org, apps = _make_logged_in_client(
+        app, db_session, make_org, "merging-paged", app_count=5
+    )
+    monkeypatch.setattr(merging_mod, "MAX_MERGE_CANDIDATE_APPLICATIONS", 2)
+
+    first = client.get("/dashboard/api/applications/merging/candidates").get_json()
+    assert first["offset"] == 0
+    assert first["next_offset"] == 2
+
+    second = client.get(
+        f"/dashboard/api/applications/merging/candidates?offset={first['next_offset']}"
+    ).get_json()
+    assert second["offset"] == 2
+    assert second["total_analyzed"] == 2
+    assert second["next_offset"] == 4
+
+    third = client.get(
+        f"/dashboard/api/applications/merging/candidates?offset={second['next_offset']}"
+    ).get_json()
+    assert third["offset"] == 4
+    assert third["total_analyzed"] == 1  # last app, window shorter than the cap
+    assert third["next_offset"] is None  # no more pages — the portfolio is covered
+
+    # Every one of the 5 seeded apps' ids appeared in exactly one window's
+    # sorted order across the three calls (offsets 0, 2, 4 covering a 5-row,
+    # cap-2 portfolio) — i.e. no app is permanently stuck outside every window.
+    total_analyzed_across_pages = (
+        first["total_analyzed"] + second["total_analyzed"] + third["total_analyzed"]
+    )
+    assert total_analyzed_across_pages == len(apps) == 5
+
+
+# --------------------------------------------------------------------------
+# Important 1: the executor thread must have a Flask app context, and an
+# exception from an orphaned (post-timeout) call must be logged, not dropped
+# --------------------------------------------------------------------------
+
+
+def test_classify_batch_runs_generate_from_prompt_inside_app_context(
+    app, db_session, make_org
+):
+    """Regression for Important 1: the background call used to run with no
+    Flask context at all. If that regresses, LLMService.generate_from_prompt
+    (or whatever it calls) touching current_app/db.session raises inside the
+    executor thread — which the mock below simulates by asserting
+    has_app_context() itself, rather than relying on an incidental db write
+    to surface the bug."""
+    from flask import has_app_context
+
+    from app.services.application_pattern_classifier_service import (
+        ApplicationPatternClassifierService,
+    )
+    from app.modules.ai_chat.services import llm_service_impl as llm_impl
+
+    client, org, apps = _make_logged_in_client(
+        app, db_session, make_org, "patterns-ctx", app_count=1
+    )
+
+    seen_has_app_context = {}
+
+    def _context_asserting_generate(prompt, *args, **kwargs):
+        seen_has_app_context["value"] = has_app_context()
+        if not has_app_context():
+            # What would actually happen without the app.app_context() wrap:
+            raise RuntimeError("Working outside of application context.")
+        return (
+            '[{"id": %d, "arch_pattern": "microservice", "confidence": 0.9, '
+            '"reasoning": "test"}]' % apps[0].id
+        )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(
+        llm_impl.LLMService, "generate_from_prompt", staticmethod(_context_asserting_generate)
+    ):
+        resp = client.get("/api/ea-workflows/sa/application-patterns")
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:500]
+    assert seen_has_app_context.get("value") is True
+    body = resp.get_json()
+    # If the executor thread had no app context, generate_from_prompt would
+    # have raised, and the (non-timeout) broad except in _llm_classify_batch
+    # would have silently substituted rule-based data — this app has no
+    # signal that would rule-classify as "microservice", so seeing that
+    # pattern here proves the LLM path actually ran, not the fallback.
+    assert body["patterns"]["by_pattern"].get("microservice") == 1
+
+
+def test_orphaned_future_exception_is_logged_not_dropped(caplog):
+    """Unit test for the done-callback itself (Important 1): an exception
+    raised by an abandoned background call must be logged — previously
+    nothing ever called .result()/.exception() on it again, so it vanished
+    silently (the "73 catch blocks that told nobody" anti-pattern)."""
+    import concurrent.futures
+    import logging
+
+    from app.services import application_pattern_classifier_service as classifier_mod
+
+    def _boom():
+        raise ValueError("orphaned call failed after its request timed out")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_boom)
+        concurrent.futures.wait([future])
+        with caplog.at_level(logging.ERROR, logger=classifier_mod.__name__):
+            classifier_mod._log_orphaned_future_exception(future)
+
+    assert any(
+        "Orphaned application-pattern LLM call failed" in record.message
+        for record in caplog.records
+    ), "expected the orphaned future's exception to be logged"
+
+
+def test_orphaned_future_callback_silent_on_success(caplog):
+    """The done-callback must not log anything for a future that completed
+    normally — it only exists to surface failures nobody else observes."""
+    import concurrent.futures
+    import logging
+
+    from app.services import application_pattern_classifier_service as classifier_mod
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(lambda: "ok")
+        concurrent.futures.wait([future])
+        with caplog.at_level(logging.ERROR, logger=classifier_mod.__name__):
+            classifier_mod._log_orphaned_future_exception(future)
+
+    assert not any(
+        "Orphaned application-pattern LLM call failed" in record.message
+        for record in caplog.records
+    )
 
 
 def test_merge_candidates_not_truncated_within_cap(app, db_session, make_org, monkeypatch):
@@ -244,3 +424,5 @@ def test_merge_candidates_not_truncated_within_cap(app, db_session, make_org, mo
     assert body["total_active_applications"] == 3
     assert body["total_analyzed"] == 3
     assert "truncation_note" not in body
+    assert body["offset"] == 0
+    assert body["next_offset"] is None
