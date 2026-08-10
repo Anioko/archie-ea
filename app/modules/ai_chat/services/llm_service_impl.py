@@ -2195,7 +2195,12 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         try:
             from openai import OpenAI
 
-            client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
+            # NOTE: the OpenAI client has no request timeout by default, which let a
+            # stalled DeepSeek connection hang a worker indefinitely (see Task 4,
+            # P0 wave). Bound it explicitly at the client level.
+            client = OpenAI(
+                api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0
+            )
 
             # Use model-specific optimal token limits
             if max_tokens is None:
@@ -2216,6 +2221,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 ],
                 temperature=0.0,
                 max_tokens=max_tokens,
+                timeout=60.0,
             )
 
             response_text = response.choices[0].message.content

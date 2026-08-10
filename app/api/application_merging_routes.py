@@ -30,6 +30,13 @@ merging_bp = Blueprint(
     "application_merging", __name__, url_prefix="/dashboard/api/applications/merging"
 )
 
+# ApplicationMatchingService.find_merge_candidates() is O(n^2) pairwise comparison
+# (SequenceMatcher-based text similarity). On a 920-app portfolio that is ~420k pairs
+# and ran 10+ minutes in-request (Task 4, P0 wave). Bound the comparison set so the
+# endpoint always responds in seconds; the response reports when it did so via
+# "truncated": true rather than silently comparing a subset.
+MAX_MERGE_CANDIDATE_APPLICATIONS = 200
+
 # Mark as guardrailed BEFORE routes are registered
 from app.core.compat import mark_blueprint_guardrailed
 
@@ -61,11 +68,20 @@ def get_merge_candidates():
         threshold = max(0.4, min(threshold, 0.99))  # Clamp to valid range
 
         # Get all active applications (exclude retired/deprecated)
-        applications = ApplicationComponent.query.filter(
+        active_applications_query = ApplicationComponent.query.filter(
             ApplicationComponent.lifecycle_status.notin_(
                 ["retired", "deprecated"]
             )
-        ).all()
+        )
+        total_active_applications = active_applications_query.count()
+
+        # Bound the O(n^2) comparison set — see MAX_MERGE_CANDIDATE_APPLICATIONS above.
+        applications = (
+            active_applications_query.order_by(ApplicationComponent.id)
+            .limit(MAX_MERGE_CANDIDATE_APPLICATIONS)
+            .all()
+        )
+        truncated = total_active_applications > len(applications)
 
         # Configure matching service
         config = MergeConfig(similarity_threshold=threshold)
@@ -97,9 +113,17 @@ def get_merge_candidates():
             "success": True,
             "candidates": [],
             "total_analyzed": len(applications),
+            "total_active_applications": total_active_applications,
             "threshold_used": threshold,
             "total_candidates": len(candidates),
+            "truncated": truncated,
         }
+        if truncated:
+            response_data["truncation_note"] = (
+                f"Portfolio has {total_active_applications} active applications; "
+                f"only the first {len(applications)} (by id) were compared for merge "
+                f"candidates. Narrow the portfolio or re-run to cover the rest."
+            )
 
         for candidate in candidates:
             candidate_data = {

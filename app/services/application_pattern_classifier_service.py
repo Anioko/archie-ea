@@ -15,6 +15,7 @@ Primary entry points:
       Classifies the full portfolio in batches; returns aggregate statistics.
 """
 
+import concurrent.futures
 import json
 import logging
 from typing import Dict, List, Optional
@@ -23,6 +24,24 @@ from app import db
 from app.models.application_portfolio import ApplicationComponent
 
 logger = logging.getLogger(__name__)
+
+# Hard ceiling on how long the LLM call behind classify_portfolio()/classify_applications()
+# is allowed to take, end to end (including any internal retries/cross-provider failover in
+# LLMService). Bounds the request regardless of which provider is configured or how it is
+# misbehaving — see Task 4, P0 wave: this endpoint previously hung a worker indefinitely.
+LLM_CLASSIFY_TIMEOUT_SECONDS = 60
+
+# A dedicated small pool so a stalled call leaves an orphaned thread here rather than
+# blocking (or competing for) the request-handling thread.
+_llm_classify_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="llm-classify"
+)
+
+
+class LLMClassificationTimeoutError(RuntimeError):
+    """Raised when the LLM call behind application pattern classification exceeds
+    LLM_CLASSIFY_TIMEOUT_SECONDS. Callers must surface this as an error response —
+    never silently substitute fabricated/fallback data for a timed-out call."""
 
 VALID_PATTERNS = frozenset(
     {"monolith", "modular_monolith", "microservice", "saas", "legacy", "api_gateway", "unknown"}
@@ -179,7 +198,16 @@ def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
     )
 
     try:
-        raw = LLMService.generate_from_prompt(prompt, use_cache=True)
+        future = _llm_classify_executor.submit(
+            LLMService.generate_from_prompt, prompt, use_cache=True
+        )
+        try:
+            raw = future.result(timeout=LLM_CLASSIFY_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError as exc:
+            raise LLMClassificationTimeoutError(
+                f"LLM classification call exceeded the "
+                f"{LLM_CLASSIFY_TIMEOUT_SECONDS}s timeout"
+            ) from exc
         # Extract JSON array from response (LLM may wrap in markdown fences)
         raw = raw.strip()
         if raw.startswith("```"):
@@ -217,6 +245,11 @@ def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
                 })
         return output
 
+    except LLMClassificationTimeoutError:
+        # Never silently substitute rule-based data for a call that timed out — the
+        # caller (classify_applications/classify_portfolio) must let this propagate so
+        # the route can return an explicit 5xx instead of a fabricated 200.
+        raise
     except Exception as exc:  # noqa: BLE001
         logger.warning("LLM batch classification failed (%s); falling back to rules", exc)
         return [

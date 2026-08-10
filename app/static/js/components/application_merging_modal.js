@@ -231,7 +231,14 @@ function displayMergeResults(data) {
 }
 
 function displayMergeSummary(data) {
-  let summaryHtml =
+  let summaryHtml = '';
+  if (data.truncated) {
+    summaryHtml +=
+      '<div class="col-span-full p-3 rounded bg-amber-50 border border-amber-200 text-amber-800 text-sm">' +
+      (data.truncation_note || 'Results are truncated — not every active application was compared.') +
+      '</div>';
+  }
+  summaryHtml +=
     '<div class="p-4 rounded bg-card border border-border">' +
       '<div class="text-2xl font-semibold text-primary">' + data.total_candidates + '</div>' +
       '<div class="text-muted-foreground text-sm">Merge Candidates</div>' +
