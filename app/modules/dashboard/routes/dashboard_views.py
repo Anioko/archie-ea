@@ -26,7 +26,16 @@ Endpoints (17 routes — url_prefix="/dashboard" applied by __init__.py):
 - /api/table/<table_name>    -> api_table_get
 """
 
-from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from app import db
@@ -204,9 +213,14 @@ def api_coverage_debug():
             FROM application_components
         """)).fetchone()
         return jsonify({"ok": True, "owner": row[0], "vendor": row[1], "cost": row[2], "crit": row[3], "total": row[4]})
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(e)})
+        # 500, not 200. The body already said ok:false, but the STATUS said
+        # fine, so the client's !response.ok never fired and the counts stayed
+        # at whatever they were. str(e) is dropped with it: a raw exception
+        # message can carry SQL and column names to the browser.
+        current_app.logger.exception("dashboard coverage counts query failed")
+        return jsonify({"ok": False, "error": "Could not load coverage counts"}), 500
 
 
 @dashboard_bp.route("/api/overview/table")

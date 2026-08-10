@@ -115,7 +115,10 @@ def get_roadmap():
         return jsonify({"tasks": result, "total": len(result)}), 200
     except Exception as exc:
         logger.error("phase-f/roadmap error: %s", exc, exc_info=True)
-        return jsonify({"tasks": [], "total": 0}), 200
+        # 500, not 200. "tasks: [], total: 0" at 200 reads as an empty
+        # migration roadmap - the answer to "what work is planned?" - when
+        # the truth is that we could not read it.
+        return jsonify({"error": "Could not load the roadmap"}), 500
 
 
 # ---------------------------------------------------------------------------

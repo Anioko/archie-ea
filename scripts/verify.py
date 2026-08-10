@@ -254,6 +254,44 @@ def gate_template_syntax() -> Result:
     return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_error_signalling() -> Result:
+    """API error paths that answer a failure with HTTP 200. MUST BE ZERO.
+
+    This is the defect that quietly undoes the rest of the audit. Client code
+    now correctly does `if (!response.ok) throw`, and that check is worth
+    nothing when the server catches the exception and returns 200 - which Flask
+    does by default for any bare `jsonify(...)`. The front end cannot detect it,
+    however carefully it is written, which is what earns this its own gate.
+
+    64 were found on the first run. The AI usage-analytics endpoint returned
+    `{"success": true, "analytics": {…all zeros…}}` at 200, rendering a
+    confident analytics panel indistinguishable from an organisation that had
+    never used the assistant. A system-settings endpoint answered
+    `{"settings": {}, "status": "ok"}`, and its caller merged that into a
+    24-key defaults object - presenting hard-coded defaults as the admin's saved
+    configuration. `/rationalization/api/executive-summary` returned zeroed
+    score buckets and zeroed projected savings at an explicitly written 200.
+
+    Proof that the layers are not redundant: a front-end fix from earlier in the
+    same audit had added the message "Import history could not be loaded. This
+    is not an empty history." It was unreachable until the matching endpoint
+    stopped returning 200.
+
+    Escape hatch: `error-signalling-ok: <reason>` on the return or the line
+    above. The legitimate case is a fail-closed gate - a policy check that
+    denies on error is answering honestly - or a fallback that did real work and
+    discloses what it could not do.
+    """
+    proc = _run([sys.executable, "scripts/check_error_signalling.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("error-signalling", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_error_signalling.py to list them"
+    return Result("error-signalling", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_silent_data() -> Result:
     """A server-side failure returned to the caller as data. MUST BE ZERO.
 
@@ -829,6 +867,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="run scripts/check_broken_surfaces.py; repoint the URL, "
                          "remove the dead control, or report the failure to the user",
              tags=["static", "ui"]),
+        Gate("error-signalling", "no API error path that answers 200", "zero",
+             gate_error_signalling,
+             remediation="run scripts/check_error_signalling.py; return an explicit "
+                         "4xx/5xx so the client's !response.ok can see the failure",
+             tags=["static", "correctness"]),
         Gate("silent-data", "no server failure returned to the caller as data", "zero",
              gate_silent_data,
              remediation="run scripts/check_silent_data.py; let it propagate, or log "
