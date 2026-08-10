@@ -180,3 +180,209 @@ def test_custom_field_edit_does_not_render_a_wtforms_template_without_a_form():
         "first, or keep redirecting as custom_field_create does"
     )
 
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Error-path contract: a view whose query failed passes None for every
+# figure (CLAUDE.md "never invent data"), so the template must render an
+# em dash rather than crash. `none >= 80` and `"%.1f"|format(none)` are
+# TypeErrors in Jinja exactly as in Python, and a page that 500s on None
+# is worse than one showing a fabricated 0 - so TypeError is a failure
+# here, not the "out of scope" catch-all that _render tolerates.
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _render_none_safe(app, template, **kwargs):
+    """Render *template* with a view's error-path kwargs.
+
+    Fails on UndefinedError (a name the view forgot) and on TypeError /
+    ValueError (arithmetic, formatting or a comparison against None).
+    Everything else - a macro wanting a database row, an unresolvable
+    url_for for a blueprint that is not registered in this config - is
+    out of scope, as in _render above.
+    """
+    from flask import render_template
+
+    with app.test_request_context("/"):
+        try:
+            return render_template(template, **kwargs)
+        except UndefinedError as exc:
+            pytest.fail("%s: UndefinedError on the error path: %s" % (template, exc))
+        except (TypeError, ValueError) as exc:
+            pytest.fail(
+                "%s: %s on the error path - a figure is None and the template "
+                "compares, formats or does arithmetic on it: %s"
+                % (template, type(exc).__name__, exc)
+            )
+        except Exception:
+            return None
+
+
+# Exactly the keywords each error handler now passes. Keep these in step
+# with the handlers; that is the point of the test.
+_ERROR_PATH_CONTEXTS = [
+    (
+        "capability_analysis/unmapped_capabilities.html",
+        dict(
+            unmapped_capabilities=[],
+            total_capabilities=None,
+            mapped_capabilities=None,
+            unmapped_count=None,
+            mapping_coverage=None,
+            domain_stats=[],
+            priority_breakdown=[],
+            load_error="x",
+        ),
+    ),
+    (
+        "hybrid_mapping/dashboard.html",
+        dict(
+            stats=None,
+            app_mappings=[],
+            product_mappings=[],
+            archimate_mappings=[],
+            unmapped_caps=[],
+            unmapped_products=[],
+            unmapped_archimate=[],
+            load_error="x",
+        ),
+    ),
+    (
+        "vendor_analysis/archimate_mapping.html",
+        dict(
+            vendor_orgs=None,
+            vendor_products=None,
+            archimate_elements=None,
+            with_archimate=None,
+            without_archimate=None,
+            vendor_coverage=None,
+            with_source_product=None,
+            without_source_product=None,
+            archimate_coverage=None,
+            orphaned_elements=None,
+            orphaned_details=[],
+            app_vendor_products=None,
+            product_types=[],
+            element_types=[],
+            unmapped_products=[],
+            load_error="x",
+        ),
+    ),
+    (
+        "business_capability/overview.html",
+        dict(
+            classified_capabilities=None,
+            total_capabilities=None,
+            classified_count=None,
+            load_error="x",
+        ),
+    ),
+    (
+        "ea_workflows/phase_viewpoint.html",
+        dict(
+            phase_code="phase_a",
+            phase_name="Phase A",
+            viewpoint_name="",
+            primary_layer="",
+            archimate_concern="",
+            input_types=[],
+            derived_types=[],
+            elements=[],
+            element_count=None,
+            relationship_count=None,
+            load_error="x",
+        ),
+    ),
+    (
+        "enterprise/enterprise_dashboard.html",
+        dict(
+            data_models_count=None,
+            solutions_count=None,
+            software_modules_count=None,
+            gaps_count=None,
+            load_error="x",
+        ),
+    ),
+    (
+        "enterprise/software_architecture_dashboard.html",
+        dict(
+            component_count=None,
+            service_count=None,
+            interface_count=None,
+            dependency_count=None,
+            components=[],
+            load_error="x",
+        ),
+    ),
+    (
+        "enterprise/data_architecture_dashboard.html",
+        dict(
+            data_stack=[],
+            data_cap_count=None,
+            conceptual_count=None,
+            logical_count=None,
+            physical_count=None,
+            data_lineage_count=None,
+            archimate_data_count=None,
+            archimate_rel_count=None,
+            load_error="x",
+        ),
+    ),
+    (
+        "capability_maturity/search.html",
+        dict(capabilities=[], domains=[], total_count=None, load_error="x"),
+    ),
+    (
+        "integration/dashboard.html",
+        dict(definitions=[], active_instances=[], stats=None, load_error="x"),
+    ),
+    (
+        "industry_apqc/dashboard.html",
+        dict(frameworks=None, framework_stats=None, error="boom", load_error="x"),
+    ),
+    (
+        "vendors/list.html",
+        dict(
+            vendors=[],
+            stats=None,
+            vendor_type_filter=None,
+            domain_filter=None,
+            contract_status_filter=None,
+            search_query="",
+            pagination=None,
+            per_page=25,
+            domain_choices=[],
+            get_domain_label=lambda *a, **k: "",
+            get_domain_color_classes=lambda *a, **k: "",
+            VENDOR_DOMAINS=[],
+            load_error="x",
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "template,context",
+    _ERROR_PATH_CONTEXTS,
+    ids=[t for t, _ in _ERROR_PATH_CONTEXTS],
+)
+def test_error_path_renders_with_none_figures(app, template, context):
+    """Every figure None must render, and must not print the word None."""
+    html = _render_none_safe(app, template, **context)
+    if html is not None:
+        assert ">None<" not in html, (
+            "%s printed the literal 'None' - use |dash so a missing figure "
+            "reads as an em dash" % template
+        )
+
+
+def test_dash_filter_distinguishes_missing_from_zero(app):
+    """0 and None must not look alike: that is the whole rule."""
+    env = app.jinja_env
+    assert env.filters["dash"](None) == "\u2014"
+    assert env.filters["dash"](0) == "0"
+    assert env.filters["dash"](None, "%") == "\u2014"
+    assert env.filters["dash"](42, "%") == "42%"
+    from jinja2 import Undefined
+
+    assert env.filters["dash"](Undefined(name="missing")) == "\u2014"

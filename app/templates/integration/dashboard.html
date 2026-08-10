@@ -16,10 +16,10 @@
 
     <!-- Stats Cards -->
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {{ metrics_card(title='Active Instances', value=stats.active, description='Currently running workflows', icon='activity') }}
-        {{ metrics_card(title='Total Definitions', value=stats.total_definitions, description='Available workflow types', icon='file-text') }}
-        {{ metrics_card(title='Completed', value=stats.completed, description='Successfully finished', icon='check') }}
-        {{ metrics_card(title='Failed', value=stats.failed, description='Failed executions', icon='alert-circle') }}
+        {{ metrics_card(title='Active Instances', value=stats.active|dash, description='Currently running workflows', icon='activity') }}
+        {{ metrics_card(title='Total Definitions', value=stats.total_definitions|dash, description='Available workflow types', icon='file-text') }}
+        {{ metrics_card(title='Completed', value=stats.completed|dash, description='Successfully finished', icon='check') }}
+        {{ metrics_card(title='Failed', value=stats.failed|dash, description='Failed executions', icon='alert-circle') }}
     </div>
 
     <!-- Active Instances -->

@@ -8,7 +8,7 @@ Provides routes for managing business capability lists, taxonomy,
 and organization separate from maturity management.
 """
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -88,12 +88,15 @@ def capabilities_overview():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading capabilities overview")
         flash("Error loading capabilities overview. Please try again.", "error")
         return render_template(
             "business_capability/overview.html",
-            classified_capabilities={},
-            total_capabilities=0,
-            classified_count=0,
+            classified_capabilities=None,
+            total_capabilities=None,
+            classified_count=None,
+            load_error="The capability overview could not be read.",
         )
 
 
@@ -362,13 +365,18 @@ def search_capabilities():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error searching capabilities")
         flash("Error searching capabilities. Please try again.", "error")
         return render_template(
             "business_capability/overview.html",
-            classified_capabilities=[],
+            classified_capabilities=None,
             groupings={},
             capability_types={},
-            total_count=0,
+            total_count=None,
+            total_capabilities=None,
+            classified_count=None,
+            load_error="The capability search could not be run.",
         )
 
 

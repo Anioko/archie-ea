@@ -41,11 +41,18 @@ def industry_apqc_dashboard():
             framework_stats=framework_stats,
         )
     except Exception as e:
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception("Error loading industry APQC dashboard: %s", e)
+        # frameworks=None, not []: the "0 frameworks / seed some" empty state is
+        # a statement about the tenant's data, not about a failed query.
         return render_template(
             "industry_apqc/dashboard.html",
-            frameworks=[],
-            framework_stats=[],
+            frameworks=None,
+            framework_stats=None,
             error=str(e),
+            load_error="Industry APQC frameworks could not be read.",
         )
 
 

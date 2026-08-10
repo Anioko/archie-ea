@@ -108,7 +108,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm font-medium text-muted-foreground">Total Capabilities</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ total_capabilities or 0 }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ total_capabilities|dash }}</p>
                 </div>
             </div>
         </div>
@@ -120,7 +120,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm font-medium text-muted-foreground">Business Groupings</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ classified_capabilities|length }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{% if classified_capabilities is not none %}{{ classified_capabilities|length }}{% else %}&mdash;{% endif %}</p>
                 </div>
             </div>
         </div>
@@ -132,7 +132,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm font-medium text-muted-foreground">Classified</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ classified_count or 0 }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ classified_count|dash }}</p>
                 </div>
             </div>
         </div>
@@ -144,7 +144,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm font-medium text-muted-foreground">Coverage</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ "%.1f"|format((classified_count or 0) / (total_capabilities or 1) * 100) }}%</p>
+                    <p class="text-2xl font-semibold text-foreground">{% if classified_count is not none and total_capabilities %}{{ "%.1f"|format(classified_count / total_capabilities * 100) }}%{% else %}&mdash;{% endif %}</p>
                 </div>
             </div>
         </div>
@@ -230,7 +230,9 @@
                     </tr>
                 </thead>
                 <tbody class="bg-card divide-y divide-border">
-                    {% for grouping_key, grouping_data in classified_capabilities.items() %}
+                    {# classified_capabilities is None when the view's query failed;
+                       .items() on that is a hard 500. #}
+                    {% for grouping_key, grouping_data in (classified_capabilities or {}).items() %}
                         {% set gc = color_map.get(grouping_data.info.color, color_map['blue']) %}
                         {% for cap_data in grouping_data.capabilities[:5] %}
                         <tr class="hover:bg-accent/50">

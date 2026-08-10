@@ -13,7 +13,7 @@ Provides REST API endpoints for the new architecture models:
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, flash, jsonify, render_template, request
 from werkzeug.exceptions import HTTPException
 from flask_login import login_required
 
@@ -455,15 +455,23 @@ def solutions_architecture_dashboard():
             relationship_count=relationship_count,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading solutions architecture dashboard: {e}")
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception(
+            "Error loading solutions architecture dashboard: %s", e
+        )
+        flash("Error loading solutions architecture dashboard.", "error")
+        # None, not 0 - nothing was counted, so nothing may be reported.
         return render_template(
             "enterprise/solutions_architecture_dashboard.html",
             solutions=[],
-            solution_count=0,
-            pattern_count=0,
-            contract_count=0,
-            archimate_app_count=0,
-            relationship_count=0,
+            solution_count=None,
+            pattern_count=None,
+            contract_count=None,
+            archimate_app_count=None,
+            relationship_count=None,
+            load_error="The solutions architecture inventory could not be read.",
         )
 
 
@@ -623,14 +631,19 @@ def software_architecture_dashboard():
             components=components,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading application architecture dashboard: {e}")
+        db.session.rollback()
+        current_app.logger.exception(
+            "Error loading application architecture dashboard: %s", e
+        )
+        flash("Error loading application architecture dashboard.", "error")
         return render_template(
             "enterprise/software_architecture_dashboard.html",
-            component_count=0,
-            service_count=0,
-            interface_count=0,
-            dependency_count=0,
+            component_count=None,
+            service_count=None,
+            interface_count=None,
+            dependency_count=None,
             components=[],
+            load_error="The application architecture inventory could not be read.",
         )
 
 
@@ -709,8 +722,16 @@ def vendor_templates():
             "architecture/vendor_templates.html", templates=templates
         )
     except Exception:
-        # Return empty list on error
-        return render_template("architecture/vendor_templates.html", templates=[])
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception("Error loading vendor templates")
+        flash("Error loading vendor templates.", "error")
+        return render_template(
+            "architecture/vendor_templates.html",
+            templates=[],
+            load_error="Vendor templates could not be read.",
+        )
 
 
 @architecture_bp.route("/archimate-vendor-templates")

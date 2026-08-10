@@ -136,17 +136,22 @@ def data_architecture_dashboard():
             archimate_rel_count=archimate_rel_count,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading data architecture dashboard: {e}")
+        from flask import flash
+
+        db.session.rollback()
+        current_app.logger.exception("Error loading data architecture dashboard: %s", e)
+        flash("Error loading data architecture dashboard.", "error")
         return render_template(
             "enterprise/data_architecture_dashboard.html",
             data_stack=[],
-            data_cap_count=0,
-            conceptual_count=0,
-            logical_count=0,
-            physical_count=0,
-            data_lineage_count=0,
-            archimate_data_count=0,
-            archimate_rel_count=0,
+            data_cap_count=None,
+            conceptual_count=None,
+            logical_count=None,
+            physical_count=None,
+            data_lineage_count=None,
+            archimate_data_count=None,
+            archimate_rel_count=None,
+            load_error="The data architecture inventory could not be read.",
         )
 
 

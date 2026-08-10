@@ -135,12 +135,17 @@ def implementation_dashboard():
         )
 
     except Exception:
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception("Error loading implementation planning dashboard")
         flash("Error loading dashboard. Please try again.", "error")
         return render_template(
             "implementation_planning/dashboard.html",
-            stats={},
+            stats=None,
             recent_work_packages=[],
             critical_gaps=[],
+            load_error="Implementation planning data could not be read.",
         )
 
 

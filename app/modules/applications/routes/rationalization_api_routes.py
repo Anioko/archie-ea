@@ -201,25 +201,18 @@ def rationalization_dashboard():
             insufficient_count=insufficient_count,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading rationalization dashboard: {e}")
+        current_app.logger.exception("Error loading rationalization dashboard: %s", e)
         try:
             db.session.rollback()
         except Exception as exc:
             logger.debug("suppressed error in rationalization_dashboard (app/modules/applications/routes/rationalization_api_routes.py): %s", exc)
         try:
+            # stats=None, insufficient_count=None: the zeroed dict this used to
+            # pass rendered a complete, plausible pipeline - "0 duplicate
+            # groups, 0 estimated savings" - built entirely from a failed query.
             return render_template(
                 "applications/rationalization/dashboard.html",
-                stats={
-                    "total_applications": 0,
-                    "duplicate_groups": 0,
-                    "total_groups": 0,
-                    "pending_groups": 0,
-                    "resolved_groups": 0,
-                    "estimated_savings": 0,
-                    "consolidation_count": 0,
-                    "time_scored_count": 0,
-                    "roadmap_count": 0,
-                },
+                stats=None,
                 groups=[],
                 runs=[],
                 latest_run=None,
@@ -227,7 +220,8 @@ def rationalization_dashboard():
                 currency_symbol=currency_symbol,
                 active_tab="dashboard",
                 data_quality={},
-                insufficient_count=0,
+                insufficient_count=None,
+                load_error="Rationalization statistics could not be read.",
             )
         except Exception as inner_err:
             current_app.logger.error(f"Dashboard error handler also failed: {inner_err}")

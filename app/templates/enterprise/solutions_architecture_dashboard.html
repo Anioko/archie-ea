@@ -300,7 +300,7 @@
                 <h2 class="text-lg font-semibold">Saved Solutions</h2>
                 <p class="text-sm text-muted-foreground">Solutions created from analysis recommendations</p>
             </div>
-            <span class="inline-flex items-center justify-center h-6 min-w-6 px-2 rounded-full bg-muted text-muted-foreground text-xs font-medium">{{ solution_count or 0 }}</span>
+            <span class="inline-flex items-center justify-center h-6 min-w-6 px-2 rounded-full bg-muted text-muted-foreground text-xs font-medium">{{ solution_count|dash }}</span>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">

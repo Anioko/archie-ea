@@ -11,7 +11,7 @@ without requiring admin privileges.
 
 from datetime import datetime
 
-from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from app.decorators import audit_log
@@ -108,9 +108,15 @@ def search_capabilities():
         )
 
     except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error searching capabilities")
         flash("Error searching capabilities. Please try again.", "error")
         return render_template(
-            "capability_maturity/search.html", capabilities=[], domains=[], total_count=0
+            "capability_maturity/search.html",
+            capabilities=[],
+            domains=[],
+            total_count=None,
+            load_error="The capability search could not be run.",
         )
 
 

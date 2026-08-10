@@ -17,7 +17,7 @@ All 40 routes preserved exactly from v1 dashboard_pages_routes.py.
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from app.core.compat import mark_blueprint_guardrailed
@@ -251,23 +251,20 @@ def rationalization_dashboard():
             currency_symbol=currency_symbol,
         )
     except Exception as e:
-        logger.warning(f"Could not load rationalization stats: {e}")
+        from app import db
+
+        db.session.rollback()
+        logger.exception("Could not load rationalization stats: %s", e)
+        flash("Error loading rationalization data. Please try again.", "error")
+        # stats=None rather than a zeroed dict. "0 duplicate groups, 0 estimated
+        # savings" is a conclusion about the portfolio; nothing was counted here.
         return render_template(
             "applications/rationalization.html",
-            stats={
-                "total_applications": 0,
-                "duplicate_groups": 0,
-                "total_groups": 0,
-                "pending_groups": 0,
-                "resolved_groups": 0,
-                "estimated_savings": 0,
-                "time_scored_count": 0,
-                "consolidation_count": 0,
-                "roadmap_count": 0,
-            },
+            stats=None,
             groups=[],
             runs=[],
             currency_symbol=currency_symbol,
+            load_error="Rationalization statistics could not be read.",
         )
 
 

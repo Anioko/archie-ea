@@ -1218,8 +1218,13 @@ def list_solutions():
         }
         current_app.logger.error(f"Error loading solutions: {json.dumps(error_details, indent=2)}")
         flash(f"Error loading solutions: {str(e)}. The error has been logged. Please contact support if this persists.", "error")
-        return render_template("solutions/list.html", solutions=[], pagination=None, total_count=0, stats={}, 
-                             statuses=[], domains=[], solution_types=[], workspace_summaries={}, workspace_stats={})
+        # total_count=None so the header reads an em dash rather than "0
+        # solutions", which the user would take as a fact about their estate.
+        return render_template("solutions/list.html", solutions=[], pagination=None,
+                             total_count=None, stats=None,
+                             statuses=[], domains=[], solution_types=[],
+                             workspace_summaries={}, workspace_stats=None,
+                             load_error="The solution list could not be read.")
 
 
 # =============================================================================

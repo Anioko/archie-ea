@@ -691,7 +691,10 @@ def duplicate_dashboard():
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"status": "error", "message": "An internal error occurred"}), 500
         else:
-            return render_template("duplicate_detection/dashboard.html")
+            return render_template(
+                "duplicate_detection/dashboard.html",
+                load_error="Duplicate detection results could not be read.",
+            )
 
 
 # === INTELLIGENCE API ENDPOINTS ===

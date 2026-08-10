@@ -1068,7 +1068,10 @@ def duplicate_dashboard():
                 {"status": "error", "message": "An internal error occurred"}
             ), 500
         else:
-            return render_template("duplicate_detection/dashboard.html")
+            return render_template(
+                "duplicate_detection/dashboard.html",
+                load_error="Duplicate detection results could not be read.",
+            )
 
 
 # === AI DETECTION ROUTES (from ai_dedupe_routes.py) ===
@@ -1116,15 +1119,20 @@ def ai_dashboard():
         raise
     except Exception as e:
         current_app.logger.error(f"Error loading AI dashboard: {e}")
+        # No zeroed ai_stats: "0 detections, 0s average processing time" is a
+        # measurement, and this path measured nothing.
         return render_template(
             "dedupe/ai_insights.html",
-            ai_stats={"detections_count": 0, "average_processing_time": 0},
+            ai_stats=None,
+            ai_insights=[],
+            run=None,
             recent_runs=[],
-            global_stats={},
+            global_stats=None,
             ai_strategies=["ai_enhanced", "semantic_only", "business_aware"],
-            performance_metrics={},
+            performance_metrics=None,
             ai_unavailable=True,
             error="An error occurred loading the AI dashboard.",
+            load_error="AI deduplication insights could not be read.",
         )
 
 
