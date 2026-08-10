@@ -159,7 +159,17 @@
                             </td>
                         </tr>
                     </template>
-                    <template x-if="!loading && filtered.length === 0">
+                    <template x-if="!loading && loadError">
+                        <tr>
+                            <td colspan="6" class="px-4 py-12 text-center text-destructive">
+                                <i data-lucide="alert-triangle" class="h-10 w-10 mx-auto mb-3" aria-hidden="true"></i>
+                                <p x-text="loadError"></p>
+                                <p class="mt-1 text-muted-foreground">The backlog could not be read — this is not an empty backlog.</p>
+                                <button type="button" class="mt-3 text-primary underline" @click="load()">Retry</button>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="!loading && !loadError && filtered.length === 0">
                         <tr>
                             <td colspan="6" class="px-4 py-12 text-center text-muted-foreground">
                                 <i data-lucide="inbox" class="h-10 w-10 mx-auto mb-3 opacity-40" aria-hidden="true"></i>
@@ -664,7 +674,8 @@
                                     <label class="block text-xs font-medium mb-1" :for="'req-archimate-req-' + activeReq.id">ArchiMate Requirement <span class="text-muted-foreground font-normal">(formal requirement element)</span></label>
                                     <div class="relative">
                                         <input type="text" :id="'req-archimate-req-' + activeReq.id" x-model="archiReqSearch" @input.debounce.300ms="searchArchiReqs()" @focus="archiReqDropdownOpen = true" :placeholder="activeReq.archimate_requirement_name || 'Search ArchiMate requirements…'" class="w-full flex h-8 rounded-md border border-input bg-background px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Search ArchiMate requirements">
-                                        <div x-show="archiReqDropdownOpen && archiReqResults.length > 0" x-cloak class="absolute z-50 w-full mt-1 max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md" @click.outside="archiReqDropdownOpen = false">
+                                        <div x-show="archiReqDropdownOpen && archiReqError" x-cloak class="absolute z-50 w-full mt-1 rounded-md border bg-popover shadow-md px-3 py-1.5 text-xs text-destructive" x-text="archiReqError" @click.outside="archiReqDropdownOpen = false"></div>
+                                        <div x-show="archiReqDropdownOpen && !archiReqError && archiReqResults.length > 0" x-cloak class="absolute z-50 w-full mt-1 max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md" @click.outside="archiReqDropdownOpen = false">
                                             <template x-for="elem in archiReqResults" :key="elem.id">
                                                 <button type="button" class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors" @click="activeReq.archimate_requirement_id = elem.id; activeReq.archimate_requirement_name = elem.title; archiReqSearch = elem.title; archiReqDropdownOpen = false" x-text="elem.title"></button>
                                             </template>
@@ -949,6 +960,8 @@ function requirementsBacklog() {
         filters: { search: '', status: '', moscow: '', capability_id: '' },
         activeReq: null,
         loading: true,
+        loadError: null,
+        archiReqError: null,
         saving: false,
         acGenerating: false,
         jiraPushing: false,
@@ -987,23 +1000,30 @@ function requirementsBacklog() {
             this.loadingPicker = true;
             try {
                 const r = await fetch('/api/enterprise/requirement-templates');
+                if (!r.ok) throw new Error('Could not load requirement templates (HTTP ' + r.status + ')');
                 const data = await r.json();
                 const templateGroups = data.templates || data.layers || {};
                 this.pickerLayers = Object.keys(templateGroups);
             } catch(e) {
-                console.error('Template load error', e);
-                Platform.toast.error('Could not load requirement templates.');
+                this.pickerLayers = [];
+                Platform.toast.error(e.message || 'Could not load requirement templates.');
             }
             this.loadingPicker = false;
         },
 
         async loadTemplatesForLayer(layer) {
             this.pickerLayer = layer;
-            const r = await fetch('/api/enterprise/requirement-templates');
-            const data = await r.json();
-            const templateGroups = data.templates || data.layers || {};
-            this.pickerTemplates = templateGroups[layer] || [];
-            this.pickerStep = 2;
+            try {
+                const r = await fetch('/api/enterprise/requirement-templates');
+                if (!r.ok) throw new Error('Could not load templates for ' + layer + ' (HTTP ' + r.status + ')');
+                const data = await r.json();
+                const templateGroups = data.templates || data.layers || {};
+                this.pickerTemplates = templateGroups[layer] || [];
+                this.pickerStep = 2;
+            } catch (e) {
+                this.pickerTemplates = [];
+                Platform.toast.error(e.message || 'Could not load templates for this layer.');
+            }
         },
 
         applyTemplate(tpl) {
@@ -1041,11 +1061,12 @@ function requirementsBacklog() {
         async loadUsers() {
             try {
                 const r = await fetch('/api/users', { credentials: 'same-origin' });
+                if (!r.ok) throw new Error('Could not load the users list (HTTP ' + r.status + ')');
                 const d = await r.json();
                 this.usersList = (d.users || []).map(u => ({ id: u.id, name: u.name }));
             } catch (e) {
-                console.warn('Users list unavailable', e);
-                Platform.toast.error('Could not load the users list; owner assignment may be unavailable.');
+                this.usersList = [];
+                Platform.toast.error((e.message || 'Could not load the users list') + '; owner assignment is unavailable.');
             }
         },
 
@@ -1060,35 +1081,50 @@ function requirementsBacklog() {
                 this.motivationData.goals = go.data || [];
                 this.motivationData.stakeholders = st.data || [];
             } catch (e) {
-                console.warn('Motivation data unavailable', e);
+                this.motivationData = { drivers: [], goals: [], stakeholders: [] };
                 Platform.toast.error('Could not load motivation data (drivers, goals, stakeholders).');
             }
         },
 
         async searchArchiReqs() {
+            this.archiReqError = null;
             if (!this.archiReqSearch || this.archiReqSearch.length < 2) { this.archiReqResults = []; return; }
             try {
                 // Canonical element search (the old /architecture/decisions/api/element-search route no longer exists)
                 const r = await fetch(`/archimate/api/elements/search?q=${encodeURIComponent(this.archiReqSearch)}&type=Requirement&limit=10`, { credentials: 'same-origin' });
+                if (!r.ok) throw new Error('Search failed (HTTP ' + r.status + ')');
                 const d = await r.json();
                 const all = Array.isArray(d) ? d : (d.elements || d.data || []);
                 this.archiReqResults = all.slice(0, 10).map(e => ({ id: e.id, title: e.name || e.title, element_type: e.element_type || e.type }));
                 this.archiReqDropdownOpen = true;
-            } catch (e) { console.warn('ArchiMate Requirement search failed', e); this.archiReqResults = []; }
+            } catch (e) {
+                // Debounced keystroke search: an inline message in the dropdown, not a toast per keypress.
+                this.archiReqResults = [];
+                this.archiReqError = e.message || 'Search failed';
+                this.archiReqDropdownOpen = true;
+            }
         },
 
         async load() {
             this.loading = true;
+            this.loadError = null;
             try {
                 const params = new URLSearchParams();
                 if (this.filters.status) params.set('status', this.filters.status);
                 if (this.filters.capability_id) params.set('capability_id', this.filters.capability_id);
                 if (this.solutionId) params.set('solution_id', this.solutionId);
                 const r = await fetch('/api/enterprise/requirements?' + params.toString(), { credentials: 'same-origin' });
+                if (!r.ok) throw new Error('Could not load requirements (HTTP ' + r.status + ')');
                 const d = await r.json();
                 this.all = d.requirements || d.data || [];
                 this.applyFilters();
                 if (this.showEpicTree) this.loadEpics();
+            } catch (e) {
+                // An empty backlog and a backlog that failed to load must not look the same.
+                this.all = [];
+                this.filtered = [];
+                this.loadError = e.message || 'Could not load requirements.';
+                Platform.toast.error(this.loadError);
             } finally {
                 this.loading = false;
                 this.$nextTick(() => lucide.createIcons());
@@ -1131,16 +1167,15 @@ function requirementsBacklog() {
                     method: 'POST',
                     credentials: 'same-origin',
                 });
+                if (!r.ok) throw new Error('Could not generate acceptance criteria (HTTP ' + r.status + ')');
                 const d = await r.json();
                 if (d.acceptance_criteria) {
                     this.activeReq.acceptance_criteria = d.acceptance_criteria;
                 } else {
-                    console.error('AC generation failed', d.error);
                     Platform.toast.error(d.error || 'Could not generate acceptance criteria.');
                 }
             } catch (e) {
-                console.error('AC generation error', e);
-                Platform.toast.error('Could not generate acceptance criteria.');
+                Platform.toast.error(e.message || 'Could not generate acceptance criteria.');
             } finally {
                 this.acGenerating = false;
             }
@@ -1155,16 +1190,15 @@ function requirementsBacklog() {
                     method: 'POST',
                     credentials: 'same-origin',
                 });
+                if (!r.ok) throw new Error('Could not generate test cases (HTTP ' + r.status + ')');
                 const d = await r.json();
                 if (d.test_cases) {
                     this.tcResult = d.test_cases;
                 } else {
-                    console.error('Test case generation failed', d.error);
                     Platform.toast.error(d.error || 'Could not generate test cases.');
                 }
             } catch (e) {
-                console.error('Test case generation error', e);
-                Platform.toast.error('Could not generate test cases.');
+                Platform.toast.error(e.message || 'Could not generate test cases.');
             } finally {
                 this.tcGenerating = false;
             }
@@ -1213,6 +1247,7 @@ function requirementsBacklog() {
                     credentials: 'same-origin',
                     headers: { 'X-CSRFToken': csrfToken },
                 });
+                if (!r.ok) throw new Error('Sync from Jira failed (HTTP ' + r.status + ')');
                 const d = await r.json();
                 if (d.jira_status) {
                     this.activeReq.jira_push_status = `synced:${d.jira_status}`;
@@ -1222,7 +1257,7 @@ function requirementsBacklog() {
                     this.jiraSyncError = d.error || 'Sync failed';
                 }
             } catch (e) {
-                this.jiraSyncError = 'Network error: ' + e.message;
+                this.jiraSyncError = e.message || 'Sync failed';
             } finally {
                 this.jiraSyncing = false;
             }
@@ -1231,10 +1266,11 @@ function requirementsBacklog() {
         async syncAllJira() {
             try {
                 const r = await fetch('/api/enterprise/requirements/sync-all-jira', { credentials: 'same-origin' });
+                if (!r.ok) throw new Error('Bulk Jira sync failed (HTTP ' + r.status + ')');
                 const d = await r.json();
                 Platform.toast.info(`Bulk sync initiated for ${d.total} requirement(s).`);
             } catch (e) {
-                Platform.toast.error('Sync all failed: ' + e.message);
+                Platform.toast.error(e.message || 'Bulk Jira sync failed.');
             }
         },
 
@@ -1392,17 +1428,16 @@ function requirementsBacklog() {
                     headers: this.mutationHeaders(),
                     body: JSON.stringify({ work_package_id: req.work_package_id || null }),
                 });
+                if (!r.ok) throw new Error('Could not link the work package (HTTP ' + r.status + ')');
                 const d = await r.json();
                 if (d.id) {
                     req.work_package_id = d.work_package_id;
                     this.applyRequirementUpdate({ id: req.id, work_package_id: d.work_package_id });
                 } else {
-                    console.error('Link work package failed', d.error);
                     Platform.toast.error(d.error || 'Could not link the work package.');
                 }
             } catch (e) {
-                console.error('Link work package error', e);
-                Platform.toast.error('Could not link the work package.');
+                Platform.toast.error(e.message || 'Could not link the work package.');
             }
         },
         addDodItem() {

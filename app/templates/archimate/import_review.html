@@ -29,7 +29,17 @@
 
     <div x-show="loading" class="p-12 text-center text-sm text-muted-foreground">Loading…</div>
 
-    <div x-show="!loading && total === 0" x-cloak
+    <div x-show="!loading && loadError" x-cloak
+         class="rounded-xl border border-destructive bg-card p-12 text-center">
+        <p class="text-lg font-semibold text-destructive">The review queue could not be read</p>
+        <p class="text-sm text-muted-foreground mt-1" x-text="loadError"></p>
+        <button @click="load()"
+                class="mt-4 text-xs underline text-muted-foreground hover:text-foreground">
+            Try again
+        </button>
+    </div>
+
+    <div x-show="!loading && !loadError && total === 0" x-cloak
          class="rounded-xl border border-border bg-card p-12 text-center">
         <p class="text-lg font-semibold text-foreground">Nothing waiting</p>
         <p class="text-sm text-muted-foreground mt-1">
@@ -139,7 +149,8 @@ function importReview() {
         items: [],
         groups: [],
         elementTypes: [],
-        total: 0,
+        total: null,
+        loadError: null,
         selected: [],
         retypeTo: '',
         activeReason: '',
@@ -166,13 +177,21 @@ function importReview() {
                 + (this.includeReviewed ? '?include_reviewed=1' : '');
             try {
                 const r = await fetch(url, { credentials: 'same-origin' });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
                 const d = await r.json();
                 this.items = d.items || [];
                 this.groups = d.groups || [];
                 this.elementTypes = d.element_types || [];
                 this.total = d.total || 0;
+                this.loadError = null;
             } catch (e) {
-                this.message = 'Could not load the queue: ' + e.message;
+                // total stays null so the "Nothing waiting" panel cannot stand in for
+                // a queue that was never read.
+                this.items = [];
+                this.groups = [];
+                this.elementTypes = [];
+                this.total = null;
+                this.loadError = 'Could not load the queue: ' + e.message;
             }
             this.selected = [];
             this.loading = false;
