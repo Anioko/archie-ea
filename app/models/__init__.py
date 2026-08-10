@@ -71,6 +71,10 @@ else:
     from .gdpr_request import *  # noqa
     from .subscription import *  # noqa
     from .ai_chat_document import *  # noqa
+    # conversation_threads / conversation_messages existed only in an Alembic
+    # revision, and deploys do not run `flask db upgrade` — so a fresh database
+    # had no chat history tables at all and /ai-chat/threads 500'd.
+    from .conversation import ConversationMessageRecord, ConversationThreadRecord  # noqa
     from .consulting_partner import *  # noqa
     from .capability_archimate_mapping import *  # noqa
     from .copilot_insight import *  # noqa
