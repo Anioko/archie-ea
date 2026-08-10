@@ -8,7 +8,7 @@ Computes a per-application compliance scorecard using:
 All access is via ORM — no raw SQL.
 """
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sqlalchemy import desc
 
@@ -39,6 +39,11 @@ class ArchitectureComplianceMatrixService:
 
         overall_status: score >= 80 → "compliant", >= 60 → "partial",
                         else "non_compliant"
+
+        ``violation_count`` is ``None``, not ``0``, when the platform has no way
+        to attribute a violation to this application (see
+        ``_get_violation_count``) — a real measured zero and "cannot compute"
+        must stay distinguishable to any caller that branches on the count.
         """
         try:
             apps = ApplicationComponent.query.order_by(ApplicationComponent.name).all()
@@ -106,30 +111,36 @@ class ArchitectureComplianceMatrixService:
             return review.status or "not_reviewed"
         return "not_reviewed"
 
-    def _get_violation_count(self, application_id: int) -> int:
-        """Return compliance violation count for the given application id.
+    def _get_violation_count(self, application_id: int) -> Optional[int]:
+        """Return the compliance violation count for the given application id,
+        or ``None`` when it cannot be computed.
 
         ``compliance_violations`` has no ``application_id`` (or any other
         application) column — it links only to ``compliance_policies`` via
         ``policy_id``; ``affected_system`` is a free-text description, not a
         foreign key, so it cannot be joined on reliably. There is currently no
-        way to attribute a violation to a specific application, so — like the
-        ``ImportError`` branch below for when the model itself is absent — this
-        reports the same honest "nothing attributable" answer of ``0`` rather
-        than raising ``InvalidRequestError`` on a column that was never there.
+        query that can correctly attribute a violation to a specific
+        application (and the model being entirely absent, caught below, is the
+        same situation from the caller's point of view: no number is knowable).
 
-        Only ``ImportError`` is caught for the model-missing case; any other
-        query failure still propagates rather than being reported as ``0``.
+        Per CLAUDE.md's null-vs-zero rule, a fabricated ``0`` here would be
+        indistinguishable from a genuinely-measured zero violations and would
+        mislead any caller that branches on the count (e.g. an "all clear"
+        badge). Returning ``None`` keeps that distinction — render it as "—",
+        never as ``0``.
+
+        Any other query failure still propagates rather than being reported as
+        ``None``, so a real database error is not silently swallowed either.
         """
         try:
             from app.models.compliance_models import ComplianceViolation  # noqa: F401
         except ImportError:
-            return 0
+            return None
 
         # No schema linkage from ComplianceViolation to ApplicationComponent
-        # exists (see docstring) — 0 is the only value that does not fabricate
-        # a per-application figure the data cannot support.
-        return 0
+        # exists (see docstring) — None is the only value that does not
+        # fabricate a per-application figure the data cannot support.
+        return None
 
     @staticmethod
     def _overall_status(score: int) -> str:

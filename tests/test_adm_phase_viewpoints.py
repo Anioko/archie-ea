@@ -26,65 +26,27 @@ property "application_id"`` whenever at least one ApplicationComponent
 existed to trigger the lookup.
 
 This file hits all six previously-broken endpoints as an authenticated user
-and asserts none of them return a 5xx.
+and asserts none of them return a 5xx, using the shared fixtures from
+``tests/conftest.py`` (``app``, ``db_session``, ``make_org``) so no row
+survives the test — see ``tests/test_ea_workflows_journeys.py`` (Task 1's
+test in this same wave) and ``tests/test_ba_tenant_and_authz.py::_login`` for
+the patterns followed here.
 """
+
+from __future__ import annotations
 
 import uuid
 
 import pytest
 
-
-@pytest.fixture(scope="module")
-def app():
-    from app import create_app, db
-
-    application = create_app("testing")
-    application.config["TESTING"] = True
-    application.config["WTF_CSRF_ENABLED"] = False
-
-    with application.app_context():
-        db.create_all()
-
-    return application
-
-
-@pytest.fixture
-def client(app):
-    return app.test_client()
-
-
-def _make_org_id(db, label):
-    from app.models.organization import Organization
-
-    suffix = uuid.uuid4().hex[:8]
-    org = Organization(name=f"{label} Org {suffix}", slug=f"{label.lower()}-org-{suffix}")
-    db.session.add(org)
-    db.session.flush()
-    db.session.commit()
-    return org.id
-
-
-def _make_user_id(db, org_id, label):
-    from app.models.user import User
-
-    suffix = uuid.uuid4().hex[:8]
-    user = User(
-        email=f"{label.lower()}-{suffix}@example.com",
-        first_name=label,
-        last_name="Tester",
-        organization_id=org_id,
-        confirmed=True,
-        enterprise_role="procurement",
-    )
-    db.session.add(user)
-    db.session.flush()
-    db.session.commit()
-    return user.id
+pytestmark = pytest.mark.usefixtures("db_session")
 
 
 def _login(client, user_id):
-    """Standard Flask-Login test-client pattern; see tests/test_ba_tenant_and_authz.py::_login
-    for why the g-cache clear below is required in this test harness."""
+    """Standard Flask-Login test-client pattern; see
+    tests/test_ba_tenant_and_authz.py::_login for why the g-cache clear below
+    is required in this test harness (pytest-flask reuses one request context
+    across client calls, and Flask-Login caches the resolved user on it)."""
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
@@ -98,26 +60,36 @@ def _login(client, user_id):
             delattr(g, cached)
 
 
-@pytest.fixture
-def logged_in_client(app, client):
-    """A client logged in as a user belonging to an org that owns one
-    ApplicationComponent — enough to exercise the (fixed) compliance-matrix
+def _make_logged_in_client(app, db_session, make_org):
+    """Build a test client logged in as a user belonging to an org that owns
+    one ApplicationComponent — enough to exercise the (fixed) compliance-matrix
     application lookup, not just the empty-list path."""
-    from app import db
     from app.models.application_portfolio import ApplicationComponent
+    from app.models.user import User
 
-    with app.app_context():
-        org_id = _make_org_id(db, "adm-phase")
-        user_id = _make_user_id(db, org_id, "adm-phase")
+    org = make_org("adm-phase")
 
-        app_component = ApplicationComponent(
-            name=f"ADM Phase Test App {uuid.uuid4().hex[:8]}",
-            organization_id=org_id,
-        )
-        db.session.add(app_component)
-        db.session.commit()
+    suffix = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"adm-phase-{suffix}@example.com",
+        first_name="ADM",
+        last_name="Tester",
+        organization_id=org.id,
+        confirmed=True,
+        enterprise_role="procurement",
+    )
+    db_session.add(user)
+    db_session.flush()
 
-    _login(client, user_id)
+    app_component = ApplicationComponent(
+        name=f"ADM Phase Test App {suffix}",
+        organization_id=org.id,
+    )
+    db_session.add(app_component)
+    db_session.flush()
+
+    client = app.test_client()
+    _login(client, user.id)
     return client
 
 
@@ -131,28 +103,35 @@ ENDPOINTS = [
 
 
 @pytest.mark.parametrize("path", ENDPOINTS)
-def test_phase_viewpoint_endpoints_do_not_500(logged_in_client, path):
+def test_phase_viewpoint_endpoints_do_not_500(app, db_session, make_org, path):
     """The shared get_phase_elements() helper must not raise InvalidRequestError
     comparing the ArchiMateElement.plateau relationship with `==`."""
-    resp = logged_in_client.get(path)
+    client = _make_logged_in_client(app, db_session, make_org)
+    resp = client.get(path)
     assert resp.status_code < 500, (
         f"{path} returned {resp.status_code}: {resp.get_data(as_text=True)[:2000]}"
     )
 
 
-def test_phase_g_compliance_matrix_does_not_500(logged_in_client):
+def test_phase_g_compliance_matrix_does_not_500(app, db_session, make_org):
     """ArchitectureComplianceMatrixService must not filter ARBReviewItem by a
-    nonexistent application_id column."""
-    resp = logged_in_client.get("/api/ea/phase-g/compliance-matrix")
+    nonexistent application_id column, and must not fabricate a violation
+    count it cannot compute."""
+    client = _make_logged_in_client(app, db_session, make_org)
+    resp = client.get("/api/ea/phase-g/compliance-matrix")
     assert resp.status_code < 500, (
         f"compliance-matrix returned {resp.status_code}: "
         f"{resp.get_data(as_text=True)[:2000]}"
     )
     body = resp.get_json()
     assert "matrix" in body
-    # The application seeded in logged_in_client should be scored, and since
-    # it has no linked ARB review, its status must be the honest default
-    # rather than a fabricated value.
+    # The application seeded above should be scored, and since it has no
+    # linked ARB review, its status must be the honest default rather than a
+    # fabricated value.
     row = next((r for r in body["matrix"] if r.get("arb_review_status") is not None), None)
     assert row is not None
     assert row["arb_review_status"] == "not_reviewed"
+    # There is no schema linkage from ComplianceViolation to
+    # ApplicationComponent, so violation_count must be None ("not computed"),
+    # never a fabricated 0 (CLAUDE.md null-vs-zero rule).
+    assert row["violation_count"] is None
