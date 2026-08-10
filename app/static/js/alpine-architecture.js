@@ -623,7 +623,10 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 isInCompare(id) { return this.compareIds.includes(id); },
                 async deleteSolution(id, name) {
                     if (!(await Platform.modal.confirm(`Delete solution "${name}"?`))) return;
-                    _fetch(`/enterprise/api/solutions/${id}`, { method: 'DELETE' })
+                    // The list is served by enterprise.api_solutions (/enterprise/api/solutions),
+                    // but that blueprint exposes no per-id DELETE. Deletion lives on the
+                    // solution_design blueprint, which owns the cascade cleanup.
+                    _fetch(`/solutions/${id}/delete-json`, { method: 'DELETE' })
                         .then(() => this._loadItems())
                         .catch(err => Platform.toast.error('Delete failed: ' + err.message));
                 }

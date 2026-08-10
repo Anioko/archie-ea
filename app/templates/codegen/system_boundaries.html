@@ -231,11 +231,6 @@
                         :class="artifactsTab === 'sdks' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
                     Client SDKs
                 </button>
-                <button @click="artifactsTab = 'terraform'"
-                        class="py-2.5 text-sm font-medium border-b-2 transition-colors"
-                        :class="artifactsTab === 'terraform' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
-                    Terraform
-                </button>
             </div>
             <!-- Tab content -->
             <div class="flex-1 overflow-auto p-5">
@@ -288,74 +283,6 @@
                         </template>
                     </div>
                 </div>
-                <!-- Terraform -->
-                <div x-show="artifactsTab === 'terraform'" x-cloak>
-                    <!-- Generate controls -->
-                    <div class="flex items-center gap-3 mb-4 p-3 rounded-lg border border-border bg-muted/10">
-                        <div class="flex items-center gap-2">
-                            <label class="text-xs font-medium text-muted-foreground">Region</label>
-                            <input type="text" x-model="tfRegion" placeholder="eu-west-1"
-                                   class="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring w-32" aria-label="Region">
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <label class="text-xs font-medium text-muted-foreground">Environment</label>
-                            <select x-model="tfEnvironment"
-                                    class="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Environment">
-                                <option value="staging">staging</option>
-                                <option value="production">production</option>
-                                <option value="dev">dev</option>
-                            </select>
-                        </div>
-                        <button @click="generateTerraform(artifactsBoundary.id)"
-                                :disabled="tfLoading"
-                                class="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                            <svg x-show="tfLoading" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                            </svg>
-                            <i x-show="!tfLoading" data-lucide="zap" class="h-3 w-3"></i>
-                            <span x-text="tfLoading ? 'Generating…' : 'Generate Terraform'"></span>
-                        </button>
-                        <span x-show="tfFiles && Object.keys(tfFiles).length > 0" x-cloak
-                              class="text-xs text-muted-foreground"
-                              x-text="Object.keys(tfFiles).length + ' files'"></span>
-                    </div>
-
-                    <!-- Empty state -->
-                    <div x-show="!tfFiles || Object.keys(tfFiles).length === 0" x-cloak
-                         class="text-sm text-muted-foreground italic py-4">
-                        Click "Generate Terraform" to create AWS infrastructure code from Technology layer elements.
-                    </div>
-
-                    <!-- File tree + viewer -->
-                    <div x-show="tfFiles && Object.keys(tfFiles).length > 0" x-cloak
-                         class="flex gap-3" style="height: 480px;">
-                        <!-- File tree -->
-                        <div class="w-56 shrink-0 rounded-lg border border-border bg-muted/10 overflow-auto p-2">
-                            <p class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-2 mb-1">Files</p>
-                            <template x-for="[path, _] in Object.entries(tfFiles || {})" :key="path">
-                                <button @click="tfSelectedFile = path"
-                                        class="w-full text-left px-2 py-1 rounded text-xs font-mono truncate transition-colors"
-                                        :class="tfSelectedFile === path ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/20'"
-                                        x-text="path.replace('terraform/', '')"></button>
-                            </template>
-                        </div>
-                        <!-- Code viewer -->
-                        <div class="flex-1 flex flex-col min-w-0 rounded-lg border border-border overflow-hidden">
-                            <div class="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/10 shrink-0">
-                                <span class="text-xs font-mono text-muted-foreground" x-text="tfSelectedFile || ''"></span>
-                                <button @click="copyToClipboard(tfFiles[tfSelectedFile])"
-                                        x-show="tfSelectedFile"
-                                        class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                                    <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
-                                </button>
-                            </div>
-                            <pre class="flex-1 overflow-auto p-3 text-xs font-mono text-foreground whitespace-pre bg-muted/5"
-                                 x-text="tfSelectedFile ? (tfFiles[tfSelectedFile] || '') : 'Select a file from the tree.'"></pre>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- SDKs -->
                 <div x-show="artifactsTab === 'sdks'" x-cloak>
                     <div x-show="!artifactsBoundary || !artifactsBoundary.generated_artifacts || Object.keys(artifactsBoundary.generated_artifacts.client_sdks || {}).length === 0"
@@ -405,13 +332,6 @@ function systemBoundaries() {
         // Artifacts viewer
         artifactsBoundary: null,
         artifactsTab: 'compose',
-
-        // Terraform
-        tfRegion: 'eu-west-1',
-        tfEnvironment: 'staging',
-        tfLoading: false,
-        tfFiles: {},
-        tfSelectedFile: null,
 
         init() {
             // Initial boundaries already server-rendered
@@ -546,28 +466,11 @@ function systemBoundaries() {
             }
         },
 
-        async generateTerraform(id) {
-            if (!id) return;
-            this.tfLoading = true;
-            this.tfFiles = {};
-            this.tfSelectedFile = null;
-            try {
-                const data = await this._fetch(`/api/codegen/system-boundaries/${id}/generate-terraform`, {
-                    method: 'POST',
-                    body: JSON.stringify({ region: this.tfRegion, environment: this.tfEnvironment }),
-                });
-                if (data.success) {
-                    this.tfFiles = data.files || {};
-                    const firstFile = Object.keys(this.tfFiles)[0] || null;
-                    this.tfSelectedFile = firstFile;
-                    this._setSuccess(`Terraform generated: ${data.file_count} files, ${data.resource_summary.ecs_services} ECS services.`);
-                }
-            } catch (e) {
-                this._addError('Terraform generation failed: ' + e.message);
-            } finally {
-                this.tfLoading = false;
-            }
-        },
+        /* The boundary-level "Generate Terraform" tab was removed: it POSTed to
+           /api/codegen/system-boundaries/<id>/generate-terraform, which does not exist.
+           Per-solution IaC is generated by codegen.generate_iac
+           (POST /solutions/<id>/codegen/generate-iac); there is no boundary-wide
+           equivalent. */
 
         copyToClipboard(text) {
             navigator.clipboard.writeText(text || '').then(() => {

@@ -148,11 +148,6 @@ class ApplicationArchitectureManager {
       this.exportCSV();
     });
 
-    // Export JSON
-    document.getElementById('export-json-btn').addEventListener('click', () => {
-      this.exportJSON();
-    });
-
     // Generate AI
     document.getElementById('generate-ai-btn').addEventListener('click', () => {
       this.generateWithAI();
@@ -959,34 +954,10 @@ class ApplicationArchitectureManager {
     window.location.href = `/dashboard/api/applications/${this.applicationId}/architecture/export-csv`;
   }
 
-  exportJSON() {
-    fetch(`/dashboard/api/applications/${this.applicationId}/architecture/export-json`)
-      .then(response => response.json())
-      .then(data => {
-        // Create a blob from the JSON data
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        
-        // Create download link
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        
-        // Generate filename with timestamp
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        a.download = `application_${this.applicationId}_architecture_${timestamp}.json`;
-        
-        // Trigger download
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      })
-      .catch(error => {
-        console.error('Error exporting JSON:', error);
-        Platform.toast.error('Failed to export JSON. Please try again.');
-      });
-  }
+  // exportJSON() was removed along with its #export-json-btn listener: it fetched
+  // /dashboard/api/applications/<id>/architecture/export-json, which does not exist.
+  // The application_mgmt blueprint exposes only export-csv
+  // (application_mgmt.api_export_architecture_csv), which exportCSV() above uses.
 
   showNotification(message, type) {
     const notification = document.createElement('div');
