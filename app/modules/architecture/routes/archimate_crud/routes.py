@@ -765,7 +765,9 @@ def create_element(layer, element_type):
                     {"success": False, "error": "Invalid request parameters"}
                 ), 400
 
-            flash("Error creating {element_type}. Please try again.", "error")
+            # f-prefix was missing, so the user was shown the literal text
+            # "Error creating {element_type}." — braces and all.
+            flash(f"Error creating {element_type}. Please try again.", "error")
             return render_template(
                 "archimate_crud/dashboard.html",
                 layer=layer,
