@@ -69,21 +69,75 @@ confusion it causes is not free. Where a page had genuinely unfinished work
 behind it, that fact is recorded above so the decision can be revisited with
 the evidence rather than re-derived from scratch.
 
-## Related finding: blueprint name collisions
+## Related finding: blueprint name collisions — resolved
 
-`/admin/security` is unreachable for a different and more interesting reason.
-The route **is** defined, in `app/modules/admin/security_routes.py` — but that
-blueprint is never registered. `app/_bootstrap/blueprints.py` registers a
-*different* blueprint that happens to share the name `security_bp`, from
-`app/routes/security_api.py`.
+**Investigated:** 2026-08-10, by booting the app and mapping every view function
+back to its defining module, then registering each losing blueprint on a
+throwaway `Flask()` and diffing its rules against the live `url_map`. Two pages
+were genuinely lost and are now reachable; everything else turned out to be
+deliberate, and one part of the original write-up was simply wrong.
 
-Eleven blueprint **names** are declared more than once across the codebase.
-Seven are the documented dual-layout design (`CLAUDE.md`: `account`, `admin`,
-`ai_chat`, `auth`, `dashboard`, `integrations`, `monitoring`, selected by the
-`USE_*_GUARDRAILS` flags). The remainder — `capability_map`, `dashboard_pages`
-(declared **three** times), `deprecation`, `health`, `sidebar_mgmt` — are worth
-checking individually: where two blueprints share a name, only one can win, and
-the loser's routes vanish silently. Flask raises nothing, `boot-health` sees a
-registered blueprint, and the page simply 404s.
+### The correction: `/admin/security` was not a name collision
 
-This is **not** resolved and is not covered by the deletions above.
+The original text said `app/_bootstrap/blueprints.py` registers "a *different*
+blueprint that happens to share the name `security_bp`, from
+`app/routes/security_api.py`". `security_bp` there is the **Python variable**;
+the Flask blueprint name is `"security"`. Flask never saw a collision, because
+nothing ever tried to register the other one — `app/modules/admin/security_routes.py`
+was imported by no module anywhere in the tree. The page 404'd for the duller
+reason that it was never wired up at all.
+
+It is now registered from `_register_optional_standalone()` under the
+unambiguous name `admin_security`, which is tier-independent (as billing and team
+already are), so `/admin/security` works whether admin v1 or v2 is active.
+
+Two things had to be fixed to make registering it defensible:
+
+* Its header table was a **hardcoded literal** presented as the live header set —
+  it advertised an HSTS policy this app does not send at all. It now reports the
+  headers the page's own response carries, by running the app's registered
+  `add_security_headers` over a probe response. That function is pure, so this
+  observes the real policy rather than restating it, and when it cannot be found
+  the page says "not determined" instead of inventing a table.
+* Neither the page nor the secret-generating POST had **any authentication**.
+  Both are now `@login_required @admin_required`, and the POST no longer logs
+  "SECRET_KEY rotated" for an operation that rotates nothing.
+
+### The five names, each resolved
+
+| Name | Winner | Loser | Verdict |
+|---|---|---|---|
+| `capability_map` | `app/modules/capabilities/routes/*` | `app/routes/capability_map_routes.py` | **Nothing lost.** All 24 of the loser's endpoints are served by the winner at the same URLs — it is the pre-decomposition original (`app/modules/capabilities/__init__.py`: "capability_map_routes.py (6,562 lines) split into 9 focused" modules). Superseded duplicate; reported, not deleted. |
+| `dashboard_pages` (×3) | `app/modules/dashboard/v2/routes/dashboard_pages_routes.py` | `app/api/dashboard_routes.py`; `app/modules/dashboard/routes/dashboard_pages_routes.py` | **One page lost.** Both losers are the documented `USE_DASHBOARD_GUARDRAILS` fallbacks, registered by `if not _ff_dashboard` / the v1 `else` branch — never both. But v2's docstring claim that "all 40 routes preserved exactly from v1" was false: it dropped `/dashboard/capability-heatmap`. **Fixed** — see below. |
+| `deprecation` | `app/modules/admin/v2/routes/deprecation_routes.py` | `app/modules/admin/routes/deprecation_routes.py` | **Nothing lost.** Admin v1 vs v2, chosen by `USE_ADMIN_GUARDRAILS`; v2 serves all 7 URLs identically. Same dual-layout design as `admin` itself. |
+| `health` | `app/routes/health_routes.py` (`/health`, `/health/db`) | `app/modules/monitoring/routes/health_routes.py` (9 routes under `/api/health`) | **Deliberately absent.** `blueprints.py` states it: monitoring blueprints are ops tooling not needed in the architect-facing app, and `_register_monitoring()` was removed as dead code. The name clash is a latent trap if that decision is ever reversed — registering the module would raise on `health` and take `metrics_bp` down with it — so rename it *before* re-enabling. |
+| `sidebar_mgmt` | `app/modules/admin/v2/routes/sidebar_mgmt_routes.py` | `app/modules/admin/routes/sidebar_mgmt_routes.py` | **Nothing lost.** As `deprecation`. |
+
+So of the five, three were sub-blueprints of the same v1/v2 module pairs CLAUDE.md
+already documents (`admin` owns `deprecation` and `sidebar_mgmt`; `dashboard` owns
+`dashboard_pages`), one was a superseded pre-split original, and one was a
+documented omission.
+
+### The second lost page: `/dashboard/capability-heatmap`
+
+`app/templates/dashboard/capability_heatmap.html` and the API it fetches were
+both live the whole time; only the route rendering the page was missing, because
+the v2 rewrite kept `/dashboard/api/capability-heatmap` and dropped the page next
+to it. The page route is now on the v2 blueprint, with the same endpoint name
+(`dashboard_pages.capability_heatmap_page`) it had under v1.
+
+The v2 API also had to regain `?group_by=domain`, which v1 supported and v2 did
+not. The page's "Investment" view mode requests exactly that, and the template
+falls back to `|| 0` — so without it every currency figure on that tab would have
+rendered as a measured zero.
+
+### Endpoint renames
+
+None. `admin_security` is a new blueprint name, not a rename of a live one, and
+`grep` found zero `url_for` references to `security_bp.*` or
+`capability_heatmap_page` anywhere in `app/templates/**` or `app/**/*.py`. The
+restored heatmap page keeps its v1 endpoint name, so any future reference resolves
+the way it always would have.
+
+Pinned by `tests/test_blueprint_name_collisions.py` (database-free, like
+`tests/test_boot_health.py`).

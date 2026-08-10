@@ -39,15 +39,134 @@ mark_blueprint_guardrailed(dashboard_pages_bp_v2)
 @timed_route
 @login_required
 def api_capability_heatmap():
-    """API endpoint for capability maturity heatmap data."""
+    """API endpoint for capability maturity heatmap data.
+
+    Query params:
+        group_by  – When ``domain``, aggregates investment (sum of solution TCO)
+                    per capability domain alongside the maturity heatmap data.
+                    The page's "Investment" view mode requests exactly this; a
+                    response without it would leave every currency figure on that
+                    tab at the template's ``|| 0`` fallback, which reads as a
+                    measured zero.
+    """
     try:
         heatmap_service = CapabilityHeatmapService()
         heatmap_data = heatmap_service.get_maturity_heatmap()
+
+        if request.args.get("group_by", "") == "domain":
+            investment_by_domain = _aggregate_investment_by_domain()
+            inv_lookup = {d["domain_code"]: d for d in investment_by_domain}
+            for domain_row in heatmap_data.get("domains", []):
+                inv = inv_lookup.get(domain_row.get("code", ""), {})
+                domain_row["total_investment"] = inv.get("total_investment", 0)
+                domain_row["solution_count"] = inv.get("solution_count", 0)
+                domain_row["cost_breakdown"] = inv.get("cost_breakdown", {})
+            heatmap_data["investment_summary"] = {
+                "grand_total": sum(d.get("total_investment", 0) for d in investment_by_domain),
+                "domains_with_investment": len(
+                    [d for d in investment_by_domain if d["total_investment"] > 0]
+                ),
+            }
+
         return jsonify({"success": True, "data": heatmap_data}), 200
     except Exception as e:
         logger.exception(f"Error getting capability heatmap: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
+
+def _aggregate_investment_by_domain():
+    """Aggregate solution TCO amounts grouped by capability domain.
+
+    Join chain: BusinessCapability → SolutionCapabilityMapping → Solution → SolutionTCOItem.
+    Returns a list of dicts: [{domain_code, domain_name, total_investment, solution_count, cost_breakdown}].
+    """
+    from sqlalchemy import func as sa_func
+
+    from app import db
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.solution_lifecycle_models import SolutionTCOItem
+    from app.models.solution_models import SolutionCapabilityMapping
+
+    try:
+        rows = (
+            db.session.query(
+                BusinessCapability.business_domain,
+                BusinessCapability.code,
+                SolutionTCOItem.cost_category,
+                sa_func.sum(SolutionTCOItem.amount).label("total"),
+                sa_func.count(sa_func.distinct(SolutionTCOItem.solution_id)).label("sol_count"),
+            )
+            .join(
+                SolutionCapabilityMapping,
+                SolutionCapabilityMapping.capability_id == BusinessCapability.id,
+            )
+            .join(
+                SolutionTCOItem,
+                SolutionTCOItem.solution_id == SolutionCapabilityMapping.solution_id,
+            )
+            .group_by(
+                BusinessCapability.business_domain,
+                BusinessCapability.code,
+                SolutionTCOItem.cost_category,
+            )
+            .all()
+        )
+
+        domain_map = {}
+        for domain_name, domain_code, cost_cat, total, sol_count in rows:
+            d_code = domain_code or "UNK"
+            entry = domain_map.setdefault(
+                d_code,
+                {
+                    "domain_code": d_code,
+                    "domain_name": domain_name or "Unknown",
+                    "total_investment": 0,
+                    "solution_count": 0,
+                    "cost_breakdown": {},
+                },
+            )
+            amount = float(total) if total else 0
+            entry["total_investment"] += amount
+            category = cost_cat or "other"
+            entry["cost_breakdown"][category] = entry["cost_breakdown"].get(category, 0) + amount
+            entry["solution_count"] = max(entry["solution_count"], sol_count or 0)
+
+        results = []
+        for entry in domain_map.values():
+            entry["total_investment"] = round(entry["total_investment"], 2)
+            for k in entry["cost_breakdown"]:
+                entry["cost_breakdown"][k] = round(entry["cost_breakdown"][k], 2)
+            results.append(entry)
+
+        return sorted(results, key=lambda r: r["total_investment"], reverse=True)
+
+    except Exception as e:
+        logger.warning(f"Investment aggregation failed (non-fatal): {e}")
+        return []
+
+
+@dashboard_pages_bp_v2.route("/capability-heatmap")
+@timed_route
+@login_required
+def capability_heatmap_page():
+    """Capability heatmap and investment-by-domain dashboard page.
+
+    v1 (``app/modules/dashboard/routes/dashboard_pages_routes.py``) served this
+    page; the v2 rewrite kept the API and dropped the page, so
+    ``/dashboard/capability-heatmap`` 404'd for as long as USE_DASHBOARD_GUARDRAILS
+    has been on. The template and the API it calls were both live throughout.
+    """
+    from config import CurrencyConfig
+
+    try:
+        currency_symbol = CurrencyConfig.get_currency_config().get("symbol", "£")
+    except Exception:
+        currency_symbol = "£"
+
+    return render_template(
+        "dashboard/capability_heatmap.html",
+        currency_symbol=currency_symbol,
+    )
 
 
 # apqc_browser route removed — zero backend API, empty shell
