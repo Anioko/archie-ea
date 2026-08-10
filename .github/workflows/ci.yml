@@ -46,7 +46,7 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0          # full history so the scan covers every commit
       # Runs the gitleaks CLI directly instead of gitleaks/gitleaks-action@v2.
@@ -71,8 +71,8 @@ jobs:
     # No database, no app boot: seconds, not minutes. Fails fast on the cheapest
     # signal before the heavier jobs spend time.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -97,8 +97,8 @@ jobs:
     # silently fails to register, or a url_for() endpoint that no longer resolves
     # (a BuildError 500 on every page rendering the sidebar).
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -150,8 +150,8 @@ jobs:
       FLASK_CONFIG: testing
       SECRET_KEY: ci-only-not-secret
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -187,7 +187,7 @@ jobs:
           valid = root.get("lines-valid", "?")
           print(f"line coverage: {rate:.2f}%  ({covered}/{valid} statements)")
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: coverage-xml
@@ -218,8 +218,8 @@ jobs:
       FLASK_CONFIG: testing
       SECRET_KEY: ci-only-not-secret
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -244,7 +244,7 @@ jobs:
           print(f"  with version: {sum(1 for x in c if x.get('version'))}")
           print(f"  with licence: {sum(1 for x in c if x.get('licenses'))}")
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: sbom-cyclonedx
@@ -268,8 +268,8 @@ jobs:
     name: SAST (bandit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -313,8 +313,8 @@ jobs:
       SMOKE_BOOT_TIMEOUT: "300"
       SMOKE_PAGE_TIMEOUT: "45000"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -331,7 +331,7 @@ jobs:
         run: pytest tests/smoke -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning
       - name: Upload failure screenshots
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: smoke-failures
           path: tests/smoke/_shots/
@@ -345,8 +345,8 @@ jobs:
     # never rise. The baseline is accepted risk, not proof of safety - every entry
     # is a real advisory a security review will ask about.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
