@@ -635,8 +635,8 @@ def api_list_requirements():
             }
         )
     except Exception as e:
-        current_app.logger.error(f"Error listing requirements: {e}")
-        return jsonify({"requirements": []})
+        current_app.logger.exception("Error listing requirements: %s", e)
+        return jsonify({"success": False, "error": "Could not load requirements"}), 500
 
 
 @unified_applications_bp.route("/api/templates/frameworks", methods=["GET"])
@@ -655,8 +655,8 @@ def api_template_frameworks():
         )
         return jsonify([f[0] for f in frameworks if f[0]])
     except Exception as e:
-        current_app.logger.error(f"Error loading frameworks: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error loading frameworks: %s", e)
+        return jsonify({"success": False, "error": "Could not load frameworks"}), 500
 
 
 @unified_applications_bp.route("/api/templates/categories", methods=["GET"])
@@ -676,8 +676,8 @@ def api_template_categories():
         categories = query.distinct().order_by(ElementTemplate.category).all()
         return jsonify([c[0] for c in categories if c[0]])
     except Exception as e:
-        current_app.logger.error(f"Error loading categories: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error loading categories: %s", e)
+        return jsonify({"success": False, "error": "Could not load categories"}), 500
 
 
 @unified_applications_bp.route("/api/templates", methods=["GET"])
@@ -738,8 +738,8 @@ def api_list_templates():
             ]
         )
     except Exception as e:
-        current_app.logger.error(f"Error listing templates: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error listing templates: %s", e)
+        return jsonify({"success": False, "error": "Could not load templates"}), 500
 
 
 @unified_applications_bp.route("/api/templates/element-types", methods=["GET"])
@@ -759,8 +759,8 @@ def api_template_element_types():
         types = query.distinct().order_by(ElementTemplate.element_type).all()
         return jsonify([t[0] for t in types if t[0]])
     except Exception as e:
-        current_app.logger.error(f"Error loading element types: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error loading element types: %s", e)
+        return jsonify({"success": False, "error": "Could not load element types"}), 500
 
 
 @unified_applications_bp.route(
@@ -847,8 +847,10 @@ def api_template_recommendations(app_id):
             ]
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading recommendations for app {app_id}: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error loading recommendations for app %s: %s", app_id, e)
+        return jsonify(
+            {"success": False, "error": "Could not load template recommendations"}
+        ), 500
 
 
 # ── Retirement Blocker Assessment API (RAT-109) ───────────────────────────
@@ -3347,21 +3349,16 @@ def rationalization_executive_summary():
             "confidence_distribution": {k: v for k, v in confidence_dist.items() if k},
         })
     except Exception as exc:
-        current_app.logger.error(
-            "Error generating executive summary: %s", exc, exc_info=True
+        current_app.logger.exception(
+            "Error generating executive summary: %s", exc
         )
+        # No zeroed distributions or financials here: a 0 saving is
+        # indistinguishable from a measured one, and the dashboard would
+        # render a fully-scored-and-worthless portfolio out of a DB error.
         return jsonify({
             "success": False,
-            "total_scored": 0,
-            "disposition_distribution": {},
-            "time_distribution": {},
-            "score_buckets": {"critical_0_25": 0, "poor_26_50": 0, "fair_51_75": 0, "good_76_100": 0},
-            "financial": {"total_projected_savings": 0, "total_investment_needed": 0},
-            "readiness": {"ready": 0, "not_ready": 0},
-            "readiness_summary": {"ready": 0, "not_ready": 0},
-            "review_status_distribution": {},
-            "confidence_distribution": {},
-        }), 200
+            "error": "Could not generate the executive summary",
+        }), 500
 
 
 # ── RATA-002: Scoring HTTP endpoints ─────────────────────────────────────
@@ -3741,8 +3738,10 @@ def rationalization_portfolio_scores():
         return resp
 
     except Exception as exc:
-        logger.error("RATA-009 portfolio-scores failed: %s", exc, exc_info=True)
-        return jsonify([])
+        logger.exception("RATA-009 portfolio-scores failed: %s", exc)
+        return jsonify(
+            {"success": False, "error": "Could not load portfolio scores"}
+        ), 500
 
 
 # ── RATA-018: Business case export ───────────────────────────────────────
@@ -3940,8 +3939,10 @@ def api_check_duplicate_element(app_id):
 
         return jsonify({"exists": exists})
     except Exception as e:
-        current_app.logger.error(f"Error checking duplicate element: {e}")
-        return jsonify({"exists": False})
+        current_app.logger.exception("Error checking duplicate element: %s", e)
+        return jsonify(
+            {"success": False, "error": "Could not check for a duplicate element"}
+        ), 500
 
 
 # ── RAT-001: Bulk data enrichment page and API ───────────────────────────

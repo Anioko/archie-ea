@@ -8213,8 +8213,10 @@ def linked_vendor_products(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error fetching linked vendor products: {e}", exc_info=True)
-        return jsonify({"products": []})
+        logger.exception(f"Error fetching linked vendor products: {e}")
+        return jsonify(
+            {"success": False, "error": "Could not load linked vendor products"}
+        ), 500
 
 
 # =============================================================================
@@ -8248,8 +8250,10 @@ def linked_apqc_processes(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error fetching linked APQC processes: {e}", exc_info=True)
-        return jsonify({"processes": []})
+        logger.exception(f"Error fetching linked APQC processes: {e}")
+        return jsonify(
+            {"success": False, "error": "Could not load linked APQC processes"}
+        ), 500
 
 
 # =============================================================================
@@ -8270,8 +8274,10 @@ def linked_applications_api(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error fetching linked applications: {e}", exc_info=True)
-        return jsonify({"applications": []})
+        logger.exception(f"Error fetching linked applications: {e}")
+        return jsonify(
+            {"success": False, "error": "Could not load linked applications"}
+        ), 500
 
 
 # =============================================================================

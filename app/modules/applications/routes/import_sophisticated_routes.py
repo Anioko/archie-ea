@@ -1591,14 +1591,13 @@ def import_history():
         }), 200
     except Exception as e:
         db.session.rollback()
-        current_app.logger.debug("Import history query failed: %s", e)
+        current_app.logger.exception("Import history query failed: %s", e)
+        # An empty history at 200 is indistinguishable from "nothing was ever
+        # imported", which is the one reading the user must not be given.
         return jsonify({
-            "history": [],
-            "total": 0,
-            "page": page,
-            "per_page": per_page,
-            "pages": 0,
-        }), 200
+            "success": False,
+            "error": "Could not load the import history",
+        }), 500
 
 
 @unified_applications_bp.route("/import-history/<string:session_id>/rollback", methods=["POST"])

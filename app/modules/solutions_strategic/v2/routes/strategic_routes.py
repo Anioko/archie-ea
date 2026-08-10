@@ -464,7 +464,10 @@ def api_impact_analysis_history():
         )
         return jsonify([r.to_dict() for r in records])
     except Exception:
-        return jsonify([])
+        current_app.logger.exception("Impact analysis history query failed")
+        return jsonify(
+            {"error": "Could not load the impact analysis history"}
+        ), 500
 
 
 @strategic_bp.route("/api/portfolio-impact", methods=["POST"])

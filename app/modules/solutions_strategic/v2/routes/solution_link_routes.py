@@ -650,8 +650,8 @@ def search_adrs():
             ]
         })
     except Exception as e:
-        logger.error(f"ADR search error: {e}", exc_info=True)
-        return jsonify({"results": []})
+        logger.exception(f"ADR search error: {e}")
+        return jsonify({"success": False, "error": "ADR search failed"}), 500
 
 
 # =============================================================================
@@ -724,8 +724,8 @@ def all_applications(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing applications: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing applications: {e}")
+        return jsonify({"success": False, "error": "Could not load applications"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/all-vendor-products", methods=["GET"])
@@ -748,8 +748,8 @@ def all_vendor_products(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing vendor products: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing vendor products: {e}")
+        return jsonify({"success": False, "error": "Could not load vendor products"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/all-adrs", methods=["GET"])
@@ -771,8 +771,8 @@ def all_adrs(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing ADRs: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing ADRs: {e}")
+        return jsonify({"success": False, "error": "Could not load ADRs"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/all-apqc-processes", methods=["GET"])
@@ -789,8 +789,8 @@ def all_apqc_processes(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing APQC processes: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing APQC processes: {e}")
+        return jsonify({"success": False, "error": "Could not load APQC processes"}), 500
 
 
 # =============================================================================
@@ -990,8 +990,8 @@ def all_capabilities(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing capabilities: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing capabilities: {e}")
+        return jsonify({"success": False, "error": "Could not load capabilities"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/sync-capabilities", methods=["POST"])
@@ -1076,8 +1076,10 @@ def sync_capabilities(solution_id):
 @login_required
 def all_requirements(solution_id):
     """Return all requirements in the solution's canonical requirement set."""
+    # Outside the try, as in every sibling picker endpoint: a missing solution
+    # is a genuine 404 and must not be swallowed into the generic handler.
+    solution = Solution.query.get_or_404(solution_id)
     try:
-        solution = Solution.query.get_or_404(solution_id)
         rows = _get_solution_requirements(solution)
         items = [
             {
@@ -1091,8 +1093,8 @@ def all_requirements(solution_id):
         ]
         return jsonify({"items": items})
     except Exception as e:
-        logger.error(f"Error loading requirements: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error loading requirements: {e}")
+        return jsonify({"success": False, "error": "Could not load requirements"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/sync-requirements", methods=["POST"])
