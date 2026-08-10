@@ -11,28 +11,34 @@ import pytest
 pytestmark = pytest.mark.usefixtures("db_session")
 
 
-def test_sorted_with_none_iteration_keys():
-    """Verify the sorting key handles None values correctly.
+def test_sort_iteration_keys_with_none():
+    """Test the _sort_iteration_keys helper handles None values correctly.
 
-    This is a unit test of the sorting logic used in /ea-workflows/journeys.
-    The route groups instances by iteration_number, then sorts the keys.
-    If any key is None, the original code `sorted(iterations.keys())` raises
-    TypeError. The fix uses `key=lambda k: (k is None, k)` to sort None last.
+    The route groups workflow instances by iteration_number, then sorts the keys.
+    When real data contains a None iteration_number, Python's sorted() raises
+    TypeError because None cannot be compared with integers. The fix uses a custom
+    sort key function to place None last while preserving numeric ordering.
+    This test directly exercises the real helper function from the route.
     """
-    from collections import defaultdict
+    from app.main.routes_ea_workflows import _sort_iteration_keys
 
-    # Simulate what the route does: group instances by iteration_number
-    iterations = defaultdict(list)
-    iterations[None].append("instance_with_none")
-    iterations[1].append("instance_1a")
-    iterations[1].append("instance_1b")
-    iterations[2].append("instance_2")
+    # Test with mixed None and integer keys
+    keys = [None, 2, 1, None, 3]
+    sorted_keys = _sort_iteration_keys(keys)
 
-    # The fix: sort with a key function that puts None last
-    sorted_keys = sorted(iterations.keys(), key=lambda k: (k is None, k))
+    # Verify None values are sorted last, numeric keys are ordered
+    assert sorted_keys == [1, 2, 3, None, None], (
+        f"Expected [1, 2, 3, None, None], got {sorted_keys}"
+    )
 
-    # Verify None is last, and numeric keys are ordered
-    assert sorted_keys == [1, 2, None], f"Expected [1, 2, None], got {sorted_keys}"
+    # Test with only None
+    assert _sort_iteration_keys([None, None]) == [None, None]
+
+    # Test with only integers
+    assert _sort_iteration_keys([3, 1, 2]) == [1, 2, 3]
+
+    # Test empty
+    assert _sort_iteration_keys([]) == []
 
 
 def _login(client, user_id, app):
