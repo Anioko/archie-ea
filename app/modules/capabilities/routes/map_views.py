@@ -43,13 +43,22 @@ def hierarchy():
         ).all()
 
         # Build parent lookup
+        known_ids = {c.id for c in capabilities}
         children_by_parent = {}
         for c in capabilities:
             if c.parent_capability_id:
                 children_by_parent.setdefault(c.parent_capability_id, []).append(c)
 
-        def cap_to_dict(cap):
-            kids = children_by_parent.get(cap.id, [])
+        rendered = set()
+
+        def cap_to_dict(cap, ancestors):
+            # A parent cycle would recurse until the stack blew and the whole
+            # page fell into the error branch below. Imported hierarchies are
+            # the realistic source of one, so stop at the repeat instead.
+            rendered.add(cap.id)
+            kids = [
+                k for k in children_by_parent.get(cap.id, []) if k.id not in ancestors
+            ]
             return {
                 "name": cap.name,
                 "description": cap.description or "",
@@ -58,12 +67,32 @@ def hierarchy():
                 "category": cap.category or "",
                 "capability_type": "core",
                 "functions": [],
-                "children": [cap_to_dict(k) for k in kids],
+                "children": [cap_to_dict(k, ancestors | {cap.id}) for k in kids],
             }
 
-        # Root = L1 capabilities (no parent)
-        roots = [c for c in capabilities if c.level == 1]
-        catalog = {"children": [cap_to_dict(r) for r in roots]}
+        # A root is a capability nothing else parents — not "level == 1".
+        # Keying roots off the level column dropped every capability that had no
+        # parent and a level of 2, 3 or NULL, which is the ordinary shape of a
+        # freshly imported or partly decomposed model: the rows were in the
+        # database, counted on the capability map, and absent from this tree.
+        # A row whose parent_capability_id points outside the result set is also
+        # a root here, otherwise it has no ancestor to be rendered under and
+        # disappears the same way.
+        roots = [
+            c
+            for c in capabilities
+            if not c.parent_capability_id or c.parent_capability_id not in known_ids
+        ]
+        children = [cap_to_dict(r, frozenset()) for r in roots]
+
+        # Anything still unrendered is in a parent cycle, so no member of it is
+        # parentless and none of them would appear at all. Surfacing them at the
+        # top level is the only presentation that does not silently lose rows.
+        for cap in capabilities:
+            if cap.id not in rendered:
+                children.append(cap_to_dict(cap, frozenset()))
+
+        catalog = {"children": children}
 
         return render_template("capability_map/hierarchy.html", catalog=catalog)
     except Exception as e:

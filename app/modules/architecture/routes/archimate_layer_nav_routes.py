@@ -110,8 +110,19 @@ def motivation_meanings():
 @archimate_layer_nav_bp.route('/strategy/capabilities/tree')
 @login_required
 def strategy_capabilities_tree():
-    """Navigate to Capabilities tree view - redirects to existing capability map."""
-    return redirect(url_for('capability_map.index', view='tree'))
+    """Navigate to the capability *tree*.
+
+    This used to redirect to ``capability_map.index`` with ``view='tree'``.
+    ``index()`` is ``return render_template("capability_map/index.html")`` — it
+    takes no arguments and the template never reads the query string, so the
+    parameter was dropped and this link landed on exactly the same page as
+    ``/capability-map/``, on its Applications tab. The decomposition view a
+    business architect opens this for was one further click away and unnamed.
+
+    ``capability_map.hierarchy`` is the real thing: it builds the parent/child
+    tree from ``BusinessCapability`` and renders it.
+    """
+    return redirect(url_for('capability_map.hierarchy'))
 
 @archimate_layer_nav_bp.route('/strategy/resources')
 @login_required

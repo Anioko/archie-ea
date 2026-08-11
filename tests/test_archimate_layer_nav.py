@@ -35,8 +35,10 @@ import pytest
 # Every generic "By Layer" nav endpoint, and the (layer, ArchiMate 3.2 type) the
 # link promises.  Two endpoints are deliberately absent because they redirect to
 # a purpose-built page rather than the generic browser:
-#   archimate_layers.strategy_capabilities_tree -> capability_map.index
+#   archimate_layers.strategy_capabilities_tree -> capability_map.hierarchy
 #   archimate_layers.business_processes         -> apqc.process_list
+# The tree link has its own tests at the bottom of this file: it was pointed at
+# capability_map.index, which is not a tree.
 NAV_TARGETS = {
     # Motivation
     "archimate_layers.motivation_stakeholders": ("motivation", "Stakeholder"),
@@ -334,6 +336,120 @@ def test_physical_layer_api_answers_for_a_layer_it_now_knows(app, client):
     count = client.get("/architecture/api/layer/physical/count")
     assert count.status_code == 200
     assert count.get_json()["layer"] == "physical"
+
+
+# ---------------------------------------------------------------------------
+# 4. The capability tree link must reach a tree
+# ---------------------------------------------------------------------------
+
+
+def test_capability_tree_link_lands_on_the_hierarchy(app, client):
+    """``/architecture/strategy/capabilities/tree`` used to land on the flat map.
+
+    It redirected to ``capability_map.index`` with ``view='tree'``.  ``index()``
+    is ``return render_template("capability_map/index.html")`` — it accepts no
+    arguments and the template never reads the query string, so the parameter
+    was dropped and the link was indistinguishable from ``/capability-map/``.
+    It is the first URL in the business-architecture evaluation path, and the
+    decomposition it promises was one further unnamed click away.
+    """
+    from flask import url_for
+
+    with app.test_request_context("/"):
+        path = url_for("archimate_layers.strategy_capabilities_tree")
+        index_path = url_for("capability_map.index")
+        hierarchy_path = url_for("capability_map.hierarchy")
+
+    resp = client.get(path)
+    assert resp.status_code in (301, 302)
+
+    target = urlparse(resp.headers["Location"])
+    assert target.path != index_path, (
+        "the tree link landed on the capability map's default view; index() "
+        "takes no arguments so view=tree was silently dropped"
+    )
+    assert target.path == hierarchy_path
+
+
+def test_hierarchy_keeps_a_parentless_capability_that_is_not_level_one(
+    app, client, db_session, make_org, tenant_ctx
+):
+    """Roots were selected by ``level == 1``, which hid every other orphan.
+
+    On the development database 34 of 529 capabilities had no parent and a
+    level of 2 or 3 — the ordinary result of importing a partly decomposed
+    model. Each was counted on the capability map and absent from the tree,
+    with nothing on either screen to say so.
+    """
+    from unittest.mock import patch
+
+    from app.models.business_capabilities import BusinessCapability
+    from app.modules.capabilities.routes import map_views as mod
+
+    org = make_org("hierarchy-orphan")
+    with tenant_ctx(org.id):
+        db_session.add(
+            BusinessCapability(
+                name="Orphaned Sub-Capability", level=3, parent_capability_id=None
+            )
+        )
+        db_session.commit()
+
+    captured = {}
+
+    with patch.object(
+        mod, "render_template", lambda t, **c: (captured.update(c), "")[1]
+    ):
+        resp = client.get("/capability-map/hierarchy")
+
+    assert resp.status_code == 200
+    names = [child["name"] for child in captured["catalog"]["children"]]
+    assert "Orphaned Sub-Capability" in names, (
+        "a capability with no parent is a root whatever its level column says; "
+        "selecting roots by level == 1 drops it from the tree entirely"
+    )
+
+
+def test_hierarchy_survives_a_parent_cycle(app, client, db_session, make_org, tenant_ctx):
+    """A cycle recursed until the stack blew and the page fell into its error branch."""
+    from unittest.mock import patch
+
+    from app.models.business_capabilities import BusinessCapability
+    from app.modules.capabilities.routes import map_views as mod
+
+    org = make_org("hierarchy-cycle")
+    with tenant_ctx(org.id):
+        a = BusinessCapability(name="Cycle A", level=1)
+        b = BusinessCapability(name="Cycle B", level=2)
+        db_session.add_all([a, b])
+        db_session.flush()
+        a.parent_capability_id = b.id
+        b.parent_capability_id = a.id
+        db_session.commit()
+
+    captured = {}
+
+    with patch.object(
+        mod, "render_template", lambda t, **c: (captured.update(c), "")[1]
+    ):
+        resp = client.get("/capability-map/hierarchy")
+
+    assert resp.status_code == 200
+    assert "load_error" not in captured, (
+        "the cycle sent cap_to_dict into unbounded recursion and the view "
+        "reported the whole hierarchy as unreadable"
+    )
+
+    def _names(nodes):
+        for node in nodes:
+            yield node["name"]
+            yield from _names(node["children"])
+
+    shown = set(_names(captured["catalog"]["children"]))
+    assert {"Cycle A", "Cycle B"} <= shown, (
+        "neither member of a cycle is parentless, so selecting roots by "
+        "'has no parent' alone drops the whole cycle out of the tree"
+    )
 
 
 def test_physical_equipment_rows_reach_the_browser_payload(
