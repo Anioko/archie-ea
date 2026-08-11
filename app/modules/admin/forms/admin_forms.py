@@ -104,12 +104,32 @@ class ChangeAccountTypeForm(FlaskForm):
     submit = SubmitField("Update role")
 
 
+def _enterprise_role_choices():
+    """The personas, in the order they are defined, with their display names."""
+    from app.models.user import ROLE_DISPLAY_NAMES, VALID_ROLES
+
+    return [(role, ROLE_DISPLAY_NAMES.get(role, role.replace("_", " ").title()))
+            for role in VALID_ROLES]
+
+
 class InviteUserForm(FlaskForm):
     role = QuerySelectField(
         "Account type",
         validators=[InputRequired()],
         get_label="name",
         query_factory=lambda: db.session.query(Role).order_by("permissions"),
+    )
+    # The persona. It has to be chosen at invite time, because the column
+    # default is platform_admin: an invite that did not set it made every
+    # invited colleague an administrator of the organisation, and handed them
+    # the admin sidebar instead of the workspace for the job they were invited
+    # to do. InputRequired with no preselected value forces the choice rather
+    # than letting the first entry become a silent default.
+    enterprise_role = SelectField(
+        "Workspace persona",
+        validators=[InputRequired()],
+        choices=_enterprise_role_choices,
+        default="",
     )
     first_name = StringField("First name", validators=[InputRequired(), Length(1, 64)])
     last_name = StringField("Last name", validators=[InputRequired(), Length(1, 64)])

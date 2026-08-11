@@ -179,6 +179,7 @@ def invite_user():
             last_name=form.last_name.data,
             email=form.email.data,
             role=form.role.data,
+            enterprise_role=form.enterprise_role.data,
         )
         flash("User {} successfully invited".format(user.full_name()), "form-success")
     return render_template("admin/new_user.html", form=form)

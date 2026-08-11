@@ -29,6 +29,16 @@
 
             {{ f.render_form_field(form.role) }}
 
+            {% if form.enterprise_role %}
+            {{ f.render_form_field(form.enterprise_role) }}
+            <p class="-mt-4 mb-4 text-sm text-muted-foreground">
+                Decides which workspace they land in — a business architect gets the
+                capability map, value streams and business cases; a procurement lead gets
+                vendors and contracts. Choose Platform Admin only for someone who should
+                administer the organisation.
+            </p>
+            {% endif %}
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {# Manual render for autofocus on primary text input #}
                 <div class="space-y-2">

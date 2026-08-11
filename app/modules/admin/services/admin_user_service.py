@@ -116,7 +116,7 @@ class AdminUserService:
 
     @staticmethod
     def invite_user(first_name: str, last_name: str, email: str,
-                    role: Role) -> User:
+                    role: Role, enterprise_role: str = None) -> User:
         """Create a new user via invitation and send invite email.
 
         Args:
@@ -124,15 +124,30 @@ class AdminUserService:
             last_name: User's last name.
             email: User's email.
             role: Role to assign.
+            enterprise_role: The persona whose workspace the user lands in.
 
         Returns:
             The newly created User.
+
+        ``enterprise_role`` was not set here at all, and the column defaults to
+        ``platform_admin``. So every colleague an administrator invited became
+        an administrator of the organisation, and opened the platform to the
+        admin sidebar rather than the workspace for the job they were invited to
+        do — a business architect invited to model capabilities landed on
+        Organizations, Users and API Settings.
         """
+        from app.models.user import ROLE_SOLUTION_ARCHITECT, VALID_ROLES
+
+        if enterprise_role not in VALID_ROLES:
+            # Not platform_admin. An unrecognised value must not escalate.
+            enterprise_role = ROLE_SOLUTION_ARCHITECT
+
         user = User(
             first_name=first_name,
             last_name=last_name,
             email=email,
             role=role,
+            enterprise_role=enterprise_role,
         )
         db.session.add(user)
         db.session.commit()
