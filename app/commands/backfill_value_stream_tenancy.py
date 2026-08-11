@@ -128,10 +128,20 @@ def backfill_value_stream_tenancy(dry_run, org_id):
                 click.echo(f"  ! {t}: {label} skipped ({str(exc)[:100]})")
 
     # value_streams.code was globally unique; make it unique per tenant instead.
+    #
+    # Both spellings have to go. The column was declared
+    # `unique=True, index=True`, which Postgres implements as the unique INDEX
+    # ix_value_streams_code, not as a table constraint — so dropping
+    # value_streams_code_key alone was a no-op with IF EXISTS, reported success,
+    # and left every upgraded database still rejecting a second organisation's
+    # "OTC". Measured on a database that had run this command: both
+    # ix_value_streams_code and uq_value_streams_org_code were present.
     if "value_streams" in present:
         for ddl, label in (
-            ('ALTER TABLE "value_streams" DROP CONSTRAINT IF EXISTS value_streams_code_key', "dropped global unique(code)"),
             ('CREATE UNIQUE INDEX IF NOT EXISTS uq_value_streams_org_code ON "value_streams" (organization_id, code)', "added unique(organization_id, code)"),
+            ('ALTER TABLE "value_streams" DROP CONSTRAINT IF EXISTS value_streams_code_key', "dropped global unique(code) constraint"),
+            ('DROP INDEX IF EXISTS ix_value_streams_code', "dropped global unique(code) index"),
+            ('CREATE INDEX IF NOT EXISTS ix_value_streams_code ON "value_streams" (code)', "restored the plain lookup index on code"),
         ):
             try:
                 conn.execute(text(ddl))
