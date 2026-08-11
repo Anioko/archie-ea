@@ -27,12 +27,12 @@ skipping.
 
 Several gates are **ratchets**: they compare a measurement against
 `verification_baseline.json` and fail when it gets worse, so the gate is "no worse",
-not "clean". Only two carry real debt now — **88** raw-Tailwind-colour uses
-(`design_tokens`) and **98** raw-SQL statements on tenant tables with no org predicate
-(`raw_sql_tenancy`). `undefined_names`, `redefinitions`, `lint_core` and `air_gap` are
-all at **0**: treat those four as must-be-clean gates that happen to be implemented as
-ratchets. Lowering a baseline is routine — `python scripts/verify.py --update-baseline`
-after a cleanup. Raising one is a regression that must be justified in review.
+not "clean". **Every ratchet is now at 0** — `undefined_names`, `redefinitions`,
+`lint_core`, `design_tokens`, `air_gap`, `raw_sql_tenancy`, `broken_surfaces` and
+`fetch_guards` — so treat all eight as must-be-clean gates that happen to be
+implemented as ratchets. Lowering a baseline is routine —
+`python scripts/verify.py --update-baseline` after a cleanup. Raising one is a
+regression that must be justified in review.
 
 **Read the numbers from `verification_baseline.json`, not from here.** This file is
 prose and drifts; the JSON is what the gate enforces. Note also that `design_tokens`
@@ -41,7 +41,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-All 19 gates, in registry order (`scripts/verify.py`, `build_gates`):
+All 28 gates, in registry order (`scripts/verify.py`, `build_gates`):
 
 | Gate | Catches | Kind |
 |---|---|---|
@@ -50,11 +50,20 @@ All 19 gates, in registry order (`scripts/verify.py`, `build_gates`):
 | `undefined-names` | runtime `NameError` (ruff F821) | ratchet @ 0 |
 | `redefinitions` | shadowed definitions (ruff F811) | ratchet @ 0 |
 | `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet @ 0 |
-| `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet @ 88 |
+| `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet @ 0 |
 | `air-gap` | a UI asset loaded from a public CDN | ratchet @ 0 |
-| `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 98 |
+| `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 0 |
 | `template-syntax` | a Jinja template that does not parse (500s every page using it) | must be 0 |
 | `template-references` | an `include`/`extends` target that does not exist (TemplateNotFound at render) | must be 0 |
+| `tenant-unique` | a unique constraint on a tenant table that omits `organization_id` — an authored code or name that only the first organisation to use it can have | must be 0 |
+| `template-calls` | a Jinja expression calling a name nothing can provide (a Python builtin, or a JavaScript function in the same file) | must be 0 |
+| `broken-surfaces` | a front-end target that resolves to no route | ratchet @ 0 |
+| `fetch-guards` | a `fetch()` whose body is parsed without checking the response | ratchet @ 0 |
+| `error-signalling` | an API answering a failure with HTTP 200 | must be 0 |
+| `silent-data` | a catch block that hides a failure from the user | must be 0 |
+| `dead-interactions` | a control that looks like it works and does nothing | must be 0 |
+| `macro-import-context` | a macro import that blocks its own JavaScript under CSP | must be 0 |
+| `null-filters` | a missing value rendered as something other than an em dash | must be 0 |
 | `fabricated-data` | invented data reaching the UI (see below) | must be 0 |
 | `deployed-deps` | installed packages below the pinned floors | must be 0 |
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |
@@ -227,7 +236,11 @@ de-duplicating same-named indexes before `create_all()`.
 **Personas / access control** — `enterprise_role` on `User` drives sidebar sections and dashboard
 cards (`app/utils/role_access.py`, `_bootstrap/context_processors.py`), and the AI assistant's
 governed charters live in `app/modules/ai_chat/services/architect_persona_charters.py`
-(`ARCHITECT_PERSONAS`). Adding a persona means touching all three plus `components/admin_sidebar.html`.
+(`ARCHITECT_PERSONAS`). Adding a persona means touching all three plus the sidebar —
+which is `components/admin_sidebar_northstar_phase2.html`, the one `layouts/admin_base.html`
+actually includes. `components/admin_sidebar.html` is a dead copy; editing it changes nothing.
+A persona also needs an entry in `PERSONA_GRANTS` (`app/_decorators_base.py`), or
+`require_roles` cannot admit it to any route.
 
 **ArchiMate is the backbone, not a view.** Every backend CREATE for a motivation entity (Driver,
 Goal, Constraint, Requirement, Risk, Metric, Plateau, WorkPackage) must call
