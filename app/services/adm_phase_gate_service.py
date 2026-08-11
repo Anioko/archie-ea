@@ -27,23 +27,6 @@ from flask import g
 from app import db
 
 
-def _org_filter(prefix: str = "") -> tuple[str, dict]:
-    """(' AND <prefix>organization_id = :org_id', {'org_id': id}) inside a tenant
-    request, else ('', {}) for system/CLI callers with no ``g.current_org_id``.
-
-    Mirrors ``app.services.architecture_rag_service._org_filter``. Raw SQL is not
-    covered by the ORM tenant listener (``do_orm_execute`` only instruments
-    ORM-mapped statements), so any raw query touching a tenant-scoped table —
-    here, ``archimate_elements``, which carries ``organization_id`` via
-    ``TenantMixin`` — must add the predicate explicitly or it aggregates every
-    organization's rows.
-    """
-    org_id = getattr(g, "current_org_id", None)
-    if org_id is None:
-        return "", {}
-    return f" AND {prefix}organization_id = :org_id", {"org_id": org_id}
-
-
 # Default phase gate chain: phase → list of prior phases whose outputs are required
 _DEFAULT_PHASE_CHAIN: dict[str, list[str]] = {
     "A": [],
@@ -170,13 +153,19 @@ class ADMPhaseGateService:
         when no architecture is given (the phase-summary caller's default),
         count across all instances rather than filtering on nothing.
 
-        Joins ``archimate_elements`` and applies ``_org_filter`` explicitly:
-        neither ``ea_workflow_instances`` nor ``workflow_instance_archimate_elements``
-        carries ``organization_id``, but ``archimate_elements`` does (it is
-        ``TenantMixin``-scoped), and it's the only tenant-scoped table reachable
-        from this junction. Without that predicate this raw query — which the
-        ORM tenant listener does not touch — would aggregate every
-        organization's ADM phase outputs and present them as the current org's.
+        Joins ``archimate_elements`` and filters it on organization_id
+        explicitly: neither ``ea_workflow_instances`` nor
+        ``workflow_instance_archimate_elements`` carries ``organization_id``,
+        but ``archimate_elements`` does (it is ``TenantMixin``-scoped), and
+        it's the only tenant-scoped table reachable from this junction.
+        Without that predicate this raw query — which the ORM tenant listener
+        does not touch — would aggregate every organization's ADM phase
+        outputs and present them as the current org's. The predicate is
+        written as ``:org_id IS NULL OR ae.organization_id = :org_id`` so the
+        SQL text itself stays fully static (no string concatenation of a
+        conditional clause) — for system/CLI callers with no
+        ``g.current_org_id``, ``org_id`` binds to ``None`` and the OR passes
+        every row, matching the prior no-clause behaviour.
 
         No exception handler: a swallowed query error would report ``0``, which
         ``can_enter_phase`` and ``get_phase_summary`` state as fact — "missing
@@ -184,7 +173,7 @@ class ADMPhaseGateService:
         phase. Both callers run inside handlers that surface the failure, so the
         error is better reported than converted into a gate verdict.
         """
-        org_clause, org_params = _org_filter("ae.")
+        org_id = getattr(g, "current_org_id", None)
         if architecture_id is None:
             row = db.session.execute(
                 db.text(
@@ -192,9 +181,10 @@ class ADMPhaseGateService:
                     "JOIN ea_workflow_instances i ON i.id = w.instance_id "
                     "JOIN archimate_elements ae ON ae.id = w.element_id "
                     "WHERE w.adm_phase = :phase "
-                    "AND w.element_role = 'output'" + org_clause
+                    "AND w.element_role = 'output' "
+                    "AND (:org_id IS NULL OR ae.organization_id = :org_id)"
                 ),
-                {"phase": phase_code, **org_params},
+                {"phase": phase_code, "org_id": org_id},
             ).scalar()
         else:
             row = db.session.execute(
@@ -204,9 +194,10 @@ class ADMPhaseGateService:
                     "JOIN archimate_elements ae ON ae.id = w.element_id "
                     "WHERE i.context->>'architecture_id' = :arch_id "
                     "AND w.adm_phase = :phase "
-                    "AND w.element_role = 'output'" + org_clause
+                    "AND w.element_role = 'output' "
+                    "AND (:org_id IS NULL OR ae.organization_id = :org_id)"
                 ),
-                {"arch_id": str(architecture_id), "phase": phase_code, **org_params},
+                {"arch_id": str(architecture_id), "phase": phase_code, "org_id": org_id},
             ).scalar()
         return int(row or 0)
 
@@ -215,14 +206,16 @@ class ADMPhaseGateService:
 
         See ``_count_phase_outputs`` for why this filters through the JSON
         ``context`` field rather than a nonexistent ``architecture_id`` column,
-        and why ``_org_filter`` is applied explicitly against the joined
-        ``archimate_elements`` row.
+        and why the ``:org_id IS NULL OR ae.organization_id = :org_id``
+        predicate is applied explicitly against the joined
+        ``archimate_elements`` row (keeps the query text static for bandit
+        B608 while still preserving org scoping).
 
         No exception handler, for the same reason as ``_count_phase_outputs``:
         ``False`` here becomes a "missing element types" gate rejection that
         names a cause which was never established.
         """
-        org_clause, org_params = _org_filter("ae.")
+        org_id = getattr(g, "current_org_id", None)
         if architecture_id is None:
             row = db.session.execute(
                 db.text(
@@ -231,9 +224,10 @@ class ADMPhaseGateService:
                     "JOIN archimate_elements ae ON ae.id = w.element_id "
                     "WHERE w.adm_phase = :phase "
                     "AND ae.type = :etype "
-                    "AND w.element_role = 'output'" + org_clause
+                    "AND w.element_role = 'output' "
+                    "AND (:org_id IS NULL OR ae.organization_id = :org_id)"
                 ),
-                {"phase": phase_code, "etype": element_type, **org_params},
+                {"phase": phase_code, "etype": element_type, "org_id": org_id},
             ).scalar()
         else:
             row = db.session.execute(
@@ -244,9 +238,10 @@ class ADMPhaseGateService:
                     "WHERE i.context->>'architecture_id' = :arch_id "
                     "AND w.adm_phase = :phase "
                     "AND ae.type = :etype "
-                    "AND w.element_role = 'output'" + org_clause
+                    "AND w.element_role = 'output' "
+                    "AND (:org_id IS NULL OR ae.organization_id = :org_id)"
                 ),
-                {"arch_id": str(architecture_id), "phase": phase_code, "etype": element_type, **org_params},
+                {"arch_id": str(architecture_id), "phase": phase_code, "etype": element_type, "org_id": org_id},
             ).scalar()
         return int(row or 0) > 0
 
