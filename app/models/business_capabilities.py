@@ -36,14 +36,25 @@ class BusinessCapability(TenantMixin, db.Model):
     """
 
     __tablename__ = "business_capability"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        # `code` was globally unique, which made the codes every enterprise
+        # capability model actually uses — CAP-001, BC.1.2, APQC ids — a
+        # first-come-first-served resource across tenants: the second
+        # organisation to import its own model collided on row one. Unique per
+        # organisation instead, matching the same correction made to
+        # value_streams.code. Existing databases need
+        # `flask scope-capability-code-to-tenant` — reconcile-schema adds
+        # columns and cannot drop an index.
+        db.UniqueConstraint("organization_id", "code", name="uq_business_capability_org_code"),
+        {"extend_existing": True},
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
     # Capability identity
     name = db.Column(db.String(256), nullable=False, index=True)
     description = db.Column(db.Text)
-    code = db.Column(db.String(50), unique=True, index=True)  # CAP - 001
+    code = db.Column(db.String(50), index=True)  # CAP - 001, unique per organisation
 
     # Capability classification
     level = db.Column(
@@ -576,7 +587,14 @@ def create_capability_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="Capability",
-                layer="Strategy",
+                # Lower case. `layer` is canonically lower case — see
+                # app/commands/backfill_archimate_layer_casing.py, which
+                # normalises the column with .strip().lower() — and the element
+                # browser, the /architecture/api/layer/<layer>/* endpoints and
+                # LAYER_CONFIG all key on the lower-case form. Writing
+                # "Strategy" here meant every capability created anywhere in
+                # the app minted an element that none of those could find.
+                layer="strategy",
                 description=target.description or f"Business capability: {target.name}",
             )
         )

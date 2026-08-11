@@ -1,0 +1,299 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Import a capability model{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Import', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto px-4 py-6 space-y-6" x-data="capabilityImport()">
+    {{ page_header(
+        title='Import a capability model',
+        description='Load an existing Level 1–3 model from CSV or Excel instead of re-keying it',
+        actions=[
+            {'text': 'Download template', 'icon': 'download', 'href': url_for('capability_map.import_template'), 'variant': 'outline'},
+            {'text': 'Capability map', 'icon': 'arrow-left', 'href': url_for('capability_map.index'), 'variant': 'outline'}
+        ]
+    ) }}
+
+    <!-- Step 1 — choose a file -->
+    <div class="bg-card rounded-lg shadow border border-border p-6">
+        <h2 class="text-lg font-semibold text-foreground mb-1">1. Choose your file</h2>
+        <p class="text-sm text-muted-foreground mb-4">
+            CSV or Excel, up to 5,000 capabilities. The first row must be a header row.
+            Column names are matched loosely — <span class="font-mono text-xs">Capability Name</span>,
+            <span class="font-mono text-xs">name</span> and <span class="font-mono text-xs">Title</span>
+            all mean the same thing.
+        </p>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <label for="capability-import-file" class="sr-only">Capability model file</label>
+            <input id="capability-import-file" type="file" accept=".csv,.xlsx,.xlsm,.txt"
+                   @change="fileChosen($event)"
+                   class="block text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90">
+            <button type="button" @click="preview()" :disabled="!file || busy"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                <i data-lucide="search-check" class="w-4 h-4" aria-hidden="true"></i>
+                <span x-text="busy ? 'Checking…' : 'Check the file'"></span>
+            </button>
+        </div>
+
+        <template x-if="fileError">
+            <div class="mt-4 p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+                 x-text="fileError"></div>
+        </template>
+    </div>
+
+    <!-- Step 2 — what would happen -->
+    <template x-if="plan">
+        <div class="bg-card rounded-lg shadow border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground">2. What this would do</h2>
+                <p class="text-sm text-muted-foreground">Nothing has been written yet.</p>
+            </div>
+
+            <div class="p-6 space-y-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="rounded-lg border border-border p-4">
+                        <p class="text-2xl font-bold text-foreground" x-text="plan.creates"></p>
+                        <p class="text-xs text-muted-foreground">To create</p>
+                    </div>
+                    <div class="rounded-lg border border-border p-4">
+                        <p class="text-2xl font-bold text-foreground" x-text="plan.updates"></p>
+                        <p class="text-xs text-muted-foreground">To update</p>
+                    </div>
+                    <div class="rounded-lg border border-border p-4">
+                        <p class="text-2xl font-bold text-muted-foreground" x-text="plan.unchanged"></p>
+                        <p class="text-xs text-muted-foreground">Already match</p>
+                    </div>
+                    <div class="rounded-lg border border-border p-4"
+                         :class="plan.errors.length ? 'border-destructive/40' : ''">
+                        <p class="text-2xl font-bold"
+                           :class="plan.errors.length ? 'text-destructive' : 'text-muted-foreground'"
+                           x-text="plan.errors.length"></p>
+                        <p class="text-xs text-muted-foreground">Rejected rows</p>
+                    </div>
+                </div>
+
+                <template x-if="plan.warnings.length">
+                    <div class="rounded-lg bg-warning/10 border border-warning/20 p-4 text-sm text-warning">
+                        <template x-for="w in plan.warnings" :key="w">
+                            <p x-text="w"></p>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Rejected rows, with the line number the spreadsheet shows -->
+                <template x-if="plan.errors.length">
+                    <div>
+                        <h3 class="text-sm font-medium text-foreground mb-2">
+                            Rejected rows — these will not be imported
+                        </h3>
+                        <div class="overflow-x-auto rounded-lg border border-border">
+                            <table class="min-w-full divide-y divide-border text-sm">
+                                <thead class="bg-muted/50">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Line</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Column</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Why</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-card divide-y divide-border">
+                                    <template x-for="e in plan.errors" :key="e.line + (e.column || '') + e.message">
+                                        <tr>
+                                            <td class="px-4 py-2 font-mono text-xs" x-text="e.line"></td>
+                                            <td class="px-4 py-2 font-mono text-xs text-muted-foreground" x-text="e.column || '—'"></td>
+                                            <td class="px-4 py-2 text-foreground" x-text="e.message"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- The rows that would be written -->
+                <template x-if="plan.rows.length">
+                    <div>
+                        <h3 class="text-sm font-medium text-foreground mb-2">Row by row</h3>
+                        <div class="overflow-x-auto rounded-lg border border-border max-h-96 overflow-y-auto">
+                            <table class="min-w-full divide-y divide-border text-sm">
+                                <thead class="bg-muted/50 sticky top-0">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Line</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Action</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Code</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Capability</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Level</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Parent</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Changes</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-card divide-y divide-border">
+                                    <template x-for="r in plan.rows" :key="r.line">
+                                        <tr>
+                                            <td class="px-4 py-2 font-mono text-xs" x-text="r.line"></td>
+                                            <td class="px-4 py-2">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                                                      :class="{
+                                                        'bg-primary/10 text-primary': r.action === 'create',
+                                                        'bg-warning/10 text-warning': r.action === 'update',
+                                                        'bg-muted text-muted-foreground': r.action === 'unchanged'
+                                                      }" x-text="r.action"></span>
+                                            </td>
+                                            <td class="px-4 py-2 font-mono text-xs" x-text="r.code || '—'"></td>
+                                            <td class="px-4 py-2 text-foreground" x-text="r.name"></td>
+                                            <td class="px-4 py-2" x-text="r.level || '—'"></td>
+                                            <td class="px-4 py-2 font-mono text-xs text-muted-foreground" x-text="r.parent || '—'"></td>
+                                            <td class="px-4 py-2 text-xs text-muted-foreground" x-text="describeChanges(r.changes)"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                        <template x-if="plan.rows_truncated">
+                            <p class="mt-2 text-xs text-muted-foreground">
+                                Showing the first <span x-text="plan.rows.length"></span> rows.
+                                <span x-text="plan.rows_truncated"></span> more will be imported and are
+                                counted above.
+                            </p>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            <div class="px-6 py-4 border-t border-border flex items-center justify-between gap-4">
+                <p class="text-sm text-muted-foreground">
+                    Importing the same file twice produces the same model — rows are matched on
+                    code, or on name when there is no code.
+                </p>
+                <button type="button" @click="commit()" :disabled="busy || (plan.creates + plan.updates) === 0"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
+                    <span x-text="busy ? 'Importing…' : 'Import ' + (plan.creates + plan.updates) + ' capabilities'"></span>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Step 3 — what happened -->
+    <template x-if="result">
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-3">Imported</h2>
+            <ul class="text-sm text-foreground space-y-1">
+                <li><span class="font-medium" x-text="result.created"></span> capabilities created</li>
+                <li><span class="font-medium" x-text="result.updated"></span> updated</li>
+                <li><span class="font-medium" x-text="result.unchanged"></span> already matched and were left alone</li>
+                <li><span class="font-medium" x-text="result.archimate_elements"></span> ArchiMate elements created, so the
+                    model is visible in the composer and the traceability matrix</li>
+                <template x-if="result.rejected">
+                    <li class="text-destructive"><span class="font-medium" x-text="result.rejected"></span>
+                        rows were rejected and not imported</li>
+                </template>
+            </ul>
+            <div class="mt-4 flex gap-3">
+                <a href="{{ url_for('capability_map.hierarchy') }}"
+                   class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium">
+                    <i data-lucide="git-branch" class="w-4 h-4" aria-hidden="true"></i>
+                    See the tree
+                </a>
+                <a href="{{ url_for('capability_map.index') }}"
+                   class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-input text-sm font-medium text-foreground hover:bg-accent">
+                    Capability map
+                </a>
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function capabilityImport() {
+    return {
+        file: null,
+        plan: null,
+        result: null,
+        busy: false,
+        fileError: '',
+
+        fileChosen(event) {
+            this.file = event.target.files.length ? event.target.files[0] : null;
+            this.plan = null;
+            this.result = null;
+            this.fileError = '';
+        },
+
+        describeChanges(changes) {
+            if (!changes) { return '—'; }
+            const keys = Object.keys(changes);
+            if (!keys.length) { return '—'; }
+            return keys.map(k => `${k}: ${changes[k].from ?? '—'} → ${changes[k].to}`).join('; ');
+        },
+
+        async send(url) {
+            const body = new FormData();
+            body.append('file', this.file);
+            const response = await fetch(url, {
+                method: 'POST',
+                body: body,
+                headers: { 'X-CSRFToken': (document.querySelector('meta[name="csrf-token"]') || {}).content || '' }
+            });
+            // fetch does not reject on 4xx/5xx: without this check an error
+            // body parses cleanly and the page reports a successful import of
+            // nothing.
+            const payload = await response.json().catch(() => null);
+            if (!response.ok || !payload || payload.success === false) {
+                throw new Error((payload && payload.error) || `Request failed (${response.status})`);
+            }
+            return payload;
+        },
+
+        async preview() {
+            if (!this.file) { return; }
+            this.busy = true;
+            this.fileError = '';
+            this.result = null;
+            try {
+                this.plan = await this.send('{{ url_for("capability_map.import_preview") }}');
+                this.$nextTick(() => { if (window.lucide) { window.lucide.createIcons(); } });
+            } catch (error) {
+                this.plan = null;
+                this.fileError = error.message;
+            } finally {
+                this.busy = false;
+            }
+        },
+
+        async commit() {
+            if (!this.file) { return; }
+            this.busy = true;
+            this.fileError = '';
+            try {
+                this.result = await this.send('{{ url_for("capability_map.import_commit") }}');
+                this.plan = null;
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.success(
+                        `${this.result.created} created, ${this.result.updated} updated`);
+                }
+                this.$nextTick(() => { if (window.lucide) { window.lucide.createIcons(); } });
+            } catch (error) {
+                this.fileError = error.message;
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error(error.message);
+                }
+            } finally {
+                this.busy = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

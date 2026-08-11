@@ -220,6 +220,13 @@ def init_cli(app):
         app.logger.warning(f"⚠️  Failed to register value-stream tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.scope_capability_code_to_tenant import init_app as init_cap_code
+        init_cap_code(app)
+        app.logger.info("✅ Capability code tenancy CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register capability code tenancy CLI: {e}")
+
+    try:
         from app.commands.backfill_value_stream_archimate import init_app as init_vs_archimate
         init_vs_archimate(app)
         app.logger.info("✅ Value-stream ArchiMate backfill CLI command registered")
