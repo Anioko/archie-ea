@@ -62,17 +62,30 @@ class Role(db.Model):
 
     @staticmethod
     def insert_roles():
-        # "Architect" is the DEFAULT role for new sign-ups. This platform is FOR
-        # architects, and the CRUD route guards use require_roles("admin",
-        # "architect") — so the default role MUST normalize to "architect", or
-        # every normal user gets 403 on create/update/delete of their own data
-        # (the "CRUD is broken" symptom). Architect gets GENERAL permission (NOT
-        # ADMINISTER), so user.can(ADMINISTER)/is_admin() stays False and truly
-        # admin-only areas (user mgmt, seeding) remain restricted.
+        # "User" is the DEFAULT role. It was "Architect", for a stated reason:
+        # the CRUD guards use require_roles("admin", "architect"), that
+        # decorator could not see a persona, and so the default role had to
+        # normalize to "architect" or "every normal user gets 403 on
+        # create/update/delete of their own data".
+        #
+        # The cost of that workaround was that the token stopped meaning
+        # anything: every account that could log in satisfied "architect", and
+        # with it the 104 routes whose allow-list contains it — including a
+        # procurement user, who is not an architect of any kind.
+        #
+        # require_roles now grants from enterprise_role (see PERSONA_GRANTS in
+        # app/_decorators_base.py), where all three architect personas satisfy
+        # "architect" by being architects. So the default no longer has to carry
+        # authorisation, and it should not: Architect and User both hold
+        # Permission.GENERAL, and a role that confers no permission must not
+        # confer access.
+        #
+        # Existing databases are corrected by `flask sync-roles`, which reseeds
+        # these rows and runs on container boot.
         # (name, permissions, index, is_default)
         roles = {
-            "User": (Permission.GENERAL, "main", False),
-            "Architect": (Permission.GENERAL, "main", True),
+            "User": (Permission.GENERAL, "main", True),
+            "Architect": (Permission.GENERAL, "main", False),
             "Administrator": (Permission.ADMINISTER, "admin", False),
         }
         for r in roles:

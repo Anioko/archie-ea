@@ -15,7 +15,7 @@ LOG="/var/log/archie-watchdog.log"
 
 FAIL_THRESHOLD=3      # ~3 minutes of unresponsiveness before acting
 COOLDOWN_SECONDS=600  # never restart-loop
-# Startup grace. Boot runs init-db + reconcile-schema + backfill-architect-role
+# Startup grace. Boot runs init-db + reconcile-schema + the backfills + sync-roles
 # before gunicorn binds, which measured 286s on 2026-07-30 - longer than
 # FAIL_THRESHOLD*60. The watchdog duly restarted the container MID-MIGRATION.
 # It survived only because those commands are idempotent. Never act on a

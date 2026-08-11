@@ -174,19 +174,81 @@ def role_required(*roles):
     return decorator
 
 
+# Which allow-list tokens each persona satisfies.
+#
+# The allow-lists across the codebase use seven tokens: admin, architect,
+# compliance_officer, business_architect, enterprise_architect, executive and
+# analyst. `enterprise_role` uses a different, finer vocabulary. This is the
+# join between them, and it is deliberately explicit rather than derived: an
+# architect persona satisfying the generic "architect" token is a decision, not
+# a string coincidence, and adding a persona should require making that decision
+# again.
+#
+# compliance_officer and analyst are intentionally granted by no persona. No
+# persona claims either, and inventing one would hand 16 routes to a population
+# nobody chose. They remain reachable through an explicitly assigned Role or
+# role_archetype, and every route naming them also names admin or architect.
+PERSONA_GRANTS = {
+    # "architect" as well as "admin": six routes are guarded by architect-only
+    # allow-lists such as ("architect", "compliance_officer"), and the platform
+    # administrator reached all of them before this change. Tightening is meant
+    # to remove architect write access from personas that are not architects,
+    # not to lock the superuser out of six pages.
+    "platform_admin": {"admin", "platform_admin", "architect"},
+    "enterprise_architect": {"architect", "enterprise_architect"},
+    "solution_architect": {"architect", "solution_architect"},
+    "business_architect": {"architect", "business_architect"},
+    "arb_member": {"arb_member"},
+    "portfolio_manager": {"portfolio_manager"},
+    "cto": {"cto", "executive"},
+    "procurement": {"procurement"},
+    "application_manager": {"application_manager"},
+}
+
+
+def _confers_permissions(role_obj) -> bool:
+    """Does this Role row grant anything beyond the base permission?
+
+    A role that confers no permission must not confer access either. The
+    Architect and User rows both carry Permission.GENERAL — the same value an
+    account has by existing — so neither says anything about what its holder may
+    do. Administrator carries ADMINISTER and does.
+
+    Fails closed: a Role whose permissions cannot be read grants nothing.
+    """
+    try:
+        from app.models import Permission
+
+        base = Permission.GENERAL
+    except Exception:  # noqa: BLE001 - authorisation must not depend on an import
+        base = 1
+    permissions = getattr(role_obj, "permissions", None)
+    if not isinstance(permissions, int):
+        return False
+    return permissions > base
+
+
 def require_roles(*allowed_roles):
-    """Require user to have one of the specified roles.
-    
+    """Require the user to satisfy one of the given allow-list tokens.
+
     Args:
-        *allowed_roles: Role names (strings) the user must have at least one of
-        
+        *allowed_roles: tokens the user must satisfy at least one of
+
     Usage:
         @require_roles('admin', 'architect')
         def admin_endpoint():
             ...
-    
+
+    Grants come from, in order of how much they mean:
+
+    * ``enterprise_role`` — the persona, expanded through ``PERSONA_GRANTS``
+    * ``is_platform_admin`` / ``is_org_admin`` — "admin"
+    * ``role_archetype``, and any explicitly assigned ``roles`` collection
+    * the single ``role`` relationship, **only** where that row confers
+      permissions beyond the base — see ``_confers_permissions``
+
     Returns:
-        403 Forbidden if user lacks required roles
+        403 Forbidden if the user satisfies none of them
     """
     def decorator(f):
         @wraps(f)
@@ -234,17 +296,27 @@ def require_roles(*allowed_roles):
                     if normalized
                 )
             
-            # Try single role field
-            if hasattr(current_user, 'role'):
-                role_obj = current_user.role
+            # The single `role` relationship, but only when the row confers
+            # something.
+            #
+            # Role('Architect') used to be the default=True row, so
+            # User.__init__ handed it to every account and this branch granted
+            # "architect" — and with it the 104 routes whose allow-list contains
+            # it — to everyone who could log in. It was a deliberate workaround:
+            # insert_roles said the default "MUST normalize to architect, or
+            # every normal user gets 403 on create/update/delete of their own
+            # data". That was true while this decorator could not see a persona.
+            # It can now (below), so the workaround is retired and the grant is
+            # limited to roles that carry real permissions — Administrator, not
+            # the base-permission User and Architect rows.
+            role_obj = getattr(current_user, "role", None)
+            if role_obj is not None:
                 if hasattr(role_obj, "name"):
-                    normalized = _normalize_role_name(role_obj.name)
-                    if normalized:
-                        user_roles.add(normalized)
-                    if hasattr(role_obj, "index"):
-                        normalized_index = _normalize_role_name(role_obj.index)
-                        if normalized_index:
-                            user_roles.add(normalized_index)
+                    if _confers_permissions(role_obj):
+                        for value in (role_obj.name, getattr(role_obj, "index", None)):
+                            normalized = _normalize_role_name(value)
+                            if normalized:
+                                user_roles.add(normalized)
                 else:
                     normalized = _normalize_role_name(role_obj)
                     if normalized:
@@ -255,18 +327,26 @@ def require_roles(*allowed_roles):
                 if normalized_archetype:
                     user_roles.add(normalized_archetype)
 
+            # The admin flags are an authorisation fact in their own right and
+            # do not depend on which Role row a user happens to carry.
+            if getattr(current_user, "is_platform_admin", False) or getattr(
+                current_user, "is_org_admin", False
+            ):
+                user_roles.add("admin")
+
             # enterprise_role is the persona the product is organised around: it
-            # drives the sidebar, the dashboard cards and the AI charters. It was
-            # the one role source this decorator never read, which made the 15
-            # routes naming "business_architect" in their allow-list satisfiable
-            # only by accident — via the default Role('Architect') row that
-            # User.__init__ gives every account — rather than by being one.
+            # drives the sidebar, the dashboard cards and the AI charters, and
+            # it is now what this decorator actually gates on. PERSONA_GRANTS
+            # maps each persona onto the vocabulary the allow-lists use, so an
+            # architect persona satisfies the generic "architect" token as well
+            # as its own name.
             enterprise_role = getattr(current_user, "enterprise_role", None)
             if enterprise_role:
                 normalized_enterprise = _normalize_role_name(enterprise_role)
                 if normalized_enterprise:
                     user_roles.add(normalized_enterprise)
-            
+                    user_roles.update(PERSONA_GRANTS.get(normalized_enterprise, ()))
+
             # Check if user has any of the required roles (case-insensitive)
             required = set(
                 normalized
