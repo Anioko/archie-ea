@@ -211,6 +211,7 @@ scripts/check_*.py
 !scripts/check_fetch_guards.py
 !scripts/check_null_filters.py
 !scripts/check_template_references.py
+!scripts/check_template_calls.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

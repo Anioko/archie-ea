@@ -254,6 +254,34 @@ def gate_template_syntax() -> Result:
     return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_template_calls() -> Result:
+    """A Jinja expression calling a name nothing can provide. Gated at ZERO.
+
+    `template-syntax` proves a template parses. This proves the names it *calls*
+    can be resolved — a different failure, and a worse one to find, because the
+    call is usually behind a condition. `{{ min(page * per_page, total_count) }}`
+    and `{{ getCategoryExplanation(cap.category) }}` were both live on
+    /capability-maturity/search: `min` is a Python builtin rather than a Jinja
+    global, and getCategoryExplanation is JavaScript defined in a <script> block
+    in the same file. One sat behind a pagination guard and the other behind
+    `{% if cap.category %}`, so the page rendered perfectly while it had nothing
+    to show and raised UndefinedError the moment a search matched anything. The
+    view caught it and flashed "Error searching capabilities. Please try again."
+    — blaming the search, which had worked.
+
+    Resolution follows extends and include in both directions, since a partial
+    renders inside its includer's context and does not name it.
+    """
+    proc = _run([sys.executable, "scripts/check_template_calls.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("template-calls", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_template_calls.py to list them"
+    return Result("template-calls", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_fetch_guards(baseline: int) -> Result:
     """A raw fetch() whose body is parsed without checking the response. RATCHET.
 
@@ -886,6 +914,13 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="create the missing partial, correct the path, or delete the "
                          "dead reference; run scripts/check_template_references.py",
              tags=["static", "ui"]),
+        Gate("template-calls", "every name a Jinja expression calls can be resolved",
+             "zero", gate_template_calls,
+             remediation="define it as a Jinja global/filter or a macro, or move the "
+                         "call client-side; run scripts/check_template_calls.py",
+             # NOT "static": reads the real jinja_env and context processors, so
+             # it boots the app, like broken-surfaces below.
+             tags=["ui"]),
         Gate("broken-surfaces", "front-end targets resolve to real routes", "ratchet",
              lambda: gate_broken_surfaces(baseline.get("broken_surfaces", 479)),
              remediation="run scripts/check_broken_surfaces.py; repoint the URL, "
