@@ -40,59 +40,59 @@ def search_capabilities():
     per_page = 20
 
     try:
-        # Build base query
-        base_query = """
-            SELECT id, name, business_domain, current_maturity_level, target_maturity_level,
-                   maturity_gap, strategic_importance, maturity_assessment_date,
-                   business_owner, description, category, capability_type
-            FROM business_capability
-            WHERE 1=1
-        """
+        # Rewritten from three hand-built SQL strings, each of which was broken:
+        #
+        #  - the SELECT list named `capability_type`, a column that exists
+        #    neither on BusinessCapability nor in the table, so every request
+        #    raised UndefinedColumn and the page rendered its error panel. The
+        #    search has never returned a result.
+        #  - the count was produced by str.replace() against a differently
+        #    whitespaced copy of the query. Neither replacement matched, so
+        #    `.scalar()` returned the first id in the result set and presented
+        #    it as "Search Results (N capabilities)".
+        #  - all three ran as raw SQL on a TenantMixin table with no
+        #    organization_id predicate. do_orm_execute cannot filter a textual
+        #    statement, so the comments claiming "tenant-filtered" were wrong
+        #    and the search read every organisation's capabilities. The crash
+        #    was the only thing hiding it.
+        #
+        # Going through the ORM applies the tenant predicate mechanically.
+        from app.models.business_capabilities import BusinessCapability
 
-        params = {}
-
+        base = BusinessCapability.query
 
         if query:
-            base_query += " AND (name ILIKE :query OR description ILIKE :query)"
-            params["query"] = f"%{query}%"
+            like = f"%{query}%"
+            base = base.filter(
+                db.or_(
+                    BusinessCapability.name.ilike(like),
+                    BusinessCapability.description.ilike(like),
+                )
+            )
 
         if domain:
-            base_query += " AND business_domain = :domain"
-            params["domain"] = domain
+            base = base.filter(BusinessCapability.business_domain == domain)
 
         if strategic_importance:
-            base_query += " AND strategic_importance = :strategic_importance"
-            params["strategic_importance"] = strategic_importance
+            base = base.filter(
+                BusinessCapability.strategic_importance == strategic_importance
+            )
 
-        # Add ordering and pagination
-        base_query += " ORDER BY business_domain, name LIMIT :limit OFFSET :offset"
-        params["limit"] = per_page
-        params["offset"] = (page - 1) * per_page
-
-        result = db.session.execute(text(base_query), params)  # tenant-filtered
-        capabilities = result.fetchall()
-
-        # Get total count for pagination
-        count_query = base_query.replace(
-            "SELECT id, name, business_domain, current_maturity_level, target_maturity_level, maturity_gap, strategic_importance, maturity_assessment_date, business_owner, description",
-            "SELECT COUNT(*)",
-        )
-        count_query = count_query.replace(
-            "ORDER BY business_domain, name LIMIT :limit OFFSET :offset", ""
+        total_count = base.count()
+        capabilities = (
+            base.order_by(BusinessCapability.business_domain, BusinessCapability.name)
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+            .all()
         )
 
-        count_result = db.session.execute(text(count_query), params)  # tenant-filtered
-        total_count = count_result.scalar()
-
-        # Get available domains. The execute and the `domains` assignment were
-        # missing, leaving `domains` unbound in the render_template call below.
-        _domain_query = "SELECT DISTINCT business_domain FROM business_capability WHERE business_domain IS NOT NULL"
-        _domain_params = {}
         domains = [
             row[0]
-            for row in db.session.execute(  # tenant-filtered
-                text(_domain_query), _domain_params
-            ).fetchall()
+            for row in db.session.query(BusinessCapability.business_domain)
+            .filter(BusinessCapability.business_domain.isnot(None))
+            .distinct()
+            .order_by(BusinessCapability.business_domain)
+            .all()
         ]
 
         return render_template(

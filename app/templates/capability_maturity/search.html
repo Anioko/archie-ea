@@ -139,7 +139,13 @@
                                         {{ cap.category }}
                                     </span>
                                     <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-popover text-popover-foreground text-xs rounded-lg border border-border opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10 shadow-md">
-                                        <div class="font-medium">{{ getCategoryExplanation(cap.category) }}</div>
+                                        {# getCategoryExplanation is JavaScript, defined at the
+                                           bottom of this template. Calling it from Jinja raised
+                                           UndefinedError, so every search that returned a row with
+                                           a category 500'd into this page's own error panel — and
+                                           the flash said the search had failed, which it had not.
+                                           The tooltip is filled in by that same function on load. #}
+                                        <div class="font-medium" data-category-explanation="{{ cap.category }}"></div>
                                         <div class="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-popover border-r border-b border-border"></div>
                                     </div>
                                 </div>
@@ -149,7 +155,10 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
-                                {{ cap.domain or 'Unknown' }}
+                                {# The column is business_domain. `cap.domain` resolved to
+                                   Undefined, so every row in this column read "Unknown"
+                                   whatever the capability's domain actually was. #}
+                                {{ cap.business_domain or '—' }}
                             </span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
@@ -233,7 +242,10 @@
             <div class="flex items-center justify-between">
                 <div class="text-sm text-muted-foreground">
                     Showing {{ ((page - 1) * per_page) + 1 }} to 
-                    {{ min(page * per_page, total_count) }} of {{ total_count }} results
+                    {# `min` is a Python builtin, not a Jinja global: calling it raised
+                       UndefinedError and took the page down as soon as there were
+                       enough results to paginate. Jinja ships min as a filter. #}
+                    {{ [page * per_page, total_count]|min }} of {{ total_count }} results
                 </div>
                 <div class="flex space-x-2">
                     {% if page > 1 %}
@@ -329,5 +341,11 @@ function getCategoryExplanation(category) {
     
     return explanations[category] || 'Unknown category - consult reference guide';
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-category-explanation]').forEach(function (el) {
+        el.textContent = getCategoryExplanation(el.dataset.categoryExplanation);
+    });
+});
 </script>
 {% endblock %}
