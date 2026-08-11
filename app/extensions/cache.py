@@ -7,7 +7,7 @@ import pickle
 from typing import Any, Callable, Optional
 
 import redis
-from flask import current_app
+from flask import current_app, g, has_request_context
 
 
 class CacheManager:
@@ -192,6 +192,27 @@ class CacheManager:
 cache_manager = CacheManager()
 
 
+def current_tenant_key() -> str:
+    """The organisation component of every cache key.
+
+    Archie's tenancy is enforced by an ORM event that adds
+    ``organization_id = g.current_org_id`` to queries, so two organisations
+    calling the same function get different rows back. A cache key built only
+    from the function name and its arguments therefore collides across
+    tenants — and for a cached *view* that takes no arguments, the key is a
+    constant, so the first organisation to load the page fills the cache and
+    every other organisation is served that organisation's rendered HTML until
+    the TTL expires.
+
+    Including the tenant here rather than at each call site makes the safe
+    behaviour the default: a new ``@cached`` cannot leak by omission.
+    """
+    org_id = getattr(g, "current_org_id", None) if has_request_context() else None
+    # One spelling for "no tenant", so a CLI call and an unauthenticated request
+    # share a bucket that no real organisation can ever collide with.
+    return f"org:{org_id}" if org_id is not None else "org:none"
+
+
 def cached(ttl: int = 300, key_prefix: str = "", key_func: Optional[Callable] = None):
     """
     Decorator for caching function results.
@@ -205,19 +226,24 @@ def cached(ttl: int = 300, key_prefix: str = "", key_func: Optional[Callable] = 
         ttl: Cache TTL in seconds (default 5 minutes)
         key_prefix: Prefix for cache key
         key_func: Custom function to generate cache key from args/kwargs
+
+    Every key is scoped to the calling organisation — see ``current_tenant_key``.
     """
 
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # Generate cache key
+            tenant = current_tenant_key()
             if key_func:
-                cache_key = f"{key_prefix}:{key_func(*args, **kwargs)}"
+                cache_key = f"{tenant}:{key_prefix}:{key_func(*args, **kwargs)}"
             else:
                 # Default: use function name + args + kwargs
                 args_str = "_".join(str(arg) for arg in args)
                 kwargs_str = "_".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
-                cache_key = f"{key_prefix}:{func.__name__}:{args_str}:{kwargs_str}"
+                cache_key = (
+                    f"{tenant}:{key_prefix}:{func.__name__}:{args_str}:{kwargs_str}"
+                )
 
             # Try to get from cache
             cached_value = cache_manager.get(cache_key)
@@ -238,14 +264,20 @@ def cached(ttl: int = 300, key_prefix: str = "", key_func: Optional[Callable] = 
     return decorator
 
 
-def invalidate_cache(pattern: str):
+def invalidate_cache(pattern: str, all_tenants: bool = False):
     """
     Invalidate cache keys matching pattern.
 
     Usage:
         invalidate_cache('user:123:*')
         invalidate_cache('api:v1:applications:*')
+
+    The pattern is scoped to the calling organisation, matching how ``cached``
+    builds its keys. Pass ``all_tenants=True`` only from maintenance paths that
+    genuinely need to clear every organisation's entries.
     """
+    if not all_tenants:
+        pattern = f"{current_tenant_key()}:{pattern}"
     deleted = cache_manager.delete_pattern(pattern)
     current_app.logger.info(f"Invalidated {deleted} cache keys matching: {pattern}")
     return deleted
