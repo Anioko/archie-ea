@@ -943,6 +943,9 @@ class EnterpriseInitiative(TenantMixin, db.Model):
     """
 
     __tablename__ = "enterprise_initiatives"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "code", name="uq_enterprise_initiatives_org_code"),
+    )
 
     # This model held every tenant's transformation programmes — budgets, spend,
     # sponsors — with no organization_id at all, so it was not merely unfiltered
@@ -967,7 +970,7 @@ class EnterpriseInitiative(TenantMixin, db.Model):
     # Initiative identity
     name = db.Column(db.String(200), nullable=False, index=True)
     code = db.Column(
-        db.String(50), unique=True
+        db.String(50)
     )  # Project code: SAP - 2025, CLOUD-MIGRATE - 01
     description = db.Column(db.Text)
 

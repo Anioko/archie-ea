@@ -111,10 +111,13 @@ class CourseOfAction(TenantMixin, db.Model):
     """
 
     __tablename__ = "courses_of_action"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "code", name="uq_courses_of_action_org_code"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False, index=True)
-    code = db.Column(db.String(50), unique=True, index=True)
+    code = db.Column(db.String(50), index=True)
     description = db.Column(db.Text)
 
     # Action classification

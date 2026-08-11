@@ -256,9 +256,12 @@ class ArchitectureReviewBoard(TenantMixin, db.Model, OptimisticLockMixin):
     """
 
     __tablename__ = "architecture_review_boards"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "board_number", name="uq_architecture_review_boards_org_board_number"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    board_number = db.Column(db.String(50), unique=True, nullable=False)  # ARB - 2026 - 001
+    board_number = db.Column(db.String(50), nullable=False)  # ARB - 2026 - 001
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
 

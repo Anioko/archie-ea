@@ -208,10 +208,13 @@ class SolutionProblemDefinition(TenantMixin, db.Model):
     """
 
     __tablename__ = "solution_problem_definitions"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "session_id", name="uq_solution_problem_definitions_org_session_id"),
+    )
 
     id = Column(Integer, primary_key=True)
     session_id = Column(
-        Integer, ForeignKey("solution_analysis_sessions.id"), unique=True, nullable=False
+        Integer, ForeignKey("solution_analysis_sessions.id"), nullable=False
     )
 
     # Problem description

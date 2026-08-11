@@ -62,6 +62,18 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     """
 
     __tablename__ = "application_components"
+    # The two per-tenant unique constraints for this table are attached as
+    # Index objects immediately after the class body, not here. This table is
+    # declared with extend_existing, and under that flag the UniqueConstraint
+    # entries in __table_args__ did not reach the Table — measured: the class's
+    # own __table__ carried no unique constraints at all, which would have
+    # dropped the uniqueness rather than scoping it. An Index constructed from
+    # bound columns attaches to the table unconditionally.
+    # The per-tenant unique constraints for this table are declared as Index
+    # objects at the foot of this module, not here. Measured: with
+    # extend_existing set, UniqueConstraint entries in __table_args__ do not
+    # reach the Table — the class's own __table__ came out with no unique
+    # constraints at all, which drops the rule instead of scoping it.
     __table_args__ = {"extend_existing": True}
 
     # 'version' on this model is the application's own release number ("2.1.0"),
@@ -89,7 +101,7 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     name = Column(db.String(256), nullable=False, index=True)
     description = Column(db.Text)
     application_code = Column(
-        db.String(50), unique=True, index=True
+        db.String(50), index=True
     )  # e.g., SAP-ERP - 01, CRM-SF - 02
 
     # Application classification
@@ -337,7 +349,7 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     imported_apqc_codes = Column(db.Text)  # JSON: [process_codes]
 
     # Abacus integration fields
-    external_id = Column(db.String(255), unique=True, index=True)  # External system ID
+    external_id = Column(db.String(255), index=True)  # External system ID
     abacus_source = Column(db.Boolean, default=False)  # Whether sourced from Abacus
     last_sync_from_abacus = Column(db.DateTime)  # Last sync timestamp
     abacus_properties = Column(db.JSON)  # Additional properties from Abacus
@@ -620,6 +632,8 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
 # COMMENTED OUT - DUPLICATE CLASS DEFINITION
 # Use app.models.application_capability.ApplicationCapabilityMapping instead
 
+
+
 class ApplicationCapabilityMapping(db.Model):
     # Application-Capability Mapping
     # Maps applications to the business capabilities they support.
@@ -723,12 +737,15 @@ class VendorContract(TenantMixin, db.Model):
     """
 
     __tablename__ = "vendor_contracts"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "contract_number", name="uq_vendor_contracts_org_contract_number"),
+        {"extend_existing": True},
+    )
 
     id = Column(db.Integer, primary_key=True)
 
     # Contract identity
-    contract_number = Column(db.String(100), unique=True, index=True)
+    contract_number = Column(db.String(100), index=True)
     contract_name = Column(db.String(256), nullable=False)
     contract_description = Column(db.Text)
 
@@ -949,3 +966,27 @@ def create_app_component_archimate_element(mapper, connection, target):
             )
         )
         target.archimate_element_id = result.inserted_primary_key[0]
+
+
+# Per-tenant uniqueness for ApplicationComponent.
+#
+# application_code and external_id were `unique=True`, i.e. unique across every
+# organisation: the second tenant to import an application coded SAP-ERP-01 was
+# refused, and the error said only that the code was taken. Both are values the
+# tenant authors or imports from its own estate.
+#
+# Declared here because __table_args__ cannot carry them on a table using
+# extend_existing (see the note on the class). An Index built from bound
+# columns attaches to the Table unconditionally.
+db.Index(
+    "uq_application_components_org_application_code",
+    ApplicationComponent.organization_id,
+    ApplicationComponent.application_code,
+    unique=True,
+)
+db.Index(
+    "uq_application_components_org_external_id",
+    ApplicationComponent.organization_id,
+    ApplicationComponent.external_id,
+    unique=True,
+)

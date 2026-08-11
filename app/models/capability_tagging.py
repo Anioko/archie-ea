@@ -19,10 +19,13 @@ class CapabilityTag(TenantMixin, db.Model):
     """Capability tag for flexible categorization."""
 
     __tablename__ = "capability_tags"
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "name", name="uq_capability_tags_org_name"),
+        {'extend_existing': True},
+    )
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(50), unique=True, nullable=False, index=True)
+    name = Column(String(50), nullable=False, index=True)
     category = Column(String(20), nullable=False)  # application, business, technical, governance
     description = Column(Text)
     color = Column(String(7))  # For UI visualization (hex colors)

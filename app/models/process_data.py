@@ -49,12 +49,15 @@ class BusinessProcess(TenantMixin, db.Model):
     """
 
     __tablename__ = "business_processes"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "process_code", name="uq_business_processes_org_process_code"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
     # Identity
     name = db.Column(db.String(200), nullable=False, index=True)
-    process_code = db.Column(db.String(50), unique=True)  # P2P - 001, O2C - 001
+    process_code = db.Column(db.String(50))  # P2P - 001, O2C - 001
     description = db.Column(db.Text)
 
     # ArchiMate linkage (Business Process is ArchiMate element)
@@ -374,12 +377,16 @@ class DataDomain(TenantMixin, db.Model):
     """
 
     __tablename__ = "data_domains"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "code", name="uq_data_domains_org_code"),
+        db.UniqueConstraint("organization_id", "name", name="uq_data_domains_org_name"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
     # Identity
-    name = db.Column(db.String(200), nullable=False, unique=True, index=True)
-    code = db.Column(db.String(50), unique=True)  # CUST, PROD, FIN, OPS
+    name = db.Column(db.String(200), nullable=False, index=True)
+    code = db.Column(db.String(50))  # CUST, PROD, FIN, OPS
     description = db.Column(db.Text)
 
     # ArchiMate linkage

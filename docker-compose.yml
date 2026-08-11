@@ -23,13 +23,19 @@ services:
     #                      means a legacy capitalised row matches NOTHING until this
     #                      has run. It is therefore required, not optional, on any
     #                      database that predates that change. Idempotent.
+    #   scope-unique-to-tenant — swap global unique constraints on tenant tables for
+    #                      per-organisation ones. Until it runs, an authored value —
+    #                      a vendor name, a data-domain code, an ADR number — is unique
+    #                      across ALL organisations and the second tenant to use it is
+    #                      refused. Skips any table where existing rows would collide,
+    #                      and prints them. Idempotent.
     #   sync-roles       — reseed the Role rows and which one is the default for new
     #                      accounts. Role.insert_roles() is not called by init-db, so a
     #                      change to that definition never reaches an existing database
     #                      without this. Replaces backfill-architect-role, which promoted
     #                      every account to "Architect" so that require_roles would let
     #                      people edit their own data; the persona does that now.
-    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && { flask --app manage backfill-archimate-layer-casing || echo 'WARN archimate layer casing backfill skipped - ArchiMate elements stored with a capitalised layer will not match any query until it runs'; } && { flask --app manage backfill-layer-tenancy || echo 'WARN layer tenancy backfill skipped - newly tenant-scoped tables keep nullable organization_id until it runs; rows left NULL are invisible to every org'; } && { flask --app manage backfill-value-stream-tenancy || echo 'WARN value-stream tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-principle-org || echo 'WARN principle tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-initiative-org || echo 'WARN initiative tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-kanban-card-org || echo 'WARN kanban card tenancy backfill skipped'; } && flask --app manage sync-roles && gunicorn -c gunicorn.conf.py manage:app"
+    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && { flask --app manage backfill-archimate-layer-casing || echo 'WARN archimate layer casing backfill skipped - ArchiMate elements stored with a capitalised layer will not match any query until it runs'; } && { flask --app manage backfill-layer-tenancy || echo 'WARN layer tenancy backfill skipped - newly tenant-scoped tables keep nullable organization_id until it runs; rows left NULL are invisible to every org'; } && { flask --app manage backfill-value-stream-tenancy || echo 'WARN value-stream tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-principle-org || echo 'WARN principle tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-initiative-org || echo 'WARN initiative tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-kanban-card-org || echo 'WARN kanban card tenancy backfill skipped'; } && { flask --app manage scope-unique-to-tenant || echo 'WARN tenant-unique scoping skipped - authored identifiers stay unique across ALL organisations until it runs, so the second tenant to use a value is refused'; } && flask --app manage sync-roles && gunicorn -c gunicorn.conf.py manage:app"
     # Guardrails added 2026-07-30. Previously restart=no and no mem_limit, so a
     # memory spike triggered a GLOBAL OOM (22 Jul) and a wedged container stayed
     # wedged for six days (24-30 Jul). The ceiling confines a spike to this

@@ -282,6 +282,36 @@ def gate_template_calls() -> Result:
     return Result("template-calls", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_tenant_unique() -> Result:
+    """A unique constraint on a tenant table that omits organization_id. ZERO.
+
+    `unique=True` on a TenantMixin model is unique across *every* organisation.
+    Where the value is one the tenant authors — a vendor name, a data-domain
+    code, an ADR number, a Jira key — that makes it first-come-first-served:
+    the second organisation to record "SAP", "CUST" or "AD-001" is refused, and
+    the message says only that the value is taken.
+
+    Sixty of these had accumulated over 46 tables, because nothing about the
+    declaration looks wrong and no gate could see it. `raw_sql_tenancy` reads
+    SQL strings and these are ORM declarations; `schema-drift` compares models
+    against the database and both sides agreed, since the constraint was wrong
+    in both. Two of the three known instances had already been "fixed" once —
+    value_streams.code's upgrade command dropped a constraint name that never
+    existed and reported success.
+
+    Escape hatch: GLOBAL_BY_DESIGN in app/models/tenant_unique_registry.py,
+    which takes a reason per entry.
+    """
+    proc = _run([sys.executable, "scripts/check_tenant_unique.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("tenant-unique", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_tenant_unique.py to list them"
+    return Result("tenant-unique", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_fetch_guards(baseline: int) -> Result:
     """A raw fetch() whose body is parsed without checking the response. RATCHET.
 
@@ -914,6 +944,14 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="create the missing partial, correct the path, or delete the "
                          "dead reference; run scripts/check_template_references.py",
              tags=["static", "ui"]),
+        Gate("tenant-unique", "no unique constraint on a tenant table omits organization_id",
+             "zero", gate_tenant_unique,
+             remediation="scope the constraint to (organization_id, ...) and run "
+                         "`flask scope-unique-to-tenant`, or record it in "
+                         "GLOBAL_BY_DESIGN with the reason",
+             # NOT "static": walks the SQLAlchemy mapper registry, so it boots
+             # the app, like broken-surfaces and template-calls.
+             tags=["ui", "security"]),
         Gate("template-calls", "every name a Jinja expression calls can be resolved",
              "zero", gate_template_calls,
              remediation="define it as a Jinja global/filter or a macro, or move the "

@@ -212,6 +212,7 @@ scripts/check_*.py
 !scripts/check_null_filters.py
 !scripts/check_template_references.py
 !scripts/check_template_calls.py
+!scripts/check_tenant_unique.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

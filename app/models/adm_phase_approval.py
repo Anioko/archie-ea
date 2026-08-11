@@ -54,10 +54,13 @@ class ADMPhaseApproval(TenantMixin, db.Model):
     """
 
     __tablename__ = "adm_phase_approvals"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "approval_number", name="uq_adm_phase_approvals_org_approval_number"),
+        {"extend_existing": True},
+    )
 
     id = Column(Integer, primary_key=True)
-    approval_number = Column(String(50), unique=True, nullable=False)  # ADM-2026-001
+    approval_number = Column(String(50), nullable=False)  # ADM-2026-001
 
     # Card being moved
     card_id = Column(Integer, ForeignKey("kanban_cards.id"), nullable=False)

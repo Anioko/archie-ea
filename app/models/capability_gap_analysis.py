@@ -44,13 +44,16 @@ class CapabilityGapAnalysis(TenantMixin, db.Model):
     """
 
     __tablename__ = "capability_gap_analysis"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "analysis_code", name="uq_capability_gap_analysis_org_analysis_code"),
+    )
 
     id = Column(db.Integer, primary_key=True)
 
     # Analysis identity
     analysis_name = Column(db.String(256), nullable=False, index=True)
     analysis_description = Column(db.Text)
-    analysis_code = Column(db.String(50), unique=True, index=True)  # e.g., GA - 2024 - Q1
+    analysis_code = Column(db.String(50), index=True)  # e.g., GA - 2024 - Q1
 
     # Analysis scope
     scope_type = Column(db.String(30))  # enterprise, domain, capability, value_stream

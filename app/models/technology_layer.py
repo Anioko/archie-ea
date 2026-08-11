@@ -245,6 +245,9 @@ class Device(TenantMixin, db.Model):
     """
 
     __tablename__ = "technology_devices"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "serial_number", name="uq_technology_devices_org_serial_number"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
@@ -272,7 +275,7 @@ class Device(TenantMixin, db.Model):
     # Manufacturer & Model
     manufacturer = db.Column(db.String(100))  # Cisco, Juniper, F5, NetApp, Dell EMC
     model = db.Column(db.String(200))
-    serial_number = db.Column(db.String(100), unique=True)
+    serial_number = db.Column(db.String(100))
     asset_tag = db.Column(db.String(100))
     firmware_version = db.Column(db.String(100))
     hardware_revision = db.Column(db.String(50))

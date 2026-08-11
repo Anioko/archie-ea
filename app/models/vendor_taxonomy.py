@@ -30,11 +30,14 @@ class VendorTaxonomy(TenantMixin, db.Model):
     """
 
     __tablename__ = "vendor_taxonomy"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "canonical_name", name="uq_vendor_taxonomy_org_canonical_name"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
     # Canonical identity
-    canonical_name = db.Column(db.String(200), nullable=False, unique=True, index=True)
+    canonical_name = db.Column(db.String(200), nullable=False, index=True)
     display_name = db.Column(db.String(200))
     vendor_type = db.Column(db.String(50))  # software_vendor, cloud_provider, systems_integrator
 

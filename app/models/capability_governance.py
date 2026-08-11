@@ -6,9 +6,12 @@ from .mixins import TenantMixin
 
 class CapabilityGovernanceDecision(TenantMixin, db.Model):
     __tablename__ = "capability_governance_decision"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "adr_number", name="uq_capability_governance_decision_org_adr_number"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    adr_number = db.Column(db.String(32), nullable=False, unique=True)
+    adr_number = db.Column(db.String(32), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(32), nullable=False, default="proposed")
     decision_date = db.Column(db.Date)

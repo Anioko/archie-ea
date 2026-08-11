@@ -108,7 +108,10 @@ class KanbanCard(TenantMixin, db.Model):
     """Individual kanban cards representing architectural work items"""
 
     __tablename__ = "kanban_cards"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "jira_issue_key", name="uq_kanban_cards_org_jira_issue_key"),
+        {"extend_existing": True},
+    )
 
     # KanbanBoard carries TenantMixin; KanbanCard did not. Cards were therefore
     # protected only when reached *through* a board — a direct
@@ -195,7 +198,7 @@ class KanbanCard(TenantMixin, db.Model):
     )  # Plateau card this work delivers toward
 
     # Jira integration — populated after successful push
-    jira_issue_key = Column(String(50), nullable=True, unique=True, index=True)   # e.g. "ARCH-142"
+    jira_issue_key = Column(String(50), nullable=True, index=True)   # e.g. "ARCH-142"
     jira_push_status = Column(String(50), nullable=True)  # "pushed" | "failed" | NULL (not yet pushed)
     jira_subtask_key = Column(String(50), nullable=True, index=True)   # Jira Subtask key for depends_on link
 

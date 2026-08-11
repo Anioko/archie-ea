@@ -16,10 +16,13 @@ class Project(TenantMixin, db.Model):
     """
 
     __tablename__ = "projects"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "code", name="uq_projects_org_code"),
+    )
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.String(200), nullable=False)
-    code = db.Column(db.String(20), unique=True, nullable=False)  # Project code/identifier
+    code = db.Column(db.String(20), nullable=False)  # Project code/identifier
     description = db.Column(db.Text)
 
     # Project metadata

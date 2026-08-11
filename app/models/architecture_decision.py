@@ -19,10 +19,13 @@ VALID_STATUSES = ['proposed', 'under_review', 'accepted', 'rejected', 'deprecate
 class ArchitectureDecision(TenantMixin, db.Model):
     __tablename__ = "architecture_decisions"
 
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "decision_id", name="uq_architecture_decisions_org_decision_id"),
+        {"extend_existing": True},
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    decision_id = db.Column(db.String(50), unique=True, nullable=True)  # e.g. 'AD-001' (nullable for solution-level ADRs)
+    decision_id = db.Column(db.String(50), nullable=True)  # e.g. 'AD-001' (nullable for solution-level ADRs)
     title = db.Column(db.String(200), nullable=False)
     status = db.Column(db.String(30), default="proposed")  # proposed, accepted, deprecated, superseded
 
@@ -161,10 +164,13 @@ VALID_AFFECTED_ENTITY_TYPES = ['capability', 'application_component', 'business_
 class ArchitectureChangeRequest(TenantMixin, db.Model):
     """ARB-004: Phase H change request — inbound signal that triggers change assessment."""
     __tablename__ = 'architecture_change_requests'
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "acr_reference", name="uq_architecture_change_requests_org_acr_reference"),
+        {'extend_existing': True},
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    acr_reference = db.Column(db.String(50), unique=True, nullable=False)  # ACR-2026-001
+    acr_reference = db.Column(db.String(50), nullable=False)  # ACR-2026-001
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
 

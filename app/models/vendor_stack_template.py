@@ -28,9 +28,12 @@ class VendorStackTemplate(TenantMixin, db.Model):
     """
 
     __tablename__ = "vendor_stack_templates"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "vendor_name", name="uq_vendor_stack_templates_org_vendor_name"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    vendor_name = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    vendor_name = db.Column(db.String(100), nullable=False, index=True)
 
     # Basic Information
     name = db.Column(db.String(200), nullable=False)

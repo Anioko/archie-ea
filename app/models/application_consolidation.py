@@ -112,13 +112,16 @@ class ApplicationConsolidationRecommendation(TenantMixin, db.Model):
     """
 
     __tablename__ = "application_consolidation_recommendations"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "recommendation_code", name="uq_application_consolidation_recommendations_org_recommendation_code"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
     # Recommendation identity
     recommendation_name = db.Column(db.String(255), nullable=False)
     recommendation_code = db.Column(
-        db.String(50), unique=True, index=True
+        db.String(50), index=True
     )  # e.g., "CONS - 2024 - 001"
     description = db.Column(db.Text)
     consolidation_type = db.Column(db.String(50))  # merge, replace, retire, standardize, modernize

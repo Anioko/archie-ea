@@ -32,11 +32,14 @@ class ArchiMateViewpoint(TenantMixin, db.Model):
     """
 
     __tablename__ = "archimate_viewpoints"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", "name", name="uq_archimate_viewpoints_org_name"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
     # Basic identification
-    name = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    name = db.Column(db.String(100), nullable=False, index=True)
     viewpoint_type = db.Column(
         db.String(50), nullable=False
     )  # 'stakeholder', 'layered', 'relation', 'custom'
