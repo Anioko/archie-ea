@@ -43,8 +43,8 @@ class BusinessCapability(TenantMixin, db.Model):
         # organisation to import its own model collided on row one. Unique per
         # organisation instead, matching the same correction made to
         # value_streams.code. Existing databases need
-        # `flask scope-capability-code-to-tenant` — reconcile-schema adds
-        # columns and cannot drop an index.
+        # `flask scope-unique-to-tenant`, which runs on container boot —
+        # reconcile-schema adds columns and cannot drop an index.
         db.UniqueConstraint("organization_id", "code", name="uq_business_capability_org_code"),
         {"extend_existing": True},
     )

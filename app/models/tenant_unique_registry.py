@@ -40,6 +40,7 @@ SCOPE_PER_TENANT = [
     ("capability_gap_analysis", "analysis_code"),        # GA-2024-Q1
 
     # Codes a tenant brings with it, from its own model or a spreadsheet.
+    ("business_capability", "code"),                     # CAP-001, BC.1.2, APQC ids
     ("application_components", "application_code"),
     ("application_components", "external_id"),
     ("application_consolidation_recommendations", "recommendation_code"),
