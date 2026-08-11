@@ -254,6 +254,18 @@ def require_roles(*allowed_roles):
                 normalized_archetype = _normalize_role_name(current_user.role_archetype)
                 if normalized_archetype:
                     user_roles.add(normalized_archetype)
+
+            # enterprise_role is the persona the product is organised around: it
+            # drives the sidebar, the dashboard cards and the AI charters. It was
+            # the one role source this decorator never read, which made the 15
+            # routes naming "business_architect" in their allow-list satisfiable
+            # only by accident — via the default Role('Architect') row that
+            # User.__init__ gives every account — rather than by being one.
+            enterprise_role = getattr(current_user, "enterprise_role", None)
+            if enterprise_role:
+                normalized_enterprise = _normalize_role_name(enterprise_role)
+                if normalized_enterprise:
+                    user_roles.add(normalized_enterprise)
             
             # Check if user has any of the required roles (case-insensitive)
             required = set(
