@@ -374,11 +374,32 @@
                '</div>';
     }
 
+    /* The assistant's own "couldn't be completed" text already names Admin
+       -> API Settings, but as plain text a reader cannot click through from.
+       This is the pointer the brief asks for, attached below the message
+       rather than parsed out of it — no assumption about the exact wording
+       survives a copy edit to agent_runner.py's fallback strings. */
+    function renderApiSettingsNotice(error) {
+        if (!error) return '';
+        return '<div class="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive-emphasis" role="alert">' +
+                 '<div class="flex items-start gap-2">' +
+                   '<i data-lucide="alert-circle" class="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden="true"></i>' +
+                   '<div class="flex-1">' +
+                     '<div class="font-medium">This reply could not be completed as requested.</div>' +
+                     '<a href="/admin/api-settings" class="mt-1 inline-flex items-center gap-1 underline hover:no-underline">' +
+                       'Open Admin → API Settings' +
+                     '</a>' +
+                   '</div>' +
+                 '</div>' +
+               '</div>';
+    }
+
     /* One call site for everything that hangs below an answer, so the completed
        and streamed paths cannot render different things. */
     function renderAnswerFooter(meta) {
         var m = meta || {};
-        return renderEvidence(m.trail, m.sources, {
+        return renderApiSettingsNotice(m.error) +
+               renderEvidence(m.trail, m.sources, {
                    contextUsed: m.contextUsed,
                    domainLabel: m.domain
                }) +
@@ -425,9 +446,15 @@
                 '<i data-lucide="user" class="h-5 w-5"></i>' +
               '</div>';
 
-        // Enhanced message bubble with metadata using safe color classes
+        // Enhanced message bubble with metadata using safe color classes.
+        // An error-flavoured reply (agent_runner._fallback() persisted text,
+        // surfaced instead of thrown away) gets the same destructive tint as
+        // appendError, so the failure reads as a failure without losing the
+        // assistant avatar and Retry-free single-bubble presentation the
+        // brief asks for.
+        var isAiError = isAi && !!metadata.error;
         var bubble = isAi
-            ? '<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl">' +
+            ? '<div class="rounded-xl ' + (isAiError ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-muted/50') + ' p-4 text-sm prose max-w-3xl">' +
                 renderMetaBadge(metadata) +
                 '<div class="message-content">' + renderMarkdown(text) + '</div>' +
                 renderAnswerFooter(metadata) +
@@ -565,6 +592,13 @@
         if (caret) caret.remove();
         el.removeAttribute('aria-busy');
         var bubble = body ? body.parentElement : el;
+        // Same destructive tint as the non-streamed path (appendMessage) —
+        // whether the error surfaced before or after the first token must
+        // not change how it reads.
+        if (meta.error && bubble && bubble.classList) {
+            bubble.classList.remove('bg-muted/50');
+            bubble.classList.add('bg-destructive/10', 'text-destructive-emphasis');
+        }
         var badge = renderMetaBadge(meta);
         if (badge) bubble.insertAdjacentHTML('afterbegin', badge);
         var sources = renderAnswerFooter(meta);

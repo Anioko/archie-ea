@@ -417,7 +417,7 @@ def api_list_instances():
                 "instances": [
                     {
                         "id": i.id,
-                        "workflow_code": i.workflow_code,
+                        "workflow_code": i.definition.workflow_code if i.definition else None,
                         "status": i.status,
                         "started_at": i.started_at.isoformat()
                         if i.started_at
@@ -425,7 +425,7 @@ def api_list_instances():
                         "completed_at": i.completed_at.isoformat()
                         if i.completed_at
                         else None,
-                        "current_step": i.current_step,
+                        "current_step": i.current_step_id,
                         "progress_percent": i.progress_percent,
                     }
                     for i in instances
