@@ -306,11 +306,16 @@ class InvestmentPrioritizationService:
         ]:
             risk_score += 15
 
-        # Technology debt risk
+        # Technology debt risk. technical_debt_score is nullable and unpopulated
+        # for most of the portfolio; hasattr only proves the attribute exists, so
+        # a None went straight into the comparison and raised TypeError, taking
+        # the whole investment matrix down with it. An unscored application is
+        # not a high-debt application.
         high_debt_apps = [
             m
             for m in app_mappings
-            if hasattr(m, "technical_debt_score") and m.technical_debt_score > 70
+            if getattr(m, "technical_debt_score", None) is not None
+            and m.technical_debt_score > 70
         ]
         if high_debt_apps:
             risk_score += 10

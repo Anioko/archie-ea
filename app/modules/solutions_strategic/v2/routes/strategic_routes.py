@@ -287,7 +287,8 @@ def capability_health():
         metrics = service.get_capability_health_metrics()
         return render_template("strategic/capability_health.html", metrics=metrics)
     except Exception:
-        return jsonify({"error": "An internal error occurred"}), 500
+        current_app.logger.exception("strategic page failed: capability_health")
+        return render_template("errors/500.html"), 500
 
 
 @strategic_bp.route("/api/capability-health")
@@ -321,7 +322,8 @@ def investment_matrix():
             recommendations=analysis["recommendations"],
         )
     except Exception:
-        return jsonify({"error": "An internal error occurred"}), 500
+        current_app.logger.exception("strategic page failed: investment_matrix")
+        return render_template("errors/500.html"), 500
 
 
 @strategic_bp.route("/api/investment-analysis")
@@ -398,7 +400,8 @@ def risk_assessment():
             recommendations=analysis["recommendations"],
         )
     except Exception:
-        return jsonify({"error": "An internal error occurred"}), 500
+        current_app.logger.exception("strategic page failed: risk_assessment")
+        return render_template("errors/500.html"), 500
 
 
 @strategic_bp.route("/api/risk-analysis")
@@ -508,7 +511,8 @@ def process_optimization():
             recommendations=analysis["recommendations"],
         )
     except Exception:
-        return jsonify({"error": "An internal error occurred"}), 500
+        current_app.logger.exception("strategic page failed: process_optimization")
+        return render_template("errors/500.html"), 500
 
 
 @strategic_bp.route("/api/process-analysis")
@@ -548,7 +552,8 @@ def compliance_tracking():
         # Matches the sibling dashboards (dependency_visualization,
         # technology_roadmap) which surface the failure instead.
         current_app.logger.exception("Compliance tracking dashboard failed")
-        return jsonify({"error": "An internal error occurred"}), 500
+        current_app.logger.exception("strategic page failed: compliance_tracking")
+        return render_template("errors/500.html"), 500
 
 
 @strategic_bp.route("/api/compliance-analysis")
@@ -581,7 +586,8 @@ def dependency_visualization():
             recommendations=analysis["recommendations"],
         )
     except Exception:
-        return jsonify({"error": "An internal error occurred"}), 500
+        current_app.logger.exception("strategic page failed: dependency_visualization")
+        return render_template("errors/500.html"), 500
 
 
 @strategic_bp.route("/api/dependency-analysis")
@@ -616,7 +622,8 @@ def technology_roadmap():
             recommendations=analysis["recommendations"],
         )
     except Exception:
-        return jsonify({"error": "An internal error occurred"}), 500
+        current_app.logger.exception("strategic page failed: technology_roadmap")
+        return render_template("errors/500.html"), 500
 
 
 @strategic_bp.route("/api/technology-analysis")
@@ -650,7 +657,8 @@ def architecture_governance():
             recommendations=analysis["recommendations"],
         )
     except Exception:
-        return jsonify({"error": "An internal error occurred"}), 500
+        current_app.logger.exception("strategic page failed: architecture_governance")
+        return render_template("errors/500.html"), 500
 
 
 @strategic_bp.route("/api/governance-analysis")
