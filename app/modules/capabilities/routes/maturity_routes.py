@@ -634,10 +634,77 @@ def frameworks_overview_redirect():
     return redirect(url_for("maturity_management.frameworks_overview"))
 
 
+def _framework_stats(framework_categories):
+    """Count and average maturity across the capabilities in one framework.
+
+    Returns the 6-tuple ``frameworks_overview.html`` indexes into:
+    ``(total, with_current, with_target, assessed, avg_current, avg_target)``.
+
+    ``current_maturity_level`` carries a column default of 1, so it is never
+    NULL and "level 1" cannot be told apart from "nobody has assessed this".
+    Averaging the column would therefore report a measured 1.0 for a model in
+    which nothing has been assessed at all — a fabricated metric of exactly the
+    kind the fabricated-data gate exists to stop. The assessed set is the rows
+    carrying a ``maturity_assessment_date``, which every write path that sets a
+    level also stamps; the averages are ``None`` when that set is empty, and
+    the template renders ``None`` as an em dash rather than 0.0.
+    """
+    from app.models.business_capabilities import BusinessCapability
+
+    # BusinessCapability is a TenantMixin model: the organisation predicate is
+    # injected by do_orm_execute, so it must not be written here as well.
+    wanted = {c.strip().lower() for c in framework_categories if c and c.strip()}
+    if not wanted:
+        return (0, 0, 0, 0, None, None)
+
+    in_framework = db.func.lower(BusinessCapability.category).in_(wanted)
+    assessed = BusinessCapability.maturity_assessment_date.isnot(None)
+
+    row = (
+        db.session.query(
+            db.func.count(BusinessCapability.id),
+            db.func.count(
+                db.case((assessed & BusinessCapability.current_maturity_level.isnot(None), 1))
+            ),
+            db.func.count(
+                db.case((assessed & BusinessCapability.target_maturity_level.isnot(None), 1))
+            ),
+            db.func.count(db.case((assessed, 1))),
+            db.func.avg(
+                db.case((assessed, BusinessCapability.current_maturity_level))
+            ),
+            db.func.avg(
+                db.case((assessed, BusinessCapability.target_maturity_level))
+            ),
+        )
+        .filter(in_framework)
+        .one()
+    )
+
+    total, with_current, with_target, assessed_count, avg_current, avg_target = row
+    return (
+        int(total or 0),
+        int(with_current or 0),
+        int(with_target or 0),
+        int(assessed_count or 0),
+        float(avg_current) if avg_current is not None else None,
+        float(avg_target) if avg_target is not None else None,
+    )
+
+
 @maturity_management.route("/capability-maturity/frameworks")
 @login_required
 def frameworks_overview():
-    """Overview of all frameworks"""
+    """Overview of all frameworks.
+
+    ``framework_stats`` used to be initialised empty and never written to: the
+    loop below built a bind-parameter list and a params dict and then discarded
+    both. The template reads ``framework_stats[framework_key]`` for every row
+    and skips the row when it is falsy, so *every* framework card and *every*
+    table row was suppressed — the page rendered as a heading and a set of
+    column headers over an empty table, with no way to tell that from "you have
+    no capabilities yet".
+    """
 
     try:
         # Get all frameworks
@@ -646,26 +713,20 @@ def frameworks_overview():
         # Get statistics for each framework
         framework_stats = {}
 
-        for framework_key, framework_data in all_frameworks.items():
-            framework_categories = FrameworkClassifier.get_framework_categories(framework_key)
-
-            if framework_categories:
-                # Use parameterized query to prevent SQL injection
-                (", ".join(
-                    [f":cat_{i}" for i in range(len(framework_categories))]
-                ))
-                ({
-                    f"cat_{i}": cat for i, cat in enumerate(framework_categories)
-                })
-
+        for framework_key in all_frameworks:
+            framework_stats[framework_key] = _framework_stats(
+                FrameworkClassifier.get_framework_categories(framework_key)
+            )
 
         return render_template(
             "capability_maturity/frameworks_overview.html",
             all_frameworks=all_frameworks,
             framework_stats=framework_stats,
+            any_framework_populated=any(s[0] for s in framework_stats.values()),
         )
 
     except Exception:
+        current_app.logger.exception("frameworks overview failed to load")
         flash("Error loading frameworks overview. Please try again.", "error")
         return redirect(url_for("capability_map.index"))
 
@@ -774,6 +835,14 @@ def import_maturity_csv():
             cap.maturity_gap = cap.target_maturity_level - cap.current_maturity_level
 
         if changed:
+            # Stamp the assessment date on the same write as the level. Every
+            # reader that has to tell "assessed at level 1" from "never
+            # assessed" keys off this column, because current_maturity_level
+            # carries a server-side default of 1 and so is never NULL. Without
+            # the stamp a CSV import produced rows the frameworks overview
+            # could not count as assessed.
+            if current_raw or target_raw:
+                cap.maturity_assessment_date = datetime.utcnow()
             cap.updated_at = datetime.utcnow()
             updated += 1
         else:

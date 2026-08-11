@@ -30,7 +30,9 @@
         title='Capability Frameworks',
         description='Navigate capability maturity by framework and domain',
         actions=[
-            {'text': 'Back to Overview', 'icon': 'arrow-left', 'href': url_for('maturity_management.frameworks_overview'), 'variant': 'outline'}
+            {'text': 'Assess maturity', 'icon': 'sliders-horizontal', 'href': url_for('maturity_management.batch_update_maturity'), 'variant': 'default'},
+            {'text': 'Find a capability', 'icon': 'search', 'href': url_for('maturity_management.search_capabilities'), 'variant': 'outline'},
+            {'text': 'Capability map', 'icon': 'arrow-left', 'href': url_for('capability_map.index'), 'variant': 'outline'}
         ]
     ) }}
 
@@ -61,8 +63,11 @@
                         <p class="text-xs text-muted-foreground">Capabilities</p>
                     </div>
                     <div>
-                        <p class="text-2xl font-bold {{ colors.icon_text }}">{{ "%.1f"|format(stats[4] or 0) }}</p>
-                        <p class="text-xs text-muted-foreground">Avg Current</p>
+                        {# stats[4] is None when no capability in this framework has been
+                           assessed. current_maturity_level defaults to 1, so printing 0.0
+                           — or 1.0 — here would read as a measurement nobody took. #}
+                        <p class="text-2xl font-bold {{ colors.icon_text }}">{{ "%.1f"|format(stats[4]) if stats[4] is not none else '—' }}</p>
+                        <p class="text-xs text-muted-foreground">{{ 'Avg Current' if stats[4] is not none else 'Not assessed' }}</p>
                     </div>
                 </div>
 
@@ -78,16 +83,40 @@
                     </div>
                 </div>
 
-                <!-- Progress Bar -->
+                <!-- Progress Bar — omitted entirely when there is nothing to plot -->
+                {% if stats[4] is not none %}
                 <div class="w-full bg-muted rounded-full h-2">
                     <div class="{{ colors.bar }} h-2 rounded-full transition-all duration-300"
-                         style="width: {{ ((stats[4] or 0) / 5 * 100)|round }}%"></div>
+                         style="width: {{ (stats[4] / 5 * 100)|round }}%"></div>
                 </div>
+                {% else %}
+                <p class="text-xs text-muted-foreground">{{ stats[0] }} capabilities, none assessed yet</p>
+                {% endif %}
             </div>
         </a>
         {% endif %}
         {% endfor %}
     </div>
+
+    {# Every card and every table row is suppressed when its framework matches no
+       capability. Without this the page is a heading over an empty table and the
+       reason is invisible — which is how it read before framework_stats was
+       populated at all. #}
+    {% if not any_framework_populated %}
+    <div class="bg-card rounded-lg shadow border border-border p-6 mb-8">
+        <h2 class="text-lg font-semibold text-foreground mb-2">No capability sits in a framework yet</h2>
+        <p class="text-sm text-muted-foreground">
+            A capability joins a framework through its <span class="font-medium text-foreground">Category</span>
+            field — for example <span class="font-mono text-xs">Customer Management</span> or
+            <span class="font-mono text-xs">Financial Management</span>. Capabilities with an empty or
+            free-text category are counted on the capability map but cannot be compared here.
+        </p>
+        <p class="text-sm text-muted-foreground mt-2">
+            Set categories from <a class="text-primary underline" href="{{ url_for('maturity_management.search_capabilities') }}">Find a capability</a>,
+            or import them in bulk from the capability map.
+        </p>
+    </div>
+    {% endif %}
 
     <!-- Framework Comparison -->
     <div class="bg-card rounded-lg shadow border border-border">
@@ -129,25 +158,37 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-foreground">{{ stats[1] }}</td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-foreground">{{ stats[2] }}</td>
                             <td class="px-6 py-4 whitespace-nowrap">
+                                {% if stats[4] is not none %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                                    {{ "%.1f"|format(stats[4] or 0) }}
+                                    {{ "%.1f"|format(stats[4]) }}
                                 </span>
+                                {% else %}
+                                <span class="text-sm text-muted-foreground">—</span>
+                                {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
+                                {% if stats[5] is not none %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
-                                    {{ "%.1f"|format(stats[5] or 0) }}
+                                    {{ "%.1f"|format(stats[5]) }}
                                 </span>
+                                {% else %}
+                                <span class="text-sm text-muted-foreground">—</span>
+                                {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
+                                {% if stats[4] is not none %}
                                 <div class="flex items-center">
                                     <div class="flex-1 mr-2">
                                         <div class="w-full bg-muted rounded-full h-2">
                                             <div class="{{ colors.bar }} h-2 rounded-full transition-all duration-300"
-                                                 style="width: {{ ((stats[4] or 0) / 5 * 100)|round }}%"></div>
+                                                 style="width: {{ (stats[4] / 5 * 100)|round }}%"></div>
                                         </div>
                                     </div>
-                                    <span class="text-xs text-muted-foreground">{{ ((stats[4] or 0) / 5 * 100)|round }}%</span>
+                                    <span class="text-xs text-muted-foreground">{{ (stats[4] / 5 * 100)|round }}%</span>
                                 </div>
+                                {% else %}
+                                <span class="text-sm text-muted-foreground">—</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endif %}
