@@ -29,6 +29,96 @@ from app.exceptions import (  # dead-code-ok
 from . import capability_map
 
 
+REPORT_FORMATS = {
+    "pdf": ("application/pdf", "pdf"),
+    "docx": (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "docx",
+    ),
+    "xlsx": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xlsx",
+    ),
+    # Flask appends the charset for text/*; spelling it here too produced
+    # "text/html; charset=utf-8; charset=utf-8".
+    "html": ("text/html", "html"),
+}
+
+
+@capability_map.route("/report.<fmt>")
+@login_required
+def capability_report(fmt):
+    """The capability model as a document: PDF, Word, Excel or a shareable page.
+
+    Archie could export a Solution Architecture Document and a solution deck,
+    and nothing a *business* architect produces — the capability map offered
+    CSV, JSON and a picture, none of which is a deliverable. This is the
+    document that goes to an executive committee.
+
+    A format that cannot be produced on this deployment answers with the reason
+    and a 503, not a 500 and not a zero-byte file: WeasyPrint is a binding over
+    native libraries that are absent on Windows and on slim images, and the
+    other three formats still work when it is missing.
+    """
+    from app.modules.capabilities.services.capability_report_service import (
+        CapabilityReportError,
+        CapabilityReportService,
+    )
+
+    fmt = (fmt or "").lower()
+    if fmt not in REPORT_FORMATS:
+        return (
+            jsonify({
+                "success": False,
+                "error": f"Unsupported format {fmt!r}. Choose one of: "
+                         + ", ".join(sorted(REPORT_FORMATS)),
+            }),
+            400,
+        )
+
+    organisation = None
+    try:
+        from flask_login import current_user
+
+        org = getattr(current_user, "organization", None)
+        organisation = getattr(org, "name", None)
+    except Exception:  # noqa: BLE001 - a missing org name must not fail an export
+        organisation = None
+
+    try:
+        report = CapabilityReportService.build(organisation_name=organisation)
+        if fmt == "pdf":
+            payload = CapabilityReportService.render_pdf(report)
+        elif fmt == "docx":
+            payload = CapabilityReportService.render_docx(report)
+        elif fmt == "xlsx":
+            payload = CapabilityReportService.render_xlsx(report)
+        else:
+            payload = CapabilityReportService.render_html(report)
+    except CapabilityReportError as exc:
+        current_app.logger.warning("capability report unavailable as %s: %s", fmt, exc)
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:  # noqa: BLE001
+        current_app.logger.exception("capability report failed to render as %s", fmt)
+        return (
+            jsonify({
+                "success": False,
+                "error": "The capability report could not be generated. The failure "
+                         "has been logged.",
+            }),
+            500,
+        )
+
+    mimetype, extension = REPORT_FORMATS[fmt]
+    stamp = datetime.utcnow().strftime("%Y%m%d")
+    response = Response(payload, mimetype=mimetype)
+    if fmt != "html":
+        response.headers["Content-Disposition"] = (
+            f"attachment; filename=capability_model_{stamp}.{extension}"
+        )
+    return response
+
+
 @capability_map.route("/api/export-mappings")
 @login_required
 def api_export_mappings():

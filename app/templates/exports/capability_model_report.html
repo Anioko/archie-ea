@@ -1,0 +1,168 @@
+{#
+  Capability Model report — the print/document rendering of the capability map.
+
+  Self-contained CSS on purpose: this is rendered by WeasyPrint outside the
+  browser, where the application stylesheet is neither loaded nor useful. The
+  same file serves the shareable HTML view, so the two cannot drift apart.
+
+  Every maturity figure here is either a measured number or an em dash. There
+  is no zero fallback: current_maturity_level defaults to 1 and is never NULL,
+  so an unassessed capability rendered as "1.0" or "0" reads as a measurement
+  an executive will act on. `assessed` is what says an assessment happened.
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Capability Model{% if organisation %} — {{ organisation }}{% endif %}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 22mm 18mm 20mm 18mm;
+        @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7pt; color: #9ca3af; }
+    }
+    @page :first { margin: 0; @bottom-right { content: ""; } }
+
+    * { box-sizing: border-box; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2937; font-size: 10pt; line-height: 1.5; margin: 0; }
+
+    .cover { height: 297mm; page-break-after: always; position: relative; color: #fff;
+             background: linear-gradient(160deg, #0f172a 0%, #1e3a8a 70%, #1d4ed8 100%); }
+    .cover-inner { padding: 45mm 22mm; }
+    .cover .kicker { font-size: 10pt; letter-spacing: 0.35em; text-transform: uppercase; color: #93c5fd; margin-bottom: 14mm; }
+    .cover h1 { font-size: 32pt; font-weight: 800; line-height: 1.12; margin: 0 0 6mm 0; }
+    .cover .subtitle { font-size: 12pt; color: #cbd5e1; max-width: 150mm; }
+    .cover .cover-meta { position: absolute; bottom: 30mm; left: 22mm; right: 22mm;
+                         border-top: 1px solid rgba(255,255,255,0.25); padding-top: 8mm;
+                         font-size: 9pt; color: #cbd5e1; }
+    .cover .cover-meta strong { color: #fff; }
+
+    h2.section { font-size: 15pt; color: #0f172a; border-bottom: 2.5px solid #1d4ed8;
+                 padding-bottom: 4px; margin: 24pt 0 10pt 0; page-break-after: avoid; }
+    p { margin: 0 0 8pt 0; }
+    .note { font-size: 9pt; color: #475569; font-style: italic; }
+
+    .stats { display: flex; flex-wrap: wrap; gap: 6mm; margin: 0 0 10pt 0; }
+    .stat { border: 1px solid #e2e8f0; border-radius: 4px; padding: 5mm 7mm; min-width: 34mm; }
+    .stat .value { font-size: 18pt; font-weight: 700; color: #0f172a; display: block; }
+    .stat .label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+
+    table { width: 100%; border-collapse: collapse; margin: 8pt 0 14pt 0; font-size: 8.6pt; }
+    th { background: #1e293b; color: #fff; text-align: left; padding: 5pt 7pt; font-weight: 600;
+         font-size: 7.6pt; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 4.5pt 7pt; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    tr { page-break-inside: avoid; }
+    .num { text-align: right; white-space: nowrap; }
+    .muted { color: #94a3b8; }
+    .code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 8pt; color: #475569; }
+    .depth-0 td:nth-child(2) { font-weight: 700; }
+    .depth-1 td:nth-child(2) { padding-left: 14pt; }
+    .depth-2 td:nth-child(2) { padding-left: 26pt; }
+    .depth-3 td:nth-child(2) { padding-left: 38pt; }
+    .depth-4 td:nth-child(2) { padding-left: 50pt; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+    <div class="cover-inner">
+        <div class="kicker">Business architecture</div>
+        <h1>Capability<br>Model</h1>
+        <p class="subtitle">
+            {{ totals.capabilities }} capabilities across {{ totals.domains }}
+            domain{{ '' if totals.domains == 1 else 's' }}, with maturity where it has been assessed.
+        </p>
+    </div>
+    <div class="cover-meta">
+        {% if organisation %}<strong>{{ organisation }}</strong> · {% endif %}
+        Generated {{ generated_at.strftime('%d %B %Y') }}
+    </div>
+</div>
+
+<h2 class="section">1. Summary</h2>
+<div class="stats">
+    <div class="stat"><span class="value">{{ '{:,}'.format(totals.capabilities) }}</span><span class="label">Capabilities</span></div>
+    <div class="stat"><span class="value">{{ '{:,}'.format(totals.roots) }}</span><span class="label">Level 1</span></div>
+    <div class="stat"><span class="value">{{ '{:,}'.format(totals.domains) }}</span><span class="label">Domains</span></div>
+    <div class="stat"><span class="value">{{ '{:,}'.format(totals.assessed) }}</span><span class="label">Assessed</span></div>
+    <div class="stat">
+        <span class="value">{{ '%.1f'|format(totals.avg_current) if totals.avg_current is not none else '—' }}</span>
+        <span class="label">Avg current</span>
+    </div>
+    <div class="stat">
+        <span class="value">{{ '%.1f'|format(totals.avg_target) if totals.avg_target is not none else '—' }}</span>
+        <span class="label">Avg target</span>
+    </div>
+</div>
+
+{% if totals.assessed == 0 %}
+<p class="note">
+    No capability in this model carries a maturity assessment, so no average is
+    shown. An unassessed capability is not a capability scored at level 1.
+</p>
+{% elif totals.unassessed %}
+<p class="note">
+    {{ totals.unassessed }} of {{ totals.capabilities }} capabilities have not been
+    assessed. The averages above are over the {{ totals.assessed }} that have.
+</p>
+{% endif %}
+
+<h2 class="section">2. Domains</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Domain</th>
+            <th class="num">Capabilities</th>
+            <th class="num">Assessed</th>
+            <th class="num">Average current maturity</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for domain in domains %}
+        <tr>
+            <td>{{ domain.name }}</td>
+            <td class="num">{{ '{:,}'.format(domain.count) }}</td>
+            <td class="num">{{ '{:,}'.format(domain.assessed) }}</td>
+            <td class="num">
+                {% if domain.avg_current is not none %}{{ '%.1f'|format(domain.avg_current) }}
+                {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h2 class="section">3. Capability hierarchy</h2>
+{% if not flat %}
+<p class="note">This model has no capabilities yet.</p>
+{% else %}
+<table>
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Capability</th>
+            <th>Domain</th>
+            <th>Owner</th>
+            <th class="num">Current</th>
+            <th class="num">Target</th>
+            <th class="num">Gap</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in flat %}
+        <tr class="depth-{{ row.depth if row.depth < 5 else 4 }}">
+            <td class="code">{{ row.code or '' }}</td>
+            <td>{{ row.name }}</td>
+            <td>{{ row.domain or '' }}</td>
+            <td>{{ row.owner or '' }}</td>
+            <td class="num">{% if row.current is not none %}{{ row.current }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if row.target is not none %}{{ row.target }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if row.gap is not none %}{{ row.gap }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+</body>
+</html>

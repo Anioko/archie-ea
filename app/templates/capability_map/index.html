@@ -84,10 +84,14 @@
                     trigger_icon='download',
                     trigger_variant='primary',
                     items=[
-                        {'text': 'Export as CSV', 'icon': 'file-text', 'onclick': "exportData('csv')"},
-                        {'text': 'Export as JSON', 'icon': 'code', 'onclick': "exportData('json')"},
-                        {'text': 'Export as JPG', 'icon': 'image', 'onclick': "exportData('jpg')"},
-                        {'text': 'Export as PNG', 'icon': 'image', 'onclick': "exportData('png')"}
+                        {'text': 'Report as PDF', 'icon': 'file-type-2', 'href': url_for('capability_map.capability_report', fmt='pdf')},
+                        {'text': 'Report as Word', 'icon': 'file-text', 'href': url_for('capability_map.capability_report', fmt='docx')},
+                        {'text': 'Report as Excel', 'icon': 'table', 'href': url_for('capability_map.capability_report', fmt='xlsx')},
+                        {'text': 'Report as a page', 'icon': 'link', 'href': url_for('capability_map.capability_report', fmt='html')},
+                        {'text': 'Mappings as CSV', 'icon': 'file-spreadsheet', 'onclick': "exportData('csv')"},
+                        {'text': 'Mappings as JSON', 'icon': 'code', 'onclick': "exportData('json')"},
+                        {'text': 'Map as JPG', 'icon': 'image', 'onclick': "exportData('jpg')"},
+                        {'text': 'Map as PNG', 'icon': 'image', 'onclick': "exportData('png')"}
                     ]
                 ) }}
                 
