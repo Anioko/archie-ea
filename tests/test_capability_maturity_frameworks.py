@@ -213,32 +213,63 @@ def test_page_reports_when_no_capability_sits_in_any_framework(app, client):
 # ---------------------------------------------------------------------------
 
 
-def test_csv_import_stamps_the_assessment_date(db_session, make_org, tenant_ctx, client):
-    """Without the stamp, a CSV-assessed capability still reads as unassessed."""
+def test_csv_import_stamps_the_assessment_date(app, db_session, make_org, tenant_ctx):
+    """Without the stamp, a CSV-assessed capability still reads as unassessed.
+
+    Logged in as a real user of the organisation rather than through
+    LOGIN_DISABLED: the import matches capabilities by name against a
+    tenant-scoped query, so a request with no authenticated user has no
+    ``g.current_org_id``, matches nothing, and the test passes or fails
+    depending on what ran before it.
+    """
     import io
+    import uuid
 
-    org = make_org("framework-csv")
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.user import User
+
+    org = make_org(f"framework-csv-{uuid.uuid4().hex[:6]}")
+    name = f"Quote Management {uuid.uuid4().hex[:8]}"
     with tenant_ctx(org.id):
-        cap = _capability(db_session, "Quote Management", CUSTOMER_CATEGORIES[0])
+        cap = _capability(db_session, name, CUSTOMER_CATEGORIES[0])
+        assessor = User(
+            email=f"assessor-{uuid.uuid4().hex[:8]}@example.com",
+            first_name="Assessor",
+            last_name="Tester",
+            organization_id=org.id,
+            confirmed=True,
+            enterprise_role="business_architect",
+        )
+        db_session.add(assessor)
         db_session.commit()
-        cap_id = cap.id
+        cap_id, assessor_id = cap.id, assessor.id
 
-        payload = b"capability_name,current_maturity,target_maturity\nQuote Management,3,5\n"
-        resp = client.post(
-            "/capability-maturity/import-csv",
-            data={"file": (io.BytesIO(payload), "maturity.csv")},
-            content_type="multipart/form-data",
-        )
+    test_client = app.test_client()
+    with test_client.session_transaction() as sess:
+        sess["_user_id"] = str(assessor_id)
+        sess["_fresh"] = True
 
-        assert resp.status_code == 200, resp.data[:400]
-        assert resp.get_json()["updated"] == 1
+    from flask import g, has_app_context
 
-        from app.models.business_capabilities import BusinessCapability
+    if has_app_context():
+        for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
+            if hasattr(g, cached):
+                delattr(g, cached)
 
-        db_session.expire_all()
-        refreshed = db_session.get(BusinessCapability, cap_id)
-        assert refreshed.current_maturity_level == 3
-        assert refreshed.maturity_assessment_date is not None, (
-            "the import set a level without recording that an assessment happened, "
-            "so the frameworks overview would still count this row as unassessed"
-        )
+    payload = f"capability_name,current_maturity,target_maturity\n{name},3,5\n".encode()
+    resp = test_client.post(
+        "/capability-maturity/import-csv",
+        data={"file": (io.BytesIO(payload), "maturity.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 200, resp.data[:400]
+    assert resp.get_json()["updated"] == 1, resp.get_json()
+
+    db_session.expire_all()
+    refreshed = db_session.get(BusinessCapability, cap_id)
+    assert refreshed.current_maturity_level == 3
+    assert refreshed.maturity_assessment_date is not None, (
+        "the import set a level without recording that an assessment happened, "
+        "so the frameworks overview would still count this row as unassessed"
+    )
