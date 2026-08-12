@@ -152,6 +152,46 @@ def test_two_organisations_can_both_use_the_same_data_domain_code(
             db_session.commit()
 
 
+def test_the_duplicate_detector_runs_and_finds_real_duplicates(
+    app, db_session, make_org, tenant_ctx
+):
+    """The guard that stops the scoping command creating an impossible index.
+
+    It only executes when duplicates exist, so it would otherwise ship untested
+    — and it is the branch that decides whether a customer's upgrade proceeds or
+    stops. Exercised here against a deliberately non-unique column.
+    """
+    from app import db
+    from app.commands.scope_unique_to_tenant import _duplicates
+    from app.models.business_capabilities import BusinessCapability
+
+    org = make_org(f"uniq-detect-{uuid.uuid4().hex[:6]}")
+    domain = f"Shared Domain {uuid.uuid4().hex[:6]}"
+    with tenant_ctx(org.id):
+        for i in range(2):
+            db_session.add(
+                BusinessCapability(name=f"Cap {i} {uuid.uuid4().hex[:6]}",
+                                   business_domain=domain, level=1)
+            )
+        db_session.commit()
+
+        rows = _duplicates(db.session.connection(), "business_capability", "business_domain")
+
+    assert any(value == domain and count >= 2 for _org, value, count in rows), (
+        "the detector did not see two rows sharing a value in one organisation"
+    )
+
+
+def test_the_duplicate_detector_refuses_a_non_identifier():
+    """Table and column names cannot be bound, so they are validated instead."""
+    from app.commands.scope_unique_to_tenant import _identifier
+
+    assert _identifier("business_capability") == "business_capability"
+    for bad in ('users"; DROP TABLE users; --', "Mixed_Case", "1abc", ""):
+        with pytest.raises(ValueError):
+            _identifier(bad)
+
+
 def test_one_organisation_still_cannot_duplicate_its_own_value(
     db_session, make_org, tenant_ctx
 ):

@@ -33,12 +33,32 @@ have collided under a global constraint are a data question, not a schema one.
 
 from __future__ import annotations
 
+import re
+
 import click
 from flask.cli import with_appcontext
-from sqlalchemy import text
+from sqlalchemy import MetaData, Table, func, select, text
 
 from app import db
 from app.models.tenant_unique_registry import SCOPE_PER_TENANT
+
+
+_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _identifier(value: str) -> str:
+    """Return *value* only if it is a plain lower-case SQL identifier.
+
+    Table and column names cannot be bound as parameters, so the statements
+    below interpolate them. Every one comes from SCOPE_PER_TENANT, a literal
+    list in the source — but "the caller is trusted" is an argument that stops
+    being true the moment someone wires this to anything else, and it is not
+    checkable at the point of use. This makes it checkable: anything that is
+    not a bare identifier raises instead of reaching a query.
+    """
+    if not _IDENTIFIER.match(value or ""):
+        raise ValueError(f"refusing to build SQL with {value!r} as an identifier")
+    return value
 
 
 def _table_exists(conn, table) -> bool:
@@ -62,19 +82,27 @@ def _column_exists(conn, table, column) -> bool:
 
 
 def _duplicates(conn, table, column):
-    """Rows that would violate UNIQUE (organization_id, column)."""
+    """Rows that would violate UNIQUE (organization_id, column).
+
+    Built with SQLAlchemy Core against the reflected table rather than as an
+    f-string. The identifiers cannot be bound as parameters, so a string
+    version has to interpolate them — which is both a real hazard if this is
+    ever wired to anything but the literal registry, and a finding the SAST
+    gate is right to raise. Core quotes them instead.
+    """
+    reflected = Table(
+        _identifier(table), MetaData(), autoload_with=conn.engine
+    )
+    target = reflected.c[_identifier(column)]
+    org = reflected.c.organization_id
+    tally = func.count().label("n")
     return conn.execute(
-        text(
-            f"""
-            SELECT organization_id, "{column}" AS value, COUNT(*) AS n
-            FROM "{table}"
-            WHERE "{column}" IS NOT NULL
-            GROUP BY organization_id, "{column}"
-            HAVING COUNT(*) > 1
-            ORDER BY n DESC
-            LIMIT 10
-            """
-        )
+        select(org, target.label("value"), tally)
+        .where(target.isnot(None))
+        .group_by(org, target)
+        .having(func.count() > 1)
+        .order_by(tally.desc())
+        .limit(10)
     ).fetchall()
 
 
@@ -90,6 +118,9 @@ def scope_unique_to_tenant(dry_run, only_table):
     for table, column in SCOPE_PER_TENANT:
         if only_table and table != only_table:
             continue
+        # Validate before anything is interpolated into DDL below.
+        _identifier(table), _identifier(column)
+
         if not _table_exists(conn, table) or not _column_exists(conn, table, column):
             absent += 1
             continue
