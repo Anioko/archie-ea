@@ -49,6 +49,7 @@
     </a>
 
     <div class="flex h-screen overflow-hidden"
+         @keydown.ctrl.b.window.prevent="$store.sidebar.toggle()"
          x-data="{
             isDesktop: window.innerWidth >= 1024,
             init() {
@@ -117,7 +118,24 @@
     <script>
         window.pageGuideContext = {{ resolved_page_guide_context | tojson }};
         document.addEventListener('alpine:init', () => {
-            Alpine.store('sidebar', { open: false });
+            // collapsed/toggle() were missing here — composer_base.html's own
+            // sidebar store only had `open` (the mobile drawer flag), so the
+            // desktop collapse button (admin_header.html, admin_sidebar.html
+            // footer, both call $store.sidebar.toggle()) threw
+            // "toggle is not a function" on any page using this layout, and
+            // there was no Ctrl+B binding at all (unlike admin_base.html's
+            // @keydown.ctrl.b.window.prevent above) — the footer's
+            // "Collapse sidebar (Ctrl+B)" hint was unwired on this layout by
+            // both paths. Mirrors admin_base.html's store definition exactly
+            // so both layouts share one localStorage key and one behaviour.
+            Alpine.store('sidebar', {
+                open: false,
+                collapsed: localStorage.getItem('archie_sidebar_collapsed') === '1',
+                toggle() {
+                    this.collapsed = !this.collapsed;
+                    localStorage.setItem('archie_sidebar_collapsed', this.collapsed ? '1' : '0');
+                }
+            });
 
             Alpine.store('loading', {
                 active: false, count: 0,

@@ -47,7 +47,7 @@ Saint-Gobain's evaluation — calmer than a Big-4 deliverable, honest as a syste
   is what makes that true. Linked as the last Library item for every role.
 - Every cross-module link keeps the `view_functions` guard (CLAUDE.md blueprint rule).
 - **New verify.py ratchet `sidebar-links`**: renders the sidebar per role in a request context,
-  counts visible links, fails if any role exceeds its budget (26, including header/footer chrome links; platform_admin pinned at exactly 26 by test).
+  counts visible links, fails if any role exceeds its budget (25, including header/footer chrome links; platform_admin pinned at exactly 25 by test).
 
 **Global header**: remove the LLM model selector (relocate to AI surfaces' Settings, driven by
 the configured-provider registry — review finding "header contradicts actual AI config"). Keep:

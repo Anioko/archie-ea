@@ -124,3 +124,56 @@ def test_ai_chat_settings_still_exposes_model_choice(app, db_session, make_org):
     assert 'id="model-selector"' in html, (
         "AI Chat Settings no longer exposes a model selector"
     )
+
+
+def test_ctrl_b_hint_matches_wired_handler(app, db_session, make_org):
+    """Wave 1 final review, IMPORTANT 2: the sidebar footer's collapse button
+    advertises "Collapse sidebar (Ctrl+B)" (components/admin_sidebar.html).
+
+    layouts/admin_base.html already bound the key
+    (`@keydown.ctrl.b.window.prevent="$store.sidebar.toggle()"`, next to the
+    root `x-data` at the top of the layout) — that half was NOT broken,
+    contrary to the initial finding. The actual gap was
+    layouts/composer_base.html, included by every full-bleed tool page
+    (ArchiMate Composer, the codegen workflow designer): it renders the same
+    admin_sidebar.html footer and the same admin_header.html collapse
+    button (both call `$store.sidebar.toggle()`), but its own
+    `Alpine.store('sidebar', { open: false })` had no `collapsed` field and
+    no `toggle()` method at all — clicking the button there would throw
+    "toggle is not a function", and no Ctrl+B binding existed on that
+    layout either. Fixed by mirroring admin_base.html's store definition
+    (same `archie_sidebar_collapsed` localStorage key) and adding the same
+    `@keydown.ctrl.b.window.prevent` directive.
+
+    Pin both layouts: the kbd hint text is present, the store exposes
+    `collapsed`/`toggle()`, and the keydown directive exists — on both
+    admin_base.html-rendered pages and composer_base.html-rendered pages.
+    """
+    user, _ = _make_user(db_session, make_org, "ctrlb")
+    client = app.test_client()
+    _login(client, user.id)
+
+    def _assert_ctrl_b_wired(html, page_label):
+        assert "Collapse sidebar (Ctrl+B)" in html or "Expand sidebar (Ctrl+B)" in html, (
+            f"{page_label}: sidebar footer/header no longer advertises the Ctrl+B hint"
+        )
+        assert "$store.sidebar.toggle()" in html, (
+            f"{page_label}: expected the sidebar collapse button(s) to call "
+            "$store.sidebar.toggle()"
+        )
+        assert "@keydown.ctrl.b.window.prevent=\"$store.sidebar.toggle()\"" in html, (
+            f"{page_label}: no @keydown.ctrl.b binding drives $store.sidebar.toggle() "
+            "— the Ctrl+B hint is unwired on this layout"
+        )
+        assert "collapsed:" in html and "toggle()" in html, (
+            f"{page_label}: $store.sidebar must define collapsed/toggle() itself, "
+            "not just be toggled by callers"
+        )
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    _assert_ctrl_b_wired(resp.get_data(as_text=True), "admin_base.html (/dashboard/overview)")
+
+    resp = client.get("/archimate/composer")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    _assert_ctrl_b_wired(resp.get_data(as_text=True), "composer_base.html (/archimate/composer)")

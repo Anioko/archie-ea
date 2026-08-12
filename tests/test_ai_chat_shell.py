@@ -155,3 +155,76 @@ def test_show_more_suggestions_declared_on_shared_ancestor(app, db_session, make
     remaining_cards_idx = html.rindex('x-show="showMoreSuggestions"', 0, more_button_idx)
     assert grid_start < disclosure_idx, "disclosure toggle must be inside #domain-welcome-grid"
     assert grid_start < remaining_cards_idx, "remaining domain cards must be inside #domain-welcome-grid"
+
+
+def _find_ancestor_ids_and_testids(html, target_id):
+    """Walk the DOM (via html.parser, not regex) and return the set of
+    (attr, value) markers — id or data-testid — carried by every open
+    ancestor element of the node with id=target_id, at the point the parser
+    reaches it. Void/self-closing elements are not tracked as containers."""
+    from html.parser import HTMLParser
+
+    VOID_ELEMENTS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
+
+    class _Walker(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.stack = []  # list of (tag, attrs_dict)
+            self.ancestors_at_target = None
+
+        def handle_starttag(self, tag, attrs):
+            attrs_dict = dict(attrs)
+            if attrs_dict.get("id") == target_id and self.ancestors_at_target is None:
+                # Record ancestors BEFORE pushing the target itself.
+                self.ancestors_at_target = list(self.stack)
+            if tag not in VOID_ELEMENTS:
+                self.stack.append((tag, attrs_dict))
+
+        def handle_startendtag(self, tag, attrs):
+            attrs_dict = dict(attrs)
+            if attrs_dict.get("id") == target_id and self.ancestors_at_target is None:
+                self.ancestors_at_target = list(self.stack)
+            # self-closing — never pushed, nothing to pop.
+
+        def handle_endtag(self, tag):
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    del self.stack[i:]
+                    break
+
+    walker = _Walker()
+    walker.feed(html)
+    return walker.ancestors_at_target
+
+
+def test_approvals_modal_is_not_descendant_of_overflow_menu(app, db_session, make_org):
+    """CRITICAL fix (Wave 1 final review): the approvals modal
+    (#ai-chat-approvals-modal) used to be nested inside the overflow
+    dropdown's x-show="menuOpen" panel. Platform.modal.open() toggles
+    classes on the modal element in place — it does not teleport the modal
+    elsewhere in the DOM — so the instant the overflow menu closes
+    (@click="menuOpen = false" fires on every trigger inside it, including
+    the Approvals menu item itself), the whole subtree containing the modal
+    goes display:none while Platform.modal still believes it is open: body
+    scroll stays locked, Escape stays bound, background stays inert, and the
+    user sees nothing. Parsed with html.parser (not regex) because nesting
+    depth is exactly what's under test."""
+    html = _get_chat_html(app, db_session, make_org)
+
+    assert 'id="ai-chat-approvals-modal"' in html
+    assert 'data-testid="chat-overflow-menu"' in html
+
+    ancestors = _find_ancestor_ids_and_testids(html, "ai-chat-approvals-modal")
+    assert ancestors is not None, "could not locate #ai-chat-approvals-modal while parsing"
+
+    ancestor_testids = {a.get("data-testid") for _, a in ancestors}
+
+    assert "chat-overflow-menu" not in ancestor_testids, (
+        "#ai-chat-approvals-modal must not be a descendant of "
+        '[data-testid="chat-overflow-menu"] — that panel is x-show="menuOpen" '
+        "and toggling menuOpen would hide the modal out from under "
+        "Platform.modal"
+    )
