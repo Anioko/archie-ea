@@ -52,8 +52,15 @@ def _all_links(role):
     return links
 
 
-def test_sidebar_link_budget_is_25():
-    assert SIDEBAR_LINK_BUDGET == 25
+def test_sidebar_link_budget_is_26():
+    """Raised 25 -> 26 in the Task 3 fix round (coordinator review of the
+    sidebar rewrite): platform_admin's two review-mandated admin-zone links
+    (Salesforce Integration, Power Platform) alone render exactly 25 visible
+    links, leaving no headroom for the also-mandatory All-modules directory
+    link. See app/utils/role_access.py's SIDEBAR_LINK_BUDGET comment and
+    tests/test_sidebar_render.py::test_platform_admin_hits_the_link_budget_exactly.
+    """
+    assert SIDEBAR_LINK_BUDGET == 26
 
 
 def test_every_role_is_defined():
@@ -111,20 +118,30 @@ def _my_work_labels(role):
 
 
 def test_solution_architect_my_work_membership():
+    """Task 3 fix round: Programmes (solution_design.programmes_list) added —
+    a real, working route reachable from nowhere in the sidebar. Coordinator
+    review of the sidebar rewrite; membership amended accordingly."""
     assert _my_work_labels(ROLE_SOLUTION_ARCHITECT) == [
         "Architecture Journey",
         "Solutions",
         "AI Chat",
         "ADM Kanban",
+        "Programmes",
     ]
 
 
 def test_enterprise_architect_my_work_membership():
+    """Task 3 fix round: ArchiMate Composer and Traceability Matrix added —
+    both real, working routes reachable from nowhere in the sidebar.
+    Coordinator review of the sidebar rewrite; membership amended
+    accordingly."""
     assert _my_work_labels(ROLE_ENTERPRISE_ARCHITECT) == [
         "Portfolio",
         "Capability Map",
         "Elements",
         "Roadmaps",
+        "ArchiMate Composer",
+        "Traceability Matrix",
     ]
 
 
@@ -134,6 +151,52 @@ def test_cto_my_work_membership():
         "Rationalization",
         "Investment Analysis",
     ]
+
+
+def test_procurement_my_work_membership():
+    """Task 3 fix round: Overview, Licences and Compliance added — all real,
+    working routes reachable from nowhere in the sidebar. Overview goes
+    first per the coordinator's review of the sidebar rewrite."""
+    assert _my_work_labels(ROLE_PROCUREMENT) == [
+        "Overview",
+        "Vendors",
+        "Contracts",
+        "Renewals",
+        "Spend",
+        "Licences",
+        "Compliance",
+    ]
+
+
+def test_application_manager_my_work_membership():
+    """Task 3 fix round: My Applications added. my_applications.dashboard is
+    a personally-scoped view (ApplicationOwner rows for the current user
+    only) distinct from unified_applications.application_list's org-wide
+    list — see app/modules/my_applications/routes.py:get_owned_apps — and
+    was reachable from nowhere in the sidebar."""
+    assert _my_work_labels(ROLE_APPLICATION_MANAGER) == [
+        "My Applications",
+        "Applications",
+        "Rationalization",
+        "Vendors",
+    ]
+
+
+def test_platform_admin_zone_link_total_is_pinned():
+    """Task 3 fix round: platform_admin's two new admin-zone links
+    (Salesforce Integration, Power Platform) bring its zone-only link total
+    (SIDEBAR_ZONES data, not counting the sidebar's own header/footer chrome)
+    to exactly 23. All-modules is deliberately NOT one of platform_admin's
+    zone links — see _LIBRARY_LINKS_WITH_DIRECTORY's comment in
+    role_access.py — so it does not appear in this count; it is still
+    reachable via the sidebar footer fallback, pinned instead by
+    tests/test_sidebar_render.py::test_platform_admin_hits_the_link_budget_exactly
+    (which renders the template and counts real visible links, 26 including
+    that fallback plus the header logo and footer logout links). An
+    equality assertion here, not <=, so a future zone edit that silently
+    changes this number is caught rather than absorbed by budget headroom
+    that does not actually exist."""
+    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 23
 
 
 def test_get_sidebar_zones_resolves_role():

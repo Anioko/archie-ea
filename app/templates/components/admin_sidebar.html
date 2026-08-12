@@ -92,6 +92,7 @@ DEPENDENCIES:
             </div>
         </div>
 
+        {% set ns = namespace(has_all_modules=false) %}
         {% for zone in get_sidebar_zones(current_user) %}
         <div class="px-3 py-2" x-cloak x-show="matchesSearch('{{ zone.title }} {{ zone.links | map(attribute='label') | join(' ') }}')">
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
@@ -100,6 +101,7 @@ DEPENDENCIES:
             <div class="space-y-1">
                 {% for link in zone.links %}
                 {% if link.endpoint in flask.current_app.view_functions %}
+                {% if link.endpoint == 'modules_directory.index' %}{% set ns.has_all_modules = true %}{% endif %}
                 <a href="{{ url_for(link.endpoint) }}"
                    class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == link.endpoint %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == link.endpoint -%} aria-current="page"{%- endif -%}>
                     <i data-lucide="{{ link.icon }}" class="h-4 w-4 flex-shrink-0"></i>
@@ -113,6 +115,20 @@ DEPENDENCIES:
     </nav>
 
     <!-- Sidebar Footer -->
+    <!-- All-modules fallback: rendered here only for a role whose SIDEBAR_ZONES
+         didn't already include it (currently just platform_admin — see
+         app/utils/role_access.py's _LIBRARY_LINKS_WITH_DIRECTORY comment) so
+         the directory stays reachable from every role's sidebar regardless of
+         which zone has room for it. -->
+    {% if not ns.has_all_modules and 'modules_directory.index' in flask.current_app.view_functions %}
+    <div class="px-4 py-2 border-t border-border">
+        <a href="{{ url_for('modules_directory.index') }}"
+           class="w-full flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors {% if request.endpoint == 'modules_directory.index' %}text-foreground font-medium{% endif %}">
+            <i data-lucide="grid-3x3" class="h-3.5 w-3.5 flex-shrink-0"></i>
+            <span>All modules</span>
+        </a>
+    </div>
+    {% endif %}
     <!-- Desktop collapse toggle -->
     <div class="hidden lg:block px-4 py-2 border-t border-border sidebar-show-all-btn">
         <button type="button"

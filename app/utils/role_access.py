@@ -234,8 +234,17 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # but no existing sidebar link — those are noted in the Task 2 report.
 #
 # Spec: docs/superpowers/specs/2026-08-12-shell-overhaul-design.md section 1.
+#
+# Fix round (Task 3 review): raised 25 -> 26. platform_admin's two new,
+# review-mandated admin-zone links (Salesforce Integration, Power Platform)
+# alone already render exactly 25 real links; the All-modules directory link
+# (see _LIBRARY_LINKS_WITH_DIRECTORY below) is mandatory on every role's
+# sidebar and platform_admin has no headroom left to absorb it without either
+# dropping one of those two links or raising the budget by exactly the one
+# link being added. Every other role stays well under 25 either way — see
+# scripts/check_sidebar_links.py's per-role table.
 
-SIDEBAR_LINK_BUDGET = 25
+SIDEBAR_LINK_BUDGET = 26
 
 _ZONE_TITLES = {
     "home": "Home",
@@ -266,6 +275,19 @@ _LIBRARY_LINKS = [
     _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
 ]
 
+# Fix round: the design's stated long-tail fallback ("Ctrl-K search + one new
+# 'All modules' directory page") didn't exist — Ctrl-K is a visual hint with
+# no wired event, and there was no directory page. app/modules/modules_directory
+# is that page; this is the last Library link for every role except
+# platform_admin, which is already exactly at SIDEBAR_LINK_BUDGET once its two
+# new admin-zone links are added (see _ADMIN_LINKS below) and would go over if
+# a fifth Library link were added too. admin_sidebar.html renders this link in
+# the sidebar footer instead for whichever role's SIDEBAR_ZONES don't already
+# contain it — currently just platform_admin — so it is still reachable from
+# every role's sidebar, just not always from the same zone.
+_ALL_MODULES_LINK = _link("All modules", "modules_directory.index", "grid-3x3")
+_LIBRARY_LINKS_WITH_DIRECTORY = _LIBRARY_LINKS + [_ALL_MODULES_LINK]
+
 _GOVERNANCE_LINKS = [
     _link("ARB Dashboard", "arb.dashboard", "layout-dashboard"),
     _link("Reviews", "arb.reviews", "shield-check"),
@@ -282,6 +304,10 @@ _ADMIN_LINKS = [
     _link("Import History", "dashboard_pages.import_history", "history"),
     _link("Seed Management", "admin.seed_management", "database"),
     _link("Settings", "main.settings", "settings"),
+    # Added in the Task 3 fix round (review finding: orphaned real routes —
+    # both existed, worked, and had no sidebar link of any kind).
+    _link("Salesforce Integration", "admin.salesforce_integration", "cloud"),
+    _link("Power Platform", "admin.power_platform_integration", "grid-3x3"),
 ]
 
 # Per-role "My work" — the persona's primary surface, 3-6 items.
@@ -294,12 +320,17 @@ _MY_WORK_LINKS = {
         _link("Solutions", "solution_design.list_solutions", "wrench"),
         _link("AI Chat", "unified_ai_chat.index", "message-square"),
         _link("ADM Kanban", "adm_kanban_view.index", "kanban"),
+        # Fix round: Programmes was reachable from nowhere in the sidebar.
+        _link("Programmes", "solution_design.programmes_list", "git-merge"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
         _link("Portfolio", "portfolio.index", "layout-dashboard"),
         _link("Capability Map", "capability_map.index", "map"),
         _link("Elements", "archimate_crud.dashboard", "table"),
         _link("Roadmaps", "main.capability_roadmap", "map"),
+        # Fix round: both were reachable from nowhere in the sidebar.
+        _link("ArchiMate Composer", "archimate.composer_page", "pen-tool"),
+        _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-branch"),
     ],
     ROLE_CTO: [
         _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
@@ -316,12 +347,23 @@ _MY_WORK_LINKS = {
         _link("Applications", "unified_applications.application_list", "list"),
     ],
     ROLE_PROCUREMENT: [
+        # Fix round: Overview, Licences and Compliance were reachable from
+        # nowhere in the sidebar despite having working, guarded routes.
+        _link("Overview", "procurement.index", "shopping-cart"),
         _link("Vendors", "unified_applications.vendors", "building"),
         _link("Contracts", "procurement.contracts_list", "file-text"),
         _link("Renewals", "procurement.renewals_dashboard", "history"),
         _link("Spend", "procurement.spend_analytics", "bar-chart-3"),
+        _link("Licences", "procurement.licenses_list", "key-round"),
+        _link("Compliance", "procurement.compliance_dashboard", "clipboard-check"),
     ],
     ROLE_APPLICATION_MANAGER: [
+        # Fix round: my_applications.dashboard is a personally-scoped view
+        # (ApplicationOwner rows for current_user only — see
+        # app/modules/my_applications/routes.py:get_owned_apps) distinct from
+        # unified_applications.application_list's org-wide paginated list; it
+        # was reachable from nowhere in the sidebar.
+        _link("My Applications", "my_applications.dashboard", "layout-dashboard"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
         _link("Vendors", "unified_applications.vendors", "building"),
@@ -351,10 +393,16 @@ _BOARD_ROLES = {
 
 
 def _build_zones(role: str) -> List[Dict]:
+    # platform_admin has no headroom left for a 5th library link once its two
+    # admin-zone additions are counted (23 zone links -> 25 rendered, exactly
+    # at SIDEBAR_LINK_BUDGET) — see _LIBRARY_LINKS_WITH_DIRECTORY's comment.
+    library_links = (
+        _LIBRARY_LINKS if role == ROLE_PLATFORM_ADMIN else _LIBRARY_LINKS_WITH_DIRECTORY
+    )
     zones = [
         _zone("home", _HOME_LINKS),
         _zone("my_work", _MY_WORK_LINKS[role]),
-        _zone("library", _LIBRARY_LINKS),
+        _zone("library", library_links),
     ]
     if role in _BOARD_ROLES:
         zones.append(_zone("governance", _GOVERNANCE_LINKS))

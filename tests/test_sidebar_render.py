@@ -21,9 +21,11 @@ import uuid
 
 import pytest
 
+from app.utils.role_access import SIDEBAR_LINK_BUDGET
+
 pytestmark = pytest.mark.usefixtures("db_session")
 
-SIDEBAR_BUDGET = 25
+SIDEBAR_BUDGET = SIDEBAR_LINK_BUDGET
 
 
 def _login(client, user_id):
@@ -107,4 +109,45 @@ def test_enterprise_architect_sidebar_includes_arb_dashboard(app, db_session, ma
     sidebar_html = _sidebar_html(app, db_session, make_org, "enterprise_architect", "ea-arb")
     assert "ARB Dashboard" in sidebar_html, (
         "enterprise_architect is a board role and must see the ARB dashboard link"
+    )
+
+
+def test_platform_admin_hits_the_link_budget_exactly(app, db_session, make_org):
+    """Task 3 fix round (coordinator review): platform_admin's two new
+    admin-zone links (Salesforce Integration, Power Platform) plus the
+    mandatory All-modules directory fallback (rendered in the sidebar footer
+    for platform_admin — see admin_sidebar.html's `ns.has_all_modules` check)
+    bring it to exactly SIDEBAR_LINK_BUDGET (26) real, visible links: header
+    logo + 23 zone links + footer All-modules + footer logout. An equality
+    assertion, not <=, so this — the role with zero headroom — pins the
+    number precisely rather than letting future drift hide inside slack that
+    does not exist.
+    """
+    sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-budget")
+    link_count = len(re.findall(r"<a ", sidebar_html))
+    assert link_count == SIDEBAR_BUDGET, (
+        f"platform_admin sidebar renders {link_count} links, expected exactly "
+        f"{SIDEBAR_BUDGET} (0 headroom left — see role_access.py's "
+        f"SIDEBAR_LINK_BUDGET comment)"
+    )
+
+
+@pytest.mark.parametrize(
+    "role,label",
+    [
+        ("enterprise_architect", "ea-allmod"),
+        ("procurement", "proc-allmod"),
+    ],
+)
+def test_sidebar_includes_all_modules_link(app, db_session, make_org, role, label):
+    """The design's stated long-tail fallback ('Ctrl-K search + one new
+    "All modules" directory page') must actually exist and be reachable from
+    every role's sidebar — this was the Critical finding in the Task 3
+    review: surfaces reachable from no sidebar on any role, with no working
+    fallback. EA gets it via the Library zone; procurement too (only
+    platform_admin uses the footer fallback — see
+    test_platform_admin_hits_the_link_budget_exactly)."""
+    sidebar_html = _sidebar_html(app, db_session, make_org, role, label)
+    assert "All modules" in sidebar_html, (
+        f"{role} sidebar has no reachable link to the All-modules directory"
     )
