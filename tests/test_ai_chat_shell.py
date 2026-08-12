@@ -118,3 +118,40 @@ def test_model_selector_still_present(app, db_session, make_org):
     """Guards against Task 6 breaking the Task 4 Settings-panel contract."""
     html = _get_chat_html(app, db_session, make_org)
     assert 'id="model-selector"' in html
+
+
+def test_show_more_suggestions_declared_on_shared_ancestor(app, db_session, make_org):
+    """Evidence review: Task 6's "More suggestions" disclosure declared
+    `showMoreSuggestions` on an inner `x-data` that only wrapped the
+    AI-architects card grid, while the disclosure button, the remaining
+    domain cards, and the toggle's own `x-show="!showMoreSuggestions"` live
+    as siblings outside that div. Alpine's `with()`-based expression
+    evaluation throws `ReferenceError: showMoreSuggestions is not defined`
+    for every one of those siblings — reproduced 8x in the console capture
+    behind the screenshot evidence. Pin the fix structurally: exactly one
+    `x-data` block declares the variable (on #domain-welcome-grid, the
+    common ancestor of every element that reads it), not the narrower inner
+    div."""
+    html = _get_chat_html(app, db_session, make_org)
+
+    assert html.count("showMoreSuggestions: false") == 1, (
+        "showMoreSuggestions must be declared exactly once, on the common "
+        "ancestor of every element that reads it — a second declaration "
+        "means it is scoped too narrowly again and siblings outside it will "
+        "throw ReferenceError at render"
+    )
+
+    grid_start = html.index('id="domain-welcome-grid"')
+    grid_tag_end = html.index(">", grid_start)
+    grid_open_tag = html[grid_start:grid_tag_end]
+    assert "showMoreSuggestions" in grid_open_tag, (
+        "showMoreSuggestions must be declared on #domain-welcome-grid itself "
+        "so every x-show reading it (the disclosure button, the remaining "
+        "domain cards) shares its scope"
+    )
+
+    more_button_idx = html.index("More suggestions")
+    disclosure_idx = html.rindex('x-show="!showMoreSuggestions"', 0, more_button_idx)
+    remaining_cards_idx = html.rindex('x-show="showMoreSuggestions"', 0, more_button_idx)
+    assert grid_start < disclosure_idx, "disclosure toggle must be inside #domain-welcome-grid"
+    assert grid_start < remaining_cards_idx, "remaining domain cards must be inside #domain-welcome-grid"

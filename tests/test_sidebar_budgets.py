@@ -52,15 +52,21 @@ def _all_links(role):
     return links
 
 
-def test_sidebar_link_budget_is_26():
+def test_sidebar_link_budget_is_25():
     """Raised 25 -> 26 in the Task 3 fix round (coordinator review of the
     sidebar rewrite): platform_admin's two review-mandated admin-zone links
     (Salesforce Integration, Power Platform) alone render exactly 25 visible
     links, leaving no headroom for the also-mandatory All-modules directory
-    link. See app/utils/role_access.py's SIDEBAR_LINK_BUDGET comment and
+    link.
+
+    Lowered back 26 -> 25 in the evidence-review fix round: My-work's
+    "Applications" link for platform_admin duplicated Library's — same
+    endpoint, same label, twice in the sidebar — and removing it dropped the
+    real count by exactly one. See app/utils/role_access.py's
+    SIDEBAR_LINK_BUDGET comment and
     tests/test_sidebar_render.py::test_platform_admin_hits_the_link_budget_exactly.
     """
-    assert SIDEBAR_LINK_BUDGET == 26
+    assert SIDEBAR_LINK_BUDGET == 25
 
 
 def test_every_role_is_defined():
@@ -195,8 +201,16 @@ def test_platform_admin_zone_link_total_is_pinned():
     that fallback plus the header logo and footer logout links). An
     equality assertion here, not <=, so a future zone edit that silently
     changes this number is caught rather than absorbed by budget headroom
-    that does not actually exist."""
-    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 23
+    that does not actually exist.
+
+    Evidence-review fix round: 23 -> 22. _MY_WORK_LINKS[ROLE_PLATFORM_ADMIN]'s
+    "Applications" link duplicated the one already in Library (same
+    endpoint, unified_applications.application_list); removing it drops the
+    zone-only total by one, and the rendered total (see
+    test_platform_admin_hits_the_link_budget_exactly) by the same one, to
+    25.
+    """
+    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 22
 
 
 def test_get_sidebar_zones_resolves_role():

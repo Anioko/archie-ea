@@ -117,11 +117,16 @@ def test_platform_admin_hits_the_link_budget_exactly(app, db_session, make_org):
     admin-zone links (Salesforce Integration, Power Platform) plus the
     mandatory All-modules directory fallback (rendered in the sidebar footer
     for platform_admin — see admin_sidebar.html's `ns.has_all_modules` check)
-    bring it to exactly SIDEBAR_LINK_BUDGET (26) real, visible links: header
-    logo + 23 zone links + footer All-modules + footer logout. An equality
+    bring it to exactly SIDEBAR_LINK_BUDGET real, visible links: header logo
+    + zone links + footer All-modules + footer logout. An equality
     assertion, not <=, so this — the role with zero headroom — pins the
     number precisely rather than letting future drift hide inside slack that
     does not exist.
+
+    Evidence-review fix round: was 26 (23 zone links) until
+    _MY_WORK_LINKS[ROLE_PLATFORM_ADMIN]'s duplicate "Applications" link
+    (same endpoint as the one already in Library) was dropped, taking zone
+    links to 22 and the total — and SIDEBAR_LINK_BUDGET — to 25.
     """
     sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-budget")
     link_count = len(re.findall(r"<a ", sidebar_html))
@@ -130,6 +135,79 @@ def test_platform_admin_hits_the_link_budget_exactly(app, db_session, make_org):
         f"{SIDEBAR_BUDGET} (0 headroom left — see role_access.py's "
         f"SIDEBAR_LINK_BUDGET comment)"
     )
+
+
+def test_platform_admin_applications_link_not_duplicated(app, db_session, make_org):
+    """Evidence-review finding: platform_admin's My-work zone used to list an
+    "Applications" link pointing at the exact same endpoint
+    (unified_applications.application_list) as the one already in Library,
+    so the label rendered twice with no way to tell them apart. Assert the
+    label appears exactly once now that the My-work duplicate is gone."""
+    sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-dup-apps")
+    label_count = len(re.findall(r">Applications<", sidebar_html))
+    assert label_count == 1, (
+        f"platform_admin sidebar renders the 'Applications' label {label_count} "
+        f"times, expected exactly 1 (My work's duplicate should be gone; "
+        f"Library's copy should remain)"
+    )
+
+
+def test_platform_admin_governance_and_admin_zones_render_links(app, db_session, make_org):
+    """Evidence review (Wave 1 screenshots): the live sidebar showed a
+    'GOVERNANCE' heading with zero links beneath it and the whole 'ADMIN'
+    zone (11 links) missing outright, despite SIDEBAR_ZONES for
+    platform_admin containing both. This hits the real app/real routes (not
+    a stub) specifically so a future wrong endpoint string in
+    _GOVERNANCE_LINKS / _ADMIN_LINKS fails this test instead of silently
+    rendering an empty or absent zone — which is exactly what let the
+    original defect through."""
+    sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-gov-admin")
+    assert "Governance" in sidebar_html, "platform_admin must see the Governance zone heading"
+    assert "ARB Dashboard" in sidebar_html
+    assert "Reviews" in sidebar_html
+    assert "Sessions" in sidebar_html
+    assert "Admin" in sidebar_html, "platform_admin must see the Admin zone heading"
+    assert "Command Center" in sidebar_html
+    assert "Users" in sidebar_html
+    assert "Organizations" in sidebar_html
+    assert "Salesforce Integration" in sidebar_html
+    assert "Power Platform" in sidebar_html
+
+
+def test_zone_heading_absent_when_all_its_links_are_guarded_out(app, db_session, make_org, monkeypatch):
+    """A zone whose every endpoint is unregistered must not print its
+    heading with an empty link list beneath it — that reads as "you have
+    access but there's nothing here" instead of "you don't have this zone".
+    Forces the guard to fail for every Governance link by pointing them at
+    endpoints that do not exist, and asserts the heading disappears along
+    with the links."""
+    from app.utils import role_access
+
+    bogus_links = [
+        role_access._link("ARB Dashboard", "arb.does_not_exist", "layout-dashboard"),
+        role_access._link("Reviews", "arb.also_missing", "shield-check"),
+        role_access._link("Sessions", "arb.still_missing", "calendar"),
+    ]
+    monkeypatch.setattr(role_access, "_GOVERNANCE_LINKS", bogus_links)
+    monkeypatch.setattr(
+        role_access,
+        "SIDEBAR_ZONES",
+        {role: role_access._build_zones(role) for role in role_access._MY_WORK_LINKS},
+    )
+
+    sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-gov-guarded-out")
+    # A substring check on "Governance" would false-positive on the Admin
+    # zone's "Governance Gates" link label baked into its own
+    # matchesSearch(...) string, so match the zone-heading markup
+    # specifically (mirrors _ZONE_TITLES rendering in admin_sidebar.html).
+    heading_re = re.compile(
+        r'role="heading"[^>]*>\s*Governance\s*</div>'
+    )
+    assert not heading_re.search(sidebar_html), (
+        "a zone with zero surviving links must not render its heading either"
+    )
+    assert "ARB Dashboard" not in sidebar_html
+    assert "arb.does_not_exist" not in sidebar_html
 
 
 @pytest.mark.parametrize(

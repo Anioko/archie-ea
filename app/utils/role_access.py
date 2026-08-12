@@ -243,8 +243,17 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # dropping one of those two links or raising the budget by exactly the one
 # link being added. Every other role stays well under 25 either way — see
 # scripts/check_sidebar_links.py's per-role table.
+#
+# Fix round (evidence review, Wave 1 screenshot pass): lowered 26 -> 25.
+# _MY_WORK_LINKS[ROLE_PLATFORM_ADMIN] carried an "Applications" link pointing
+# at unified_applications.application_list — the exact same endpoint already
+# in _LIBRARY_LINKS, so platform_admin rendered the label twice. Dropping the
+# duplicate takes My work from 3 links to 2, so platform_admin's real link
+# count (header + 22 zone links + footer All-modules + footer logout) is now
+# 25, one below the old ceiling; the budget is lowered to match rather than
+# left slack that would silently hide a future regression the same size.
 
-SIDEBAR_LINK_BUDGET = 26
+SIDEBAR_LINK_BUDGET = 25
 
 _ZONE_TITLES = {
     "home": "Home",
@@ -377,10 +386,16 @@ _MY_WORK_LINKS = {
     ],
     # Also not enumerated in the spec; platform_admin gets a working set that
     # mirrors its legacy full-access scope, distinct from the Admin zone below.
+    # Fix round (evidence review): "Applications" used to be listed here too,
+    # pointing at unified_applications.application_list — the exact same
+    # endpoint already listed under Library (_LIBRARY_LINKS above), so
+    # platform_admin saw the identical "Applications" label twice. Library's
+    # copy is the one every other role gets, so it stays; this duplicate is
+    # dropped rather than relabelled, since there is no second, distinct view
+    # to relabel it as.
     ROLE_PLATFORM_ADMIN: [
         _link("Solutions", "solution_design.list_solutions", "wrench"),
         _link("Portfolio", "portfolio.index", "layout-dashboard"),
-        _link("Applications", "unified_applications.application_list", "list"),
     ],
 }
 

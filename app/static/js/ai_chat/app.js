@@ -893,6 +893,21 @@ Would you like me to provide more details about the extracted elements or help y
            one that survives; the wiring above it runs once. */
         lucide.createIcons();
 
+        // Suggestion-chips right-edge fade (see index.html's #suggestion-chips
+        // mask-image): drop the mask once the row is fully scrolled, or if it
+        // was never scrollable in the first place, so the fade never implies
+        // there's more to see when there isn't.
+        const chipsRow = document.getElementById('suggestion-chips');
+        if (chipsRow) {
+            const updateChipsFade = () => {
+                const atEnd = chipsRow.scrollWidth - chipsRow.clientWidth <= chipsRow.scrollLeft + 1;
+                chipsRow.classList.toggle('at-scroll-end', atEnd);
+            };
+            updateChipsFade();
+            chipsRow.addEventListener('scroll', updateChipsFade, { passive: true });
+            window.addEventListener('resize', updateChipsFade);
+        }
+
         // A95-005: Handle deep-link context params from entity detail pages.
         // Supports:
         //   ?context=application&id=<app_id>   (application detail page)

@@ -94,23 +94,30 @@ DEPENDENCIES:
 
         {% set ns = namespace(has_all_modules=false) %}
         {% for zone in get_sidebar_zones(current_user) %}
-        <div class="px-3 py-2" x-cloak x-show="matchesSearch('{{ zone.title }} {{ zone.links | map(attribute='label') | join(' ') }}')">
+        {# A zone whose every link's endpoint is unregistered (guardrail flag
+           off, blueprint import failed, endpoint string drifted) must not
+           print an empty heading — that reads as "you have Governance access
+           but zero Governance links" instead of "you have no Governance
+           access here". Compute the surviving links once and gate the whole
+           zone, heading included, on that list being non-empty. #}
+        {% set visible_links = zone.links | selectattr('endpoint', 'in', flask.current_app.view_functions) | list %}
+        {% if visible_links %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('{{ zone.title }} {{ visible_links | map(attribute='label') | join(' ') }}')">
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
                 {{ zone.title }}
             </div>
             <div class="space-y-1">
-                {% for link in zone.links %}
-                {% if link.endpoint in flask.current_app.view_functions %}
+                {% for link in visible_links %}
                 {% if link.endpoint == 'modules_directory.index' %}{% set ns.has_all_modules = true %}{% endif %}
                 <a href="{{ url_for(link.endpoint) }}"
                    class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == link.endpoint %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == link.endpoint -%} aria-current="page"{%- endif -%}>
                     <i data-lucide="{{ link.icon }}" class="h-4 w-4 flex-shrink-0"></i>
                     <span class="flex-1 truncate">{{ link.label }}</span>
                 </a>
-                {% endif %}
                 {% endfor %}
             </div>
         </div>
+        {% endif %}
         {% endfor %}
     </nav>
 
@@ -176,4 +183,24 @@ DEPENDENCIES:
             lucide.createIcons();
         });
     }
+
+    // Sidebar scroll-fade affordance (evidence review): #sidebar-nav's
+    // native scrollbar is hidden by design (see shadcn-sidebar.css), so a
+    // role whose zones overflow the viewport — platform_admin worst-case,
+    // Governance + Admin push well past the fold — had nothing indicating
+    // more nav existed below. Drop the CSS fade (see shadcn-sidebar.css)
+    // once the nav is scrolled to its end, or if it was never scrollable in
+    // the first place, so the fade never implies content that isn't there.
+    (function initSidebarScrollFade() {
+        const nav = document.getElementById('sidebar-nav');
+        if (!nav) return;
+        const update = () => {
+            const atEnd = nav.scrollHeight - nav.clientHeight <= nav.scrollTop + 1;
+            nav.classList.toggle('at-scroll-end', atEnd);
+        };
+        update();
+        nav.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        document.addEventListener('alpine:updated', update);
+    })();
 </script>
