@@ -26,23 +26,18 @@ from app.exceptions import (  # dead-code-ok
     DatabaseError,
 )
 
+# The format table started here, when the capability model was the only
+# business-architecture deliverable that could be exported. It now backs four,
+# so it lives in one place and this route reads it like the others do.
+from app.utils.report_export import (
+    REPORT_FORMATS,
+    current_organisation_name,
+    normalise_format,
+    report_response,
+    unsupported_format_response,
+)
+
 from . import capability_map
-
-
-REPORT_FORMATS = {
-    "pdf": ("application/pdf", "pdf"),
-    "docx": (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "docx",
-    ),
-    "xlsx": (
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "xlsx",
-    ),
-    # Flask appends the charset for text/*; spelling it here too produced
-    # "text/html; charset=utf-8; charset=utf-8".
-    "html": ("text/html", "html"),
-}
 
 
 @capability_map.route("/report.<fmt>")
@@ -65,28 +60,14 @@ def capability_report(fmt):
         CapabilityReportService,
     )
 
-    fmt = (fmt or "").lower()
+    fmt = normalise_format(fmt)
     if fmt not in REPORT_FORMATS:
-        return (
-            jsonify({
-                "success": False,
-                "error": f"Unsupported format {fmt!r}. Choose one of: "
-                         + ", ".join(sorted(REPORT_FORMATS)),
-            }),
-            400,
+        return unsupported_format_response(fmt)
+
+    try:
+        report = CapabilityReportService.build(
+            organisation_name=current_organisation_name()
         )
-
-    organisation = None
-    try:
-        from flask_login import current_user
-
-        org = getattr(current_user, "organization", None)
-        organisation = getattr(org, "name", None)
-    except Exception:  # noqa: BLE001 - a missing org name must not fail an export
-        organisation = None
-
-    try:
-        report = CapabilityReportService.build(organisation_name=organisation)
         if fmt == "pdf":
             payload = CapabilityReportService.render_pdf(report)
         elif fmt == "docx":
@@ -109,14 +90,7 @@ def capability_report(fmt):
             500,
         )
 
-    mimetype, extension = REPORT_FORMATS[fmt]
-    stamp = datetime.utcnow().strftime("%Y%m%d")
-    response = Response(payload, mimetype=mimetype)
-    if fmt != "html":
-        response.headers["Content-Disposition"] = (
-            f"attachment; filename=capability_model_{stamp}.{extension}"
-        )
-    return response
+    return report_response(payload, fmt, "capability_model")
 
 
 @capability_map.route("/api/export-mappings")

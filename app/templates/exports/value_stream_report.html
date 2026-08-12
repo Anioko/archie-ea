@@ -1,0 +1,225 @@
+{#
+  Value Stream report — the print/document rendering of one value stream.
+
+  Self-contained CSS on purpose: this is rendered by WeasyPrint outside the
+  browser, where the application stylesheet is neither loaded nor useful. The
+  same file serves the shareable HTML view, so the two cannot drift apart.
+
+  Cycle time, quality, stage durations and the per-mapping impact percentages
+  are all nullable columns. Where one is NULL this renders an em dash — never a
+  zero, because a zero cycle time is a measurement and a missing one is not,
+  and an executive reading the document cannot tell them apart afterwards.
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ stream.name }} — Value Stream{% if organisation %} — {{ organisation }}{% endif %}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 22mm 18mm 20mm 18mm;
+        @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7pt; color: #9ca3af; }
+    }
+    @page :first { margin: 0; @bottom-right { content: ""; } }
+
+    * { box-sizing: border-box; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2937; font-size: 10pt; line-height: 1.5; margin: 0; }
+
+    .cover { height: 297mm; page-break-after: always; position: relative; color: #fff;
+             background: linear-gradient(160deg, #0f172a 0%, #155e75 70%, #0e7490 100%); }
+    .cover-inner { padding: 45mm 22mm; }
+    .cover .kicker { font-size: 10pt; letter-spacing: 0.35em; text-transform: uppercase; color: #a5f3fc; margin-bottom: 14mm; }
+    .cover h1 { font-size: 32pt; font-weight: 800; line-height: 1.12; margin: 0 0 6mm 0; }
+    .cover .subtitle { font-size: 12pt; color: #cbd5e1; max-width: 150mm; }
+    .cover .cover-meta { position: absolute; bottom: 30mm; left: 22mm; right: 22mm;
+                         border-top: 1px solid rgba(255,255,255,0.25); padding-top: 8mm;
+                         font-size: 9pt; color: #cbd5e1; }
+    .cover .cover-meta strong { color: #fff; }
+
+    h2.section { font-size: 15pt; color: #0f172a; border-bottom: 2.5px solid #0e7490;
+                 padding-bottom: 4px; margin: 24pt 0 10pt 0; page-break-after: avoid; }
+    h3.stage { font-size: 11.5pt; color: #0f172a; margin: 16pt 0 4pt 0; page-break-after: avoid; }
+    p { margin: 0 0 8pt 0; }
+    .note { font-size: 9pt; color: #475569; font-style: italic; }
+    .stage-meta { font-size: 8.6pt; color: #475569; margin: 0 0 4pt 0; }
+
+    .stats { display: flex; flex-wrap: wrap; gap: 6mm; margin: 0 0 10pt 0; }
+    .stat { border: 1px solid #e2e8f0; border-radius: 4px; padding: 5mm 7mm; min-width: 34mm; }
+    .stat .value { font-size: 18pt; font-weight: 700; color: #0f172a; display: block; }
+    .stat .label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+
+    table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt 0; font-size: 8.6pt; }
+    th { background: #1e293b; color: #fff; text-align: left; padding: 5pt 7pt; font-weight: 600;
+         font-size: 7.6pt; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 4.5pt 7pt; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    tr { page-break-inside: avoid; }
+    .num { text-align: right; white-space: nowrap; }
+    .muted { color: #94a3b8; }
+    .code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 8pt; color: #475569; }
+    .gap { background: #fef3c7; padding: 4pt 7pt; border-left: 3px solid #d97706; font-size: 8.8pt; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+    <div class="cover-inner">
+        <div class="kicker">Business architecture</div>
+        <h1>{{ stream.name }}</h1>
+        <p class="subtitle">
+            {{ totals.stages }} stage{{ '' if totals.stages == 1 else 's' }},
+            {{ totals.capabilities }} capabilit{{ 'y' if totals.capabilities == 1 else 'ies' }}
+            mapped to them.
+            {% if stream.description %}{{ stream.description }}{% endif %}
+        </p>
+    </div>
+    <div class="cover-meta">
+        {% if organisation %}<strong>{{ organisation }}</strong> · {% endif %}
+        {% if stream.code %}{{ stream.code }} · {% endif %}
+        Generated {{ generated_at.strftime('%d %B %Y') }}
+    </div>
+</div>
+
+<h2 class="section">1. Profile</h2>
+<table>
+    <tbody>
+        <tr><td>Code</td><td>{% if stream.code %}<span class="code">{{ stream.code }}</span>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+        <tr><td>Type</td><td>{% if stream.stream_type %}{{ stream.stream_type|replace('_', ' ')|capitalize }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+        <tr><td>Industry domain</td><td>{% if stream.industry_domain %}{{ stream.industry_domain }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+        <tr><td>Strategic importance</td><td>{% if stream.strategic_importance %}{{ stream.strategic_importance|capitalize }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+        <tr><td>Business owner</td><td>{% if stream.business_owner %}{{ stream.business_owner }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+        <tr>
+            <td>Cycle time (days) — current / target / variance</td>
+            <td>
+                {% if stream.current_cycle_time is not none %}{{ stream.current_cycle_time }}{% else %}<span class="muted">—</span>{% endif %}
+                /
+                {% if stream.target_cycle_time is not none %}{{ stream.target_cycle_time }}{% else %}<span class="muted">—</span>{% endif %}
+                /
+                {% if stream.cycle_time_variance is not none %}{{ stream.cycle_time_variance }}{% else %}<span class="muted">—</span>{% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td>Quality (%) — current / target</td>
+            <td>
+                {% if stream.current_quality is not none %}{{ stream.current_quality }}{% else %}<span class="muted">—</span>{% endif %}
+                /
+                {% if stream.quality_target is not none %}{{ stream.quality_target }}{% else %}<span class="muted">—</span>{% endif %}
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+<h2 class="section">2. Coverage</h2>
+<div class="stats">
+    <div class="stat"><span class="value">{{ '{:,}'.format(totals.stages) }}</span><span class="label">Stages</span></div>
+    <div class="stat"><span class="value">{{ '{:,}'.format(totals.capabilities) }}</span><span class="label">Capabilities</span></div>
+    <div class="stat"><span class="value">{{ '{:,}'.format(totals.mappings) }}</span><span class="label">Mappings</span></div>
+    <div class="stat"><span class="value">{{ '{:,}'.format(totals.stages_without_capability) }}</span><span class="label">Stages with no capability</span></div>
+</div>
+
+{% if totals.stages == 0 %}
+<p class="note">
+    This value stream has no stages yet, so there is nothing for a capability to
+    be mapped to.
+</p>
+{% elif totals.stages_without_capability %}
+<p class="note">
+    {{ totals.stages_without_capability }} of {{ totals.stages }} stages have no
+    capability mapped. That is a gap in the model, not a stage that runs on
+    nothing.
+</p>
+{% endif %}
+
+{% if totals.unplaced_mappings %}
+<p class="note">
+    {{ totals.unplaced_mappings }} capability
+    {{ 'mapping points' if totals.unplaced_mappings == 1 else 'mappings point' }}
+    at a stage that no longer exists. They are listed in section 4 rather than
+    counted into any stage.
+</p>
+{% endif %}
+{% if totals.dangling_mappings %}
+<p class="note">
+    {{ totals.dangling_mappings }}
+    {{ 'mapping references' if totals.dangling_mappings == 1 else 'mappings reference' }}
+    a capability that has been deleted from the model and could not be named.
+</p>
+{% endif %}
+
+<h2 class="section">3. Stages and the capabilities behind them</h2>
+{% for stage in stages %}
+<h3 class="stage">{% if stage.order is not none %}{{ stage.order }}. {% endif %}{{ stage.name }}</h3>
+<p class="stage-meta">
+    Type: {% if stage.stage_type %}{{ stage.stage_type|replace('_', ' ')|capitalize }}{% else %}—{% endif %}
+    · Customer facing: {{ 'yes' if stage.customer_facing else 'no' }}
+    · Quality gate: {{ 'yes' if stage.quality_gate else 'no' }}
+    · Duration (current / target):
+    {% if stage.current_duration is not none %}{{ stage.current_duration }}{% else %}—{% endif %}
+    /
+    {% if stage.target_duration is not none %}{{ stage.target_duration }}{% else %}—{% endif %}
+</p>
+{% if stage.description %}<p>{{ stage.description }}</p>{% endif %}
+
+{% if stage.capabilities %}
+<table>
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Capability</th>
+            <th>Support</th>
+            <th class="num">Level</th>
+            <th class="num">Contribution %</th>
+            <th>Criticality</th>
+            <th class="num">Cycle time %</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for capability in stage.capabilities %}
+        <tr>
+            <td class="code">{{ capability.code or '' }}</td>
+            <td>{{ capability.name }}</td>
+            <td>{% if capability.support_type %}{{ capability.support_type|capitalize }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if capability.support_level is not none %}{{ capability.support_level }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if capability.contribution is not none %}{{ capability.contribution }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>{% if capability.stage_criticality %}{{ capability.stage_criticality|capitalize }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if capability.cycle_time_impact is not none %}{{ capability.cycle_time_impact }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="gap">
+    No capability is mapped to this stage — the stage has no assessed execution
+    behind it.
+</p>
+{% endif %}
+{% else %}
+<p class="note">No stages have been modelled for this value stream.</p>
+{% endfor %}
+
+{% if unplaced %}
+<h2 class="section">4. Mapped to a stage that no longer exists</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Capability</th>
+            <th>Support</th>
+            <th class="num">Contribution %</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for capability in unplaced %}
+        <tr>
+            <td class="code">{{ capability.code or '' }}</td>
+            <td>{{ capability.name }}</td>
+            <td>{% if capability.support_type %}{{ capability.support_type|capitalize }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if capability.contribution is not none %}{{ capability.contribution }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+</body>
+</html>

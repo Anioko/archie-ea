@@ -1,6 +1,7 @@
 {% extends "layouts/admin_base.html" %}
 {% from "components/page_header.html" import page_header %}
 {% from "components/arb_escalate_button.html" import arb_escalate %}
+{% from "components/dropdown_menu.html" import dropdown_menu %}
 
 {% block title %}Enterprise Architecture Briefing{% endblock %}
 
@@ -24,11 +25,30 @@
             <span class="text-xs text-muted-foreground">Generated {{ latest.generated_at[:16]|replace('T',' ') }} · {{ latest.source }}</span>
             {% endif %}
         </div>
-        <button type="button" @click="generate()" :disabled="busy"
-                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-            <i data-lucide="refresh-cw" class="h-4 w-4" :class="busy && 'animate-spin'"></i>
-            <span x-text="busy ? 'Generating…' : 'Generate briefing'"></span>
-        </button>
+        <div class="flex items-center gap-2">
+            {% if latest %}
+            {# Export the briefing as a deliverable. PDF needs native libraries
+               that are absent on some deployments; that link answers 503 with
+               the reason and the other three keep working. #}
+            {{ dropdown_menu(
+                id='ea-briefing-export-menu',
+                trigger_text='Export',
+                trigger_icon='download',
+                menu_width='w-56',
+                items=[
+                    {'text': 'Briefing as PDF', 'icon': 'file-type-2', 'href': url_for('solution_design.ea_briefing_report', fmt='pdf', briefing_id=latest.id)},
+                    {'text': 'Briefing as Word', 'icon': 'file-text', 'href': url_for('solution_design.ea_briefing_report', fmt='docx', briefing_id=latest.id)},
+                    {'text': 'Briefing as Excel', 'icon': 'table', 'href': url_for('solution_design.ea_briefing_report', fmt='xlsx', briefing_id=latest.id)},
+                    {'text': 'Briefing as a page', 'icon': 'link', 'href': url_for('solution_design.ea_briefing_report', fmt='html', briefing_id=latest.id)}
+                ]
+            ) }}
+            {% endif %}
+            <button type="button" @click="generate()" :disabled="busy"
+                    class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                <i data-lucide="refresh-cw" class="h-4 w-4" :class="busy && 'animate-spin'"></i>
+                <span x-text="busy ? 'Generating…' : 'Generate briefing'"></span>
+            </button>
+        </div>
     </div>
 
     {% if not latest %}

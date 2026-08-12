@@ -1,0 +1,181 @@
+{#
+  Enterprise Architecture Briefing — the print/document rendering of one
+  persisted briefing.
+
+  Self-contained CSS on purpose: this is rendered by WeasyPrint outside the
+  browser, where the application stylesheet is neither loaded nor useful. The
+  same file serves the shareable HTML view, so the two cannot drift apart.
+
+  The findings are printed exactly as they were persisted at generation time,
+  including the URL that says where each one can be verified — that link is the
+  point of the artefact, and it is what a screenshot into a slide loses. A
+  finding missing a field shows an em dash; nothing is substituted for it.
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Enterprise Architecture Briefing{% if organisation %} — {{ organisation }}{% endif %}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 22mm 18mm 20mm 18mm;
+        @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7pt; color: #9ca3af; }
+    }
+    @page :first { margin: 0; @bottom-right { content: ""; } }
+
+    * { box-sizing: border-box; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2937; font-size: 10pt; line-height: 1.55; margin: 0; }
+
+    .cover { height: 297mm; page-break-after: always; position: relative; color: #fff;
+             background: linear-gradient(160deg, #0f172a 0%, #7c2d12 70%, #b45309 100%); }
+    .cover-inner { padding: 45mm 22mm; }
+    .cover .kicker { font-size: 10pt; letter-spacing: 0.35em; text-transform: uppercase; color: #fde68a; margin-bottom: 14mm; }
+    .cover h1 { font-size: 30pt; font-weight: 800; line-height: 1.14; margin: 0 0 6mm 0; }
+    .cover .subtitle { font-size: 12pt; color: #e7e5e4; max-width: 150mm; }
+    .cover .cover-meta { position: absolute; bottom: 30mm; left: 22mm; right: 22mm;
+                         border-top: 1px solid rgba(255,255,255,0.25); padding-top: 8mm;
+                         font-size: 9pt; color: #e7e5e4; }
+    .cover .cover-meta strong { color: #fff; }
+
+    h2.section { font-size: 15pt; color: #0f172a; border-bottom: 2.5px solid #b45309;
+                 padding-bottom: 4px; margin: 24pt 0 10pt 0; page-break-after: avoid; }
+    h3.finding { font-size: 11.5pt; color: #0f172a; margin: 16pt 0 3pt 0; page-break-after: avoid; }
+    p { margin: 0 0 8pt 0; }
+    .note { font-size: 9pt; color: #475569; font-style: italic; }
+    .finding-meta { font-size: 8.4pt; color: #475569; margin: 0 0 4pt 0; text-transform: uppercase; letter-spacing: 0.04em; }
+    .verify { font-size: 8.6pt; color: #475569; }
+    .verify .url { font-family: "SFMono-Regular", Consolas, monospace; color: #1e293b; }
+
+    .sev { display: inline-block; padding: 1pt 5pt; border-radius: 3px; font-size: 7.4pt;
+           font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+    .sev-critical { background: #fee2e2; color: #991b1b; }
+    .sev-high { background: #ffedd5; color: #9a3412; }
+    .sev-info { background: #e0f2fe; color: #075985; }
+    .sev-none { background: #f1f5f9; color: #475569; }
+
+    .stats { display: flex; flex-wrap: wrap; gap: 6mm; margin: 0 0 10pt 0; }
+    .stat { border: 1px solid #e2e8f0; border-radius: 4px; padding: 5mm 7mm; min-width: 34mm; }
+    .stat .value { font-size: 18pt; font-weight: 700; color: #0f172a; display: block; }
+    .stat .label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+
+    table { width: 100%; border-collapse: collapse; margin: 8pt 0 14pt 0; font-size: 8.6pt; }
+    th { background: #1e293b; color: #fff; text-align: left; padding: 5pt 7pt; font-weight: 600;
+         font-size: 7.6pt; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 4.5pt 7pt; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    tr { page-break-inside: avoid; }
+    .num { text-align: right; white-space: nowrap; }
+    .muted { color: #94a3b8; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+    <div class="cover-inner">
+        <div class="kicker">Enterprise architecture</div>
+        <h1>{{ briefing.headline or 'Enterprise Architecture Briefing' }}</h1>
+        <p class="subtitle">{{ briefing.summary or 'A briefing of what changed across the estate.' }}</p>
+    </div>
+    <div class="cover-meta">
+        {% if organisation %}<strong>{{ organisation }}</strong> · {% endif %}
+        Briefed {% if briefing.briefed_at %}{{ briefing.briefed_at.strftime('%d %B %Y') }}{% else %}—{% endif %}
+        · Exported {{ generated_at.strftime('%d %B %Y') }}
+    </div>
+</div>
+
+<h2 class="section">1. At a glance</h2>
+<div class="stats">
+    <div class="stat">
+        <span class="value">{% if briefing.finding_count is not none %}{{ '{:,}'.format(briefing.finding_count) }}{% else %}—{% endif %}</span>
+        <span class="label">Findings</span>
+    </div>
+    <div class="stat">
+        <span class="value">{% if briefing.flagged_count is not none %}{{ '{:,}'.format(briefing.flagged_count) }}{% else %}—{% endif %}</span>
+        <span class="label">Need attention</span>
+    </div>
+    <div class="stat">
+        <span class="value">{{ '{:,}'.format(totals.categories) }}</span>
+        <span class="label">Areas</span>
+    </div>
+    <div class="stat">
+        <span class="value">{{ briefing.source or '—' }}</span>
+        <span class="label">Source</span>
+    </div>
+</div>
+
+<p class="note">
+    Every figure below was read live from the platform when the briefing was
+    generated, and is reproduced here unchanged. Exporting does not recompute
+    it, so this document and the briefing page say the same thing.
+</p>
+
+<h2 class="section">2. Findings</h2>
+{% if not findings %}
+<p class="note">
+    This briefing recorded no findings. That is the platform reporting nothing
+    notable, not a failure to look.
+</p>
+{% else %}
+{% for finding in findings %}
+<h3 class="finding">{{ finding.title or 'Untitled finding' }}</h3>
+<p class="finding-meta">
+    {% set sev = finding.severity %}
+    <span class="sev {{ 'sev-critical' if sev == 'critical' else 'sev-high' if sev == 'high' else 'sev-info' if sev == 'info' else 'sev-none' }}">{{ sev or 'unclassified' }}</span>
+    &nbsp; {{ finding.category or '—' }}
+    &nbsp;·&nbsp; Evidence: {{ finding.evidence or '—' }}
+</p>
+{% if finding.detail %}<p>{{ finding.detail }}</p>{% endif %}
+{% if finding.action_url %}
+<p class="verify">{{ finding.action_label or 'Verify' }}: <span class="url">{{ finding.action_url }}</span></p>
+{% endif %}
+{% endfor %}
+{% endif %}
+
+<h2 class="section">3. Areas</h2>
+{% if categories %}
+<table>
+    <thead>
+        <tr><th>Area</th><th class="num">Findings</th><th class="num">Need attention</th></tr>
+    </thead>
+    <tbody>
+        {% for category in categories %}
+        <tr>
+            <td>{{ category.name }}</td>
+            <td class="num">{{ '{:,}'.format(category.count) }}</td>
+            <td class="num">{{ '{:,}'.format(category.flagged) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="note">No findings, so no areas to break down.</p>
+{% endif %}
+
+{% if history %}
+<h2 class="section">4. Previous briefings</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Generated</th>
+            <th>Source</th>
+            <th>Headline</th>
+            <th class="num">Findings</th>
+            <th class="num">Need attention</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in history %}
+        <tr>
+            <td>{% if row.generated_at %}{{ row.generated_at.strftime('%d %b %Y') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>{{ row.source or '' }}</td>
+            <td>{{ row.headline or '' }}</td>
+            <td class="num">{% if row.finding_count is not none %}{{ row.finding_count }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if row.flagged_count is not none %}{{ row.flagged_count }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+</body>
+</html>

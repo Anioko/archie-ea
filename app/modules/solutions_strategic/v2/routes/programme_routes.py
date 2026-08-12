@@ -309,6 +309,82 @@ def ea_briefing_detail(briefing_id):
     )
 
 
+@solution_design_bp.route("/briefings/report.<fmt>", methods=["GET"])
+@login_required
+def ea_briefing_report(fmt):
+    """The EA briefing as a document: PDF, Word, Excel or a shareable page.
+
+    Pass ``?briefing_id=`` to export a specific past briefing; the newest is
+    exported by default. The findings are read back from the persisted row, not
+    recomputed, so the document says the same thing as the page it came from.
+
+    A format that cannot be produced on this deployment answers with the reason
+    and a 503, not a 500 and not a zero-byte file: WeasyPrint is a binding over
+    native libraries that are absent on Windows and on slim images, and the
+    other three formats still work when it is missing.
+    """
+    from flask import current_app
+
+    from app.modules.solutions_strategic.v2.services.briefing_report_service import (
+        BriefingReportError,
+        BriefingReportService,
+    )
+    from app.utils.report_export import (
+        REPORT_FORMATS,
+        current_organisation_name,
+        normalise_format,
+        report_response,
+        unsupported_format_response,
+    )
+
+    fmt = normalise_format(fmt)
+    if fmt not in REPORT_FORMATS:
+        return unsupported_format_response(fmt)
+
+    briefing_id = request.args.get("briefing_id", type=int)
+
+    try:
+        report = BriefingReportService.build(
+            briefing_id=briefing_id, organisation_name=current_organisation_name()
+        )
+        if report is None:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "No briefing has been generated yet, so there is "
+                                 "nothing to export. Generate one first.",
+                    }
+                ),
+                404,
+            )
+        if fmt == "pdf":
+            payload = BriefingReportService.render_pdf(report)
+        elif fmt == "docx":
+            payload = BriefingReportService.render_docx(report)
+        elif fmt == "xlsx":
+            payload = BriefingReportService.render_xlsx(report)
+        else:
+            payload = BriefingReportService.render_html(report)
+    except BriefingReportError as exc:
+        current_app.logger.warning("EA briefing report unavailable as %s: %s", fmt, exc)
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:  # noqa: BLE001
+        current_app.logger.exception("EA briefing report failed to render as %s", fmt)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "The briefing report could not be generated. The "
+                             "failure has been logged.",
+                }
+            ),
+            500,
+        )
+
+    return report_response(payload, fmt, f"ea_briefing_{report['briefing']['id']}")
+
+
 @solution_design_bp.route("/briefings/api/generate", methods=["POST"])
 @login_required
 def ea_briefing_generate():

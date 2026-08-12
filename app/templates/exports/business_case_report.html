@@ -1,0 +1,200 @@
+{#
+  Business Case report — the print/document rendering of one business case.
+
+  Self-contained CSS on purpose: this is rendered by WeasyPrint outside the
+  browser, where the application stylesheet is neither loaded nor useful. The
+  same file serves the shareable HTML view, so the two cannot drift apart.
+
+  Every financial column on BusinessCase is nullable. Where one is NULL this
+  renders an em dash — never a 0, because a zero capex is a claim that the
+  change is free and an investment board approves against it. A narrative
+  section that has not been written says so in words, rather than appearing as
+  an empty heading that reads as "nothing to say here".
+
+  There is no currency symbol anywhere: the model stores a bare amount and no
+  currency, so stamping one on would be invention.
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ case.title or 'Business Case' }}{% if organisation %} — {{ organisation }}{% endif %}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 22mm 18mm 20mm 18mm;
+        @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7pt; color: #9ca3af; }
+    }
+    @page :first { margin: 0; @bottom-right { content: ""; } }
+
+    * { box-sizing: border-box; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2937; font-size: 10pt; line-height: 1.55; margin: 0; }
+
+    .cover { height: 297mm; page-break-after: always; position: relative; color: #fff;
+             background: linear-gradient(160deg, #0f172a 0%, #3730a3 70%, #4f46e5 100%); }
+    .cover-inner { padding: 45mm 22mm; }
+    .cover .kicker { font-size: 10pt; letter-spacing: 0.35em; text-transform: uppercase; color: #c7d2fe; margin-bottom: 14mm; }
+    .cover h1 { font-size: 30pt; font-weight: 800; line-height: 1.14; margin: 0 0 6mm 0; }
+    .cover .subtitle { font-size: 12pt; color: #cbd5e1; max-width: 150mm; }
+    .cover .cover-meta { position: absolute; bottom: 30mm; left: 22mm; right: 22mm;
+                         border-top: 1px solid rgba(255,255,255,0.25); padding-top: 8mm;
+                         font-size: 9pt; color: #cbd5e1; }
+    .cover .cover-meta strong { color: #fff; }
+
+    h2.section { font-size: 15pt; color: #0f172a; border-bottom: 2.5px solid #4f46e5;
+                 padding-bottom: 4px; margin: 24pt 0 10pt 0; page-break-after: avoid; }
+    p { margin: 0 0 8pt 0; }
+    .note { font-size: 9pt; color: #475569; font-style: italic; }
+    .undocumented { font-size: 9.4pt; color: #92400e; background: #fef3c7;
+                    border-left: 3px solid #d97706; padding: 5pt 8pt; font-style: italic; }
+
+    table { width: 100%; border-collapse: collapse; margin: 8pt 0 14pt 0; font-size: 8.8pt; }
+    th { background: #1e293b; color: #fff; text-align: left; padding: 5pt 7pt; font-weight: 600;
+         font-size: 7.6pt; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 4.5pt 7pt; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    tr { page-break-inside: avoid; }
+    .num { text-align: right; white-space: nowrap; }
+    .muted { color: #94a3b8; }
+    .label-col { width: 45%; color: #475569; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+    <div class="cover-inner">
+        <div class="kicker">Business architecture</div>
+        <h1>{{ case.title or 'Business Case' }}</h1>
+        <p class="subtitle">
+            {% if case.description %}{{ case.description }}{% else %}
+            A structured business case: problem, options, recommendation, cost,
+            benefit and risk.
+            {% endif %}
+        </p>
+    </div>
+    <div class="cover-meta">
+        {% if organisation %}<strong>{{ organisation }}</strong> · {% endif %}
+        {{ (case.status or 'draft')|capitalize }} ·
+        Generated {{ generated_at.strftime('%d %B %Y') }}
+    </div>
+</div>
+
+<h2 class="section">1. At a glance</h2>
+<table>
+    <tbody>
+        <tr><td class="label-col">Status</td><td>{{ (case.status or 'draft')|capitalize }}</td></tr>
+        <tr><td class="label-col">Author</td><td>{% if case.author %}{{ case.author }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+        <tr><td class="label-col">Created</td><td>{% if case.created_at %}{{ case.created_at.strftime('%d %B %Y') }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+        <tr><td class="label-col">Last updated</td><td>{% if case.updated_at %}{{ case.updated_at.strftime('%d %B %Y') }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+        {% for link in links %}
+        <tr>
+            <td class="label-col">{{ link.label }}</td>
+            <td>{% if link.name %}{{ link.name }}{% else %}<span class="muted">Not linked</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if totals.sections_written < totals.sections %}
+<p class="note">
+    {{ totals.sections_written }} of {{ totals.sections }} narrative sections have
+    been written. The rest are marked below rather than omitted, so a reader can
+    see what is missing instead of assuming it was considered.
+</p>
+{% endif %}
+
+{% for section in narrative %}
+<h2 class="section">{{ loop.index + 1 }}. {{ section.label }}</h2>
+{% if section.text %}
+    {% for paragraph in section.text.split('\n') %}
+        {% if paragraph.strip() %}<p>{{ paragraph }}</p>{% endif %}
+    {% endfor %}
+{% else %}
+<p class="undocumented">Not documented. This section has not been written yet.</p>
+{% endif %}
+{% endfor %}
+
+<h2 class="section">{{ narrative|length + 2 }}. Financial summary</h2>
+<table>
+    <thead>
+        <tr><th>Measure</th><th class="num">Value</th></tr>
+    </thead>
+    <tbody>
+        {% for row in financials %}
+        <tr>
+            <td class="label-col">{{ row.label }}</td>
+            <td class="num">
+                {% if row.value is not none %}
+                    {{ '{:,.2f}'.format(row.value) if row.value % 1 else '{:,}'.format(row.value|int) }}{% if row.unit %} {{ row.unit }}{% endif %}
+                {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p class="note">
+    An em dash means the figure has not been entered. It is not a zero: a zero
+    cost is a claim that the change is free. Amounts are shown as stored — this
+    platform records no currency against a business case, so none is asserted.
+</p>
+
+<h2 class="section">{{ narrative|length + 3 }}. Cross-check against linked records</h2>
+{% if not aggregation_available %}
+<p class="note">
+    The linked-record cross-check could not be computed for this case, so no
+    comparison figures are shown.
+</p>
+{% elif cross_checks %}
+<p>
+    These figures were entered on the case and differ from what the linked
+    capability, initiative or solution records hold. Neither side is corrected
+    automatically.
+</p>
+<table>
+    <thead>
+        <tr>
+            <th>Measure</th>
+            <th class="num">In this case</th>
+            <th class="num">From linked records</th>
+            <th class="num">Difference</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in cross_checks %}
+        <tr>
+            <td>{{ row.label }}</td>
+            <td class="num">{% if row.entered is not none %}{{ '{:,.2f}'.format(row.entered) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if row.linked is not none %}{{ '{:,.2f}'.format(row.linked) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="num">{% if row.difference is not none %}{{ '{:,.2f}'.format(row.difference) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="note">
+    No figure in this case diverges from the linked capability, initiative or
+    solution records.
+</p>
+{% endif %}
+
+{% if sources %}
+<h2 class="section">{{ narrative|length + 4 }}. Where the linked figures come from</h2>
+<table>
+    <thead>
+        <tr><th>Record</th><th>Field</th><th class="num">Value</th></tr>
+    </thead>
+    <tbody>
+        {% for source in sources %}
+            {% for key, value in source.fields.items() %}
+            <tr>
+                <td>{% if loop.first %}{{ source.heading }}{% endif %}</td>
+                <td>{{ key|replace('_', ' ')|capitalize }}</td>
+                <td class="num">{% if value is not none %}{{ value }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+</body>
+</html>

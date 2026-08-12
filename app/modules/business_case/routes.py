@@ -7,7 +7,7 @@ Index endpoint (linked from the sidebar by the orchestrator post-merge):
 
 import logging
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 # Destructive and mutating routes were guarded by @login_required only, so any
@@ -86,6 +86,69 @@ def detail(business_case_id):
         initiatives=initiatives,
         solutions=solutions,
     )
+
+
+@business_case_bp.route("/<int:business_case_id>/report.<fmt>")
+@login_required
+def business_case_report(business_case_id, fmt):
+    """One business case as a document: PDF, Word, Excel or a shareable page.
+
+    The business case is the artefact that already *is* a document, and until
+    now it existed only as a web form — so the version that reached an
+    investment board was whatever somebody retyped into their own template.
+
+    A format that cannot be produced on this deployment answers with the reason
+    and a 503, not a 500 and not a zero-byte file: WeasyPrint is a binding over
+    native libraries that are absent on Windows and on slim images, and the
+    other three formats still work when it is missing.
+    """
+    from app.utils.report_export import (
+        REPORT_FORMATS,
+        current_organisation_name,
+        normalise_format,
+        report_response,
+        safe_filename_stem,
+        unsupported_format_response,
+    )
+
+    from .report_service import BusinessCaseReportError, BusinessCaseReportService
+
+    fmt = normalise_format(fmt)
+    if fmt not in REPORT_FORMATS:
+        return unsupported_format_response(fmt)
+
+    try:
+        report = BusinessCaseReportService.build(
+            business_case_id, organisation_name=current_organisation_name()
+        )
+        if report is None:
+            return jsonify({"success": False, "error": "Business case not found."}), 404
+        if fmt == "pdf":
+            payload = BusinessCaseReportService.render_pdf(report)
+        elif fmt == "docx":
+            payload = BusinessCaseReportService.render_docx(report)
+        elif fmt == "xlsx":
+            payload = BusinessCaseReportService.render_xlsx(report)
+        else:
+            payload = BusinessCaseReportService.render_html(report)
+    except BusinessCaseReportError as exc:
+        current_app.logger.warning("business case report unavailable as %s: %s", fmt, exc)
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:  # noqa: BLE001
+        current_app.logger.exception(
+            "business case %s report failed to render as %s", business_case_id, fmt
+        )
+        return (
+            jsonify({
+                "success": False,
+                "error": "The business case report could not be generated. The "
+                         "failure has been logged.",
+            }),
+            500,
+        )
+
+    stem = safe_filename_stem(report["case"]["title"], "business_case")
+    return report_response(payload, fmt, f"business_case_{stem}")
 
 
 @business_case_bp.route("/<int:business_case_id>/update", methods=["POST"])

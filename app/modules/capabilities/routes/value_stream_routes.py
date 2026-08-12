@@ -8,6 +8,7 @@ CapabilityValueStreamMapping models to life:
 
 - GET  /value-streams/                          index  - list value streams
 - GET  /value-streams/<id>                      detail - stage swimlane + BIZBOK grid
+- GET  /value-streams/<id>/report.<fmt>          the stream as pdf/docx/xlsx/html
 - POST /value-streams/create                    create a value stream
 - POST /value-streams/<id>/edit                 edit a value stream
 - POST /value-streams/<id>/delete                delete a value stream
@@ -25,7 +26,7 @@ JSON API:
 
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
 # Destructive and mutating routes were guarded by @login_required only, so any
@@ -69,6 +70,76 @@ def detail(value_stream_id):
     if not vs_data:
         return render_template("value_streams/index.html", streams=[], not_found=True), 404
     return render_template("value_streams/detail.html", value_stream=vs_data)
+
+
+@value_stream.route("/<int:value_stream_id>/report.<fmt>")
+@login_required
+def value_stream_report(value_stream_id, fmt):
+    """One value stream as a document: PDF, Word, Excel or a shareable page.
+
+    The BIZBOK grid on the detail page is a working surface. This is the thing
+    that goes to an operating committee — the stage flow, the capability behind
+    each stage, and the stages with nothing behind them at all.
+
+    A format that cannot be produced on this deployment answers with the reason
+    and a 503, not a 500 and not a zero-byte file: WeasyPrint is a binding over
+    native libraries that are absent on Windows and on slim images, and the
+    other three formats still work when it is missing.
+    """
+    from app.modules.capabilities.services.value_stream_report_service import (
+        ValueStreamReportError,
+        ValueStreamReportService,
+    )
+    from app.utils.report_export import (
+        REPORT_FORMATS,
+        current_organisation_name,
+        normalise_format,
+        report_response,
+        safe_filename_stem,
+        unsupported_format_response,
+    )
+
+    fmt = normalise_format(fmt)
+    if fmt not in REPORT_FORMATS:
+        return unsupported_format_response(fmt)
+
+    try:
+        report = ValueStreamReportService.build(
+            value_stream_id, organisation_name=current_organisation_name()
+        )
+        if report is None:
+            return (
+                jsonify({"success": False, "error": "Value stream not found."}),
+                404,
+            )
+        if fmt == "pdf":
+            payload = ValueStreamReportService.render_pdf(report)
+        elif fmt == "docx":
+            payload = ValueStreamReportService.render_docx(report)
+        elif fmt == "xlsx":
+            payload = ValueStreamReportService.render_xlsx(report)
+        else:
+            payload = ValueStreamReportService.render_html(report)
+    except ValueStreamReportError as exc:
+        current_app.logger.warning("value stream report unavailable as %s: %s", fmt, exc)
+        return jsonify({"success": False, "error": str(exc)}), 503
+    except Exception:  # noqa: BLE001
+        current_app.logger.exception(
+            "value stream %s report failed to render as %s", value_stream_id, fmt
+        )
+        return (
+            jsonify({
+                "success": False,
+                "error": "The value stream report could not be generated. The "
+                         "failure has been logged.",
+            }),
+            500,
+        )
+
+    stem = safe_filename_stem(
+        report["stream"]["code"] or report["stream"]["name"], "value_stream"
+    )
+    return report_response(payload, fmt, f"value_stream_{stem}")
 
 
 # ---------------------------------------------------------------------------
