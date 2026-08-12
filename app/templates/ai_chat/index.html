@@ -679,12 +679,24 @@ x-cloak>
                        scope — declaring it on this inner div left those siblings
                        reading an undefined variable, throwing on every render. #}
                     <div class="space-y-3">
-                        <div class="flex items-center justify-center gap-2">
-                            <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Your AI Architects</span>
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30">
-                                <i data-lucide="shield-check" class="h-3 w-3"></i> Evidence-grounded · live data
-                            </span>
-                        </div>
+                        {# Evidence review (round 2): the "Your AI Architects" /
+                           "Evidence-grounded · live data" header used to sit here,
+                           directly above this grid. Measured with Playwright at
+                           1024x900: #messages-container (overflow-y-auto) clips at
+                           y=666 — the greeting + portfolio-briefing box above it
+                           already fill the visible pane — the header's own box sat
+                           right on that clip boundary (bottom 667.5, badge bottom
+                           670, both spilling past it by a few px), and this grid
+                           started at y=682, entirely below the fold. The label
+                           rendered half-clipped, touching the always-visible
+                           "Quick prompts" chips row below with no gap, describing
+                           cards that were not on screen. The assistant dropdown in
+                           the header row above already lists these same 5
+                           personas, so the label was redundant there too — dropped
+                           rather than chased around the viewport (which would only
+                           move the collision to a different scroll position). The
+                           cards remain, self-labelled (icon + title + one-line
+                           description each). #}
                         <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
                             <button type="button" data-persona="enterprise_architect"
                                     data-prompt="Give me a portfolio health verdict — rationalization picture, capability coverage, and any transformation programme that's drifting."
@@ -825,10 +837,11 @@ x-cloak>
 
             <!-- Suggestion Chips — single row, hide after first send. Own
                  label so this row reads as a distinct "quick prompts" strip
-                 rather than a continuation of "Your AI Architects" above
-                 (that heading labels the architect-card grid inside
-                 #domain-welcome-grid; this is a separate, always-visible
-                 sibling). -->
+                 rather than a continuation of whatever's above it inside
+                 #domain-welcome-grid (that content scrolls independently;
+                 this is a separate, always-visible sibling — see the
+                 "Your AI Architects" removal note above the architect-card
+                 grid for why that heading no longer exists at all). -->
             <div class="px-4 pt-1 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Quick prompts</div>
             <div id="suggestion-chips" class="px-4 pb-2 flex flex-nowrap gap-2 overflow-x-auto">
                 <button type="button" @click="setSuggestion('Review tech stack gaps and identify end-of-life risks')"
