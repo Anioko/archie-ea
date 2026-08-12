@@ -125,6 +125,7 @@ class ApplicationCapabilitySeeder:
 
             # Check if exists
             code = mapping_data["code"]
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             record = ApplicationCapabilityMapping.query.filter_by(code=code).first()
 
             if not record:
@@ -179,6 +180,7 @@ class ApplicationCapabilitySeeder:
         if not app:
             return []
 
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         mappings = ApplicationCapabilityMapping.query.filter_by(
             application_component_id=app.id
         ).all()

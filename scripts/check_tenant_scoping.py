@@ -73,6 +73,7 @@ SCAN_DIRS = [
     os.path.join(REPO_ROOT, "app", "main"),
     os.path.join(REPO_ROOT, "app", "routes"),
     os.path.join(REPO_ROOT, "app", "services"),
+    os.path.join(REPO_ROOT, "app", "application_mgmt"),
 ]
 
 # `organization_id` / `current_org_id` as a WHOLE identifier — see

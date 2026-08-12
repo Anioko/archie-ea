@@ -278,6 +278,7 @@ class SolutionArchitectOrchestrator:
                 estimated_cost = None
                 try:
                     from app.models.vendor.vendor_organization import VendorProductPricing
+                    # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
                     pricing = db.session.query(VendorProductPricing).filter(
                         VendorProductPricing.vendor_product_id == product.id
                     ).first()
@@ -353,6 +354,7 @@ class SolutionArchitectOrchestrator:
                         from app.models.application_capability import ApplicationCapabilityMapping
                         app_ids = [a.get("id") for a in apps if a.get("id")]
                         if app_ids:
+                            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                             mapped = db.session.query(ApplicationCapabilityMapping).filter(
                                 ApplicationCapabilityMapping.business_capability_id == capability_id,
                                 ApplicationCapabilityMapping.application_component_id.in_(app_ids),

@@ -119,6 +119,7 @@ class SemanticLinkingService:
         if "capabilities" in selected_links:
             for cap_id in selected_links["capabilities"]:
                 # Check if exists
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 exists = ApplicationCapabilityMapping.query.filter_by(
                     application_component_id=app.id, capability_id=cap_id
                 ).first()

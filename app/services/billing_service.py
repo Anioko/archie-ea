@@ -268,6 +268,8 @@ class BillingService:
         from app.models.subscription import Subscription, SubscriptionStatus
 
         stripe_sub_id: str = stripe_sub.get("id", "")
+        # tenant-scoping-ok: stripe_subscription_id is a globally-unique Stripe
+        # key; this is a webhook handler with no request/org context.
         sub = Subscription.query.filter_by(stripe_subscription_id=stripe_sub_id).first()
         if not sub:
             logger.debug("No local subscription found for Stripe sub %s", stripe_sub_id)
@@ -300,6 +302,8 @@ class BillingService:
         if not stripe_sub_id:
             return
 
+        # tenant-scoping-ok: stripe_subscription_id is a globally-unique Stripe
+        # key; this is a webhook handler with no request/org context.
         sub = Subscription.query.filter_by(stripe_subscription_id=stripe_sub_id).first()
         if not sub:
             return

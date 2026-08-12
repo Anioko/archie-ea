@@ -21,6 +21,7 @@ from datetime import datetime
 from flask import (
     Blueprint,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -195,7 +196,14 @@ def manage_users_redirect():
 @admin_required
 def registered_users():
     """View all registered users."""
-    users = User.query.options(joinedload(User.role)).order_by(User.id.desc()).all()
+    # admin_required is org-scoped admin, not platform_admin — restrict to the
+    # current org (tenant-scoping-ok: cross-org user-listing IDOR fix).
+    users = (
+        User.query.filter_by(organization_id=g.current_org_id)
+        .options(joinedload(User.role))
+        .order_by(User.id.desc())
+        .all()
+    )
     roles = Role.query.order_by(Role.name).all()
     return render_template("admin/registered_users.html", users=users, roles=roles)
 
@@ -2149,7 +2157,9 @@ def api_list_users():
         sort_by = "id"
 
     from sqlalchemy.orm import joinedload
-    query = User.query.options(joinedload(User.role))
+    # admin_required is org-scoped admin, not platform_admin — restrict to the
+    # current org (tenant-scoping-ok: cross-org user-listing IDOR fix).
+    query = User.query.filter_by(organization_id=g.current_org_id).options(joinedload(User.role))
     if search:
         term = f"%{search}%"
         query = query.filter(

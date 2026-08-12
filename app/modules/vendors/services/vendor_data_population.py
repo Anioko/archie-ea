@@ -125,6 +125,7 @@ class VendorDataPopulationService:
             # Delete in order of dependencies
             db.session.query(VendorRiskAssessment).delete()
             db.session.query(TCOCalculation).delete()
+            # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
             db.session.query(VendorProductPricing).delete()
             db.session.query(VendorProductCapability).delete()
             db.session.query(VendorProduct).delete()

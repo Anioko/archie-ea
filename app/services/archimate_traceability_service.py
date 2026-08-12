@@ -8,6 +8,8 @@ SA-002: get_traceability_chain() provides the 8-layer chain view.
 
 import logging
 
+from flask import g
+
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 from app import db
 
@@ -567,9 +569,12 @@ def _build_relationship_maps(result, solution_id=None):
     # Requirement -> Capabilities (TRC-024): via ApplicationRequirementMapping (req -> app)
     # and ApplicationCapabilityMapping (app -> capability). Aggregate req_id -> [capability_id].
     try:
+        # tenant-scoping-ok: filtered by organization_id below — ACM has no
+        # TenantMixin, so this cross-layer traversal must scope by hand.
         cap_mappings = ApplicationCapabilityMapping.query.filter(
             ApplicationCapabilityMapping.business_capability_id.isnot(None),
             ApplicationCapabilityMapping.application_component_id.isnot(None),
+            ApplicationCapabilityMapping.organization_id == g.current_org_id,
         ).all()
         app_to_caps = {}
         for row in cap_mappings:
@@ -598,11 +603,13 @@ def _build_relationship_maps(result, solution_id=None):
         maps["requirement_to_capabilities"] = {}
 
     # Capability -> Applications (via application_capability_mapping)
+    # tenant-scoping-ok: organization_id filter added in the lambda below.
     _safe_map(
         "capability_to_apps",
         lambda: ApplicationCapabilityMapping.query.filter(
             ApplicationCapabilityMapping.business_capability_id.isnot(None),
             ApplicationCapabilityMapping.application_component_id.isnot(None),
+            ApplicationCapabilityMapping.organization_id == g.current_org_id,
         ).all(),
         lambda r: r.business_capability_id,
         lambda r: r.application_component_id,

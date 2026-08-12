@@ -635,6 +635,7 @@ class SemanticVendorDiscovery:
         """Calculate cost effectiveness score from real pricing data only. No fabricated fallbacks."""
         vendor_id = candidate.get("vendor_id") or candidate.get("id")
         if vendor_id:
+            # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
             pricing = db.session.query(VendorProductPricing).filter(
                 VendorProductPricing.vendor_product_id == vendor_id
             ).first()

@@ -129,6 +129,10 @@ def analyze_document_for_application(application_id):
 
         if document_id:
             # Analyze existing document
+            # tenant-scoping-ok: cross-org access is closed by the
+            # application_component_id check immediately below, which
+            # rejects any document not FK-scoped to this (org-scoped)
+            # application_id.
             document = ApplicationDocument.query.get_or_404(document_id)
             if document.application_component_id != application_id:
                 return jsonify(

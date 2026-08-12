@@ -13,6 +13,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List
 
+from flask import g
 
 from app.models.application_capability import ApplicationCapabilityMapping
 from app.models.business_capabilities import BusinessCapability
@@ -52,7 +53,11 @@ class InvestmentPrioritizationService:
         # Batch-load all capability mappings to avoid N+1 queries
         mappings_by_cap = {}
         try:
-            all_mappings = ApplicationCapabilityMapping.query.all()
+            # tenant-scoping-ok: filtered by organization_id below — ACM has
+            # no TenantMixin, so this portfolio-wide read must scope by hand.
+            all_mappings = ApplicationCapabilityMapping.query.filter_by(
+                organization_id=g.current_org_id
+            ).all()
             for m in all_mappings:
                 mappings_by_cap.setdefault(m.business_capability_id, []).append(m)
         except Exception:

@@ -18,6 +18,7 @@ Design principles:
 import logging
 from collections import defaultdict
 
+from flask import g
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
@@ -91,11 +92,14 @@ def generate_smart_defaults(solution):
         from app.models.application_capability import ApplicationCapabilityMapping
 
         # Count apps per capability
+        # tenant-scoping-ok: filtered by organization_id below — ACM has no
+        # TenantMixin, so this aggregate must scope by hand.
         cap_app_counts = dict(
             db.session.query(
                 ApplicationCapabilityMapping.business_capability_id,
                 func.count(ApplicationCapabilityMapping.id),
             )
+            .filter(ApplicationCapabilityMapping.organization_id == g.current_org_id)
             .group_by(ApplicationCapabilityMapping.business_capability_id)
             .all()
         )
@@ -189,6 +193,7 @@ def generate_smart_defaults(solution):
         if results["capabilities"]:
             cap_ids = [c["id"] for c in results["capabilities"]]
             app_mappings = (
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 ApplicationCapabilityMapping.query
                 .filter(ApplicationCapabilityMapping.business_capability_id.in_(cap_ids))
                 .all()

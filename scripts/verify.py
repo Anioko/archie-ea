@@ -585,11 +585,25 @@ def gate_tenant_scoping(baseline: int) -> Result:
     A ratchet, not a hard zero, and the ORM-side twin of raw-sql-tenancy.
     do_orm_execute auto-filters TenantMixin models; several models carry an
     organization_id column without the mixin, so they get none of that
-    filtering. Six real instances of this shape were found and fixed in this
-    wave: a global User.count() feeding a dashboard step, global
-    ApplicationCapabilityMapping counts behind a capability-coverage metric
-    that could exceed 100%, and an org-blind @cached() key that served one
-    tenant's answer to the next.
+    filtering. shell-overhaul Wave 3 Task 2 triaged all 153 findings the gate
+    produced at the time (plus 4 more surfaced by adding the then-invisible
+    app/application_mgmt to SCAN_DIRS): real cross-org leaks were fixed —
+    an org-admin IDOR letting one org's admin list/edit/role-escalate another
+    org's users (admin_routes.py, user_role_routes.py, admin_user_service.py
+    and the v2 equivalents), global User counts feeding dashboards, several
+    global ApplicationCapabilityMapping aggregates/reads (capability-coverage
+    metrics, portfolio-wide traceability), a governance-notification email
+    audience built from every org's platform_admin/enterprise_architect
+    users, several cross-org user-picker/@mention-search endpoints, and one
+    document-update IDOR in app/application_mgmt with no ownership check at
+    all. The remainder were deliberately left unscoped and hatched with
+    `tenant-scoping-ok: <reason>` — FK ids already scoped through a
+    TenantMixin-loaded parent, self-lookups by the acting user's own id,
+    globally-unique keys (email, Stripe subscription id), vendor reference/
+    catalog data, pre-auth SSO/invite flows with no org context yet, and one
+    finding (gdpr_service.py) where the real defect is a missing
+    authentication check on the calling route, not tenant scoping — flagged
+    for human decision in the Wave 3 Task 2 report, not fixed here.
 
     A clean run does NOT prove tenancy — see check_tenant_scoping.py's
     docstring for the same caveat raw-sql-tenancy carries.

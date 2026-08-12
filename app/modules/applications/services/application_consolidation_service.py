@@ -187,6 +187,7 @@ class ApplicationConsolidationService:
         caps1 = set(
             [
                 m.capability_id
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 for m in ApplicationCapabilityMapping.query.filter_by(
                     application_component_id=app1.id
                 ).all()
@@ -195,6 +196,7 @@ class ApplicationConsolidationService:
         caps2 = set(
             [
                 m.capability_id
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 for m in ApplicationCapabilityMapping.query.filter_by(
                     application_component_id=app2.id
                 ).all()

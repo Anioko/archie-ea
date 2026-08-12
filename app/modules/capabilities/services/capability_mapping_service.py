@@ -11,6 +11,7 @@ Provides intelligent mapping recommendations for gap analysis.
 import logging
 from typing import Dict, List
 
+from flask import g
 from sqlalchemy.orm import joinedload
 
 from app import db
@@ -305,7 +306,10 @@ class CapabilityMappingService:
     def get_mappings(self, application_id=None, domain=None, maturity_level=None):
         """Application<->capability mappings, optionally filtered by application."""
         from app.models.application_capability import ApplicationCapabilityMapping
-        q = ApplicationCapabilityMapping.query
+        # tenant-scoping-ok: filtered by organization_id below — ACM has no
+        # TenantMixin, so this must scope by hand even when application_id
+        # is not provided (global list would otherwise leak cross-org).
+        q = ApplicationCapabilityMapping.query.filter_by(organization_id=g.current_org_id)
         if application_id:
             q = q.filter(ApplicationCapabilityMapping.application_component_id == application_id)
         return [

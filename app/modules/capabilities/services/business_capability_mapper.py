@@ -14,6 +14,7 @@ Maps applications to business capabilities using multiple analysis methods:
 import logging
 from typing import Dict, List, Optional
 
+from flask import g
 from sqlalchemy import and_
 
 from app import db
@@ -56,7 +57,11 @@ class BusinessCapabilityMapper:
         capabilities = BusinessCapability.query.all()
 
         # Check existing mappings
-        existing_mappings = ApplicationCapabilityMapping.query.all()
+        # tenant-scoping-ok: filtered by organization_id below — ACM has no
+        # TenantMixin, so this portfolio-wide read must scope by hand.
+        existing_mappings = ApplicationCapabilityMapping.query.filter_by(
+            organization_id=g.current_org_id
+        ).all()
 
         # Analyze coverage
         analysis = {
@@ -72,6 +77,7 @@ class BusinessCapabilityMapper:
 
         # Check each application for capability mapping
         for app in applications:
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             app_mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=app.id
             ).all()
@@ -362,6 +368,7 @@ class BusinessCapabilityMapper:
         """
         try:
             # Check if mapping already exists
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             existing = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=application_id, business_capability_id=capability_id
             ).first()

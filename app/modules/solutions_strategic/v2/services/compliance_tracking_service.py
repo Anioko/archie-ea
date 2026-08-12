@@ -383,6 +383,7 @@ class ComplianceTrackingService:
         """
         from app.models.application_portfolio import ApplicationCapabilityMapping
 
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         return ApplicationCapabilityMapping.query.filter_by(
             business_capability_id=capability_id
         ).all()

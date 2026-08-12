@@ -28,7 +28,7 @@ Routes:
 
 from datetime import datetime
 
-from flask import current_app, jsonify, request
+from flask import current_app, g, jsonify, request
 from flask_login import login_required
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
@@ -433,7 +433,11 @@ def api_unified_capabilities():
         # Use BusinessCapability (real APQC data) as the primary source
         app_capabilities = BusinessCapability.query.limit(500).all()
 
-        app_mappings = ApplicationCapabilityMapping.query.limit(500).all()
+        # tenant-scoping-ok: filtered by organization_id below — ACM has no
+        # TenantMixin, so this portfolio-wide read must scope by hand.
+        app_mappings = ApplicationCapabilityMapping.query.filter_by(
+            organization_id=g.current_org_id
+        ).limit(500).all()
         mapped_app_cap_ids = {mapping.business_capability_id for mapping in app_mappings}
 
         # Build mapping index (business_capability_id -> list of mappings)

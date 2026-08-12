@@ -139,14 +139,19 @@ class RationalizationProposalService:
         """Find duplicate-function apps via shared capability mappings."""
         proposals = []
         try:
+            from flask import g
             from app.models.application_capability import ApplicationCapabilityMapping
             from app import db
             from sqlalchemy import func
 
             # Capabilities covered by 3+ applications
+            # tenant-scoping-ok: filtered by organization_id below — ACM has no
+            # TenantMixin, so this aggregate must scope by hand.
             over_covered = db.session.query(
                 ApplicationCapabilityMapping.business_capability_id,
                 func.count(ApplicationCapabilityMapping.application_id).label("app_count")
+            ).filter(
+                ApplicationCapabilityMapping.organization_id == g.current_org_id
             ).group_by(
                 ApplicationCapabilityMapping.business_capability_id
             ).having(

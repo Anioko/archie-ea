@@ -15,7 +15,7 @@ URL prefix /dashboard applied via register() in v2/__init__.py — route decorat
 
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, g, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
 from app import db
@@ -60,9 +60,16 @@ def overview():
         metrics["vendors"] = (
             db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0
         )
-        metrics["users"] = db.session.query(db.func.count(User.id)).scalar() or 0
+        metrics["users"] = (
+            db.session.query(db.func.count(User.id))
+            .filter(User.organization_id == g.current_org_id)
+            .scalar()
+            or 0
+        )
 
-        active_sessions_query = db.session.query(db.func.count(User.id))
+        active_sessions_query = db.session.query(db.func.count(User.id)).filter(
+            User.organization_id == g.current_org_id
+        )
         if hasattr(User, "confirmed"):
             active_sessions_query = active_sessions_query.filter(User.confirmed.is_(True))
         metrics["active_sessions"] = active_sessions_query.scalar() or 0

@@ -22,6 +22,7 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Dict, List, Optional, Tuple
 
+from flask import g
 from sqlalchemy.exc import IntegrityError
 
 from app import db
@@ -1064,7 +1065,14 @@ class AbacusImportService:
         ).all()
         rel_app_lookup = {a.application_code: a for a in abacus_apps}
 
-        existing_mappings = ApplicationCapabilityMapping.query.all()
+        # tenant-scoping-ok: filtered by organization_id below when available
+        # — ACM has no TenantMixin. Falls back to unscoped only outside a
+        # request context (CLI import), where there is no tenant to leak across.
+        _org_id = getattr(g, "current_org_id", None)
+        _mappings_q = ApplicationCapabilityMapping.query
+        if _org_id is not None:
+            _mappings_q = _mappings_q.filter_by(organization_id=_org_id)
+        existing_mappings = _mappings_q.all()
         mapping_lookup = {
             (m.application_component_id, m.business_capability_id): m
             for m in existing_mappings

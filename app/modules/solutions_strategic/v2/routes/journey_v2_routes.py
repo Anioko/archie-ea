@@ -2032,6 +2032,7 @@ def _enrich_capabilities_with_technical_data(capabilities: list) -> list:
         if cap_id:
             try:
                 mappings = (
+                    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                     ApplicationCapabilityMapping.query
                     .filter_by(business_capability_id=cap_id)
                     .order_by(ApplicationCapabilityMapping.coverage_percentage.desc())

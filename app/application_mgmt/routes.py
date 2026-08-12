@@ -1909,6 +1909,8 @@ def render_application_detail(id):
     capability_mappings = []
     try:
         from app.models.application_capability import ApplicationCapabilityMapping
+        # tenant-scoping-ok: filtered by application_component_id == id below,
+        # and app_obj (id) is an org-scoped ApplicationComponent load.
         cap_pairs = (
             db.session.query(ApplicationCapabilityMapping, BusinessCapability)
             .join(
@@ -2183,6 +2185,8 @@ def render_application_detail(id):
     application_documents = []
     try:
         from app.models.miscellaneous import ApplicationDocument
+        # tenant-scoping-ok: FK-scoped to app_obj.id, an org-scoped
+        # ApplicationComponent load.
         application_documents = (
             ApplicationDocument.query.filter_by(application_component_id=app_obj.id)
             .order_by(ApplicationDocument.uploaded_at.desc())

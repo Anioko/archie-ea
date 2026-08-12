@@ -6,7 +6,7 @@ dashboards for ANY SQLAlchemy model without requiring manual route creation.
 """
 from datetime import datetime
 
-from flask import Blueprint, abort, current_app, render_template, url_for  # dead-code-ok
+from flask import Blueprint, abort, current_app, g, render_template, url_for  # dead-code-ok
 
 from app.models.application_layer import (
     ApplicationEvent,
@@ -278,7 +278,11 @@ def workflow_pipeline():
         all_applications = ApplicationComponent.query.limit(2000).all()
 
         # Get all mappings
-        mappings = ApplicationCapabilityMapping.query.limit(5000).all()
+        # tenant-scoping-ok: filtered by organization_id below — ACM has no
+        # TenantMixin, so this portfolio-wide read must scope by hand.
+        mappings = ApplicationCapabilityMapping.query.filter_by(
+            organization_id=g.current_org_id
+        ).limit(5000).all()
 
         # Analyze gaps
         capability_gaps = []

@@ -15,6 +15,7 @@ from flask import (
     Blueprint,
     current_app,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -360,7 +361,7 @@ def _chair_candidates():
     try:
         from app.models.user import User
         return (
-            User.query.filter_by(confirmed=True)
+            User.query.filter_by(confirmed=True, organization_id=g.current_org_id)
             .order_by(User.first_name, User.last_name)
             .limit(200)
             .all()
