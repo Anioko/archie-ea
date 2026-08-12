@@ -248,6 +248,13 @@ def init_cli(app):
         app.logger.warning(f"⚠️  Failed to register principle tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.audit_admin_personas import init_app as init_admin_personas
+        init_admin_personas(app)
+        app.logger.info("✅ Admin persona audit CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register admin persona audit CLI: {e}")
+
+    try:
         from app.commands.scope_unique_to_tenant import init_app as init_scope_unique
         init_scope_unique(app)
         app.logger.info("✅ Tenant-unique scoping CLI command registered")
