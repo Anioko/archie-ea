@@ -150,260 +150,296 @@ x-cloak>
         <span x-text="llmProvider ? ('AI provider degraded: ' + llmProvider) : 'AI provider unavailable — responses may be delayed or unavailable'"></span>
     </div>
 </div>
-<div x-data class="flex h-[calc(100vh-4rem)] flex-col bg-background -mx-4 -my-6">
-    <!-- Enhanced Header with Domain Selection - Responsive -->
-    <header class="flex flex-col lg:flex-row items-start lg:items-center justify-between border-b px-4 lg:px-6 py-3 lg:py-4 bg-background gap-3">
-        <div class="flex items-center gap-3">
-            <!-- Dynamic Domain Icon -->
-            <div id="domain-icon" class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all duration-300">
-                <i data-lucide="bot" class="h-5 w-5" aria-hidden="true"></i>
-            </div>
-            <div>
-                <h1 id="domain-title" class="text-base lg:text-lg font-semibold">Multi-Domain AI Assistant</h1>
-                <p id="domain-description" class="text-xs text-muted-foreground hidden sm:block">Ask anything about your architecture — no setup needed</p>
-            </div>
-            <!-- Mobile sidebar toggle -->
-            <button type="button" id="sidebar-toggle" @click="toggleSidebar()" aria-label="Toggle sidebar" class="lg:hidden ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-accent transition-colors">
-                <i data-lucide="panel-left" class="h-4 w-4" aria-hidden="true"></i>
-            </button>
-        </div>
+<div x-data="{
+        railOpen: (localStorage.getItem('archie_chat_rail') ?? (window.innerWidth >= 1280 ? 'open' : 'closed')) === 'open'
+    }"
+     x-init="$watch('railOpen', (v) => localStorage.setItem('archie_chat_rail', v ? 'open' : 'closed'))"
+     class="flex h-[calc(100vh-4rem)] flex-col bg-background -mx-4 -my-6">
+    <!-- Header: one control row, chrome before content stops here -->
+    <header class="border-b px-4 lg:px-6 py-3 bg-background">
+        <!-- Dynamic domain icon/title kept off-screen: JS (updateDomainUI /
+             updatePersonaUI in app.js) still writes into these on persona and
+             domain change, and a screen-reader user still hears which
+             assistant/scope is active — but the selectors below already say
+             it visually, so the old title block does not need a second,
+             visible copy. -->
+        <div id="domain-icon" class="sr-only" aria-hidden="true"><i data-lucide="bot" class="h-5 w-5" aria-hidden="true"></i></div>
+        <h1 id="domain-title" class="sr-only"></h1>
+        <p id="domain-description" class="sr-only"></p>
 
-        <!-- Domain Selector & Controls - Responsive wrapping -->
-        <div x-data="{ showAdvanced: false }" class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-            {# Assistant, then scope. Persona selects the charter; domain selects
-               which of nine context loaders runs. They are orthogonal — deriving
-               scope from persona and hiding it makes "Data Architect looking at
-               vendor data" unreachable — so scope stays visible, labelled
-               "Looking at", which is the noun a user already thinks in. #}
-            <div class="flex items-center gap-1.5 flex-1 min-w-[180px] max-w-[260px]">
-                <label for="persona-selector" class="text-xs text-muted-foreground shrink-0 hidden xl:inline">Assistant</label>
-                <div class="relative flex-1">
-                    <select id="persona-selector" aria-label="Assistant"
-                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
-                        <optgroup label="AI Architects (governed, live-data)">
-                            <option value="enterprise_architect" selected>AI Enterprise Architect</option>
-                            <option value="solutions_architect">AI Solution Architect</option>
-                            <option value="technology_architect">AI Technical Architect</option>
-                            <option value="data_architect">AI Data Architect</option>
-                            <option value="business_architect">AI Business Architect</option>
-                        </optgroup>
-                        <optgroup label="Specialist roles">
-                            <option value="application_architect">Application Architect</option>
-                            <option value="integration_architect">Integration Architect</option>
-                            <option value="systems_architect">Systems Architect</option>
-                            <option value="capability_architect">Capability Architect</option>
-                            <option value="business_analyst">Business Analyst</option>
-                            <option value="product_analyst">Product Analyst</option>
-                            <option value="cio">CIO / IT Executive</option>
-                        </optgroup>
-                    </select>
-                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                        <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-                </div>
-            </div>
-
-            <div class="flex items-center gap-1.5 flex-1 min-w-[170px] max-w-[240px]">
-                <label for="domain-selector" class="text-xs text-muted-foreground shrink-0 hidden xl:inline">Looking&nbsp;at</label>
-                <div class="relative flex-1">
-                    <select id="domain-selector" aria-label="Looking at"
-                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        <option value="general">Whole portfolio</option>
-                        <option value="architecture">Architecture</option>
-                        <option value="data_architecture">Data architecture</option>
-                        <option value="technology">Technology</option>
-                        <option value="business_capability">Capabilities</option>
-                        <option value="gap_analysis">Gaps</option>
-                        <option value="vendor_intelligence">Vendors</option>
-                        <option value="compliance">Architecture principles</option>
-                        <option value="smart_search">Everything (search)</option>
-                    </select>
-                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                        <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Advanced Settings Toggle -->
-            <button type="button" @click="showAdvanced = !showAdvanced"
-                :class="showAdvanced ? 'bg-accent border-primary/40' : ''"
-                class="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm shrink-0"
-                title="Role, model, template settings" aria-label="Toggle advanced settings">
-                <i data-lucide="sliders-horizontal" class="h-4 w-4" aria-hidden="true"></i>
-                <span class="hidden lg:inline">Settings</span>
-                <i data-lucide="chevron-down" class="h-3 w-3 transition-transform" :class="showAdvanced ? 'rotate-180' : ''" aria-hidden="true"></i>
-            </button>
-
-            <!-- Advanced Controls — Persona, Model, Template (collapsed by default) -->
-            <div x-show="showAdvanced" x-cloak x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
-                 class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-
-                <!-- Model Selector -->
-                <div class="relative flex-1 min-w-[160px] max-w-[220px]">
-                    <select id="model-selector" aria-label="AI model"
-                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
-                        <option value="">Auto-Select Model</option>
-                    </select>
-                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                        <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- AI Tools -->
-            <div class="hidden sm:flex items-center gap-1 border-l border-border pl-2">
-                <button type="button" @click="toggleDocumentUploadPanel()" class="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm" title="Upload documents — auto-create ArchiMate elements">
-                    <i data-lucide="file-up" class="h-4 w-4" aria-hidden="true"></i>
-                    <span class="hidden lg:inline">Docs</span>
-                </button>
-                <a href="{{ url_for('unified_ai_chat.entity_matching_view') }}" class="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm" title="Entity Matching">
-                    <i data-lucide="git-compare" class="h-4 w-4" aria-hidden="true"></i>
-                    <span class="hidden lg:inline">Match</span>
-                </a>
-            </div>
-
-            <!-- Export Button -->
-            <button type="button" @click="exportConversation()" aria-label="Export conversation" title="Export conversation as Markdown" class="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm shrink-0">
-                <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
-                <span class="hidden lg:inline">Export</span>
-            </button>
-
-            <!-- CRUD Approvals Badge (ENT-077) -->
-            <div x-data="approvalManager" x-cloak class="relative shrink-0">
-                <button type="button" data-modal-open="ai-chat-approvals-modal" aria-label="Pending CRUD approvals" title="Pending CRUD approvals"
-                    class="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm relative">
-                    <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
-                    <span class="hidden lg:inline">Approvals</span>
-                    <span x-show="pendingCount > 0" x-cloak
-                          x-text="pendingCount"
-                          class="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30 ml-1"></span>
+        <div data-testid="chat-header-row" x-data="{ showAdvanced: false, menuOpen: false }"
+             class="flex items-center justify-between gap-3">
+            <!-- Left: mobile rail toggle + merged assistant/scope control -->
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+                <button type="button" id="sidebar-toggle" @click="toggleSidebar()" aria-label="Toggle context panel" class="lg:hidden shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-accent transition-colors">
+                    <i data-lucide="panel-left" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
 
-                <!-- Approval Modal (ENT-077) — canonical: data-modal-open/close, hidden attribute -->
-                <div id="ai-chat-approvals-modal"
-                     class="hidden fixed inset-0 z-[100] flex items-center justify-center"
-                     role="dialog"
-                     aria-modal="true"
-                     aria-label="Pending CRUD Approvals">
-                    <!-- Backdrop -->
-                    <div class="absolute inset-0 bg-black/50" data-modal-close="ai-chat-approvals-modal"></div>
-                    <!-- Panel -->
-                    <div class="relative w-full max-w-lg max-h-[80vh] mx-4 rounded-lg border border-border bg-background shadow-lg flex flex-col"
-                         @click.stop>
-                        <!-- Header -->
-                        <div class="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-                            <h2 class="text-lg font-semibold text-foreground">Pending Approvals</h2>
-                            <button type="button" data-modal-close="ai-chat-approvals-modal" aria-label="Close modal"
-                                class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors text-muted-foreground">
-                                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
-                            </button>
+                {# Assistant, then scope. Persona selects the charter; domain selects
+                   which of nine context loaders runs. They are orthogonal — deriving
+                   scope from persona and hiding it makes "Data Architect looking at
+                   vendor data" unreachable — so scope stays visible, labelled
+                   "Looking at", which is the noun a user already thinks in. #}
+                <div class="flex items-center gap-1.5 min-w-0">
+                    <div class="relative min-w-[150px] max-w-[240px]">
+                        <label for="persona-selector" class="sr-only">Assistant</label>
+                        <select id="persona-selector" aria-label="Assistant"
+                            class="h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
+                            <optgroup label="AI Architects (governed, live-data)">
+                                <option value="enterprise_architect" selected>AI Enterprise Architect</option>
+                                <option value="solutions_architect">AI Solution Architect</option>
+                                <option value="technology_architect">AI Technical Architect</option>
+                                <option value="data_architect">AI Data Architect</option>
+                                <option value="business_architect">AI Business Architect</option>
+                            </optgroup>
+                            <optgroup label="Specialist roles">
+                                <option value="application_architect">Application Architect</option>
+                                <option value="integration_architect">Integration Architect</option>
+                                <option value="systems_architect">Systems Architect</option>
+                                <option value="capability_architect">Capability Architect</option>
+                                <option value="business_analyst">Business Analyst</option>
+                                <option value="product_analyst">Product Analyst</option>
+                                <option value="cio">CIO / IT Executive</option>
+                            </optgroup>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                            <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
                         </div>
-                        <!-- Body -->
-                        <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-                            <!-- Error banner -->
-                            <div x-show="error" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="error"></div>
+                    </div>
 
-                            <!-- Empty state -->
-                            <template x-if="approvals.length === 0">
-                                <div class="text-center py-8 text-muted-foreground">
-                                    <i data-lucide="check-circle-2" class="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true"></i>
-                                    <p class="text-sm">No pending approvals</p>
-                                </div>
-                            </template>
+                    <span class="text-muted-foreground text-sm hidden sm:inline" aria-hidden="true">·</span>
 
-                            <!-- Approval cards -->
-                            <template x-for="item in approvals" :key="item.id">
-                                <div class="rounded-lg border border-border bg-card p-4 space-y-2">
-                                    <!-- Top row: operation badge + entity type -->
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center gap-2">
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize"
-                                                  :class="{
+                    <div class="relative min-w-[140px] max-w-[220px]">
+                        <label for="domain-selector" class="sr-only">Looking at</label>
+                        <select id="domain-selector" aria-label="Looking at"
+                            class="h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="general">Whole portfolio</option>
+                            <option value="architecture">Architecture</option>
+                            <option value="data_architecture">Data architecture</option>
+                            <option value="technology">Technology</option>
+                            <option value="business_capability">Capabilities</option>
+                            <option value="gap_analysis">Gaps</option>
+                            <option value="vendor_intelligence">Vendors</option>
+                            <option value="compliance">Architecture principles</option>
+                            <option value="smart_search">Everything (search)</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                            <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: rail toggle, Settings, overflow menu -->
+            <div class="flex items-center gap-1.5 shrink-0">
+                <!-- Desktop conversation-rail toggle (mobile uses sidebar-toggle above) -->
+                <button type="button" @click="railOpen = !railOpen" :aria-expanded="railOpen.toString()"
+                    aria-label="Toggle conversation panel" title="Toggle conversation panel"
+                    class="hidden lg:inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-accent transition-colors">
+                    <i data-lucide="panel-right" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+
+                <!-- Settings dropdown (role, model) -->
+                <div class="relative">
+                    <button type="button" @click="showAdvanced = !showAdvanced" :aria-expanded="showAdvanced.toString()" aria-haspopup="true"
+                        :class="showAdvanced ? 'bg-accent border-primary/40' : ''"
+                        class="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm"
+                        title="Role, model settings" aria-label="Toggle advanced settings">
+                        <i data-lucide="sliders-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+                        <span class="hidden lg:inline">Settings</span>
+                        <i data-lucide="chevron-down" class="h-3 w-3 transition-transform" :class="showAdvanced ? 'rotate-180' : ''" aria-hidden="true"></i>
+                    </button>
+
+                    <div x-show="showAdvanced" x-cloak @click.outside="showAdvanced = false"
+                         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                         class="absolute right-0 mt-2 w-64 rounded-md border border-border bg-popover shadow-lg z-50 p-3" role="menu">
+                        <label for="model-selector" class="text-xs font-medium text-muted-foreground block mb-1.5">AI model</label>
+                        <div class="relative">
+                            <select id="model-selector" aria-label="AI model"
+                                class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
+                                <option value="">Auto-Select Model</option>
+                            </select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                                <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Overflow menu: Docs / Match / Export / Approvals -->
+                <div class="relative" data-testid="chat-overflow-menu">
+                    <button type="button" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen.toString()" aria-haspopup="true" aria-label="More actions" title="More actions"
+                        class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-accent transition-colors">
+                        <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+
+                    <div x-show="menuOpen" x-cloak @click.outside="menuOpen = false"
+                         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                         class="absolute right-0 mt-2 w-56 rounded-md border border-border bg-popover shadow-lg z-50" role="menu">
+                        <div class="p-1">
+                            <button type="button" @click="toggleDocumentUploadPanel(); menuOpen = false" role="menuitem"
+                                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors" title="Upload documents — auto-create ArchiMate elements">
+                                <i data-lucide="file-up" class="h-4 w-4" aria-hidden="true"></i>
+                                Docs
+                            </button>
+                            <a href="{{ url_for('unified_ai_chat.entity_matching_view') }}" role="menuitem" @click="menuOpen = false"
+                               class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors" title="Entity Matching">
+                                <i data-lucide="git-compare" class="h-4 w-4" aria-hidden="true"></i>
+                                Match
+                            </a>
+                            <button type="button" @click="exportConversation(); menuOpen = false" role="menuitem"
+                                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors" title="Export conversation as Markdown">
+                                <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
+                                Export
+                            </button>
+
+                            <div class="h-px bg-border my-1" role="separator"></div>
+
+                            <!-- CRUD Approvals Badge (ENT-077) -->
+                            <div x-data="approvalManager" x-cloak>
+                                <button type="button" data-modal-open="ai-chat-approvals-modal" @click="menuOpen = false" role="menuitem"
+                                    aria-label="Pending CRUD approvals" title="Pending CRUD approvals"
+                                    class="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
+                                    <span class="flex items-center gap-2">
+                                        <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
+                                        Approvals
+                                    </span>
+                                    <span x-show="pendingCount > 0" x-cloak
+                                          x-text="pendingCount"
+                                          class="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30"></span>
+                                </button>
+
+                                <!-- Approval Modal (ENT-077) — canonical: data-modal-open/close, hidden attribute -->
+                                <div id="ai-chat-approvals-modal"
+                                     class="hidden fixed inset-0 z-[100] flex items-center justify-center"
+                                     role="dialog"
+                                     aria-modal="true"
+                                     aria-label="Pending CRUD Approvals">
+                                    <!-- Backdrop -->
+                                    <div class="absolute inset-0 bg-black/50" data-modal-close="ai-chat-approvals-modal"></div>
+                                    <!-- Panel -->
+                                    <div class="relative w-full max-w-lg max-h-[80vh] mx-4 rounded-lg border border-border bg-background shadow-lg flex flex-col"
+                                         @click.stop>
+                                        <!-- Header -->
+                                        <div class="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+                                            <h2 class="text-lg font-semibold text-foreground">Pending Approvals</h2>
+                                            <button type="button" data-modal-close="ai-chat-approvals-modal" aria-label="Close modal"
+                                                class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors text-muted-foreground">
+                                                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                        <!-- Body -->
+                                        <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+                                            <!-- Error banner -->
+                                            <div x-show="error" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="error"></div>
+
+                                            <!-- Empty state -->
+                                            <template x-if="approvals.length === 0">
+                                                <div class="text-center py-8 text-muted-foreground">
+                                                    <i data-lucide="check-circle-2" class="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true"></i>
+                                                    <p class="text-sm">No pending approvals</p>
+                                                </div>
+                                            </template>
+
+                                            <!-- Approval cards -->
+                                            <template x-for="item in approvals" :key="item.id">
+                                                <div class="rounded-lg border border-border bg-card p-4 space-y-2">
+                                                    <!-- Top row: operation badge + entity type -->
+                                                    <div class="flex items-center justify-between">
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize"
+                                                                  :class="{
  'bg-green-500/10 text-emerald-600 border border-green-500/30': item.operation_type === 'create',
  'bg-yellow-500/10 text-amber-600 border border-yellow-500/30': item.operation_type === 'update',
  'bg-destructive/10 text-destructive border border-destructive/30': item.operation_type === 'delete'
  }"
-                                                  x-text="item.operation_type"></span>
-                                            <span class="text-sm font-medium text-foreground capitalize" x-text="item.entity_type"></span>
+                                                                  x-text="item.operation_type"></span>
+                                                            <span class="text-sm font-medium text-foreground capitalize" x-text="item.entity_type"></span>
+                                                        </div>
+                                                        <span class="text-xs text-muted-foreground" x-text="formatDate(item.created_at)"></span>
+                                                    </div>
+                                                    <!-- Summary -->
+                                                    <p class="text-sm text-muted-foreground" x-text="item.summary"></p>
+                                                    <!-- Expiry -->
+                                                    <p class="text-xs text-muted-foreground">
+                                                        Expires: <span x-text="formatDate(item.expires_at)"></span>
+                                                    </p>
+
+                                                    <!-- Reject reason textarea (shown when rejecting this item) -->
+                                                    <template x-if="rejectingId === item.id">
+                                                        <div class="space-y-2 pt-1">
+                                                            <label :for="'reject-reason-' + item.id" class="text-xs font-medium text-foreground">Rejection reason (optional)</label>
+                                                            <textarea :id="'reject-reason-' + item.id"
+                                                                      x-model="rejectReason"
+                                                                      rows="2"
+                                                                      class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                                      placeholder="Why are you rejecting this operation?" aria-label="Why are you rejecting this operation?"></textarea>
+                                                            <div class="flex gap-2">
+                                                                <button type="button" @click="confirmReject(item.id)"
+                                                                        :disabled="busyIds[item.id]"
+                                                                        class="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50">
+                                                                    Confirm Reject
+                                                                </button>
+                                                                <button type="button" @click="cancelReject()"
+                                                                        class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+
+                                                    <!-- Action buttons (hidden when reject textarea is open for this item) -->
+                                                    <template x-if="rejectingId !== item.id">
+                                                        <div class="flex gap-2 pt-1">
+                                                            <button type="button" @click="approve(item.id)"
+                                                                    :disabled="busyIds[item.id]"
+                                                                    class="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                                                                <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
+                                                                Approve
+                                                            </button>
+                                                            <button type="button" @click="startReject(item.id)"
+                                                                    :disabled="busyIds[item.id]"
+                                                                    class="inline-flex items-center gap-1 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50">
+                                                                <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
+                                                                Reject
+                                                            </button>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
                                         </div>
-                                        <span class="text-xs text-muted-foreground" x-text="formatDate(item.created_at)"></span>
+                                        <!-- Footer -->
+                                        <div class="px-6 py-3 border-t border-border shrink-0 flex justify-end">
+                                            <button type="button" data-modal-close="ai-chat-approvals-modal"
+                                                class="inline-flex items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                                                Close
+                                            </button>
+                                        </div>
                                     </div>
-                                    <!-- Summary -->
-                                    <p class="text-sm text-muted-foreground" x-text="item.summary"></p>
-                                    <!-- Expiry -->
-                                    <p class="text-xs text-muted-foreground">
-                                        Expires: <span x-text="formatDate(item.expires_at)"></span>
-                                    </p>
-
-                                    <!-- Reject reason textarea (shown when rejecting this item) -->
-                                    <template x-if="rejectingId === item.id">
-                                        <div class="space-y-2 pt-1">
-                                            <label :for="'reject-reason-' + item.id" class="text-xs font-medium text-foreground">Rejection reason (optional)</label>
-                                            <textarea :id="'reject-reason-' + item.id"
-                                                      x-model="rejectReason"
-                                                      rows="2"
-                                                      class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                                      placeholder="Why are you rejecting this operation?" aria-label="Why are you rejecting this operation?"></textarea>
-                                            <div class="flex gap-2">
-                                                <button type="button" @click="confirmReject(item.id)"
-                                                        :disabled="busyIds[item.id]"
-                                                        class="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50">
-                                                    Confirm Reject
-                                                </button>
-                                                <button type="button" @click="cancelReject()"
-                                                        class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
-                                                    Cancel
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </template>
-
-                                    <!-- Action buttons (hidden when reject textarea is open for this item) -->
-                                    <template x-if="rejectingId !== item.id">
-                                        <div class="flex gap-2 pt-1">
-                                            <button type="button" @click="approve(item.id)"
-                                                    :disabled="busyIds[item.id]"
-                                                    class="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-emerald-700 transition-colors disabled:opacity-50">
-                                                <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
-                                                Approve
-                                            </button>
-                                            <button type="button" @click="startReject(item.id)"
-                                                    :disabled="busyIds[item.id]"
-                                                    class="inline-flex items-center gap-1 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50">
-                                                <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
-                                                Reject
-                                            </button>
-                                        </div>
-                                    </template>
                                 </div>
-                            </template>
-                        </div>
-                        <!-- Footer -->
-                        <div class="px-6 py-3 border-t border-border shrink-0 flex justify-end">
-                            <button type="button" data-modal-close="ai-chat-approvals-modal"
-                                class="inline-flex items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
-                                Close
-                            </button>
+                            </div>
+
+                            {# The rate-limit badge lived here. It was never populated: the only
+                               implementation was a sessionStorage counter in the dead
+                               ai_chat.js that guessed at the server's state. @rate_limit(30,
+                               "1h") in chat_core.py raises on breach and returns no remaining
+                               quota — no header, no body field — so there is nothing honest to
+                               show. Restoring the badge means exposing the count server-side
+                               first. #}
                         </div>
                     </div>
                 </div>
             </div>
-
-            {# The rate-limit badge lived here. It was never populated: the only
-               implementation was a sessionStorage counter in the dead
-               ai_chat.js that guessed at the server's state. @rate_limit(30,
-               "1h") in chat_core.py raises on breach and returns no remaining
-               quota — no header, no body field — so there is nothing honest to
-               show. Restoring the badge means exposing the count server-side
-               first. #}
         </div>
     </header>
 
     <!-- Main Chat Area with Enhanced Layout -->
     <div class="flex flex-1 overflow-hidden relative">
         <!-- Context Sidebar with NL Query and Recommendations - Responsive -->
-        <div id="context-sidebar" class="absolute lg:relative inset-y-0 left-0 z-40 w-72 lg:w-80 border-r bg-muted/30 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out shadow-lg lg:shadow-none max-h-full overflow-hidden">
+        <div id="context-sidebar" data-testid="chat-rail"
+             :class="railOpen ? 'w-72 lg:w-80' : 'w-72 lg:w-0 lg:overflow-hidden lg:border-r-0'"
+             :aria-hidden="(!railOpen).toString()"
+             class="absolute lg:relative inset-y-0 left-0 z-40 border-r bg-muted/30 flex flex-col transform -translate-x-full lg:translate-x-0 transition-all duration-200 ease-in-out shadow-lg lg:shadow-none max-h-full overflow-hidden">
             {# Mobile Close Button #}
             <button type="button" @click="toggleSidebar()" aria-label="Close sidebar" class="lg:hidden absolute top-2 right-2 h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent z-50">
                 <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
@@ -616,15 +652,21 @@ x-cloak>
                         </div>
                     </div>
 
-                    {# ── AI Architects: governed, evidence-grounded personas (AI-1/PROG-006) ── #}
-                    <div class="space-y-3">
+                    {# ── AI Architects: governed, evidence-grounded personas (AI-1/PROG-006) ──
+                       Suggestion grid: auto-fill so a 240px-min card never
+                       clips mid-word at 1024px, and at most 8 cards show
+                       before a "More suggestions" disclosure — the 5
+                       architects here plus the first 3 domain cards below
+                       add up to exactly 8; the remaining 3 domain cards live
+                       behind x-show="showMoreSuggestions". #}
+                    <div class="space-y-3" x-data="{ showMoreSuggestions: false }">
                         <div class="flex items-center justify-center gap-2">
                             <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Your AI Architects</span>
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30">
                                 <i data-lucide="shield-check" class="h-3 w-3"></i> Evidence-grounded · live data
                             </span>
                         </div>
-                        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                        <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
                             <button type="button" data-persona="enterprise_architect"
                                     data-prompt="Give me a portfolio health verdict — rationalization picture, capability coverage, and any transformation programme that's drifting."
                                     class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -688,84 +730,99 @@ x-cloak>
                         <div class="relative flex justify-center"><span class="bg-background px-3 text-[10px] uppercase tracking-wider text-muted-foreground">or explore by domain</span></div>
                     </div>
 
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
                         <!-- Architecture -->
                         <button type="button" data-domain="architecture" data-prompt="Analyze my application architecture and suggest ArchiMate improvements"
-                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-primary hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><!-- token-migration-ok -->
-                            <div class="w-12 h-12 bg-primary/5 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
-                                <i data-lucide="layers" class="h-6 w-6" aria-hidden="true"></i>
+                            class="domain-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><!-- token-migration-ok -->
+                            <div class="w-9 h-9 bg-primary/5 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="layers" class="h-5 w-5" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Architecture</h3>
-                            <p class="text-xs text-muted-foreground mt-1">ArchiMate analysis &amp; visual modeling.</p>
+                            <p class="text-xs text-muted-foreground mt-0.5">ArchiMate analysis &amp; visual modeling.</p>
                         </button>
                         <!-- Technology -->
                         <button type="button" data-domain="technology" data-prompt="Review my tech stack and identify lifecycle risks"
-                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-emerald-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 mb-4 group-hover:bg-emerald-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
-                                <i data-lucide="cpu" class="h-6 w-6" aria-hidden="true"></i>
+                            class="domain-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-emerald-500 hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600 mb-2.5 group-hover:bg-emerald-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="cpu" class="h-5 w-5" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Technology</h3>
-                            <p class="text-xs text-muted-foreground mt-1">Tech stack inventory &amp; lifecycle.</p>
+                            <p class="text-xs text-muted-foreground mt-0.5">Tech stack inventory &amp; lifecycle.</p>
                         </button>
                         <!-- Capabilities -->
                         <button type="button" data-domain="business_capability" data-prompt="Map my business capabilities and identify strategic gaps"
-                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-purple-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
-                                <i data-lucide="building-2" class="h-6 w-6" aria-hidden="true"></i>
+                            class="domain-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-purple-500 hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-9 h-9 bg-purple-50 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="building-2" class="h-5 w-5" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Capabilities</h3>
-                            <p class="text-xs text-muted-foreground mt-1">Business mapping &amp; strategic gaps.</p>
+                            <p class="text-xs text-muted-foreground mt-0.5">Business mapping &amp; strategic gaps.</p>
                         </button>
+                    </div>
+
+                    {# Remaining 3 domain cards — behind "More suggestions" so
+                       the default view never exceeds 8 cards total (5
+                       architects + 3 domains above). #}
+                    <div x-show="showMoreSuggestions" x-cloak
+                         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+                         class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
                         <!-- Gap Analysis -->
                         <button type="button" data-domain="gap_analysis" data-prompt="Identify gaps in my current architecture roadmap"
-                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-orange-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:bg-orange-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
-                                <i data-lucide="git-branch" class="h-6 w-6" aria-hidden="true"></i>
+                            class="domain-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-orange-500 hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-9 h-9 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600 mb-2.5 group-hover:bg-orange-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="git-branch" class="h-5 w-5" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Gap Analysis</h3>
-                            <p class="text-xs text-muted-foreground mt-1">Roadmap deficiency detection.</p>
+                            <p class="text-xs text-muted-foreground mt-0.5">Roadmap deficiency detection.</p>
                         </button>
                         <!-- Vendors -->
                         <button type="button" data-domain="vendor_intelligence" data-prompt="Analyze my vendor contracts and identify supplier risks"
-                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-cyan-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-cyan-50 rounded-xl flex items-center justify-center text-cyan-600 mb-4 group-hover:bg-cyan-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
-                                <i data-lucide="briefcase" class="h-6 w-6" aria-hidden="true"></i>
+                            class="domain-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-cyan-500 hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-9 h-9 bg-cyan-50 rounded-lg flex items-center justify-center text-cyan-600 mb-2.5 group-hover:bg-cyan-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="briefcase" class="h-5 w-5" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Vendors</h3>
-                            <p class="text-xs text-muted-foreground mt-1">Contract analysis &amp; supplier risk.</p>
+                            <p class="text-xs text-muted-foreground mt-0.5">Contract analysis &amp; supplier risk.</p>
                         </button>
                         <!-- Smart Search -->
                         <button type="button" data-domain="smart_search" data-prompt="Search across my entire enterprise portfolio"
-                            class="domain-card group flex flex-col p-5 bg-primary/5 border border-primary/20 rounded-2xl text-left hover:bg-primary hover:border-primary hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-background/20 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
-                                <i data-lucide="sparkles" class="h-6 w-6" aria-hidden="true"></i>
+                            class="domain-card group flex flex-col p-4 bg-primary/5 border border-primary/20 rounded-xl text-left hover:bg-primary hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-background/20 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="sparkles" class="h-5 w-5" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground group-hover:text-primary-foreground">Smart Search</h3><!-- token-migration-ok -->
-                            <p class="text-xs text-muted-foreground group-hover:text-primary-foreground/70 mt-1">AI-powered enterprise search.</p>
+                            <p class="text-xs text-muted-foreground group-hover:text-primary-foreground/70 mt-0.5">AI-powered enterprise search.</p>
+                        </button>
+                    </div>
+
+                    <div class="text-center" x-show="!showMoreSuggestions">
+                        <button type="button" @click="showMoreSuggestions = true"
+                                class="text-xs font-medium text-primary hover:underline">
+                            More suggestions
                         </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Suggestion Chips — hide after first send -->
-            <div id="suggestion-chips" class="px-4 pb-2 flex flex-wrap gap-2">
+            <!-- Suggestion Chips — single row, hide after first send -->
+            <div id="suggestion-chips" class="px-4 pb-2 flex flex-nowrap gap-2 overflow-x-auto">
                 <button type="button" @click="setSuggestion('Review tech stack gaps and identify end-of-life risks')"
-                    class="chip-btn inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors">
+                    class="chip-btn shrink-0 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors whitespace-nowrap">
                     <i data-lucide="alert-triangle" class="h-3 w-3" aria-hidden="true"></i>
                     Review tech stack gaps
                 </button>
                 <button type="button" @click="setSuggestion('Analyze cloud migration costs and timeline for my core applications')"
-                    class="chip-btn inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors">
+                    class="chip-btn shrink-0 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors whitespace-nowrap">
                     <i data-lucide="cloud" class="h-3 w-3" aria-hidden="true"></i>
                     Analyze cloud migration costs
                 </button>
                 <button type="button" @click="setSuggestion('Identify duplicate vendor services and consolidation opportunities')"
-                    class="chip-btn inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors">
+                    class="chip-btn shrink-0 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors whitespace-nowrap">
                     <i data-lucide="copy" class="h-3 w-3" aria-hidden="true"></i>
                     Identify duplicate vendor services
                 </button>
                 <button type="button" @click="setSuggestion('Generate ArchiMate diagram for my application portfolio')"
-                    class="chip-btn inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors">
+                    class="chip-btn shrink-0 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors whitespace-nowrap">
                     <i data-lucide="box" class="h-3 w-3" aria-hidden="true"></i>
                     Generate ArchiMate diagram
                 </button>
@@ -813,16 +870,10 @@ x-cloak>
                             </button>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between text-xs text-muted-foreground">
-                        <p>
-                            <i data-lucide="info" class="h-3 w-3 inline mr-1" aria-hidden="true"></i>
-                            A.R.C.H.I.E. can make mistakes. Verify important architectural decisions independently.
-                        </p>
-                        <p>
-                            <i data-lucide="sparkles" class="h-3 w-3 inline mr-1" aria-hidden="true"></i>
-                            Upload documents to auto-create ArchiMate elements
-                        </p>
-                    </div>
+                    <p class="text-xs text-muted-foreground">
+                        <i data-lucide="info" class="h-3 w-3 inline mr-1" aria-hidden="true"></i>
+                        A.R.C.H.I.E. can make mistakes — verify important architectural decisions independently. Upload documents to auto-create ArchiMate elements.
+                    </p>
                 </form>
             </div>
 
