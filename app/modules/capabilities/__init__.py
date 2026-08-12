@@ -93,4 +93,13 @@ def register(app: Flask) -> None:
     except Exception as e:
         app.logger.warning(f"[BLUEPRINT] Failed to register Value Stream routes: {e}")
 
-    app.logger.info("[MODULE] capabilities registered (8 blueprints, decomposed)")
+    # --- 9. Customer Journeys (BIZBOK journey map: persona x stage x capability) ---
+    try:
+        from .routes.customer_journey_routes import customer_journey
+
+        app.register_blueprint(customer_journey)
+        app.logger.info("[BLUEPRINT] Customer Journey registered at /customer-journeys")
+    except Exception as e:
+        app.logger.warning(f"[BLUEPRINT] Failed to register Customer Journey routes: {e}")
+
+    app.logger.info("[MODULE] capabilities registered (9 blueprints, decomposed)")

@@ -104,6 +104,12 @@ else:
     )
     from .capabilities import *  # noqa
     from .capability_governance import *  # noqa - CapabilityGovernanceDecision
+    # BIZBOK customer journey map — journey / stage / stage-to-capability link
+    from .customer_journey import (  # noqa
+        CustomerJourney,
+        CustomerJourneyStage,
+        CustomerJourneyStageCapability,
+    )
     from .compliance_models import *  # noqa
     from .cost_intelligence import *  # noqa - CapabilityCostAllocation, VendorContract, SLA (Cost intelligence)
     from .decision_ledger import *  # noqa - DecisionLedger (append-only governance ledger)
