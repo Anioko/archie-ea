@@ -14,7 +14,7 @@ Helpers:
     - build_nodes_edges(catalog)   — used by mapping_routes.api_nodes_edges()
 """
 
-from flask import current_app, flash, render_template  # dead-code-ok
+from flask import current_app, flash, g, render_template  # dead-code-ok
 from flask_login import login_required
 
 from app.extensions.cache import cached
