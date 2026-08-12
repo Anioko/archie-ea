@@ -1,0 +1,178 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/data_card.html' import data_card %}
+{% from 'components/modal.html' import modal %}
+
+{% block title %}Customer Journeys{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto" x-data="customerJourneyIndex()" x-cloak>
+    {{ page_header(
+        title='Customer Journeys',
+        description='BIZBOK journey maps: a persona, its ordered stages, and the capabilities and applications behind each one.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Customer Journeys'}
+        ],
+        actions=[
+            {'text': 'New Journey', 'icon': 'plus', 'onclick': "Platform.modal.open('cj-create-modal')", 'variant': 'default'}
+        ]
+    ) }}
+
+    <div class="p-6 space-y-6">
+        {% if not_found %}
+        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive-emphasis">
+            That customer journey does not exist, or it belongs to another organisation.
+        </div>
+        {% endif %}
+
+        {% if load_error %}
+        {# A failure to read is not an empty portfolio. Say which one it is. #}
+        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive-emphasis">
+            The customer journeys could not be loaded. This is a failure to read them, not a statement that none exist.
+        </div>
+        {% elif journeys %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {{ data_card(icon='route', icon_color='blue', value=journeys|length, label='Journeys', subtitle='Mapped personas') }}
+            {# A total is shown only when every journey's count was actually read.
+               One failed count makes the sum a guess, and a guess is worse than
+               an em dash because it cannot be told apart from a measurement. #}
+            {{ data_card(icon='layers', icon_color='green', value=(total_stages if total_stages is not none else '—'), label='Stages', subtitle='Across all journeys') }}
+            {{ data_card(icon='link', icon_color='amber', value=(total_capabilities if total_capabilities is not none else '—'), label='Capability Links', subtitle='Stage-to-capability') }}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for journey in journeys %}
+            <a href="{{ url_for('customer_journey.detail', journey_id=journey.id) }}"
+               class="block rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <i data-lucide="route" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                    </div>
+                    {% if journey.code %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border font-mono">{{ journey.code }}</span>
+                    {% endif %}
+                </div>
+                <h3 class="font-semibold text-foreground mb-1 truncate">{{ journey.name }}</h3>
+                <p class="text-xs text-muted-foreground mb-1 truncate">
+                    <i data-lucide="user" class="inline h-3 w-3 align-text-bottom" aria-hidden="true"></i>
+                    {{ journey.persona_name or '—' }}
+                </p>
+                <p class="text-xs text-muted-foreground mb-4 line-clamp-2">{{ journey.description or '—' }}</p>
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-muted-foreground">
+                        {% if journey.stage_count is none %}—{% else %}{{ journey.stage_count }}{% endif %} stages
+                    </span>
+                    <span class="text-muted-foreground">
+                        {% if journey.capability_count is none %}—{% else %}{{ journey.capability_count }}{% endif %} capabilities
+                    </span>
+                </div>
+                {% if journey.journey_type or journey.lifecycle_status %}
+                <div class="flex items-center gap-2 mt-3">
+                    {% if journey.journey_type %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">{{ journey.journey_type|replace('_', ' ')|title }}</span>
+                    {% endif %}
+                    {% if journey.lifecycle_status %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">{{ journey.lifecycle_status|title }}</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        {{ empty_state(
+            icon='route',
+            title='No customer journeys yet',
+            description='Map what a persona actually experiences — the stages, the channels, the touchpoints and the pain — and link each stage to the capabilities that serve it.',
+            cta_text='Create Journey',
+            cta_onclick="Platform.modal.open('cj-create-modal')",
+            cta_icon='plus'
+        ) }}
+        {% endif %}
+    </div>
+
+    {% call modal(id='cj-create-modal', title='New Customer Journey', description='A journey belongs to a persona and is made of ordered stages.', size='default') %}
+    <form method="POST" action="{{ url_for('customer_journey.create') }}" class="space-y-4">
+        <div>
+            <label for="cj-name" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+            <input type="text" id="cj-name" name="name" required
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                   placeholder="e.g. New customer onboarding">
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="cj-code" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</label>
+                <input type="text" id="cj-code" name="code"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="ONBOARD">
+            </div>
+            <div>
+                <label for="cj-type" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Journey Type</label>
+                <select id="cj-type" name="journey_type"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    <option value="acquisition">Acquisition</option>
+                    <option value="onboarding">Onboarding</option>
+                    <option value="service">Service</option>
+                    <option value="retention">Retention</option>
+                    <option value="exit">Exit</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <label for="cj-persona" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Persona / Stakeholder</label>
+            <input type="text" id="cj-persona" name="persona_name"
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                   placeholder="e.g. First-time claimant">
+        </div>
+        <div>
+            <label for="cj-description" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
+            <textarea id="cj-description" name="description" rows="3"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="cj-lifecycle" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Lifecycle</label>
+                <select id="cj-lifecycle" name="lifecycle_status"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    <option value="draft">Draft</option>
+                    <option value="current">Current state</option>
+                    <option value="target">Target state</option>
+                </select>
+            </div>
+            <div>
+                <label for="cj-owner" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Business Owner</label>
+                <input type="text" id="cj-owner" name="business_owner"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="cj-create-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Create
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+</div>
+
+<script>
+// Registered on alpine:init, not at top level: alpine.min.js is deferred, so
+// Alpine does not exist when an inline script runs. Same pattern as
+// value_streams/index.html.
+document.addEventListener('alpine:init', function () {
+    Alpine.data('customerJourneyIndex', function () {
+        return {
+            init() {}
+        };
+    });
+});
+</script>
+{% endblock %}

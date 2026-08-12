@@ -310,6 +310,13 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                     <a href="/architecture/business/contracts" class="block py-1 text-muted-foreground hover:text-foreground">Contracts</a>
                     <a href="/architecture/business/representations" class="block py-1 text-muted-foreground hover:text-foreground">Representations</a>
                     <a href="/architecture/business/products" class="block py-1 text-muted-foreground hover:text-foreground">Products</a>
+                    {# The capabilities blueprints register non-fatally, so an unguarded
+                       url_for here would BuildError and 500 every page that renders the
+                       sidebar — which is all of them. #}
+                    {% if 'customer_journey.index' in flask.current_app.view_functions %}
+                    <div class="my-1 border-t border-border/50"></div>
+                    <a href="{{ url_for('customer_journey.index') }}" class="block py-1 text-muted-foreground hover:text-foreground font-medium">→ Customer Journeys</a>
+                    {% endif %}
                 </div>
                 
                 <!-- Application Layer (8 element types) -->

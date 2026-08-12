@@ -1,0 +1,638 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/modal.html' import modal %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/skeleton.html' import skeleton_table %}
+{% from 'components/status_badge.html' import status_badge %}
+
+{% block title %}{{ journey.name }} — Customer Journey{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto"
+     x-data="customerJourneyMap({ journeyId: {{ journey.id }} })"
+     x-init="init()" x-cloak>
+    {{ page_header(
+        title=journey.name,
+        description=journey.description or 'A persona’s end-to-end journey, stage by stage.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Customer Journeys', 'href': url_for('customer_journey.index')},
+            {'label': journey.name}
+        ],
+        actions=[
+            {'text': 'Add Stage', 'icon': 'plus', 'onclick': "Platform.modal.open('cj-stage-create-modal')", 'variant': 'outline'},
+            {'text': 'Edit', 'icon': 'pencil', 'onclick': "Platform.modal.open('cj-edit-modal')", 'variant': 'outline'},
+            {'text': 'Delete', 'icon': 'trash-2', 'onclick': "Platform.modal.open('cj-delete-modal')", 'variant': 'destructive'}
+        ]
+    ) }}
+
+    <div class="p-6 space-y-6">
+        <!-- Journey metadata -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="rounded-xl border border-input bg-background p-4">
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</p>
+                <p class="text-lg font-semibold font-mono mt-1">{{ journey.code or '—' }}</p>
+            </div>
+            <div class="rounded-xl border border-input bg-background p-4">
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Persona</p>
+                <p class="text-lg font-semibold mt-1 truncate">{{ journey.persona_name or '—' }}</p>
+            </div>
+            <div class="rounded-xl border border-input bg-background p-4">
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type / Lifecycle</p>
+                <p class="text-lg font-semibold mt-1">
+                    {{ (journey.journey_type or '—')|replace('_', ' ')|title }}
+                    ·
+                    {{ (journey.lifecycle_status or '—')|title }}
+                </p>
+            </div>
+            <div class="rounded-xl border border-input bg-background p-4">
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">ArchiMate Element</p>
+                <p class="text-lg font-semibold mt-1">
+                    {% if journey.archimate_element_id %}
+                    BusinessProcess #{{ journey.archimate_element_id }}
+                    {% else %}
+                    —
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        {% if journey.persona_description %}
+        <div class="rounded-xl border border-input bg-background px-5 py-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">About this persona</p>
+            <p class="text-sm text-foreground">{{ journey.persona_description }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Stage swimlane -->
+        <div class="rounded-xl border border-input bg-background">
+            <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground">Journey Stages</h3>
+                    <p class="text-xs text-muted-foreground mt-0.5">What the customer is trying to do, where, what they touch, and what hurts.</p>
+                </div>
+                <span class="text-sm text-muted-foreground">{{ journey.stages|length }} stage{{ 's' if journey.stages|length != 1 else '' }}</span>
+            </div>
+            <div class="p-5">
+                {% if journey.stages %}
+                <div class="overflow-x-auto">
+                    <div class="flex items-stretch gap-3 min-w-max pb-2">
+                        {% for stage in journey.stages %}
+                        <div class="w-72 shrink-0 rounded-lg border border-border bg-muted/20 p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="inline-flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold">{{ stage.stage_order }}</span>
+                                <div class="flex items-center gap-1">
+                                    <button type="button" aria-label="Edit stage"
+                                            @click="openStageEditModal({ id: {{ stage.id }}, name: {{ stage.name|tojson }}, description: {{ (stage.description or '')|tojson }}, customer_goal: {{ (stage.customer_goal or '')|tojson }}, touchpoints: {{ (stage.touchpoints_text or '')|tojson }}, channel: {{ (stage.channel or '')|tojson }}, pain_points: {{ (stage.pain_points_text or '')|tojson }}, sentiment: {{ (stage.sentiment or '')|tojson }}, stage_order: {{ stage.stage_order }} })"
+                                            class="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground h-6 w-6">
+                                        <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" aria-label="Delete stage"
+                                            @click="openStageDeleteModal({ id: {{ stage.id }}, name: {{ stage.name|tojson }} })"
+                                            class="inline-flex items-center justify-center rounded-md hover:bg-destructive/10 hover:text-destructive h-6 w-6">
+                                        <i data-lucide="trash-2" class="h-3 w-3" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <h4 class="font-semibold text-sm text-foreground truncate">{{ stage.name }}</h4>
+
+                            <div class="mt-3 space-y-2.5">
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Customer goal</p>
+                                    <p class="text-xs text-foreground mt-0.5">{{ stage.customer_goal or '—' }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Channel</p>
+                                    <p class="text-xs text-foreground mt-0.5">{{ (stage.channel or '—')|replace('_', ' ')|title }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Touchpoints</p>
+                                    {% if stage.touchpoints %}
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        {% for touchpoint in stage.touchpoints %}
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">{{ touchpoint }}</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% else %}
+                                    <p class="text-xs text-foreground mt-0.5">—</p>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pain points</p>
+                                    {% if stage.pain_points %}
+                                    <ul class="mt-1 space-y-0.5">
+                                        {% for pain in stage.pain_points %}
+                                        <li class="text-xs text-destructive-emphasis flex gap-1.5">
+                                            <i data-lucide="alert-triangle" class="h-3 w-3 shrink-0 mt-0.5" aria-hidden="true"></i>
+                                            <span>{{ pain }}</span>
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% else %}
+                                    <p class="text-xs text-foreground mt-0.5">—</p>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sentiment</p>
+                                    <div class="mt-1">
+                                        {% if stage.sentiment == 'delighted' or stage.sentiment == 'satisfied' %}
+                                        {{ status_badge(stage.sentiment|title, 'success', icon='smile') }}
+                                        {% elif stage.sentiment == 'neutral' %}
+                                        {{ status_badge('Neutral', 'neutral', icon='meh') }}
+                                        {% elif stage.sentiment == 'frustrated' %}
+                                        {{ status_badge('Frustrated', 'warning', icon='frown') }}
+                                        {% elif stage.sentiment == 'angry' %}
+                                        {{ status_badge('Angry', 'error', icon='frown') }}
+                                        {% else %}
+                                        {# Not rated. Deliberately not "neutral": nobody said so. #}
+                                        <span class="text-xs text-muted-foreground">— not rated</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Capabilities</p>
+                                    {% if stage.capabilities %}
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        {% for link in stage.capabilities %}
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+                                            {{ link.capability_name or '—' }}{% if link.support_level %} · {{ link.support_level }}{% endif %}
+                                        </span>
+                                        {% endfor %}
+                                    </div>
+                                    {% else %}
+                                    <p class="text-xs text-foreground mt-0.5">—</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% if not loop.last %}
+                        <div class="flex items-center shrink-0 self-center text-muted-foreground">
+                            <i data-lucide="chevron-right" class="h-5 w-5" aria-hidden="true"></i>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% else %}
+                {{ empty_state(
+                    icon='layers',
+                    title='No stages yet',
+                    description='Add the ordered stages this persona moves through, from first contact to the end of the journey.',
+                    cta_text='Add Stage',
+                    cta_onclick="Platform.modal.open('cj-stage-create-modal')",
+                    cta_icon='plus'
+                ) }}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Sentiment curve -->
+        {% if journey.stages %}
+        <div class="rounded-xl border border-input bg-background">
+            <div class="px-5 py-4 border-b border-border">
+                <h3 class="text-lg font-semibold text-foreground">Sentiment Curve</h3>
+                <p class="text-xs text-muted-foreground mt-0.5">Only rated stages are plotted. An unrated stage is a gap, not a zero.</p>
+            </div>
+            <div class="p-5">
+                <div class="overflow-x-auto">
+                    <div class="flex items-end gap-1 min-w-max" style="height: 9rem;">
+                        {% for point in journey.sentiment_curve %}
+                        <div class="w-24 shrink-0 flex flex-col items-center justify-end h-full">
+                            {% if point.sentiment_score is not none %}
+                            {# -2..+2 mapped onto 20%..100% of the track height. #}
+                            <div class="w-8 rounded-t
+                                        {% if point.sentiment_score > 0 %}bg-success
+                                        {% elif point.sentiment_score == 0 %}bg-muted-foreground
+                                        {% else %}bg-destructive{% endif %}"
+                                 style="height: {{ (point.sentiment_score + 3) * 20 }}%"
+                                 role="img"
+                                 aria-label="{{ point.stage_name }}: {{ point.sentiment }}"></div>
+                            <span class="text-xs text-muted-foreground mt-1">{{ point.sentiment_score }}</span>
+                            {% else %}
+                            <div class="w-8 border-b-2 border-dashed border-border" style="height: 60%"></div>
+                            <span class="text-xs text-muted-foreground mt-1">—</span>
+                            {% endif %}
+                            <span class="text-xs text-muted-foreground truncate w-full text-center">{{ point.stage_name }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Capability x Stage grid -->
+        <div class="rounded-xl border border-input bg-background">
+            <div class="px-5 py-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground">Capability &times; Stage</h3>
+                    <p class="text-xs text-muted-foreground mt-0.5">Click a cell to set or clear how strongly a capability serves a stage. Each row shows the applications already mapped to that capability.</p>
+                </div>
+                <div class="relative">
+                    <input type="text" x-model="capabilitySearch" @input.debounce.300ms="searchCapabilities()"
+                           placeholder="Add capability to grid..."
+                           class="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                           aria-label="Add capability to grid">
+                    <div x-show="capabilityResults.length > 0" x-cloak @click.outside="capabilityResults = []"
+                         class="absolute z-10 mt-1 w-full rounded-md border border-border bg-card shadow-lg max-h-64 overflow-y-auto">
+                        <template x-for="cap in capabilityResults" :key="cap.id">
+                            <button type="button" @click="selectCapabilityToAdd(cap)"
+                                    class="block w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground">
+                                <span x-text="cap.name"></span>
+                                <span class="text-muted-foreground text-xs" x-text="cap.code ? ' · ' + cap.code : ''"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-5">
+                <div x-show="loading" x-cloak>
+                    {{ skeleton_table(rows=4, columns=5) }}
+                </div>
+
+                <template x-if="!loading && loadError">
+                    <div class="text-center py-12 text-sm text-destructive">
+                        The grid failed to load — this is a failure to read it, not an empty map.
+                        <button type="button" class="underline" @click="loadGrid()">Retry</button>
+                    </div>
+                </template>
+
+                <template x-if="!loading && !loadError && stages.length === 0">
+                    <div class="text-center py-12 text-muted-foreground text-sm">
+                        Add at least one stage before linking capabilities.
+                    </div>
+                </template>
+
+                <template x-if="!loading && !loadError && stages.length > 0 && capabilities.length === 0">
+                    <div class="text-center py-12 text-muted-foreground text-sm">
+                        No capabilities linked yet. Use the search box above to add the first one.
+                    </div>
+                </template>
+
+                <template x-if="!loading && !loadError && stages.length > 0 && capabilities.length > 0">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full border-separate border-spacing-0">
+                            <thead>
+                                <tr>
+                                    <th class="sticky left-0 bg-background text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 py-2 border-b border-border">Capability</th>
+                                    <template x-for="stage in stages" :key="stage.id">
+                                        <th class="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 py-2 border-b border-border whitespace-nowrap" x-text="stage.name"></th>
+                                    </template>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="cap in capabilities" :key="cap.id">
+                                    <tr>
+                                        <td class="sticky left-0 bg-background px-3 py-2 border-b border-border">
+                                            <div class="text-sm font-medium text-foreground whitespace-nowrap" x-text="cap.name"></div>
+                                            <div class="text-xs text-muted-foreground whitespace-nowrap" x-text="applicationLabel(cap)"></div>
+                                        </td>
+                                        <template x-for="stage in stages" :key="stage.id">
+                                            <td class="text-center px-2 py-2 border-b border-border">
+                                                <button type="button"
+                                                        :aria-label="'Set how ' + cap.name + ' serves ' + stage.name"
+                                                        @click="openCellModal(cap, stage)"
+                                                        class="w-16 h-9 rounded-md border text-xs font-semibold transition-colors"
+                                                        :class="cellClass(cap.id, stage.id)">
+                                                    <span x-text="cellLabel(cap.id, stage.id)"></span>
+                                                </button>
+                                            </td>
+                                        </template>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+
+                <div class="flex items-center gap-4 mt-4 text-xs text-muted-foreground flex-wrap">
+                    <span class="font-medium">Support level:</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-destructive/20 border border-destructive/30"></span>1 (minimal)</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-500/25 border border-amber-500/40"></span>2-3</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-500/40 border border-emerald-500/50"></span>4</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-500/70 border border-emerald-600/60"></span>5 (critical)</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-primary/10 border border-primary/30"></span>Linked, not assessed</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-muted border border-border"></span>Not linked</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grid cell modal -->
+    {% call modal(id='cj-cell-modal', title='Capability Support', size='default') %}
+    <template x-if="activeCell">
+        <form @submit.prevent="saveCell()" class="space-y-4">
+            <div class="text-sm">
+                <span class="font-medium text-foreground" x-text="activeCell && activeCell.capabilityName"></span>
+                <span class="text-muted-foreground"> serves </span>
+                <span class="font-medium text-foreground" x-text="activeCell && activeCell.stageName"></span>
+            </div>
+            <div>
+                <label for="cj-cell-level" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Support Level</label>
+                <select id="cj-cell-level" x-model="cellForm.support_level"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">— not assessed</option>
+                    <option value="1">1 — minimal</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5 — critical</option>
+                </select>
+            </div>
+            <div>
+                <label for="cj-cell-type" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Support Type</label>
+                <select id="cj-cell-type" x-model="cellForm.support_type"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    <option value="primary">Primary</option>
+                    <option value="secondary">Secondary</option>
+                    <option value="supporting">Supporting</option>
+                </select>
+            </div>
+            <div>
+                <label for="cj-cell-notes" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</label>
+                <textarea id="cj-cell-notes" x-model="cellForm.notes" rows="2"
+                          class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+            </div>
+            <div class="flex items-center justify-between pt-2">
+                <button type="button" x-show="activeCell && activeCell.linkId" x-cloak @click="clearCell()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none">
+                    Clear Link
+                </button>
+                <div class="flex gap-2 ml-auto">
+                    <button type="button" data-modal-close="cj-cell-modal"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                        Cancel
+                    </button>
+                    <button type="submit" :disabled="saving"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none">
+                        <span x-show="saving" class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span>
+                        Save
+                    </button>
+                </div>
+            </div>
+        </form>
+    </template>
+    {% endcall %}
+
+    <!-- Stage create modal -->
+    {% call modal(id='cj-stage-create-modal', title='Add Stage', size='lg') %}
+    <form method="POST" action="{{ url_for('customer_journey.create_stage', journey_id=journey.id) }}" class="space-y-4">
+        <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+                <label for="cj-stage-name" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+                <input type="text" id="cj-stage-name" name="name" required
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="e.g. Compare options">
+            </div>
+            <div>
+                <label for="cj-stage-order" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Order</label>
+                <input type="number" id="cj-stage-order" name="stage_order" min="1"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="Auto">
+            </div>
+        </div>
+        <div>
+            <label for="cj-stage-goal" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Customer Goal</label>
+            <textarea id="cj-stage-goal" name="customer_goal" rows="2"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      placeholder="What is the customer trying to achieve here?"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="cj-stage-channel" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Channel</label>
+                <input type="text" id="cj-stage-channel" name="channel"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="web, mobile, branch, call centre…">
+            </div>
+            <div>
+                <label for="cj-stage-sentiment" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sentiment</label>
+                <select id="cj-stage-sentiment" name="sentiment"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">— not rated</option>
+                    <option value="delighted">Delighted (+2)</option>
+                    <option value="satisfied">Satisfied (+1)</option>
+                    <option value="neutral">Neutral (0)</option>
+                    <option value="frustrated">Frustrated (−1)</option>
+                    <option value="angry">Angry (−2)</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <label for="cj-stage-touchpoints" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Touchpoints (one per line)</label>
+            <textarea id="cj-stage-touchpoints" name="touchpoints" rows="3"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      placeholder="Website pricing page&#10;Live chat&#10;Quote email"></textarea>
+        </div>
+        <div>
+            <label for="cj-stage-pain" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pain Points (one per line)</label>
+            <textarea id="cj-stage-pain" name="pain_points" rows="3"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div>
+            <label for="cj-stage-description" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
+            <textarea id="cj-stage-description" name="description" rows="2"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="cj-stage-create-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Add Stage
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+
+    <!-- Stage edit modal -->
+    {% call modal(id='cj-stage-edit-modal', title='Edit Stage', size='lg') %}
+    <form method="POST"
+          x-bind:action="stageEditForm.id ? '{{ url_for('customer_journey.edit_stage', stage_id=0) }}'.replace('/0/', '/' + stageEditForm.id + '/') : '#'"
+          class="space-y-4">
+        <input type="hidden" name="journey_id" value="{{ journey.id }}">
+        <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+                <input type="text" name="name" x-model="stageEditForm.name" required aria-label="Name"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Order</label>
+                <input type="number" name="stage_order" min="1" x-model.number="stageEditForm.stage_order" aria-label="Order"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+        <div>
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Customer Goal</label>
+            <textarea name="customer_goal" x-model="stageEditForm.customer_goal" rows="2" aria-label="Customer Goal"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Channel</label>
+                <input type="text" name="channel" x-model="stageEditForm.channel" aria-label="Channel"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sentiment</label>
+                <select name="sentiment" x-model="stageEditForm.sentiment" aria-label="Sentiment"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">— not rated</option>
+                    <option value="delighted">Delighted (+2)</option>
+                    <option value="satisfied">Satisfied (+1)</option>
+                    <option value="neutral">Neutral (0)</option>
+                    <option value="frustrated">Frustrated (−1)</option>
+                    <option value="angry">Angry (−2)</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Touchpoints (one per line)</label>
+            <textarea name="touchpoints" x-model="stageEditForm.touchpoints" rows="3" aria-label="Touchpoints"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div>
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pain Points (one per line)</label>
+            <textarea name="pain_points" x-model="stageEditForm.pain_points" rows="3" aria-label="Pain Points"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div>
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
+            <textarea name="description" x-model="stageEditForm.description" rows="2" aria-label="Description"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="cj-stage-edit-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Save
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+
+    <!-- Stage delete modal -->
+    {% call modal(id='cj-stage-delete-modal', title='Delete Stage?', size='sm') %}
+    <template x-if="stageDeleteForm.id">
+        <div class="space-y-4">
+            <p class="text-sm text-muted-foreground">
+                Delete stage <span class="font-medium text-foreground" x-text="stageDeleteForm.name"></span> and its capability links? This cannot be undone.
+            </p>
+            <form method="POST"
+                  x-bind:action="'{{ url_for('customer_journey.delete_stage', stage_id=0) }}'.replace('/0/', '/' + stageDeleteForm.id + '/')"
+                  class="flex justify-end gap-2">
+                <input type="hidden" name="journey_id" value="{{ journey.id }}">
+                <button type="button" data-modal-close="cj-stage-delete-modal"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-4 py-2">
+                    Delete
+                </button>
+            </form>
+        </div>
+    </template>
+    {% endcall %}
+
+    <!-- Journey edit modal -->
+    {% call modal(id='cj-edit-modal', title='Edit Customer Journey', size='default') %}
+    <form method="POST" action="{{ url_for('customer_journey.edit', journey_id=journey.id) }}" class="space-y-4">
+        <div>
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+            <input type="text" name="name" value="{{ journey.name }}" required aria-label="Name"
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</label>
+                <input type="text" name="code" value="{{ journey.code or '' }}" aria-label="Code"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Persona</label>
+                <input type="text" name="persona_name" value="{{ journey.persona_name or '' }}" aria-label="Persona"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+        <div>
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
+            <textarea name="description" rows="3" aria-label="Description"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{{ journey.description or '' }}</textarea>
+        </div>
+        <div>
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">About this persona</label>
+            <textarea name="persona_description" rows="2" aria-label="About this persona"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{{ journey.persona_description or '' }}</textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Journey Type</label>
+                <select name="journey_type" aria-label="Journey Type"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="" {% if not journey.journey_type %}selected{% endif %}>—</option>
+                    <option value="acquisition" {% if journey.journey_type == 'acquisition' %}selected{% endif %}>Acquisition</option>
+                    <option value="onboarding" {% if journey.journey_type == 'onboarding' %}selected{% endif %}>Onboarding</option>
+                    <option value="service" {% if journey.journey_type == 'service' %}selected{% endif %}>Service</option>
+                    <option value="retention" {% if journey.journey_type == 'retention' %}selected{% endif %}>Retention</option>
+                    <option value="exit" {% if journey.journey_type == 'exit' %}selected{% endif %}>Exit</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Lifecycle</label>
+                <select name="lifecycle_status" aria-label="Lifecycle"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="" {% if not journey.lifecycle_status %}selected{% endif %}>—</option>
+                    <option value="draft" {% if journey.lifecycle_status == 'draft' %}selected{% endif %}>Draft</option>
+                    <option value="current" {% if journey.lifecycle_status == 'current' %}selected{% endif %}>Current state</option>
+                    <option value="target" {% if journey.lifecycle_status == 'target' %}selected{% endif %}>Target state</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Business Owner</label>
+            <input type="text" name="business_owner" value="{{ journey.business_owner or '' }}" aria-label="Business Owner"
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="cj-edit-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Save
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+
+    <!-- Journey delete modal -->
+    {% call modal(id='cj-delete-modal', title='Delete Customer Journey?', size='sm') %}
+    <div class="space-y-4">
+        <p class="text-sm text-muted-foreground">
+            Delete <span class="font-medium text-foreground">{{ journey.name }}</span> with all its stages and capability links? This cannot be undone.
+        </p>
+        <form method="POST" action="{{ url_for('customer_journey.delete', journey_id=journey.id) }}" class="flex justify-end gap-2">
+            <button type="button" data-modal-close="cj-delete-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-4 py-2">
+                Delete
+            </button>
+        </form>
+    </div>
+    {% endcall %}
+</div>
+
+<script src="{{ url_for('static', filename='js/customer_journey/map.js') }}"></script>
+{% endblock %}
