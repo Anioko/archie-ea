@@ -1,0 +1,488 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/modal.html' import modal %}
+
+{% block title %}{{ obj.name }} — Information Model{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto"
+     x-data="informationObjectDetail({ objectId: {{ obj.id }} })" x-cloak>
+    {{ page_header(
+        title=obj.name,
+        description=obj.description if obj.description else 'No definition recorded yet.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Information Model', 'href': url_for('information_model.index')},
+            {'label': obj.name}
+        ],
+        actions=[
+            {'text': 'Edit', 'icon': 'pencil', 'onclick': "Platform.modal.open('object-edit-modal')", 'variant': 'outline'},
+            {'text': 'Delete', 'icon': 'trash-2', 'onclick': "Platform.modal.open('object-delete-modal')", 'variant': 'outline'}
+        ]
+    ) }}
+
+    <div class="p-6 space-y-6">
+        {# ------------------------------------------------------------ #}
+        {# Identity card                                                 #}
+        {# ------------------------------------------------------------ #}
+        <div class="rounded-xl border border-input bg-background p-5">
+            <dl class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm">
+                <div>
+                    <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</dt>
+                    <dd class="mt-1 font-mono text-foreground">{{ obj.code if obj.code else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Domain</dt>
+                    <dd class="mt-1 text-foreground">{{ obj.domain_name if obj.domain_name else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Object Type</dt>
+                    <dd class="mt-1 text-foreground">{{ obj.object_type if obj.object_type else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Classification</dt>
+                    <dd class="mt-1 text-foreground">{{ obj.data_classification if obj.data_classification else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Steward</dt>
+                    <dd class="mt-1 text-foreground">{{ obj.data_steward if obj.data_steward else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Technical Custodian</dt>
+                    <dd class="mt-1 text-foreground">{{ obj.data_custodian if obj.data_custodian else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">System of Record</dt>
+                    <dd class="mt-1 text-foreground">{{ obj.system_of_record if obj.system_of_record else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Retention (days)</dt>
+                    <dd class="mt-1 text-foreground">{{ obj.retention_period_days if obj.retention_period_days is not none else '—' }}</dd>
+                </div>
+            </dl>
+            <div class="flex flex-wrap items-center gap-2 mt-4">
+                {% if obj.contains_pii %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">Contains personal data</span>
+                {% endif %}
+                {% if obj.gdpr_scope %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">GDPR scope</span>
+                {% endif %}
+                {% if obj.archimate_element_id %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                    ArchiMate BusinessObject #{{ obj.archimate_element_id }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {# -------------------------------------------------------- #}
+            {# Relationships to other business objects                   #}
+            {# -------------------------------------------------------- #}
+            <div class="rounded-xl border border-input bg-background">
+                <div class="flex items-center justify-between p-5 border-b border-border">
+                    <div>
+                        <h2 class="text-lg font-semibold text-foreground">Related Objects</h2>
+                        <p class="text-sm text-muted-foreground">
+                            Written to the ArchiMate business layer, so the element browser sees them too.
+                        </p>
+                    </div>
+                    <button type="button"
+                            @click="openRelationshipModal()"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                        <i data-lucide="plus" class="h-4 w-4 mr-1.5"></i>
+                        Relate
+                    </button>
+                </div>
+                <div class="p-5 space-y-4">
+                    {% if obj.relationships.outgoing or obj.relationships.incoming %}
+                        {% if obj.relationships.outgoing %}
+                        <div>
+                            <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">This object →</h3>
+                            <ul class="space-y-2">
+                                {% for rel in obj.relationships.outgoing %}
+                                <li class="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                                    <div class="min-w-0 text-sm">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border mr-2">{{ rel.type }}</span>
+                                        <a href="{{ url_for('information_model.object_detail', object_id=rel.object_id) }}"
+                                           class="text-foreground hover:text-primary">{{ rel.object_name }}</a>
+                                    </div>
+                                    <button type="button" aria-label="Remove relationship to {{ rel.object_name }}"
+                                            @click="removeRelationship({{ rel.id }})"
+                                            class="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-destructive h-8 w-8 shrink-0">
+                                        <i data-lucide="x" class="h-4 w-4"></i>
+                                    </button>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        {% if obj.relationships.incoming %}
+                        <div>
+                            <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">→ this object</h3>
+                            <ul class="space-y-2">
+                                {% for rel in obj.relationships.incoming %}
+                                <li class="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                                    <div class="min-w-0 text-sm">
+                                        <a href="{{ url_for('information_model.object_detail', object_id=rel.object_id) }}"
+                                           class="text-foreground hover:text-primary">{{ rel.object_name }}</a>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border ml-2">{{ rel.type }}</span>
+                                    </div>
+                                    <button type="button" aria-label="Remove relationship from {{ rel.object_name }}"
+                                            @click="removeRelationship({{ rel.id }})"
+                                            class="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-destructive h-8 w-8 shrink-0">
+                                        <i data-lucide="x" class="h-4 w-4"></i>
+                                    </button>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                    <p class="text-sm text-muted-foreground">
+                        No relationships recorded. An Order composes Order Lines; a Customer associates with an Order.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# -------------------------------------------------------- #}
+            {# Applications                                              #}
+            {# -------------------------------------------------------- #}
+            <div class="rounded-xl border border-input bg-background">
+                <div class="flex items-center justify-between p-5 border-b border-border">
+                    <div>
+                        <h2 class="text-lg font-semibold text-foreground">Applications</h2>
+                        <p class="text-sm text-muted-foreground">
+                            Which system masters this object, and which only consume it.
+                        </p>
+                    </div>
+                    <button type="button"
+                            @click="openApplicationModal()"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                        <i data-lucide="plus" class="h-4 w-4 mr-1.5"></i>
+                        Link
+                    </button>
+                </div>
+                <div class="p-5">
+                    {% if obj.applications %}
+                    <ul class="space-y-2">
+                        {% for link in obj.applications %}
+                        <li class="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                            <div class="min-w-0 text-sm">
+                                <span class="text-foreground">{{ link.application_name if link.application_name else '—' }}</span>
+                                {% if link.system_role == 'system_of_record' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 ml-2">System of Record</span>
+                                {% elif link.system_role_label %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border ml-2">{{ link.system_role_label }}</span>
+                                {% else %}
+                                <span class="text-muted-foreground ml-2">— role not stated</span>
+                                {% endif %}
+                            </div>
+                            <button type="button" aria-label="Remove application link"
+                                    @click="removeApplication({{ link.id }})"
+                                    class="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-destructive h-8 w-8 shrink-0">
+                                <i data-lucide="x" class="h-4 w-4"></i>
+                            </button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-sm text-muted-foreground">
+                        No application recorded as holding this object. Until one is, its system of record is unknown —
+                        which is different from there not being one.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# ------------------------------------------------------------ #}
+        {# Capability CRUD                                              #}
+        {# ------------------------------------------------------------ #}
+        <div class="rounded-xl border border-input bg-background">
+            <div class="flex items-center justify-between p-5 border-b border-border">
+                <div>
+                    <h2 class="text-lg font-semibold text-foreground">Capabilities</h2>
+                    <p class="text-sm text-muted-foreground">
+                        Which capabilities create, read, update or delete this object.
+                    </p>
+                </div>
+                <a href="{{ url_for('information_model.crud_matrix') }}"
+                   class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                    <i data-lucide="grid-3x3" class="h-4 w-4 mr-1.5"></i>
+                    Full CRUD Matrix
+                </a>
+            </div>
+            <div class="p-5">
+                {% if obj.capabilities %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-border">
+                                <th scope="col" class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-3 py-2">Capability</th>
+                                <th scope="col" class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-3 py-2">CRUD</th>
+                                <th scope="col" class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-3 py-2">Owns</th>
+                                <th scope="col" class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-3 py-2">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in obj.capabilities %}
+                            <tr class="border-b border-border">
+                                <td class="px-3 py-2 text-foreground">{{ row.capability_name if row.capability_name else '—' }}</td>
+                                <td class="px-3 py-2 font-mono text-foreground">{{ row.letters if row.letters else '—' }}</td>
+                                <td class="px-3 py-2 text-muted-foreground">{{ 'Yes' if row.is_owning_capability else '—' }}</td>
+                                <td class="px-3 py-2 text-muted-foreground">{{ row.notes if row.notes else '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-sm text-muted-foreground">
+                    No capability has been mapped to this object yet. Use the CRUD matrix to record who creates it and who only reads it.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ---------------------------------------------------------------- #}
+    {# Edit object                                                       #}
+    {# ---------------------------------------------------------------- #}
+    {% call modal(id='object-edit-modal', title='Edit Business Object', size='lg') %}
+    <form method="POST" action="{{ url_for('information_model.edit_object', object_id=obj.id) }}" class="space-y-4">
+        <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+                <label for="edit-object-name" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+                <input type="text" id="edit-object-name" name="name" required value="{{ obj.name }}"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div>
+                <label for="edit-object-code" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</label>
+                <input type="text" id="edit-object-code" name="code" value="{{ obj.code if obj.code else '' }}"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+        <div>
+            <label for="edit-object-description" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Definition</label>
+            <textarea id="edit-object-description" name="description" rows="3"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{{ obj.description if obj.description else '' }}</textarea>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            <div>
+                <label for="edit-object-domain" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Domain</label>
+                <select id="edit-object-domain" name="data_domain_id"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">— Unfiled —</option>
+                    {% for domain in domains %}
+                    <option value="{{ domain.id }}" {% if domain.id == obj.data_domain_id %}selected{% endif %}>{{ domain.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="edit-object-type" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Object Type</label>
+                <select id="edit-object-type" name="object_type"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    {% for value in object_types %}
+                    <option value="{{ value }}" {% if value == obj.object_type %}selected{% endif %}>{{ value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="edit-object-classification" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Classification</label>
+                <select id="edit-object-classification" name="data_classification"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    {% for value in classifications %}
+                    <option value="{{ value }}" {% if value == obj.data_classification %}selected{% endif %}>{{ value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            <div>
+                <label for="edit-object-steward" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Steward</label>
+                <input type="text" id="edit-object-steward" name="data_steward" value="{{ obj.data_steward if obj.data_steward else '' }}"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div>
+                <label for="edit-object-custodian" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Technical Custodian</label>
+                <input type="text" id="edit-object-custodian" name="data_custodian" value="{{ obj.data_custodian if obj.data_custodian else '' }}"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div>
+                <label for="edit-object-retention" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Retention (days)</label>
+                <input type="number" min="0" id="edit-object-retention" name="retention_period_days"
+                       value="{{ obj.retention_period_days if obj.retention_period_days is not none else '' }}"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+        <div class="flex items-center gap-6">
+            <label class="inline-flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" name="contains_pii" value="true" {% if obj.contains_pii %}checked{% endif %}
+                       class="rounded border-input text-primary focus-visible:ring-ring">
+                Contains personal data
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" name="gdpr_scope" value="true" {% if obj.gdpr_scope %}checked{% endif %}
+                       class="rounded border-input text-primary focus-visible:ring-ring">
+                In GDPR scope
+            </label>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="object-edit-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Save
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+
+    {# ---------------------------------------------------------------- #}
+    {# Delete object                                                     #}
+    {# ---------------------------------------------------------------- #}
+    {% call modal(id='object-delete-modal', title='Delete Business Object?', size='sm') %}
+    <div class="space-y-4">
+        <p class="text-sm text-muted-foreground">
+            Delete <span class="font-medium text-foreground">{{ obj.name }}</span>, its capability CRUD rows,
+            its application links and its ArchiMate relationships? This cannot be undone.
+        </p>
+        <form method="POST" action="{{ url_for('information_model.delete_object', object_id=obj.id) }}" class="flex justify-end gap-2">
+            <button type="button" data-modal-close="object-delete-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-4 py-2">
+                Delete
+            </button>
+        </form>
+    </div>
+    {% endcall %}
+
+    {# ---------------------------------------------------------------- #}
+    {# Relate to another object                                          #}
+    {# ---------------------------------------------------------------- #}
+    {% call modal(id='relationship-modal', title='Relate Business Objects', description='Recorded as an ArchiMate relationship between the two objects.', size='default') %}
+    <form @submit.prevent="saveRelationship()" class="space-y-4">
+        <div>
+            <label for="relationship-type" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Relationship</label>
+            <select id="relationship-type" x-model="relationshipForm.relationship_type"
+                    class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                {% for value in relationship_types %}
+                <option value="{{ value }}">{{ value|capitalize }}</option>
+                {% endfor %}
+            </select>
+            <p class="mt-1 text-xs text-muted-foreground">
+                {{ obj.name }} <span class="font-medium" x-text="relationshipForm.relationship_type"></span> the object you pick below.
+            </p>
+        </div>
+        <div>
+            <label for="relationship-target" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Target Object</label>
+            <input type="text" id="relationship-target" x-model="objectSearch" @input.debounce.300ms="searchObjects()"
+                   autocomplete="off" placeholder="Search business objects…"
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <template x-if="objectResults.length > 0">
+                <ul class="mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-background">
+                    <template x-for="candidate in objectResults" :key="candidate.id">
+                        <li>
+                            <button type="button" @click="selectObject(candidate)"
+                                    class="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground">
+                                <span x-text="candidate.name"></span>
+                                <span class="text-muted-foreground font-mono ml-2" x-text="candidate.code || ''"></span>
+                            </button>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+            <template x-if="relationshipForm.target_object_id">
+                <p class="mt-2 text-sm text-foreground">
+                    Selected: <span class="font-medium" x-text="relationshipForm.target_object_name"></span>
+                </p>
+            </template>
+        </div>
+        <div>
+            <label for="relationship-description" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Note</label>
+            <input type="text" id="relationship-description" x-model="relationshipForm.description"
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="relationship-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit" :disabled="saving"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none">
+                <span x-show="saving" class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span>
+                Save
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+
+    {# ---------------------------------------------------------------- #}
+    {# Link an application                                               #}
+    {# ---------------------------------------------------------------- #}
+    {% call modal(id='application-modal', title='Link an Application', description='Which system holds this object, and in what role.', size='default') %}
+    <form @submit.prevent="saveApplication()" class="space-y-4">
+        <div>
+            <label for="application-search" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Application</label>
+            <input type="text" id="application-search" x-model="applicationSearch" @input.debounce.300ms="searchApplications()"
+                   autocomplete="off" placeholder="Search applications…"
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <template x-if="applicationResults.length > 0">
+                <ul class="mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-background">
+                    <template x-for="candidate in applicationResults" :key="candidate.id">
+                        <li>
+                            <button type="button" @click="selectApplication(candidate)"
+                                    class="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground">
+                                <span x-text="candidate.name"></span>
+                            </button>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+            <template x-if="applicationForm.application_id">
+                <p class="mt-2 text-sm text-foreground">
+                    Selected: <span class="font-medium" x-text="applicationForm.application_name"></span>
+                </p>
+            </template>
+        </div>
+        <div>
+            <label for="application-role" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Role</label>
+            <select id="application-role" x-model="applicationForm.system_role"
+                    class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                <option value="">— not stated —</option>
+                {% for value in system_roles %}
+                <option value="{{ value }}">{{ system_role_labels[value] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="application-notes" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Note</label>
+            <input type="text" id="application-notes" x-model="applicationForm.notes"
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="application-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit" :disabled="saving"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none">
+                <span x-show="saving" class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span>
+                Save
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+</div>
+
+<script src="{{ url_for('static', filename='js/information_model/detail.js') }}"></script>
+{% endblock %}

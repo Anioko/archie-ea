@@ -700,11 +700,23 @@ class BusinessObject(TenantMixin, db.Model):
     """
 
     __tablename__ = "business_objects"
+    __table_args__ = (
+        # `code` is authored by the tenant — CUST, ORD, INV — so two
+        # organisations can legitimately hold the same one. Declared
+        # unique=True it would be first-come-first-served across every
+        # tenant (see app/models/tenant_unique_registry.py and the
+        # tenant-unique gate).
+        db.UniqueConstraint("organization_id", "code", name="uq_business_objects_org_code"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
     # Core Identity
     name = db.Column(db.String(255), nullable=False, index=True)
+    # Short business identifier used on the BIZBOK information map. Nullable —
+    # reconcile-schema only adds nullable columns, and most existing rows
+    # predate it.
+    code = db.Column(db.String(50), nullable=True, index=True)
     description = db.Column(db.Text)
 
     # Link to ArchiMate metamodel
@@ -975,12 +987,21 @@ def create_object_archimate_element(mapper, connection, target):
 
         from .archimate_core import ArchiMateElement
 
+        # layer is LOWER CASE. The element browser, the layer APIs and every
+        # `WHERE layer = 'business'` query key on the lower-case token, so a
+        # capitalised "Business" made the element real in the table and
+        # invisible in every view of it.
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="BusinessObject",
-                layer="Business",
-                description=target.description or f"{target.business_domain} data object",
+                layer="business",
+                description=target.description
+                or (
+                    f"{target.business_domain} data object"
+                    if target.business_domain
+                    else f"Business object: {target.name}"
+                ),
             )
         )
         target.archimate_element_id = result.inserted_primary_key[0]

@@ -45,6 +45,14 @@ SCOPE_PER_TENANT = [
     ("application_components", "external_id"),
     ("application_consolidation_recommendations", "recommendation_code"),
     ("business_processes", "process_code"),              # P2P-001, O2C-001
+    # Declared correctly from the start — UNIQUE (organization_id, code), never
+    # unique=True. Listed anyway because it is a *new* column: on an existing
+    # database reconcile-schema adds the column and never an index, so
+    # create_all's constraint is missing there. The boot chain's
+    # scope-unique-to-tenant creates it (the drop steps are no-ops, since there
+    # is no legacy global index to drop). Without this line the constraint
+    # exists only on databases created after the column.
+    ("business_objects", "code"),                        # CUST, ORD, INV
     ("courses_of_action", "code"),
     ("data_domains", "code"),                            # CUST, PROD, FIN, OPS
     ("enterprise_initiatives", "code"),

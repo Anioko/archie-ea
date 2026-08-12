@@ -194,7 +194,7 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
            SECTION 4: ARCHITECTURE (ArchiMate 3.2 - All 6 Layers)
            ================================================================ #}
         {% if can_access_section(current_user, 'architecture') %}
-        <div class="px-3 py-2" x-show="matchesSearch('Architecture ArchiMate Elements Layers Models Viewpoint Motivation Strategy Business Application Technology Physical Implementation')" x-cloak>
+        <div class="px-3 py-2" x-show="matchesSearch('Architecture ArchiMate Elements Layers Models Viewpoint Motivation Strategy Business Application Technology Physical Implementation Information Model Data Domains Business Objects CRUD Matrix')" x-cloak>
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
                 Architecture
             </div>
@@ -216,7 +216,17 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                     <i data-lucide="share-2" class="h-4 w-4"></i>
                     <span>Traceability Chain</span>
                 </a>
-                
+                {# The information_model blueprint registers non-fatally (see
+                   _register_optional_standalone), so this url_for is guarded —
+                   an unregistered endpoint would BuildError and 500 every page
+                   that renders the sidebar, which is all of them. #}
+                {% if 'information_model.index' in flask.current_app.view_functions %}
+                <a href="{{ url_for('information_model.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('information_model.') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="database" class="h-4 w-4"></i>
+                    <span>Information Model</span>
+                </a>
+                {% endif %}
+
                 <div class="my-2 border-t border-border/50"></div>
                 <div class="px-2 text-xs font-medium text-muted-foreground uppercase tracking-tight mb-1">By Layer</div>
                 
@@ -292,6 +302,11 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                     <a href="/architecture/business/events" class="block py-1 text-muted-foreground hover:text-foreground">Business Events</a>
                     <a href="/architecture/business/services" class="block py-1 text-muted-foreground hover:text-foreground">Business Services</a>
                     <a href="/architecture/business/objects" class="block py-1 text-muted-foreground hover:text-foreground">Business Objects</a>
+                    {% if 'information_model.index' in flask.current_app.view_functions %}
+                    <a href="{{ url_for('information_model.index') }}" class="block py-1 text-muted-foreground hover:text-foreground pl-4 border-l border-border/60">
+                        → Information Model
+                    </a>
+                    {% endif %}
                     <a href="/architecture/business/contracts" class="block py-1 text-muted-foreground hover:text-foreground">Contracts</a>
                     <a href="/architecture/business/representations" class="block py-1 text-muted-foreground hover:text-foreground">Representations</a>
                     <a href="/architecture/business/products" class="block py-1 text-muted-foreground hover:text-foreground">Products</a>
