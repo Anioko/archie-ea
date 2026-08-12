@@ -551,6 +551,26 @@ def init_context_processors(app):
     app.jinja_env.filters["format_date"] = _filter_format_date
     app.jinja_env.filters["format_datetime"] = _filter_format_datetime
 
+    # Shell-overhaul Wave 2 (Task 5): templates need a safe way to compare a
+    # stored date against "today" (e.g. contract-expiry urgency banners)
+    # without doing date arithmetic in Jinja directly, which has no
+    # `datetime` module in scope and previously produced a `None`-minus-date
+    # TypeError (applications/dashboard.html 500'd on any app with
+    # contract_expiry_date set). Returns None — never a fabricated number —
+    # when there is nothing to compare.
+    def _days_until(value):
+        import datetime as _dt
+        if value is None:
+            return None
+        try:
+            if isinstance(value, _dt.datetime):
+                value = value.date()
+            return (value - _dt.date.today()).days
+        except TypeError:
+            return None
+
+    app.jinja_env.globals["days_until"] = _days_until
+
     # Cache-busting: compute git hash once at startup for static file versioning
     import subprocess
     _static_version = None

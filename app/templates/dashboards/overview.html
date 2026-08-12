@@ -110,58 +110,29 @@
             <h2 class="text-sm font-semibold text-foreground">Your Workspace</h2>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {% if role == 'solution_architect' %}
-                {% set cards = [
-                    ('compass', 'Architecture Journey', 'Start a guided TOGAF ADM journey', '/architecture-journey/'),
-                    ('wrench', 'My Solutions', 'View and manage your solutions', '/solutions/'),
-                    ('pen-tool', 'ArchiMate Composer', 'Build architecture diagrams', '/archimate/composer'),
-                    ('map', 'Capability Map', 'Explore business capabilities', '/capability-map/'),
-                ] %}
-            {% elif role == 'enterprise_architect' %}
-                {% set cards = [
-                    ('package', 'Application Portfolio', 'Manage all applications', '/applications/'),
-                    ('map', 'Capability Map', 'Business capability landscape', '/capability-map/'),
-                    ('table', 'ArchiMate Elements', 'Browse architecture elements', '/architecture/dashboard'),
-                    ('compass', 'Architecture Journey', 'Guided TOGAF ADM workflow', '/architecture-journey/'),
-                ] %}
-            {% elif role == 'arb_member' %}
-                {% set cards = [
-                    ('shield-check', 'ARB Reviews', 'Pending architecture reviews', '/arb/reviews'),
-                    ('wrench', 'Recent Solutions', 'Browse solution designs', '/solutions/'),
-                    ('shield', 'Governance Gates', 'Manage governance gates', '/admin/governance-gates'),
-                    ('git-branch', 'Decision Log', 'Architecture decisions', '/architecture/decisions'),
-                ] %}
-            {% elif role == 'portfolio_manager' %}
-                {% set cards = [
-                    ('git-merge', 'Rationalization', 'Application rationalization', '/dashboard/rationalization'),
-                    ('building-2', 'Vendor Dashboard', 'Manage vendors', '/vendors'),
-                    ('package', 'Application Portfolio', 'All applications', '/applications/'),
-                    ('bar-chart-2', 'Cost Analysis', 'Portfolio cost overview', '/dashboard/overview'),
-                ] %}
-            {% elif role == 'business_architect' %}
-                {% set cards = [
-                    ('map', 'Capability Map', 'Business capability landscape', '/capability-map/'),
-                    ('waypoints', 'Value Streams', 'Value streams and capability grid', '/value-streams/'),
-                    ('layout-dashboard', 'Business Model Canvas', 'Business & operating model', '/business-model/'),
-                    ('git-branch', 'Traceability Matrix', 'Strategy-to-capability traceability', '/architecture/traceability'),
-                    ('git-merge', 'Application Rationalization', 'Rationalize the application portfolio', '/applications/rationalization'),
-                ] %}
-            {% else %}
-                {% set cards = [] %}
-            {% endif %}
-            {% for icon, title, desc, href in cards %}
-            <a href="{{ href }}"
+            {# Shell-overhaul Wave 2 (Task 5): these used to be a hand-maintained
+               per-role card list here, parallel to (and drifting from)
+               get_sidebar_zones()'s "my_work" zone -- the actual single source
+               of truth for a role's primary-work links (app/utils/role_access.py).
+               Render straight from that zone instead so there is exactly one
+               place that defines a role's quick-access links. Zone link dicts
+               carry label/endpoint/icon only (no description) -- render without
+               one rather than inventing per-card copy. #}
+            {% set my_work_zone = (get_sidebar_zones(current_user) | selectattr('zone', 'equalto', 'my_work') | first) %}
+            {% for link in (my_work_zone.links if my_work_zone else []) %}
+            {% if link.endpoint in flask.current_app.view_functions %}
+            <a href="{{ url_for(link.endpoint) }}"
                class="group border border-border rounded-xl bg-card p-5 hover:border-primary/30 transition-colors">
                 <div class="flex items-start gap-3">
                     <div class="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <i data-lucide="{{ icon }}" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                        <i data-lucide="{{ link.icon }}" class="h-4 w-4 text-primary" aria-hidden="true"></i>
                     </div>
                     <div class="min-w-0">
-                        <p class="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{{ title }}</p>
-                        <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2">{{ desc }}</p>
+                        <p class="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{{ link.label }}</p>
                     </div>
                 </div>
             </a>
+            {% endif %}
             {% endfor %}
         </div>
     </div>

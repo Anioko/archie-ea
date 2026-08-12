@@ -4,15 +4,24 @@
  * Polls /ai-chat/approvals/pending every 30 seconds, renders a badge count
  * in the chat header, and provides a modal to review / approve / reject
  * pending CRUD operations requested via the AI chat.
+ *
+ * State lives in a single Alpine.store('approvals') instance, not in the
+ * Alpine.data factory below. Two DOM mounts use x-data="approvalManager"
+ * (the header badge trigger and the approvals modal, ai_chat/index.html) —
+ * Alpine.data factories are instantiated fresh per mount, so with state and
+ * init() living on the factory each mount ran its own fetchPending() +
+ * setInterval(), doubling the /ai-chat/approvals/pending poll (shell-overhaul
+ * Wave 2, Task 5). The factory now just proxies to the shared store, so
+ * there is exactly one poll loop no matter how many mounts exist.
  */
 function registerApprovalManager() {
     if (!window.Alpine || window.__approvalManagerRegistered) {
         return;
     }
     window.__approvalManagerRegistered = true;
-    window.Alpine.data("approvalManager", () => ({
+
+    window.Alpine.store("approvals", {
         /** State */
-        open: false,
         approvals: [],
         loading: false,
         error: null,
@@ -23,12 +32,17 @@ function registerApprovalManager() {
         busyIds: {},
         /** Polling handle */
         _pollHandle: null,
+        _initialized: false,
 
         /* ------------------------------------------------------------------ */
         /*  Lifecycle                                                          */
         /* ------------------------------------------------------------------ */
 
         init() {
+            if (this._initialized) {
+                return;
+            }
+            this._initialized = true;
             this.fetchPending();
             this._pollHandle = setInterval(() => this.fetchPending(), 30000);
         },
@@ -38,6 +52,7 @@ function registerApprovalManager() {
                 clearInterval(this._pollHandle);
                 this._pollHandle = null;
             }
+            this._initialized = false;
         },
 
         /* ------------------------------------------------------------------ */
@@ -185,6 +200,66 @@ function registerApprovalManager() {
         /** Pending count for the badge */
         get pendingCount() {
             return this.approvals.length;
+        },
+    });
+
+    // Starts the single fetchPending()/setInterval() loop (guarded by
+    // _initialized above, so re-registering the Alpine.data factory below
+    // across mounts never starts a second one).
+    window.Alpine.store("approvals").init();
+
+    // Thin per-mount facade — every x-data="approvalManager" mount reads
+    // and writes the same Alpine.store('approvals') instance above, so the
+    // header badge trigger and the approvals modal share one copy of state
+    // instead of each polling and tracking it independently.
+    window.Alpine.data("approvalManager", () => ({
+        get approvals() {
+            return Alpine.store("approvals").approvals;
+        },
+        get loading() {
+            return Alpine.store("approvals").loading;
+        },
+        get error() {
+            return Alpine.store("approvals").error;
+        },
+        get rejectingId() {
+            return Alpine.store("approvals").rejectingId;
+        },
+        set rejectingId(value) {
+            Alpine.store("approvals").rejectingId = value;
+        },
+        get rejectReason() {
+            return Alpine.store("approvals").rejectReason;
+        },
+        set rejectReason(value) {
+            Alpine.store("approvals").rejectReason = value;
+        },
+        get busyIds() {
+            return Alpine.store("approvals").busyIds;
+        },
+        get pendingCount() {
+            return Alpine.store("approvals").pendingCount;
+        },
+        fetchPending() {
+            return Alpine.store("approvals").fetchPending();
+        },
+        approve(approvalId) {
+            return Alpine.store("approvals").approve(approvalId);
+        },
+        startReject(approvalId) {
+            return Alpine.store("approvals").startReject(approvalId);
+        },
+        cancelReject() {
+            return Alpine.store("approvals").cancelReject();
+        },
+        confirmReject(approvalId) {
+            return Alpine.store("approvals").confirmReject(approvalId);
+        },
+        formatDate(iso) {
+            return Alpine.store("approvals").formatDate(iso);
+        },
+        opColor(type) {
+            return Alpine.store("approvals").opColor(type);
         },
     }));
 }

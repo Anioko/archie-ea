@@ -22,12 +22,64 @@ from app.extensions.cache import cached
 from . import capability_map
 
 
+def _compute_capability_mapping_counts():
+    """Real per-capability app-mapping counts, org-scoped, one bounded query.
+
+    Returns ``None`` (not ``{}``) when the count could not be computed at
+    all — e.g. no tenant context, or the query itself failed — so callers
+    can tell "we asked and every capability truly has 0 mapped apps" (a
+    real, dict-shaped answer, possibly all-zero) apart from "we never
+    asked" (None). ``cap_to_dict`` below turns that into
+    ``mapping_count: None`` on every node, which the hierarchy page's
+    ``getCoverageDotClass`` renders as no dot at all rather than a
+    fabricated red one, and the legend only appears when this returned a
+    real dict.
+
+    ``ApplicationCapabilityMapping`` is not ``TenantMixin`` (see the model),
+    so the org predicate here is deliberate, not defence-in-depth.
+    """
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        return None
+
+    from sqlalchemy import func
+
+    from app import db
+    from app.models.application_capability import ApplicationCapabilityMapping
+
+    try:
+        rows = (
+            db.session.query(
+                ApplicationCapabilityMapping.business_capability_id,
+                func.count(ApplicationCapabilityMapping.id),
+            )
+            .filter(ApplicationCapabilityMapping.organization_id == org_id)
+            .group_by(ApplicationCapabilityMapping.business_capability_id)
+            .all()
+        )
+    except Exception:
+        current_app.logger.exception("Could not compute capability mapping counts")
+        return None
+
+    return dict(rows)
+
+
 @capability_map.route("")
 @capability_map.route("/")
 @login_required
 def index():
     """Main capability mapping page"""
-    return render_template("capability_map/index.html")
+    from app.modules.capabilities.services.capability_count_service import (
+        count_business_capabilities,
+    )
+
+    try:
+        total_capabilities = count_business_capabilities()
+    except Exception:
+        current_app.logger.exception("Could not count business capabilities")
+        total_capabilities = None
+
+    return render_template("capability_map/index.html", total_capabilities=total_capabilities)
 
 
 @capability_map.route("/hierarchy")
@@ -39,6 +91,16 @@ def index():
 )
 def hierarchy():
     """Capability hierarchy visualization — uses real BusinessCapability data."""
+    from app.modules.capabilities.services.capability_count_service import (
+        count_business_capabilities,
+    )
+
+    try:
+        total_capabilities = count_business_capabilities()
+    except Exception:
+        current_app.logger.exception("Could not count business capabilities")
+        total_capabilities = None
+
     try:
         from app.models.business_capabilities import BusinessCapability
 
@@ -52,8 +114,15 @@ def hierarchy():
             if c.parent_capability_id:
                 children_by_parent.setdefault(c.parent_capability_id, []).append(c)
 
+        # Real per-capability app-mapping counts (or None — see the
+        # function's docstring for why None is not the same as {}).
+        mapping_counts = _compute_capability_mapping_counts()
+
         def cap_to_dict(cap):
             kids = children_by_parent.get(cap.id, [])
+            mapping_count = (
+                mapping_counts.get(cap.id, 0) if mapping_counts is not None else None
+            )
             return {
                 "name": cap.name,
                 "description": cap.description or "",
@@ -62,6 +131,7 @@ def hierarchy():
                 "category": cap.category or "",
                 "capability_type": "core",
                 "functions": [],
+                "mapping_count": mapping_count,
                 "children": [cap_to_dict(k) for k in kids],
             }
 
@@ -69,7 +139,12 @@ def hierarchy():
         roots = [c for c in capabilities if c.level == 1]
         catalog = {"children": [cap_to_dict(r) for r in roots]}
 
-        return render_template("capability_map/hierarchy.html", catalog=catalog)
+        return render_template(
+            "capability_map/hierarchy.html",
+            catalog=catalog,
+            total_capabilities=total_capabilities,
+            has_coverage_data=mapping_counts is not None,
+        )
     except Exception as e:
         from app import db
 
@@ -83,6 +158,8 @@ def hierarchy():
             "capability_map/hierarchy.html",
             catalog={"children": []},
             load_error="The capability hierarchy could not be read.",
+            total_capabilities=total_capabilities,
+            has_coverage_data=False,
         )
 
 

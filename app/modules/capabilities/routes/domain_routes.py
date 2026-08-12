@@ -5,7 +5,7 @@ Extracted from capability_map_routes.py (lines 3081-3417).
 Routes registered on the shared ``capability_map`` blueprint.
 """
 
-from flask import current_app, jsonify  # dead-code-ok
+from flask import current_app, g, jsonify  # dead-code-ok
 from flask_login import login_required
 
 from app import db
@@ -37,9 +37,26 @@ def api_unified_domains():
     try:
         from app.models.application_capability import ApplicationCapabilityMapping
         from app.models.business_capabilities import BusinessCapability
+        from app.modules.capabilities.services.capability_count_service import (
+            count_business_capabilities,
+        )
 
-        # Use BusinessCapability (real imported data) as the primary source
-        total_capabilities = BusinessCapability.query.count()
+        # Use BusinessCapability (real imported data) as the primary source.
+        # count_business_capabilities() is the single counting function shared
+        # with /capability-map/hierarchy so the two pages can't disagree.
+        total_capabilities = count_business_capabilities()
+
+        # ApplicationCapabilityMapping is not TenantMixin (see the model), so the
+        # org predicate below is deliberate, not defence-in-depth — see the
+        # matching note on _compute_capability_mapping_counts() in map_views.py.
+        # Without it, mapped_count / all_mapped_cap_ids aggregate across every
+        # tenant, inflating this org's coverage past 100% and leaking other
+        # orgs' mapping volume into the Capability Map's default tab.
+        org_id = getattr(g, "current_org_id", None)
+        if org_id is None:
+            current_app.logger.warning(
+                "api_unified_domains called with no org context; failing closed to zero mappings"
+            )
 
         if total_capabilities > 0:
             # Level-1 capabilities serve as domains
@@ -49,12 +66,16 @@ def api_unified_domains():
                 .all()
             )
 
-            # Count capabilities with at least one app mapping
-            mapped_count = (
-                db.session.query(ApplicationCapabilityMapping.business_capability_id)
-                .distinct()
-                .count()
-            )
+            # Count capabilities with at least one app mapping (this org only)
+            if org_id is not None:
+                mapped_count = (
+                    db.session.query(ApplicationCapabilityMapping.business_capability_id)
+                    .filter(ApplicationCapabilityMapping.organization_id == org_id)
+                    .distinct()
+                    .count()
+                )
+            else:
+                mapped_count = 0
 
             coverage = round(
                 (mapped_count / total_capabilities * 100) if total_capabilities > 0 else 0, 1
@@ -67,10 +88,16 @@ def api_unified_domains():
                 if bc.parent_capability_id is not None:
                     children_by_parent.setdefault(bc.parent_capability_id, []).append(bc)
 
-            all_mapped_cap_ids = set(
-                row[0] for row in
-                db.session.query(ApplicationCapabilityMapping.business_capability_id).distinct().all()
-            )
+            if org_id is not None:
+                all_mapped_cap_ids = set(
+                    row[0] for row in
+                    db.session.query(ApplicationCapabilityMapping.business_capability_id)
+                    .filter(ApplicationCapabilityMapping.organization_id == org_id)
+                    .distinct()
+                    .all()
+                )
+            else:
+                all_mapped_cap_ids = set()
 
             domain_list = []
             for domain in domains:
