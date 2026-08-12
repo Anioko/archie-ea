@@ -28,7 +28,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE_DIR = REPO_ROOT / "docs" / "superpowers" / "evidence" / "wave1"
 
 WIDTHS = [1024, 1280, 1440]
-ROUTES = ["/dashboard/overview", "/ai-chat/", "/applications/"]
+ROUTES = [
+    "/dashboard/overview",
+    "/ai-chat/",
+    "/applications/",
+    "/capability-map/",
+    "/capability-map/hierarchy",
+]
 VIEWPORT_HEIGHT = 900
 
 

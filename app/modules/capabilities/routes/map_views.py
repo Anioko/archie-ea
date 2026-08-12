@@ -27,7 +27,17 @@ from . import capability_map
 @login_required
 def index():
     """Main capability mapping page"""
-    return render_template("capability_map/index.html")
+    from app.modules.capabilities.services.capability_count_service import (
+        count_business_capabilities,
+    )
+
+    try:
+        total_capabilities = count_business_capabilities()
+    except Exception:
+        current_app.logger.exception("Could not count business capabilities")
+        total_capabilities = None
+
+    return render_template("capability_map/index.html", total_capabilities=total_capabilities)
 
 
 @capability_map.route("/hierarchy")
@@ -35,6 +45,16 @@ def index():
 @cached(ttl=300, key_prefix="capability_map:hierarchy")
 def hierarchy():
     """Capability hierarchy visualization — uses real BusinessCapability data."""
+    from app.modules.capabilities.services.capability_count_service import (
+        count_business_capabilities,
+    )
+
+    try:
+        total_capabilities = count_business_capabilities()
+    except Exception:
+        current_app.logger.exception("Could not count business capabilities")
+        total_capabilities = None
+
     try:
         from app.models.business_capabilities import BusinessCapability
 
@@ -65,7 +85,11 @@ def hierarchy():
         roots = [c for c in capabilities if c.level == 1]
         catalog = {"children": [cap_to_dict(r) for r in roots]}
 
-        return render_template("capability_map/hierarchy.html", catalog=catalog)
+        return render_template(
+            "capability_map/hierarchy.html",
+            catalog=catalog,
+            total_capabilities=total_capabilities,
+        )
     except Exception as e:
         from app import db
 
@@ -79,6 +103,7 @@ def hierarchy():
             "capability_map/hierarchy.html",
             catalog={"children": []},
             load_error="The capability hierarchy could not be read.",
+            total_capabilities=total_capabilities,
         )
 
 

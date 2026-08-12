@@ -37,9 +37,14 @@ def api_unified_domains():
     try:
         from app.models.application_capability import ApplicationCapabilityMapping
         from app.models.business_capabilities import BusinessCapability
+        from app.modules.capabilities.services.capability_count_service import (
+            count_business_capabilities,
+        )
 
-        # Use BusinessCapability (real imported data) as the primary source
-        total_capabilities = BusinessCapability.query.count()
+        # Use BusinessCapability (real imported data) as the primary source.
+        # count_business_capabilities() is the single counting function shared
+        # with /capability-map/hierarchy so the two pages can't disagree.
+        total_capabilities = count_business_capabilities()
 
         if total_capabilities > 0:
             # Level-1 capabilities serve as domains

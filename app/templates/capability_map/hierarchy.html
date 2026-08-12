@@ -69,11 +69,24 @@
     </div>
 
     <!-- Coverage Summary Banner -->
+    {#- total_capabilities is the tenant's full BusinessCapability count, from
+        the single counting function shared with /capability-map/
+        (app/modules/capabilities/services/capability_count_service.py) — not
+        the tree-walk below, which only counts nodes reachable from a level-1
+        root and previously disagreed with the other screen. #}
     <div class="bg-card rounded-lg shadow border px-4 py-2 flex items-center gap-4 text-sm">
-        <span class="font-medium text-foreground" x-text="countAll() + ' capabilities'"></span>
+        <span class="font-medium text-foreground">{{ total_capabilities|dash }} capabilities</span>
         <span class="text-muted-foreground">|</span>
         <!-- TODO: mapping_count not available in catalog data — wire from UnifiedApplicationCapabilityMapping to show mapped/gaps/coverage% -->
         <span class="text-muted-foreground">Coverage data pending application mappings</span>
+    </div>
+
+    <!-- Coverage dot legend -->
+    <div data-testid="capability-legend" class="flex items-center gap-4 text-xs text-muted-foreground px-1">
+        <span class="font-medium text-foreground">App coverage:</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> 3+ apps mapped</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span> 1-2 apps mapped</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-destructive"></span> No apps mapped</span>
     </div>
 
     <!-- Hierarchy Tree -->
