@@ -298,3 +298,7 @@ si.py
 readgen.py
 recheck.py
 .worktrees/
+
+# Wave verification screenshot-matrix output (scripts/screenshot_matrix.py) --
+# reviewed in-session, not committed.
+docs/superpowers/evidence/
