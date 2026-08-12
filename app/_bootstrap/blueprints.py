@@ -196,6 +196,14 @@ def _register_optional_standalone(app):
         ("app.modules.business_model_canvas.routes", "business_model_bp", "/business-model"),
         ("app.modules.organization.routes", "organization_bp", "/organization"),
         ("app.modules.business_case.routes", "business_case_bp", "/business-case"),
+        # BIZBOK information map — data domains, business objects, the
+        # capability x object CRUD matrix and application mastering. The
+        # blueprint carries its own /information-model prefix.
+        (
+            "app.modules.information_model.routes",
+            "information_model",
+            None,
+        ),
     ]
     for module_path, attr, prefix in specs:
         try:

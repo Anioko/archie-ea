@@ -1,0 +1,36 @@
+{# One business object tile.
+
+   Included (not imported) so it inherits `obj` from the surrounding loop and
+   the request context — an import would not pass either.
+#}
+<a href="{{ url_for('information_model.object_detail', object_id=obj.id) }}"
+   class="block rounded-lg border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-4">
+    <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="flex items-center gap-2 min-w-0">
+            <i data-lucide="box" class="h-4 w-4 shrink-0 text-primary" aria-hidden="true"></i>
+            <span class="font-medium text-foreground truncate">{{ obj.name }}</span>
+        </div>
+        {% if obj.code %}
+        <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border font-mono">{{ obj.code }}</span>
+        {% endif %}
+    </div>
+    <p class="text-xs text-muted-foreground line-clamp-2 mb-3">{{ obj.description if obj.description else '—' }}</p>
+    <div class="flex flex-wrap items-center gap-1.5">
+        {% if obj.object_type %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">{{ obj.object_type }}</span>
+        {% endif %}
+        {% if obj.data_classification == 'Restricted' %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Restricted</span>
+        {% elif obj.data_classification == 'Confidential' %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Confidential</span>
+        {% elif obj.data_classification %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">{{ obj.data_classification }}</span>
+        {% endif %}
+        {% if obj.contains_pii %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">PII</span>
+        {% endif %}
+    </div>
+    <div class="mt-3 text-xs text-muted-foreground">
+        Steward: <span class="text-foreground">{{ obj.data_steward if obj.data_steward else '—' }}</span>
+    </div>
+</a>

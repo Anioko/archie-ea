@@ -1,0 +1,381 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/data_card.html' import data_card %}
+{% from 'components/modal.html' import modal %}
+
+{% block title %}Information Model{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto" x-data="informationMapIndex()" x-cloak>
+    {{ page_header(
+        title='Information Model',
+        description='The business objects the enterprise runs on, grouped by data domain — BIZBOK’s information map.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Information Model'}
+        ],
+        actions=[
+            {'text': 'CRUD Matrix', 'icon': 'grid-3x3', 'href': url_for('information_model.crud_matrix'), 'variant': 'outline'},
+            {'text': 'New Data Domain', 'icon': 'folder-plus', 'onclick': "Platform.modal.open('domain-create-modal')", 'variant': 'outline'},
+            {'text': 'New Business Object', 'icon': 'plus', 'onclick': "Platform.modal.open('object-create-modal')", 'variant': 'default'}
+        ]
+    ) }}
+
+    <div class="p-6 space-y-6">
+        {% if not_found is defined and not_found %}
+        <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">
+            That business object does not exist, or is not visible to your organisation.
+        </div>
+        {% endif %}
+
+        {% if load_error %}
+        <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">
+            The information model could not be loaded. Nothing below is a reading of your data —
+            reload the page, and if it persists the error is in the server log.
+        </div>
+        {% elif info_map.domains or info_map.unfiled %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {{ data_card(icon='folder-tree', icon_color='blue', value=info_map.domains|length, label='Data Domains', subtitle='Logical groupings of business information') }}
+            {{ data_card(icon='box', icon_color='green', value=info_map.object_count, label='Business Objects', subtitle='Customer, Order, Product, Contract…') }}
+            {{ data_card(icon='folder-x', icon_color='amber', value=info_map.unfiled|length, label='Unfiled Objects', subtitle='No data domain assigned') }}
+        </div>
+
+        <div class="space-y-4">
+            {% for domain in info_map.domains %}
+            <div class="rounded-xl border border-input bg-background">
+                <div class="flex items-start justify-between gap-4 p-5 border-b border-border">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                                <i data-lucide="folder-tree" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                            </div>
+                            <h2 class="text-lg font-semibold text-foreground truncate">{{ domain.name }}</h2>
+                            {% if domain.code %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border font-mono">{{ domain.code }}</span>
+                            {% endif %}
+                            {% if domain.data_classification %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">{{ domain.data_classification }}</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-sm text-muted-foreground">{{ domain.description if domain.description else '—' }}</p>
+                        <div class="flex flex-wrap items-center gap-x-6 gap-y-1 mt-2 text-xs text-muted-foreground">
+                            <span>Owner: <span class="text-foreground">{{ domain.data_owner if domain.data_owner else '—' }}</span></span>
+                            <span>Steward: <span class="text-foreground">{{ domain.data_steward if domain.data_steward else '—' }}</span></span>
+                            <span>Objects: <span class="text-foreground">{{ domain.object_count if domain.object_count is not none else '—' }}</span></span>
+                        </div>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <button type="button" aria-label="Edit {{ domain.name }}"
+                                @click="openDomainEdit({{ domain|tojson }})"
+                                class="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground h-9 w-9">
+                            <i data-lucide="pencil" class="h-4 w-4"></i>
+                        </button>
+                        <button type="button" aria-label="Delete {{ domain.name }}"
+                                @click="openDomainDelete({{ domain|tojson }})"
+                                class="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-destructive h-9 w-9">
+                            <i data-lucide="trash-2" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-5">
+                    {% if domain.objects %}
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {% for obj in domain.objects %}
+                        {% include 'information_model/_object_card.html' %}
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-muted-foreground">
+                        No business objects filed under this domain yet.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+
+            {% if info_map.unfiled %}
+            <div class="rounded-xl border border-dashed border-border bg-muted/30">
+                <div class="p-5 border-b border-border">
+                    <h2 class="text-lg font-semibold text-foreground">Unfiled</h2>
+                    <p class="text-sm text-muted-foreground">
+                        Business objects with no data domain. Assign one so the information map is complete.
+                    </p>
+                </div>
+                <div class="p-5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {% for obj in info_map.unfiled %}
+                        {% include 'information_model/_object_card.html' %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        {{ empty_state(
+            icon='database',
+            title='No business objects yet',
+            description='Model the information the enterprise runs on — Customer, Order, Product, Contract, Invoice — group it into data domains, and cross-map it to the capabilities and applications that touch it.',
+            cta_text='Create Business Object',
+            cta_onclick="Platform.modal.open('object-create-modal')",
+            cta_icon='plus'
+        ) }}
+        {% endif %}
+    </div>
+
+    {# ---------------------------------------------------------------- #}
+    {# Data domain: create                                              #}
+    {# ---------------------------------------------------------------- #}
+    {% call modal(id='domain-create-modal', title='New Data Domain', description='A logical grouping of related business objects.', size='default') %}
+    <form method="POST" action="{{ url_for('information_model.create_domain') }}" class="space-y-4">
+        <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+                <label for="domain-name" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+                <input type="text" id="domain-name" name="name" required
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="e.g. Customer">
+            </div>
+            <div>
+                <label for="domain-code" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</label>
+                <input type="text" id="domain-code" name="code"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="CUST">
+            </div>
+        </div>
+        <div>
+            <label for="domain-description" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Definition</label>
+            <textarea id="domain-description" name="description" rows="3"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="domain-owner" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Owner</label>
+                <input type="text" id="domain-owner" name="data_owner"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div>
+                <label for="domain-steward" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Steward</label>
+                <input type="text" id="domain-steward" name="data_steward"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="domain-classification" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Classification</label>
+                <select id="domain-classification" name="data_classification"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    {% for value in classifications %}
+                    <option value="{{ value }}">{{ value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="domain-type" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Domain Type</label>
+                <select id="domain-type" name="domain_type"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    <option value="master">Master</option>
+                    <option value="transactional">Transactional</option>
+                    <option value="reference">Reference</option>
+                    <option value="analytical">Analytical</option>
+                </select>
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="domain-create-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Create
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+
+    {# ---------------------------------------------------------------- #}
+    {# Data domain: edit                                                #}
+    {# ---------------------------------------------------------------- #}
+    {% call modal(id='domain-edit-modal', title='Edit Data Domain', size='default') %}
+    <template x-if="domainForm.id">
+        <form method="POST"
+              x-bind:action="'{{ url_for('information_model.edit_domain', domain_id=0) }}'.replace('/0/', '/' + domainForm.id + '/')"
+              class="space-y-4">
+            <div class="grid grid-cols-3 gap-4">
+                <div class="col-span-2">
+                    <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+                    <input type="text" name="name" x-model="domainForm.name" required aria-label="Name"
+                           class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</label>
+                    <input type="text" name="code" x-model="domainForm.code" aria-label="Code"
+                           class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                </div>
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Definition</label>
+                <textarea name="description" rows="3" x-model="domainForm.description" aria-label="Definition"
+                          class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Owner</label>
+                    <input type="text" name="data_owner" x-model="domainForm.data_owner" aria-label="Data Owner"
+                           class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Steward</label>
+                    <input type="text" name="data_steward" x-model="domainForm.data_steward" aria-label="Data Steward"
+                           class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                </div>
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Classification</label>
+                <select name="data_classification" x-model="domainForm.data_classification" aria-label="Classification"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    {% for value in classifications %}
+                    <option value="{{ value }}">{{ value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" data-modal-close="domain-edit-modal"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                    Save
+                </button>
+            </div>
+        </form>
+    </template>
+    {% endcall %}
+
+    {# ---------------------------------------------------------------- #}
+    {# Data domain: delete                                              #}
+    {# ---------------------------------------------------------------- #}
+    {% call modal(id='domain-delete-modal', title='Delete Data Domain?', size='sm') %}
+    <template x-if="domainDeleteForm.id">
+        <div class="space-y-4">
+            <p class="text-sm text-muted-foreground">
+                Delete the domain <span class="font-medium text-foreground" x-text="domainDeleteForm.name"></span>?
+                Its business objects are kept and become unfiled — they are the record, the domain is only a grouping.
+            </p>
+            <form method="POST"
+                  x-bind:action="'{{ url_for('information_model.delete_domain', domain_id=0) }}'.replace('/0/', '/' + domainDeleteForm.id + '/')"
+                  class="flex justify-end gap-2">
+                <button type="button" data-modal-close="domain-delete-modal"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-4 py-2">
+                    Delete
+                </button>
+            </form>
+        </div>
+    </template>
+    {% endcall %}
+
+    {# ---------------------------------------------------------------- #}
+    {# Business object: create                                          #}
+    {# ---------------------------------------------------------------- #}
+    {% call modal(id='object-create-modal', title='New Business Object', description='A thing the business keeps information about.', size='lg') %}
+    <form method="POST" action="{{ url_for('information_model.create_object') }}" class="space-y-4">
+        <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+                <label for="object-name" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+                <input type="text" id="object-name" name="name" required
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="e.g. Customer Order">
+            </div>
+            <div>
+                <label for="object-code" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</label>
+                <input type="text" id="object-code" name="code"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="ORD">
+            </div>
+        </div>
+        <div>
+            <label for="object-description" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Definition</label>
+            <textarea id="object-description" name="description" rows="3"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      placeholder="What this object is, in the words the business uses."></textarea>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            <div>
+                <label for="object-domain" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Domain</label>
+                <select id="object-domain" name="data_domain_id"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">— Unfiled —</option>
+                    {% for domain in info_map.domains %}
+                    <option value="{{ domain.id }}">{{ domain.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="object-type" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Object Type</label>
+                <select id="object-type" name="object_type"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    {% for value in object_types %}
+                    <option value="{{ value }}">{{ value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="object-classification" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Classification</label>
+                <select id="object-classification" name="data_classification"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    {% for value in classifications %}
+                    <option value="{{ value }}">{{ value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="object-steward" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Steward</label>
+                <input type="text" id="object-steward" name="data_steward"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div>
+                <label for="object-custodian" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Technical Custodian</label>
+                <input type="text" id="object-custodian" name="data_custodian"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+        <div class="flex items-center gap-6">
+            <label class="inline-flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" name="contains_pii" value="true" class="rounded border-input text-primary focus-visible:ring-ring">
+                Contains personal data
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" name="gdpr_scope" value="true" class="rounded border-input text-primary focus-visible:ring-ring">
+                In GDPR scope
+            </label>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="object-create-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Create
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+</div>
+
+<script src="{{ url_for('static', filename='js/information_model/index.js') }}"></script>
+{% endblock %}

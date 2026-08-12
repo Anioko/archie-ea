@@ -713,6 +713,28 @@ class DataObjectStorage(TenantMixin, db.Model):
         db.Integer, db.ForeignKey("archimate_elements.id"), nullable=False, index=True
     )  # ApplicationComponent
 
+    # The portfolio application, as opposed to its ArchiMate mirror.
+    #
+    # `application_component_id` above is an archimate_elements FK despite its
+    # name, which is genuinely ambiguous: app/application_mgmt/
+    # relationship_add_routes.py assigns an ApplicationComponent primary key to
+    # it. Rather than guess which meaning a given legacy row carries, the
+    # information map writes this column — an unambiguous FK to
+    # application_components — and keeps application_component_id pointing at
+    # that application's ArchiMate element so the existing
+    # archimate_relationship_sync listener still emits the access relationship.
+    # Nullable, because every row written before this column existed has no
+    # answer and inventing one would be fabricating data.
+    application_id = db.Column(
+        db.Integer, db.ForeignKey("application_components.id"), nullable=True, index=True
+    )
+
+    # Which part this application plays for this object, in the BIZBOK sense:
+    # 'system_of_record' (the golden source), 'system_of_entry' (captures it),
+    # 'consumer' (reads it), 'replica' (holds a copy). NULL means nobody has
+    # said — it does not mean "consumer".
+    system_role = db.Column(db.String(30), nullable=True, index=True)
+
     # Storage Details
     is_master_source = db.Column(db.Boolean, default=False)  # Is this the master/golden source?
     storage_type = db.Column(
@@ -736,6 +758,7 @@ class DataObjectStorage(TenantMixin, db.Model):
     application_component = db.relationship(
         "ArchiMateElement", foreign_keys=[application_component_id]
     )
+    application = db.relationship("ApplicationComponent", foreign_keys=[application_id])
 
     def __repr__(self):
         return f"<DataObjectStorage Object:{self.business_object_id} in App:{self.application_component_id}>"

@@ -243,6 +243,11 @@ else:
     # Project Management Models
     from .project_models import *  # noqa - Project, Task, Milestone, ProjectNote, ProjectResource
     from .relationship_tables import *  # noqa - Junction tables for RACI, CRUD, dependencies, application mappings
+
+    # Business information model (BIZBOK information map) — capability x business
+    # object CRUD. Imported after relationship_tables because it sits alongside
+    # ProcessDataCrud and DataObjectStorage conceptually.
+    from .information_model import *  # noqa - CapabilityObjectCrud
     from .software_architecture import *  # noqa - SoftwareModule, DesignPattern, SoftwareDependency
     from .software_quality import *  # noqa - TechnicalDebt, CodeQualityMetrics, RefactoringTracking
     from .solution_deployment import *  # noqa - SolutionTechnologyMapping, SolutionDeploymentArchitecture
