@@ -1,7 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
-{% from 'components/metrics_card.html' import metrics_card %}
 {% from 'components/skeleton.html' import skeleton_table %}
 {% from 'components/empty_state.html' import empty_state %}
+{% from 'macros/page_shell.html' import page_shell, stat_card %}
 
 {% block title %}Applications{% endblock %}
 
@@ -68,26 +68,17 @@
   class="space-y-6"
 >
 
-  {# ─ PAGE HEADER ─ #}
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-    <div>
-      <nav aria-label="Breadcrumb" class="mb-1">
-        <ol class="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <li><a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a></li>
-          <li aria-hidden="true"><i data-lucide="chevron-right" class="h-3 w-3 inline" aria-hidden="true"></i></li>
-          <li class="text-foreground font-medium" aria-current="page">Applications</li>
-        </ol>
-      </nav>
-      <h1 class="text-2xl font-bold tracking-tight text-foreground">Applications</h1>
-      <p class="text-sm text-muted-foreground mt-0.5">Manage your application portfolio across the enterprise.</p>
-    </div>
-    <div class="flex flex-wrap items-center gap-2 shrink-0">
+  {# ─ PAGE HEADER — screen system: one primary action, the rest secondary
+       and wrapping so nothing clips at 1024px (was: six competing buttons,
+       "Vendor Match" clipped off the right edge). ─ #}
+  {% macro _apps_page_actions() %}
+    <div class="flex flex-wrap items-center gap-2" data-testid="page-actions">
       <button type="button" data-testid="btn-import" data-modal-open="application-import-modal"
-        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Action">
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Import applications">
         <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>Import
       </button>
       <button type="button" data-testid="btn-export" @click="exportCSV()"
-        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Export">
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Export applications">
         <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>Export
       </button>
       <a href="{{ url_for('consolidation_list.dashboard') }}" data-testid="btn-consolidation"
@@ -103,19 +94,25 @@
         <i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i>Vendor Match
       </button>
       <button type="button" data-testid="btn-add-application" data-modal-open="modal-create"
-        class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Action">
+        class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Add application">
         <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Add Application
       </button>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(
+       title="Applications",
+       subtitle="Manage your application portfolio across the enterprise.",
+       breadcrumb=[("Dashboard", url_for('main.index')), ("Applications", None)],
+       actions_caller=_apps_page_actions
+  ) }}
 
   {# ─ STATS CARDS ─ #}
   <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" role="region" aria-label="Portfolio statistics">
-    {{ metrics_card(title='Active Portfolio', value=stats.active_portfolio|dash, icon='layout-grid', description='All non-decommissioned applications', class='min-h-[120px]') }}
-    {{ metrics_card(title='Strategic', value=stats.strategic|dash, icon='check-circle', value_class='text-success', description='Strategic investments', class='min-h-[120px]') }}
-    {{ metrics_card(title='Tactical', value=stats.tactical|dash, icon='code-2', value_class='text-primary', description='Tactical / maintain', class='min-h-[120px]') }}
-    {{ metrics_card(title='Sunset/Decom Pipeline', value=stats.sunset_decom_pipeline|dash, icon='archive', value_class='text-warning', description='Sunset or decommission planned', class='min-h-[120px]') }}
-    {{ metrics_card(title='Decommissioned', value=stats.decommissioned|dash, icon='alert-triangle', value_class='text-destructive', description='Retired from the estate', class='min-h-[120px]') }}
+    {{ stat_card(label='Active Portfolio', value=stats.active_portfolio, hint='All non-decommissioned applications', variant='hero') }}
+    {{ stat_card(label='Strategic', value=stats.strategic, hint='Strategic investments') }}
+    {{ stat_card(label='Tactical', value=stats.tactical, hint='Tactical / maintain') }}
+    {{ stat_card(label='Sunset/Decom Pipeline', value=stats.sunset_decom_pipeline, hint='Sunset or decommission planned') }}
+    {{ stat_card(label='Decommissioned', value=stats.decommissioned, hint='Retired from the estate') }}
   </div>
 
   {# ─ DATA QUALITY BANNER ─ #}
@@ -333,7 +330,7 @@
             <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-20">ID</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[180px]">Application</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[120px]">Type</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-10" title="ArchiMate linked">AM</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-10" title="ArchiMate: whether this application has a linked ArchiMate element" aria-label="ArchiMate link status">AM</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[160px]">Lifecycle Status</th>
             {# Hidden until data enrichment — Criticality, Business Owner, Vendor #}
             {#
@@ -367,9 +364,9 @@
             <td class="px-4 py-3"><span class="text-sm text-muted-foreground">{{ app.application_category or '—' }}</span></td>
             <td class="px-4 py-3 text-center">
               {% if app.archimate_element_id %}
-              <span class="inline-block h-2.5 w-2.5 rounded-full bg-primary" title="ArchiMate linked"></span>
+              <span class="inline-block h-2.5 w-2.5 rounded-full bg-primary" title="ArchiMate linked" aria-label="Linked to an ArchiMate element"></span>
               {% else %}
-              <span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/30" title="No ArchiMate link"></span>
+              <span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/30" title="No ArchiMate link" aria-label="Not linked to an ArchiMate element"></span>
               {% endif %}
             </td>
             <td class="px-4 py-3">
