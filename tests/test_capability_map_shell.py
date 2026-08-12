@@ -314,6 +314,41 @@ def test_hierarchy_cache_is_org_scoped_when_caching_is_forced_on(
     assert len(store) >= 2, "expected the org-scoped key_func to produce distinct cache keys"
 
 
+def test_unified_domains_coverage_is_org_scoped(app, db_session, make_org, tenant_ctx):
+    """The sixth cross-tenant instance: ``ApplicationCapabilityMapping`` is
+    not ``TenantMixin`` (see the model), so the ORM injects no tenant filter
+    and ``api_unified_domains`` (the Business-lens default of the Capability
+    Map) must filter it explicitly — mirroring
+    ``_compute_capability_mapping_counts()`` in map_views.py.
+
+    Without the org predicate, ``mapped_count`` is a query across every
+    org's mappings while ``total_capabilities`` is this org's count alone,
+    so ``coverage = mapped_count / total_capabilities`` can exceed 100% and
+    leaks another tenant's mapping volume into the default tab.
+
+    Org A gets 1 mapped capability; org B gets several more. Org A's
+    coverage/mapped_count must reflect only org A's single mapping, not be
+    inflated by org B's.
+    """
+    user_a, org_a = _make_user(db_session, make_org, "unified-domains-a")
+    _seed_capability_with_mappings(db_session, org_a, tenant_ctx, mapped_apps=1)
+
+    user_b, org_b = _make_user(db_session, make_org, "unified-domains-b")
+    for _ in range(4):
+        _seed_capability_with_mappings(db_session, org_b, tenant_ctx, mapped_apps=1)
+
+    client_a = app.test_client()
+    _login(client_a, user_a)
+    resp_a = client_a.get("/capability-map/api/unified/domains")
+    assert resp_a.status_code == 200, resp_a.get_data(as_text=True)[:2000]
+    data_a = resp_a.get_json()
+
+    assert data_a["success"] is True
+    assert data_a["total_capabilities"] == 1, data_a
+    assert data_a["mapped_count"] == 1, data_a
+    assert data_a["coverage"] == 100.0, data_a
+
+
 def test_single_view_switcher_row(app, db_session, make_org, tenant_ctx):
     """The old page had two competing rows of 9+ view-mode switchers — one
     page-link row and one 11-button Alpine tab strip. There must now be

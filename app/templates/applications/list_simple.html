@@ -81,14 +81,18 @@
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Export applications">
         <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>Export
       </button>
+      {% if 'consolidation_list.dashboard' in flask.current_app.view_functions %}
       <a href="{{ url_for('consolidation_list.dashboard') }}" data-testid="btn-consolidation"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layers-2" class="h-4 w-4" aria-hidden="true"></i>Consolidation
       </a>
+      {% endif %}
+      {% if 'solution_design.list_solutions' in flask.current_app.view_functions %}
       <a href="{{ url_for('solution_design.list_solutions') }}" data-testid="btn-design-solution"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="star" class="h-4 w-4" aria-hidden="true"></i>Design Solution
       </a>
+      {% endif %}
       <button type="button" data-testid="btn-match-vendors" @click="openUnifiedMappingModalDiscovery({context:'vendor'})"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Match vendors">
         <i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i>Vendor Match
