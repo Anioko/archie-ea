@@ -4,6 +4,7 @@
 {% from 'components/empty_state.html' import empty_state %}
 {% from 'components/skeleton.html' import skeleton_table %}
 {% from 'components/status_badge.html' import status_badge %}
+{% from 'components/dropdown_menu.html' import dropdown_menu %}
 
 {% block title %}{{ value_stream.name }} — Value Stream{% endblock %}
 
@@ -27,6 +28,25 @@
     ) }}
 
     <div class="p-6 space-y-6">
+        {# Export the stream as a deliverable. PDF needs native libraries that
+           are absent on some deployments; that link answers 503 with the reason
+           and the other three keep working. #}
+        <div class="flex justify-end">
+            {{ dropdown_menu(
+                id='value-stream-export-menu',
+                trigger_text='Export',
+                trigger_icon='download',
+                trigger_variant='primary',
+                menu_width='w-56',
+                items=[
+                    {'text': 'Report as PDF', 'icon': 'file-type-2', 'href': url_for('value_stream.value_stream_report', value_stream_id=value_stream.id, fmt='pdf')},
+                    {'text': 'Report as Word', 'icon': 'file-text', 'href': url_for('value_stream.value_stream_report', value_stream_id=value_stream.id, fmt='docx')},
+                    {'text': 'Report as Excel', 'icon': 'table', 'href': url_for('value_stream.value_stream_report', value_stream_id=value_stream.id, fmt='xlsx')},
+                    {'text': 'Report as a page', 'icon': 'link', 'href': url_for('value_stream.value_stream_report', value_stream_id=value_stream.id, fmt='html')}
+                ]
+            ) }}
+        </div>
+
         <!-- Value Stream metadata -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="rounded-xl border border-input bg-background p-4">

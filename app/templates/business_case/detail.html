@@ -1,6 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/modal.html' import modal %}
+{% from 'components/dropdown_menu.html' import dropdown_menu %}
 {% import 'components/card.html' as card %}
 
 {% block title %}{{ business_case.title or 'Business Case' }}{% endblock %}
@@ -51,6 +52,25 @@
   ) }}
 
   <div class="p-6 space-y-6">
+
+    {# Export the case as the deliverable it already is. PDF needs native
+       libraries that are absent on some deployments; that link answers 503 with
+       the reason and the other three keep working. #}
+    <div class="flex justify-end">
+      {{ dropdown_menu(
+          id='business-case-export-menu',
+          trigger_text='Export',
+          trigger_icon='download',
+          trigger_variant='primary',
+          menu_width='w-56',
+          items=[
+              {'text': 'Report as PDF', 'icon': 'file-type-2', 'href': url_for('business_case.business_case_report', business_case_id=business_case.id, fmt='pdf')},
+              {'text': 'Report as Word', 'icon': 'file-text', 'href': url_for('business_case.business_case_report', business_case_id=business_case.id, fmt='docx')},
+              {'text': 'Report as Excel', 'icon': 'table', 'href': url_for('business_case.business_case_report', business_case_id=business_case.id, fmt='xlsx')},
+              {'text': 'Report as a page', 'icon': 'link', 'href': url_for('business_case.business_case_report', business_case_id=business_case.id, fmt='html')}
+          ]
+      ) }}
+    </div>
 
     {# ── Status + Links panel ── #}
     <div class="rounded-lg border border-border bg-card p-4 space-y-4" data-testid="bc-meta-panel">
