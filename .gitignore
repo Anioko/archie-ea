@@ -22,8 +22,9 @@ package-lock.json
 app/static/styles/output.css
 
 # Tailwind CSS standalone CLI binary (download from GitHub releases)
-scripts/bin/tailwindcss.exe
-scripts/bin/tailwindcss
+# Downloaded tool binaries. Never commit one: they are platform-specific, large,
+# and a committed binary is the one file nobody re-reads before trusting.
+scripts/bin/
 
 # Tailwind CSS built output. The compiled tailwind-output.css IS committed so a
 # fresh clone / `docker compose up` renders styled without a Node toolchain or a
