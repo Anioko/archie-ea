@@ -90,6 +90,42 @@ def _seed_capabilities(db_session, org, count):
     db_session.commit()
 
 
+def _seed_capability_with_mappings(db_session, org, mapped_apps=0):
+    """One root BusinessCapability, plus ``mapped_apps`` distinct
+    ApplicationComponents each mapped to it via ApplicationCapabilityMapping
+    — for testing the real per-capability mapping_count wired into
+    map_views._compute_capability_mapping_counts(). Returns the capability."""
+    from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.business_capabilities import BusinessCapability
+
+    cap = BusinessCapability(
+        name=f"Mapped Capability {uuid.uuid4().hex[:8]}",
+        level=1,
+        business_domain="Operations",
+        organization_id=org.id,
+    )
+    db_session.add(cap)
+    db_session.flush()
+
+    for _ in range(mapped_apps):
+        app_component = ApplicationComponent(
+            name=f"App {uuid.uuid4().hex[:8]}",
+            organization_id=org.id,
+        )
+        db_session.add(app_component)
+        db_session.flush()
+        db_session.add(
+            ApplicationCapabilityMapping(
+                organization_id=org.id,
+                application_component_id=app_component.id,
+                business_capability_id=cap.id,
+            )
+        )
+    db_session.commit()
+    return cap
+
+
 def _get(app, db_session, make_org, label, path, seed_count=7):
     user_id, org = _make_user(db_session, make_org, label)
     _seed_capabilities(db_session, org, seed_count)
@@ -149,6 +185,64 @@ def test_legend_exists_for_gap_dot_indicators(app, db_session, make_org):
         app, db_session, make_org, "legend-hierarchy", "/capability-map/hierarchy"
     )
     assert 'data-testid="capability-legend"' in hierarchy_html
+
+
+def test_zero_real_mappings_renders_destructive_tier_not_hidden(app, db_session, make_org):
+    """A capability with zero *real* app mappings still gets a computed
+    answer (mapping_count: 0) from the org-scoped grouped query, not a
+    null — the query ran and genuinely found nothing. That is legitimately
+    the destructive ("no apps mapped") tier, distinct from "not computed"
+    (covered by test_query_failure_hides_dots_and_legend below). The legend
+    must be present, since real (if all-zero) data was computed."""
+    user_id, org = _make_user(db_session, make_org, "zero-real")
+    _seed_capability_with_mappings(db_session, org, mapped_apps=0)
+
+    client = app.test_client()
+    _login(client, user_id)
+    html = client.get("/capability-map/hierarchy").get_data(as_text=True)
+
+    assert '"mapping_count": 0' in html
+    assert 'data-testid="capability-legend"' in html
+    assert "Coverage indicators could not be loaded" not in html
+
+
+def test_mapped_capability_reports_real_count(app, db_session, make_org):
+    """A capability with 1 real app mapping must embed mapping_count: 1
+    (the amber/1-2-apps tier per the legend), sourced from
+    _compute_capability_mapping_counts()'s single grouped query, not a
+    fabricated value."""
+    user_id, org = _make_user(db_session, make_org, "one-mapping")
+    _seed_capability_with_mappings(db_session, org, mapped_apps=1)
+
+    client = app.test_client()
+    _login(client, user_id)
+    html = client.get("/capability-map/hierarchy").get_data(as_text=True)
+
+    assert '"mapping_count": 1' in html
+    assert 'data-testid="capability-legend"' in html
+
+
+def test_query_failure_hides_dots_and_legend(app, db_session, make_org, monkeypatch):
+    """When the mapping-count query cannot be computed at all (simulated
+    here — no tenant context / a genuine query failure in production),
+    every capability's mapping_count must be null (not defaulted to 0,
+    which would render a confidently-wrong red dot), and the legend must
+    not render since it would be documenting dots that don't exist."""
+    import app.modules.capabilities.routes.map_views as map_views
+
+    monkeypatch.setattr(map_views, "_compute_capability_mapping_counts", lambda: None)
+
+    user_id, org = _make_user(db_session, make_org, "query-failure")
+    _seed_capability_with_mappings(db_session, org, mapped_apps=2)
+
+    client = app.test_client()
+    _login(client, user_id)
+    html = client.get("/capability-map/hierarchy").get_data(as_text=True)
+
+    assert '"mapping_count": null' in html
+    assert '"mapping_count": 2' not in html
+    assert 'data-testid="capability-legend"' not in html
+    assert "Coverage indicators could not be loaded" in html
 
 
 def test_single_view_switcher_row(app, db_session, make_org):
