@@ -113,3 +113,23 @@ def test_completeness_banner_present_for_sparse_app(app, db_session, make_org):
     )
     assert "Data completeness" in html
     assert "AI analysis quality is low" in html
+
+
+def test_contract_expiry_date_renders_200(app, db_session, make_org):
+    """Shell-overhaul Wave 2, Task 5 (post-Task-2 review finding): the
+    contract-expiry warning block computed
+    ``app.contract_expiry_date - namespace(d=none).d`` -- subtracting None
+    from a date -- which raised and 500'd this page for any application
+    with contract_expiry_date set. An application with that field set must
+    render 200 and show the expiry warning banner."""
+    import datetime
+
+    html, app_obj = _get_detail_html(
+        app,
+        db_session,
+        make_org,
+        "contract-expiry",
+        contract_expiry_date=datetime.date.today() + datetime.timedelta(days=10),
+    )
+    assert "Contract Expiry" in html
+    assert app_obj.contract_expiry_date.strftime("%d %b %Y") in html

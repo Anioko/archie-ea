@@ -23,6 +23,9 @@ import re
 import secrets
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
+
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE_DIR = REPO_ROOT / "docs" / "superpowers" / "evidence" / "wave1"
@@ -70,6 +73,15 @@ def _load_dotenv(env_path: Path) -> dict:
         key, _, value = line.partition("=")
         values[key.strip()] = value.strip()
     return values
+
+
+def _is_local_base(base_url: str) -> bool:
+    """True only for a localhost/127.0.0.1/::1 --base -- seeding a fixture
+    org+user is a write against whatever database the target server is
+    backed by, and this harness must never do that against a non-local
+    (i.e. possibly production or shared staging) host by habit."""
+    host = urlsplit(base_url).hostname or ""
+    return host.lower() in LOCAL_HOSTS
 
 
 def _route_slug(route: str) -> str:
@@ -256,37 +268,45 @@ def main() -> int:
         browser.close()
 
         # --- Guided-mode (sparse org) dashboard capture: fresh login as the seeded user ---
-        print("Seeding sparse-org guided-mode user ...")
-        sys.path.insert(0, str(REPO_ROOT))
-        import manage as app_module  # noqa: E402  (import after sys.path fixup, deliberate)
+        if not _is_local_base(base_url):
+            print(
+                f"REFUSED: --base '{base_url}' is not localhost/127.0.0.1/::1 -- "
+                "skipping guided-mode fixture seeding (seed_sparse_org writes an "
+                "Organization + User row) and the guided-mode dashboard capture. "
+                "Re-run against a local dev server to capture those screenshots."
+            )
+        else:
+            print("Seeding sparse-org guided-mode user ...")
+            sys.path.insert(0, str(REPO_ROOT))
+            import manage as app_module  # noqa: E402  (import after sys.path fixup, deliberate)
 
-        guided_email, guided_password = seed_sparse_org(app_module)
+            guided_email, guided_password = seed_sparse_org(app_module)
 
-        browser2 = p.chromium.launch()
-        context2 = browser2.new_context()
-        page2 = context2.new_page()
+            browser2 = p.chromium.launch()
+            context2 = browser2.new_context()
+            page2 = context2.new_page()
 
-        def on_console2(msg):
-            if msg.type == "error":
-                console_errors.append(f"{page2.url} :: {msg.text}")
+            def on_console2(msg):
+                if msg.type == "error":
+                    console_errors.append(f"{page2.url} :: {msg.text}")
 
-        page2.on("console", on_console2)
+            page2.on("console", on_console2)
 
-        print(f"Logging in as guided-mode user {guided_email} ...")
-        login(page2, base_url, guided_email, guided_password)
+            print(f"Logging in as guided-mode user {guided_email} ...")
+            login(page2, base_url, guided_email, guided_password)
 
-        print("Capturing guided-mode dashboard ...")
-        for width in WIDTHS:
-            page2.set_viewport_size({"width": width, "height": VIEWPORT_HEIGHT})
-            page2.goto(f"{base_url}/dashboard/overview", wait_until="networkidle")
-            dismiss_onboarding_if_present(page2)
-            out_path = EVIDENCE_DIR / f"dashboard-guided-{width}.png"
-            page2.screenshot(path=str(out_path), full_page=True)
-            produced_files.append(out_path)
-            print(f"  captured {out_path.relative_to(REPO_ROOT)}")
+            print("Capturing guided-mode dashboard ...")
+            for width in WIDTHS:
+                page2.set_viewport_size({"width": width, "height": VIEWPORT_HEIGHT})
+                page2.goto(f"{base_url}/dashboard/overview", wait_until="networkidle")
+                dismiss_onboarding_if_present(page2)
+                out_path = EVIDENCE_DIR / f"dashboard-guided-{width}.png"
+                page2.screenshot(path=str(out_path), full_page=True)
+                produced_files.append(out_path)
+                print(f"  captured {out_path.relative_to(REPO_ROOT)}")
 
-        context2.close()
-        browser2.close()
+            context2.close()
+            browser2.close()
 
     print(f"\nTotal screenshots produced: {len(produced_files)}")
     for f in produced_files:
