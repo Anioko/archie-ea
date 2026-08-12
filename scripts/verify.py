@@ -579,6 +579,27 @@ def gate_raw_sql_tenancy(baseline: int) -> Result:
     return Result("raw-sql-tenancy", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_sidebar_links(baseline: int) -> Result:
+    """Persona sidebar link-count budget (shell-overhaul Wave 1, Task 3).
+
+    Renders components/admin_sidebar.html once per role (see
+    scripts/check_sidebar_links.py) and measures the worst-case rendered
+    `<a ` count. SIDEBAR_LINK_BUDGET in app/utils/role_access.py is 25; this
+    gate is the thing that actually renders the template and catches a future
+    edit — to role_access.py's zones, or to the template's guard logic —
+    that would push a role over budget, rather than trusting the data alone.
+    """
+    proc = _run([sys.executable, "scripts/check_sidebar_links.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("sidebar-links", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count > baseline:
+        detail = _run([sys.executable, "scripts/check_sidebar_links.py"]).stdout[-1500:]
+    return Result("sidebar-links", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_deployed_deps() -> Result:
     """Installed packages satisfy the floors requirements.txt pins. Gated at ZERO.
 
@@ -877,6 +898,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_raw_sql_tenancy(baseline["raw_sql_tenancy"]),
              remediation="scope the query, or append 'tenancy-ok: <reason>'",
              tags=["static", "security"]),
+        Gate("sidebar-links", "no persona sidebar exceeds its link budget", "ratchet",
+             lambda: gate_sidebar_links(baseline.get("sidebar_links", 25)),
+             remediation="run scripts/check_sidebar_links.py; trim the offending "
+                         "role's zones in app/utils/role_access.py",
+             tags=["static", "ui"]),
         Gate("template-syntax", "every Jinja template parses", "zero",
              gate_template_syntax,
              remediation="see the reported line; Jinja does not nest {# #} comments",

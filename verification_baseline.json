@@ -9,6 +9,7 @@
     "air_gap": 0,
     "raw_sql_tenancy": 0,
     "broken_surfaces": 0,
-    "fetch_guards": 0
+    "fetch_guards": 0,
+    "sidebar_links": 25
   }
 }
