@@ -46,8 +46,11 @@
             <i data-lucide="search" class="h-5 w-5"></i>
         </button>
 
-        <!-- LLM Selector -->
-        {% with selector_id='llm-selector-navbar' %}{% include 'components/llm_selector.html' %}{% endwith %}
+        {# LLM/model choice lives in AI Chat's own Settings (app/templates/ai_chat/index.html
+           #model-selector), not in the global header — every page showed a provider
+           selector unrelated to what that page displays, and its options ("OpenAI (GPT-4,
+           GPT-3.5)", "DeepSeek", ...) reflected the same /api/v1/llm/available registry AI
+           Chat already reads, so removing it here loses no capability. #}
 
         {% if resolved_page_guide_context.enabled %}
         <button id="page-guide-trigger"
