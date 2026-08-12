@@ -43,7 +43,28 @@ def _login(client, user_id):
             delattr(g, cached)
 
 
-def _make_user(db_session, make_org, label, enterprise_role="platform_admin"):
+def _grant_admin(db_session, user):
+    """Attach a Role whose permissions bitfield includes Permission.ADMINISTER.
+
+    User.is_admin() (app/models/user.py) checks self.role.permissions, NOT the
+    is_org_admin/is_platform_admin booleans -- setting those alone leaves
+    is_admin() False and the "Invite your team" guided step never renders.
+    Mirrors tests/test_ba_tenant_and_authz.py::_grant_admin.
+    """
+    from app.models.user import Permission, Role
+
+    role = Role.query.filter(Role.name.in_(("Administrator", "Admin", "admin"))).first()
+    if role is None:
+        role = Role(name="Administrator", permissions=Permission.ADMINISTER)
+        db_session.add(role)
+        db_session.flush()
+    elif role.permissions is None or (role.permissions & Permission.ADMINISTER) != Permission.ADMINISTER:
+        role.permissions = Permission.ADMINISTER
+    user.role = role
+    db_session.flush()
+
+
+def _make_user(db_session, make_org, label, enterprise_role="platform_admin", admin=True):
     from app.models.user import User
 
     org = make_org(f"dash-{label}")
@@ -59,6 +80,8 @@ def _make_user(db_session, make_org, label, enterprise_role="platform_admin"):
     )
     db_session.add(user)
     db_session.flush()
+    if admin:
+        _grant_admin(db_session, user)
     return user, org
 
 
@@ -151,3 +174,150 @@ def test_established_org_gets_data_mode(app, db_session, make_org):
 
     assert 'data-testid="health-score-value"' in html
     assert 'data-testid="guided-setup"' not in html
+
+
+def test_solution_pipeline_concentrated_in_one_phase_collapses_to_sentence(
+    app, db_session, make_org
+):
+    """A data-mode org whose solutions are all bunched in one ADM phase gets
+    the one-sentence fallback (spec 3's own example: "Nothing past Vision yet
+    — 70 solutions are in phase A"), not 7 zero-width bars plus one full one."""
+    from sqlalchemy import insert
+
+    from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.solution_models import Solution
+
+    user, org = _make_user(db_session, make_org, "concentrated")
+
+    from flask import g
+
+    g.current_org_id = org.id
+
+    apps = []
+    for i in range(6):
+        app_component = ApplicationComponent(
+            name=f"Test App {i}-{uuid.uuid4().hex[:6]}",
+            organization_id=org.id,
+        )
+        db_session.add(app_component)
+        apps.append(app_component)
+    db_session.flush()
+
+    cap_name = f"Test Capability {uuid.uuid4().hex[:6]}"
+    elem_id = db_session.execute(
+        insert(ArchiMateElement.__table__).values(
+            name=cap_name, type="Capability", layer="Strategy", organization_id=org.id
+        )
+    ).inserted_primary_key[0]
+    db_session.flush()
+
+    capability = BusinessCapability(
+        name=cap_name, level=1, organization_id=org.id, archimate_element_id=elem_id,
+    )
+    db_session.add(capability)
+    db_session.flush()
+
+    db_session.add(
+        ApplicationCapabilityMapping(
+            application_component_id=apps[0].id,
+            business_capability_id=capability.id,
+            organization_id=org.id,
+        )
+    )
+    db_session.flush()
+
+    for i in range(3):
+        db_session.add(
+            Solution(
+                name=f"Test Solution {i}-{uuid.uuid4().hex[:6]}",
+                organization_id=org.id,
+                adm_phase="A",
+            )
+        )
+    db_session.flush()
+
+    client = app.test_client()
+    _login(client, user.id)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    assert "Nothing past Vision yet" in html
+    assert "3 solutions are in phase A" in html
+    # The 8-row bar chart must not render alongside the sentence.
+    assert 'B: Business' not in html
+
+
+def test_invite_step_ignores_other_orgs_users(app, db_session, make_org):
+    """"Invite your team"'s done-check must be scoped to the current org.
+
+    metrics["users"] (used for the KPI strip) is a GLOBAL count -- User is not
+    TenantMixin, so nothing auto-scopes it. Before the fix, the guided step
+    used that global count directly: a brand-new, single-user org would read
+    the invite step as Done purely because some OTHER org on the platform had
+    more than one user. Org A here has exactly 1 user; org B has 3 and must
+    have zero influence on org A's dashboard.
+    """
+    from app.models.user import User
+
+    user_a, org_a = _make_user(db_session, make_org, "single")
+
+    org_b = make_org("dash-crowded")
+    for i in range(3):
+        crowd_user = User(
+            email=f"dash-crowded-{i}-{uuid.uuid4().hex[:8]}@example.com",
+            first_name="Crowd",
+            last_name="Tester",
+            organization_id=org_b.id,
+            confirmed=True,
+            enterprise_role="platform_admin",
+        )
+        db_session.add(crowd_user)
+    db_session.flush()
+
+    client = app.test_client()
+    _login(client, user_a.id)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    assert 'data-testid="guided-setup"' in html
+    assert "Invite your team" in html
+    # A fresh, single-user org: none of the three guided steps should read
+    # Done -- in particular, not the invite step just because org_b is crowded.
+    assert 'data-lucide="check"' not in html
+
+
+def test_welcome_banner_dismiss_persists_server_side(app, db_session, make_org):
+    """POST /dashboard/api/welcome-dismiss sets User.welcome_banner_dismissed_at;
+    a subsequent GET must render without the banner at all (server-gated, not
+    merely CSS-hidden client-side)."""
+    user, _org = _make_user(db_session, make_org, "dismiss")
+
+    client = app.test_client()
+    _login(client, user.id)
+
+    first = client.get("/dashboard/overview")
+    assert first.status_code == 200
+    first_html = first.get_data(as_text=True)
+    # Not a plain text-substring check: "Welcome to A.R.C.H.I.E." also appears
+    # in admin_base.html's separate role-selection onboarding modal, so pin the
+    # dashboard's own banner via its data-testid instead.
+    assert 'data-testid="welcome-banner"' in first_html
+
+    dismiss_resp = client.post(
+        "/dashboard/api/welcome-dismiss",
+        headers={"X-CSRFToken": "test"},
+    )
+    assert dismiss_resp.status_code == 200, dismiss_resp.get_data(as_text=True)[:1000]
+    assert dismiss_resp.get_json() == {"success": True}
+
+    second = client.get("/dashboard/overview")
+    assert second.status_code == 200
+    second_html = second.get_data(as_text=True)
+    assert 'data-testid="welcome-banner"' not in second_html

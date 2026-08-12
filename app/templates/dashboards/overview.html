@@ -36,23 +36,36 @@
         subtitle="Architecture health, portfolio insights, and actions needed" if mode == 'data' else "Let's get your workspace ready."
     ) }}
 
-    {# ── Welcome — one dismissible line (client-side; no server-side onboarding/
-       dismiss endpoint exists distinct from full-onboarding-complete, which also
-       changes the user's role — grepped, not reusing it). ─────── #}
-    <div x-data="{ show: !(typeof localStorage !== 'undefined' && localStorage.getItem('archie_starthere_dismissed') === '1') }"
+    {# ── Welcome — one dismissible line, persisted server-side per user, once
+       ever (User.welcome_banner_dismissed_at). Deliberately NOT
+       /dashboard/api/onboarding-complete: that endpoint also rewrites
+       enterprise_role, a side effect this plain dismiss click shouldn't carry.
+       Gated server-side (absent from the DOM once dismissed, not CSS-hidden)
+       so a reload never flashes it back. ─────── #}
+    {% if not current_user.welcome_banner_dismissed_at %}
+    <div x-data="{ show: true, dismiss() {
+                this.show = false;
+                const _f = (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
+                _f('/dashboard/api/welcome-dismiss', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+                }).catch(() => { /* swallow-ok: best-effort persist; the banner is already hidden for this visit and simply reappears next load if the POST failed, which is not worth an error toast */ });
+             } }"
          x-show="show"
+         data-testid="welcome-banner"
          class="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5">
         <p class="text-sm text-foreground min-w-0">
             <span class="font-medium">Welcome to A.R.C.H.I.E.</span>
             <span class="text-muted-foreground"> — <a href="/ai-chat" class="text-primary hover:underline">ask the AI architect</a> anytime, no setup needed.</span>
         </p>
         <button type="button"
-                @click="show = false; try { localStorage.setItem('archie_starthere_dismissed','1'); } catch (e) { /* swallow-ok: localStorage throws in private mode; the banner is already dismissed for this visit and merely reappears next time, which is not worth an error toast */ }"
+                @click="dismiss()"
                 class="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Dismiss welcome message">
             <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
         </button>
     </div>
+    {% endif %}
 
     {% if mode == 'guided' %}
     {# ══════════════════════════════════════════════════════════════════════
@@ -376,9 +389,14 @@
                     {% call card.card_content() %}
                         {# solution_pipeline always has one row per ADM phase A-H (see the
                            route); the defect was drawing all 8 as zero-width bars when the
-                           org simply has no solutions yet -- gate on the total, not list truthiness. #}
+                           org simply has no solutions yet -- gate on the total, not list
+                           truthiness. A second, related defect: a portfolio bunched entirely
+                           in one phase is 7 more zero-width bars plus one full one, which
+                           reads the same way -- collapse that case too (spec 3's own example:
+                           "Nothing past Vision yet — 70 solutions are in phase A"). #}
                         {% set solution_pipeline_total = solution_pipeline|map(attribute='count')|sum if solution_pipeline else 0 %}
-                        {% if solution_pipeline_total > 0 %}
+                        {% set nonzero_phases = solution_pipeline|selectattr('count', 'gt', 0)|list if solution_pipeline else [] %}
+                        {% if solution_pipeline_total > 0 and nonzero_phases|length > 1 %}
                         {% set max_count = solution_pipeline|map(attribute='count')|max or 1 %}
                         <div class="space-y-2">
                             {% for item in solution_pipeline %}
@@ -392,13 +410,20 @@
                             </div>
                             {% endfor %}
                         </div>
-                        {% else %}
+                        {% elif solution_pipeline_total > 0 %}
+                        {# Concentrated in a single ADM phase — one sentence, not 8 bars. #}
+                        {% set concentrated = nonzero_phases[0] %}
+                        {% set phase_letter, phase_name = concentrated.label.split(': ', 1) %}
+                        {{ empty_state(
+                            'workflow',
+                            'Nothing past ' ~ phase_name ~ ' yet',
+                            'All ' ~ solution_pipeline_total ~ ' solution' ~ ('s' if solution_pipeline_total != 1 else '') ~ ' ' ~ ('are' if solution_pipeline_total != 1 else 'is') ~ ' in phase ' ~ phase_letter ~ ' — nothing further yet.'
+                        ) }}
+                        {% elif current_user.enterprise_role in ('solution_architect', 'enterprise_architect', 'platform_admin') %}
                         {# PLT-040: role-aware empty state #}
-                        {% if current_user.enterprise_role in ('solution_architect', 'enterprise_architect', 'platform_admin') %}
-                        <p class="text-sm text-muted-foreground">No solutions yet. <a href="/solutions/" class="text-primary hover:underline">Create your first solution</a>.</p>
+                        {{ empty_state('workflow', 'No solutions yet', 'Blueprint your first initiative to start tracking ADM phase progress.', cta_label='Create your first solution', cta_href='/solutions/') }}
                         {% else %}
-                        <p class="text-sm text-muted-foreground">No solutions in pipeline yet.</p>
-                        {% endif %}
+                        {{ empty_state('workflow', 'No solutions in pipeline yet', None) }}
                         {% endif %}
                     {% endcall %}
                 {% endcall %}
