@@ -221,6 +221,166 @@ def get_all_roles_with_access(section: str) -> List[str]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Persona sidebar zones (shell-overhaul Wave 1)
+#
+# Single source of truth for the server-filtered sidebar: role -> ordered
+# zones -> links. app/templates/components/admin_sidebar.html renders from
+# get_sidebar_zones() only (Task 3) instead of the 1,062-line hand-maintained
+# template that dimmed out-of-role links client-side. Endpoint strings below
+# were resolved by grepping the pre-rewrite admin_sidebar.html for the real
+# url_for(...) target of each spec surface; a few spec-named surfaces
+# (Portfolio, Investment Analysis) have a real registered blueprint endpoint
+# but no existing sidebar link — those are noted in the Task 2 report.
+#
+# Spec: docs/superpowers/specs/2026-08-12-shell-overhaul-design.md section 1.
+
+SIDEBAR_LINK_BUDGET = 25
+
+_ZONE_TITLES = {
+    "home": "Home",
+    "my_work": "My work",
+    "library": "Library",
+    "governance": "Governance",
+    "admin": "Admin",
+}
+
+
+def _zone(zone_key, links):
+    return {"zone": zone_key, "title": _ZONE_TITLES[zone_key], "links": links}
+
+
+def _link(label, endpoint, icon):
+    return {"label": label, "endpoint": endpoint, "icon": icon}
+
+
+_HOME_LINKS = [
+    _link("Dashboard Overview", "dashboard.overview", "layout-dashboard"),
+    _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
+]
+
+_LIBRARY_LINKS = [
+    _link("Applications", "unified_applications.application_list", "list"),
+    _link("Capabilities", "capability_map.index", "map"),
+    _link("Vendors", "unified_applications.vendors", "building"),
+    _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
+]
+
+_GOVERNANCE_LINKS = [
+    _link("ARB Dashboard", "arb.dashboard", "layout-dashboard"),
+    _link("Reviews", "arb.reviews", "shield-check"),
+    _link("Sessions", "arb.sessions", "calendar"),
+]
+
+_ADMIN_LINKS = [
+    _link("Command Center", "admin.index", "layout-dashboard"),
+    _link("Users", "admin.registered_users", "users"),
+    _link("Organizations", "admin.organizations_list", "building-2"),
+    _link("API Settings", "admin.api_settings", "key"),
+    _link("AI Prompts", "solution_prompt_admin.solution_prompts_page", "sparkles"),
+    _link("Governance Gates", "admin.governance_gates", "shield-check"),
+    _link("Import History", "dashboard_pages.import_history", "history"),
+    _link("Seed Management", "admin.seed_management", "database"),
+    _link("Settings", "main.settings", "settings"),
+]
+
+# Per-role "My work" — the persona's primary surface, 3-6 items.
+# SA / EA / CTO membership below is pinned verbatim to the spec's zone table
+# (docs/superpowers/specs/2026-08-12-shell-overhaul-design.md section 1) and
+# asserted exactly by tests/test_sidebar_budgets.py.
+_MY_WORK_LINKS = {
+    ROLE_SOLUTION_ARCHITECT: [
+        _link("Architecture Journey", "architecture_journey.index", "compass"),
+        _link("Solutions", "solution_design.list_solutions", "wrench"),
+        _link("AI Chat", "unified_ai_chat.index", "message-square"),
+        _link("ADM Kanban", "adm_kanban_view.index", "kanban"),
+    ],
+    ROLE_ENTERPRISE_ARCHITECT: [
+        _link("Portfolio", "portfolio.index", "layout-dashboard"),
+        _link("Capability Map", "capability_map.index", "map"),
+        _link("Elements", "archimate_crud.dashboard", "table"),
+        _link("Roadmaps", "main.capability_roadmap", "map"),
+    ],
+    ROLE_CTO: [
+        _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
+        _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
+        _link("Investment Analysis", "architecture.investment_priorities", "target"),
+    ],
+    ROLE_BUSINESS_ARCHITECT: [
+        _link("Capability Map", "capability_map.index", "map"),
+        _link("Value Streams", "value_stream.index", "waypoints"),
+    ],
+    ROLE_PORTFOLIO_MANAGER: [
+        _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
+        _link("Vendors", "unified_applications.vendors", "building"),
+        _link("Applications", "unified_applications.application_list", "list"),
+    ],
+    ROLE_PROCUREMENT: [
+        _link("Vendors", "unified_applications.vendors", "building"),
+        _link("Contracts", "procurement.contracts_list", "file-text"),
+        _link("Renewals", "procurement.renewals_dashboard", "history"),
+        _link("Spend", "procurement.spend_analytics", "bar-chart-3"),
+    ],
+    ROLE_APPLICATION_MANAGER: [
+        _link("Applications", "unified_applications.application_list", "list"),
+        _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
+        _link("Vendors", "unified_applications.vendors", "building"),
+    ],
+    # Not enumerated in the spec's My-work column; ARB member's primary work
+    # is governance review, backed by its own zone below. My work here mirrors
+    # its existing legacy ROLE_SECTION_ACCESS scope (solutions, portfolio).
+    ROLE_ARB_MEMBER: [
+        _link("Solutions", "solution_design.list_solutions", "wrench"),
+        _link("Portfolio", "portfolio.index", "layout-dashboard"),
+    ],
+    # Also not enumerated in the spec; platform_admin gets a working set that
+    # mirrors its legacy full-access scope, distinct from the Admin zone below.
+    ROLE_PLATFORM_ADMIN: [
+        _link("Solutions", "solution_design.list_solutions", "wrench"),
+        _link("Portfolio", "portfolio.index", "layout-dashboard"),
+        _link("Applications", "unified_applications.application_list", "list"),
+    ],
+}
+
+_BOARD_ROLES = {
+    ROLE_ENTERPRISE_ARCHITECT,
+    ROLE_ARB_MEMBER,
+    ROLE_CTO,
+    ROLE_PLATFORM_ADMIN,
+}
+
+
+def _build_zones(role: str) -> List[Dict]:
+    zones = [
+        _zone("home", _HOME_LINKS),
+        _zone("my_work", _MY_WORK_LINKS[role]),
+        _zone("library", _LIBRARY_LINKS),
+    ]
+    if role in _BOARD_ROLES:
+        zones.append(_zone("governance", _GOVERNANCE_LINKS))
+    if role == ROLE_PLATFORM_ADMIN:
+        zones.append(_zone("admin", _ADMIN_LINKS))
+    return zones
+
+
+# role -> ordered zones. Built once at import time; zone dicts are shared
+# (read-only) across roles where content is identical (home/library).
+SIDEBAR_ZONES: Dict[str, List[Dict]] = {
+    role: _build_zones(role) for role in _MY_WORK_LINKS
+}
+
+
+def get_sidebar_zones(user) -> List[Dict]:
+    """Resolve the current user's role and return their ordered sidebar zones.
+
+    Must never raise for the same reason as get_user_role: this renders on
+    every authenticated page. Falls back to the default role's zones for an
+    unrecognized/legacy role value.
+    """
+    role = get_user_role(user)
+    return SIDEBAR_ZONES.get(role, SIDEBAR_ZONES[DEFAULT_ROLE])
+
+
 # Context processor for templates
 def role_access_context_processor():
     """
