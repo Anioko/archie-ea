@@ -1,7 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
-{% from 'components/page_header.html' import page_header %}
 {% from 'components/metrics_card.html' import metrics_card %}
 {% import 'components/card.html' as card %}
+{% from 'macros/page_shell.html' import page_shell, empty_state, section_card %}
 
 {% block title %}Dashboard{% endblock %}
 
@@ -27,49 +27,70 @@
 {% endblock %}
 
 {% block content %}
+{% set role = enterprise_role|default('platform_admin') %}
+{% set mode = dashboard_mode|default('data') %}
 <div class="space-y-6" x-data="{ activeRole: 'overview' }">
 
-    {# ── Start here — first-run guidance (dismissible, client-side) ─────── #}
+    {{ page_shell(
+        title="Dashboard",
+        subtitle="Architecture health, portfolio insights, and actions needed" if mode == 'data' else "Let's get your workspace ready."
+    ) }}
+
+    {# ── Welcome — one dismissible line (client-side; no server-side onboarding/
+       dismiss endpoint exists distinct from full-onboarding-complete, which also
+       changes the user's role — grepped, not reusing it). ─────── #}
     <div x-data="{ show: !(typeof localStorage !== 'undefined' && localStorage.getItem('archie_starthere_dismissed') === '1') }"
          x-show="show"
-         class="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-5">
+         class="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5">
+        <p class="text-sm text-foreground min-w-0">
+            <span class="font-medium">Welcome to A.R.C.H.I.E.</span>
+            <span class="text-muted-foreground"> — <a href="/ai-chat" class="text-primary hover:underline">ask the AI architect</a> anytime, no setup needed.</span>
+        </p>
         <button type="button"
-                @click="show = false; try { localStorage.setItem('archie_starthere_dismissed','1'); } catch (e) { /* swallow-ok: localStorage throws in private mode; the card is already dismissed for this visit and merely reappears next time, which is not worth an error toast */ }"
-                class="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Dismiss getting-started guide">
+                @click="show = false; try { localStorage.setItem('archie_starthere_dismissed','1'); } catch (e) { /* swallow-ok: localStorage throws in private mode; the banner is already dismissed for this visit and merely reappears next time, which is not worth an error toast */ }"
+                class="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Dismiss welcome message">
             <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
         </button>
-        <div class="flex items-start gap-3">
-            <div class="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <i data-lucide="rocket" class="h-5 w-5 text-primary" aria-hidden="true"></i>
-            </div>
-            <div class="min-w-0 pr-6">
-                <h2 class="text-base font-semibold text-foreground">Welcome to A.R.C.H.I.E. — start here</h2>
-                <p class="text-sm text-muted-foreground mt-0.5">A few quick ways to get value in your first few minutes. Dismiss anytime.</p>
-            </div>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-            <a href="/ai-chat" class="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-colors">
-                <span class="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary"><i data-lucide="sparkles" class="h-4 w-4" aria-hidden="true"></i></span>
-                <span class="min-w-0"><span class="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">Ask the AI architect</span><span class="block text-xs text-muted-foreground mt-0.5">Chat about your architecture — no setup needed.</span></span>
-            </a>
-            <a href="/capability-map/" class="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-colors">
-                <span class="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary"><i data-lucide="map" class="h-4 w-4" aria-hidden="true"></i></span>
-                <span class="min-w-0"><span class="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">Explore the capability map</span><span class="block text-xs text-muted-foreground mt-0.5">See the business capability landscape.</span></span>
-            </a>
-            <a href="/solutions/" class="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-colors">
-                <span class="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary"><i data-lucide="wrench" class="h-4 w-4" aria-hidden="true"></i></span>
-                <span class="min-w-0"><span class="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">Design your first solution</span><span class="block text-xs text-muted-foreground mt-0.5">Blueprint an initiative with AI guidance.</span></span>
-            </a>
-            <a href="/applications/" class="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-colors">
-                <span class="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary"><i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i></span>
-                <span class="min-w-0"><span class="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">Bring in your applications</span><span class="block text-xs text-muted-foreground mt-0.5">Build out your portfolio inventory.</span></span>
-            </a>
-        </div>
     </div>
 
-    {# ── PLT-040: Your Workspace — role-based quick-access cards ─────── #}
-    {% set role = enterprise_role|default('platform_admin') %}
+    {% if mode == 'guided' %}
+    {# ══════════════════════════════════════════════════════════════════════
+       GUIDED MODE — sparse org: a setup journey, not a failing report card.
+       ══════════════════════════════════════════════════════════════════════ #}
+    {% call section_card(title="Set up your workspace") %}
+    <div class="space-y-4" data-testid="guided-setup">
+        <p class="text-sm text-muted-foreground max-w-[60ch]">
+            A few steps to get real signal into your dashboards — health score and
+            visualizations appear once your portfolio has data.
+        </p>
+        <ol class="space-y-3">
+            {% for step in guided_steps %}
+            <li class="flex items-start gap-3 rounded-lg border border-border p-4">
+                <span class="mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full {% if step.done %}bg-emerald-500/15 text-emerald-600{% else %}bg-muted text-muted-foreground{% endif %}">
+                    <i data-lucide="{{ 'check' if step.done else 'circle' }}" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-foreground">{{ step.title }}</p>
+                    <p class="text-xs text-muted-foreground mt-0.5">{{ step.description }}</p>
+                </div>
+                <a href="{{ step.href }}" class="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    {{ 'Done' if step.done else 'Start' }} <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i>
+                </a>
+            </li>
+            {% endfor %}
+        </ol>
+    </div>
+    {% endcall %}
+    {% else %}
+    {# ══════════════════════════════════════════════════════════════════════
+       DATA MODE — established org: the data leads.
+       ══════════════════════════════════════════════════════════════════════ #}
+
+    {# ── PLT-040: Your Workspace — role-based quick-access cards. Omitted for
+       platform_admin: those four links (Organizations/Users/API Settings/
+       System Health) duplicate the sidebar's Admin zone verbatim. ─────── #}
+    {% if role != 'platform_admin' %}
     <div class="space-y-3">
         <div class="flex items-center gap-2">
             <i data-lucide="layout-grid" class="h-4 w-4 text-primary" aria-hidden="true"></i>
@@ -113,12 +134,7 @@
                     ('git-merge', 'Application Rationalization', 'Rationalize the application portfolio', '/applications/rationalization'),
                 ] %}
             {% else %}
-                {% set cards = [
-                    ('building-2', 'Organizations', 'Manage tenant organizations', '/admin/organizations'),
-                    ('users', 'Users', 'Manage platform users', '/admin/users'),
-                    ('key', 'API Settings', 'Configure API keys', '/admin/api-settings'),
-                    ('heart-pulse', 'System Health', 'Platform health status', '/dashboard/health'),
-                ] %}
+                {% set cards = [] %}
             {% endif %}
             {% for icon, title, desc, href in cards %}
             <a href="{{ href }}"
@@ -136,22 +152,17 @@
             {% endfor %}
         </div>
     </div>
+    {% endif %}
 
-    {# ── Page Header + Persona Tabs ────────────────────────────────────── #}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-            <p class="text-sm text-muted-foreground mt-0.5">Architecture health, portfolio insights, and actions needed</p>
-        </div>
-        <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1">
-            {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('architect', 'Architect'), ('business', 'Business')] %}
-            <button @click="activeRole = '{{ role_key }}'"
-                    :class="activeRole === '{{ role_key }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-                    class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">
-                {{ role_label }}
-            </button>
-            {% endfor %}
-        </div>
+    {# ── Persona Tabs ────────────────────────────────────── #}
+    <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 w-fit">
+        {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('architect', 'Architect'), ('business', 'Business')] %}
+        <button @click="activeRole = '{{ role_key }}'"
+                :class="activeRole === '{{ role_key }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">
+            {{ role_label }}
+        </button>
+        {% endfor %}
     </div>
 
     {# ══════════════════════════════════════════════════════════════════════
@@ -228,85 +239,28 @@
                 {% endcall %}
             {% endcall %}
 
-            {# ── BIZBOK: Mini Layered Viewpoint — cross-layer element health ──── #}
-            {# Loader retries until the renderer stack (ComposerRenderer + JointJS) is
-               ready; if it never becomes ready, the panel shows an honest summary
-               instead of a blank box. Never fail silently on an executive dashboard. #}
-            <div x-data="{
-                    diagramState: 'loading',
-                    elementCount: 0,
-                    async loadDiagram() {
-                        let d = null;
-                        let fetchFailed = false;
-                        try {
-                            const resp = await fetch('/api/archimate/viewpoints/layered/diagram?limit=20');
-                            d = await resp.json();
-                        } catch (e) {
-                            console.error('layered diagram fetch failed', e);
-                            fetchFailed = true;
-                        }
-                        if (fetchFailed) {
-                            this.diagramState = 'error';
-                            return;
-                        }
-                        if (!d || !d.success || !d.elements || !d.elements.length) {
-                            this.diagramState = 'empty';
-                            return;
-                        }
-                        this.elementCount = d.count || d.elements.length;
-                        // With no relationships the layered diagram lays out as
-                        // disconnected nodes and reads as a blank canvas; the
-                        // element-count summary is a cleaner, intentional state.
-                        if (!d.relationships || !d.relationships.length) {
-                            this.diagramState = 'fallback';
-                            return;
-                        }
-                        for (let attempt = 0; attempt < 20; attempt++) {
-                            if (typeof ComposerRenderer !== 'undefined' && window.joint && window.joint.dia) {
-                                try {
-                                    const el = document.getElementById('dashboard-layered-diagram');
-                                    const r = ComposerRenderer.create(el, {mode:'view', width:'100%', height:200});
-                                    r.loadElements(d.elements, d.relationships || []);
-                                    r.fitToContent();
-                                    this.diagramState = 'ready';
-                                    return;
-                                } catch (e) {
-                                    console.error('layered diagram render failed', e);
-                                    break;
-                                }
-                            }
-                            await new Promise(res => setTimeout(res, 250));
-                        }
-                        this.diagramState = 'fallback';
-                    }
-                 }"
-                 x-intersect.once="loadDiagram()">
-                <div class="rounded-xl border border-border bg-card overflow-hidden">
-                    <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
-                        <span class="text-xs font-medium text-muted-foreground">Architecture Overview — Layered Viewpoint</span>
-                        <a href="/archimate/composer" class="text-[10px] text-primary hover:underline">Open Composer →</a>
-                    </div>
-                    <div id="dashboard-layered-diagram" class="w-full" x-show="diagramState === 'ready' || diagramState === 'loading'" style="min-height:200px;"></div>
-                    <div x-cloak x-show="diagramState === 'fallback'" class="flex flex-col items-center justify-center gap-3 py-12">
-                        <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                            <i data-lucide="network" class="h-6 w-6"></i>
-                        </span>
-                        <p class="text-sm text-foreground font-medium">
-                            {{ '{:,}'.format(nav_stats.elements) if nav_stats and nav_stats.elements else 'Your' }} architecture elements modelled across all layers
+            {# ── Architecture Overview — Layered Viewpoint ───────────────────────
+               Was a live ComposerRenderer/JointJS render in view mode: the same
+               renderer the interactive composer uses, retaining its default
+               selection-handle chrome (there is no separate static/pre-rendered
+               preview mechanism — grepped api/archimate/viewpoints/layered — so
+               per the Task 5 brief this becomes real counts + a link, not a
+               thumbnail. #}
+            {% call section_card() %}
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-sm font-semibold text-foreground">Architecture Overview — Layered Viewpoint</h2>
+                        <p class="text-xs text-muted-foreground mt-1">
+                            {{ '{:,}'.format(nav_stats.elements) if nav_stats and nav_stats.elements else '0' }} elements ·
+                            {{ '{:,}'.format(nav_stats.relationships) if nav_stats and nav_stats.relationships else '0' }} relationships across all ArchiMate layers
                         </p>
-                        <a href="/archimate/composer"
-                           class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-                            <i data-lucide="git-fork" class="h-3.5 w-3.5"></i> Explore the interactive model
-                        </a>
                     </div>
-                    <div x-cloak x-show="diagramState === 'empty'" class="flex items-center justify-center py-10">
-                        <p class="text-sm text-muted-foreground">No ArchiMate elements to display yet.</p>
-                    </div>
-                    <div x-cloak x-show="diagramState === 'error'" class="flex items-center justify-center py-10">
-                        <p class="text-sm text-destructive">Could not load the diagram. Please try again.</p>
-                    </div>
+                    <a href="/archimate/composer"
+                       class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                        Open Composer <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </a>
                 </div>
-            </div>
+            {% endcall %}
 
             {# ── KPI Strip (4-up) ────────────────────────────────────────────── #}
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -420,7 +374,11 @@
                         {% call card.card_title() %}Solution Pipeline{% endcall %}
                     {% endcall %}
                     {% call card.card_content() %}
-                        {% if solution_pipeline %}
+                        {# solution_pipeline always has one row per ADM phase A-H (see the
+                           route); the defect was drawing all 8 as zero-width bars when the
+                           org simply has no solutions yet -- gate on the total, not list truthiness. #}
+                        {% set solution_pipeline_total = solution_pipeline|map(attribute='count')|sum if solution_pipeline else 0 %}
+                        {% if solution_pipeline_total > 0 %}
                         {% set max_count = solution_pipeline|map(attribute='count')|max or 1 %}
                         <div class="space-y-2">
                             {% for item in solution_pipeline %}
@@ -783,6 +741,7 @@
             {% endcall %}
         </div>
     </div>
+    {% endif %}{# mode == 'guided' / 'data' #}
 
 </div>
 {% endblock %}

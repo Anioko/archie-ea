@@ -73,6 +73,7 @@ def overview():
     # Navigation hub stats
     nav_stats = {
         "elements": 0,
+        "relationships": 0,
         "consolidation": 0,
         "solutions": 0,
         "capabilities": 0,
@@ -82,6 +83,15 @@ def overview():
 
         nav_stats["elements"] = (
             db.session.query(db.func.count(ArchiMateElement.id)).scalar() or 0
+        )
+    except Exception:
+        db.session.rollback()
+
+    try:
+        from app.models.archimate_core import ArchiMateRelationship
+
+        nav_stats["relationships"] = (
+            db.session.query(db.func.count(ArchiMateRelationship.id)).scalar() or 0
         )
     except Exception:
         db.session.rollback()
@@ -535,6 +545,46 @@ def overview():
     # PLT-040: Role-based workspace cards
     enterprise_role = getattr(current_user, "enterprise_role", "platform_admin")
 
+    # Dashboard mode (shell-wave-1 Task 5): guided setup for a sparse org vs. the
+    # data-led view once there is something to show. Reuses counts already fetched
+    # above — no new queries. capability_mapping_count sums the per-L1-capability
+    # ApplicationCapabilityMapping counts collected while building capability_health.
+    capability_mapping_count = sum(c.get("app_count", 0) for c in capability_health)
+    applications_count = metrics.get("applications") or 0
+    dashboard_mode = (
+        "guided" if applications_count < 5 and capability_mapping_count == 0 else "data"
+    )
+
+    guided_steps = []
+    if dashboard_mode == "guided":
+        guided_steps = [
+            {
+                "title": "Import applications",
+                "description": "Bring your application portfolio into Archie.",
+                "href": "/applications/",
+                "done": applications_count > 0,
+            },
+            {
+                "title": "Map capabilities",
+                "description": "Connect applications to the capabilities they support.",
+                "href": "/capability-map/",
+                "done": capability_mapping_count > 0,
+            },
+        ]
+        try:
+            _can_invite = bool(current_user.is_admin())
+        except Exception:
+            _can_invite = False
+        if _can_invite:
+            guided_steps.append(
+                {
+                    "title": "Invite your team",
+                    "description": "Bring in the colleagues who'll use Archie with you.",
+                    "href": "/admin/users",
+                    "done": (metrics.get("users") or 0) > 1,
+                }
+            )
+
     # PROG-019: AI-governance alerts — cheap read of the latest EA briefing only
     # (never re-runs the expensive stewardship review on a dashboard load).
     governance_alerts = None
@@ -569,6 +619,9 @@ def overview():
         enterprise_role=enterprise_role,
         data_coverage=data_coverage,
         governance_alerts=governance_alerts,
+        dashboard_mode=dashboard_mode,
+        guided_steps=guided_steps,
+        capability_mapping_count=capability_mapping_count,
     )
 
 
