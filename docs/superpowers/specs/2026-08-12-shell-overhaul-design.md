@@ -32,7 +32,7 @@ Saint-Gobain's evaluation — calmer than a Big-4 deliverable, honest as a syste
 | Zone | Content | Who |
 |---|---|---|
 | Home | persona dashboard, Health Scorecard | all |
-| My work | persona's primary surface, 3–6 items (SA: Architecture Journey, Solutions, AI Chat, ADM Kanban · EA: Portfolio, Capability Map, Elements, Roadmaps · CTO: Health, Rationalization, Investment · Business Architect: Capability Map, Value Streams · Portfolio Mgr: Rationalization, Vendors, Applications · Procurement: Vendors, Contracts, Renewals, Spend · App Mgr: Applications, Rationalization, Vendors) | per role |
+| My work | persona's primary surface, 3–7 items (SA: Architecture Journey, Solutions, Programmes, AI Chat, ADM Kanban · EA: Portfolio, Capability Map, Elements, ArchiMate Composer, Traceability, Roadmaps · CTO: Health, Rationalization, Investment · Business Architect: Capability Map, Value Streams · Portfolio Mgr: Rationalization, Vendors, Applications · Procurement: Overview, Vendors, Contracts, Renewals, Spend, Licences, Compliance · App Mgr: Applications, Rationalization, Vendors) | per role |
 | Library | Applications, Capabilities, Vendors, ArchiMate Elements | all |
 | Governance | ARB dashboard, Reviews, Sessions | roles on the board (EA, ARB member, CTO, admin) |
 | Admin | Command Center + admin pages | platform_admin |
@@ -40,8 +40,11 @@ Saint-Gobain's evaluation — calmer than a Big-4 deliverable, honest as a syste
 - Single source of truth: `app/utils/role_access.py` (role → zone → links). The sidebar template
   (`app/templates/components/admin_sidebar.html`) renders from that structure only — no
   hand-maintained parallel lists. `_bootstrap/context_processors.py` exposes it.
-- The long tail: Ctrl-K global search (kept as-is) + one new "All modules" directory page
-  (flat, grouped, searchable — every current route reachable).
+- The long tail: Ctrl-K global search (kept as-is) + one new "All modules" directory page at
+  `/modules` (grouped, view_functions-guarded; the union of all roles' zones plus a curated
+  "More tools" section for surfaces outside every zone). Built in Wave 1, BEFORE the sidebar
+  diet ships — the diet's invariant is "nothing becomes unreachable", and the directory page
+  is what makes that true. Linked as the last Library item for every role.
 - Every cross-module link keeps the `view_functions` guard (CLAUDE.md blueprint rule).
 - **New verify.py ratchet `sidebar-links`**: renders the sidebar per role in a request context,
   counts visible links, fails if any role exceeds its budget (25).
