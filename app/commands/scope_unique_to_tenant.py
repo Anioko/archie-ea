@@ -40,7 +40,10 @@ from flask.cli import with_appcontext
 from sqlalchemy import MetaData, Table, func, select, text
 
 from app import db
-from app.models.tenant_unique_registry import SCOPE_PER_TENANT
+from app.models.tenant_unique_registry import (
+    SCOPE_PER_TENANT,
+    tenant_unique_index_name,
+)
 
 
 _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -114,6 +117,10 @@ def scope_unique_to_tenant(dry_run, only_table):
     """Swap global unique constraints for per-organisation ones."""
     conn = db.session.connection()
     scoped = skipped = absent = 0
+    # Buffered so a table's steps are only reported after its transaction
+    # commits. Echoing as each statement ran told the operator a change had
+    # been applied that a later failure then rolled back.
+    applied: list[str] = []
 
     for table, column in SCOPE_PER_TENANT:
         if only_table and table != only_table:
@@ -125,7 +132,12 @@ def scope_unique_to_tenant(dry_run, only_table):
             absent += 1
             continue
 
-        tenant_index = f"uq_{table}_org_{column}"
+        # Derived through the same helper the models use. Built inline here it
+        # would exceed PostgreSQL's 63-byte identifier limit for the longest
+        # table, Postgres would truncate what it created, and the
+        # already_unique_per_tenant check below would then never match the
+        # index it had just made — re-running the create on every boot.
+        tenant_index = tenant_unique_index_name(table, column)
         legacy_index = f"ix_{table}_{column}"
         legacy_constraint = f"{table}_{column}_key"
 
@@ -192,12 +204,35 @@ def scope_unique_to_tenant(dry_run, only_table):
             scoped += 1
             continue
 
-        for ddl, label in steps:
-            try:
-                conn.execute(text(ddl))
-                click.echo(f"  + {table}.{column}: {label}")
-            except Exception as exc:  # noqa: BLE001 - report and continue; steps are idempotent
-                click.echo(f"  ! {table}.{column}: {label} skipped ({str(exc)[:110]})")
+        # One transaction per table, committed before moving on.
+        #
+        # These steps were previously wrapped in try/except inside a single
+        # transaction spanning all 24 tables, on the reasoning that each step is
+        # idempotent so a failure could be reported and skipped. That is not how
+        # PostgreSQL behaves: one failed statement aborts the whole transaction,
+        # so every later step AND every later table fails with
+        # InFailedSqlTransaction, and the final commit raises — discarding the
+        # tables that had genuinely succeeded, after their "+" lines had already
+        # told the operator they were applied. It also held index locks on all
+        # 24 tables until the end.
+        failed = None
+        try:
+            with db.session.begin_nested():
+                for ddl, label in steps:
+                    conn.execute(text(ddl))
+                    applied.append(f"  + {table}.{column}: {label}")
+        except Exception as exc:  # noqa: BLE001 - one table's failure must not stop the rest
+            failed = str(exc)[:140]
+
+        if failed:
+            click.echo(f"  ! {table}.{column}: not scoped ({failed})")
+            skipped += 1
+            continue
+
+        db.session.commit()
+        for line in applied:
+            click.echo(line)
+        applied.clear()
         scoped += 1
 
     if dry_run:
@@ -206,7 +241,6 @@ def scope_unique_to_tenant(dry_run, only_table):
                    f"{absent} not present. No changes committed.")
         return
 
-    db.session.commit()
     click.echo(
         f"scope-unique-to-tenant: {scoped} scoped, {skipped} blocked by duplicates, "
         f"{absent} not present in this database."

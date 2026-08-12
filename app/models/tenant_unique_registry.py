@@ -94,10 +94,47 @@ GLOBAL_BY_DESIGN = {
 }
 
 
+#: PostgreSQL truncates identifiers at 63 bytes. SQLAlchemy silently truncates
+#: the names it generates itself, and raises IdentifierError for one you supply
+#: — at DDL-compile time, so the failure is `create_all()` on a database where
+#: the table does not yet exist. That is `flask init-db` on a fresh install, and
+#: therefore the first command in the compose boot chain, which then never
+#: reaches gunicorn. Every existing database passes, because create_all emits no
+#: DDL for a table it already has, which is exactly why it survived CI and a
+#: local run.
+MAX_IDENTIFIER = 63
+
+
+def tenant_unique_index_name(table: str, column: str) -> str:
+    """The name of the per-tenant unique index for one column, always legal.
+
+    Deterministic, so the model declaration and the upgrade command agree: if
+    they disagreed, the command would create a second index under a different
+    name and never recognise the one already there.
+
+    When the natural name is too long it is shortened by dropping characters
+    from the middle of the table name rather than the ends, because the prefix
+    and the column are what make it readable.
+    """
+    name = f"uq_{table}_org_{column}"
+    if len(name) <= MAX_IDENTIFIER:
+        return name
+
+    fixed = len(f"uq__org_{column}")
+    budget = MAX_IDENTIFIER - fixed
+    if budget < 8:
+        # Pathological column name: keep the tail, which is the distinguishing
+        # part, and accept an unreadable prefix over an illegal identifier.
+        return name[-MAX_IDENTIFIER:]
+    head = budget // 2
+    tail = budget - head
+    return f"uq_{table[:head]}{table[-tail:]}_org_{column}"
+
+
 def index_names(table: str, column: str) -> dict:
     """The index names involved in scoping one column, by role."""
     return {
-        "tenant": f"uq_{table}_org_{column}",
+        "tenant": tenant_unique_index_name(table, column),
         "legacy_index": f"ix_{table}_{column}",
         "legacy_constraint": f"{table}_{column}_key",
         "lookup": f"ix_{table}_{column}",

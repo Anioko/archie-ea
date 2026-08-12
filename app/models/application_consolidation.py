@@ -113,7 +113,7 @@ class ApplicationConsolidationRecommendation(TenantMixin, db.Model):
 
     __tablename__ = "application_consolidation_recommendations"
     __table_args__ = (
-        db.UniqueConstraint("organization_id", "recommendation_code", name="uq_application_consolidation_recommendations_org_recommendation_code"),
+        db.UniqueConstraint("organization_id", "recommendation_code", name="uq_application_consolon_recommendations_org_recommendation_code"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
