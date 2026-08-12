@@ -144,7 +144,7 @@ DEPENDENCIES:
                 title="Collapse sidebar (Ctrl+B)">
             <i data-lucide="panel-left" class="h-3.5 w-3.5 flex-shrink-0"></i>
             <span>Collapse sidebar</span>
-            <kbd class="ml-auto font-mono text-[10px] opacity-60">Ctrl+B</kbd>
+            <kbd class="ml-auto px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Ctrl+B</kbd>
         </button>
     </div>
     <div class="border-t border-border p-4">
@@ -157,7 +157,7 @@ DEPENDENCIES:
                 <p class="text-sm font-medium truncate">{{ current_user.full_name() }}</p>
                 <p class="text-xs text-muted-foreground truncate">{{ current_user.email }}</p>
             </div>
-            <a href="{{ url_for('account.logout') }}" class="text-muted-foreground hover:text-foreground transition-colors sidebar-footer-text">
+            <a href="{{ url_for('account.logout') }}" class="text-muted-foreground hover:text-foreground transition-colors sidebar-footer-text" aria-label="Log out">
                 <i data-lucide="log-out" class="h-4 w-4"></i>
             </a>
         </div>
@@ -166,7 +166,7 @@ DEPENDENCIES:
             <div class="flex-1 min-w-0 sidebar-footer-text">
                 <p class="text-sm font-medium truncate">Not signed in</p>
             </div>
-            <a href="{{ url_for('account.login') }}" class="text-muted-foreground hover:text-foreground transition-colors sidebar-footer-text">
+            <a href="{{ url_for('account.login') }}" class="text-muted-foreground hover:text-foreground transition-colors sidebar-footer-text" aria-label="Log in">
                 <i data-lucide="log-in" class="h-4 w-4"></i>
             </a>
         </div>
