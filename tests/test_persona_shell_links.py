@@ -72,7 +72,17 @@ def test_the_shell_has_no_link_this_persona_cannot_open(
     assert home.status_code == 200, "the shell itself did not render"
 
     links = sorted(set(re.findall(r'href="(/[^"#?]*)"', home.data.decode("utf8", "replace"))))
-    assert len(links) > 20, "the shell rendered almost no navigation — check the fixture"
+    # A floor, not a target. It exists only to catch a fixture breaking and
+    # leaving an empty page, which would make the real assertion below vacuous.
+    #
+    # Deliberately low: the sidebar is server-filtered per persona and carries a
+    # budget of 26 links, so a business architect sees roughly 16. An earlier
+    # threshold of 20 was calibrated against the pre-filter shell that rendered
+    # 90+, and it failed the whole test on the *count* — hiding whether any link
+    # was actually broken, which is the only thing this test is for.
+    assert len(links) >= 8, (
+        f"the shell rendered only {len(links)} links — check the fixture, not the nav"
+    )
 
     broken = []
     for href in links:

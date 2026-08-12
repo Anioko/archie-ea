@@ -347,8 +347,19 @@ _MY_WORK_LINKS = {
         _link("Investment Analysis", "architecture.investment_priorities", "target"),
     ],
     ROLE_BUSINESS_ARCHITECT: [
+        # The five surfaces this persona exists for. The sidebar became
+        # data-driven in the shell rework while these modules were being built
+        # on another branch, so the merge left every one of them reachable only
+        # by typing its URL — including value streams and the business model
+        # canvas, which predate both branches. A zone filters out any link whose
+        # endpoint is unregistered, so listing them here is safe even where a
+        # blueprint failed to register.
         _link("Capability Map", "capability_map.index", "map"),
+        _link("Import a Model", "capability_map.import_page", "upload"),
         _link("Value Streams", "value_stream.index", "waypoints"),
+        _link("Customer Journeys", "customer_journey.index", "route"),
+        _link("Information Model", "information_model.index", "database"),
+        _link("Business Model Canvas", "business_model.index", "layout-dashboard"),
     ],
     ROLE_PORTFOLIO_MANAGER: [
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
