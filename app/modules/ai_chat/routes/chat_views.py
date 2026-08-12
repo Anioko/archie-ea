@@ -22,7 +22,7 @@ def _fallback_domain_config() -> Dict[str, Dict[str, Any]]:
     return {
         "general": {
             "name": "General Assistant",
-            "description": "Multi-Domain AI Assistant",
+            "description": "Ask anything about your architecture — no setup needed",
             "icon": "bot",
             "color": "primary",
             "expertise": ["general_inquiry", "cross_domain_analysis"],

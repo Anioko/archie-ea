@@ -58,3 +58,24 @@ aside.sidebar-collapsed {
 aside.sidebar-collapsed .sidebar-collapse-btn i[data-lucide="panel-left"] {
     transform: rotate(180deg);
 }
+
+/* ── Sidebar scroll affordance (evidence review) ─────────────────────────────
+   #sidebar-nav hides its native scrollbar entirely
+   ([&::-webkit-scrollbar]:w-0, scrollbar-width:none in admin_sidebar.html) so
+   a role with enough zones/links to overflow the viewport — platform_admin's
+   Governance + Admin zones are the worst case, 14 links past Home/My
+   work/Library — had literally no cue that those zones existed below the
+   fold: the Governance heading sat right at the edge with its links
+   scrolled out of view, and the whole Admin zone was invisible. A bottom
+   fade signals "more below, scroll" without reintroducing a visible
+   scrollbar; app.js's initSidebarScrollFade() toggles `.at-scroll-end` once
+   the nav is actually scrolled to its end so the fade never implies more
+   content than there is. */
+#sidebar-nav {
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+}
+#sidebar-nav.at-scroll-end {
+    -webkit-mask-image: none;
+    mask-image: none;
+}

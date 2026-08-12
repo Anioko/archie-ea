@@ -1751,7 +1751,7 @@ def register_ea_workflow_routes(main_blueprint):
             try:
                 rows = (
                     db.session.query(EAWorkflowDefinition.workflow_code, func.count(EAWorkflowInstance.id))
-                    .join(EAWorkflowInstance, EAWorkflowInstance.definition_id == EAWorkflowDefinition.id)
+                    .join(EAWorkflowInstance, EAWorkflowInstance.workflow_definition_id == EAWorkflowDefinition.id)
                     .filter(EAWorkflowDefinition.workflow_code.in_(list(phase_code_map.values())))
                     .group_by(EAWorkflowDefinition.workflow_code)
                     .all()

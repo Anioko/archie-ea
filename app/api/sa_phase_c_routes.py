@@ -51,11 +51,18 @@ def get_application_patterns():
     try:
         from app.services.application_pattern_classifier_service import (
             ApplicationPatternClassifierService,
+            LLMClassificationTimeoutError,
         )
 
         svc = ApplicationPatternClassifierService()
         patterns = svc.classify_portfolio()
         return jsonify({"patterns": patterns}), 200
+    except LLMClassificationTimeoutError as exc:
+        logger.error("application-patterns timed out: %s", exc)
+        return jsonify({
+            "error": "Application pattern classification timed out",
+            "detail": str(exc),
+        }), 504
     except Exception as exc:
         logger.error("application-patterns error: %s", exc, exc_info=True)
         return jsonify({"error": "Failed to classify portfolio", "detail": str(exc)}), 500

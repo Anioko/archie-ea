@@ -8,7 +8,7 @@ Computes a per-application compliance scorecard using:
 All access is via ORM — no raw SQL.
 """
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sqlalchemy import desc
 
@@ -39,6 +39,11 @@ class ArchitectureComplianceMatrixService:
 
         overall_status: score >= 80 → "compliant", >= 60 → "partial",
                         else "non_compliant"
+
+        ``violation_count`` is ``None``, not ``0``, when the platform has no way
+        to attribute a violation to this application (see
+        ``_get_violation_count``) — a real measured zero and "cannot compute"
+        must stay distinguishable to any caller that branches on the count.
         """
         try:
             apps = ApplicationComponent.query.order_by(ApplicationComponent.name).all()
@@ -72,6 +77,13 @@ class ArchitectureComplianceMatrixService:
     def _get_arb_review_status(self, application_id: int) -> str:
         """Return the latest ARB review status for the given application id.
 
+        ``arb_review_items`` has no ``application_id`` column — an ARBReviewItem
+        links to a ``Solution`` (``solution_id``), and a ``Solution`` links to
+        applications via the ``solution_applications`` junction
+        (``Solution.applications`` / ``ApplicationComponent.solutions``). So the
+        lookup goes application -> its solutions -> the latest review item across
+        those solutions.
+
         Only ``ImportError`` is caught — the ARB model is optional. A query
         failure is allowed to propagate: "not_reviewed" is a governance claim
         about the application, and a caller that cannot tell it apart from a
@@ -82,8 +94,16 @@ class ArchitectureComplianceMatrixService:
         except ImportError:
             return "not_reviewed"
 
+        application = ApplicationComponent.query.get(application_id)
+        if application is None:
+            return "not_reviewed"
+
+        solution_ids = [s.id for s in application.solutions]
+        if not solution_ids:
+            return "not_reviewed"
+
         review = (
-            ARBReviewItem.query.filter_by(application_id=application_id)
+            ARBReviewItem.query.filter(ARBReviewItem.solution_id.in_(solution_ids))
             .order_by(desc(ARBReviewItem.created_at))
             .first()
         )
@@ -91,21 +111,36 @@ class ArchitectureComplianceMatrixService:
             return review.status or "not_reviewed"
         return "not_reviewed"
 
-    def _get_violation_count(self, application_id: int) -> int:
-        """Return compliance violation count for the given application id.
+    def _get_violation_count(self, application_id: int) -> Optional[int]:
+        """Return the compliance violation count for the given application id,
+        or ``None`` when it cannot be computed.
 
-        Only ``ImportError`` is caught — the compliance model is optional. A
-        query failure propagates rather than being reported as ``0``, which the
-        Phase G compliance matrix would publish as "no violations".
+        ``compliance_violations`` has no ``application_id`` (or any other
+        application) column — it links only to ``compliance_policies`` via
+        ``policy_id``; ``affected_system`` is a free-text description, not a
+        foreign key, so it cannot be joined on reliably. There is currently no
+        query that can correctly attribute a violation to a specific
+        application (and the model being entirely absent, caught below, is the
+        same situation from the caller's point of view: no number is knowable).
+
+        Per CLAUDE.md's null-vs-zero rule, a fabricated ``0`` here would be
+        indistinguishable from a genuinely-measured zero violations and would
+        mislead any caller that branches on the count (e.g. an "all clear"
+        badge). Returning ``None`` keeps that distinction — render it as "—",
+        never as ``0``.
+
+        Any other query failure still propagates rather than being reported as
+        ``None``, so a real database error is not silently swallowed either.
         """
         try:
-            from app.models.compliance_models import ComplianceViolation
+            from app.models.compliance_models import ComplianceViolation  # noqa: F401
         except ImportError:
-            return 0
+            return None
 
-        return ComplianceViolation.query.filter_by(
-            application_id=application_id
-        ).count()
+        # No schema linkage from ComplianceViolation to ApplicationComponent
+        # exists (see docstring) — None is the only value that does not
+        # fabricate a per-application figure the data cannot support.
+        return None
 
     @staticmethod
     def _overall_status(score: int) -> str:

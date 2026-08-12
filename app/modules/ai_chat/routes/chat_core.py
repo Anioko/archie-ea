@@ -28,6 +28,22 @@ from .chat_views import get_chat_service
 
 logger = logging.getLogger(__name__)
 
+# How long the SSE generator waits on an empty event_queue before emitting a
+# keepalive. Module-level (not a literal in generate()) so a test can shrink
+# it rather than actually sleeping for the production interval.
+#
+# Must stay comfortably BELOW the client's idle-read timeout
+# (app/static/js/ai_chat/transport.js's STREAM_IDLE_TIMEOUT_MS, 30s): a turn
+# with no tokens for a while (slow model, tool-heavy turn with silent gaps
+# between tool calls) is legitimate, not a wedge, and used to look identical
+# to one from the client's side because the ONLY thing standing between it
+# and a false "AI service did not respond" was this same queue.get() at a
+# 95s timeout - well inside the 30s window it was supposed to protect. At
+# 15s, a client that has gone quiet for 30s has missed at least one
+# keepalive it should have received, which is what actually distinguishes
+# "slow" from "wedged" rather than merely how long since the turn started.
+_STREAM_KEEPALIVE_INTERVAL_S = 15
+
 
 def _get_configured_chat_models():
     """Return models that are actually selectable in AI chat."""
@@ -537,6 +553,13 @@ def send_message():
                 # reader can check the answer against the rows rather than
                 # trusting it.
                 "sources": agent_result.get("sources", []),
+                # AgentRunner._fallback() persists a friendly "couldn't be
+                # completed" response AND keeps the raw failure reason on the
+                # same dict; this endpoint always reports success:True for
+                # that case (there is an answer to show), so without this
+                # field the UI could not tell an ordinary answer from one
+                # that only exists because the LLM call failed.
+                "agent_error": agent_result.get("error"),
                 # Was hardcoded True on every response regardless of whether any
                 # context was built - _build_system_prompt swallows a context
                 # failure into an empty string, so the API asserted grounding
@@ -820,15 +843,20 @@ def send_message_stream():
 
     def generate():
         import json as _json
-        yield ": keepalive\n\n"
+        # A real `data:` event, not a `:`-comment: the client's idle timer
+        # resets on any byte it reads regardless of what it parses to, but an
+        # actual event is what makes this independently testable and what
+        # the plan asks for ("periodic server keepalive events"), rather
+        # than relying on an implementation detail of the client's timer.
+        yield f"data: {_json.dumps({'type': 'keepalive'})}\n\n"
         while True:
             try:
-                event = event_queue.get(timeout=95)
+                event = event_queue.get(timeout=_STREAM_KEEPALIVE_INTERVAL_S)
                 yield f"data: {_json.dumps(event, default=str)}\n\n"
                 if event.get("type") == "done":
                     break
             except _queue.Empty:
-                yield ": keepalive\n\n"
+                yield f"data: {_json.dumps({'type': 'keepalive'})}\n\n"
 
     return Response(
         stream_with_context(generate()),

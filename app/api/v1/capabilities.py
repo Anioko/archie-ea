@@ -233,18 +233,23 @@ def get_manufacturing_capabilities():
 
         capabilities = []
         for cap in pagination.items:
+            # ManufacturingCapability only carries manufacturing-specific KPIs (OEE,
+            # FPY, etc.) — identity/ownership fields (name, description, domain,
+            # level, owner, status, priority, coverage) live on the UnifiedCapability
+            # it specializes, reached via the unified_capability relationship.
+            uc = cap.unified_capability
             capabilities.append(
                 {
                     "id": str(cap.id),
-                    "name": cap.name,
-                    "description": cap.description or "",
-                    "domain": cap.domain.name if cap.domain else None,
-                    "level": cap.level,
-                    "business_owner": cap.business_owner,
-                    "business_impact": getattr(cap, "business_criticality", None),
-                    "priority": getattr(cap, "roadmap_priority", None),
-                    "coverage": getattr(cap, "process_coverage", None),
-                    "status": cap.status,
+                    "name": uc.name if uc else None,
+                    "description": (uc.description if uc else None) or "",
+                    "domain": uc.domain.name if uc and uc.domain else None,
+                    "level": uc.level if uc else None,
+                    "business_owner": uc.business_owner if uc else None,
+                    "business_impact": getattr(uc, "business_criticality", None) if uc else None,
+                    "priority": getattr(uc, "roadmap_priority", None) if uc else None,
+                    "coverage": getattr(uc, "process_coverage", None) if uc else None,
+                    "status": uc.status if uc else None,
                     "unified_capability_id": str(cap.unified_capability_id)
                     if cap.unified_capability_id
                     else None,

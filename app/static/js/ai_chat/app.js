@@ -290,13 +290,24 @@
                turn against the non-streaming endpoint would be the opposite of
                what Stop means. Everything else falls through. */
             if (_streamErr && _streamErr.name === 'AbortError') {
-                /* Stop pressed before the first byte: onOpen never ran, so the
-                   loading node it would have removed is still on screen and the
-                   transcript reads "Thinking..." forever. That is the most
-                   likely moment to press Stop, so it is the one that must be
-                   cleaned up here. */
+                /* Stop pressed before any token or done event arrived: the
+                   "Thinking..." indicator is torn down only inside
+                   streamAiReply's onToken/onDone (see there), neither of
+                   which ran, so it is still on screen and would otherwise
+                   read "Thinking..." forever. */
                 const _l = document.getElementById(loadingId);
                 if (_l) _l.remove();
+                return;
+            }
+            if (_streamErr && _streamErr.name === 'ChatTimeoutError') {
+                /* Nothing arrived within transport.js's idle window. Falling
+                   back to the non-streaming endpoint here would just start a
+                   second, equally-slow request behind the same silent
+                   "Thinking..." indicator — render the timeout instead of
+                   compounding the wait. */
+                const _l = document.getElementById(loadingId);
+                if (_l) _l.remove();
+                appendError(_streamErr.message, () => _retryTurn(message, timestamp));
                 return;
             }
             /* fall through to non-streaming */
@@ -359,7 +370,15 @@
                     trail: [],
                     contextUsed: true,
                     actions: data.actions_taken || [],
-                    pendingApprovals: data.pending_approvals || []
+                    pendingApprovals: data.pending_approvals || [],
+                    /* agent_result.error survives internally even when the
+                       route reports success:true (the endpoint always has an
+                       answer to show — see chat_core.py) — agent_error is
+                       that field surfaced, so this reads as a failure the
+                       same way the streamed path does rather than as an
+                       ordinary answer that happens to mention Admin
+                       -> API Settings. */
+                    error: data.agent_error || null
                 });
 
                 // Genome extraction — fires after every AI response when ?mode=genome
@@ -392,12 +411,20 @@
         // every answer flash and the transcript jump on completion.
         const dropBubble = () => { if (wrap) { wrap.remove(); wrap = null; } };
 
+        // The "Thinking..." indicator (built in _deliverTurn) stays on screen
+        // until there is actual content to show it beside — either the first
+        // token, or the final answer if none ever streamed. It used to be
+        // torn down in onOpen, the instant the response headers arrived,
+        // and replaced with an empty bubble holding nothing but a blinking
+        // caret; a turn that failed with no token events (every _fallback()
+        // path — no LLM configured, quota, timeout, ...) left that caret as
+        // the only thing on screen for the whole 15s+ round trip, which read
+        // as no indicator at all.
+        const dropLoading = () => { const _l = document.getElementById(loadingId); if (_l) _l.remove(); };
+
         try {
             return await ArchieChat.transport.streamMessage(payload, {
-                onOpen: () => {
-                    { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
-                    wrap = beginStreamedMessage();
-                },
+                onOpen: () => {},
                 onThreadId: (id) => {
                     const wasNew = id !== window.__threadId;
                     window.__threadId = id;
@@ -418,9 +445,12 @@
                     _trail.push({ tool: ev.tool, args: null, result: ev.result });
                 },
                 onToken: (_text, full) => {
+                    if (!wrap) { dropLoading(); wrap = beginStreamedMessage(); }
                     updateStreamedMessage(wrap, full);
                 },
                 onDone: async (result) => {
+                    dropLoading();
+                    if (!wrap) wrap = beginStreamedMessage();
                     const meta = {
                         domain: result.domain || state.currentDomain,
                         processing_time: Math.round(performance.now() - startTime),
@@ -430,7 +460,12 @@
                         pendingApprovals: result.pendingApprovals || [],
                         // No tool ran, but the domain snapshot was in the prompt:
                         // that is "context only", not "ungrounded".
-                        contextUsed: _trail.length === 0
+                        contextUsed: _trail.length === 0,
+                        // The server's own "couldn't be completed" text,
+                        // persisted and streamed back rather than thrown away
+                        // — see transport.js's done handling. Non-null here
+                        // means result.text is that message, not an answer.
+                        error: result.error || null
                     };
                     state.chatHistory.push({ role: 'ai', content: result.text, timestamp, metadata: meta });
                     finaliseStreamedMessage(wrap, result.text, meta);
@@ -857,6 +892,21 @@ Would you like me to provide more details about the extracted elements or help y
            every card had two click handlers. The server-rendered one is the
            one that survives; the wiring above it runs once. */
         lucide.createIcons();
+
+        // Suggestion-chips right-edge fade (see index.html's #suggestion-chips
+        // mask-image): drop the mask once the row is fully scrolled, or if it
+        // was never scrollable in the first place, so the fade never implies
+        // there's more to see when there isn't.
+        const chipsRow = document.getElementById('suggestion-chips');
+        if (chipsRow) {
+            const updateChipsFade = () => {
+                const atEnd = chipsRow.scrollWidth - chipsRow.clientWidth <= chipsRow.scrollLeft + 1;
+                chipsRow.classList.toggle('at-scroll-end', atEnd);
+            };
+            updateChipsFade();
+            chipsRow.addEventListener('scroll', updateChipsFade, { passive: true });
+            window.addEventListener('resize', updateChipsFade);
+        }
 
         // A95-005: Handle deep-link context params from entity detail pages.
         // Supports:
