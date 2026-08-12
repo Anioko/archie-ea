@@ -99,19 +99,42 @@
 </div>
 {% endmacro %}
 
-{% macro stat_card(label, value, hint=None, variant='standard') %}
+{% macro stat_card(label, value, hint=None, variant='standard', href=None, icon=None, icon_bg='bg-primary', active=False) %}
+{# href/icon/active are optional — a plain stat_card() call with none of them
+   renders exactly the static card as before (Task 1's contract, pinned by
+   tests/test_page_shell_macros.py). Passing href turns it into a clickable
+   filter card (Task 4: the Solutions triage cards — Needs Setup / In Design
+   / Needs Attention / Ready for Review — need to stay clickable filters and
+   show which one is selected, which a bare div can't do). #}
 {% set value_classes = {
     'hero': 'text-3xl',
     'standard': 'text-2xl',
     'compact': 'text-lg'
 } %}
-<div class="rounded-xl border border-border bg-card text-card-foreground p-6">
+{% set tag = 'a' if href else 'div' %}
+{% set card_classes = ('rounded-xl border-2 ' ~ ('border-primary ring-2 ring-primary/20 bg-primary/5' if active else 'border-input bg-background hover:border-primary/50') ~ ' cursor-pointer hover:shadow-md transition-all duration-200 p-5 block no-underline text-inherit') if href else 'rounded-xl border border-border bg-card text-card-foreground p-6' %}
+<{{ tag }}{% if href %} href="{{ href }}"{% endif %} class="{{ card_classes }}"{% if active %} aria-current="true"{% endif %}>
+    {% if icon %}
+    <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg {{ icon_bg }}">
+            <i data-lucide="{{ icon }}" class="h-5 w-5 text-primary-foreground"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-muted-foreground">{{ label }}</div>
+            <div class="mt-1 font-semibold text-foreground tabular-nums {{ value_classes[variant] }}">{{ value|dash }}</div>
+            {% if hint %}
+            <div class="mt-1 text-xs text-muted-foreground">{{ hint }}</div>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
     <div class="text-sm text-muted-foreground">{{ label }}</div>
     <div class="mt-1 font-semibold text-foreground tabular-nums {{ value_classes[variant] }}">{{ value|dash }}</div>
     {% if hint %}
     <div class="mt-1 text-xs text-muted-foreground">{{ hint }}</div>
     {% endif %}
-</div>
+    {% endif %}
+</{{ tag }}>
 {% endmacro %}
 
 {% macro section_card(title=None, actions_caller=None) %}

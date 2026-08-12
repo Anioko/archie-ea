@@ -34,6 +34,7 @@ ROUTES = [
     "/applications/",
     "/capability-map/",
     "/capability-map/hierarchy",
+    "/solutions/",
 ]
 VIEWPORT_HEIGHT = 900
 
