@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import secrets
 import sys
 from pathlib import Path
@@ -29,6 +30,26 @@ EVIDENCE_DIR = REPO_ROOT / "docs" / "superpowers" / "evidence" / "wave1"
 WIDTHS = [1024, 1280, 1440]
 ROUTES = ["/dashboard/overview", "/ai-chat/", "/applications/"]
 VIEWPORT_HEIGHT = 900
+
+
+def resolve_first_application_id(page, base_url: str) -> str | None:
+    """Read a real application id off the list page's own links, rather
+    than querying the DB directly or hardcoding one -- the smallest honest
+    way to get a route the matrix can screenshot without ever being wrong
+    about what id exists in this run's database.
+    """
+    page.goto(f"{base_url}/applications/", wait_until="networkidle")
+    # The list page also links to non-detail /applications/... paths (its own
+    # index link, /applications/vendors, /<id>/edit, ...) -- scan every anchor
+    # for the first one that is exactly /applications/<digits>, rather than
+    # trusting the first match in DOM order to already be a detail link.
+    anchors = page.locator('a[href^="/applications/"]')
+    for i in range(anchors.count()):
+        raw = anchors.nth(i).get_attribute("href") or ""
+        match = re.match(r"^/applications/(\d+)$", raw)
+        if match:
+            return match.group(1)
+    return None
 
 
 def _load_dotenv(env_path: Path) -> dict:
@@ -86,10 +107,10 @@ def login(page, base_url: str, email: str, password: str) -> None:
     dismiss_onboarding_if_present(page)
 
 
-def capture_matrix(page, base_url: str, console_errors: list, label_prefix: str = "") -> list:
+def capture_matrix(page, base_url: str, console_errors: list, label_prefix: str = "", routes=None) -> list:
     produced = []
     for width in WIDTHS:
-        for route in ROUTES:
+        for route in (routes if routes is not None else ROUTES):
             page.set_viewport_size({"width": width, "height": VIEWPORT_HEIGHT})
             page.goto(f"{base_url}{route}", wait_until="networkidle")
             dismiss_onboarding_if_present(page)
@@ -196,8 +217,18 @@ def main() -> int:
         print(f"Logging in at {base_url}/account/login as {admin_email} ...")
         login(page, base_url, admin_email, admin_password)
 
+        print("Resolving a real application id for the detail-page route ...")
+        detail_app_id = resolve_first_application_id(page, base_url)
+        matrix_routes = list(ROUTES)
+        if detail_app_id:
+            matrix_routes.append(f"/applications/{detail_app_id}")
+            print(f"  resolved id {detail_app_id} -> /applications/{detail_app_id}")
+        else:
+            print("  WARNING: no application id found on /applications/ -- "
+                  "skipping the detail-page route (nothing seeded to link to).")
+
         print("Capturing main route x width matrix ...")
-        produced_files += capture_matrix(page, base_url, console_errors)
+        produced_files += capture_matrix(page, base_url, console_errors, routes=matrix_routes)
 
         print("Capturing AI-chat rail collapsed state at 1280 ...")
         page.set_viewport_size({"width": 1280, "height": VIEWPORT_HEIGHT})

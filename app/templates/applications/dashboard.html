@@ -3,19 +3,19 @@
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/badge.html' import badge %}
 {% from 'macros/nav_macros_shadcn.html' import pill_tabs, tab_panel with context %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}{% if app is defined and app %}{{ app.name }} — Application Detail{% else %}Applications Dashboard{% endif %}{% endblock %}
 
-{# FAR-018: Breadcrumb navigation #}
+{# FAR-018: Breadcrumb navigation.
+   Application-detail (app is set) gets its breadcrumb from page_shell()
+   in the content block below -- rendering it here too produced TWO stacked
+   breadcrumb trails ("Home > Applications > X" above "Applications > X"),
+   a defect flagged in the shell-overhaul design review. Only the portfolio
+   dashboard (no app) still uses this block. #}
 {% block breadcrumb %}
+{% if not (app is defined and app) %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
-{% if app is defined and app %}
-{{ breadcrumb_nav(items=[
-    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Applications', 'href': url_for('unified_applications.application_list')},
-    {'text': app.name, 'current': true}
-]) }}
-{% else %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Applications Dashboard', 'current': true}
@@ -51,80 +51,82 @@
 {% endif %}
 
 {# ─────────────────────────────────────────────────────────────────────────────
-   Page Header (app detail only)
+   Page Header (app detail only) — screen system (page_shell)
+   Was a hand-rolled <nav aria-label="Breadcrumb"> + <h1> here, stacked below
+   the layout's own {% block breadcrumb %} — the "TWO stacked breadcrumb
+   trails" defect from the shell-overhaul design review. Now the sole
+   breadcrumb for this page: {% block breadcrumb %} above renders nothing
+   when app is set.
 ───────────────────────────────────────────────────────────────────────────── #}
 {% if app %}
-<div class="mb-4 flex flex-col gap-2">
-  <nav aria-label="Breadcrumb">
-    <ol class="flex items-center gap-1.5 text-sm text-muted-foreground">
-      <li><a href="{{ url_for('unified_applications.application_list') }}" class="hover:text-foreground transition-colors">Applications</a></li>
-      <li><i data-lucide="chevron-right" class="w-3.5 h-3.5" aria-hidden="true"></i></li>
-      <li class="text-foreground font-medium">{{ app.name }}</li>
-    </ol>
-  </nav>
+{% set valid_tab_ids = ['overview','architecture','capabilities','processes','vendors','technology','motivation','compliance','health','cost','dependencies'] %}
+{% set resolved_tab = active_tab_id if active_tab_id in valid_tab_ids else 'overview' %}
 
-  <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-    <div class="flex flex-col gap-2">
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{{ app.name }}</h1>
-      <div class="flex flex-wrap items-center gap-2">
-        {# ARC-F01: Data freshness badge #}
-        {% if app.data_freshness_tier == 'fresh' %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">fresh</span>
-        {% elif app.data_freshness_tier == 'stale' %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">stale</span>
-        {% elif app.data_freshness_tier == 'outdated' %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
-        {% else %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
-        {% endif %}
-        {# ARC-F02: Data completeness badge #}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+{% macro _app_detail_actions() %}
+  {% if edit_mode %}
+  <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?tab={{ resolved_tab }}"
+     class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    Cancel
+  </a>
+  <button type="submit" form="overview-edit-form"
+     class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    <i data-lucide="save" class="w-4 h-4 mr-2" aria-hidden="true"></i>Save
+  </button>
+  {% else %}
+  <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?edit=1&tab={{ resolved_tab }}"
+     class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    <i data-lucide="pencil" class="w-4 h-4 mr-2" aria-hidden="true"></i>Edit
+  </a>
+  {% endif %}
+{% endmacro %}
+
+{{ page_shell(
+     title=app.name,
+     breadcrumb=[('Applications', url_for('unified_applications.application_list')), (app.name, None)],
+     actions_caller=_app_detail_actions
+) }}
+
+<div class="-mt-4 mb-4 flex flex-col gap-2">
+  <div class="flex flex-wrap items-center gap-2">
+    {# ARC-F01: Data freshness badge #}
+    {% if app.data_freshness_tier == 'fresh' %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">fresh</span>
+    {% elif app.data_freshness_tier == 'stale' %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">stale</span>
+    {% elif app.data_freshness_tier == 'outdated' %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
+    {% else %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
+    {% endif %}
+    {# ARC-F02: Data completeness badge #}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
  {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
  {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
  {% else %}bg-destructive/10 text-destructive border border-destructive/30{% endif %}"
-            title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
-            {{ app.completeness_score }}% complete
-        </span>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        {% if app.application_code %}
-        {% call badge(variant='outline') %}{{ app.application_code }}{% endcall %}
-        {% endif %}
-        {% if app.deployment_status %}
-        {% set ds = app.deployment_status | lower %}
-        {% if ds == 'production' %}{% call badge(variant='success') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
-        {% elif ds in ['retired', 'deprecated'] %}{% call badge(variant='destructive') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
-        {% elif ds in ['development', 'testing', 'staging'] %}{% call badge(variant='warning') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
-        {% else %}{% call badge(variant='neutral') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
-        {% endif %}
-        {% endif %}
-        {% if app.business_criticality %}
-        {% set bc = app.business_criticality | lower %}
-        {% if bc == 'critical' %}{% call badge(variant='destructive') %}{{ app.business_criticality }}{% endcall %}
-        {% elif bc == 'high' %}{% call badge(variant='warning') %}{{ app.business_criticality }}{% endcall %}
-        {% elif bc == 'medium' %}{% call badge(variant='info') %}{{ app.business_criticality }}{% endcall %}
-        {% else %}{% call badge(variant='neutral') %}{{ app.business_criticality }}{% endcall %}
-        {% endif %}
-        {% endif %}
-      </div>
-    </div>
-    <div class="flex items-center gap-2 shrink-0">
-      {% if edit_mode %}
-      <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?tab={{ resolved_tab }}"
-         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        Cancel
-      </a>
-      <button type="submit" form="overview-edit-form"
-         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        <i data-lucide="save" class="w-4 h-4 mr-2" aria-hidden="true"></i>Save
-      </button>
-      {% else %}
-      <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?edit=1&tab={{ resolved_tab }}"
-         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        <i data-lucide="pencil" class="w-4 h-4 mr-2" aria-hidden="true"></i>Edit
-      </a>
-      {% endif %}
-    </div>
+        title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
+        {{ app.completeness_score }}% complete
+    </span>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    {% if app.application_code %}
+    {% call badge(variant='outline') %}{{ app.application_code }}{% endcall %}
+    {% endif %}
+    {% if app.deployment_status %}
+    {% set ds = app.deployment_status | lower %}
+    {% if ds == 'production' %}{% call badge(variant='success') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+    {% elif ds in ['retired', 'deprecated'] %}{% call badge(variant='destructive') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+    {% elif ds in ['development', 'testing', 'staging'] %}{% call badge(variant='warning') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+    {% else %}{% call badge(variant='neutral') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+    {% endif %}
+    {% endif %}
+    {% if app.business_criticality %}
+    {% set bc = app.business_criticality | lower %}
+    {% if bc == 'critical' %}{% call badge(variant='destructive') %}{{ app.business_criticality }}{% endcall %}
+    {% elif bc == 'high' %}{% call badge(variant='warning') %}{{ app.business_criticality }}{% endcall %}
+    {% elif bc == 'medium' %}{% call badge(variant='info') %}{{ app.business_criticality }}{% endcall %}
+    {% else %}{% call badge(variant='neutral') %}{{ app.business_criticality }}{% endcall %}
+    {% endif %}
+    {% endif %}
   </div>
 </div>
 {% else %}
@@ -203,8 +205,9 @@
    Tab switching is client-side (Alpine x-show) — no server round-trips
 ───────────────────────────────────────────────────────────────────────────── #}
 {% if app %}
-{% set valid_tab_ids = ['overview','architecture','capabilities','processes','vendors','technology','motivation','compliance','health','cost','dependencies'] %}
-{% set resolved_tab = active_tab_id if active_tab_id in valid_tab_ids else 'overview' %}
+{# valid_tab_ids / resolved_tab are already set above (page-header section) — this
+   used to redefine them identically here; kept as one definition, closer to
+   the header actions that also depend on resolved_tab. #}
 
 {% set tabs = [
   {'id': 'overview',        'label': 'Overview',         'count': none},
@@ -805,9 +808,14 @@
                 let data = await resp.json();
                 if (data.success) this.suggestions = data.suggestions || [];
             } catch (e) {
-                // Best-effort: this whole card is x-show="loaded && suggestions.length > 0",
-                // so a failed load just leaves it hidden — the same as "no suggestions",
-                // which is an acceptable degrade for an optional AI enrichment widget.
+                // Best-effort: this whole card only shows when loaded is true and
+                // suggestions.length is greater than zero, so a failed load just
+                // leaves it hidden -- the same as no suggestions, which is an
+                // acceptable degrade for an optional AI enrichment widget. Note:
+                // no double-quote characters in this comment -- this whole block
+                // lives inside a double-quoted x-data attribute, and an embedded
+                // double-quote here terminates that attribute early, handing
+                // Alpine a truncated expression (SyntaxError: Unexpected token).
                 console.warn('Failed to load capability suggestions:', e);
             }
             finally { this.loading = false; this.loaded = true; }
