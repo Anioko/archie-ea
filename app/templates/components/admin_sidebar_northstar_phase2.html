@@ -19,7 +19,11 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
 >
     <!-- Sidebar Header -->
     <div class="flex items-center justify-between h-16 px-4 border-b border-border flex-shrink-0">
-        <a href="{{ url_for('admin.index') }}" class="flex items-center space-x-2">
+        {# The wordmark goes to the workspace home, not admin.index. It used to go
+           to /admin/, which is @admin_required — so the most-clicked element on
+           every page answered 403 for every persona except platform_admin. A
+           business architect clicking the product logo got a permission error. #}
+        <a href="{{ url_for('dashboard.overview') }}" class="flex items-center space-x-2">
             <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <i data-lucide="layout-dashboard" class="w-5 h-5 text-primary-foreground"></i>
             </div>
