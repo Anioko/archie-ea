@@ -204,7 +204,18 @@ def cached(ttl: int = 300, key_prefix: str = "", key_func: Optional[Callable] = 
     Args:
         ttl: Cache TTL in seconds (default 5 minutes)
         key_prefix: Prefix for cache key
-        key_func: Custom function to generate cache key from args/kwargs
+        key_func: Custom function to generate cache key from args/kwargs.
+            If the value it returns is ``None``, the cache is bypassed
+            entirely for that call (fail closed) rather than caching under
+            an unscoped key that every other caller would then share. This
+            matters for a view that has no URL/query args of its own to
+            fold into the default key below (most decorated Flask routes)
+            but whose *result* is scoped by ambient request state, e.g. the
+            current tenant (``g.current_org_id``) — without a ``key_func``
+            that reads that state, every organization collapses onto the
+            same cache key and shares one org's cached response. See
+            ``app/modules/capabilities/routes/map_views.py::hierarchy`` for
+            the pattern: ``key_func=lambda: getattr(g, "current_org_id", None)``.
     """
 
     def decorator(func):
@@ -212,7 +223,14 @@ def cached(ttl: int = 300, key_prefix: str = "", key_func: Optional[Callable] = 
         def wrapper(*args, **kwargs):
             # Generate cache key
             if key_func:
-                cache_key = f"{key_prefix}:{key_func(*args, **kwargs)}"
+                key_suffix = key_func(*args, **kwargs)
+                if key_suffix is None:
+                    # Fail closed: key_func could not produce a scoping
+                    # value (e.g. no tenant context at all) -- run
+                    # uncached rather than cache an answer under a key
+                    # every other caller would also match.
+                    return func(*args, **kwargs)
+                cache_key = f"{key_prefix}:{key_suffix}"
             else:
                 # Default: use function name + args + kwargs
                 args_str = "_".join(str(arg) for arg in args)

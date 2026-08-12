@@ -6,7 +6,7 @@ Routes registered on the shared ``capability_map`` blueprint.
 """
 
 
-from flask import current_app, jsonify, request
+from flask import current_app, g, jsonify, request
 from flask_login import login_required
 
 from app.decorators import audit_log
@@ -24,7 +24,11 @@ from . import capability_map
 
 @capability_map.route("/api/acm/domains")
 @login_required
-@cached(ttl=300, key_prefix="capability_map:acm_domains")
+@cached(
+    ttl=300,
+    key_prefix="capability_map:acm_domains",
+    key_func=lambda: getattr(g, "current_org_id", None),
+)
 def api_acm_domains():
     """
     Get ACM technical capability domains with statistics for capability-map Technical tab.

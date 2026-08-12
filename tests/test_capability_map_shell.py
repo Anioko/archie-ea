@@ -245,6 +245,55 @@ def test_query_failure_hides_dots_and_legend(app, db_session, make_org, monkeypa
     assert "Coverage indicators could not be loaded" in html
 
 
+def test_hierarchy_cache_is_org_scoped_when_caching_is_forced_on(
+    app, db_session, make_org, monkeypatch
+):
+    """The historical bug: hierarchy() is @cached(), and the decorator's
+    default cache key ignores its caller entirely — every organization
+    shares one key. Whichever org's request warms the cache first, every
+    other org would then be served *that* org's rendered page (including
+    its real per-capability mapping_count figures) for the TTL. This
+    environment has no Redis, so cache_manager.get()/set() are no-ops and
+    the bug is inert here but live wherever Redis is up — force caching on
+    with an in-memory dict standing in for Redis, and prove org B's request
+    never receives org A's payload."""
+    from app.extensions import cache as cache_module
+
+    store: dict[str, object] = {}
+    monkeypatch.setattr(
+        cache_module.cache_manager,
+        "get",
+        lambda key, default=None: store.get(key, default),
+    )
+    monkeypatch.setattr(
+        cache_module.cache_manager,
+        "set",
+        lambda key, value, ttl=300: (store.__setitem__(key, value), True)[1],
+    )
+
+    user_a, org_a = _make_user(db_session, make_org, "cache-org-a")
+    cap_a = _seed_capability_with_mappings(db_session, org_a, mapped_apps=0)
+
+    user_b, org_b = _make_user(db_session, make_org, "cache-org-b")
+    cap_b = _seed_capability_with_mappings(db_session, org_b, mapped_apps=0)
+
+    client_a = app.test_client()
+    _login(client_a, user_a)
+    html_a = client_a.get("/capability-map/hierarchy").get_data(as_text=True)
+    assert cap_a.name in html_a
+
+    client_b = app.test_client()
+    _login(client_b, user_b)
+    html_b = client_b.get("/capability-map/hierarchy").get_data(as_text=True)
+
+    assert cap_a.name not in html_b, "org B received org A's cached hierarchy payload"
+    assert cap_b.name in html_b
+
+    # Prove caching was genuinely exercised (not a vacuous pass because the
+    # monkeypatched backend was never actually hit) -- one entry per org.
+    assert len(store) >= 2, "expected the org-scoped key_func to produce distinct cache keys"
+
+
 def test_single_view_switcher_row(app, db_session, make_org):
     """The old page had two competing rows of 9+ view-mode switchers — one
     page-link row and one 11-button Alpine tab strip. There must now be

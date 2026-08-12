@@ -84,7 +84,11 @@ def index():
 
 @capability_map.route("/hierarchy")
 @login_required
-@cached(ttl=300, key_prefix="capability_map:hierarchy")
+@cached(
+    ttl=300,
+    key_prefix="capability_map:hierarchy",
+    key_func=lambda: getattr(g, "current_org_id", None),
+)
 def hierarchy():
     """Capability hierarchy visualization — uses real BusinessCapability data."""
     from app.modules.capabilities.services.capability_count_service import (
@@ -175,7 +179,11 @@ def simple_view():
 
 @capability_map.route("/dashboard")
 @login_required
-@cached(ttl=300, key_prefix="capability_map:dashboard")
+@cached(
+    ttl=300,
+    key_prefix="capability_map:dashboard",
+    key_func=lambda: getattr(g, "current_org_id", None),
+)
 def dashboard():
     """Comprehensive dashboard with multiple visualization types"""
     try:
