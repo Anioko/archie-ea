@@ -186,6 +186,96 @@ def test_a_cycle_is_rejected_in_the_plan(db_session, make_org, tenant_ctx):
 # ---------------------------------------------------------------------------
 
 
+def test_a_cycle_through_an_existing_capability_is_rejected(
+    db_session, make_org, tenant_ctx
+):
+    """The plan walked only the file's own edges, so this committed a cycle.
+
+    A parent that resolves against a stored capability set the file edge to
+    None, the walk stopped at the first step, and nothing was reported — while
+    apply() went on to write the reference. The tree view and the report builder
+    were both hardened against unbounded recursion in the same branch, which is
+    the tell that a cycle is reachable.
+    """
+    from app.models.business_capabilities import BusinessCapability
+
+    tag = uuid.uuid4().hex[:8]
+    org = make_org(f"import-dbcycle-{tag}")
+    with tenant_ctx(org.id):
+        parent = BusinessCapability(name=f"Root {tag}", code=f"{tag}-A", level=1)
+        db_session.add(parent)
+        db_session.flush()
+        child = BusinessCapability(
+            name=f"Child {tag}", code=f"{tag}-B", level=2,
+            parent_capability_id=parent.id,
+        )
+        db_session.add(child)
+        db_session.commit()
+
+        # Re-parent the root under its own child.
+        plan = _plan(f"code,name,parent\n{tag}-A,Root {tag},{tag}-B\n")
+
+        assert any("own ancestor" in e.message for e in plan.errors), (
+            "a cycle formed through stored ancestry was not detected"
+        )
+        assert plan.creates == 0 and plan.updates == 0
+
+        db_session.expire_all()
+        assert db_session.get(BusinessCapability, parent.id).parent_capability_id is None
+
+
+def test_a_file_without_a_target_column_does_not_publish_the_default_target(
+    db_session, make_org, tenant_ctx
+):
+    """target_maturity_level defaults to 3, and the date stamp publishes it.
+
+    Import current maturity alone and every capability would be reported — in
+    the PDF, the Word file, the workbook and the frameworks table — as having a
+    target of 3 that nobody entered, with a gap computed from it.
+    """
+    from app.models.business_capabilities import BusinessCapability
+
+    tag = uuid.uuid4().hex[:8]
+    org = make_org(f"import-target-{tag}")
+    with tenant_ctx(org.id):
+        CapabilityImportService.apply(
+            _plan(f"code,name,current maturity\n{tag}-1,Assessed {tag},2\n")
+        )
+
+        cap = BusinessCapability.query.filter_by(code=f"{tag}-1").one()
+        assert cap.current_maturity_level == 2
+        assert cap.maturity_assessment_date is not None
+        assert cap.target_maturity_level is None, (
+            "the column default of 3 was published as a measured target"
+        )
+        assert cap.maturity_gap is None, (
+            "a gap derived from a default is an invented number in a board paper"
+        )
+
+
+def test_a_blank_maturity_cell_on_update_leaves_the_stored_value_alone(
+    db_session, make_org, tenant_ctx
+):
+    from app.models.business_capabilities import BusinessCapability
+
+    tag = uuid.uuid4().hex[:8]
+    org = make_org(f"import-keep-{tag}")
+    with tenant_ctx(org.id):
+        CapabilityImportService.apply(
+            _plan(f"code,name,current maturity,target maturity\n{tag}-1,Both {tag},2,5\n")
+        )
+        CapabilityImportService.apply(
+            _plan(f"code,name,current maturity\n{tag}-1,Both {tag},3\n")
+        )
+
+        cap = BusinessCapability.query.filter_by(code=f"{tag}-1").one()
+        assert cap.current_maturity_level == 3
+        assert cap.target_maturity_level == 5, (
+            "a blank cell means leave it alone, not erase it"
+        )
+        assert cap.maturity_gap == 2
+
+
 def test_apply_creates_the_tree_and_its_archimate_elements(
     db_session, make_org, tenant_ctx
 ):

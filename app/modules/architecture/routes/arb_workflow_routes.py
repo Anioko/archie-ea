@@ -703,7 +703,14 @@ _LIFECYCLE_TRANSITIONS = {
     # withdrawn is available from any non-terminal status (enforced in route)
 }
 _TERMINAL_STATUSES = {"approved", "rejected", "withdrawn"}
-_REVIEW_ROLES = ("admin", "enterprise_architect", "architect")
+# arb_member is here because reviewing is what the persona is for. It used to
+# reach these three routes — begin_arb_review, approve_solution and
+# reject_solution — only through the default Role('Architect') that every
+# account carried, which is precisely the accidental grant that was removed when
+# require_roles started gating on enterprise_role. Without naming it here, the
+# tightening would have left the Architecture Review Board workflow operable by
+# architects and admins and not by its own members.
+_REVIEW_ROLES = ("admin", "enterprise_architect", "architect", "arb_member")
 
 
 def _get_solution_or_404(solution_id: int):

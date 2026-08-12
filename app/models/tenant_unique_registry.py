@@ -99,6 +99,20 @@ GLOBAL_BY_DESIGN = {
     ("technology_functions", "archimate_id"): "generated from the primary key",
     ("technology_interactions", "archimate_id"): "generated from the primary key",
     ("technology_processes", "archimate_id"): "generated from the primary key",
+    # enterprise_raci_assignments (stakeholder_type, stakeholder_id, capability_id).
+    # Surfaced once the gate stopped accepting any foreign key and started
+    # requiring one that points at a tenant-scoped table: capability_id
+    # references unified_capabilities, which is deliberately global shared
+    # reference data (see the tenancy notes in CLAUDE.md). Both id columns are
+    # primary keys drawn from global sequences, so two organisations cannot
+    # produce the same triple — the separation comes from the ids themselves
+    # rather than from the constraint.
+    ("enterprise_raci_assignments", "stakeholder_type"):
+        "part of a triple keyed on globally-unique primary keys; see below",
+    ("enterprise_raci_assignments", "stakeholder_id"):
+        "a primary key from a global sequence — two organisations cannot share one",
+    ("enterprise_raci_assignments", "capability_id"):
+        "a unified_capabilities primary key, global by design and globally unique",
 }
 
 

@@ -397,23 +397,84 @@ class CapabilityImportService:
                 parent_of[line] = None
                 values["__unresolved_parent__"] = True
 
-        # Cycle detection across the file's own edges.
+        # Cycle detection, across the file's own edges AND through the database.
+        #
+        # Walking only the file's edges was not enough. A parent that resolves
+        # against an existing capability set parent_of[line] = None, so the walk
+        # stopped at the first step and reported nothing — while apply() went on
+        # to write that same reference. Concretely: the database holds A (root)
+        # and B (child of A); import one row `code=A, parent=B`; it plans as a
+        # clean update and commits A → B → A. The hierarchy view and the report
+        # builder were both hardened against unbounded recursion in this branch,
+        # which is the tell that a cycle is reachable; every other consumer of
+        # parent_capability_id is not.
+        #
+        # `existing_parent` walks upward through what is already stored, with
+        # rows this import is about to re-parent overridden by their new parent.
+        by_id = {c.id: c for c in existing}
+        row_for_capability = {}
+        for line, values in cleaned:
+            code_key = (values.get("code") or "").strip().lower()
+            match = by_code.get(code_key) if code_key else by_name.get(values["name"].strip().lower())
+            if match is not None:
+                row_for_capability[match.id] = line
+
+        def resolves_to_capability(line_no):
+            """The stored capability a row's parent reference points at, if any."""
+            values = dict(cleaned_by_line[line_no])
+            key = (values.get("parent") or "").strip().lower()
+            if not key:
+                return None
+            return by_code.get(key) or by_name.get(key)
+
+        cleaned_by_line = {ln: v for ln, v in cleaned}
+
         for line, values in cleaned:
             if values.get("__unresolved_parent__"):
                 continue
-            seen = set()
-            cursor = parent_of.get(line)
-            while cursor is not None:
-                if cursor in seen or cursor == line:
-                    plan.errors.append(
-                        RowError(line, "parent",
-                                 f"{values['name']!r} is its own ancestor. A capability tree "
-                                 "cannot contain a cycle.")
-                    )
-                    values["__cycle__"] = True
+
+            seen_lines, seen_ids = set(), set()
+            cursor_line = parent_of.get(line)
+            cursor_cap = resolves_to_capability(line)
+            cycle = False
+
+            # Follow file edges first.
+            while cursor_line is not None:
+                if cursor_line in seen_lines or cursor_line == line:
+                    cycle = True
                     break
-                seen.add(cursor)
-                cursor = parent_of.get(cursor)
+                seen_lines.add(cursor_line)
+                cursor_cap = resolves_to_capability(cursor_line)
+                cursor_line = parent_of.get(cursor_line)
+
+            # Then continue through stored ancestry, honouring any re-parenting
+            # this same import performs on the way up.
+            while not cycle and cursor_cap is not None:
+                if cursor_cap.id in seen_ids:
+                    cycle = True
+                    break
+                seen_ids.add(cursor_cap.id)
+
+                overriding_line = row_for_capability.get(cursor_cap.id)
+                if overriding_line is not None and overriding_line != line:
+                    if overriding_line in seen_lines:
+                        cycle = True
+                        break
+                    seen_lines.add(overriding_line)
+                    cursor_cap = resolves_to_capability(overriding_line)
+                    continue
+                if overriding_line == line:
+                    cycle = True
+                    break
+                cursor_cap = by_id.get(cursor_cap.parent_capability_id)
+
+            if cycle:
+                plan.errors.append(
+                    RowError(line, "parent",
+                             f"{values['name']!r} is its own ancestor. A capability tree "
+                             "cannot contain a cycle.")
+                )
+                values["__cycle__"] = True
 
         for line, values in cleaned:
             if values.get("__unresolved_parent__") or values.get("__cycle__"):
@@ -590,8 +651,22 @@ class CapabilityImportService:
                         setattr(cap, field_name, new)
                     updated += 1
 
-                cls._apply_maturity(cap, values)
+                is_create = row.action == "create"
+                cls._apply_maturity(cap, values, is_create=is_create)
                 db.session.flush()
+                if is_create:
+                    # The column defaults (current 1, target 3) are applied by
+                    # SQLAlchemy at INSERT even when the attribute is explicitly
+                    # None, so a level the file never mentioned comes back as a
+                    # number. Null it after the flush, where the assignment
+                    # becomes a plain UPDATE and the default cannot re-apply.
+                    if values.get("current_maturity") is None:
+                        cap.current_maturity_level = None
+                    if values.get("target_maturity") is None:
+                        cap.target_maturity_level = None
+                    if cap.current_maturity_level is None or cap.target_maturity_level is None:
+                        cap.maturity_gap = None
+                    db.session.flush()
                 by_line[row.line] = cap
 
             # Pass 2 — parents, now that every row has an id.
@@ -630,29 +705,54 @@ class CapabilityImportService:
         }
 
     @staticmethod
-    def _apply_maturity(cap, values: Dict[str, Any]) -> None:
+    def _apply_maturity(cap, values: Dict[str, Any], is_create: bool = False) -> None:
         """Set maturity, and stamp the assessment date on the same write.
 
-        current_maturity_level carries a column default of 1, so every reader
-        that has to tell "assessed at level 1" from "never assessed" keys off
-        maturity_assessment_date. An import that set the level without the
-        stamp would produce capabilities the frameworks overview cannot count.
+        ``current_maturity_level`` defaults to 1 and ``target_maturity_level``
+        defaults to 3, so neither is ever NULL on a row this importer creates.
+        Every reader that has to tell "assessed at level 1" from "never
+        assessed" keys off ``maturity_assessment_date`` — which means stamping
+        it publishes *both* columns as measurements, including the one the file
+        never mentioned.
+
+        Concretely: import ``code,name,current maturity`` with no target column,
+        and every capability is reported in the PDF, the Word file, the workbook
+        and the frameworks table as having a target of 3 and an average target
+        of 3.0 that nobody entered, with a maturity_gap computed from it.
+
+        So on a create the unsupplied column is set to NULL explicitly, beating
+        the default. On an update it is left alone — a blank cell means "leave
+        this alone" everywhere else in this importer, and the existing value is
+        the tenant's data rather than something invented here.
         """
         from datetime import datetime
 
-        touched = False
-        if values.get("current_maturity") is not None:
-            cap.current_maturity_level = values["current_maturity"]
-            touched = True
-        if values.get("target_maturity") is not None:
-            cap.target_maturity_level = values["target_maturity"]
-            touched = True
+        current = values.get("current_maturity")
+        target = values.get("target_maturity")
+
+        if current is not None:
+            cap.current_maturity_level = current
+        elif is_create:
+            cap.current_maturity_level = None
+
+        if target is not None:
+            cap.target_maturity_level = target
+        elif is_create:
+            cap.target_maturity_level = None
+
         if values.get("notes"):
             cap.maturity_assessment_notes = values["notes"]
-        if touched:
-            cap.maturity_assessment_date = datetime.utcnow()
-            if cap.current_maturity_level and cap.target_maturity_level:
-                cap.maturity_gap = cap.target_maturity_level - cap.current_maturity_level
+
+        if current is None and target is None:
+            return
+
+        cap.maturity_assessment_date = datetime.utcnow()
+        # Only a gap between two real numbers. Deriving it from a default would
+        # put an invented number in the "Gap" column of a board paper.
+        if cap.current_maturity_level is not None and cap.target_maturity_level is not None:
+            cap.maturity_gap = cap.target_maturity_level - cap.current_maturity_level
+        else:
+            cap.maturity_gap = None
 
     @staticmethod
     def _sync_archimate(capabilities: List[Any]) -> int:

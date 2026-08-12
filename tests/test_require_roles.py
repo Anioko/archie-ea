@@ -212,6 +212,22 @@ def test_an_architect_persona_keeps_the_architect_routes(app, persona):
     assert not unreachable, f"{persona} lost:\n  " + "\n  ".join(unreachable)
 
 
+def test_an_arb_member_can_still_review():
+    """Reviewing is what the persona is for.
+
+    begin_arb_review, approve_solution and reject_solution were reachable by an
+    arb_member only through the default Role('Architect') every account carried
+    — the accidental grant this change removed. Without arb_member in
+    _REVIEW_ROLES the tightening would have left the Architecture Review Board
+    workflow operable by architects and admins and not by its own members.
+    """
+    from app.modules.architecture.routes.arb_workflow_routes import _REVIEW_ROLES
+
+    assert set(_REVIEW_ROLES) & _grants("arb_member"), (
+        "an arb_member satisfies no token in the ARB review allow-list"
+    )
+
+
 @pytest.mark.parametrize("persona", NON_ARCHITECT_PERSONAS)
 def test_a_non_architect_persona_holds_no_architect_write_access(persona):
     """The tightening itself: 102 routes each of these used to reach."""

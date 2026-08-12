@@ -63,18 +63,34 @@ def scan():
                 continue
             seen_tables.add(table.name)
 
+            def tenant_scoped_fk(column):
+                """Does this column point at a table that is itself tenant-scoped?
+
+                The safety of a composite rests entirely on this. A foreign key
+                into a *tenant* table means two organisations reach different
+                parents, so the pair cannot collide — which is what makes
+                (architecture_model_id, adr_number) safe while a bare adr_number
+                is not. A foreign key into a **global reference** table gives no
+                such separation: (framework_id, code) would still be one code per
+                framework across every organisation.
+                """
+                for fk in column.foreign_keys:
+                    try:
+                        target = fk.column.table
+                    except Exception:  # noqa: BLE001 - unresolvable FK proves nothing
+                        continue
+                    if "organization_id" in target.c:
+                        return True
+                return False
+
             def allowed(columns, _table=table):
                 if list(columns) == ["organization_id"]:
                     return True  # a one-per-organisation rule
                 if "organization_id" in columns:
                     return True
-                # A composite anchored on a foreign key cannot collide across
-                # organisations: the row it points at is itself tenant-scoped,
-                # so two tenants reach different parents. That is what makes
-                # (architecture_model_id, adr_number) safe while a bare
-                # adr_number is not. Read from the real ForeignKey metadata
-                # rather than guessing from an "_id" suffix.
-                if len(columns) > 1 and any(_table.c[c].foreign_keys for c in columns):
+                if len(columns) > 1 and any(
+                    tenant_scoped_fk(_table.c[c]) for c in columns
+                ):
                     return True
                 return all((_table.name, c) in GLOBAL_BY_DESIGN for c in columns)
 

@@ -227,7 +227,7 @@ class CapabilityReportService:
         summary.style = "Light Grid Accent 1"
         for label, value in (
             ("Capabilities", f"{totals['capabilities']:,}"),
-            ("Level-1 capabilities", f"{totals['roots']:,}"),
+            ("Top-level capabilities", f"{totals['roots']:,}"),
             ("Domains", f"{totals['domains']:,}"),
             ("Assessed for maturity", f"{totals['assessed']:,}"),
             ("Not yet assessed", f"{totals['unassessed']:,}"),
@@ -334,7 +334,7 @@ class CapabilityReportService:
         for label, value in (
             ("Generated", report["generated_at"].strftime("%Y-%m-%d %H:%M UTC")),
             ("Capabilities", totals["capabilities"]),
-            ("Level-1 capabilities", totals["roots"]),
+            ("Top-level capabilities", totals["roots"]),
             ("Domains", totals["domains"]),
             ("Assessed for maturity", totals["assessed"]),
             ("Not yet assessed", totals["unassessed"]),
