@@ -89,8 +89,8 @@
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
                         {% if lifecycle in ['active', 'production'] %}bg-green-100 text-green-700
                         {% elif lifecycle in ['sunset', 'retiring'] %}bg-amber-100 text-amber-700
-                        {% elif lifecycle in ['decommissioned', 'retired'] %}bg-red-100 text-red-700
-                        {% else %}bg-gray-100 text-gray-700{% endif %}">
+                        {% elif lifecycle in ['decommissioned', 'retired'] %}bg-destructive/10 text-destructive-emphasis
+                        {% else %}bg-muted text-muted-foreground{% endif %}">
                         {{ lifecycle }}
                     </span>
                 </span>

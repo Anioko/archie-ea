@@ -41,7 +41,7 @@
     <span
       class="inline-flex items-center px-4 py-1 rounded-full text-sm font-semibold"
       :class="{
- 'bg-destructive/10 text-destructive': band === 'Incomplete',
+ 'bg-destructive/10 text-destructive-emphasis': band === 'Incomplete',
  'bg-amber-500/10 text-amber-700': band === 'Partial',
  'bg-primary/10 text-primary': band === 'Substantial',
  'bg-emerald-500/10 text-emerald-700': band === 'Complete'
@@ -104,7 +104,7 @@
         {# Missing chips #}
         <div class="flex flex-wrap gap-1" x-show="dim.missing && dim.missing.length" x-cloak><!-- alpine-scope-ok -->
           <template x-for="t in dim.missing" :key="t">
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive-emphasis">
               ✗ <span x-text="t" class="ml-1"></span>
             </span>
           </template>

@@ -69,7 +69,7 @@
                         data-cap-id="{{ req.capability_id or '' }}">
                         <td class="px-4 py-3 text-xs">
                             {% if req.driver_id and driver_map.get(req.driver_id) %}
-                                <span class="inline-flex items-center rounded-full bg-destructive/10 text-destructive px-2 py-0.5 text-[11px] font-medium" title="{{ driver_map[req.driver_id] }}">{{ driver_map[req.driver_id]|truncate(30) }}</span>
+                                <span class="inline-flex items-center rounded-full bg-destructive/10 text-destructive-emphasis px-2 py-0.5 text-[11px] font-medium" title="{{ driver_map[req.driver_id] }}">{{ driver_map[req.driver_id]|truncate(30) }}</span>
                             {% else %}
                                 <span class="text-muted-foreground italic text-[11px]">—</span>
                             {% endif %}
@@ -125,8 +125,8 @@
                         <td class="px-4 py-3">
                             {% if req.moscow_priority %}
                             <span class="px-2 py-0.5 text-xs rounded-full font-medium
-                                {% if req.moscow_priority == 'MUST' %}bg-destructive/15 text-destructive
-                                {% elif req.moscow_priority == 'SHOULD' %}bg-warning/15 text-warning
+                                {% if req.moscow_priority == 'MUST' %}bg-destructive/15 text-destructive-emphasis
+                                {% elif req.moscow_priority == 'SHOULD' %}bg-warning/15 text-warning-emphasis
                                 {% elif req.moscow_priority == 'COULD' %}bg-primary/10 text-primary
                                 {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ req.moscow_priority }}

@@ -129,7 +129,7 @@
         onsubmit="return confirm('Delete this licence entitlement? This cannot be undone.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit"
-            class="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-destructive/40 text-destructive text-sm hover:bg-destructive/10 transition-colors">
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-destructive/40 text-destructive-emphasis text-sm hover:bg-destructive/10 transition-colors">
       <i data-lucide="trash-2" class="w-4 h-4"></i> Delete licence
     </button>
   </form>

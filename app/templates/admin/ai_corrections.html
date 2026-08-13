@@ -20,7 +20,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success-emphasis{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive-emphasis{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -111,7 +111,7 @@
                                         <button
                                             type="button"
                                             onclick="markCorrect({{ row.element_id }})"
-                                            class="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/30 text-success px-2.5 py-1 text-xs font-medium hover:bg-success/20 transition-colors"
+                                            class="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/30 text-success-emphasis px-2.5 py-1 text-xs font-medium hover:bg-success/20 transition-colors"
                                             aria-label="Mark element {{ row.element_id }} as correct">
                                             <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
                                             Correct
@@ -121,7 +121,7 @@
                                         <button
                                             type="button"
                                             onclick="toggleFixForm({{ row.element_id }})"
-                                            class="inline-flex items-center gap-1 rounded-md bg-warning/10 border border-warning/30 text-warning px-2.5 py-1 text-xs font-medium hover:bg-warning/20 transition-colors"
+                                            class="inline-flex items-center gap-1 rounded-md bg-warning/10 border border-warning/30 text-warning-emphasis px-2.5 py-1 text-xs font-medium hover:bg-warning/20 transition-colors"
                                             aria-label="Fix element {{ row.element_id }}">
                                             <i data-lucide="edit-2" class="h-3 w-3" aria-hidden="true"></i>
                                             Fix

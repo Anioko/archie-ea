@@ -155,9 +155,9 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if cap.current_maturity_level %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
- {% if cap.current_maturity_level == 1 %}bg-destructive/10 text-destructive
- {% elif cap.current_maturity_level == 2 %}bg-warning/10 text-warning
- {% elif cap.current_maturity_level == 3 %}bg-warning/10 text-warning
+ {% if cap.current_maturity_level == 1 %}bg-destructive/10 text-destructive-emphasis
+ {% elif cap.current_maturity_level == 2 %}bg-warning/10 text-warning-emphasis
+ {% elif cap.current_maturity_level == 3 %}bg-warning/10 text-warning-emphasis
  {% elif cap.current_maturity_level == 4 %}bg-primary/10 text-primary
  {% else %}bg-primary/20 text-primary{% endif %}">
                                     Level {{ cap.current_maturity_level }}
@@ -171,9 +171,9 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if cap.target_maturity_level %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
- {% if cap.target_maturity_level == 1 %}bg-destructive/10 text-destructive
- {% elif cap.target_maturity_level == 2 %}bg-warning/10 text-warning
- {% elif cap.target_maturity_level == 3 %}bg-warning/10 text-warning
+ {% if cap.target_maturity_level == 1 %}bg-destructive/10 text-destructive-emphasis
+ {% elif cap.target_maturity_level == 2 %}bg-warning/10 text-warning-emphasis
+ {% elif cap.target_maturity_level == 3 %}bg-warning/10 text-warning-emphasis
  {% elif cap.target_maturity_level == 4 %}bg-primary/10 text-primary
  {% else %}bg-primary/20 text-primary{% endif %}">
                                     Level {{ cap.target_maturity_level }}
@@ -187,8 +187,8 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if cap.maturity_gap and cap.maturity_gap > 0 %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
- {% if cap.maturity_gap > 2 %}bg-destructive/10 text-destructive
- {% elif cap.maturity_gap > 1 %}bg-warning/10 text-warning
+ {% if cap.maturity_gap > 2 %}bg-destructive/10 text-destructive-emphasis
+ {% elif cap.maturity_gap > 1 %}bg-warning/10 text-warning-emphasis
  {% else %}bg-primary/10 text-primary{% endif %}">
                                     {{ cap.maturity_gap }}
                                 </span>
@@ -199,9 +199,9 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if cap.strategic_importance %}
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
- {% if cap.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
- {% elif cap.strategic_importance == 'high' %}bg-warning/10 text-warning
- {% elif cap.strategic_importance == 'medium' %}bg-warning/10 text-warning
+ {% if cap.strategic_importance == 'critical' %}bg-destructive/10 text-destructive-emphasis
+ {% elif cap.strategic_importance == 'high' %}bg-warning/10 text-warning-emphasis
+ {% elif cap.strategic_importance == 'medium' %}bg-warning/10 text-warning-emphasis
  {% else %}bg-muted text-foreground{% endif %}">
                                     {{ cap.strategic_importance }}
                                 </span>
@@ -281,7 +281,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive-emphasis{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
                     {{ message }}
                 </div>
             {% endfor %}

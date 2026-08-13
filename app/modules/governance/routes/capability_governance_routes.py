@@ -108,6 +108,8 @@ def api_health_check(capability_id):
         result = CapabilityGovernanceService.get_capability_health_check(capability_id)
         if result["success"]:
             return jsonify(result)
+        elif result.get("error") == "Capability not found":
+            return jsonify(result), 404
         else:
             return jsonify(result), 500
     except Exception as e:

@@ -34,7 +34,7 @@
                     <div class="flex items-center justify-between">
                         <span class="text-sm font-medium" x-text="testId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></span>
                         <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
-                              :class="test.pass ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'"
+                              :class="test.pass ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive-emphasis'"
                               x-text="test.pass ? 'PASS' : 'FAIL'"></span>
                     </div>
                     <p class="text-xs text-muted-foreground mt-1" x-text="test.detail || ''"></p>

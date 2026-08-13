@@ -55,11 +55,11 @@
                         <!-- Best Match (Right) -->
                         <div class="rounded-md bg-warning/5 p-3">
                             <div class="flex items-center gap-2 mb-2">
-                                <span class="inline-flex items-center rounded-full bg-warning/10 text-warning px-2 py-0.5 text-xs font-medium">Existing</span>
+                                <span class="inline-flex items-center rounded-full bg-warning/10 text-warning-emphasis px-2 py-0.5 text-xs font-medium">Existing</span>
                                 <span
                                     :class="{
- 'bg-success/10 text-success': conflict.matches[0]?.similarity >= 0.8,
- 'bg-warning/10 text-warning': conflict.matches[0]?.similarity >= 0.6 && conflict.matches[0]?.similarity < 0.8
+ 'bg-success/10 text-success-emphasis': conflict.matches[0]?.similarity >= 0.8,
+ 'bg-warning/10 text-warning-emphasis': conflict.matches[0]?.similarity >= 0.6 && conflict.matches[0]?.similarity < 0.8
  }"
                                     class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                                     x-text="Math.round((conflict.matches[0]?.similarity || 0) * 100) + '% match'"

@@ -421,7 +421,7 @@
                     {% if instance.status == 'completed' %}bg-emerald-500/10 text-emerald-700
                     {% elif instance.status == 'running' %}bg-primary/10 text-primary
                     {% elif instance.status == 'waiting_approval' %}bg-amber-500/10 text-amber-700
-                    {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive
+                    {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive-emphasis
                     {% else %}bg-muted text-muted-foreground{% endif %}"
                     role="status">
                     {{ instance.status|replace('_', ' ')|title }}
@@ -581,7 +581,7 @@
                                   placeholder="Reason for running this workflow..."></textarea>
                     </div>
 
-                    <div id="workflowFormError" class="hidden mb-4 rounded-lg bg-destructive/10 text-destructive text-sm p-3"></div>
+                    <div id="workflowFormError" class="hidden mb-4 rounded-lg bg-destructive/10 text-destructive-emphasis text-sm p-3"></div>
 
                     <div class="flex gap-2">
                         <button type="button" @click="closeWorkflowModal()"
@@ -1085,7 +1085,7 @@ function renderStepPreview(workflowCode) {
             : 'bg-background border-input';
         const iconName = isApproval ? 'hand' : (step.step_type === 'notification' ? 'bell' : 'cog');
         const typeBadge = isApproval
-            ? '<span class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-warning/15 text-warning">YOUR REVIEW</span>'
+            ? '<span class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-warning/15 text-warning-emphasis">YOUR REVIEW</span>'
             : '';
 
         html += '<div class="flex items-start gap-3 p-2.5 rounded-lg border ' + typeClass + '">'
@@ -1107,7 +1107,7 @@ function renderStepPreview(workflowCode) {
 
     if (wf.outputs && wf.outputs.length > 0) {
         outputsList.innerHTML = wf.outputs.map(function(o) {
-            return '<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-success/10 text-success border border-success/20">'
+            return '<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-success/10 text-success-emphasis border border-success/20">'
                 + '<i data-lucide="file-check" class="h-3 w-3"></i>' + o + '</span>';
         }).join('');
         outputsSection.classList.remove('hidden');

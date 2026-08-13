@@ -7644,9 +7644,11 @@ def api_solution_traceability(solution_id: int):
                 "domain_count": len({d for n in chain for d in n["domains"]}),
             },
         })
+    except HTTPException as e:
+        return jsonify({"error": e.description}), e.code
     except Exception as e:
         logger.error(f"api_solution_traceability error: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "An internal error occurred"}), 500
 
 
 # =============================================================================

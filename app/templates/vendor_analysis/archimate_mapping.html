@@ -147,7 +147,7 @@
                                 <p class="text-sm text-destructive">Type: {{ element.type }}</p>
                                 <p class="text-xs text-destructive mt-1">Product ID: {{ element.source_product_id }}</p>
                             </div>
-                            <span class="px-2 py-1 bg-destructive/10 text-destructive text-xs rounded-full">Orphaned</span>
+                            <span class="px-2 py-1 bg-destructive/10 text-destructive-emphasis text-xs rounded-full">Orphaned</span>
                         </div>
                     </div>
                     {% endfor %}
@@ -181,7 +181,7 @@
                                 <p class="text-xs text-warning mt-1">Type: {{ product.product_type }}</p>
                                 {% endif %}
                             </div>
-                            <span class="px-2 py-1 bg-warning/10 text-warning text-xs rounded-full">Unmapped</span>
+                            <span class="px-2 py-1 bg-warning/10 text-warning-emphasis text-xs rounded-full">Unmapped</span>
                         </div>
                     </div>
                     {% endfor %}
@@ -229,7 +229,7 @@
                     {% for etype, count in element_types %}
                     <div class="flex justify-between items-center p-2 border border-border rounded">
                         <span class="text-sm font-medium">{{ etype }}</span>
-                        <span class="px-2 py-1 bg-success/10 text-success text-xs rounded-full">{{ count }}</span>
+                        <span class="px-2 py-1 bg-success/10 text-success-emphasis text-xs rounded-full">{{ count }}</span>
                     </div>
                     {% endfor %}
                 </div>

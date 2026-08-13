@@ -52,9 +52,9 @@
                             </td>
                             <td class="p-3">
                                 <span class="px-2 py-1 text-xs rounded-full
-                                    {% if gap.priority == 'High' %}bg-destructive/20 text-destructive
-                                    {% elif gap.priority == 'Medium' %}bg-warning/20 text-warning
-                                    {% else %}bg-success/20 text-success{% endif %}">
+                                    {% if gap.priority == 'High' %}bg-destructive/20 text-destructive-emphasis
+                                    {% elif gap.priority == 'Medium' %}bg-warning/20 text-warning-emphasis
+                                    {% else %}bg-success/20 text-success-emphasis{% endif %}">
                                     {{ gap.priority|default('Low') }}
                                 </span>
                             </td>

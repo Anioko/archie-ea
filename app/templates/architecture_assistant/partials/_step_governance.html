@@ -30,7 +30,7 @@
                 :class="{
                     'bg-green-500/10 text-emerald-600 border border-green-500/30': cp.status === 'approved',
                     'bg-yellow-500/10 text-amber-600 border border-yellow-500/30': cp.status === 'pending',
-                    'bg-destructive/10 text-destructive border border-destructive/30': cp.status === 'blocked',
+                    'bg-destructive/10 text-destructive-emphasis border border-destructive/30': cp.status === 'blocked',
                     'bg-muted text-muted-foreground border border-border': cp.status === 'not_started'
                 }"
                 x-text="cp.status.replace('_', ' ')"></span>

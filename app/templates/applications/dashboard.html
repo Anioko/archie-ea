@@ -94,7 +94,7 @@
     {% elif app.data_freshness_tier == 'stale' %}
     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">stale</span>
     {% elif app.data_freshness_tier == 'outdated' %}
-    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
     {% else %}
     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
     {% endif %}
@@ -102,7 +102,7 @@
     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
  {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
  {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
- {% else %}bg-destructive/10 text-destructive border border-destructive/30{% endif %}"
+ {% else %}bg-destructive/10 text-destructive-emphasis border border-destructive/30{% endif %}"
         title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
         {{ app.completeness_score }}% complete
     </span>
@@ -713,7 +713,7 @@
                   <form method="POST" action="{{ row.delete_url }}" class="inline"
                     onsubmit="return Platform.modal.confirmSubmit(event, 'Remove this ArchiMate link?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove link">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive-emphasis hover:bg-destructive/10 transition-colors" aria-label="Remove link">
                       <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
                   </form>
@@ -938,7 +938,7 @@
                   <form method="POST" action="{{ row.delete_url }}" class="inline"
                     onsubmit="return Platform.modal.confirmSubmit(event, 'Remove capability mapping for {{ row.name | e }}?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove mapping">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive-emphasis hover:bg-destructive/10 transition-colors" aria-label="Remove mapping">
                       <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
                   </form>
@@ -1099,7 +1099,7 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="vendor_product_id" value="{{ v.product_id }}">
-                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove vendor product">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive-emphasis hover:bg-destructive/10 transition-colors" aria-label="Remove vendor product">
                       <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
                   </form>
@@ -2069,7 +2069,7 @@
            class="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-muted/50 transition-colors">
           <div class="flex items-center gap-3">
             <span class="inline-flex h-8 w-8 items-center justify-center rounded-full"
-                  :class="{'bg-emerald-500/10 text-emerald-700': inst.status==='completed', 'bg-amber-500/10 text-amber-700': inst.status==='running'||inst.status==='waiting_approval', 'bg-destructive/10 text-destructive': inst.status==='failed', 'bg-muted text-muted-foreground': true}">
+                  :class="{'bg-emerald-500/10 text-emerald-700': inst.status==='completed', 'bg-amber-500/10 text-amber-700': inst.status==='running'||inst.status==='waiting_approval', 'bg-destructive/10 text-destructive-emphasis': inst.status==='failed', 'bg-muted text-muted-foreground': true}">
               <i data-lucide="activity" class="h-4 w-4" aria-hidden="true"></i>
             </span>
             <div>
@@ -2078,7 +2078,7 @@
             </div>
           </div>
           <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize"
-                :class="{'bg-emerald-500/10 text-emerald-700': inst.status==='completed', 'bg-primary/10 text-primary': inst.status==='running', 'bg-amber-500/10 text-amber-700': inst.status==='waiting_approval', 'bg-destructive/10 text-destructive': inst.status==='failed', 'bg-muted text-muted-foreground': !['completed','running','waiting_approval','failed'].includes(inst.status)}"
+                :class="{'bg-emerald-500/10 text-emerald-700': inst.status==='completed', 'bg-primary/10 text-primary': inst.status==='running', 'bg-amber-500/10 text-amber-700': inst.status==='waiting_approval', 'bg-destructive/10 text-destructive-emphasis': inst.status==='failed', 'bg-muted text-muted-foreground': !['completed','running','waiting_approval','failed'].includes(inst.status)}"
                 x-text="inst.status"></span>
         </a>
       </template>

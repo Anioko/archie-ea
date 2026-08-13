@@ -152,7 +152,7 @@
         {# Form error #}
         <div x-data
              x-show="window._decisionsSection && window._decisionsSection.formError" x-cloak
-             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive-emphasis"
              x-text="window._decisionsSection ? window._decisionsSection.formError : ''"></div>
 
         {# Actions #}
@@ -200,7 +200,7 @@
         </div>
 
         <div x-show="window._decisionsSection && window._decisionsSection.rejectError" x-cloak
-             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive-emphasis"
              x-text="window._decisionsSection ? window._decisionsSection.rejectError : ''"></div>
 
         <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">

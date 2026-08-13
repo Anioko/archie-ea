@@ -155,8 +155,8 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                 <td class="p-4 text-sm font-bold" x-text="cap.investment_priority_score + '/100'"></td>
                                 <td class="p-4">
                                     <span :class="{
- 'bg-destructive/10 text-destructive border-destructive/20': cap.priority_level === 'CRITICAL',
- 'bg-warning/10 text-warning border-warning/20': cap.priority_level === 'HIGH',
+ 'bg-destructive/10 text-destructive-emphasis border-destructive/20': cap.priority_level === 'CRITICAL',
+ 'bg-warning/10 text-warning-emphasis border-warning/20': cap.priority_level === 'HIGH',
  'bg-muted text-muted-foreground border-border': cap.priority_level === 'MEDIUM' || cap.priority_level === 'LOW'
  }"
                                     class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
@@ -193,7 +193,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                     <div class="flex items-center gap-2">
                                         <button
                                             @click="$dispatch('open-roi-calculator', normalizeCapability(cap))"
-                                            class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-success hover:text-success bg-success/5 hover:bg-success/10 rounded-md transition-colors"
+                                            class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-success-emphasis hover:text-success-emphasis bg-success/5 hover:bg-success/10 rounded-md transition-colors"
                                             title="Calculate ROI"
                                             aria-label="Calculate ROI">
                                             <i data-lucide="calculator" class="h-3 w-3" aria-hidden="true"></i>

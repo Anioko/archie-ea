@@ -70,7 +70,7 @@
                         <div class="flex items-center gap-3 ml-4 shrink-0">
                             <template x-if="cap.business_priority">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
-                                    :class="cap.business_priority === 'Critical' ? 'bg-destructive/10 text-destructive border border-destructive/30' : cap.business_priority === 'High' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-muted text-muted-foreground'"
+                                    :class="cap.business_priority === 'Critical' ? 'bg-destructive/10 text-destructive-emphasis border border-destructive/30' : cap.business_priority === 'High' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-muted text-muted-foreground'"
                                     x-text="cap.business_priority"></span>
                             </template>
                             <span x-show="cap.current_maturity"
@@ -190,7 +190,7 @@
                             <div class="flex items-center gap-2 ml-4 shrink-0">
                                 <span x-show="gap.severity || gap.priority"
                                     class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
-                                    :class="(gap.severity || gap.priority || ).toLowerCase() === critical ? bg-destructive/10 text-destructive border border-destructive/30 : (gap.severity || gap.priority || ).toLowerCase() === high ? bg-amber-500/10 text-amber-600 border border-amber-500/30 : bg-muted text-muted-foreground"
+                                    :class="(gap.severity || gap.priority || ).toLowerCase() === critical ? bg-destructive/10 text-destructive-emphasis border border-destructive/30 : (gap.severity || gap.priority || ).toLowerCase() === high ? bg-amber-500/10 text-amber-600 border border-amber-500/30 : bg-muted text-muted-foreground"
                                     x-text="gap.severity || gap.priority"></span>
                                 <span x-show="gap.mapped_count !== undefined"
                                     class="text-[10px] text-muted-foreground"
@@ -521,7 +521,7 @@
                                 </div>
                                 <span x-show="gap.priority || gap.severity"
                                     class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
-                                    :class="(gap.priority || gap.severity) === 'critical' ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-600'"
+                                    :class="(gap.priority || gap.severity) === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-amber-500/10 text-amber-600'"
                                     x-text="gap.priority || gap.severity"></span>
                             </div>
                         </template>

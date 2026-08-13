@@ -38,7 +38,7 @@
     <!-- Status Message -->
     <template x-if="message">
         <div class="mb-4 rounded-lg border px-4 py-3 text-sm"
-             :class="messageType === 'success' ? 'bg-success/10 text-success border-success/30' : 'bg-destructive/10 text-destructive border-destructive/30'">
+             :class="messageType === 'success' ? 'bg-success/10 text-success-emphasis border-success/30' : 'bg-destructive/10 text-destructive-emphasis border-destructive/30'">
             <span x-text="message"></span>
         </div>
     </template>
@@ -59,15 +59,15 @@
                                 <h3 class="font-semibold text-foreground" x-text="cat.name"></h3>
                                 <!-- Status badge -->
                                 <span x-show="cat.status === 'seeded'" x-cloak
-                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30">
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
                                     Seeded
                                 </span>
                                 <span x-show="cat.status === 'empty'" x-cloak
-                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">
                                     Empty
                                 </span>
                                 <span x-show="cat.status === 'error'" x-cloak
-                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning border border-warning/30">
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
                                     Error
                                 </span>
                             </div>

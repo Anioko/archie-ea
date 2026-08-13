@@ -32,7 +32,7 @@
   <div class="flex flex-wrap gap-3 pb-4 border-b">
     <div class="flex gap-2">
       <button @click="toggleFilter('priority', 'P0')" 
-              :class="filters.priority.includes('P0') ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'"
+              :class="filters.priority.includes('P0') ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-muted text-muted-foreground'"
               class="px-3 py-1 rounded-full text-xs font-medium hover:opacity-80">
         P0 Only
       </button>

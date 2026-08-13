@@ -16,7 +16,7 @@
     ) }}
 
     <div x-cloak x-show="alert.message"
-         :class="alert.kind === 'error' ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'"
+         :class="alert.kind === 'error' ? 'border-destructive/30 bg-destructive/10 text-destructive-emphasis' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'"
          class="mb-6 rounded-md border p-4 text-sm" x-text="alert.message"></div>
 
     <!-- Credentials card -->

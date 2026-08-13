@@ -17,7 +17,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis{% else %}bg-accent border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -45,7 +45,7 @@
                                             {% if wtype == 'teams' %}
                                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30"><!-- token-migration-ok -->Teams</span>
                                             {% elif wtype == 'slack' %}
-                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30"><!-- token-migration-ok -->Slack</span>
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30"><!-- token-migration-ok -->Slack</span>
                                             {% else %}
                                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">Generic</span>
                                             {% endif %}

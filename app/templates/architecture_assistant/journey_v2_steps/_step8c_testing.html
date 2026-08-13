@@ -36,7 +36,7 @@
                             </div>
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
                                   :class="scenario.verdict === 'pass' ? 'bg-green-500/10 text-green-600 border border-green-500/30' :
-                                          scenario.verdict === 'fail' ? 'bg-destructive/10 text-destructive border border-destructive/30' :
+                                          scenario.verdict === 'fail' ? 'bg-destructive/10 text-destructive-emphasis border border-destructive/30' :
                                           'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30'"
                                   x-text="scenario.verdict || 'pending'"></span>
                         </div>
@@ -62,7 +62,7 @@
                                 <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i> Pass
                             </button>
                             <button @click="recordVerdict(scenario, 'fail')"
-                                    class="inline-flex items-center gap-1 px-3 py-1.5 bg-destructive/10 text-destructive border border-destructive/30 rounded-md text-xs font-medium hover:bg-destructive/20">
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 bg-destructive/10 text-destructive-emphasis border border-destructive/30 rounded-md text-xs font-medium hover:bg-destructive/20">
                                 <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i> Fail
                             </button>
                             <button @click="recordVerdict(scenario, 'partial')"
@@ -157,7 +157,7 @@
                 <div class="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-green-600 border border-green-500/30"
                           x-text="(testReport.summary?.pass || 0) + ' passed'"></span>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30"
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30"
                           x-text="(testReport.summary?.fail || 0) + ' failed'"></span>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30"
                           x-text="(testReport.summary?.pending || 0) + ' pending'"></span>
@@ -173,7 +173,7 @@
                         </div>
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
                               :class="result.status === 'pass' ? 'bg-green-500/10 text-green-600 border border-green-500/30' :
-                                      result.status === 'fail' ? 'bg-destructive/10 text-destructive border border-destructive/30' :
+                                      result.status === 'fail' ? 'bg-destructive/10 text-destructive-emphasis border border-destructive/30' :
                                       'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30'"
                               x-text="result.status"></span>
                     </div>

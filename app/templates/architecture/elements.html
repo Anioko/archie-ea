@@ -130,7 +130,7 @@
                                 <td class="px-4 py-2 text-muted-foreground capitalize" x-text="item.layer || u2014"></td>
                                 <td class="px-4 py-2 text-center">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold"
-                                          :class="(item.debt_score || 0) >= 70 ? bg-destructive/10 text-destructive : (item.debt_score || 0) >= 40 ? bg-amber-500/10 text-amber-600 : bg-emerald-500/10 text-emerald-600"
+                                          :class="(item.debt_score || 0) >= 70 ? bg-destructive/10 text-destructive-emphasis : (item.debt_score || 0) >= 40 ? bg-amber-500/10 text-amber-600 : bg-emerald-500/10 text-emerald-600"
                                           x-text="(item.debt_score || 0) + %"></span>
                                 </td>
                                 <td class="px-4 py-2 text-xs text-muted-foreground hidden lg:table-cell" x-text="(item.factors || []).join(, ) || item.reason || u2014"></td>

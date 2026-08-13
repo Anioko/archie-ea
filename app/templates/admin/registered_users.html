@@ -68,7 +68,7 @@
                                         Set password
                                     </a>
                                     <a href="{{ url_for('admin.delete_user_request', user_id=u.id) }}"
-                                       class="inline-flex items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 transition-colors {% if current_user.id == u.id %}pointer-events-none opacity-50{% endif %}"
+                                       class="inline-flex items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive-emphasis hover:bg-destructive/20 transition-colors {% if current_user.id == u.id %}pointer-events-none opacity-50{% endif %}"
                                        aria-disabled="{{ 'true' if current_user.id == u.id else 'false' }}">
                                         Delete
                                     </a>

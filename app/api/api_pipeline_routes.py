@@ -114,10 +114,13 @@ def enrich_vendor(vendor_name):
                         "message": "No data sources returned valid results",
                     }
                 ),
-                500,
+                503,
             )
 
     except Exception as e:
+        # External enrichment providers (G2 Crowd, Crunchbase, etc.) being
+        # unreachable/unconfigured is a service-availability condition, not a
+        # bug in Archie - 503 says so instead of masquerading as a 500.
         logger.error(f"Vendor enrichment failed for {vendor_name}: {e}")
         return (
             jsonify(
@@ -128,7 +131,7 @@ def enrich_vendor(vendor_name):
                     "message": "See server logs for details",
                 }
             ),
-            500,
+            503,
         )
 
 
@@ -192,10 +195,11 @@ def enrich_product(product_name):
                         "message": "No data sources returned valid results",
                     }
                 ),
-                500,
+                503,
             )
 
     except Exception as e:
+        # See enrich_vendor: an unreachable external provider is 503, not 500.
         logger.error(f"Product enrichment failed for {product_name}: {e}")
         return (
             jsonify(
@@ -206,7 +210,7 @@ def enrich_product(product_name):
                     "message": "See server logs for details",
                 }
             ),
-            500,
+            503,
         )
 
 

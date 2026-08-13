@@ -65,7 +65,7 @@
                 <div class="flex items-center gap-2 mb-3">
                     <i data-lucide="alert-triangle" class="h-5 w-5 text-warning"></i>
                     <h4 class="font-semibold">Validation Issues</h4>
-                    <span class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+                    <span class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-emphasis"
                           x-text="(previewData?.validation?.summary?.total_errors || 0) + (previewData?.validation?.summary?.total_warnings || 0) + ' issues'"></span>
                 </div>
                 <div class="rounded-md border overflow-hidden">
@@ -87,8 +87,8 @@
                                         <td class="px-4 py-2">
                                             <span
                                                 :class="{
-                                                    'bg-destructive/10 text-destructive': issue.severity === 'error',
-                                                    'bg-warning/10 text-warning': issue.severity === 'warning',
+                                                    'bg-destructive/10 text-destructive-emphasis': issue.severity === 'error',
+                                                    'bg-warning/10 text-warning-emphasis': issue.severity === 'warning',
                                                     'bg-primary/10 text-primary': issue.severity === 'info'
                                                 }"
                                                 class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"

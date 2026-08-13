@@ -26,7 +26,7 @@
 
         {# A failed load must be visible on the page, not only in a toast that
            has already faded by the time the user reads the roadmap. #}
-        <div x-show="loadError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="loadError"></div>
+        <div x-show="loadError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="loadError"></div>
 
         <!-- Main Content -->
         <div class="space-y-6">
@@ -344,7 +344,7 @@ function implementationPlanningDashboard() {
                 placeholder="Describe the scope and objectives"></textarea>
     </div>
   </div>
-  <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+  <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg"></div>
   <div class="flex justify-end gap-3 pt-2 border-t border-border">
     <button type="button" data-modal-close="create-work-package"
             class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>

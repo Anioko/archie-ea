@@ -47,9 +47,9 @@
                     <td class="px-6 py-3">
                         {% set s = (app.status or 'active')|lower %}
                         {% if s == 'active' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30">Active</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Active</span>
                         {% elif s == 'retired' or s == 'decommissioned' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">{{ s|title }}</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">{{ s|title }}</span>
                         {% elif s == 'planned' %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Planned</span>
                         {% else %}

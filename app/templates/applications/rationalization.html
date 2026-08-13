@@ -910,7 +910,7 @@
               <h3 class="text-lg font-semibold text-success">
                 <span id="detection-strategy-name">Detection</span> Complete
               </h3>
-              <span class="ml-auto text-xs px-2 py-1 rounded-full bg-success/20 text-success font-medium" id="detection-timestamp"></span>
+              <span class="ml-auto text-xs px-2 py-1 rounded-full bg-success/20 text-success-emphasis font-medium" id="detection-timestamp"></span>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <div class="flex justify-between items-center py-3 px-4 rounded-md bg-background/60 border border-success/20">
@@ -1454,7 +1454,7 @@
 
           <!-- Status banner — loaded / not loaded -->
           <div x-show="planStatus === 'loaded'"
-               class="flex items-center gap-2 text-sm text-success px-3 py-2 rounded-md bg-success/5 border border-success/20">
+               class="flex items-center gap-2 text-sm text-success-emphasis px-3 py-2 rounded-md bg-success/5 border border-success/20">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
@@ -1684,7 +1684,7 @@
 
               <!-- Status banner: existing plan loaded -->
               <div x-show="planStatus === 'loaded'" x-cloak
-                   class="flex items-center gap-2 text-sm text-success px-3 py-2 rounded-md bg-success/5 border border-success/20">
+                   class="flex items-center gap-2 text-sm text-success-emphasis px-3 py-2 rounded-md bg-success/5 border border-success/20">
                 <i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0" aria-hidden="true"></i>
                 Existing decommission plan loaded -- update fields below and save.
                 <span class="ml-auto inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
@@ -1946,7 +1946,7 @@
             <div class="flex items-center gap-2 mb-3">
               <i data-lucide="alert-triangle" class="w-5 h-5 text-warning" aria-hidden="true"></i>
               <h3 class="font-semibold">Retirement Blockers</h3>
-              <span id="blockers-count" class="px-2 py-0.5 text-xs font-bold rounded-full bg-warning/10 text-warning">0</span>
+              <span id="blockers-count" class="px-2 py-0.5 text-xs font-bold rounded-full bg-warning/10 text-warning-emphasis">0</span>
             </div>
 
             <!-- Summary -->
@@ -2300,7 +2300,7 @@
             <span>Inbound: <strong x-text="(dossierData && dossierData.dependencies && dossierData.dependencies.inbound_count) ?? 0"></strong></span>
           </div>
           <div x-show="dossierData && dossierData.dependencies && dossierData.dependencies.critical_blockers && dossierData.dependencies.critical_blockers.length > 0" x-cloak
-               class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30"> <!-- token-migration-ok -->
+               class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30"> <!-- token-migration-ok -->
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
@@ -2530,7 +2530,7 @@
 
         <!-- Feedback messages -->
         <div x-show="error" x-cloak
-             class="flex items-center gap-2 text-sm text-destructive px-3 py-2 rounded-md bg-destructive/10 border border-destructive/30" /* token-migration-ok */
+             class="flex items-center gap-2 text-sm text-destructive-emphasis px-3 py-2 rounded-md bg-destructive/10 border border-destructive/30" /* token-migration-ok */
              role="alert" x-text="error">
         </div>
         <div x-show="successMsg" x-cloak

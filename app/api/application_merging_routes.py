@@ -12,6 +12,7 @@ import logging
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
+from werkzeug.exceptions import HTTPException
 from app.decorators import audit_log
 from app.models.application_portfolio import (
     ApplicationComponent as ApplicationComponent,
@@ -291,6 +292,8 @@ def analyze_application_merges(app_id):
 
         return jsonify(response_data)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error analyzing application merges: {str(e)}")
         return jsonify({"success": False, "error": "Failed to analyze merges"}), 500

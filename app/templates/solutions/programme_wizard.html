@@ -229,7 +229,7 @@
               </div>
             </div>
             <button @click="removeDriver(idx)" x-show="form.drivers.length > 1"
-                    class="mt-1 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0">
+                    class="mt-1 p-1.5 rounded-md text-muted-foreground hover:text-destructive-emphasis hover:bg-destructive/10 transition-colors shrink-0">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
@@ -254,7 +254,7 @@
                    placeholder="Goal name (e.g. Reduce month-end close from 10 days to 3 days)" aria-label="Goal name (e.g. Reduce month-end close from 10 days to 3 days)">
           </div>
           <button @click="removeGoal(idx)" x-show="form.goals.length > 1"
-                  class="p-1.5 mt-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0">
+                  class="p-1.5 mt-1 rounded-md text-muted-foreground hover:text-destructive-emphasis hover:bg-destructive/10 transition-colors shrink-0">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>

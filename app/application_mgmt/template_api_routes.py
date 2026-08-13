@@ -198,7 +198,10 @@ def search_templates_advanced():
         )
 
     # Execute query
-    limit = min(int(data.get("limit", 20)), 100)
+    try:
+        limit = min(int(data.get("limit", 20)), 100)
+    except (ValueError, TypeError):
+        return jsonify({"error": "limit must be an integer"}), 400
     results = base_query.limit(limit).all()
 
     # Calculate relevance scores

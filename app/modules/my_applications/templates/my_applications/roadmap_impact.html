@@ -37,12 +37,12 @@
         </div>
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="user" class="w-5 h-5 text-blue-600"></i>
+                <div class="w-10 h-10 bg-info/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="user" class="w-5 h-5 text-info-emphasis"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Primary Owner</div>
             </div>
-            <div class="text-3xl font-bold text-blue-600">{{ ownership_summary.primary }}</div>
+            <div class="text-3xl font-bold text-info-emphasis">{{ ownership_summary.primary }}</div>
         </div>
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
@@ -68,7 +68,7 @@
                     <!-- Impact Icon -->
                     <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0
                         {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-600
-                        {% elif impact.impact_type == 'lifecycle_change' %}bg-blue-100 text-blue-600
+                        {% elif impact.impact_type == 'lifecycle_change' %}bg-info/10 text-info-emphasis
                         {% else %}bg-muted text-muted-foreground{% endif %}">
                         <i data-lucide="{% if impact.impact_type == 'sunset' %}sunset{% elif impact.impact_type == 'lifecycle_change' %}refresh-cw{% else %}calendar{% endif %}" class="w-6 h-6"></i>
                     </div>
@@ -86,7 +86,7 @@
                                 {% set days_until = (impact.date - today).days if today else none %}
                                 {% if days_until is not none %}
                                 <div class="text-xs
-                                    {% if days_until < 0 %}text-red-600
+                                    {% if days_until < 0 %}text-destructive-emphasis
                                     {% elif days_until < 30 %}text-amber-600
                                     {% elif days_until < 90 %}text-yellow-600
                                     {% else %}text-muted-foreground{% endif %}">
@@ -103,8 +103,8 @@
                         <div class="flex items-center gap-2 mt-3">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
                                 {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-700
-                                {% elif impact.impact_type == 'lifecycle_change' %}bg-blue-100 text-blue-700
-                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {% elif impact.impact_type == 'lifecycle_change' %}bg-info/10 text-info-emphasis
+                                {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ impact.impact_type|replace('_', ' ')|title }}
                             </span>
                             <a href="{{ url_for('my_applications.app_detail', app_id=impact.application.id) }}"
@@ -131,10 +131,10 @@
     {% endif %}
 
     <!-- Info Box -->
-    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <div class="mt-6 bg-info/10 border border-info/30 rounded-lg p-4">
         <div class="flex items-start gap-3">
-            <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
-            <div class="text-sm text-blue-800">
+            <i data-lucide="info" class="w-5 h-5 text-info-emphasis flex-shrink-0 mt-0.5"></i>
+            <div class="text-sm text-info-emphasis">
                 <p class="font-medium">About Roadmap Impacts</p>
                 <p class="mt-1">This page shows scheduled changes affecting your applications, including sunset dates and lifecycle transitions. Plan ahead to ensure business continuity.</p>
             </div>

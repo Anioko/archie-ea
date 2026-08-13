@@ -79,7 +79,7 @@
                         {% elif d.status == 'deprecated' %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Deprecated</span>
                         {% elif d.status == 'superseded' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20">Superseded</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Superseded</span>
                         {% else %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">{{ d.status|title }}</span>
                         {% endif %}

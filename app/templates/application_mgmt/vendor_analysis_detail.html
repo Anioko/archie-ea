@@ -24,10 +24,10 @@
     <div class="flex items-center gap-2">
       <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium border"
         :class="{
-          'bg-success/10 text-success border-success/30': analysis.approval_status === 'approved',
-          'bg-warning/10 text-warning border-warning/30': analysis.status === 'draft' || analysis.status === 'running',
+          'bg-success/10 text-success-emphasis border-success/30': analysis.approval_status === 'approved',
+          'bg-warning/10 text-warning-emphasis border-warning/30': analysis.status === 'draft' || analysis.status === 'running',
           'bg-primary/10 text-primary border-primary/30': analysis.status === 'completed' && !analysis.approval_status,
-          'bg-destructive/10 text-destructive border-destructive/30': analysis.approval_status === 'rejected'
+          'bg-destructive/10 text-destructive-emphasis border-destructive/30': analysis.approval_status === 'rejected'
         }"
         x-text="analysis.approval_status || analysis.status || 'new'"></span>
       <a href="{{ url_for('application_mgmt.vendor_analysis_list') }}" class="px-3 py-2 border border-border rounded-md text-sm hover:bg-muted">
@@ -55,7 +55,7 @@
             :aria-label="tab.label + ' - Step ' + (idx + 1) + ' of ' + tabs.length">
             <span class="flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold shrink-0 border transition-colors"
               :class="{
-                'bg-success/10 border-success/30 text-success': stepStatus(tab.id) === 'completed' && activeTab !== tab.id,
+                'bg-success/10 border-success/30 text-success-emphasis': stepStatus(tab.id) === 'completed' && activeTab !== tab.id,
                 'bg-primary border-primary text-primary-foreground': stepStatus(tab.id) === 'current',
                 'bg-muted border-border text-muted-foreground': stepStatus(tab.id) === 'available',
                 'bg-muted/50 border-border/50 text-muted-foreground/50': stepStatus(tab.id) === 'locked'
@@ -681,7 +681,7 @@
             </p>
             <div class="flex flex-wrap gap-1.5">
               <template x-for="v in discoveredVendors.filter(function(dv) { return selectedVendorIds.has(dv.id); }).slice(0, 4)" :key="v.id">
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success border border-success/20" x-text="v.name"></span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/20" x-text="v.name"></span>
               </template>
               <span x-show="selectedVendorIds.size > 4" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground"
                 x-text="'+' + (selectedVendorIds.size - 4) + ' more'"></span>
@@ -949,14 +949,14 @@
                             @keydown.enter="saveEditReq(req.id)" @keydown.escape="cancelEditReq()"
                             @blur="saveEditReq(req.id)"
                             class="px-2 py-0.5 text-sm border border-primary rounded bg-background text-foreground w-full" aria-label="Editing Req Name">
-                          <span x-show="req.must_have" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30">MUST</span>
+                          <span x-show="req.must_have" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">MUST</span>
                         </div>
                       </td>
                       <td class="px-3 py-2">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
                           :class="{
-                            'bg-destructive/10 text-destructive border border-destructive/30': req.importance === 'critical',
-                            'bg-warning/10 text-warning border border-warning/30': req.importance === 'high',
+                            'bg-destructive/10 text-destructive-emphasis border border-destructive/30': req.importance === 'critical',
+                            'bg-warning/10 text-warning-emphasis border border-warning/30': req.importance === 'high',
                             'bg-primary/10 text-primary border border-primary/30': req.importance === 'medium',
                             'bg-muted text-muted-foreground border border-border': req.importance === 'low'
                           }" x-text="req.importance"></span>
@@ -967,9 +967,9 @@
                             <button @click="cycleFulfillment(req.id, v.id)"
                               class="w-7 h-7 rounded-md flex items-center justify-center transition-colors border"
                               :class="{
-                                'bg-success/15 border-success/40 text-success hover:bg-success/25': getFulfillment(req, v.id) === 'met',
-                                'bg-warning/15 border-warning/40 text-warning hover:bg-warning/25': getFulfillment(req, v.id) === 'partial',
-                                'bg-destructive/15 border-destructive/40 text-destructive hover:bg-destructive/25': getFulfillment(req, v.id) === 'not_met',
+                                'bg-success/15 border-success/40 text-success-emphasis hover:bg-success/25': getFulfillment(req, v.id) === 'met',
+                                'bg-warning/15 border-warning/40 text-warning-emphasis hover:bg-warning/25': getFulfillment(req, v.id) === 'partial',
+                                'bg-destructive/15 border-destructive/40 text-destructive-emphasis hover:bg-destructive/25': getFulfillment(req, v.id) === 'not_met',
                                 'bg-muted/50 border-border text-muted-foreground hover:bg-muted': !getFulfillment(req, v.id)
                               }"
                               :title="getFulfillmentLabel(req, v.id)">
@@ -1155,7 +1155,7 @@
               <!-- Winner change alert -->
               <template x-for="(s, idx) in scenarios" :key="'alert-' + s.id">
                 <div x-show="idx > 0 && scenarioWinnerChanged(s, scenarios[0])" x-cloak
-                  class="mt-2 flex items-center gap-2 p-2 rounded-md bg-warning/10 border border-warning/30 text-xs text-warning">
+                  class="mt-2 flex items-center gap-2 p-2 rounded-md bg-warning/10 border border-warning/30 text-xs text-warning-emphasis">
                   <i data-lucide="alert-triangle" class="h-3.5 w-3.5 flex-shrink-0"></i>
                   <span>
                     <span class="font-semibold" x-text="s.scenario_name"></span> produces a different winner than
@@ -1213,7 +1213,7 @@
                   <td class="px-4 py-3 text-sm font-bold" x-text="v.ranking || (idx + 1)"></td>
                   <td class="px-4 py-3 text-sm font-medium text-foreground">
                     <span x-text="v.name"></span>
-                    <span x-show="idx === 0" x-cloak class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-success/10 text-success rounded text-xs">
+                    <span x-show="idx === 0" x-cloak class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-success/10 text-success-emphasis rounded text-xs">
                       <i data-lucide="trophy" class="h-3 w-3"></i> Top Ranked
                     </span>
                   </td>

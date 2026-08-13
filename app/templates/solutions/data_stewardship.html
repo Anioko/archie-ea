@@ -45,7 +45,7 @@
         {% for f in review.findings %}
         <div class="border border-border rounded-xl bg-card p-4 flex items-start gap-3">
             <span class="shrink-0 mt-0.5 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide
-                {% if f.severity == 'critical' %}bg-destructive/10 text-destructive border border-destructive/30
+                {% if f.severity == 'critical' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                 {% elif f.severity == 'high' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
                 {% else %}bg-muted text-muted-foreground border border-border{% endif %}">{{ f.severity }}</span>
             <div class="min-w-0 flex-1">

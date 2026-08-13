@@ -192,7 +192,7 @@
             </div>
 
             <!-- Error state -->
-            <div x-show="error" class="rounded-md bg-destructive/10 text-destructive text-sm p-3" x-cloak x-text="error"></div>
+            <div x-show="error" class="rounded-md bg-destructive/10 text-destructive-emphasis text-sm p-3" x-cloak x-text="error"></div>
 
             <!-- Empty state -->
             <div x-show="!loading && !error && (!burndownData || !burndownData.ideal_line || burndownData.ideal_line.length === 0)" x-cloak

@@ -106,7 +106,7 @@
                  @click="createRelationship(rt.type || rt)">
                 <span x-text="rt.type || rt" class="capitalize"></span>
                 <span x-show="rt.tier === 'derived'" x-cloak
-                      class="text-[9px] px-1.5 py-0.5 rounded bg-warning/10 text-warning font-semibold">derived</span>
+                      class="text-[9px] px-1.5 py-0.5 rounded bg-warning/10 text-warning-emphasis font-semibold">derived</span>
                 <span x-show="rt.tier === 'fallback'" x-cloak
                       class="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold">fallback</span>
             </div>
@@ -145,7 +145,7 @@
                 <p class="text-[11px] text-warning font-medium mb-1.5">Association is generic — would a more specific type be appropriate?</p>
                 <div class="flex gap-1.5">
                     <button @click="confirmAssociation()"
-                            class="text-[10px] px-2.5 py-1 rounded border border-warning/30 bg-warning/10 text-warning font-medium hover:bg-warning/20">Use Association</button>
+                            class="text-[10px] px-2.5 py-1 rounded border border-warning/30 bg-warning/10 text-warning-emphasis font-medium hover:bg-warning/20">Use Association</button>
                     <button @click="cancelAssociationWarning()"
                             class="text-[10px] px-2.5 py-1 rounded border border-border bg-background text-foreground font-medium hover:bg-accent">Pick Specific</button>
                 </div>
@@ -573,13 +573,13 @@
                                         <span class="font-medium" x-text="el.name"></span>
                                         <span class="text-muted-foreground ml-1" x-text="'(' + el.type + ')'"></span>
                                         <template x-if="el.category === 'existing'">
-                                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-success/10 text-success text-[10px] font-medium">EXISTING</span>
+                                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-success/10 text-success-emphasis text-[10px] font-medium">EXISTING</span>
                                         </template>
                                         <template x-if="el.category === 'new'">
                                             <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-medium">NEW</span>
                                         </template>
                                         <template x-if="el.category === 'possible_duplicate'">
-                                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-warning/10 text-warning text-[10px] font-medium">
+                                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-warning/10 text-warning-emphasis text-[10px] font-medium">
                                                 SIMILAR TO: <span x-text="el.duplicate_match ? el.duplicate_match.name : ''"></span>
                                             </span>
                                         </template>
@@ -587,12 +587,12 @@
                                     <div class="flex gap-1 flex-shrink-0">
                                         <template x-if="el.category === 'possible_duplicate'">
                                             <div class="flex gap-1">
-                                                <button @click="useExistingElement(i)" class="px-2 py-0.5 bg-success/10 text-success rounded hover:bg-success/20 transition-colors text-[10px]">Use existing</button>
+                                                <button @click="useExistingElement(i)" class="px-2 py-0.5 bg-success/10 text-success-emphasis rounded hover:bg-success/20 transition-colors text-[10px]">Use existing</button>
                                                 <button @click="keepNewElement(i)" class="px-2 py-0.5 bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors text-[10px]">Keep new</button>
                                             </div>
                                         </template>
                                         <template x-if="el.category !== 'possible_duplicate'">
-                                            <button @click="rejectGenerated(i)" class="px-2 py-0.5 bg-destructive/10 text-destructive rounded hover:bg-destructive/20 transition-colors">Remove</button>
+                                            <button @click="rejectGenerated(i)" class="px-2 py-0.5 bg-destructive/10 text-destructive-emphasis rounded hover:bg-destructive/20 transition-colors">Remove</button>
                                         </template>
                                     </div>
                                 </div>
@@ -670,15 +670,15 @@
                                 <div class="flex items-center gap-1.5">
                                     <span class="font-medium" x-text="el.name"></span>
                                     <span class="px-1.5 py-0.5 rounded text-[9px] font-bold"
-                                        :class="el.confidence === 'high' ? 'bg-success/10 text-success' : el.confidence === 'medium' ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive'"
+                                        :class="el.confidence === 'high' ? 'bg-success/10 text-success-emphasis' : el.confidence === 'medium' ? 'bg-warning/10 text-warning-emphasis' : 'bg-destructive/10 text-destructive-emphasis'"
                                         x-text="el.confidence"></span>
                                 </div>
                                 <div class="text-muted-foreground mt-0.5" x-text="el.suggested_type"></div>
                                 <div class="text-muted-foreground/60 mt-0.5 italic text-[11px] line-clamp-2" x-text="'&quot;' + el.source_quote + '&quot;'" x-show="el.source_quote" x-cloak></div>
                             </div>
                             <div class="flex gap-1 shrink-0">
-                                <button @click="acceptExtracted(i)" class="px-2 py-0.5 bg-success/10 text-success rounded hover:bg-success/20 transition-colors">Accept</button>
-                                <button @click="rejectExtracted(i)" class="px-2 py-0.5 bg-destructive/10 text-destructive rounded hover:bg-destructive/20 transition-colors">Reject</button>
+                                <button @click="acceptExtracted(i)" class="px-2 py-0.5 bg-success/10 text-success-emphasis rounded hover:bg-success/20 transition-colors">Accept</button>
+                                <button @click="rejectExtracted(i)" class="px-2 py-0.5 bg-destructive/10 text-destructive-emphasis rounded hover:bg-destructive/20 transition-colors">Reject</button>
                             </div>
                         </div>
                     </template>
@@ -771,7 +771,7 @@
                         </div>
                     </template>
                     <button @click="placePatternOnCanvas()"
-                        class="w-full mt-2 px-3 py-1.5 bg-success/10 text-success rounded text-xs font-medium hover:bg-success/20 transition-colors">
+                        class="w-full mt-2 px-3 py-1.5 bg-success/10 text-success-emphasis rounded text-xs font-medium hover:bg-success/20 transition-colors">
                         Place on Canvas
                     </button>
                 </div>
@@ -997,7 +997,7 @@
                         </button>
                         <div class="flex items-center gap-1 flex-shrink-0">
                             <button @click="compareSnapshots(snap.id, snapshots[0] ? snapshots[0].id : snap.id); snapshotListOpen = false"
-                                    class="text-[10px] text-warning hover:underline px-2 py-1 rounded-md hover:bg-warning/10 transition-colors"
+                                    class="text-[10px] text-warning-emphasis hover:underline px-2 py-1 rounded-md hover:bg-warning/10 transition-colors"
                                     x-show="snapshots.length > 1" x-cloak
                                     title="Compare this snapshot against the latest">
                                 Compare
@@ -1105,7 +1105,7 @@
                             </div>
                             <template x-for="el in diffDetails.removedElements" :key="'rem-' + el.id">
                                 <div class="px-2.5 py-1 text-[11px] text-foreground/70 flex items-center gap-1.5 line-through">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-destructive/10 text-destructive border border-destructive/30 no-underline">DEL</span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 no-underline">DEL</span>
                                     <span class="truncate" x-text="el.name"></span>
                                     <span class="text-muted-foreground text-[9px] ml-auto flex-shrink-0 no-underline" x-text="el.type"></span>
                                 </div>
@@ -1158,7 +1158,7 @@
                             </div>
                             <template x-for="rel in diffDetails.removedRelationships" :key="'rrem-' + rel.id">
                                 <div class="px-2.5 py-1 text-[11px] text-foreground/70 flex items-center gap-1.5">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-destructive/10 text-destructive border border-destructive/30">DEL</span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">DEL</span>
                                     <span class="truncate" x-text="rel.type"></span>
                                 </div>
                             </template>
@@ -1337,7 +1337,7 @@
                                 Keep as intent
                             </button>
                             <button @click="removeStalenessRel(rel.rel_id)"
-                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
+                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20 transition-colors">
                                 Remove
                             </button>
                         </div>

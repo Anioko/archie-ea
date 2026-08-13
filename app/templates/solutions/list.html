@@ -172,7 +172,7 @@
                 <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>Export
               </button>
               <button type="button" data-action="bulk-delete-solutions"
-                      class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-destructive/30 bg-card hover:bg-destructive/10 text-destructive transition-colors" aria-label="Delete selected">
+                      class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-destructive/30 bg-card hover:bg-destructive/10 text-destructive-emphasis transition-colors" aria-label="Delete selected">
                 <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>Delete
               </button>
           </div>
@@ -318,7 +318,7 @@
                                                 class="text-[10px] px-2 py-1 rounded-md border font-medium transition-colors"
                                                 x-text="isInCompare({{ solution.id }}) ? '✓ Compare' : '+ Compare'"></button>
                                         <button type="button" @click="window.deleteSolution({{ solution.id }}, '{{ solution.name|e }}')"
-                                                class="text-[10px] px-2 py-1 rounded-md border border-destructive/20 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors" aria-label="Delete">Delete</button>
+                                                class="text-[10px] px-2 py-1 rounded-md border border-destructive/20 text-destructive-emphasis/70 hover:bg-destructive/10 hover:text-destructive-emphasis transition-colors" aria-label="Delete">Delete</button>
                                     </div>
                                 </div>
                             </td>

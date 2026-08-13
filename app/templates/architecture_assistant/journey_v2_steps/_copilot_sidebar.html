@@ -90,7 +90,7 @@
           <div class="flex items-center gap-1.5 mb-1.5">
             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
                   :class="{
-                    'bg-destructive/10 text-destructive': suggestion.severity === 'missing',
+                    'bg-destructive/10 text-destructive-emphasis': suggestion.severity === 'missing',
                     'bg-amber-500/10 text-amber-600': suggestion.severity === 'weak',
                     'bg-primary/10 text-primary': suggestion.severity === 'improvement',
                   }"

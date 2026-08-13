@@ -25,9 +25,9 @@
     <!-- Status Badge -->
     <span class="px-2 py-1 text-xs rounded-full font-medium"
           :class="{
-            'bg-success/10 text-success': connector.status === 'active',
+            'bg-success/10 text-success-emphasis': connector.status === 'active',
             'bg-muted text-muted-foreground': connector.status === 'inactive',
-            'bg-destructive/10 text-destructive': connector.status === 'error'
+            'bg-destructive/10 text-destructive-emphasis': connector.status === 'error'
           }"
           x-text="connector.status"></span>
   </div>
@@ -48,9 +48,9 @@
     <div x-show="connector.last_sync_status" x-cloak class="mt-1">
       <span class="text-xs px-2 py-0.5 rounded-full"
             :class="{
-              'bg-success/10 text-success': connector.last_sync_status === 'success',
-              'bg-destructive/10 text-destructive': connector.last_sync_status === 'error',
-              'bg-warning/10 text-warning': connector.last_sync_status === 'partial'
+              'bg-success/10 text-success-emphasis': connector.last_sync_status === 'success',
+              'bg-destructive/10 text-destructive-emphasis': connector.last_sync_status === 'error',
+              'bg-warning/10 text-warning-emphasis': connector.last_sync_status === 'partial'
             }"
             x-text="connector.last_sync_status"></span>
     </div>

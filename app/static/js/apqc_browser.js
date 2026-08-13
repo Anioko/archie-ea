@@ -27,8 +27,11 @@ class APQCBrowserManager {
         // Search functionality
         const searchInput = document.getElementById('search-input');
         if (searchInput) {
+            // Debounced: one request per keystroke let a slow early response
+            // overwrite the results of a later, more specific query.
             searchInput.addEventListener('input', (e) => {
-                this.handleSearch(e.target.value);
+                clearTimeout(this._searchTimer);
+                this._searchTimer = setTimeout(() => this.handleSearch(e.target.value), 300);
             });
         }
 
@@ -294,9 +297,13 @@ class APQCBrowserManager {
             return;
         }
 
+        // Abort any in-flight search so responses cannot land out of order.
+        if (this._searchAbort) this._searchAbort.abort();
+        this._searchAbort = new AbortController();
+
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/apqc/search?q=${encodeURIComponent(query)}&level=${this.currentFilters.level}&industry=${this.currentFilters.industry}&limit=20`);
+            const response = await fetch(`/api/apqc/search?q=${encodeURIComponent(query)}&level=${this.currentFilters.level}&industry=${this.currentFilters.industry}&limit=20`, { signal: this._searchAbort.signal });
             const data = await response.json();
 
             if (data.success) {
@@ -306,6 +313,7 @@ class APQCBrowserManager {
                 this.showError('Search failed: ' + data.error);
             }
         } catch (error) {
+            if (error.name === 'AbortError') return; // superseded by a newer query
             console.error('Error searching:', error);
             this.showError('Error searching');
         } finally {

@@ -141,9 +141,9 @@
                     <div class="flex items-start justify-between mb-3">
                         <h4 class="font-medium text-foreground">{{ capability.name }}</h4>
                         <span class="px-2 py-1 text-xs rounded-full
-                            {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
-                            {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning
-                            {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning
+                            {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive-emphasis
+                            {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning-emphasis
+                            {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning-emphasis
                             {% else %}bg-muted text-foreground
                             {% endif %}">
                             {{ capability.strategic_importance|title }}

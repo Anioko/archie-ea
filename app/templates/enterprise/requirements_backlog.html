@@ -208,8 +208,8 @@
                             <td class="px-4 py-3">
                                 <span class="px-2 py-0.5 text-xs rounded-full font-medium"
                                     :class="{
-                                        'bg-destructive/15 text-destructive': req.moscow_priority === 'MUST',
-                                        'bg-warning/15 text-warning': req.moscow_priority === 'SHOULD',
+                                        'bg-destructive/15 text-destructive-emphasis': req.moscow_priority === 'MUST',
+                                        'bg-warning/15 text-warning-emphasis': req.moscow_priority === 'SHOULD',
                                         'bg-primary/10 text-primary': req.moscow_priority === 'COULD',
                                         'bg-muted text-muted-foreground': !req.moscow_priority || req.moscow_priority === 'WONT'
                                     }"

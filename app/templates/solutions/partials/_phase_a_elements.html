@@ -31,7 +31,7 @@
                             </td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive' : item.priority === 'high' ? 'bg-amber-500/10 text-amber-600' : item.priority === 'medium' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
+                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' : item.priority === 'high' ? 'bg-amber-500/10 text-amber-600' : item.priority === 'medium' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
                                       x-text="item.priority"></span>
                             </td>
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[200px] truncate" x-text="item.rationale || '\u2014'"></td>
@@ -90,7 +90,7 @@
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[150px] truncate" x-text="item.target_state || '\u2014'"></td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.severity >= 4 ? 'bg-destructive/10 text-destructive' : item.severity === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
+                                      :class="item.severity >= 4 ? 'bg-destructive/10 text-destructive-emphasis' : item.severity === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
                                       x-text="item.severity + '/5'"></span>
                             </td>
                             <td class="px-3 py-2">
@@ -145,7 +145,7 @@
                             <td class="px-3 py-2 text-muted-foreground" x-text="item.organization || '\u2014'"></td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.influence_level === 'high' ? 'bg-destructive/10 text-destructive' : item.influence_level === 'medium' ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
+                                      :class="item.influence_level === 'high' ? 'bg-destructive/10 text-destructive-emphasis' : item.influence_level === 'medium' ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
                                       x-text="item.influence_level"></span>
                             </td>
                             <td class="px-3 py-2">

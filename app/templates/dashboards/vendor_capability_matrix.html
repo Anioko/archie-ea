@@ -463,7 +463,7 @@ document.addEventListener('alpine:init', () => {
                     <template x-for="gap in ($store.matrixModal.data?.gaps ?? [])" :key="gap.name">
                         <div class="flex items-start gap-2.5">
                             <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border mt-0.5"
-                                  :class="gap.severity === 'high' ? 'bg-destructive/10 text-destructive border-destructive/30' :
+                                  :class="gap.severity === 'high' ? 'bg-destructive/10 text-destructive-emphasis border-destructive/30' :
  gap.severity === 'medium' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' :
  'bg-primary/10 text-primary border-primary/30'"
                                   x-text="gap.severity"></span>

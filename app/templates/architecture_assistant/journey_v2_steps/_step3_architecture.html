@@ -149,7 +149,7 @@
                             <div class="flex items-center gap-3 shrink-0">
                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium"
                                       :class="app.is_decommissioning
-                                          ? 'bg-destructive/10 text-destructive border border-destructive/20'
+                                          ? 'bg-destructive/10 text-destructive-emphasis border border-destructive/20'
                                           : (app.lifecycle_status || '').indexOf('STRATEGIC') >= 0
                                               ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
                                               : (app.lifecycle_status || '').indexOf('CONTAIN') >= 0
@@ -799,7 +799,7 @@
                                                             <div class="flex items-center gap-1.5 mb-0.5">
                                                                 <span class="text-[11px] font-medium" x-text="rule.name"></span>
                                                                 <span class="text-[9px] px-1.5 py-0.5 rounded border"
-                                                                      :class="rule.severity === 'must' ? 'bg-destructive/10 text-destructive border-destructive/20' :
+                                                                      :class="rule.severity === 'must' ? 'bg-destructive/10 text-destructive-emphasis border-destructive/20' :
                                                                               rule.severity === 'should' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
                                                                               'bg-muted text-muted-foreground border-border'"
                                                                       x-text="rule.severity || 'must'"></span>

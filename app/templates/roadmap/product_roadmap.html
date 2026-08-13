@@ -19,7 +19,7 @@
       <span class="text-xs text-muted-foreground">On Track (Now):</span>
       <span
         class="px-3 py-1 rounded-full text-sm font-semibold"
-        :class="onTrackPct >= 70 ? 'bg-emerald-500/10 text-emerald-700' : onTrackPct >= 40 ? 'bg-amber-500/10 text-amber-700' : 'bg-destructive/10 text-destructive'"
+        :class="onTrackPct >= 70 ? 'bg-emerald-500/10 text-emerald-700' : onTrackPct >= 40 ? 'bg-amber-500/10 text-amber-700' : 'bg-destructive/10 text-destructive-emphasis'"
         x-text="onTrackPct + '%'"
       ></span>
       <span class="text-xs text-muted-foreground/60" x-text="'Total epics: ' + totalEpics"></span>
@@ -27,7 +27,7 @@
   </div>
 
   <!-- Error banner -->
-  <div x-show="error" x-cloak class="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded text-destructive text-sm" x-text="error"></div>
+  <div x-show="error" x-cloak class="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded text-destructive-emphasis text-sm" x-text="error"></div>
 
   <!-- 3-column kanban + unscheduled -->
   <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">

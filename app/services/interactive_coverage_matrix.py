@@ -493,6 +493,12 @@ class InteractiveCoverageMatrix:
                 "medium_coverage_count": 0,
                 "low_coverage_count": 0,
                 "no_coverage_count": 0,
+                "coverage_distribution": {
+                    "high": 0,
+                    "medium": 0,
+                    "low": 0,
+                    "none": 0,
+                },
             }
 
         coverage_values = [cell.coverage_percentage for cell in cells]

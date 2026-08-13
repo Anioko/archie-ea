@@ -183,7 +183,7 @@
                         <button type="button" 
                             x-show="doc.status === 'uploading' || doc.status === 'pending' || doc.status === 'failed'" x-cloak
                             @click="analyzeDocumentFromHistory(doc.id)"
-                            class="p-1 text-success hover:text-success hover:bg-success/5 rounded transition-colors"
+                            class="p-1 text-success-emphasis hover:text-success-emphasis hover:bg-success/5 rounded transition-colors"
                             title="Analyze document"
                         >
                             <i data-lucide="sparkles" class="h-3.5 w-3.5"></i>
@@ -200,7 +200,7 @@
                         <button type="button" 
                             x-show="doc.status !== 'analyzing'" x-cloak
                             @click="deleteDocument(doc.id)"
-                            class="p-1 text-destructive hover:text-destructive hover:bg-destructive/5 rounded transition-colors"
+                            class="p-1 text-destructive-emphasis hover:text-destructive-emphasis hover:bg-destructive/5 rounded transition-colors"
                             title="Delete"
                         >
                             <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
@@ -230,7 +230,7 @@
                     </p>
                 </div>
                 <div class="flex items-center gap-1.5">
-                    <div class="px-1.5 py-0.5 rounded text-xs bg-success/10 text-success font-medium">
+                    <div class="px-1.5 py-0.5 rounded text-xs bg-success/10 text-success-emphasis font-medium">
                         <i data-lucide="sparkles" class="h-2.5 w-2.5 mr-0.5"></i>
                         AI
                     </div>
@@ -387,7 +387,7 @@
                         <div class="flex items-center gap-2">
                             <i data-lucide="eye" class="h-4 w-4 text-warning"></i>
                             <h4 class="text-sm font-semibold text-warning">Preview Mode</h4>
-                            <span class="text-xs bg-warning/10 text-warning px-2 py-0.5 rounded-full"
+                            <span class="text-xs bg-warning/10 text-warning-emphasis px-2 py-0.5 rounded-full"
                                   x-text="previewElements.length + ' elements found'"></span>
                         </div>
                         <button type="button" @click="clearPreview()" class="text-warning hover:text-warning" aria-label="Close preview mode">
@@ -422,16 +422,16 @@
                                     <div class="flex items-center gap-2 flex-wrap">
                                         <span class="text-xs font-medium text-warning truncate" 
                                               x-text="elem.resolved_name || elem.name"></span>
-                                        <span class="text-xs px-1.5 py-0.5 bg-warning/10 text-warning rounded" x-text="elem.type"></span>
+                                        <span class="text-xs px-1.5 py-0.5 bg-warning/10 text-warning-emphasis rounded" x-text="elem.type"></span>
                                         <span class="text-xs text-warning" x-text="elem.layer || ''"></span>
                                         
                                         {# Confidence Score Badge #}
                                         <template x-if="elem.confidence">
                                             <span class="text-xs px-1.5 py-0.5 rounded"
                                                   :class="{
- 'bg-success/10 text-success': elem.confidence.score >= 0.75,
- 'bg-warning/10 text-warning': elem.confidence.score >= 0.5 && elem.confidence.score < 0.75,
- 'bg-destructive/10 text-destructive': elem.confidence.score < 0.5
+ 'bg-success/10 text-success-emphasis': elem.confidence.score >= 0.75,
+ 'bg-warning/10 text-warning-emphasis': elem.confidence.score >= 0.5 && elem.confidence.score < 0.75,
+ 'bg-destructive/10 text-destructive-emphasis': elem.confidence.score < 0.5
  }"
                                                   :title="'Confidence: ' + (elem.confidence.score * 100).toFixed(0) + '%'">
                                                 <i data-lucide="trending-up" class="h-3 w-3 inline"></i>
@@ -455,7 +455,7 @@
                                         <div class="mt-1 flex items-center gap-1 flex-wrap">
                                             <span class="text-xs text-warning">Related:</span>
                                             <template x-for="related in elem.kg_related_entities.slice(0, 3)" :key="related.id">
-                                                <span class="text-xs px-1 py-0.5 bg-warning/5 text-warning rounded"
+                                                <span class="text-xs px-1 py-0.5 bg-warning/5 text-warning-emphasis rounded"
                                                       x-text="related.name"></span>
                                             </template>
                                         </div>
@@ -465,7 +465,7 @@
                                     <template x-if="elem.confidence && elem.confidence.quality_indicators && elem.confidence.quality_indicators.length > 0">
                                         <div class="mt-1 flex items-center gap-1 flex-wrap">
                                             <template x-for="indicator in elem.confidence.quality_indicators" :key="indicator">
-                                                <span class="text-xs px-1 py-0.5 bg-warning/10 text-warning rounded"
+                                                <span class="text-xs px-1 py-0.5 bg-warning/10 text-warning-emphasis rounded"
                                                       x-text="indicator.replace('_', ' ')"></span>
                                             </template>
                                         </div>
@@ -501,13 +501,13 @@
                                 <div class="flex items-center gap-1 flex-shrink-0">
                                     <button type="button" x-show="editingElement !== index" x-cloak
                                             @click="startEditingElement(index)"
-                                            class="p-1 text-warning hover:text-warning hover:bg-warning/10 rounded"
+                                            class="p-1 text-warning-emphasis hover:text-warning-emphasis hover:bg-warning/10 rounded"
                                             title="Edit element">
                                         <i data-lucide="pencil" class="h-3 w-3"></i>
                                     </button>
                                     <button type="button" x-show="editingElement === index" x-cloak
                                             @click="saveElementEdit(index)"
-                                            class="p-1 text-success hover:text-success hover:bg-success/10 rounded"
+                                            class="p-1 text-success-emphasis hover:text-success-emphasis hover:bg-success/10 rounded"
                                             title="Save changes">
                                         <i data-lucide="check" class="h-3 w-3"></i>
                                     </button>
@@ -518,7 +518,7 @@
                                         <i data-lucide="x" class="h-3 w-3"></i>
                                     </button>
                                     <button type="button" @click="removePreviewElement(index)"
-                                            class="p-1 text-destructive hover:text-destructive hover:bg-destructive/10 rounded"
+                                            class="p-1 text-destructive-emphasis hover:text-destructive-emphasis hover:bg-destructive/10 rounded"
                                             title="Remove element">
                                         <i data-lucide="trash-2" class="h-3 w-3"></i>
                                     </button>
@@ -549,7 +549,7 @@
                             </template>
                         </button>
                         <button type="button" @click="clearPreview()"
-                                class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-warning/30 text-warning hover:bg-warning/10 h-8 px-3" aria-label="Cancel element creation">
+                                class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-warning/30 text-warning-emphasis hover:bg-warning/10 h-8 px-3" aria-label="Cancel element creation">
                             Cancel
                         </button>
                     </div>
@@ -567,9 +567,9 @@
                     <div class="flex items-center gap-1.5 flex-shrink-0">
                         <span
                             :class="{
- 'bg-success/10 text-success': analysisResults?.confidence === 'high',
- 'bg-warning/10 text-warning': analysisResults?.confidence === 'medium',
- 'bg-destructive/10 text-destructive': analysisResults?.confidence === 'low'
+ 'bg-success/10 text-success-emphasis': analysisResults?.confidence === 'high',
+ 'bg-warning/10 text-warning-emphasis': analysisResults?.confidence === 'medium',
+ 'bg-destructive/10 text-destructive-emphasis': analysisResults?.confidence === 'low'
  }"
                             class="px-1.5 py-0.5 rounded text-xs font-medium"
                             x-text="(analysisResults?.confidence || 'medium').toUpperCase()"
@@ -596,7 +596,7 @@
                         <div class="flex items-center gap-2 mb-3">
                             <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
                             <h5 class="text-sm font-semibold text-success">Matched Entities</h5>
-                            <span class="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full"
+                            <span class="text-xs bg-success/10 text-success-emphasis px-2 py-0.5 rounded-full"
                                   x-text="(analysisResults?.entity_matching?.matches?.length || 0) + ' found'"></span>
                         </div>
                         <div class="space-y-2 max-h-40 overflow-y-auto">
@@ -607,7 +607,7 @@
                                         <span class="text-xs text-success ml-2" x-text="match.entity_type"></span>
                                     </div>
                                     <div class="flex items-center gap-2">
-                                        <span class="text-xs bg-success/20 text-success px-2 py-0.5 rounded" x-text="match.match_confidence + '%'"></span>
+                                        <span class="text-xs bg-success/20 text-success-emphasis px-2 py-0.5 rounded" x-text="match.match_confidence + '%'"></span>
                                         <button type="button" @click="linkToEntity(match)" class="text-success hover:text-success" aria-label="Link to entity">
                                             <i data-lucide="link" class="h-4 w-4"></i>
                                         </button>
@@ -623,7 +623,7 @@
                         <div class="flex items-center gap-2 mb-3">
                             <i data-lucide="alert-triangle" class="h-4 w-4 text-warning"></i>
                             <h5 class="text-sm font-semibold text-warning">Potential Duplicates</h5>
-                            <span class="text-xs bg-warning/10 text-warning px-2 py-0.5 rounded-full"
+                            <span class="text-xs bg-warning/10 text-warning-emphasis px-2 py-0.5 rounded-full"
                                   x-text="(analysisResults?.entity_matching?.potential_duplicates?.length || 0) + ' warnings'"></span>
                         </div>
                         <div class="space-y-2 max-h-32 overflow-y-auto">
@@ -633,7 +633,7 @@
                                         <span class="text-sm font-medium text-warning" x-text="dup.warning"></span>
                                     </div>
                                     <span class="text-xs px-2 py-0.5 rounded"
-                                          :class="{'bg-warning/20 text-warning': dup.match_level === 'medium', 'bg-warning/20 text-warning': dup.match_level === 'low'}"
+                                          :class="{'bg-warning/20 text-warning-emphasis': dup.match_level === 'medium', 'bg-warning/20 text-warning-emphasis': dup.match_level === 'low'}"
                                           x-text="dup.match_confidence + '%'"></span>
                                 </div>
                             </template>
@@ -649,7 +649,7 @@
                                 <h5 class="text-sm font-semibold text-success">
                                     Successfully Created
                                 </h5>
-                                <span class="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full font-medium"
+                                <span class="text-xs bg-success/10 text-success-emphasis px-2 py-0.5 rounded-full font-medium"
                                       x-text="(creationDetails?.totalCount || analysisResults?.created_elements || 0) + ' elements'"></span>
                             </div>
                             <button type="button" @click="creationDetails = null"
@@ -879,14 +879,14 @@
                     <div class="flex items-center gap-2 mb-3">
                         <i data-lucide="message-square" class="h-4 w-4 text-success"></i>
                         <h5 class="text-sm font-semibold text-success">Discovered Elements</h5>
-                        <span class="text-xs bg-success/10 text-success px-2 py-1 rounded" x-text="(analysisResults?.conversational_elements?.length || 0) + ' elements'"></span>
+                        <span class="text-xs bg-success/10 text-success-emphasis px-2 py-1 rounded" x-text="(analysisResults?.conversational_elements?.length || 0) + ' elements'"></span>
                     </div>
                     <div class="space-y-2 max-h-48 overflow-y-auto">
                         <template x-for="element in (analysisResults?.conversational_elements || [])" :key="element.chat_friendly_name || element.name">
                             <div class="bg-background rounded p-2 border border-success/20">
                                 <div class="flex items-center justify-between mb-1">
                                     <span class="text-sm font-medium text-success" x-text="element.chat_friendly_name"></span>
-                                    <span class="text-xs bg-success/10 text-success px-1 py-0.5 rounded" x-text="element.layer"></span>
+                                    <span class="text-xs bg-success/10 text-success-emphasis px-1 py-0.5 rounded" x-text="element.layer"></span>
                                 </div>
                                 <p class="text-xs text-success" x-text="element.description"></p>
                             </div>

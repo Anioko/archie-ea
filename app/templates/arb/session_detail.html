@@ -39,7 +39,7 @@
         <div x-data="{ activeModal: null, _formAction: '{{ url_for('arb.delete_session', id=session.id) }}' }">
             <button type="button"
                     @click="activeModal = 'confirm-delete-arb-session'"
-                    class="px-3 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/5">
+                    class="px-3 py-1.5 text-xs font-medium text-destructive-emphasis border border-destructive/30 rounded-lg hover:bg-destructive/5">
                 Delete
             </button>
             {{ sol_confirm_modal(

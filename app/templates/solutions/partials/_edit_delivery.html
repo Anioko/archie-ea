@@ -96,7 +96,7 @@
             {% if phase_gate %}
             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
                 {% if phase_gate.valid %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-                {% else %}bg-destructive/10 text-destructive border border-destructive/30{% endif %}">
+                {% else %}bg-destructive/10 text-destructive-emphasis border border-destructive/30{% endif %}">
                 Gate: {% if phase_gate.valid %}Passed{% else %}Not Met{% endif %}
             </span>
             {% endif %}
@@ -365,7 +365,7 @@
                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
                         {% if review.decision == 'approved' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
                         {% elif review.decision == 'approved_with_conditions' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
-                        {% elif review.decision == 'rejected' %}bg-destructive/10 text-destructive border border-destructive/30
+                        {% elif review.decision == 'rejected' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                         {% elif review.decision == 'deferred' %}bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30
                         {% else %}bg-primary/10 text-primary border border-primary/30{% endif %}">
                         {{ (review.decision or review.status or 'pending')|replace('_', ' ')|title }}
@@ -465,7 +465,7 @@
         </div>
 
         <div x-show="wfStartError" x-cloak
-             class="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 flex items-center justify-between text-sm text-destructive">
+             class="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 flex items-center justify-between text-sm text-destructive-emphasis">
             <span x-text="wfStartError"></span>
             <button type="button" @click="wfStartError = null" class="p-0.5 hover:opacity-70">
                 <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>

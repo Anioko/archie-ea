@@ -564,7 +564,7 @@
                         data-solution-id="{{ solution.id }}"
                         data-solution-name="{{ solution.name|e }}"
                         role="menuitem"
-                        class="w-full flex items-center gap-2.5 px-3 py-2 text-destructive hover:bg-destructive/10 transition-colors text-left">
+                        class="w-full flex items-center gap-2.5 px-3 py-2 text-destructive-emphasis hover:bg-destructive/10 transition-colors text-left">
                         <i data-lucide="trash-2" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i> Delete
                     </button>
                 </div>
@@ -846,7 +846,7 @@
             <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold
  {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' if _ac.score >= 80
  else ('bg-amber-500/10 text-amber-600 border border-amber-500/20' if _ac.score >= 40
- else 'bg-destructive/10 text-destructive border border-destructive/20') }}">
+ else 'bg-destructive/10 text-destructive-emphasis border border-destructive/20') }}">
               {{ _ac.score }}% &mdash; {{ _ac.filled_count }}/{{ _ac.total }} sections
             </span>
           </div>

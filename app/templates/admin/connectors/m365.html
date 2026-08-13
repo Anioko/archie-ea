@@ -16,7 +16,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis{% else %}bg-accent border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}

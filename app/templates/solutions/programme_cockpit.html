@@ -181,7 +181,7 @@
                         <td class="px-3 py-2.5 text-foreground">{{ snap.baseline_app_count or '—' }}</td>
                         <td class="px-3 py-2.5">
                             {% if snap.drift and snap.drift.flagged %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Drifted</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Drifted</span>
                             {% else %}
                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Clean</span>
                             {% endif %}
@@ -269,7 +269,7 @@
                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
                                 {% if m.governance_status == 'approved' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
                                 {% elif m.governance_status in ('arb_review', 'under_review') %}bg-amber-500/10 text-amber-600 border border-amber-500/30
-                                {% elif m.governance_status == 'rejected' %}bg-destructive/10 text-destructive border border-destructive/30
+                                {% elif m.governance_status == 'rejected' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                                 {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                                 {{ m.governance_status | replace('_', ' ') | title }}
                             </span>

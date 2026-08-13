@@ -90,7 +90,7 @@
             </div>
         </div>
         <div x-cloak x-show="message" class="px-5 py-2 text-xs border-b border-border"
-             :class="messageKind === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-emerald-500/10 text-emerald-700'"
+             :class="messageKind === 'error' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-emerald-500/10 text-emerald-700'"
              x-text="message"></div>
 
         {% if entries %}
@@ -115,7 +115,7 @@
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border
                             {% if e.fit_type in ('standard', 'configuration') %}bg-emerald-500/10 text-emerald-600 border-emerald-500/30
                             {% elif e.fit_type in ('extension', 'isv_solution') %}bg-amber-500/10 text-amber-600 border-amber-500/30
-                            {% else %}bg-destructive/10 text-destructive border-destructive/30{% endif %}">
+                            {% else %}bg-destructive/10 text-destructive-emphasis border-destructive/30{% endif %}">
                             {{ (e.fit_type or 'unclassified') | replace('_', ' ') | title }}
                         </span>
                     </td>

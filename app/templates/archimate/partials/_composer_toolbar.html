@@ -292,7 +292,7 @@
               :class="{
                   'bg-amber-500/10 text-amber-600 border border-amber-500/30': viewpointReviewStatus === 'submitted',
                   'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': viewpointReviewStatus === 'approved',
-                  'bg-destructive/10 text-destructive border border-destructive/30': viewpointReviewStatus === 'changes_requested',
+                  'bg-destructive/10 text-destructive-emphasis border border-destructive/30': viewpointReviewStatus === 'changes_requested',
               }"
               x-text="viewpointReviewStatus === 'submitted' ? 'Under Review' : viewpointReviewStatus === 'approved' ? 'Approved' : 'Changes Requested'">
         </span>
@@ -304,7 +304,7 @@
                 title="Diagram quality score — click for details">
             <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
             <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-semibold tabular-nums border"
-                  :class="complianceScore >= 80 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : (complianceScore >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' : 'bg-destructive/10 text-destructive border-destructive/30')"
+                  :class="complianceScore >= 80 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : (complianceScore >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' : 'bg-destructive/10 text-destructive-emphasis border-destructive/30')"
                   x-text="complianceScore + '%'"></span>
         </button>
 
@@ -312,7 +312,7 @@
         <div x-show="validationErrors > 0 || validationWarnings > 0" x-cloak
              class="flex items-center gap-1 text-xs">
             <span x-show="validationErrors > 0" x-cloak
-                  class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-destructive/10 text-destructive"
+                  class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-destructive/10 text-destructive-emphasis"
                   x-text="validationErrors + ' error' + (validationErrors > 1 ? 's' : '')"></span>
             <span x-show="validationWarnings > 0" x-cloak
                   class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600"
@@ -831,7 +831,7 @@
         <template x-if="qualityScore">
             <div class="flex items-center gap-1 ml-auto mr-2">
                 <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border"
-                     :class="qualityScore.overall >= 80 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : qualityScore.overall >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' : 'bg-destructive/10 text-destructive border-destructive/30'">
+                     :class="qualityScore.overall >= 80 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : qualityScore.overall >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' : 'bg-destructive/10 text-destructive-emphasis border-destructive/30'">
                     <span x-text="'Quality: ' + qualityScore.overall + '%'"></span>
                 </div>
                 <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] text-muted-foreground border border-border">

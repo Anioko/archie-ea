@@ -78,8 +78,8 @@
                     <td class="px-4 py-3">
                         <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
                             {% if item.contract.status == 'active' %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400
-                            {% elif item.contract.status == 'expired' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
-                            {% elif item.contract.status == 'draft' %}bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400
+                            {% elif item.contract.status == 'expired' %}bg-destructive/10 text-destructive-emphasis
+                            {% elif item.contract.status == 'draft' %}bg-muted text-muted-foreground
                             {% else %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400{% endif %}">
                             {# Stored values are snake_case; render them as words.
                                "under_negotiation" was shown to the user verbatim. #}
@@ -90,10 +90,10 @@
                         {% if item.days_until_renewal is not none %}
                             <div class="flex items-center gap-2">
                                 <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                                    {% if item.urgency == 'critical' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
+                                    {% if item.urgency == 'critical' %}bg-destructive/10 text-destructive-emphasis
                                     {% elif item.urgency == 'warning' %}bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400
-                                    {% elif item.urgency == 'upcoming' %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400
-                                    {% elif item.urgency == 'expired' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
+                                    {% elif item.urgency == 'upcoming' %}bg-info/10 text-info-emphasis
+                                    {% elif item.urgency == 'expired' %}bg-destructive/10 text-destructive-emphasis
                                     {% else %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400{% endif %}">
                                     {% if item.urgency == 'expired' %}Expired
                                     {% else %}{{ item.days_until_renewal }} days{% endif %}

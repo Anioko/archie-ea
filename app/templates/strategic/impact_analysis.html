@@ -137,9 +137,9 @@
             <div x-cloak x-show="analysisResult" class="p-6 space-y-6">
                 <!-- Severity Alert -->
                 <div :class="{
-                    'bg-destructive/10 text-destructive border-destructive/20': analysisResult?.severity === 'CRITICAL' || analysisResult?.severity === 'HIGH',
-                    'bg-warning/10 text-warning border-warning/20': analysisResult?.severity === 'MEDIUM',
-                    'bg-success/10 text-success border-green-600/20': analysisResult?.severity === 'LOW'
+                    'bg-destructive/10 text-destructive-emphasis border-destructive/20': analysisResult?.severity === 'CRITICAL' || analysisResult?.severity === 'HIGH',
+                    'bg-warning/10 text-warning-emphasis border-warning/20': analysisResult?.severity === 'MEDIUM',
+                    'bg-success/10 text-success-emphasis border-green-600/20': analysisResult?.severity === 'LOW'
                 }" class="border rounded-lg p-4 flex items-start space-x-3">
                     <i data-lucide="alert-circle" class="h-5 w-5 mt-0.5" aria-hidden="true"></i>
                     <div>
@@ -186,7 +186,7 @@
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <span x-show="impact.criticality" x-cloak
-                                        :class="{'bg-destructive/10 text-destructive border-destructive/20': impact.criticality === 'mission_critical', 'bg-warning/10 text-warning border-warning/20': impact.criticality === 'important', 'bg-muted text-muted-foreground border-border': !impact.criticality || (impact.criticality !== 'mission_critical' && impact.criticality !== 'important')}"
+                                        :class="{'bg-destructive/10 text-destructive-emphasis border-destructive/20': impact.criticality === 'mission_critical', 'bg-warning/10 text-warning-emphasis border-warning/20': impact.criticality === 'important', 'bg-muted text-muted-foreground border-border': !impact.criticality || (impact.criticality !== 'mission_critical' && impact.criticality !== 'important')}"
                                         class="text-xs font-semibold px-2 py-0.5 rounded-full border capitalize"
                                         x-text="(impact.criticality || '').replace('_', ' ')"></span>
                                     <span
@@ -216,7 +216,7 @@
                                     </div>
                                 </div>
                                 <span
-                                    class="text-xs font-semibold px-2 py-0.5 rounded-full border border-warning/20 bg-warning/5 text-warning"
+                                    class="text-xs font-semibold px-2 py-0.5 rounded-full border border-warning/20 bg-warning/5 text-warning-emphasis"
                                     x-text="impact.relationship"></span>
                             </div>
                         </template>
@@ -279,7 +279,7 @@
                                 <td class="py-2 font-mono text-xs" x-text="h.trigger_element_id"></td>
                                 <td class="py-2 text-xs uppercase" x-text="h.analysis_type"></td>
                                 <td class="py-2">
-                                    <span :class="{'bg-destructive/10 text-destructive': h.overall_severity === 'critical', 'bg-warning/10 text-warning': h.overall_severity === 'high', 'bg-muted text-muted-foreground': h.overall_severity === 'low' || h.overall_severity === 'medium'}"
+                                    <span :class="{'bg-destructive/10 text-destructive-emphasis': h.overall_severity === 'critical', 'bg-warning/10 text-warning-emphasis': h.overall_severity === 'high', 'bg-muted text-muted-foreground': h.overall_severity === 'low' || h.overall_severity === 'medium'}"
                                           class="text-xs px-2 py-0.5 rounded-full capitalize" x-text="h.overall_severity"></span>
                                 </td>
                                 <td class="py-2 text-xs" x-text="h.affected_applications_count"></td>

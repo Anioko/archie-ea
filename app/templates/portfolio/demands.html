@@ -30,8 +30,8 @@
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for category, message in messages %}
     <div class="rounded-lg border p-4 text-sm
-                {% if category == 'error' %}border-destructive/30 bg-destructive/5 text-destructive
-                {% else %}border-success/30 bg-success/5 text-success{% endif %}">
+                {% if category == 'error' %}border-destructive/30 bg-destructive/5 text-destructive-emphasis
+                {% else %}border-success/30 bg-success/5 text-success-emphasis{% endif %}">
       {{ message }}
     </div>
     {% endfor %}
@@ -75,9 +75,9 @@
           <input type="text" name="decision_rationale" placeholder="Rationale (required to decline)"
                  class="flex-1 min-w-[16rem] h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                  aria-label="Decision rationale">
-          <button name="status" value="approved" class="h-9 px-3 rounded-md text-sm bg-success/10 text-success hover:bg-success/20">Approve</button>
+          <button name="status" value="approved" class="h-9 px-3 rounded-md text-sm bg-success/10 text-success-emphasis hover:bg-success/20">Approve</button>
           <button name="status" value="deferred" class="h-9 px-3 rounded-md text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80">Defer</button>
-          <button name="status" value="declined" class="h-9 px-3 rounded-md text-sm bg-destructive/10 text-destructive hover:bg-destructive/20">Decline</button>
+          <button name="status" value="declined" class="h-9 px-3 rounded-md text-sm bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20">Decline</button>
         </form>
       </div>
       {% endfor %}
@@ -110,8 +110,8 @@
             <td class="px-4 py-3 font-medium">{{ d.title }}</td>
             <td class="px-4 py-3">
               <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold
-                {% if d.status == 'approved' %}bg-success/10 text-success
-                {% elif d.status == 'declined' %}bg-destructive/10 text-destructive
+                {% if d.status == 'approved' %}bg-success/10 text-success-emphasis
+                {% elif d.status == 'declined' %}bg-destructive/10 text-destructive-emphasis
                 {% else %}bg-muted text-muted-foreground{% endif %}">{{ d.status|title }}</span>
             </td>
             <td class="px-4 py-3">{{ d.decision_date.strftime('%Y-%m-%d') if d.decision_date else '—' }}</td>

@@ -22,12 +22,12 @@
             <div class="text-sm text-muted-foreground mb-1">Total Active</div>
             <div class="text-2xl font-bold">{{ summary.total }}</div>
         </div>
-        <div class="bg-card border border-red-500/50 rounded-lg p-4">
-            <div class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mb-1">
+        <div class="bg-card border border-destructive/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-destructive-emphasis mb-1">
                 <i data-lucide="alert-circle" class="w-4 h-4"></i>
                 Critical (&lt;30d)
             </div>
-            <div class="text-2xl font-bold text-red-600 dark:text-red-400">{{ summary.critical }}</div>
+            <div class="text-2xl font-bold text-destructive-emphasis">{{ summary.critical }}</div>
         </div>
         <div class="bg-card border border-amber-500/50 rounded-lg p-4">
             <div class="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 mb-1">
@@ -36,12 +36,12 @@
             </div>
             <div class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ summary.warning }}</div>
         </div>
-        <div class="bg-card border border-blue-500/50 rounded-lg p-4">
-            <div class="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 mb-1">
+        <div class="bg-card border border-info/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-info-emphasis mb-1">
                 <i data-lucide="clock" class="w-4 h-4"></i>
                 Upcoming (&lt;180d)
             </div>
-            <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{ summary.upcoming }}</div>
+            <div class="text-2xl font-bold text-info-emphasis">{{ summary.upcoming }}</div>
         </div>
         <div class="bg-card border border-green-500/50 rounded-lg p-4">
             <div class="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mb-1">
@@ -79,19 +79,19 @@
     <div class="space-y-4">
         {% for item in contracts %}
         <div class="bg-card border rounded-lg p-4 hover:border-primary/50 transition-colors
-            {% if item.urgency == 'critical' %}border-red-500/50
+            {% if item.urgency == 'critical' %}border-destructive/50
             {% elif item.urgency == 'warning' %}border-amber-500/50
-            {% elif item.urgency == 'expired' %}border-red-500
+            {% elif item.urgency == 'expired' %}border-destructive
             {% else %}border-border{% endif %}">
             <div class="flex items-start justify-between">
                 <div class="flex-1">
                     <div class="flex items-center gap-3 mb-2">
                         <h3 class="font-medium">{{ item.contract.contract_name }}</h3>
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                            {% if item.urgency == 'critical' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
+                            {% if item.urgency == 'critical' %}bg-destructive/10 text-destructive-emphasis
                             {% elif item.urgency == 'warning' %}bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400
-                            {% elif item.urgency == 'expired' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
-                            {% else %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400{% endif %}">
+                            {% elif item.urgency == 'expired' %}bg-destructive/10 text-destructive-emphasis
+                            {% else %}bg-info/10 text-info-emphasis{% endif %}">
                             {% if item.urgency == 'expired' %}EXPIRED
                             {% elif item.urgency == 'critical' %}CRITICAL
                             {% elif item.urgency == 'warning' %}WARNING
@@ -119,9 +119,9 @@
                 </div>
                 <div class="flex flex-col items-end gap-2 ml-4">
                     <div class="text-2xl font-bold
-                        {% if item.urgency == 'critical' or item.urgency == 'expired' %}text-red-600 dark:text-red-400
+                        {% if item.urgency == 'critical' or item.urgency == 'expired' %}text-destructive-emphasis
                         {% elif item.urgency == 'warning' %}text-amber-600 dark:text-amber-400
-                        {% else %}text-blue-600 dark:text-blue-400{% endif %}">
+                        {% else %}text-info-emphasis{% endif %}">
                         {% if item.urgency == 'expired' %}Expired
                         {% else %}{{ item.days_until_renewal }}d{% endif %}
                     </div>

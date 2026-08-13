@@ -233,13 +233,16 @@
                 explanationDiv.classList.toggle('hidden', !data.explanation);
 
                 if (data.results && data.results.length > 0) {
+                    // Entity names/descriptions are user-editable free text: they must be
+                    // escaped, or an application named <img onerror=...> executes here.
+                    const esc = window.Platform.sanitize.escape;
                     resultsList.innerHTML = data.results.map(item => `
-                        <div class="p-2 border rounded-lg hover:bg-accent/50 cursor-pointer" data-action="show-entity" data-entity-type="${item.entity_type}" data-entity-id="${item.id}" data-entity-name="${item.name.replace(/"/g, '&quot;')}">
+                        <div class="p-2 border rounded-lg hover:bg-accent/50 cursor-pointer" data-action="show-entity" data-entity-type="${esc(item.entity_type)}" data-entity-id="${esc(String(item.id))}" data-entity-name="${esc(item.name)}">
                             <div class="flex items-center justify-between mb-1">
-                                <span class="text-sm font-medium">${item.name}</span>
-                                <span class="text-xs bg-muted px-1.5 py-0.5 rounded">${item.entity_type}</span>
+                                <span class="text-sm font-medium">${esc(item.name)}</span>
+                                <span class="text-xs bg-muted px-1.5 py-0.5 rounded">${esc(item.entity_type)}</span>
                             </div>
-                            <p class="text-xs text-muted-foreground line-clamp-2">${item.description || item.status || item.business_owner || ''}</p>
+                            <p class="text-xs text-muted-foreground line-clamp-2">${esc(item.description || item.status || item.business_owner || '')}</p>
                         </div>
                     `).join('');
                 } else {
@@ -248,25 +251,27 @@
 
                 // Show follow-up suggestions
                 if (data.suggestions && data.suggestions.length > 0) {
+                    const esc = window.Platform.sanitize.escape;
                     resultsList.innerHTML += `
                         <div class="pt-3 border-t mt-3">
                             <p class="text-xs font-medium text-muted-foreground mb-2">Related queries:</p>
                             ${data.suggestions.map(s => `
-                                <button type="button" data-quick-query="${s.replace(/"/g, '&quot;')}" class="block text-xs text-primary hover:underline mb-1">→ ${s}</button>
+                                <button type="button" data-quick-query="${esc(s)}" class="block text-xs text-primary hover:underline mb-1">→ ${esc(s)}</button>
                             `).join('')}
                         </div>
                     `;
                 }
             } else {
+                const esc = window.Platform.sanitize.escape;
                 resultsList.innerHTML = `
                     <div class="text-center py-4">
-                        <p class="text-sm text-destructive mb-2">${data.error || 'Query failed'}</p>
-                        ${data.suggestions ? data.suggestions.map(s => `<p class="text-xs text-muted-foreground">${s}</p>`).join('') : ''}
+                        <p class="text-sm text-destructive-emphasis mb-2">${esc(data.error || 'Query failed')}</p>
+                        ${data.suggestions ? data.suggestions.map(s => `<p class="text-xs text-muted-foreground">${esc(s)}</p>`).join('') : ''}
                     </div>
                 `;
             }
         } catch (error) {
-            resultsList.innerHTML = `<p class="text-sm text-destructive text-center py-4">Error: ${error.message}</p>`;
+            resultsList.innerHTML = `<p class="text-sm text-destructive-emphasis text-center py-4">Error: ${window.Platform.sanitize.escape(error.message)}</p>`;
         }
 
         lucide.createIcons();

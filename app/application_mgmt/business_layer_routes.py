@@ -578,7 +578,12 @@ def bulk_process_link():
 
     app_ids = data.get("application_ids", [])
     auto_link = data.get("auto_link", False)
-    confidence_threshold = float(data.get("confidence_threshold", 0.5))
+    try:
+        confidence_threshold = float(data.get("confidence_threshold", 0.5))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number between 0 and 1"}), 400
+    if not 0 <= confidence_threshold <= 1:
+        return jsonify({"error": "confidence_threshold must be between 0 and 1"}), 400
     dry_run = data.get("dry_run", True)
 
     if app_ids == "all":

@@ -124,7 +124,7 @@
                                         <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                             <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                         </button>
-                                        <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                                        <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                             <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                         </button>
                                     </div>
@@ -154,7 +154,7 @@
                                         <button @click="acceptRequirement(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                             <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                         </button>
-                                        <button @click="dismissRequirement(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                                        <button @click="dismissRequirement(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                             <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                         </button>
                                     </div>
@@ -195,7 +195,7 @@
                                         </td>
                                         <td class="px-3 py-2">
                                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                                  :class="req.priority <= 2 ? 'bg-destructive/10 text-destructive' : req.priority === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
+                                                  :class="req.priority <= 2 ? 'bg-destructive/10 text-destructive-emphasis' : req.priority === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
                                                   x-text="req.priority <= 2 ? 'Critical' : req.priority === 3 ? 'High' : 'Medium'"></span>
                                         </td>
                                         <td class="px-3 py-2">
@@ -467,7 +467,7 @@
                               <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-1">
                                   <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                    :class="(r.impact||r.severity)==='critical'||'high' ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-700'"
+                                    :class="(r.impact||r.severity)==='critical'||'high' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-amber-500/10 text-amber-700'"
                                     x-text="r.impact || r.severity || r.risk_level || 'medium'"></span>
                                   <span class="text-sm font-medium truncate" x-text="r.risk || r.description || r.risk_description"></span>
                                 </div>
@@ -503,7 +503,7 @@
                             </div>
                             <template x-if="a.priority">
                               <span class="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded"
-                                :class="a.priority==='high'||a.priority==='critical' ? 'bg-destructive/5 text-destructive' : 'bg-muted text-muted-foreground'"
+                                :class="a.priority==='high'||a.priority==='critical' ? 'bg-destructive/5 text-destructive-emphasis' : 'bg-muted text-muted-foreground'"
                                 x-text="a.priority"></span>
                             </template>
                           </div>
@@ -564,7 +564,7 @@
                                                   :class="{
                                                       'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': cap.support_level === 'full',
                                                       'bg-amber-500/10 text-amber-600 border border-amber-500/30': cap.support_level === 'partial',
-                                                      'bg-destructive/10 text-destructive border border-destructive/30': cap.support_level === 'minimal' || cap.support_level === 'none',
+                                                      'bg-destructive/10 text-destructive-emphasis border border-destructive/30': cap.support_level === 'minimal' || cap.support_level === 'none',
                                                       'bg-muted text-muted-foreground border border-border': !cap.support_level || (cap.support_level !== 'full' && cap.support_level !== 'partial' && cap.support_level !== 'minimal' && cap.support_level !== 'none')
                                                   }"
                                                   x-text="cap.support_level || 'unrated'"></span>

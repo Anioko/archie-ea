@@ -6,7 +6,7 @@
     <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
             <h3 class="text-sm font-semibold text-foreground">Application Elements</h3>
-            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Phase C</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Phase C</span>
         </div>
         <div class="flex items-center gap-1 sad-actions">
             <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'C', elementType: 'ApplicationComponent', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"

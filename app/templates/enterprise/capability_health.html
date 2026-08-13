@@ -26,8 +26,8 @@
             <div class="flex items-start justify-between mb-4">
                 <h3 class="font-semibold">{{ cap.name|default('Unnamed') }}</h3>
                 <span class="px-2 py-1 text-xs rounded-full
-                    {% if cap.strategic_importance == 'critical' %}bg-destructive/20 text-destructive
-                    {% elif cap.strategic_importance == 'high' %}bg-warning/20 text-warning
+                    {% if cap.strategic_importance == 'critical' %}bg-destructive/20 text-destructive-emphasis
+                    {% elif cap.strategic_importance == 'high' %}bg-warning/20 text-warning-emphasis
                     {% else %}bg-muted text-muted-foreground{% endif %}">
                     {{ cap.strategic_importance|default('Normal')|title }}
                 </span>

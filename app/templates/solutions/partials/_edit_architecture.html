@@ -60,7 +60,7 @@
                             <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                 <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
-                            <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                            <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -90,7 +90,7 @@
                             <button @click="acceptRequirement(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                 <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
-                            <button @click="dismissRequirement(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                            <button @click="dismissRequirement(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -132,7 +132,7 @@
                             </td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="req.priority <= 2 ? 'bg-destructive/10 text-destructive' : req.priority === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
+                                      :class="req.priority <= 2 ? 'bg-destructive/10 text-destructive-emphasis' : req.priority === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
                                       x-text="req.priority <= 2 ? 'Critical' : req.priority === 3 ? 'High' : 'Medium'"></span>
                             </td>
                             <td class="px-3 py-2">
@@ -444,7 +444,7 @@
     </template>
 
     <template x-if="damError">
-        <div class="mb-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm" x-text="damError"></div>
+        <div class="mb-3 p-3 rounded-md bg-destructive/10 text-destructive-emphasis text-sm" x-text="damError"></div>
     </template>
 
     <template x-if="damLoaded && appComponents.length > 0 && dataObjects.length > 0">
@@ -648,7 +648,7 @@
                             <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                 <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
-                            <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                            <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -756,7 +756,7 @@
                 </td>
                 <td class="px-3 py-2">
                   <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                        :class="v.riskLevel==='low'?'bg-emerald-500/10 text-emerald-700':v.riskLevel==='medium'?'bg-amber-100 text-amber-700':v.riskLevel?'bg-destructive/10 text-destructive':'bg-muted text-muted-foreground'"
+                        :class="v.riskLevel==='low'?'bg-emerald-500/10 text-emerald-700':v.riskLevel==='medium'?'bg-amber-100 text-amber-700':v.riskLevel?'bg-destructive/10 text-destructive-emphasis':'bg-muted text-muted-foreground'"
                         x-text="v.riskLevel || 'N/A'"></span>
                 </td>
                 <td class="px-3 py-2 text-muted-foreground text-xs" x-text="v.maturityNote || 'N/A'"></td>

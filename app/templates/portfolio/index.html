@@ -81,9 +81,9 @@
           <td class="px-4 py-3">{{ i.current_phase or '—' }}</td>
           <td class="px-4 py-3">
             {% set h = (i.health_status or '')|lower %}
-            {% if h == 'red' %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-destructive/10 text-destructive">Red</span>
-            {% elif h in ('amber', 'yellow') %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-warning/10 text-warning">Amber</span>
-            {% elif h == 'green' %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-success/10 text-success">Green</span>
+            {% if h == 'red' %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-destructive/10 text-destructive-emphasis">Red</span>
+            {% elif h in ('amber', 'yellow') %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-warning/10 text-warning-emphasis">Amber</span>
+            {% elif h == 'green' %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-success/10 text-success-emphasis">Green</span>
             {% else %}<span class="text-muted-foreground" title="No health status recorded">&mdash;</span>{% endif %}
           </td>
           <td class="px-4 py-3 text-right tabular-nums">

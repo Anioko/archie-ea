@@ -19,7 +19,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis{% else %}bg-accent border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -140,7 +140,7 @@
                 <div class="p-4 sm:p-6 border-b flex items-center justify-between">
                     <h3 class="text-lg font-semibold">Sync Job Status</h3>
                     <button x-show="isStale" @click="clearStaleJobs()" x-cloak
-                            class="text-xs px-2.5 py-1 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 font-medium">
+                            class="text-xs px-2.5 py-1 rounded-md bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20 font-medium">
                         Clear Stale Job
                     </button>
                 </div>
@@ -382,7 +382,7 @@
                                     </div>
                                     <p class="text-xs text-muted-foreground mt-2" x-text="selectedTypes.length + ' of ' + availableTypes.length + ' types selected for sync'"></p>
                                 </div>
-                                <div x-show="typesError" x-cloak class="p-2 bg-destructive/10 rounded text-xs text-destructive" x-text="typesError"></div>
+                                <div x-show="typesError" x-cloak class="p-2 bg-destructive/10 rounded text-xs text-destructive-emphasis" x-text="typesError"></div>
                             </div>
                         </div>
 
@@ -411,7 +411,7 @@
                                         <button type="button" @click="addCountry('Spain')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add Spain to filter">+ Spain</button>
                                         <button type="button" @click="addCountry('Italy')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add Italy to filter">+ Italy</button>
                                         <button type="button" @click="document.getElementById('filter_countries').value='all'" class="text-xs px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-muted/80" aria-label="Import all countries">All Countries</button>
-                                        <button type="button" @click="document.getElementById('filter_countries').value=''" class="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20" aria-label="Clear country filter">Clear</button>
+                                        <button type="button" @click="document.getElementById('filter_countries').value=''" class="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20" aria-label="Clear country filter">Clear</button>
                                     </div>
                                 </div>
                                 {# Dynamic filter discovery from Abacus API #}

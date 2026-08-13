@@ -51,7 +51,7 @@
                     </td>
                     <td class="text-center py-3 px-4">
                         <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
-                            {% if schedule.is_active %}bg-success/10 text-success{% else %}bg-muted text-foreground/80{% endif %}">
+                            {% if schedule.is_active %}bg-success/10 text-success-emphasis{% else %}bg-muted text-foreground/80{% endif %}">
                             {{ 'Active' if schedule.is_active else 'Inactive' }}
                         </span>
                     </td>
