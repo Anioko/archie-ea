@@ -1,7 +1,6 @@
 {% extends "layouts/admin_base.html" %}
-{% from "components/page_header.html" import page_header %}
+{% from 'macros/page_shell.html' import page_shell, stat_card, empty_state %}
 {% from 'components/status_badge.html' import status_badge %}
-{% from 'components/data_card.html' import data_card %}
 {% from 'components/modal.html' import modal %}
 {% from 'components/card.html' import card, card_header, card_title, card_description, card_content %}
 
@@ -29,39 +28,56 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-    {{ page_header(
+    {% macro _arb_dashboard_actions() %}
+    <a href="{{ url_for('arb.sessions') }}"
+       class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground">
+        <i data-lucide="calendar" class="w-4 h-4 mr-2" aria-hidden="true"></i>Sessions
+    </a>
+    <a href="{{ url_for('arb.reviews') }}"
+       class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground">
+        <i data-lucide="clipboard-list" class="w-4 h-4 mr-2" aria-hidden="true"></i>Reviews
+    </a>
+    <button type="button" @click="Platform.modal.open('create-arb-review')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label="New Review">
+        <i data-lucide="plus" class="w-4 h-4 mr-2" aria-hidden="true"></i>New Review
+    </button>
+    {% endmacro %}
+    {{ page_shell(
         title='Architecture Review Board',
-        description='Governance overview and decision tracking',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Governance'},
-            {'label': 'ARB Dashboard'}
-        ],
-        actions=[
-            {'text': 'Sessions', 'icon': 'calendar', 'href': url_for('arb.sessions'), 'variant': 'outline'},
-            {'text': 'Reviews', 'icon': 'clipboard-list', 'href': url_for('arb.reviews'), 'variant': 'outline'},
-            {'text': 'New Review', 'icon': 'plus', 'onclick': "Platform.modal.open('create-arb-review')", 'variant': 'default'}
-        ]
+        subtitle='Governance overview and decision tracking',
+        breadcrumb=[('Dashboard', url_for('main.index')), ('Governance', None), ('ARB Dashboard', None)],
+        actions_caller=_arb_dashboard_actions
     ) }}
+
+    {# Honesty: "Approval Rate" and "Cycle Time" are averages over a
+       denominator of completed reviews. A zero denominator is "not
+       computed", not a measured 0.0 -- the P0 design review found this
+       screen rendering "0.0 days" / "0.0%" over zero completed reviews,
+       indistinguishable from a genuine all-zero measurement. #}
+    {% set completed_reviews = dashboard_data.metrics.approved_items + dashboard_data.metrics.rejected_items %}
+    {% set approval_rate_display = (("%.1f"|format(dashboard_data.metrics.approval_rate)) ~ '%') if completed_reviews > 0 else None %}
+    {% set cycle_time_display = (("%.1f"|format(cycle_time.avg_days)) ~ ' days') if cycle_time.total_reviews > 0 else None %}
 
     <!-- Summary Metrics -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {{ data_card(icon='clipboard-list', icon_color='blue', value=dashboard_data.metrics.total_items, label='Total Reviews', subtitle='All review items') }}
-        {{ data_card(icon='clock', icon_color='amber', value=dashboard_data.metrics.pending_items, label='Pending', subtitle='Awaiting decision') }}
-        {{ data_card(icon='check-circle', icon_color='green', value=dashboard_data.metrics.approved_items, label='Approved', subtitle='Decisions made') }}
-        {{ data_card(icon='trending-up', icon_color='purple', value=("%.1f"|format(dashboard_data.metrics.approval_rate)) ~ '%', label='Approval Rate', subtitle='Of completed reviews') }}
+        {{ stat_card(label='Total Reviews', value=dashboard_data.metrics.total_items, hint='All review items', icon='clipboard-list', icon_bg='bg-primary') }}
+        {{ stat_card(label='Pending', value=dashboard_data.metrics.pending_items, hint='Awaiting decision', icon='clock', icon_bg='bg-amber-500') }}
+        {{ stat_card(label='Approved', value=dashboard_data.metrics.approved_items, hint='Decisions made', icon='check-circle', icon_bg='bg-emerald-500') }}
+        {{ stat_card(label='Approval Rate', value=approval_rate_display, hint='Of completed reviews', icon='trending-up', icon_bg='bg-primary') }}
     </div>
 
     <!-- Analytics Summary -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {{ data_card(icon='timer', icon_color='cyan', value=("%.1f"|format(cycle_time.avg_days)) ~ ' days', label='Cycle Time', subtitle='Average review time') }}
-        {{ data_card(icon='alert-triangle', icon_color='red', value=overdue_items|length, label='Overdue Items', subtitle='Requiring attention') }}
-        {{ data_card(icon='shield-check', icon_color='indigo', value=standards_summary.mandatory_count ~ '/' ~ standards_summary.total_standards, label='Standards Compliance', subtitle='Mandatory standards') }}
+        {{ stat_card(label='Cycle Time', value=cycle_time_display, hint='Average review time', icon='timer', icon_bg='bg-cyan-500') }}
+        {{ stat_card(label='Overdue Items', value=overdue_items|length, hint='Requiring attention', icon='alert-triangle', icon_bg='bg-destructive') }}
+        {{ stat_card(label='Standards Compliance', value=(standards_summary.mandatory_count ~ '/' ~ standards_summary.total_standards), hint='Mandatory standards', icon='shield-check', icon_bg='bg-primary') }}
     </div>
 
     <!-- Status Breakdown (PH-011-06) -->
     <div class="bg-card border border-border rounded-lg p-6 shadow-sm">
         <h2 class="text-base font-semibold text-foreground mb-4">Review Status Overview</h2>
+        {% if dashboard_data.metrics.total_items > 0 %}
         <div class="flex items-center gap-6 flex-wrap">
             <div class="flex-1 min-w-[200px]">
                 <canvas id="arbStatusChart" height="160"></canvas>
@@ -89,6 +105,17 @@
                 </div>
             </div>
         </div>
+        {% else %}
+        <div data-testid="arb-empty-status-chart">
+            {{ empty_state(
+                icon='inbox',
+                headline='No reviews yet',
+                body='Submit a design to the ARB to start tracking decisions.',
+                cta_label='View Reviews',
+                cta_href=url_for('arb.reviews')
+            ) }}
+        </div>
+        {% endif %}
     </div>
 
     <!-- Pending Reviews (PH-011-02, PH-011-03, PH-011-05) -->
@@ -452,7 +479,10 @@
 <script src="/static/vendor/chart.umd.min.js"></script>
 <script>
 (function () {
-  // Status breakdown donut chart (PH-011-06)
+  // Status breakdown donut chart (PH-011-06). The template only renders this
+  // canvas when dashboard_data.metrics.total_items > 0 -- an empty_state
+  // renders server-side instead when there is nothing to chart, so an
+  // absent canvas here is the expected zero-reviews case, not an error.
   const ctx = document.getElementById('arbStatusChart');
   if (!ctx) return;
   const pending = {{ dashboard_data.metrics.pending_items | int }};
@@ -460,16 +490,6 @@
   const rejected = {{ dashboard_data.metrics.rejected_items | int }};
   const total = {{ dashboard_data.metrics.total_items | int }};
   const other = Math.max(0, total - pending - approved - rejected);
-  if (total === 0) {
-    // An all-zero doughnut reads as a blank/broken chart — show an empty state instead.
-    const wrap = ctx.parentElement;
-    if (wrap) wrap.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-center">'
-      + '<span class="flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground mb-3">'
-      + '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>'
-      + '</span><p class="text-sm font-medium text-foreground">No reviews yet</p>'
-      + '<p class="text-xs text-muted-foreground mt-1">Submit a design to the ARB to start tracking decisions.</p></div>';
-    return;
-  }
   new Chart(ctx, {
     type: 'doughnut',
     data: {
