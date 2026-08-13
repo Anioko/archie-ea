@@ -695,7 +695,8 @@ function renderACMApplicationsList() {
                         '<input type="checkbox" ' + (isSelected ? 'checked' : '') +
                             ' onchange="toggleACMApplicationSelection(\'' + app.id + '\')"' +
                             ' class="mt-1 h-5 w-5 text-cyan-600 focus:ring-cyan-500 border-input rounded cursor-pointer"' +
-                            ' title="' + (isSelected ? 'Deselect' : 'Select') + ' ' + escapeHtml(app.name) + '" />' +
+                            ' title="' + (isSelected ? 'Deselect' : 'Select') + ' ' + escapeHtml(app.name) + '"' +
+                            ' aria-label="' + (isSelected ? 'Deselect' : 'Select') + ' ' + escapeHtml(app.name) + '" />' +
                         '<div class="flex-1">' +
                             '<div class="flex items-center space-x-2">' +
                                 '<div class="font-medium text-foreground">' + escapeHtml(app.name || 'Unknown') + '</div>' +
@@ -750,6 +751,7 @@ function renderACMApplicationSettings(appId, mapping) {
                 '<div>' +
                     '<label class="block text-xs font-medium text-muted-foreground mb-1">Notes</label>' +
                     '<input type="text" value="' + (mappingData.notes || '') + '" placeholder="Optional notes..."' +
+                        ' aria-label="Notes"' +
                         ' class="w-full text-sm border border-input rounded px-2 py-1"' +
                         ' onchange="updateACMApplicationMapping(\'' + appId + '\', \'notes\', this.value)" />' +
                 '</div>' +
@@ -1118,6 +1120,7 @@ function renderProcessApplicationItem(app) {
                         '<div>' +
                             '<label class="block text-sm font-medium text-muted-foreground mb-1">Notes</label>' +
                             '<input type="text" id="process-notes-' + app.id + '" value="' + (mapping && mapping.mapping && mapping.mapping.notes ? mapping.mapping.notes : '') + '"' +
+                                ' aria-label="Notes"' +
                                 ' placeholder="Add notes..."' +
                                 ' class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">' +
                         '</div>' +
