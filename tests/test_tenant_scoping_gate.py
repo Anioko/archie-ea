@@ -31,10 +31,10 @@ checker = _load_checker()
 LEAKY_MODELS = {"LeakyThing"}
 
 
-def _scan(tmp_path, source: str):
+def _scan(tmp_path, source: str, models=None):
     fixture = tmp_path / "fixture_route.py"
     fixture.write_text(source, encoding="utf-8")
-    return checker.scan_file(str(fixture), LEAKY_MODELS)
+    return checker.scan_file(str(fixture), models if models is not None else LEAKY_MODELS)
 
 
 def test_unfiltered_query_on_leaky_model_is_flagged(tmp_path):
@@ -126,6 +126,71 @@ def test_leaky_models_detected_via_ast(tmp_path):
         checker.MODELS_DIR = old
     assert "Leaky" in found
     assert "Mixed" not in found
+
+
+def test_leaky_models_excludes_global_reference_models(tmp_path):
+    """Wave-4 Task-2/3: ARBGovernanceStandard, ARBWorkflowStage and
+    EAWorkflowDefinition carry organization_id (Phase A, for schema symmetry
+    with their 11 per-tenant siblings) but are shared catalogs/templates, not
+    per-tenant data. leaky_models() must never surface them, even though a
+    naive AST scan (organization_id column + no TenantMixin base) would
+    otherwise match them exactly like a genuine leak.
+
+    A future edit that quietly drops the GLOBAL_REFERENCE_MODELS exclusion
+    would make this test start flagging ARBGovernanceStandard again — pinning
+    that regression is the point.
+    """
+    models_dir = tmp_path / "app_models"
+    models_dir.mkdir()
+    (models_dir / "example.py").write_text(
+        "class ARBGovernanceStandard(db.Model):\n"
+        "    organization_id = db.Column(db.Integer)\n"
+        "\n"
+        "class ARBWorkflowStage(db.Model):\n"
+        "    organization_id = db.Column(db.Integer)\n"
+        "\n"
+        "class EAWorkflowDefinition(db.Model):\n"
+        "    organization_id = db.Column(db.Integer)\n"
+        "\n"
+        "class TrulyLeaky(db.Model):\n"
+        "    organization_id = db.Column(db.Integer)\n",
+        encoding="utf-8",
+    )
+    old = checker.MODELS_DIR
+    try:
+        checker.MODELS_DIR = str(models_dir)
+        found = checker.leaky_models()
+    finally:
+        checker.MODELS_DIR = old
+    assert found & checker.GLOBAL_REFERENCE_MODELS == set(), (
+        "global-reference models must never be treated as leaky"
+    )
+    assert "TrulyLeaky" in found, (
+        "a genuinely unmixed model with organization_id must still be flagged as leaky"
+    )
+
+
+def test_global_reference_model_query_is_not_flagged(tmp_path):
+    """End-to-end shape of the fix: a bare `.query` over a global-reference
+    model produces no finding, while the same shape over a genuine leaky
+    model still does — using the real GLOBAL_REFERENCE_MODELS set as the
+    checker would see it after leaky_models() has excluded them."""
+    src = (
+        "def list_standards():\n"
+        "    return ARBGovernanceStandard.query.all()\n"
+        "\n"
+        "def count_leaky():\n"
+        "    return LeakyThing.query.count()\n"
+    )
+    # Simulates the post-exclusion model set leaky_models() would hand to
+    # scan_file: without the exclusion, ARBGovernanceStandard would be a
+    # "leaky" model just like LeakyThing; the fix removes it before scan_file
+    # ever sees it, so the finding must not appear.
+    candidate_models = LEAKY_MODELS | {"ARBGovernanceStandard"}
+    models = candidate_models - checker.GLOBAL_REFERENCE_MODELS
+    findings = _scan(tmp_path, src, models=models)
+    assert all(f["model"] != "ARBGovernanceStandard" for f in findings)
+    assert any(f["model"] == "LeakyThing" for f in findings)
 
 
 def test_real_tree_count_matches_baseline():

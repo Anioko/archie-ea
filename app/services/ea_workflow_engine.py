@@ -1058,6 +1058,7 @@ class EAWorkflowEngine:
         user_id: Optional[int] = None,
         scheduled_at: Optional[datetime] = None,
         parent_iteration_id: Optional[int] = None,
+        organization_id: Optional[int] = None,
     ) -> EAWorkflowInstance:
         """
         Start a new workflow instance.
@@ -1069,6 +1070,12 @@ class EAWorkflowEngine:
             user_id: ID of triggering user (for manual triggers)
             scheduled_at: Optional scheduled execution time
             parent_iteration_id: Optional ID of parent iteration for ADM cycle tracking
+            organization_id: WAVE4-P0 — explicit tenant to stamp on the created
+                instance. Callers running outside a request context (the
+                scheduler, CLI, or any background thread) have no
+                g.current_org_id for TenantMixin to auto-set, so they MUST pass
+                this. Callers inside a request may omit it — the mixin's
+                before_flush auto-set from g.current_org_id still applies.
 
         Returns:
             Created EAWorkflowInstance
@@ -1152,6 +1159,12 @@ class EAWorkflowEngine:
             iteration_number=iteration_number,
             parent_iteration_id=parent_iteration_id,
         )
+        # WAVE4-P0: stamp organization_id explicitly when the caller supplied one
+        # (scheduler/CLI/background callers have no g.current_org_id for
+        # TenantMixin to auto-set from). Request-context callers that omit it
+        # still get the mixin's normal auto-set on flush.
+        if organization_id is not None:
+            instance.organization_id = organization_id
 
         db.session.add(instance)
         db.session.commit()
@@ -1988,8 +2001,16 @@ class EAWorkflowEngine:
             Step result dictionary
         """
         # Create step execution record
+        # WAVE4-P0: stamp organization_id explicitly from the parent instance.
+        # This runs inside _execute_workflow, which is invoked both synchronously
+        # (request context, where TenantMixin's before_flush auto-set would work)
+        # and from _run_workflow_in_background under a bare app_context (no
+        # g.current_org_id, so the auto-set is a no-op and the row would be born
+        # with a NULL organization_id, invisible to its owning org once
+        # TenantMixin filtering is active). Stamp explicitly so both paths agree.
         step_execution = EAWorkflowStepExecution(
             instance_id=instance.id,
+            organization_id=instance.organization_id,
             step_id=step_def["step_id"],
             step_index=step_index,
             step_name=step_def.get("step_name"),
@@ -2441,8 +2462,14 @@ class EAWorkflowEngine:
 
         for user_id in set(recipients):
             # 1. Persist in-app notification
+            # WAVE4-P0: stamp organization_id explicitly from the parent instance —
+            # see comment on the EAWorkflowStepExecution creation above; this step
+            # handler runs in the same background app_context with no
+            # g.current_org_id, so TenantMixin's auto-set would otherwise leave
+            # this row with a NULL organization_id.
             notif = EAWorkflowNotification(
                 workflow_instance_id=instance.id,
+                organization_id=instance.organization_id,
                 recipient_id=user_id,
                 template=template,
                 subject=subject,
@@ -4262,10 +4289,15 @@ provides foundation for subsequent architecture development phases.
         for schedule in due:
             try:
                 context = schedule.default_context or {}
+                # WAVE4-P0: this loop runs from the APScheduler background job
+                # (app_context only, no request → no g.current_org_id), so the
+                # instance's tenant must come from the schedule itself, not the
+                # TenantMixin auto-set.
                 (self.start_workflow(
                     workflow_code=schedule.definition.workflow_code,
                     context=context,
                     triggered_by="scheduled",
+                    organization_id=schedule.organization_id,
                 ))
                 # Update next_run_at based on schedule_type
                 now = datetime.utcnow()
