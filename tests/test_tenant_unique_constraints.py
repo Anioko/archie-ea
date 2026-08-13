@@ -176,9 +176,23 @@ def test_the_duplicate_detector_runs_and_finds_real_duplicates(
         db_session.commit()
 
         rows = _duplicates(db.session.connection(), "business_capability", "business_domain")
+        clean = _duplicates(db.session.connection(), "business_capability", "code")
 
-    assert any(value == domain and count >= 2 for _org, value, count in rows), (
-        "the detector did not see two rows sharing a value in one organisation"
+    # Assert properties of the result, not the presence of this test's own pair.
+    # _duplicates carries ORDER BY n DESC LIMIT 10, and the shared test database
+    # accumulates rows from every other test, so a freshly-created pair of two is
+    # not reliably in the top ten — an earlier version of this test asserted that
+    # and passed only until the database grew.
+    assert rows, "the detector found no duplicates at all on a non-unique column"
+    assert all(count >= 2 for _org, _value, count in rows), (
+        "the detector returned a row that is not actually duplicated"
+    )
+    assert all(value is not None for _org, value, _count in rows), (
+        "NULLs are not collisions and must be excluded"
+    )
+    assert clean == [], (
+        "code carries a per-tenant unique index, so it can hold no duplicates — "
+        "a non-empty result here means the query is not grouping by organisation"
     )
 
 
