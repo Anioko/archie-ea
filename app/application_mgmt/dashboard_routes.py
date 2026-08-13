@@ -49,15 +49,18 @@ def dashboard():
         from app.middleware.tenant_context import current_org_id
 
         _org = current_org_id()
-        _clause = " WHERE bc.organization_id = :org" if _org is not None else ""
+        # Fully static SQL (no string building) so bandit B608 stays clean; the
+        # NULL-checked bound param scopes to the current org in a request context
+        # and passes all rows for the no-context (CLI) fallback — identical to the
+        # prior conditional-clause form. See rationalization_scoring_service.py.
         result = db.session.execute(
             db.text(
                 "SELECT COUNT(DISTINCT acm.application_component_id) "
                 "FROM application_capability_mapping acm "
-                "JOIN business_capability bc ON bc.id = acm.business_capability_id"
-                + _clause
+                "JOIN business_capability bc ON bc.id = acm.business_capability_id "
+                "WHERE (:org IS NULL OR bc.organization_id = :org)"
             ),
-            {"org": _org} if _org is not None else {},
+            {"org": _org},
         )
         apps_with_capabilities = result.scalar() or 0
     except Exception:
