@@ -394,3 +394,64 @@ def test_acm_coverage_is_scoped_via_fk_parent_not_the_null_org_column(
         "FK-parent scoping via BusinessCapability is not actually "
         "restricting the read"
     )
+
+
+# --------------------------------------- journey_v2_routes capability IDOR (CRITICAL)
+
+
+def test_enrich_capabilities_rejects_cross_org_capability_id(db_session, make_org, tenant_ctx):
+    """_enrich_capabilities_with_technical_data() must not return org B's
+    ApplicationCapabilityMapping data for a capability id supplied by org A.
+
+    Regression for the cross-tenant IDOR at
+    app/modules/solutions_strategic/v2/routes/journey_v2_routes.py
+    (~line 2035, in the generate-architecture POST path): ``cap_id`` comes
+    straight off the raw request JSON body (``capabilities[].id``), not from
+    an org-scoped DB load, and ``_require_solution_owner`` only validates the
+    *solution* id, never the capability ids embedded in the payload.
+    ``ApplicationCapabilityMapping`` is not ``TenantMixin`` and its
+    ``organization_id`` is NULL in production, so before the fix nothing
+    scoped this read: an authenticated user owning a solution in org A could
+    POST org B's ``business_capability_id`` and get back org B's
+    coverage/gap data (application names, coverage %, gap severity, etc.).
+
+    The fix scopes through the TenantMixin FK parent BusinessCapability
+    (mirroring ``test_acm_coverage_is_scoped_via_fk_parent_not_the_null_org_column``
+    above), so this test also inserts the mapping with ``organization_id``
+    left NULL -- the real production row shape -- to prove the join/filter
+    is doing the scoping, not a column that is never actually populated.
+    """
+    org_a, org_b = make_org("idor-a"), make_org("idor-b")
+    cap_b = _make_capability(db_session, org_b.id, "Org B Secret Capability")
+    app_b = _make_app(db_session, org_b.id, "Org B Secret App")
+    _make_mapping_no_org_column(db_session, app_b.id, cap_b.id)
+
+    from app.modules.solutions_strategic.v2.routes.journey_v2_routes import (
+        _enrich_capabilities_with_technical_data,
+    )
+
+    with tenant_ctx(org_a.id):
+        enriched = _enrich_capabilities_with_technical_data(
+            [{"id": cap_b.id, "name": "Org B Secret Capability"}]
+        )
+
+    assert len(enriched) == 1
+    assert enriched[0]["coverage_gaps"] == [], (
+        "org A's request leaked org B's ApplicationCapabilityMapping "
+        "coverage/gap data via a capability id taken straight from the "
+        "request JSON body -- cross-tenant IDOR"
+    )
+
+    # Sanity: org B's own request for the same capability id *does* see its
+    # mapping, proving the assertion above is a real tenant boundary and not
+    # a query that returns empty for everyone.
+    with tenant_ctx(org_b.id):
+        enriched_b = _enrich_capabilities_with_technical_data(
+            [{"id": cap_b.id, "name": "Org B Secret Capability"}]
+        )
+    assert enriched_b[0]["coverage_gaps"] != [], (
+        "sanity check failed: org B could not see its own capability "
+        "mapping either, so the empty result for org A above does not "
+        "prove tenant scoping -- it proves the query is broken"
+    )
+    assert enriched_b[0]["coverage_gaps"][0]["application_name"] == "Org B Secret App"

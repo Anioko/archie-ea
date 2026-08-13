@@ -1978,10 +1978,12 @@ def _enrich_capabilities_with_technical_data(capabilities: list) -> list:
     ApplicationCapabilityMapping for gap analysis data. Both degrade gracefully on failure.
     """
     import json as _json
+    from flask import g
     try:
         from app.models.technical_capability import TechnicalCapability
         from app.models.application_capability import ApplicationCapabilityMapping
         from app.models.application_layer import ApplicationComponent
+        from app.models.business_capabilities import BusinessCapability
     except Exception:
         return capabilities
 
@@ -2031,10 +2033,22 @@ def _enrich_capabilities_with_technical_data(capabilities: list) -> list:
         # ── Application coverage gap data ─────────────────────────────────
         if cap_id:
             try:
+                # cap_id comes straight from the request JSON body (not an
+                # org-scoped DB load), and ApplicationCapabilityMapping is not
+                # TenantMixin (its organization_id is NULL in prod), so it gets
+                # none of the automatic do_orm_execute filtering. Scope through
+                # the TenantMixin FK parent BusinessCapability instead, mirroring
+                # the honest ACM sites in rationalization_scoring_service.py.
                 mappings = (
-                    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                     ApplicationCapabilityMapping.query
-                    .filter_by(business_capability_id=cap_id)
+                    .join(
+                        BusinessCapability,
+                        BusinessCapability.id == ApplicationCapabilityMapping.business_capability_id,
+                    )
+                    .filter(
+                        ApplicationCapabilityMapping.business_capability_id == cap_id,
+                        BusinessCapability.organization_id == getattr(g, "current_org_id", None),
+                    )
                     .order_by(ApplicationCapabilityMapping.coverage_percentage.desc())
                     .limit(5)
                     .all()

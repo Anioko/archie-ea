@@ -658,6 +658,13 @@ class DataIntegrityChecker:
         """Get set of existing emails."""
         try:
             from app.models import User
+            # User.email carries a global UNIQUE constraint (app/models/user.py)
+            # — one email can only ever belong to one User row platform-wide,
+            # regardless of organization_id. Import dedup against a per-org
+            # subset would miss real collisions (another org's email would
+            # insert fine here, then fail on flush anyway). Global scan is the
+            # correct behaviour here, not a leak.
+            # tenant-scoping-ok: dedup key (User.email) is globally unique, not org-scoped
             users = User.query.with_entities(User.email).all()
             return set(user.email for user in users)
         except Exception as e:
