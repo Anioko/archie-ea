@@ -224,3 +224,117 @@ def test_global_reference_workflow_definition_visible_to_both_orgs(db_session, m
 
     assert seen_by_a is not None
     assert seen_by_b is not None
+
+
+# ------------------------------------------------- background-thread writes
+#
+# Wave-4 whole-branch review: `_run_workflow_in_background` and
+# `resume_workflow` execute steps under a bare `self.app.app_context()` — an
+# APP context, not a REQUEST context, so `g.current_org_id` is never set and
+# TenantMixin's before_flush auto-set is a no-op. Rows created by
+# `_execute_step` (EAWorkflowStepExecution) and `_handle_notification`
+# (EAWorkflowNotification) would be born with organization_id=NULL and
+# become invisible to their owning org once TenantMixin filtering is active.
+# This test reproduces that exact call path — no tenant_ctx active — and
+# must fail without the explicit `organization_id=instance.organization_id`
+# stamps added to both creation sites in app/services/ea_workflow_engine.py.
+
+
+def test_background_thread_step_execution_and_notification_stamp_org(
+    db_session, make_org, tenant_ctx
+):
+    from app.models.workflow_models import (
+        EAWorkflowInstance,
+        EAWorkflowNotification,
+        EAWorkflowStepExecution,
+    )
+    from app.services.ea_workflow_engine import EAWorkflowEngine
+
+    org_a, org_b = make_org("bg-a"), make_org("bg-b")
+
+    # Set up the instance the way `start_workflow` would — inside a request
+    # context, so it is correctly born with org_a's organization_id.
+    with tenant_ctx(org_a.id):
+        definition = _make_workflow_definition(db_session, "bg-shared")
+        instance = _make_workflow_instance(db_session, org_a.id, definition, "A")
+        user_a = _make_user(db_session, org_a.id, "A")
+        instance_id = instance.id
+        user_a_id = user_a.id
+
+    # Simulate `_run_workflow_in_background`: no tenant_ctx, no
+    # g.current_org_id — only the bare app_context that db_session already
+    # holds open, exactly like `with self.app.app_context():`.
+    #
+    # NOTE: `tenant_ctx` above uses `app.test_request_context()`, which does
+    # NOT push a fresh AppContext when one for the same app is already
+    # active (Flask reuses the current one) — and db_session's fixture holds
+    # exactly such an AppContext open for the whole test. So `g` here is the
+    # *same* g object `tenant_ctx` mutated, and `g.current_org_id` would
+    # otherwise leak from org_a's block above even after that `with` exits.
+    # Clear it explicitly so this really has no tenant context, matching
+    # the background thread's fresh, empty `g`.
+    from flask import g
+    g.pop("current_org_id", None)
+    assert not hasattr(g, "current_org_id") or g.current_org_id is None
+
+    db_session.expunge_all()
+    instance = db_session.get(EAWorkflowInstance, instance_id)
+    assert instance is not None, "instance must be loadable outside any tenant context"
+
+    engine = EAWorkflowEngine()
+    step_def = {
+        "step_id": "bg-notify-step",
+        "step_name": "Background Notify",
+        "step_type": "automated",
+        "handler": "notification",
+        "config": {"recipients": [user_a_id]},
+    }
+    result = engine._execute_step(instance, step_def, 0)
+    assert result.get("status") == "completed", result
+
+    step_exec = EAWorkflowStepExecution.query.filter_by(
+        instance_id=instance_id, step_id="bg-notify-step"
+    ).first()
+    notif = EAWorkflowNotification.query.filter_by(
+        workflow_instance_id=instance_id
+    ).first()
+
+    assert step_exec is not None, "background step execution must have been persisted"
+    assert notif is not None, "background notification must have been persisted"
+
+    assert step_exec.organization_id == org_a.id, (
+        "TENANT LEAK: EAWorkflowStepExecution created in the background thread "
+        f"has organization_id={step_exec.organization_id!r} instead of org_a "
+        f"({org_a.id}) — it would be invisible to its owning org."
+    )
+    assert notif.organization_id == org_a.id, (
+        "TENANT LEAK: EAWorkflowNotification created in the background thread "
+        f"has organization_id={notif.organization_id!r} instead of org_a "
+        f"({org_a.id}) — it would be invisible to its owning org."
+    )
+
+    # org_a's tenant context sees both background-created rows...
+    with tenant_ctx(org_a.id):
+        seen_step = EAWorkflowStepExecution.query.filter_by(
+            instance_id=instance_id, step_id="bg-notify-step"
+        ).first()
+        seen_notif = EAWorkflowNotification.query.filter_by(
+            workflow_instance_id=instance_id
+        ).first()
+    assert seen_step is not None, "org A must see its own background-created step execution"
+    assert seen_notif is not None, "org A must see its own background-created notification"
+
+    # ...org_b's does not.
+    with tenant_ctx(org_b.id):
+        hidden_step = EAWorkflowStepExecution.query.filter_by(
+            instance_id=instance_id, step_id="bg-notify-step"
+        ).first()
+        hidden_notif = EAWorkflowNotification.query.filter_by(
+            workflow_instance_id=instance_id
+        ).first()
+    assert hidden_step is None, (
+        "TENANT LEAK: org B can see org A's background-created step execution."
+    )
+    assert hidden_notif is None, (
+        "TENANT LEAK: org B can see org A's background-created notification."
+    )
