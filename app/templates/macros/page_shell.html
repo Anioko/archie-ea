@@ -116,8 +116,22 @@
     'standard': 'text-2xl',
     'compact': 'text-lg'
 } %}
+{% set is_warning = variant == 'warning' %}
+{# 'warning' is a card-affordance variant, orthogonal to the hero/standard/compact
+   text-size variants — it reuses 'standard' sizing but swaps the card's border/bg/text
+   tokens to the DESIGN.md warning tint (bg-warning/10, border-warning/40,
+   text-warning-emphasis — see DESIGN.md's "Warning is the trap" note on why
+   text-warning-foreground is unsafe on this tint). Additive only: a caller that never
+   passes variant='warning' renders byte-identical to before. #}
 {% set tag = 'a' if href else 'div' %}
-{% set card_classes = ('rounded-xl border-2 ' ~ ('border-primary ring-2 ring-primary/20 bg-primary/5' if active else 'border-input bg-background hover:border-primary/50') ~ ' cursor-pointer hover:shadow-md transition-all duration-200 p-5 block no-underline text-inherit') if href else 'rounded-xl border border-border bg-card text-card-foreground p-6' %}
+{% if href %}
+    {% set state_classes = ('border-warning ring-2 ring-warning/20 bg-warning/10' if active else 'border-warning/40 bg-warning/10 hover:border-warning/60') if is_warning else ('border-primary ring-2 ring-primary/20 bg-primary/5' if active else 'border-input bg-background hover:border-primary/50') %}
+    {% set card_classes = 'rounded-xl border-2 ' ~ state_classes ~ ' cursor-pointer hover:shadow-md transition-all duration-200 p-5 block no-underline text-inherit' %}
+{% else %}
+    {% set card_classes = 'rounded-xl border border-warning/40 bg-warning/10 text-card-foreground p-6' if is_warning else 'rounded-xl border border-border bg-card text-card-foreground p-6' %}
+{% endif %}
+{% set hint_classes = 'text-warning-emphasis' if is_warning else 'text-muted-foreground' %}
+{% set value_size = value_classes['standard'] if is_warning else value_classes[variant] %}
 <{{ tag }}{% if href %} href="{{ href }}"{% endif %} class="{{ card_classes }}"{% if active %} aria-current="true"{% endif %}>
     {% if icon %}
     <div class="flex items-start gap-4">
@@ -126,17 +140,17 @@
         </div>
         <div class="flex-1 min-w-0">
             <div class="text-sm font-medium text-muted-foreground">{{ label }}</div>
-            <div class="mt-1 font-semibold text-foreground tabular-nums {{ value_classes[variant] }}">{{ value|dash }}</div>
+            <div class="mt-1 font-semibold text-foreground tabular-nums {{ value_size }}">{{ value|dash }}</div>
             {% if hint %}
-            <div class="mt-1 text-xs text-muted-foreground">{{ hint }}</div>
+            <div class="mt-1 text-xs {{ hint_classes }}">{{ hint }}</div>
             {% endif %}
         </div>
     </div>
     {% else %}
     <div class="text-sm text-muted-foreground">{{ label }}</div>
-    <div class="mt-1 font-semibold text-foreground tabular-nums {{ value_classes[variant] }}">{{ value|dash }}</div>
+    <div class="mt-1 font-semibold text-foreground tabular-nums {{ value_size }}">{{ value|dash }}</div>
     {% if hint %}
-    <div class="mt-1 text-xs text-muted-foreground">{{ hint }}</div>
+    <div class="mt-1 text-xs {{ hint_classes }}">{{ hint }}</div>
     {% endif %}
     {% endif %}
 </{{ tag }}>

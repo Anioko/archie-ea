@@ -50,7 +50,7 @@
     <!-- Workflow Status Counts -->
     <div class="grid grid-cols-3 gap-4 mb-8" role="region" aria-label="Workflow status counts">
         {{ stat_card(label='Running', value=(status_counts.running if status_counts else None), icon='play', icon_bg='bg-emerald-500') }}
-        {{ stat_card(label='Waiting Approval', value=(status_counts.waiting_approval if status_counts else None), hint=('Review the queue' if status_counts and status_counts.waiting_approval else None), icon='clock', icon_bg='bg-amber-500', href=url_for('main.ea_workflows_approvals'), active=(status_counts.waiting_approval > 0 if status_counts else False)) }}
+        {{ stat_card(label='Waiting Approval', value=(status_counts.waiting_approval if status_counts else None), hint=('Review the queue' if status_counts and status_counts.waiting_approval else None), icon='clock', icon_bg='bg-amber-500', href=url_for('main.ea_workflows_approvals'), active=(status_counts.waiting_approval > 0 if status_counts else False), variant='warning') }}
         {{ stat_card(label='Completed', value=(status_counts.completed if status_counts else None), icon='check-circle', icon_bg='bg-violet-500') }}
     </div>
 

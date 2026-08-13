@@ -129,6 +129,31 @@ def test_stat_card_hero_variant_uses_larger_text_class_than_standard(app):
     assert "text-2xl" in standard_html
 
 
+def test_stat_card_warning_variant_emits_warning_tokens_standard_does_not(app):
+    warning_html = _render(
+        app,
+        """
+        {% from 'macros/page_shell.html' import stat_card %}
+        {{ stat_card('Waiting Approval', 3, hint='Review the queue', variant='warning') }}
+        """,
+    )
+    standard_html = _render(
+        app,
+        """
+        {% from 'macros/page_shell.html' import stat_card %}
+        {{ stat_card('Waiting Approval', 3, hint='Review the queue', variant='standard') }}
+        """,
+    )
+    assert "bg-warning/10" in warning_html
+    assert "border-warning/40" in warning_html
+    assert "text-warning-emphasis" in warning_html
+    assert "bg-warning/10" not in standard_html
+    assert "border-warning/40" not in standard_html
+    assert "text-warning-emphasis" not in standard_html
+    # warning reuses 'standard' text sizing, not its own scale
+    assert "text-2xl" in warning_html
+
+
 def test_section_card_body_via_caller(app):
     html = _render(
         app,
