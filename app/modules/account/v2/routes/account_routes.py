@@ -438,6 +438,8 @@ def sso_callback(provider):
         flash("SSO provider did not return an email address.", "error")
         return redirect(url_for("account.login"))
 
+    # tenant-scoping-ok: pre-auth SSO/SAML callback, no org context yet --
+    # User.email is globally unique.
     user = User.query.filter_by(email=email).first()
     if user is None:
         user = User(
@@ -509,6 +511,8 @@ def saml_acs():
         flash("SAML response did not contain an email.", "error")
         return redirect(url_for("account.login"))
 
+    # tenant-scoping-ok: pre-auth SSO/SAML callback, no org context yet --
+    # User.email is globally unique.
     user = User.query.filter_by(email=email).first()
     if user is None:
         user = User(

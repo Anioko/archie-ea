@@ -82,11 +82,20 @@ class GovernanceNotifier:
 
     @staticmethod
     def _audience_user_ids(roles, extra_user_ids) -> List[int]:
+        from flask import g
         from app.models.user import User
 
         ids = set()
         try:
+            # tenant-scoping-ok when g.current_org_id is set: restrict the
+            # audience to the org whose finding triggered this push, or every
+            # org's platform_admin/enterprise_architect gets emailed about
+            # another tenant's data. Falls back to unscoped only outside a
+            # request context (no cross-tenant notion applies there).
+            org_id = getattr(g, "current_org_id", None)
             q = User.query.filter(User.enterprise_role.in_(list(roles)))
+            if org_id is not None:
+                q = q.filter(User.organization_id == org_id)
             for u in q.all():
                 ids.add(u.id)
         except Exception as exc:
@@ -120,15 +129,17 @@ class GovernanceNotifier:
     @staticmethod
     def _email_digest(source_label, flagged, url) -> bool:
         try:
-            from flask import current_app
+            from flask import current_app, g
             from app._bootstrap._digest_emails import _safe_send_email
             from app.models.user import User
 
-            recipients = [
-                u.email for u in User.query.filter(
-                    User.enterprise_role.in_(list(_DEFAULT_ROLES))
-                ).all() if getattr(u, "email", None)
-            ]
+            # tenant-scoping-ok when g.current_org_id is set — see
+            # _audience_user_ids above for why this must not be global.
+            org_id = getattr(g, "current_org_id", None)
+            _q = User.query.filter(User.enterprise_role.in_(list(_DEFAULT_ROLES)))
+            if org_id is not None:
+                _q = _q.filter(User.organization_id == org_id)
+            recipients = [u.email for u in _q.all() if getattr(u, "email", None)]
             if not recipients:
                 return False
             items = "".join(

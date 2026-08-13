@@ -283,6 +283,7 @@ class VendorDiscoveryEngine:
         """Calculate cost effectiveness score based on pricing and TCO."""
 
         # Get pricing information
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         pricing_tiers = VendorProductPricing.query.filter_by(product_id=product.id).all()
 
         if not pricing_tiers:
@@ -482,6 +483,7 @@ class VendorDiscoveryEngine:
         """Calculate comprehensive TCO for a vendor product."""
 
         # Get pricing information
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         pricing = VendorProductPricing.query.filter_by(product_id=product.id).first()
 
         # Base calculations

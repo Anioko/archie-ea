@@ -1514,6 +1514,7 @@ class ApplicationCapabilityCatalogService:
         """Capabilities mapped to a specific application."""
         from app.models.application_capability import ApplicationCapabilityMapping
         from app.models.business_capabilities import BusinessCapability
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         maps = ApplicationCapabilityMapping.query.filter_by(
             application_component_id=app_id
         ).all()

@@ -148,10 +148,16 @@ def seed_demo_mappings(org_id, dry_run=False):
         "skipped": 0,
     }
 
+    # tenant-scoping-ok: scoped via the FK parent BusinessCapability (caps,
+    # already filtered to org_id above), not ACM.organization_id -- that
+    # column is NULL on every row in production, so a predicate on it would
+    # treat every mapping as "not yet present" and duplicate it on re-seed.
+    # See e622d36 / rationalization_scoring_service.py.
+    _cap_ids = {c.id for c in caps.values()}
     existing_app_caps = {
         (m.application_component_id, m.business_capability_id)
         for m in db.session.query(ApplicationCapabilityMapping)
-        .filter(ApplicationCapabilityMapping.organization_id == org_id)
+        .filter(ApplicationCapabilityMapping.business_capability_id.in_(_cap_ids))
         .all()
     }
 

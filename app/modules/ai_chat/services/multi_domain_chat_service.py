@@ -1996,6 +1996,7 @@ class MultiDomainChatService:
 
             if detected_entity_type:
                 # Admin gate — check at intent detection time
+                # tenant-scoping-ok: user_id here is the acting/chatting user's own id.
                 actor = User.query.get(user_id) if user_id else None
                 if not actor or not actor.is_admin():
                     return {

@@ -55,8 +55,14 @@ class BusinessCapabilityMapper:
         # Get all business capabilities
         capabilities = BusinessCapability.query.all()
 
-        # Check existing mappings
-        existing_mappings = ApplicationCapabilityMapping.query.all()
+        # Check existing mappings. tenant-scoping-ok: scoped via FK parent
+        # BusinessCapability (capabilities, org-scoped above) -- not
+        # ACM.organization_id, NULL in prod. See e622d36.
+        existing_mappings = ApplicationCapabilityMapping.query.filter(
+            ApplicationCapabilityMapping.business_capability_id.in_(
+                [c.id for c in capabilities]
+            )
+        ).all()
 
         # Analyze coverage
         analysis = {
@@ -72,6 +78,7 @@ class BusinessCapabilityMapper:
 
         # Check each application for capability mapping
         for app in applications:
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             app_mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=app.id
             ).all()
@@ -362,6 +369,7 @@ class BusinessCapabilityMapper:
         """
         try:
             # Check if mapping already exists
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             existing = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=application_id, business_capability_id=capability_id
             ).first()

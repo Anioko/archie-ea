@@ -36,7 +36,13 @@ def _compute_capability_mapping_counts():
     real dict.
 
     ``ApplicationCapabilityMapping`` is not ``TenantMixin`` (see the model),
-    so the org predicate here is deliberate, not defence-in-depth.
+    so the org predicate here is deliberate, not defence-in-depth. It is
+    applied via the FK parent ``BusinessCapability`` (which *is*
+    ``TenantMixin``), not ``ApplicationCapabilityMapping.organization_id`` --
+    that column is NULL on every row in production (added nullable by
+    reconcile-schema, never backfilled), so a predicate directly on it would
+    report every capability as having 0 mapped apps for every org. See
+    e622d36 / rationalization_scoring_service.py for the precedent.
     """
     org_id = getattr(g, "current_org_id", None)
     if org_id is None:
@@ -46,6 +52,7 @@ def _compute_capability_mapping_counts():
 
     from app import db
     from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.business_capabilities import BusinessCapability
 
     try:
         rows = (
@@ -53,7 +60,11 @@ def _compute_capability_mapping_counts():
                 ApplicationCapabilityMapping.business_capability_id,
                 func.count(ApplicationCapabilityMapping.id),
             )
-            .filter(ApplicationCapabilityMapping.organization_id == org_id)
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .filter(BusinessCapability.organization_id == org_id)
             .group_by(ApplicationCapabilityMapping.business_capability_id)
             .all()
         )

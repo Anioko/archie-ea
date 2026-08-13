@@ -77,7 +77,12 @@ def update_document_file(id, doc_id):
         # Find the document (assuming there's a document model)
         from app.models.application_layer import ApplicationDocument
 
-        doc = ApplicationDocument.query.get_or_404(doc_id)
+        # tenant-scoping-ok: doc_id alone is not org-scoped (ApplicationDocument
+        # has no TenantMixin) -- anchor to the org-scoped `app` loaded above to
+        # close a cross-org document-update IDOR.
+        doc = ApplicationDocument.query.filter_by(
+            id=doc_id, application_component_id=app.id
+        ).first_or_404()
 
         # Update document fields
         if request.form.get("description"):

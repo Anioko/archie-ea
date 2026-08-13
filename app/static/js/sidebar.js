@@ -10,11 +10,6 @@
  * - Supports 10,000+ applications without slowdown
  */
 
-document.addEventListener("DOMContentLoaded", function () {
-  loadQuickAccessItems("applications", 10);
-  loadQuickAccessItems("vendors", 8);
-});
-
 /**
  * Load quick-access items from async API endpoint
  * @param {string} type - 'applications' or 'vendors'

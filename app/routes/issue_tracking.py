@@ -69,12 +69,14 @@ def list_issues(solution_id):
             
             # Add assignee info
             if issue.assigned_to_id:
+                # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
                 assignee = User.query.get(issue.assigned_to_id)
                 if assignee:
                     issue_dict['assigned_to'] = assignee.email.split('@')[0]
 
             # Add creator info
             if issue.created_by_id:
+                # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
                 creator = User.query.get(issue.created_by_id)
                 if creator:
                     issue_dict['created_by'] = creator.email.split('@')[0]
@@ -136,11 +138,13 @@ def get_issue(solution_id, issue_id):
 
         # Add related data
         if issue.assigned_to_id:
+            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
             assignee = User.query.get(issue.assigned_to_id)
             if assignee:
                 issue_dict['assigned_to'] = assignee.email.split('@')[0]
 
         if issue.created_by_id:
+            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
             creator = User.query.get(issue.created_by_id)
             if creator:
                 issue_dict['created_by'] = creator.email.split('@')[0]
@@ -257,6 +261,7 @@ def update_issue(solution_id, issue_id):
 
         issue_dict = issue.to_dict()
         if issue.assigned_to_id:
+            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
             assignee = User.query.get(issue.assigned_to_id)
             if assignee:
                 issue_dict['assigned_to'] = assignee.email.split('@')[0]
@@ -305,6 +310,7 @@ def escalate_issue(solution_id, issue_id):
 
         issue_dict = issue.to_dict()
         if issue.assigned_to_id:
+            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
             assignee = User.query.get(issue.assigned_to_id)
             if assignee:
                 issue_dict['assigned_to'] = assignee.email.split('@')[0]

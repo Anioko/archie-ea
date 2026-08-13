@@ -35,7 +35,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional  # dead-code-ok
 
-from flask import current_app
+from flask import current_app, g
 
 logger = logging.getLogger(__name__)
 
@@ -1694,7 +1694,21 @@ class EAWorkflowEngine:
             cap_app_mappings = 0
             try:
                 from app.models.application_capability import ApplicationCapabilityMapping
-                cap_app_mappings = ApplicationCapabilityMapping.query.count()
+                # tenant-scoping-ok: scoped via the TenantMixin FK parent
+                # BusinessCapability, not ACM.organization_id -- that column
+                # is NULL on every row in production, so a predicate on it
+                # would always report 0 mappings. Joining BusinessCapability
+                # lets do_orm_execute scope the join automatically. See
+                # e622d36 / rationalization_scoring_service.py.
+                cap_app_mappings = (
+                    # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+                    ApplicationCapabilityMapping.query
+                    .join(
+                        BusinessCapability,
+                        ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+                    )
+                    .count()
+                )
             except Exception as e:
                 logger.warning("Could not count capability-application mappings: %s", e)
 
@@ -2413,7 +2427,11 @@ class EAWorkflowEngine:
             # Notify all admins as fallback
             try:
                 from app.models import User
-                admin_ids = [u.id for u in User.query.filter_by(is_admin=True).limit(3).all()]
+                org_id = getattr(g, "current_org_id", None)
+                _q = User.query.filter_by(is_admin=True)
+                if org_id is not None:
+                    _q = _q.filter_by(organization_id=org_id)
+                admin_ids = [u.id for u in _q.limit(3).all()]  # tenant-scoping-ok: scoped above when org_id known
                 recipients.extend(admin_ids)
             except Exception as e:
                 logger.debug("Could not fetch admin recipients: %s", e)
@@ -2673,6 +2691,8 @@ class EAWorkflowEngine:
                         candidate_emails.append(field)
             user_by_email = {}
             if candidate_emails:
+                # tenant-scoping-ok: User.email is globally unique, so this
+                # cannot return another org's user for a given address.
                 users_batch = User.query.filter(User.email.in_(candidate_emails)).all()
                 user_by_email = {u.email: u for u in users_batch}
 
@@ -2704,7 +2724,11 @@ class EAWorkflowEngine:
 
         # Fallback: if we still have fewer than 2 stakeholders, query active users
         if len(stakeholders) < 2:
-            users = User.query.filter(User.is_active == True).limit(20).all()
+            org_id = getattr(g, "current_org_id", None)
+            _q = User.query.filter(User.is_active == True)
+            if org_id is not None:
+                _q = _q.filter(User.organization_id == org_id)
+            users = _q.limit(20).all()  # tenant-scoping-ok: scoped above when org_id known
             for user in users:
                 if user.email not in seen_emails:
                     category = self._categorize_stakeholder(user)

@@ -38,6 +38,9 @@ ROUTES = [
     "/capability-map/",
     "/capability-map/hierarchy",
     "/solutions/",
+    "/arb/",
+    "/arb/reviews",
+    "/ea-workflows",
 ]
 VIEWPORT_HEIGHT = 900
 

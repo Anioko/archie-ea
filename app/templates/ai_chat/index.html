@@ -318,10 +318,13 @@ x-cloak>
                                open — body scroll stays locked and Escape stays bound with
                                nothing visible to escape from. This trigger gets its own
                                approvalManager instance (Alpine.data factories are meant to be
-                               instantiated per-mount) purely for the pending-count badge; the
-                               modal's own instance owns the approve/reject interaction state,
-                               matching the data-modal-open/close + self-contained-Alpine
-                               pattern in components/modal_standardized.html. #}
+                               instantiated per-mount) purely for the pending-count badge; both
+                               this mount and the modal's mount below are thin facades over the
+                               single shared Alpine.store('approvals') (approval_modal.js,
+                               shell-overhaul Wave 2, Task 5 fix) — neither "owns" the
+                               approve/reject state, both read and write the same copy. Open/close
+                               is driven by data-modal-open/close (Platform.modal, ui/modal.js),
+                               matching components/modal_standardized.html's pattern. #}
                             <div x-data="approvalManager" x-cloak>
                                 <button type="button" data-modal-open="ai-chat-approvals-modal" @click="menuOpen = false" role="menuitem"
                                     aria-label="Pending CRUD approvals" title="Pending CRUD approvals"

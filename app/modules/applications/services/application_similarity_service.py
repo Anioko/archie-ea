@@ -389,6 +389,7 @@ class ApplicationSimilarityService:
         # Get capabilities
         capabilities = []
         try:
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             capability_mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=app.id
             ).all()
@@ -912,6 +913,7 @@ BE REALISTIC about consolidation complexity and savings. Don't recommend consoli
         # Get application's capabilities
         app_capabilities = []
         try:
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             capability_mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=app.id
             ).all()

@@ -165,17 +165,12 @@ function registerApprovalManager() {
         /*  Modal helpers                                                      */
         /* ------------------------------------------------------------------ */
 
-        openModal() {
-            this.open = true;
-            this.error = null;
-            this.rejectingId = null;
-            this.rejectReason = "";
-            this.fetchPending();
-        },
-
-        closeModal() {
-            this.open = false;
-        },
+        // openModal()/closeModal() were removed here (shell-overhaul Wave 3,
+        // Task 5): the modal's open/closed state has never been driven by
+        // this store — ai_chat/index.html toggles it via
+        // data-modal-open/data-modal-close (Platform.modal, ui/modal.js), so
+        // neither method nor the `this.open` flag they wrote had a caller or
+        // a reader anywhere in the template.
 
         /** Format ISO date to a short human-readable form */
         formatDate(iso) {

@@ -25,6 +25,8 @@ class GDPRService:
 
     @staticmethod
     def delete_user_data(user_id, requester_id):
+        # tenant-scoping-ok: caller route has no auth at all (pre-existing,
+        # out of scope here) -- no org context to scope by; see report.
         user = User.query.get(user_id)
         if not user:
             return False

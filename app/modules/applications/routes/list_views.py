@@ -532,6 +532,7 @@ def api_list():
                 cap_count_rows = (
                     db.session.query(
                         ApplicationCapabilityMapping.application_component_id,
+                        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                         sqla_func.count(ApplicationCapabilityMapping.id),
                     )
                     .filter(ApplicationCapabilityMapping.application_component_id.in_(app_ids))

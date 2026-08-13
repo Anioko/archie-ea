@@ -1,7 +1,7 @@
 """Stakeholder Map — Power/Interest Grid routes."""
 import logging
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, render_template, request
 
 from app import db
 from app.models.solution_stakeholder import SolutionStakeholder, SolutionStakeholderMapping
@@ -87,6 +87,7 @@ def search_people():
 
     # Search Users
     users = User.query.filter(
+        User.organization_id == g.current_org_id,
         db.or_(
             User.first_name.ilike(f"%{q}%"),
             User.last_name.ilike(f"%{q}%"),

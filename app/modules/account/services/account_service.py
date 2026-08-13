@@ -209,6 +209,8 @@ class AccountService:
         Returns (user, token_valid: bool, message: str).
         user is None if user_id not found.
         """
+        # tenant-scoping-ok: pre-auth invite-join flow, no org context yet --
+        # the signed confirmation token checked below is the real gate.
         new_user = User.query.get(user_id)
         if new_user is None:
             return None, False, "User not found."

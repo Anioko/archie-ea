@@ -804,6 +804,7 @@ class AdvancedTCOEngine:
 
     def _get_pricing_tiers(self, vendor_product_id: int) -> List[VendorProductPricing]:
         """Get pricing tiers for vendor product."""
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         return db.session.query(VendorProductPricing).filter_by(product_id=vendor_product_id).all()
 
     def _select_pricing_tier(

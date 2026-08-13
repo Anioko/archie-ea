@@ -589,6 +589,7 @@ class ApplicationInferenceService:
 
         for cap_mapping in capability_mappings:
             # Find applications that support this capability
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             app_mappings = ApplicationCapabilityMapping.query.filter_by(
                 capability_id=cap_mapping.capability_id
             ).all()

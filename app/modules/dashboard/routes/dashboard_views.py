@@ -29,6 +29,7 @@ Endpoints (17 routes — url_prefix="/dashboard" applied by __init__.py):
 from flask import (
     Blueprint,
     current_app,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -61,7 +62,12 @@ def _build_overview_context():
     metrics = {
         "applications": db.session.query(db.func.count(ApplicationComponent.id)).scalar() or 0,
         "vendors": db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0,
-        "users": db.session.query(db.func.count(User.id)).scalar() or 0,
+        "users": (
+            db.session.query(db.func.count(User.id))
+            .filter(User.organization_id == g.current_org_id)
+            .scalar()
+            or 0
+        ),
         "active_sessions": 0,
     }
 
@@ -124,7 +130,6 @@ def _build_overview_context():
     total_apps = metrics["applications"] or 1  # avoid division by zero
     data_coverage = {"owner": 0, "vendor": 0, "cost": 0, "risk": 0, "criticality": 0}
     try:
-        from flask import g
         from sqlalchemy import text
         # Scope to the caller's org so coverage matches the (org-scoped) app count
         # and never aggregates other tenants' data. No-op in system contexts.

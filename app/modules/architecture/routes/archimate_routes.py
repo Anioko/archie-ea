@@ -19,7 +19,7 @@ import concurrent.futures
 import json
 import re as _re
 
-from flask import Blueprint, Response, abort, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
 
@@ -5437,7 +5437,9 @@ def api_diagram_active_editors(diagram_id):
     if user_ids:
         try:
             from app.models.user import User
-            users = User.query.filter(User.id.in_(user_ids)).all()
+            users = User.query.filter(
+                User.id.in_(user_ids), User.organization_id == g.current_org_id
+            ).all()
             editors = [{"id": u.id, "name": u.full_name() or u.email, "email": u.email} for u in users]
         except Exception:  # noqa: BLE001
             editors = [{"id": uid, "name": f"User {uid}", "email": ""} for uid in user_ids]
