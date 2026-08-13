@@ -120,6 +120,8 @@ class ARBAuditLog(db.Model):
     __tablename__ = "arb_audit_logs"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     entity_type = db.Column(db.String(100), nullable=False)
     entity_id = db.Column(db.Integer, nullable=False)
     entity_reference = db.Column(db.String(255))
@@ -142,6 +144,8 @@ class ARBException(db.Model):
     __tablename__ = "arb_exceptions"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     exception_number = db.Column(db.String(50), unique=True)
     standard_id = db.Column(db.Integer)
     exception_type = db.Column(db.String(100))
@@ -214,6 +218,8 @@ class ARBWorkflowStage(db.Model):
     __tablename__ = "arb_workflow_stages"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     code = db.Column(db.String(50), unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)
     order = db.Column(db.Integer, default=0)
@@ -365,6 +371,8 @@ class ARBBoardMember(db.Model):
     __tablename__ = "arb_board_members"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     arb_session_id = db.Column(
         db.Integer, db.ForeignKey("architecture_review_boards.id"), nullable=False
     )
@@ -399,6 +407,8 @@ class ARBReviewItem(db.Model, OptimisticLockMixin):
     __tablename__ = "arb_review_items"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     review_number = db.Column(db.String(50), unique=True, nullable=False)  # REV - 2026 - 001
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
@@ -605,6 +615,8 @@ class ARBReviewComment(db.Model):
     __tablename__ = "arb_review_comments"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     review_item_id = db.Column(db.Integer, db.ForeignKey("arb_review_items.id"), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
@@ -638,6 +650,8 @@ class ARBCapabilityImpact(db.Model):
     __tablename__ = "arb_capability_impacts"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     review_item_id = db.Column(db.Integer, db.ForeignKey("arb_review_items.id"), nullable=False)
     capability_id = db.Column(db.Integer, db.ForeignKey("unified_capabilities.id"), nullable=False)
 
@@ -674,6 +688,8 @@ class ARBGovernanceStandard(db.Model):
     __tablename__ = "arb_governance_standards"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     code = db.Column(db.String(50), unique=True, nullable=False)  # STD-SEC - 001
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
@@ -1010,6 +1026,10 @@ if not _FAST_INIT:
         __table_args__ = {"extend_existing": True}
 
         id = db.Column(db.Integer, primary_key=True)
+        # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+        organization_id = db.Column(
+            db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True
+        )
 
         # Polymorphic parent — exactly one must be set.
         # change_request_id → architecture_change_requests (ArchitectureChangeRequest, Phase H form)

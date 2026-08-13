@@ -509,6 +509,8 @@ class EAWorkflowDefinition(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Workflow identity
     workflow_code = db.Column(db.String(50), unique=True, nullable=False, index=True)
@@ -609,6 +611,8 @@ class EAWorkflowInstance(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Instance identification
     instance_code = db.Column(db.String(100), unique=True, nullable=False)
@@ -721,6 +725,8 @@ class EAWorkflowStepExecution(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Link to instance
     instance_id = db.Column(
@@ -802,6 +808,8 @@ class EAWorkflowSchedule(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Link to definition
     workflow_definition_id = db.Column(
@@ -904,6 +912,8 @@ class EAWorkflowNotification(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase A (Wave 4): nullable, backfilled later — do NOT add TenantMixin yet.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     workflow_instance_id = db.Column(db.Integer, db.ForeignKey("ea_workflow_instances.id"), nullable=False, index=True)
     recipient_id = db.Column(db.Integer, db.ForeignKey("users.id"))
 
