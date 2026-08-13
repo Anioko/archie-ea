@@ -40,6 +40,7 @@ ROUTES = [
     "/solutions/",
     "/arb/",
     "/arb/reviews",
+    "/ea-workflows",
 ]
 VIEWPORT_HEIGHT = 900
 
