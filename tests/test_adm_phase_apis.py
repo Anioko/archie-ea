@@ -61,6 +61,19 @@ def logged_in_user_id(db_session, make_org, client):
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user.id)
         sess["_fresh"] = True
+
+    # The db_session fixture holds an app context open for the whole test, and
+    # test-client requests REUSE it (Flask only pushes a fresh app context when
+    # none is active for this app). Anything that touched current_user during
+    # setup — the tenant flush listener does — cached an anonymous user in the
+    # shared `g`, and flask-login then never consults the session cookie. Same
+    # trap as tests/test_ba_tenant_and_authz.py::_login; clear the caches.
+    from flask import g, has_app_context
+
+    if has_app_context():
+        for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
+            if hasattr(g, cached):
+                delattr(g, cached)
     return user.id
 
 
@@ -68,6 +81,7 @@ def logged_in_user_id(db_session, make_org, client):
 def test_adm_phase_api_no_server_error(client, logged_in_user_id, endpoint):
     """Authenticated GET must not 500 (empty data is a legitimate answer)."""
     response = client.get(endpoint)
+    assert response.status_code != 401, f"{endpoint}: login did not take"
     assert response.status_code < 500, (
         f"{endpoint} returned {response.status_code}: "
         f"{response.get_data(as_text=True)[:500]}"

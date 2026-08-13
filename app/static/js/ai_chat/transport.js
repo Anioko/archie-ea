@@ -105,8 +105,37 @@
         var reader = resp.body.getReader();
         var dec = new TextDecoder();
         var buf = '', full = '', meta = {};
+        /* Inactivity backstop. The server's keepalive comments come every 95s
+           precisely when nothing is happening, so a hung LLM call used to hold
+           this loop — and the "Thinking..." indicator — open forever. Any
+           received bytes reset the clock; 30s of true silence is an error the
+           user gets to see, not dead air. */
+        var IDLE_MS = 30000;
         while (true) {
-            var chunk = await reader.read();
+            var idleTimer = null;
+            var chunk;
+            try {
+                chunk = await Promise.race([
+                    reader.read(),
+                    new Promise(function (_resolve, reject) {
+                        idleTimer = setTimeout(function () {
+                            var e = new Error(
+                                'No response from the AI service for ' + (IDLE_MS / 1000) +
+                                ' seconds. Check Admin → API Settings if this persists.'
+                            );
+                            e.name = 'StreamIdleTimeout';
+                            reject(e);
+                        }, IDLE_MS);
+                    })
+                ]);
+            } catch (err) {
+                if (err && err.name === 'StreamIdleTimeout' && _controller) {
+                    _controller.abort();  // close the socket; the request is being given up on
+                }
+                throw err;
+            } finally {
+                if (idleTimer !== null) clearTimeout(idleTimer);
+            }
             if (chunk.done) break;
             buf += dec.decode(chunk.value, { stream: true });
             var lines = buf.split('\n');
@@ -127,7 +156,18 @@
                 } else if (ev.type === 'tool_result') {
                     if (h.onToolResult) h.onToolResult(ev);
                 } else if (ev.type === 'done') {
-                    if (ev.error) throw new Error(ev.error);
+                    if (ev.error) {
+                        /* The server reports a failed turn as done-with-error,
+                           usually alongside the persisted assistant message
+                           ("The AI request couldn't be completed... Admin →
+                           API Settings"). Carry that text on the throw so the
+                           caller can render it instead of re-issuing the whole
+                           failing turn against the non-streaming endpoint. */
+                        var doneErr = new Error(ev.error);
+                        doneErr.name = 'AIServerError';
+                        if (ev.response) doneErr.userMessage = ev.response;
+                        throw doneErr;
+                    }
                     if (!full && ev.response) full = ev.response;
                     // actions_taken rides the done event already (chat_core
                     // spreads the whole agent result); it names every tool that

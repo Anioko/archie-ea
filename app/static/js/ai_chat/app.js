@@ -299,6 +299,18 @@
                 if (_l) _l.remove();
                 return;
             }
+            if (_streamErr && (_streamErr.userMessage || _streamErr.name === 'StreamIdleTimeout' || _streamErr.name === 'AIServerError')) {
+                /* The server already answered this turn — with a failure. The
+                   turn is persisted server-side; re-issuing it through the
+                   non-streaming endpoint would run the failing LLM call a
+                   second time and persist a second broken turn. Render the
+                   error the stream delivered (the server's message carries the
+                   Admin → API Settings pointer) and stop here. */
+                const _l = document.getElementById(loadingId);
+                if (_l) _l.remove();
+                appendError(_streamErr.userMessage || _streamErr.message, () => _retryTurn(message, timestamp));
+                return;
+            }
             /* fall through to non-streaming */
         }
 
