@@ -65,14 +65,29 @@ def get_merge_candidates():
             ApplicationComponent.lifecycle_status.notin_(
                 ["retired", "deprecated"]
             )
-        ).all()
+        ).order_by(ApplicationComponent.id).all()
+
+        # The pair scan is O(n²); a 920-app portfolio ran 10+ minutes inside
+        # this request. Bound both the comparison set and the wall clock, and
+        # SAY SO in the response — a silently partial analysis reads as "no
+        # further duplicates exist".
+        total_applications = len(applications)
+        max_apps = int(request.args.get("max_apps", 300))
+        max_apps = max(2, min(max_apps, 2000))
+        truncated = False
+        if total_applications > max_apps:
+            applications = applications[:max_apps]
+            truncated = True
 
         # Configure matching service
         config = MergeConfig(similarity_threshold=threshold)
         matching_service = ApplicationMatchingService(config)
 
-        # Find candidates
-        candidates = matching_service.find_merge_candidates(applications)
+        # Find candidates, bounded to seconds rather than minutes
+        candidates = matching_service.find_merge_candidates(
+            applications, time_budget_seconds=20
+        )
+        truncated = truncated or matching_service.truncated
 
         # Filter out ignored pairs
         ignored_entries = ARBAuditLog.query.filter_by(
@@ -97,6 +112,8 @@ def get_merge_candidates():
             "success": True,
             "candidates": [],
             "total_analyzed": len(applications),
+            "total_applications": total_applications,
+            "truncated": truncated,
             "threshold_used": threshold,
             "total_candidates": len(candidates),
         }
@@ -173,18 +190,16 @@ def analyze_application_merges(app_id):
         config = MergeConfig(similarity_threshold=threshold)
         matching_service = ApplicationMatchingService(config)
 
-        # Find candidates for this specific app
-        all_candidates = matching_service.find_merge_candidates(
-            [target_app] + other_apps
-        )
-
-        # Filter to only candidates involving the target app
-        target_candidates = [
-            candidate
-            for candidate in all_candidates
-            if candidate.primary_app.id == app_id
-            or candidate.duplicate_app.id == app_id
-        ]
+        # Compare the target against each other app directly. This used to run
+        # the full O(n²) scan over the whole portfolio and then throw away
+        # every pair not involving the target — ~423k comparisons on 920 apps
+        # to keep 919.
+        target_candidates = []
+        for other_app in other_apps:
+            target_candidates.extend(
+                matching_service.find_merge_candidates([target_app, other_app])
+            )
+        target_candidates.sort(key=lambda c: c.similarity_score, reverse=True)
 
         # Format response
         response_data = {
