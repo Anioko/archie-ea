@@ -310,7 +310,9 @@ class InvestmentPrioritizationService:
         high_debt_apps = [
             m
             for m in app_mappings
-            if hasattr(m, "technical_debt_score") and m.technical_debt_score > 70
+            # A NULL score is "not assessed", not zero — and None > 70 raises.
+            if getattr(m, "technical_debt_score", None) is not None
+            and m.technical_debt_score > 70
         ]
         if high_debt_apps:
             risk_score += 10

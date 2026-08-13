@@ -233,18 +233,24 @@ def get_manufacturing_capabilities():
 
         capabilities = []
         for cap in pagination.items:
+            # ManufacturingCapability is a specialization row: name, level,
+            # status etc. live on the linked UnifiedCapability, and its own
+            # domain is the manufacturing_domain string. Reading cap.name /
+            # cap.domain.name here raised AttributeError on the first real row
+            # (the empty-table case masked it).
+            uc = cap.unified_capability
             capabilities.append(
                 {
                     "id": str(cap.id),
-                    "name": cap.name,
-                    "description": cap.description or "",
-                    "domain": cap.domain.name if cap.domain else None,
-                    "level": cap.level,
-                    "business_owner": cap.business_owner,
-                    "business_impact": getattr(cap, "business_criticality", None),
-                    "priority": getattr(cap, "roadmap_priority", None),
-                    "coverage": getattr(cap, "process_coverage", None),
-                    "status": cap.status,
+                    "name": uc.name if uc else None,
+                    "description": (uc.description if uc else None) or "",
+                    "domain": cap.manufacturing_domain,
+                    "level": uc.level if uc else None,
+                    "business_owner": uc.business_owner if uc else None,
+                    "business_impact": uc.business_criticality if uc else None,
+                    "priority": uc.roadmap_priority if uc else None,
+                    "coverage": uc.process_coverage if uc else None,
+                    "status": uc.status if uc else None,
                     "unified_capability_id": str(cap.unified_capability_id)
                     if cap.unified_capability_id
                     else None,

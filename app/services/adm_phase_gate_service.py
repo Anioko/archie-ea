@@ -149,15 +149,26 @@ class ADMPhaseGateService:
         phase. Both callers run inside handlers that surface the failure, so the
         error is better reported than converted into a gate verdict.
         """
-        row = db.session.execute(  # tenant-filtered: scoped via architecture_id FK
+        # ea_workflow_instances has NO architecture_id column (this query used
+        # to assume one and raised UndefinedColumn, 500ing every caller). The
+        # architecture linkage lives on the produced elements themselves —
+        # archimate_elements.architecture_id — so scope there, and only when a
+        # specific architecture was asked for.
+        _org_clause, _org_params = org_scope(prefix="ae.")
+        _arch_clause = "AND ae.architecture_id = :arch_id " if architecture_id is not None else ""
+        _params = {"phase": phase_code, **_org_params}
+        if architecture_id is not None:
+            _params["arch_id"] = architecture_id
+        row = db.session.execute(
             db.text(
                 "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
                 "JOIN ea_workflow_instances i ON i.id = w.instance_id "
-                "WHERE i.architecture_id = :arch_id "
-                "AND w.adm_phase = :phase "
-                "AND w.element_role = 'output'"
+                "JOIN archimate_elements ae ON ae.id = w.element_id "
+                "WHERE w.adm_phase = :phase "
+                + _arch_clause +
+                "AND w.element_role = 'output'" + _org_clause
             ),
-            {"arch_id": architecture_id, "phase": phase_code},
+            _params,
         ).scalar()
         return int(row or 0)
 
@@ -174,18 +185,23 @@ class ADMPhaseGateService:
         # scope there, which also keeps the gate verdict about this tenant's
         # own outputs rather than another organisation's.
         _org_clause, _org_params = org_scope(prefix="ae.")
+        # Same UndefinedColumn as _count_phase_outputs: the architecture link
+        # is ae.architecture_id, not a column on ea_workflow_instances.
+        _arch_clause = "AND ae.architecture_id = :arch_id " if architecture_id is not None else ""
+        _params = {"phase": phase_code, "etype": element_type, **_org_params}
+        if architecture_id is not None:
+            _params["arch_id"] = architecture_id
         row = db.session.execute(
             db.text(
                 "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
                 "JOIN ea_workflow_instances i ON i.id = w.instance_id "
                 "JOIN archimate_elements ae ON ae.id = w.element_id "
-                "WHERE i.architecture_id = :arch_id "
-                "AND w.adm_phase = :phase "
+                "WHERE w.adm_phase = :phase "
+                + _arch_clause +
                 "AND ae.type = :etype "
                 "AND w.element_role = 'output'" + _org_clause
             ),
-            {"arch_id": architecture_id, "phase": phase_code, "etype": element_type,
-             **_org_params},
+            _params,
         ).scalar()
         return int(row or 0) > 0
 
