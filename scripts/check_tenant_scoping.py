@@ -67,6 +67,19 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MODELS_DIR = os.path.join(REPO_ROOT, "app", "models")
 
+# Wave-4 Task-2/3 review: these 3 models carry organization_id (added in Phase
+# A for schema symmetry with their 11 per-tenant siblings) but are shared
+# catalogs/templates, not per-tenant data — see
+# app/commands/backfill_arb_ea_tenancy.py's GLOBAL_REFERENCE (table-name form
+# of the same intent) and tests/test_tenant_isolation_matrix.py's
+# INTENTIONALLY_GLOBAL entries for them. A bare `.query` on one of these has
+# no tenant filter to miss by design, so they must never be treated as leaky.
+GLOBAL_REFERENCE_MODELS = frozenset({
+    "ARBGovernanceStandard",
+    "ARBWorkflowStage",
+    "EAWorkflowDefinition",
+})
+
 SCAN_DIRS = [
     os.path.join(REPO_ROOT, "app", "modules"),
     os.path.join(REPO_ROOT, "app", "api"),
@@ -130,7 +143,7 @@ def leaky_models() -> set[str]:
                             has_org_col = True
                 if has_org_col:
                     found.add(node.name)
-    return found
+    return found - GLOBAL_REFERENCE_MODELS
 
 
 def _name_of(node: ast.AST) -> str | None:
