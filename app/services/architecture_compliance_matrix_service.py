@@ -50,7 +50,7 @@ class ArchitectureComplianceMatrixService:
         for app in apps:
             arb_status = self._get_arb_review_status(app.id)
             compliance_score = _SCORE_MAP.get(arb_status, 60)
-            violation_count = self._get_violation_count(app.id)
+            violation_count = self._get_violation_count(app.name)
             overall_status = self._overall_status(compliance_score)
 
             result.append(
@@ -79,11 +79,21 @@ class ArchitectureComplianceMatrixService:
         """
         try:
             from app.models.architecture_review_board import ARBReviewItem
+            from app.models.solution_models import Solution, solution_applications
         except ImportError:
             return "not_reviewed"
 
+        # arb_review_items has no application_id column; reviews reach an
+        # application via solution_id -> solution_applications junction.
         review = (
-            ARBReviewItem.query.filter_by(application_id=application_id)
+            ARBReviewItem.query.join(Solution, ARBReviewItem.solution_id == Solution.id)
+            .join(
+                solution_applications,
+                solution_applications.c.solution_id == Solution.id,
+            )
+            .filter(
+                solution_applications.c.application_component_id == application_id
+            )
             .order_by(desc(ARBReviewItem.created_at))
             .first()
         )
@@ -91,8 +101,11 @@ class ArchitectureComplianceMatrixService:
             return review.status or "not_reviewed"
         return "not_reviewed"
 
-    def _get_violation_count(self, application_id: int) -> int:
-        """Return compliance violation count for the given application id.
+    def _get_violation_count(self, application_name: str) -> int:
+        """Return compliance violation count for the given application name.
+
+        ``compliance_violations`` records its target only as the free-text
+        ``affected_system`` column, so the match is by name.
 
         Only ``ImportError`` is caught — the compliance model is optional. A
         query failure propagates rather than being reported as ``0``, which the
@@ -103,8 +116,8 @@ class ArchitectureComplianceMatrixService:
         except ImportError:
             return 0
 
-        return ComplianceViolation.query.filter_by(
-            application_id=application_id
+        return ComplianceViolation.query.filter(
+            ComplianceViolation.affected_system == application_name
         ).count()
 
     @staticmethod

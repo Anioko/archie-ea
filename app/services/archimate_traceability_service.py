@@ -102,7 +102,7 @@ class ArchiMateTraceabilityService:
                 'type': el.type, 'hop': current_hop + 1,
                 'relationship_type': rel.type,
                 'access_modifier': access_modifier,
-                'plateau': getattr(el, 'plateau', None),
+                'plateau': getattr(el, 'togaf_plateau', None),
             }
             results.append(entry)
             self._traverse_all(next_id, results, visited, max_hops, current_hop + 1)
@@ -176,7 +176,7 @@ class ArchiMateTraceabilityService:
             ~ArchiMateElement.name.like('tmp-%'),
         )
         if plateau:
-            query = query.filter(db.func.lower(ArchiMateElement.plateau) == plateau.lower())
+            query = query.filter(db.func.lower(ArchiMateElement.togaf_plateau) == plateau.lower())
         if search:
             query = query.filter(ArchiMateElement.name.ilike(f'%{search}%'))
         if scope:
@@ -231,7 +231,7 @@ class ArchiMateTraceabilityService:
             ~ArchiMateElement.name.like('tmp-%'),
         )
         if plateau:
-            query = query.filter(db.func.lower(ArchiMateElement.plateau) == plateau.lower())
+            query = query.filter(db.func.lower(ArchiMateElement.togaf_plateau) == plateau.lower())
         if search:
             query = query.filter(ArchiMateElement.name.ilike(f'%{search}%'))
         if scope:

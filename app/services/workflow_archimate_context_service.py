@@ -80,11 +80,11 @@ class WorkflowArchiMateContextService:
         elements = ArchiMateElement.query.filter(
             db.or_(
                 ArchiMateElement.properties.like('%"adm_phase": "' + phase_code + '"%'),
-                ArchiMateElement.plateau == phase_code,
+                ArchiMateElement.togaf_plateau == phase_code,
             )
         ).all()
         return [
-            {"id": e.id, "name": e.name, "type": e.type, "layer": e.layer, "plateau": e.plateau}
+            {"id": e.id, "name": e.name, "type": e.type, "layer": e.layer, "plateau": e.togaf_plateau}
             for e in elements
         ]
 
@@ -113,7 +113,7 @@ class WorkflowArchiMateContextService:
                 name=name,
                 type=element_type,
                 layer=layer,
-                plateau="Target",
+                togaf_plateau="Target",
                 scope="enterprise",
                 properties=json.dumps(props),
             )
