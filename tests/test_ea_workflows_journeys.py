@@ -60,11 +60,17 @@ def _login(client, user_id, app):
             delattr(g, cached)
 
 
-def test_ea_workflows_journeys_route_returns_200(app, db_session, make_org):
+def test_ea_workflows_journeys_route_returns_200(app, db_session, make_org, tenant_ctx):
     """Test that /ea-workflows/journeys route returns 200 for a logged-in user.
 
     Creates test workflow definitions and instances, then calls the route
     and asserts it doesn't crash and returns 200.
+
+    EAWorkflowInstance is TenantMixin as of wave-4 Phase B, so the instances
+    must be created inside a tenant context — otherwise organization_id is
+    never auto-set on flush, and the logged-in-user's org-scoped route query
+    would find nothing (silently making this test pass for the wrong reason).
+    EAWorkflowDefinition stays global-reference (no tenant_ctx needed).
     """
     from app.models.user import User
     from app.models.workflow_models import EAWorkflowDefinition, EAWorkflowInstance
@@ -93,16 +99,18 @@ def test_ea_workflows_journeys_route_returns_200(app, db_session, make_org):
     db_session.add(definition)
     db_session.flush()
 
-    # Create workflow instances with normal iteration numbers
-    for i in range(1, 3):
-        instance = EAWorkflowInstance(
-            instance_code=f"ADM_Instance_{i}",
-            workflow_definition_id=definition.id,
-            status="completed",
-            iteration_number=i,
-        )
-        db_session.add(instance)
-    db_session.flush()
+    # Create workflow instances with normal iteration numbers, inside org's
+    # tenant context so TenantMixin auto-sets organization_id on flush.
+    with tenant_ctx(org.id):
+        for i in range(1, 3):
+            instance = EAWorkflowInstance(
+                instance_code=f"ADM_Instance_{i}",
+                workflow_definition_id=definition.id,
+                status="completed",
+                iteration_number=i,
+            )
+            db_session.add(instance)
+        db_session.flush()
 
     # Test the route via test client
     client = app.test_client()

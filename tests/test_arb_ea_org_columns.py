@@ -1,9 +1,14 @@
-"""Phase A (Wave 4 Task 1): every ARB + EA-workflow model has a nullable,
-indexed organization_id FK to organizations.id.
+"""Wave 4: every ARB + EA-workflow model has a nullable, indexed
+organization_id FK to organizations.id (Phase A / Task 1).
 
-COLUMN ONLY — these models must NOT have TenantMixin yet (that's Phase B /
-Task 3). Adding TenantMixin now would silently hide every existing NULL-org
-row from every org before the backfill has run.
+Phase B (Task 3) then enabled TenantMixin on the 11 PER-TENANT models —
+ARBReviewItem, ARBException, ARBBoardMember, ARBReviewComment,
+ARBCapabilityImpact, ARBAuditLog, ARBDocument, EAWorkflowInstance,
+EAWorkflowStepExecution, EAWorkflowSchedule, EAWorkflowNotification — after
+the backfill (Task 2) had populated organization_id on every existing row.
+The 3 GLOBAL-REFERENCE models — ARBGovernanceStandard, ARBWorkflowStage,
+EAWorkflowDefinition — intentionally stay plain db.Model: they are shared
+catalogs/templates, and TenantMixin would hide them from every org.
 """
 
 import pytest
@@ -73,10 +78,42 @@ def test_arb_document_present_when_not_fast_init():
     assert columns["organization_id"].nullable is True
 
 
-@pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
-def test_phase_a_models_do_not_yet_have_tenant_mixin(model):
-    """Phase A is column-only. TenantMixin comes in Phase B (Task 3) after
-    the backfill runs — adding it early would hide NULL-org rows."""
+PER_TENANT_MODELS = [
+    ARBReviewItem,
+    ARBException,
+    ARBBoardMember,
+    ARBReviewComment,
+    ARBCapabilityImpact,
+    ARBAuditLog,
+    EAWorkflowInstance,
+    EAWorkflowStepExecution,
+    EAWorkflowSchedule,
+    EAWorkflowNotification,
+]
+if ARBDocument is not None:
+    PER_TENANT_MODELS.append(ARBDocument)
+
+GLOBAL_REFERENCE_MODELS = [
+    ARBGovernanceStandard,
+    ARBWorkflowStage,
+    EAWorkflowDefinition,
+]
+
+
+@pytest.mark.parametrize("model", PER_TENANT_MODELS, ids=lambda m: m.__name__)
+def test_phase_b_per_tenant_models_have_tenant_mixin(model):
+    """Phase B (Task 3): the 11 per-tenant models are TenantMixin — the
+    backfill (Task 2) already populated organization_id on every row, so
+    auto-filtering no longer hides pre-existing data."""
+    assert issubclass(model, TenantMixin), (
+        f"{model.__name__} must have TenantMixin (Phase B) — it is a per-tenant governance model"
+    )
+
+
+@pytest.mark.parametrize("model", GLOBAL_REFERENCE_MODELS, ids=lambda m: m.__name__)
+def test_global_reference_models_do_not_have_tenant_mixin(model):
+    """Global-reference catalogs/templates stay shared across every org —
+    TenantMixin would silently hide them from every tenant."""
     assert not issubclass(model, TenantMixin), (
-        f"{model.__name__} must NOT have TenantMixin yet (Phase A is column-only)"
+        f"{model.__name__} is global-reference data and must NOT have TenantMixin"
     )
