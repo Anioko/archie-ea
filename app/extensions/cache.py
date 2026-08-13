@@ -225,9 +225,17 @@ def cached(ttl: int = 300, key_prefix: str = "", key_func: Optional[Callable] = 
     Args:
         ttl: Cache TTL in seconds (default 5 minutes)
         key_prefix: Prefix for cache key
-        key_func: Custom function to generate cache key from args/kwargs
+        key_func: Custom function to generate cache key from args/kwargs.
+            If the value it returns is ``None``, the cache is bypassed
+            entirely for that call (fail closed) rather than caching under
+            an unscoped key that every other caller would then share.
 
-    Every key is scoped to the calling organisation — see ``current_tenant_key``.
+    Every key is ALSO scoped to the calling organisation — see
+    ``current_tenant_key``. The two mechanisms were built independently on
+    two branches for the same defect and both are kept: the automatic tenant
+    prefix makes a new ``@cached`` safe by omission, and the fail-closed
+    key_func lets a call site scope on something the prefix cannot see and
+    refuse to cache when it cannot.
     """
 
     def decorator(func):
@@ -236,7 +244,13 @@ def cached(ttl: int = 300, key_prefix: str = "", key_func: Optional[Callable] = 
             # Generate cache key
             tenant = current_tenant_key()
             if key_func:
-                cache_key = f"{tenant}:{key_prefix}:{key_func(*args, **kwargs)}"
+                key_suffix = key_func(*args, **kwargs)
+                if key_suffix is None:
+                    # Fail closed: key_func could not produce a scoping
+                    # value, so run uncached rather than cache an answer
+                    # under a key every other caller would also match.
+                    return func(*args, **kwargs)
+                cache_key = f"{tenant}:{key_prefix}:{key_suffix}"
             else:
                 # Default: use function name + args + kwargs
                 args_str = "_".join(str(arg) for arg in args)

@@ -69,12 +69,43 @@
     </div>
 
     <!-- Coverage Summary Banner -->
+    {#- total_capabilities is the tenant's full BusinessCapability count, from
+        the single counting function shared with /capability-map/
+        (app/modules/capabilities/services/capability_count_service.py) — not
+        the tree-walk below, which only counts nodes reachable from a level-1
+        root and previously disagreed with the other screen.
+
+        has_coverage_data / mapping_count on each catalog node come from
+        map_views._compute_capability_mapping_counts() — a single org-scoped
+        grouped query over ApplicationCapabilityMapping. It is None (not {})
+        when the count could not be computed at all (no tenant context, or
+        the query itself failed), which is distinct from "computed and
+        every capability has 0 mapped apps" (a real, all-zero dict). This
+        gate is server-side and Jinja-rendered (not Alpine x-show) so both
+        states are directly testable without executing JS. #}
     <div class="bg-card rounded-lg shadow border px-4 py-2 flex items-center gap-4 text-sm">
-        <span class="font-medium text-foreground" x-text="countAll() + ' capabilities'"></span>
+        <span class="font-medium text-foreground">{{ total_capabilities|dash }} capabilities</span>
         <span class="text-muted-foreground">|</span>
-        <!-- TODO: mapping_count not available in catalog data — wire from UnifiedApplicationCapabilityMapping to show mapped/gaps/coverage% -->
-        <span class="text-muted-foreground">Coverage data pending application mappings</span>
+        {% if has_coverage_data %}
+        <span class="text-muted-foreground">App coverage shown per capability below</span>
+        {% else %}
+        <span class="text-muted-foreground">Coverage indicators could not be loaded for this view</span>
+        {% endif %}
     </div>
+
+    {% if has_coverage_data %}
+    <!-- Coverage dot legend — only rendered when at least one capability in
+         the payload has a real (possibly zero) mapping_count. A capability
+         whose mapping_count is null (not computed) renders no dot at all —
+         see getCoverageDotClass() below — so an all-null payload would make
+         this legend a claim about dots that don't exist. -->
+    <div data-testid="capability-legend" class="flex items-center gap-4 text-xs text-muted-foreground px-1">
+        <span class="font-medium text-foreground">App coverage:</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> 3+ apps mapped</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span> 1-2 apps mapped</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-destructive"></span> No apps mapped</span>
+    </div>
+    {% endif %}
 
     <!-- Hierarchy Tree -->
     <div class="bg-card rounded-lg shadow border">
@@ -294,9 +325,17 @@ function hierarchyView() {
             return count;
         },
 
-        // TODO: Replace with real mapping_count when catalog includes application mapping data
+        // cap.mapping_count is a real org-scoped count from
+        // map_views._compute_capability_mapping_counts() (null when it
+        // could not be computed at all). null must NOT fall through to 0 —
+        // that would render every "not computed" capability as a
+        // confidently red "no apps mapped" dot, which is exactly the
+        // fabricated-data defect the legend above would then be lying
+        // about. Real 0 (the query ran and found no mappings) legitimately
+        // gets the destructive tier; null gets no dot.
         getCoverageDotClass(cap) {
-            const mc = cap.mapping_count || 0;
+            const mc = cap.mapping_count;
+            if (mc === null || mc === undefined) return null;
             if (mc >= 3) return 'bg-emerald-500';
             if (mc >= 1) return 'bg-amber-500';
             return 'bg-destructive';
@@ -380,7 +419,12 @@ function hierarchyView() {
                 html += '    <div class="flex items-center justify-between">';
                 html += '      <div>';
                 const coverageDot = this.getCoverageDotClass(cap);
-                html += '        <span class="w-2 h-2 rounded-full inline-block align-middle mr-1.5 ' + coverageDot + '" title="' + (cap.mapping_count || 0) + ' apps mapped"></span>';
+                // No dot at all when mapping_count is null (not computed) —
+                // see getCoverageDotClass()'s comment. A destructive-tier
+                // dot only ever means "computed, and it's really 0".
+                if (coverageDot) {
+                    html += '        <span class="w-2 h-2 rounded-full inline-block align-middle mr-1.5 ' + coverageDot + '" title="' + cap.mapping_count + ' apps mapped"></span>';
+                }
                 html += '        <span class="' + textSizeClass + ' font-medium text-foreground">' + this.escapeHtml(cap.name) + '</span>';
                 if (cap.description) {
                     html += '        <p class="text-sm text-muted-foreground mt-1">' + this.escapeHtml(cap.description) + '</p>';

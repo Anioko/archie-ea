@@ -528,6 +528,7 @@ class JourneyReasoningOrchestrator:
 
         try:
             mappings = (
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 ApplicationCapabilityMapping.query
                 .filter(ApplicationCapabilityMapping.business_capability_id.in_(confirmed_ids))
                 .all()

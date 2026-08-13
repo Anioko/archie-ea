@@ -301,9 +301,11 @@ def merge_keep_target(source, target, options):
             db.session.delete(mapping)
 
     # Migrate application-capability mappings
+    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
     app_mappings = ApplicationCapabilityMapping.query.filter_by(business_capability_id=source.id).all()
     existing_app_ids = {
         m.application_component_id
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         for m in ApplicationCapabilityMapping.query.filter_by(business_capability_id=target.id).all()
     }
     for mapping in app_mappings:

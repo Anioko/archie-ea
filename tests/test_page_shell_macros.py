@@ -43,10 +43,12 @@ def test_page_shell_actions_and_h1_share_flex_row(app):
         {{ page_shell('Applications', actions_caller=actions) }}
         """,
     )
-    # The h1 and the actions block must both live inside the same
-    # "flex items-start justify-between" row container.
+    # The h1 and the actions block must both live inside the same header row
+    # container. Below xl (1280px) it stacks (flex-col) so actions get their
+    # own full-width row and can wrap; at xl+ it goes side-by-side, matching
+    # the pre-responsive-fix layout exactly.
     row_match = re.search(
-        r'<div class="flex items-start justify-between gap-4">(.*?)</div>\s*'
+        r'<div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">(.*?)</div>\s*'
         r'(?:<ul|\{%|$)',
         html,
         re.DOTALL,
@@ -125,6 +127,31 @@ def test_stat_card_hero_variant_uses_larger_text_class_than_standard(app):
     assert "text-3xl" in hero_html
     assert "text-3xl" not in standard_html
     assert "text-2xl" in standard_html
+
+
+def test_stat_card_warning_variant_emits_warning_tokens_standard_does_not(app):
+    warning_html = _render(
+        app,
+        """
+        {% from 'macros/page_shell.html' import stat_card %}
+        {{ stat_card('Waiting Approval', 3, hint='Review the queue', variant='warning') }}
+        """,
+    )
+    standard_html = _render(
+        app,
+        """
+        {% from 'macros/page_shell.html' import stat_card %}
+        {{ stat_card('Waiting Approval', 3, hint='Review the queue', variant='standard') }}
+        """,
+    )
+    assert "bg-warning/10" in warning_html
+    assert "border-warning/40" in warning_html
+    assert "text-warning-emphasis" in warning_html
+    assert "bg-warning/10" not in standard_html
+    assert "border-warning/40" not in standard_html
+    assert "text-warning-emphasis" not in standard_html
+    # warning reuses 'standard' text sizing, not its own scale
+    assert "text-2xl" in warning_html
 
 
 def test_section_card_body_via_caller(app):

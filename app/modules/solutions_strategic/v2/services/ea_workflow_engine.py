@@ -34,7 +34,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask import current_app
+from flask import current_app, g
 
 logger = logging.getLogger(__name__)
 
@@ -1171,7 +1171,11 @@ class EAWorkflowEngine:
         
         # Get potential stakeholders from user database
         stakeholders = []
-        users = User.query.filter(User.is_active == True).all()
+        org_id = getattr(g, "current_org_id", None)
+        _q = User.query.filter(User.is_active == True)
+        if org_id is not None:
+            _q = _q.filter(User.organization_id == org_id)
+        users = _q.all()  # tenant-scoping-ok: scoped above when org_id known
         
         for user in users:
             # Determine stakeholder category based on role

@@ -254,6 +254,7 @@ class ConversationHistoryService:
             created_at=now,
         )
 
+    # tenant-scoping-ok: default cache key includes call args (user_id/thread_id), which already differentiate callers.
     @cached(ttl=300, key_prefix="threads:user")
     def get_user_threads(
         self, user_id: int, limit: int = 50, offset: int = 0
@@ -298,6 +299,7 @@ class ConversationHistoryService:
 
         return threads
 
+    # tenant-scoping-ok: default cache key includes call args (user_id/thread_id), which already differentiate callers.
     @cached(ttl=300, key_prefix="thread:messages")
     def get_thread_messages(
         self, thread_id: str, limit: Optional[int] = None

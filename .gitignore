@@ -215,6 +215,7 @@ scripts/check_*.py
 !scripts/check_template_calls.py
 !scripts/check_tenant_unique.py
 !scripts/check_sidebar_links.py
+!scripts/check_tenant_scoping.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

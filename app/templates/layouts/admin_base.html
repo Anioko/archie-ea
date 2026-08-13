@@ -11,7 +11,7 @@
     {% include 'partials/_head.html' %}
     <title>{% block title %}{{ config.APP_NAME }}{% endblock %}</title>
     <script>
-        // Auth state — guards API calls in sidebar.js and llm_selector.html
+        // Auth state — guards API calls in sidebar.js
         window.__userAuthenticated = {{ current_user.is_authenticated | tojson }};
     </script>
     

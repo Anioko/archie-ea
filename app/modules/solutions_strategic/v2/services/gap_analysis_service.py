@@ -169,6 +169,7 @@ class ArchitecturalGapAnalyzer:
         # Check via application_capability_mapping table
         from app.models.application_capability import ApplicationCapabilityMapping
 
+        # tenant-scoping-ok: app.id is from a TenantMixin-scoped ApplicationComponent load.
         capability_mappings = ApplicationCapabilityMapping.query.filter_by(
             application_component_id=app.id
         ).all()
@@ -195,7 +196,7 @@ class ArchitecturalGapAnalyzer:
                     # Count how many apps support this capability
                     supporting_apps_count = ApplicationCapabilityMapping.query.filter_by(
                         business_capability_id=capability.id
-                    ).count()  # model-safety-ok
+                    ).count()  # model-safety-ok  # tenant-scoping-ok: FK id (app/capability) already org-scoped via TenantMixin load
 
                     if supporting_apps_count == 1:
                         base = self._base_severity_score("medium")
@@ -690,7 +691,7 @@ class ArchitecturalGapAnalyzer:
                     bus_cap = BusinessCapability.query.filter_by(name=ent_cap.name).first()  # model-safety-ok
 
                 if bus_cap:
-                    app_count = bus_cap.applications.count()  # model-safety-ok
+                    app_count = bus_cap.applications.count()  # model-safety-ok  # tenant-scoping-ok: FK id (app/capability) already org-scoped via TenantMixin load
                     if app_count == 0:
                         gaps.append(
                             {
@@ -754,7 +755,7 @@ class ArchitecturalGapAnalyzer:
 
             app_count = ApplicationCapabilityMapping.query.filter_by(
                 business_capability_id=cap.id
-            ).count()  # model-safety-ok
+            ).count()  # model-safety-ok  # tenant-scoping-ok: FK id (app/capability) already org-scoped via TenantMixin load
 
             if app_count == 0:
                 gaps["unsupported_capabilities"].append(
@@ -771,6 +772,7 @@ class ArchitecturalGapAnalyzer:
         for cap in all_capabilities:
             from app.models.application_capability import ApplicationCapabilityMapping
 
+            # tenant-scoping-ok: cap.id is from a TenantMixin-scoped BusinessCapability load.
             mappings = ApplicationCapabilityMapping.query.filter_by(
                 business_capability_id=cap.id
             ).all()  # model-safety-ok
@@ -816,7 +818,7 @@ class ArchitecturalGapAnalyzer:
 
             cap_count = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=app.id
-            ).count()  # model-safety-ok
+            ).count()  # model-safety-ok  # tenant-scoping-ok: FK id (app/capability) already org-scoped via TenantMixin load
 
             process_count = (
                 len(app.supported_processes) if hasattr(app, "supported_processes") else 0  # model-safety-ok

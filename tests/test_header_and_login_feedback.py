@@ -110,6 +110,34 @@ def test_login_success_message_appears_at_most_once(app, db_session, make_org):
     )
 
 
+def test_public_page_flash_appears_at_most_once(app, db_session, make_org):
+    """Shell-overhaul Wave 2, Task 5: layouts/public_base.html had the same
+    dual-flash defect Wave 1 Task 4 fixed on admin_base.html -- it included
+    BOTH partials/_flashes.html (an inline banner) AND
+    components/toast-container.html (a Platform.toast), both reading the
+    same flashed-messages queue. /account/logout flashes "You have been
+    logged out." and redirects to main.index, which an unauthenticated
+    visitor renders via layouts/public_base.html."""
+    user, password = _make_user(db_session, make_org, "logout")
+    client = app.test_client()
+
+    login_resp = client.post(
+        "/account/login",
+        data={"email": user.email, "password": password, "submit": "Log in"},
+        follow_redirects=True,
+    )
+    assert login_resp.status_code == 200, login_resp.get_data(as_text=True)[:2000]
+
+    resp = client.get("/account/logout", follow_redirects=True)
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    assert html.count("You have been logged out.") <= 1, (
+        "logout confirmation rendered more than once on a public page -- "
+        "an inline banner and a toast both show the same flash"
+    )
+
+
 def test_ai_chat_settings_still_exposes_model_choice(app, db_session, make_org):
     """Model choice must still live somewhere reachable — AI Chat's Settings
     dropdown, driven by the existing provider registry."""

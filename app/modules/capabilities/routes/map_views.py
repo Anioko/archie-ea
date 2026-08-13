@@ -14,7 +14,7 @@ Helpers:
     - build_nodes_edges(catalog)   — used by mapping_routes.api_nodes_edges()
 """
 
-from flask import current_app, flash, render_template  # dead-code-ok
+from flask import current_app, flash, g, render_template  # dead-code-ok
 from flask_login import login_required
 
 from app.extensions.cache import cached
@@ -22,19 +22,96 @@ from app.extensions.cache import cached
 from . import capability_map
 
 
+def _compute_capability_mapping_counts():
+    """Real per-capability app-mapping counts, org-scoped, one bounded query.
+
+    Returns ``None`` (not ``{}``) when the count could not be computed at
+    all — e.g. no tenant context, or the query itself failed — so callers
+    can tell "we asked and every capability truly has 0 mapped apps" (a
+    real, dict-shaped answer, possibly all-zero) apart from "we never
+    asked" (None). ``cap_to_dict`` below turns that into
+    ``mapping_count: None`` on every node, which the hierarchy page's
+    ``getCoverageDotClass`` renders as no dot at all rather than a
+    fabricated red one, and the legend only appears when this returned a
+    real dict.
+
+    ``ApplicationCapabilityMapping`` is not ``TenantMixin`` (see the model),
+    so the org predicate here is deliberate, not defence-in-depth. It is
+    applied via the FK parent ``BusinessCapability`` (which *is*
+    ``TenantMixin``), not ``ApplicationCapabilityMapping.organization_id`` --
+    that column is NULL on every row in production (added nullable by
+    reconcile-schema, never backfilled), so a predicate directly on it would
+    report every capability as having 0 mapped apps for every org. See
+    e622d36 / rationalization_scoring_service.py for the precedent.
+    """
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        return None
+
+    from sqlalchemy import func
+
+    from app import db
+    from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.business_capabilities import BusinessCapability
+
+    try:
+        rows = (
+            db.session.query(
+                ApplicationCapabilityMapping.business_capability_id,
+                func.count(ApplicationCapabilityMapping.id),
+            )
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .filter(BusinessCapability.organization_id == org_id)
+            .group_by(ApplicationCapabilityMapping.business_capability_id)
+            .all()
+        )
+    except Exception:
+        current_app.logger.exception("Could not compute capability mapping counts")
+        return None
+
+    return dict(rows)
+
+
 @capability_map.route("")
 @capability_map.route("/")
 @login_required
 def index():
     """Main capability mapping page"""
-    return render_template("capability_map/index.html")
+    from app.modules.capabilities.services.capability_count_service import (
+        count_business_capabilities,
+    )
+
+    try:
+        total_capabilities = count_business_capabilities()
+    except Exception:
+        current_app.logger.exception("Could not count business capabilities")
+        total_capabilities = None
+
+    return render_template("capability_map/index.html", total_capabilities=total_capabilities)
 
 
 @capability_map.route("/hierarchy")
 @login_required
-@cached(ttl=300, key_prefix="capability_map:hierarchy")
+@cached(
+    ttl=300,
+    key_prefix="capability_map:hierarchy",
+    key_func=lambda: getattr(g, "current_org_id", None),
+)
 def hierarchy():
     """Capability hierarchy visualization — uses real BusinessCapability data."""
+    from app.modules.capabilities.services.capability_count_service import (
+        count_business_capabilities,
+    )
+
+    try:
+        total_capabilities = count_business_capabilities()
+    except Exception:
+        current_app.logger.exception("Could not count business capabilities")
+        total_capabilities = None
+
     try:
         from app.models.business_capabilities import BusinessCapability
 
@@ -51,6 +128,10 @@ def hierarchy():
 
         rendered = set()
 
+        # Real per-capability app-mapping counts (or None — see the
+        # function's docstring for why None is not the same as {}).
+        mapping_counts = _compute_capability_mapping_counts()
+
         def cap_to_dict(cap, ancestors):
             # A parent cycle would recurse until the stack blew and the whole
             # page fell into the error branch below. Imported hierarchies are
@@ -59,6 +140,9 @@ def hierarchy():
             kids = [
                 k for k in children_by_parent.get(cap.id, []) if k.id not in ancestors
             ]
+            mapping_count = (
+                mapping_counts.get(cap.id, 0) if mapping_counts is not None else None
+            )
             return {
                 "name": cap.name,
                 "description": cap.description or "",
@@ -67,6 +151,7 @@ def hierarchy():
                 "category": cap.category or "",
                 "capability_type": "core",
                 "functions": [],
+                "mapping_count": mapping_count,
                 "children": [cap_to_dict(k, ancestors | {cap.id}) for k in kids],
             }
 
@@ -94,7 +179,12 @@ def hierarchy():
 
         catalog = {"children": children}
 
-        return render_template("capability_map/hierarchy.html", catalog=catalog)
+        return render_template(
+            "capability_map/hierarchy.html",
+            catalog=catalog,
+            total_capabilities=total_capabilities,
+            has_coverage_data=mapping_counts is not None,
+        )
     except Exception as e:
         from app import db
 
@@ -108,6 +198,8 @@ def hierarchy():
             "capability_map/hierarchy.html",
             catalog={"children": []},
             load_error="The capability hierarchy could not be read.",
+            total_capabilities=total_capabilities,
+            has_coverage_data=False,
         )
 
 
@@ -127,7 +219,11 @@ def simple_view():
 
 @capability_map.route("/dashboard")
 @login_required
-@cached(ttl=300, key_prefix="capability_map:dashboard")
+@cached(
+    ttl=300,
+    key_prefix="capability_map:dashboard",
+    key_func=lambda: getattr(g, "current_org_id", None),
+)
 def dashboard():
     """Comprehensive dashboard with multiple visualization types"""
     try:

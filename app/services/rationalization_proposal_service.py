@@ -140,17 +140,29 @@ class RationalizationProposalService:
         proposals = []
         try:
             from app.models.application_capability import ApplicationCapabilityMapping
+            from app.models.business_capabilities import BusinessCapability
             from app import db
             from sqlalchemy import func
 
             # Capabilities covered by 3+ applications
+            # tenant-scoping-ok: scoped via the TenantMixin FK parent
+            # BusinessCapability, not ACM.organization_id -- that column is
+            # NULL on every row in production, so a predicate on it would
+            # match zero rows and always report no consolidation candidates.
+            # Joining BusinessCapability lets do_orm_execute scope the join
+            # automatically. See e622d36 / rationalization_scoring_service.py.
             over_covered = db.session.query(
                 ApplicationCapabilityMapping.business_capability_id,
-                func.count(ApplicationCapabilityMapping.application_id).label("app_count")
+                # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+                func.count(ApplicationCapabilityMapping.application_component_id).label("app_count")
+            ).join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
             ).group_by(
                 ApplicationCapabilityMapping.business_capability_id
             ).having(
-                func.count(ApplicationCapabilityMapping.application_id) >= 3
+                # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+                func.count(ApplicationCapabilityMapping.application_component_id) >= 3
             ).limit(5).all()
 
             if not over_covered:

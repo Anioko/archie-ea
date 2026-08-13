@@ -28,6 +28,7 @@ def get_user_applications(
     Returns: (applications with ownership info, total_count)
     """
     # Get ownership records for user
+    # tenant-scoping-ok: self-lookup, filtered by the authenticated user's own id.
     query = ApplicationOwner.query.filter(ApplicationOwner.user_id == user_id)
 
     if ownership_type:
@@ -74,6 +75,7 @@ def get_user_applications(
 
 def get_ownership_summary(user_id: int) -> Dict[str, int]:
     """Get summary of ownership by type for a user."""
+    # tenant-scoping-ok: self-lookup, filtered by the authenticated user's own id.
     records = ApplicationOwner.query.filter(ApplicationOwner.user_id == user_id).all()
 
     summary = {
@@ -95,6 +97,7 @@ def get_ownership_summary(user_id: int) -> Dict[str, int]:
 
 def get_application_health_summary(user_id: int) -> Dict[str, any]:
     """Get health summary for user's applications."""
+    # tenant-scoping-ok: self-lookup, filtered by the authenticated user's own id.
     ownership_records = ApplicationOwner.query.filter(
         ApplicationOwner.user_id == user_id
     ).all()
@@ -138,6 +141,7 @@ def get_application_health_summary(user_id: int) -> Dict[str, any]:
 def get_roadmap_impacts(user_id: int) -> List[dict]:
     """Get roadmap items affecting user's applications."""
     # Get user's application IDs
+    # tenant-scoping-ok: self-lookup, filtered by the authenticated user's own id.
     ownership_records = ApplicationOwner.query.filter(
         ApplicationOwner.user_id == user_id
     ).all()

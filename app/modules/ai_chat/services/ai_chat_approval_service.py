@@ -199,6 +199,7 @@ class AIChatApprovalService:
 
             elif approval.operation_type == "delete":
                 # Hard delete — admin-only at execution time (double guard)
+                # tenant-scoping-ok: self.user_id is the acting user's own id.
                 actor = User.query.get(self.user_id)
                 if not actor or not actor.is_admin():
                     return {"success": False, "error": "Delete operations require administrator privileges"}

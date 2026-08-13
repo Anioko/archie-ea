@@ -176,6 +176,95 @@ def test_established_org_gets_data_mode(app, db_session, make_org):
     assert 'data-testid="guided-setup"' not in html
 
 
+def test_workspace_cards_match_my_work_zone(app, db_session, make_org):
+    """Shell-overhaul Wave 2, Task 5: the data-mode "Your Workspace" quick-access
+    cards used to be a hand-maintained per-role card list in
+    dashboards/overview.html, parallel to (and free to drift from)
+    get_sidebar_zones()'s "my_work" zone -- the sidebar's own single source of
+    truth for a role's primary-work links (app/utils/role_access.py). The
+    template now renders straight from that zone, so a solution_architect's
+    workspace cards must be exactly the same labels as
+    get_sidebar_zones(user)'s my_work zone, in the same order."""
+    from sqlalchemy import insert
+
+    from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.business_capabilities import BusinessCapability
+    from app.utils.role_access import get_sidebar_zones
+
+    # solution_architect, not platform_admin: the workspace-cards block is
+    # omitted entirely for platform_admin (its my_work zone duplicates the
+    # sidebar's own Admin zone -- see the template's own comment).
+    user, org = _make_user(db_session, make_org, "workspace", enterprise_role="solution_architect", admin=False)
+
+    # Force data mode (>=5 applications and >=1 capability mapping), same
+    # fixture shape as test_established_org_gets_data_mode above -- the
+    # workspace cards only render in data mode, not guided mode.
+    from flask import g
+
+    g.current_org_id = org.id
+
+    apps = []
+    for i in range(6):
+        app_component = ApplicationComponent(
+            name=f"Test App {i}-{uuid.uuid4().hex[:6]}",
+            organization_id=org.id,
+        )
+        db_session.add(app_component)
+        apps.append(app_component)
+    db_session.flush()
+
+    cap_name = f"Test Capability {uuid.uuid4().hex[:6]}"
+    elem_id = db_session.execute(
+        insert(ArchiMateElement.__table__).values(
+            name=cap_name, type="Capability", layer="Strategy", organization_id=org.id
+        )
+    ).inserted_primary_key[0]
+    db_session.flush()
+
+    capability = BusinessCapability(
+        name=cap_name,
+        level=1,
+        organization_id=org.id,
+        archimate_element_id=elem_id,
+    )
+    db_session.add(capability)
+    db_session.flush()
+
+    mapping = ApplicationCapabilityMapping(
+        application_component_id=apps[0].id,
+        business_capability_id=capability.id,
+        organization_id=org.id,
+    )
+    db_session.add(mapping)
+    db_session.flush()
+
+    expected_labels = [
+        link["label"]
+        for zone in get_sidebar_zones(user)
+        if zone["zone"] == "my_work"
+        for link in zone["links"]
+    ]
+    assert expected_labels, "solution_architect's my_work zone must not be empty"
+
+    client = app.test_client()
+    _login(client, user.id)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    assert 'data-testid="health-score-value"' in html, "expected data mode, not guided mode"
+
+    for label in expected_labels:
+        assert html.count(label) >= 1, (
+            f"Your Workspace cards missing my_work zone link {label!r} -- "
+            "the cards must render from get_sidebar_zones(), not a "
+            "hand-maintained parallel list"
+        )
+
+
 def test_solution_pipeline_concentrated_in_one_phase_collapses_to_sentence(
     app, db_session, make_org
 ):

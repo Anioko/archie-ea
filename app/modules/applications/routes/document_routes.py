@@ -60,6 +60,7 @@ def update_document_file(id, doc_id):
     try:
         from app.models.miscellaneous import ApplicationDocument
 
+        # tenant-scoping-ok: filtered by id (PK) plus an application_component_id FK.
         doc = ApplicationDocument.query.filter_by(
             id=doc_id, application_component_id=id
         ).first_or_404()
@@ -433,6 +434,7 @@ def application_capability_mapping_create(id):
                 )
             )
 
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         existing = ApplicationCapabilityMapping.query.filter_by(
             application_id=id, capability_id=capability_id
         ).first()
@@ -509,6 +511,7 @@ def application_capability_mapping_delete(id, mapping_id):
         )
 
     try:
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         mapping = ApplicationCapabilityMapping.query.filter_by(
             id=mapping_id, application_id=id
         ).first_or_404()

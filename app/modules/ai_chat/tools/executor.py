@@ -253,6 +253,7 @@ class ToolExecutor:
 
         from app.models.application_capability import ApplicationCapabilityMapping
 
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         existing = ApplicationCapabilityMapping.query.filter_by(
             application_component_id=app_r["id"],
             business_capability_id=cap_r["id"],
@@ -477,6 +478,7 @@ class ToolExecutor:
                 from app.models.application_capability import ApplicationCapabilityMapping
                 cap_ids = [
                     row.application_component_id
+                    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                     for row in ApplicationCapabilityMapping.query.filter_by(
                         business_capability_id=cap_r["id"]
                     ).all()
@@ -1042,6 +1044,7 @@ class ToolExecutor:
             rows = []
             for i in top_idx:
                 c = caps[i]
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 app_count = ApplicationCapabilityMapping.query.filter_by(
                     business_capability_id=c.id
                 ).count()
@@ -1074,6 +1077,7 @@ class ToolExecutor:
             caps_kw = q.limit(limit).all()
             rows = []
             for c in caps_kw:
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 app_count = ApplicationCapabilityMapping.query.filter_by(
                     business_capability_id=c.id
                 ).count()
@@ -1136,6 +1140,7 @@ class ToolExecutor:
             }
 
         cap_id = cap_r["id"]
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         _map_q = ApplicationCapabilityMapping.query.filter_by(business_capability_id=cap_id)
         total_mapped = _map_q.count()
         mappings = _map_q.limit(30).all()
@@ -1450,6 +1455,7 @@ def _safe_count(relationship_attr) -> int:
 def ApplicationCapabilityMapping_count(capability_id: int) -> int:
     try:
         from app.models.application_capability import ApplicationCapabilityMapping
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         return ApplicationCapabilityMapping.query.filter_by(
             business_capability_id=capability_id
         ).count()

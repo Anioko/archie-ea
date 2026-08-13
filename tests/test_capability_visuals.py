@@ -29,6 +29,7 @@ INVESTMENT_MATRIX_HTML = REPO_ROOT / "app" / "templates" / "enterprise" / "inves
 NESTED_MAP_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "nested_map.js"
 MATURITY_RADAR_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "maturity_radar.js"
 INVESTMENT_BUBBLE_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "investment_bubble.js"
+INDEX_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "index.js"
 
 REUSED_ENDPOINT = "/capability-map/api/unified-capabilities"
 # Chart.js is SELF-HOSTED, not loaded from a CDN. Every other template in the
@@ -42,6 +43,12 @@ CHART_JS_SRC = "/static/vendor/chart.umd.min.js"
 def index_html_text():
     assert INDEX_HTML.exists(), f"missing {INDEX_HTML}"
     return INDEX_HTML.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def index_js_text():
+    assert INDEX_JS.exists(), f"missing {INDEX_JS}"
+    return INDEX_JS.read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
@@ -130,25 +137,33 @@ class TestInvestmentBubbleUsesEmbeddedTableData:
 
 
 class TestIndexHtmlNewTabs:
-    def test_capability_model_tab_button_and_panel_present(self, index_html_text):
-        assert 'id="tab-capability-model"' in index_html_text
+    # shell-overhaul Wave 2 Task 3 replaced the competing 11-button Alpine tab
+    # row (one <button role="tab"> per lens, each with its own inline
+    # @click="activeTab = '...'; load...()") with a single "Lens" <select>
+    # (id="capability-lens") that drives the same activeTab state via
+    # onLensChange() in index.js. The tab *panels* (id="panel-...") and the
+    # per-lens load functions are unchanged — only how a lens gets selected
+    # changed, so these assertions now check the <option> + the JS dispatch
+    # instead of the removed <button role="tab">.
+    def test_capability_model_tab_button_and_panel_present(self, index_html_text, index_js_text):
+        assert 'value="capability-model"' in index_html_text
         assert 'id="panel-capability-model"' in index_html_text
-        assert "activeTab = 'capability-model'" in index_html_text
-        assert "loadCapabilityModelTab()" in index_html_text
+        assert "tab === 'capability-model'" in index_js_text
+        assert "loadCapabilityModelTab()" in index_js_text
 
-    def test_maturity_tab_button_and_panel_present(self, index_html_text):
-        assert 'id="tab-maturity"' in index_html_text
+    def test_maturity_tab_button_and_panel_present(self, index_html_text, index_js_text):
+        assert 'value="maturity"' in index_html_text
         assert 'id="panel-maturity"' in index_html_text
-        assert "activeTab = 'maturity'" in index_html_text
-        assert "loadMaturityRadarTab()" in index_html_text
+        assert "tab === 'maturity'" in index_js_text
+        assert "loadMaturityRadarTab()" in index_js_text
 
-    def test_new_tab_buttons_have_type_button(self, index_html_text):
-        # DESIGN.md: every <button> must declare type= explicitly.
-        for marker in ('id="tab-capability-model"', 'id="tab-maturity"'):
-            idx = index_html_text.index(marker)
-            # Look back a short window for the opening <button ...> tag.
-            snippet = index_html_text[max(0, idx - 600): idx]
-            assert "<button type=\"button\"" in snippet
+    def test_lens_dropdown_has_a_label(self, index_html_text):
+        # DESIGN.md: every form control needs an accessible name. The old
+        # per-tab-button assertion (every <button> declares type=) no longer
+        # applies since there is no longer a button row — check the <select>
+        # that replaced it is properly labelled instead.
+        assert 'id="capability-lens"' in index_html_text
+        assert 'for="capability-lens"' in index_html_text
 
     def test_new_scripts_are_included(self, index_html_text):
         assert "js/capability_map/nested_map.js" in index_html_text

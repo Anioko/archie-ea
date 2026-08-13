@@ -73,6 +73,7 @@ class ApplicationToUMLAdapter:
         try:
             from app.models import ApplicationCapabilityMapping
 
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_id=application.id
             ).all()

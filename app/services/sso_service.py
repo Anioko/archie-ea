@@ -50,6 +50,9 @@ class SSOService:
         try:
             from app.models.sso_config import SSOConfig
 
+            # tenant-scoping-ok: resolving SSO config by email domain happens
+            # pre-authentication (no org context yet) -- the domain match
+            # itself is the scoping mechanism.
             configs = SSOConfig.query.filter_by(enabled=True).all()
             for config in configs:
                 if domain in config.email_domains:

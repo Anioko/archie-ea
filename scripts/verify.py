@@ -637,6 +637,46 @@ def gate_raw_sql_tenancy(baseline: int) -> Result:
     return Result("raw-sql-tenancy", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_tenant_scoping(baseline: int) -> Result:
+    """ORM queries over a tenant-owned-but-unmixed model with no org predicate.
+
+    A ratchet, not a hard zero, and the ORM-side twin of raw-sql-tenancy.
+    do_orm_execute auto-filters TenantMixin models; several models carry an
+    organization_id column without the mixin, so they get none of that
+    filtering. shell-overhaul Wave 3 Task 2 triaged all 153 findings the gate
+    produced at the time (plus 4 more surfaced by adding the then-invisible
+    app/application_mgmt to SCAN_DIRS): real cross-org leaks were fixed —
+    an org-admin IDOR letting one org's admin list/edit/role-escalate another
+    org's users (admin_routes.py, user_role_routes.py, admin_user_service.py
+    and the v2 equivalents), global User counts feeding dashboards, several
+    global ApplicationCapabilityMapping aggregates/reads (capability-coverage
+    metrics, portfolio-wide traceability), a governance-notification email
+    audience built from every org's platform_admin/enterprise_architect
+    users, several cross-org user-picker/@mention-search endpoints, and one
+    document-update IDOR in app/application_mgmt with no ownership check at
+    all. The remainder were deliberately left unscoped and hatched with
+    `tenant-scoping-ok: <reason>` — FK ids already scoped through a
+    TenantMixin-loaded parent, self-lookups by the acting user's own id,
+    globally-unique keys (email, Stripe subscription id), vendor reference/
+    catalog data, pre-auth SSO/invite flows with no org context yet, and one
+    finding (gdpr_service.py) where the real defect is a missing
+    authentication check on the calling route, not tenant scoping — flagged
+    for human decision in the Wave 3 Task 2 report, not fixed here.
+
+    A clean run does NOT prove tenancy — see check_tenant_scoping.py's
+    docstring for the same caveat raw-sql-tenancy carries.
+    """
+    proc = _run([sys.executable, "scripts/check_tenant_scoping.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("tenant-scoping", FAIL, f"could not parse: {proc.stdout!r}")
+    detail = ""
+    if count > baseline:
+        detail = _run([sys.executable, "scripts/check_tenant_scoping.py"]).stdout[-1500:]
+    return Result("tenant-scoping", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_sidebar_links(baseline: int) -> Result:
     """Persona sidebar link-count budget (shell-overhaul Wave 1, Task 3).
 
@@ -955,6 +995,10 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("raw-sql-tenancy", "raw SQL on tenant tables without an org predicate",
              "ratchet", lambda: gate_raw_sql_tenancy(baseline["raw_sql_tenancy"]),
              remediation="scope the query, or append 'tenancy-ok: <reason>'",
+             tags=["static", "security"]),
+        Gate("tenant-scoping", "ORM queries on tenant-owned-but-unmixed models without an org predicate",
+             "ratchet", lambda: gate_tenant_scoping(baseline["tenant_scoping"]),
+             remediation="scope the query, or append 'tenant-scoping-ok: <reason>'",
              tags=["static", "security"]),
         Gate("sidebar-links", "no persona sidebar exceeds its link budget", "ratchet",
              lambda: gate_sidebar_links(baseline.get("sidebar_links", 25)),

@@ -1,5 +1,5 @@
 import logging
-from flask import abort, jsonify, request, url_for
+from flask import abort, g, jsonify, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
@@ -171,6 +171,7 @@ def api_solution_users_search():
         return jsonify({"users": []})
     term = f"%{q}%"
     users = User.query.filter(
+        User.organization_id == g.current_org_id,
         or_(
             User.email.ilike(term),
             User.first_name.ilike(term),
@@ -327,6 +328,7 @@ def _import_app_capabilities(solution_id: int, app_id: int, user_id: int) -> int
         from app.models.solution_models import SolutionCapabilityMapping
 
         app_caps = (
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             ApplicationCapabilityMapping.query
             .filter_by(application_component_id=app_id, is_active=True)
             .limit(25)
@@ -443,6 +445,7 @@ def capability_coverage(solution_id):
             covering_app_names = []
             if app_ids:
                 acm_list = (
+                    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                     ApplicationCapabilityMapping.query
                     .filter(
                         ApplicationCapabilityMapping.application_component_id.in_(app_ids),

@@ -42,6 +42,7 @@ def get_owned_apps():
     application_type, business_criticality, lifecycle_status and hosting_type,
     which are ApplicationComponent fields.
     """
+    # tenant-scoping-ok: self-lookup, filtered by the authenticated user's own id.
     ownership = ApplicationOwner.query.filter_by(user_id=current_user.id).all()
     app_ids = [o.application_id for o in ownership]
 
@@ -115,6 +116,7 @@ def app_list():
 def app_detail(app_id):
     """View details of an owned application."""
     # Verify ownership
+    # tenant-scoping-ok: self-lookup, filtered by the authenticated user's own id.
     ownership = ApplicationOwner.query.filter_by(
         user_id=current_user.id,
         application_id=app_id
