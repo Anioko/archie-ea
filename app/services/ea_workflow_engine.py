@@ -1694,11 +1694,21 @@ class EAWorkflowEngine:
             cap_app_mappings = 0
             try:
                 from app.models.application_capability import ApplicationCapabilityMapping
-                # tenant-scoping-ok: filtered by organization_id below — ACM
-                # has no TenantMixin, so this diagnostic count must scope by hand.
-                cap_app_mappings = ApplicationCapabilityMapping.query.filter_by(
-                    organization_id=g.current_org_id
-                ).count()
+                # tenant-scoping-ok: scoped via the TenantMixin FK parent
+                # BusinessCapability, not ACM.organization_id -- that column
+                # is NULL on every row in production, so a predicate on it
+                # would always report 0 mappings. Joining BusinessCapability
+                # lets do_orm_execute scope the join automatically. See
+                # e622d36 / rationalization_scoring_service.py.
+                cap_app_mappings = (
+                    # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+                    ApplicationCapabilityMapping.query
+                    .join(
+                        BusinessCapability,
+                        ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+                    )
+                    .count()
+                )
             except Exception as e:
                 logger.warning("Could not count capability-application mappings: %s", e)
 

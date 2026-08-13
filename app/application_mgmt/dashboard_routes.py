@@ -39,21 +39,23 @@ def dashboard():
     # Metric 3: Capability Coverage (apps with capability mappings)
     # Use raw SQL for counting since mapping table might not have a model
     try:
-        # The marker here previously claimed "scoped via parent FK (aggregate)",
-        # but there is no join to a parent — this was a bare COUNT over the whole
-        # table. application_capability_mapping carries organization_id, and raw
-        # text() bypasses do_orm_execute, so the metric counted every tenant's
-        # mappings and then divided by THIS tenant's application total. That is
-        # both a cross-tenant aggregate leak and an arithmetically wrong
-        # percentage, which could exceed 100%.
+        # application_capability_mapping.organization_id is NULL on every row
+        # in production (added nullable by reconcile-schema, never
+        # backfilled) — a predicate directly on it matches zero rows and
+        # this metric silently reports 0 apps with capabilities for every
+        # org. Scope via the FK parent business_capability instead (it *is*
+        # tenant-owned and backfilled). See e622d36 /
+        # rationalization_scoring_service.py.
         from app.middleware.tenant_context import current_org_id
 
         _org = current_org_id()
-        _clause = " WHERE organization_id = :org" if _org is not None else ""
+        _clause = " WHERE bc.organization_id = :org" if _org is not None else ""
         result = db.session.execute(
             db.text(
-                "SELECT COUNT(DISTINCT application_component_id) "
-                "FROM application_capability_mapping" + _clause
+                "SELECT COUNT(DISTINCT acm.application_component_id) "
+                "FROM application_capability_mapping acm "
+                "JOIN business_capability bc ON bc.id = acm.business_capability_id"
+                + _clause
             ),
             {"org": _org} if _org is not None else {},
         )

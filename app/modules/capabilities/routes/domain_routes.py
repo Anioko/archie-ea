@@ -46,12 +46,16 @@ def api_unified_domains():
         # with /capability-map/hierarchy so the two pages can't disagree.
         total_capabilities = count_business_capabilities()
 
-        # ApplicationCapabilityMapping is not TenantMixin (see the model), so the
-        # org predicate below is deliberate, not defence-in-depth — see the
-        # matching note on _compute_capability_mapping_counts() in map_views.py.
-        # Without it, mapped_count / all_mapped_cap_ids aggregate across every
-        # tenant, inflating this org's coverage past 100% and leaking other
-        # orgs' mapping volume into the Capability Map's default tab.
+        # ApplicationCapabilityMapping is not TenantMixin (see the model), and
+        # its own organization_id column is NULL on every row in production
+        # (added nullable by reconcile-schema, never backfilled) — a
+        # predicate on that column would silently report zero mappings for
+        # every org. Scope via the TenantMixin FK parent BusinessCapability
+        # instead (joins below). See e622d36 / rationalization_scoring_service.py.
+        # Without scoping at all, mapped_count / all_mapped_cap_ids would
+        # aggregate across every tenant, inflating this org's coverage past
+        # 100% and leaking other orgs' mapping volume into the Capability
+        # Map's default tab.
         org_id = getattr(g, "current_org_id", None)
         if org_id is None:
             current_app.logger.warning(
@@ -70,7 +74,11 @@ def api_unified_domains():
             if org_id is not None:
                 mapped_count = (
                     db.session.query(ApplicationCapabilityMapping.business_capability_id)
-                    .filter(ApplicationCapabilityMapping.organization_id == org_id)
+                    .join(
+                        BusinessCapability,
+                        ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+                    )
+                    .filter(BusinessCapability.organization_id == org_id)
                     .distinct()
                     .count()
                 )
@@ -92,7 +100,11 @@ def api_unified_domains():
                 all_mapped_cap_ids = set(
                     row[0] for row in
                     db.session.query(ApplicationCapabilityMapping.business_capability_id)
-                    .filter(ApplicationCapabilityMapping.organization_id == org_id)
+                    .join(
+                        BusinessCapability,
+                        ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+                    )
+                    .filter(BusinessCapability.organization_id == org_id)
                     .distinct()
                     .all()
                 )

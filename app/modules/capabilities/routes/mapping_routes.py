@@ -28,7 +28,7 @@ Routes:
 
 from datetime import datetime
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, jsonify, request
 from flask_login import login_required
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
@@ -433,11 +433,22 @@ def api_unified_capabilities():
         # Use BusinessCapability (real APQC data) as the primary source
         app_capabilities = BusinessCapability.query.limit(500).all()
 
-        # tenant-scoping-ok: filtered by organization_id below — ACM has no
-        # TenantMixin, so this portfolio-wide read must scope by hand.
-        app_mappings = ApplicationCapabilityMapping.query.filter_by(
-            organization_id=g.current_org_id
-        ).limit(500).all()
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would report
+        # every capability as unmapped. Joining BusinessCapability lets
+        # do_orm_execute scope the join automatically. See e622d36 /
+        # rationalization_scoring_service.py.
+        app_mappings = (
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            ApplicationCapabilityMapping.query
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .limit(500)
+            .all()
+        )
         mapped_app_cap_ids = {mapping.business_capability_id for mapping in app_mappings}
 
         # Build mapping index (business_capability_id -> list of mappings)

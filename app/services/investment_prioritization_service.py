@@ -13,8 +13,6 @@ import logging
 from datetime import datetime
 from typing import Dict, List
 
-from flask import g
-
 from app.models.application_capability import ApplicationCapabilityMapping
 from app.models.business_capabilities import BusinessCapability
 from app.services.decorators import transactional
@@ -53,10 +51,15 @@ class InvestmentPrioritizationService:
         # Batch-load all capability mappings to avoid N+1 queries
         mappings_by_cap = {}
         try:
-            # tenant-scoping-ok: filtered by organization_id below — ACM has
-            # no TenantMixin, so this portfolio-wide read must scope by hand.
-            all_mappings = ApplicationCapabilityMapping.query.filter_by(
-                organization_id=g.current_org_id
+            # tenant-scoping-ok: scoped via the TenantMixin FK parent
+            # BusinessCapability (capabilities, already org-scoped above),
+            # not ACM.organization_id -- that column is NULL on every row in
+            # production, so a predicate on it would score every capability
+            # as zero coverage. See e622d36 / rationalization_scoring_service.py.
+            _cap_ids = [c.id for c in capabilities]
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            all_mappings = ApplicationCapabilityMapping.query.filter(
+                ApplicationCapabilityMapping.business_capability_id.in_(_cap_ids)
             ).all()
             for m in all_mappings:
                 mappings_by_cap.setdefault(m.business_capability_id, []).append(m)

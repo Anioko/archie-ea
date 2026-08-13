@@ -90,6 +90,40 @@ def _make_mapping(db_session, org_id, app_id, capability_id):
     return db_session.get(ApplicationCapabilityMapping, mapping_id)
 
 
+def _make_mapping_no_org_column(db_session, app_id, capability_id):
+    """Insert an ApplicationCapabilityMapping the way production actually has
+    them: ``organization_id`` left unset.
+
+    The model declares ``organization_id`` ``nullable=False``, but that is
+    aspirational — reconcile-schema only ever ADDs nullable columns, and in
+    production this one is NULL on every row (nothing populates it: not the
+    UI create path, not the Abacus importer, not the seeders — only
+    ``seed_demo_mappings`` does, which is why in-repo tests that go through
+    the model's declared constraint miss this). The column's NOT NULL
+    constraint is dropped for the duration of this test's transaction (which
+    ``db_session`` always rolls back) so the insert reflects the real
+    production row shape instead of the aspirational one.
+    """
+    from sqlalchemy import text
+    from app.models.application_capability import ApplicationCapabilityMapping
+
+    db_session.execute(
+        text(
+            "ALTER TABLE application_capability_mapping "
+            "ALTER COLUMN organization_id DROP NOT NULL"
+        )
+    )
+    result = db_session.execute(
+        ApplicationCapabilityMapping.__table__.insert().values(
+            application_component_id=app_id,
+            business_capability_id=capability_id,
+        )
+    )
+    db_session.flush()
+    mapping_id = result.inserted_primary_key[0]
+    return db_session.get(ApplicationCapabilityMapping, mapping_id)
+
+
 # ------------------------------------------------------------- admin IDOR
 
 
@@ -296,4 +330,67 @@ def test_governance_notifier_audience_is_org_scoped(db_session, make_org, tenant
     assert admin_a.id in ids
     assert admin_b.id not in ids, (
         "GovernanceNotifier paged org B's enterprise_architect about org A's finding"
+    )
+
+
+# ---------------------------------------------- FK-parent scoping proof (CRITICAL)
+
+
+def test_acm_coverage_is_scoped_via_fk_parent_not_the_null_org_column(
+    db_session, make_org, tenant_ctx
+):
+    """The regression that would have caught the ACM.organization_id defect.
+
+    ApplicationCapabilityMapping.organization_id is NULL on every row in
+    production (see e622d36 and the comments on every fix in this file's
+    ACM sites) -- nothing populates it. An earlier version of these fixes
+    scoped by ``ACM.organization_id == g.current_org_id`` directly, which
+    is correct in shape but matches ZERO rows against real data: capability
+    coverage reads empty, investment/smart-defaults score zero coverage,
+    rationalization finds no candidates, and worst of all the Abacus import
+    dedup read finds no existing mapping and duplicates it on every re-run.
+
+    This test inserts an ACM row the way production actually has them --
+    ``organization_id`` left NULL, not set to the current org -- and proves
+    org A's read still finds it (via the TenantMixin FK parent,
+    BusinessCapability) while org B's read does not. A test that sets
+    organization_id on the mapping (the shape every other test in this file
+    uses, and prod never has) cannot distinguish FK-parent scoping from
+    column scoping; this one can, because with organization_id NULL a
+    column-based predicate cannot possibly match either org.
+    """
+    org_a, org_b = make_org("acm-fk-a"), make_org("acm-fk-b")
+    cap_a = _make_capability(db_session, org_a.id, "FK-parent capability")
+    app_a = _make_app(db_session, org_a.id, "FK-parent app")
+    app_a.deployment_status = "production"
+    db_session.flush()
+    _make_mapping_no_org_column(db_session, app_a.id, cap_a.id)
+
+    from app.modules.capabilities.services.business_capability_mapper import (
+        BusinessCapabilityMapper,
+    )
+
+    mapper = BusinessCapabilityMapper()
+
+    with tenant_ctx(org_a.id):
+        analysis_a = mapper.analyze_portfolio_capability_coverage()
+
+    assert analysis_a["existing_mappings"] == 1, (
+        "org A could not see its own capability mapping once "
+        "organization_id was NULL (production shape) -- scoping is still "
+        "keyed off the NULL ACM column instead of the TenantMixin FK "
+        "parent BusinessCapability"
+    )
+    assert analysis_a["mapped_applications"] == 1, (
+        "org A's own application was not recognised as mapped once the "
+        "ACM row's organization_id was NULL (production shape)"
+    )
+
+    with tenant_ctx(org_b.id):
+        analysis_b = mapper.analyze_portfolio_capability_coverage()
+
+    assert analysis_b["existing_mappings"] == 0, (
+        "org B saw org A's NULL-organization_id capability mapping -- "
+        "FK-parent scoping via BusinessCapability is not actually "
+        "restricting the read"
     )

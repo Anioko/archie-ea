@@ -373,15 +373,19 @@ def overview():
         for cap in l1_caps:
             subtree = _subtree_ids(cap.id)
             # ApplicationCapabilityMapping is plain db.Model, not TenantMixin, so
-            # do_orm_execute's tenant filter never applies to it -- an explicit
-            # organization_id predicate is the only thing keeping this count (and,
-            # via capability_mapping_count below, the guided/data dashboard_mode
-            # threshold itself) from summing every tenant's mappings.
+            # do_orm_execute's tenant filter never applies to it directly -- but
+            # its own organization_id column is NULL on every row in production
+            # (added nullable by reconcile-schema, never backfilled), so a
+            # predicate on THAT column would always report a gap. `subtree` is
+            # already scoped: it is built from l1_caps / _BC.query.all(), both
+            # TenantMixin BusinessCapability reads auto-filtered to this org, so
+            # business_capability_id.in_(subtree) alone scopes this count via the
+            # FK parent. See e622d36 / rationalization_scoring_service.py.
             app_count = (
+                # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
                 db.session.query(db.func.count(ApplicationCapabilityMapping.id))
                 .filter(
                     ApplicationCapabilityMapping.business_capability_id.in_(subtree),
-                    ApplicationCapabilityMapping.organization_id == current_user.organization_id,
                 )
                 .scalar()
             ) or 0

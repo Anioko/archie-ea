@@ -18,7 +18,6 @@ Design principles:
 import logging
 from collections import defaultdict
 
-from flask import g
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
@@ -92,14 +91,22 @@ def generate_smart_defaults(solution):
         from app.models.application_capability import ApplicationCapabilityMapping
 
         # Count apps per capability
-        # tenant-scoping-ok: filtered by organization_id below — ACM has no
-        # TenantMixin, so this aggregate must scope by hand.
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would score every
+        # capability as zero app coverage. Joining BusinessCapability lets
+        # do_orm_execute scope the join automatically. See e622d36 /
+        # rationalization_scoring_service.py.
         cap_app_counts = dict(
             db.session.query(
                 ApplicationCapabilityMapping.business_capability_id,
+                # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
                 func.count(ApplicationCapabilityMapping.id),
             )
-            .filter(ApplicationCapabilityMapping.organization_id == g.current_org_id)
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
             .group_by(ApplicationCapabilityMapping.business_capability_id)
             .all()
         )
