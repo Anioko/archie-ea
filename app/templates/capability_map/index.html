@@ -432,15 +432,15 @@
                              @click="document.getElementById('manufacturing-domain-filter').value='production'; filterTable('manufacturing');">
                             <div class="flex items-start justify-between mb-3">
                                 <div class="p-2 rounded-lg bg-warning/10">
-                                    <i data-lucide="cog" class="w-6 h-6 text-warning" aria-hidden="true"></i>
+                                    <i data-lucide="cog" class="w-6 h-6 text-warning-emphasis" aria-hidden="true"></i>
                                 </div>
                                 <div class="w-3 h-3 rounded-full bg-muted-foreground/40" id="mfg-prod-status"></div>
                             </div>
-                            <h4 class="font-semibold text-warning mb-1">Production</h4>
+                            <h4 class="font-semibold text-warning-emphasis mb-1">Production</h4>
                             <p class="text-xs text-muted-foreground mb-3">Manufacturing execution, scheduling, work orders</p>
                             <div class="flex items-center justify-between text-sm">
                                 <span class="text-muted-foreground" id="mfg-prod-count">0 capabilities</span>
-                                <span class="text-warning font-medium" id="mfg-prod-pct">0%</span>
+                                <span class="text-warning-emphasis font-medium" id="mfg-prod-pct">0%</span>
                             </div>
                             <div class="mt-2 w-full bg-border rounded-full h-1.5">
                                 <div class="bg-warning h-1.5 rounded-full transition-all" id="mfg-prod-bar" style="width: 0%"></div>  <!-- inline-style-ok -->
@@ -1146,13 +1146,13 @@
                         <div class="bg-warning/5 border-2 border-warning/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('4.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-warning bg-warning/10 px-2 py-0.5 rounded">4.0</span>
+                                <span class="text-xs font-bold text-warning-emphasis bg-warning/10 px-2 py-0.5 rounded">4.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-4-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-warning mb-1">Deliver Products</h4>
+                            <h4 class="text-sm font-semibold text-warning-emphasis mb-1">Deliver Products</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-4-count">0</span>
-                                <span class="font-medium text-warning" id="proc-cat-4-pct">0%</span>
+                                <span class="font-medium text-warning-emphasis" id="proc-cat-4-pct">0%</span>
                             </div>
                         </div>
                         <div class="bg-success/5 border-2 border-info/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
@@ -1207,13 +1207,13 @@
                         <div class="bg-warning/5 border-2 border-warning/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('9.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-warning bg-warning/10 px-2 py-0.5 rounded">9.0</span>
+                                <span class="text-xs font-bold text-warning-emphasis bg-warning/10 px-2 py-0.5 rounded">9.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-9-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-warning mb-1">Financial Mgmt</h4>
+                            <h4 class="text-sm font-semibold text-warning-emphasis mb-1">Financial Mgmt</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-9-count">0</span>
-                                <span class="font-medium text-warning" id="proc-cat-9-pct">0%</span>
+                                <span class="font-medium text-warning-emphasis" id="proc-cat-9-pct">0%</span>
                             </div>
                         </div>
                         <div class="bg-destructive/5 border-2 border-destructive/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
@@ -2062,7 +2062,7 @@
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div class="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center">
-                                    <i data-lucide="layers" class="w-5 h-5 text-warning" aria-hidden="true"></i>
+                                    <i data-lucide="layers" class="w-5 h-5 text-warning-emphasis" aria-hidden="true"></i>
                                 </div>
                                 <div>
                                     <p class="text-xs text-muted-foreground">Children</p>
@@ -2188,7 +2188,7 @@
                             <!-- Resources Section -->
                             <div class="bg-card border border-border rounded-lg p-5">
                                 <h4 class="text-sm font-semibold text-foreground mb-4 flex items-center">
-                                    <i data-lucide="dollar-sign" class="w-4 h-4 mr-2 text-warning" aria-hidden="true"></i>
+                                    <i data-lucide="dollar-sign" class="w-4 h-4 mr-2 text-warning-emphasis" aria-hidden="true"></i>
                                     Resources & Budget
                                 </h4>
                                 <div class="grid grid-cols-4 gap-4">
@@ -2351,10 +2351,10 @@
                         <!-- Warning for items with children -->
                         <div id="delete-cascade-warning" class="hidden bg-warning/5 border border-warning/20 rounded-lg p-3 mb-4">
                             <div class="flex items-start">
-                                <i data-lucide="alert-triangle" class="w-5 h-5 text-warning mr-2 mt-0.5" aria-hidden="true"></i>
+                                <i data-lucide="alert-triangle" class="w-5 h-5 text-warning-emphasis mr-2 mt-0.5" aria-hidden="true"></i>
                                 <div class="text-sm">
-                                    <p class="font-medium text-warning mb-1">Warning: Cascade Delete</p>
-                                    <p class="text-warning" id="delete-cascade-message"></p>
+                                    <p class="font-medium text-warning-emphasis mb-1">Warning: Cascade Delete</p>
+                                    <p class="text-warning-emphasis" id="delete-cascade-message"></p>
                                 </div>
                             </div>
                         </div>

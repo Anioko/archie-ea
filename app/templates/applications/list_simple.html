@@ -39,23 +39,23 @@
   '2.2 tactical':      {'label': '2.2 TACTICAL',      'cls': 'bg-primary/10 text-primary'},
   '1. undetermined':   {'label': '1. UNDETERMINED',   'cls': 'bg-muted text-muted-foreground'},
   '3. sunset':         {'label': '3. SUNSET',         'cls': 'bg-warning/10 text-warning'},
-  '4.1 decom decided': {'label': '4.1 DECOM DECIDED', 'cls': 'bg-destructive/10 text-destructive'},
-  '4.2 decom planned': {'label': '4.2 DECOM PLANNED', 'cls': 'bg-destructive/10 text-destructive'},
-  '4.3 read-only':     {'label': '4.3 READ-ONLY',     'cls': 'bg-destructive/10 text-destructive'},
-  '4.4 stopped':       {'label': '4.4 STOPPED',       'cls': 'bg-destructive/10 text-destructive'},
-  '5. decommissioned': {'label': '5. DECOMMISSIONED', 'cls': 'bg-destructive/10 text-destructive'},
+  '4.1 decom decided': {'label': '4.1 DECOM DECIDED', 'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  '4.2 decom planned': {'label': '4.2 DECOM PLANNED', 'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  '4.3 read-only':     {'label': '4.3 READ-ONLY',     'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  '4.4 stopped':       {'label': '4.4 STOPPED',       'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  '5. decommissioned': {'label': '5. DECOMMISSIONED', 'cls': 'bg-destructive/10 text-destructive-emphasis'},
   'development':       {'label': 'Development',       'cls': 'bg-primary/10 text-primary'},
   'testing':           {'label': 'Testing',            'cls': 'bg-primary/10 text-primary'},
   'staging':           {'label': 'Staging',            'cls': 'bg-primary/10 text-primary'},
   'in_process':        {'label': 'In Process',         'cls': 'bg-primary/10 text-primary'},
   'planned':           {'label': 'Planned',            'cls': 'bg-muted text-muted-foreground'},
   'not_started':       {'label': 'Not Started',        'cls': 'bg-muted text-muted-foreground'},
-  'retired':           {'label': 'Retired',            'cls': 'bg-destructive/10 text-destructive'},
-  'deprecated':        {'label': 'Deprecated',         'cls': 'bg-destructive/10 text-destructive'},
-  'decommissioned':    {'label': 'Decommissioned',     'cls': 'bg-destructive/10 text-destructive'}
+  'retired':           {'label': 'Retired',            'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  'deprecated':        {'label': 'Deprecated',         'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  'decommissioned':    {'label': 'Decommissioned',     'cls': 'bg-destructive/10 text-destructive-emphasis'}
 } -%}
 {%- set CRIT_MAP = {
-  'critical': 'bg-destructive/10 text-destructive',
+  'critical': 'bg-destructive/10 text-destructive-emphasis',
   'high':     'bg-warning/10 text-warning',
   'medium':   'bg-warning/10 text-warning',
   'low':      'bg-muted text-muted-foreground'
@@ -162,7 +162,7 @@
           <a href="/archimate/composer" class="text-[10px] text-primary hover:underline">Full Composer →</a>
         </div>
         {# A failed load must look different from a genuinely empty viewpoint. #}
-        <div x-show="appDiagramError" x-cloak class="px-4 py-3 text-sm text-destructive" x-text="appDiagramError"></div>
+        <div x-show="appDiagramError" x-cloak class="px-4 py-3 text-sm text-destructive-emphasis" x-text="appDiagramError"></div>
         <div id="app-cooperation-diagram" class="w-full" style="min-height:300px;"></div>
       </div>
     </div>
@@ -295,7 +295,7 @@
         </button>
         {% if current_user.is_admin() or current_user.role_archetype == 'architect' %}
         <button type="button" data-testid="bulk-btn-delete" @click="confirmBulkDelete()"
-          class="h-8 px-3 rounded-md border border-destructive/30 bg-destructive/5 text-destructive text-xs font-medium hover:bg-destructive/10 transition-colors inline-flex items-center gap-1.5" aria-label="Delete">
+          class="h-8 px-3 rounded-md border border-destructive/30 bg-destructive/5 text-destructive-emphasis text-xs font-medium hover:bg-destructive/10 transition-colors inline-flex items-center gap-1.5" aria-label="Delete">
           <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>Delete
         </button>
         {% endif %}
@@ -440,7 +440,7 @@
                   @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete {{ app.name | e }}? This cannot be undone.')">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" data-testid="btn-delete-{{ app.id }}"
-                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-destructive-emphasis hover:bg-destructive/10 transition-colors"
                     aria-label="Delete {{ app.name }}">
                     <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
                   </button>
@@ -676,7 +676,7 @@
               class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"></textarea>
           </div>
         </div>
-        <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg" role="alert"></div>
+        <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg" role="alert"></div>
         <div class="flex justify-end gap-3 pt-2 border-t">
           <!-- inline-event-ok --><button type="button" @click="Platform.modal.close('modal-create')"
             class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>

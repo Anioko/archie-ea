@@ -259,6 +259,43 @@
         global.apiFetch = platformFetch;
     }
 
+    // ── CSRF safety net for raw fetch() call sites ───────────────────────────
+    // Hundreds of legacy call sites use bare fetch() for mutating requests and
+    // hand-add X-CSRFToken — or forget to, in which case global CSRFProtect
+    // rejects the request with a 400 the user sees as a dead button. Until every
+    // site is migrated to Platform.fetch, inject the token for same-origin
+    // mutating requests that don't already carry it. Cross-origin requests are
+    // left untouched (never leak the token off-origin).
+    (function patchFetchForCsrf() {
+        const nativeFetch = global.fetch.bind(global);
+        global.fetch = function (input, init) {
+            try {
+                const method = ((init && init.method) ||
+                    (input && input.method) || 'GET').toUpperCase();
+                if (MUTATING[method]) {
+                    const url = (typeof input === 'string') ? input
+                        : (input && input.url) || '';
+                    const resolved = new global.URL(url, global.location.href);
+                    if (resolved.origin === global.location.origin) {
+                        const token = getCsrfToken();
+                        if (token) {
+                            init = init || {};
+                            const h = new global.Headers(
+                                init.headers || (input && input.headers) || undefined);
+                            if (!h.has('X-CSRFToken') && !h.has('X-CSRF-Token')) {
+                                h.set('X-CSRFToken', token);
+                                init = Object.assign({}, init, { headers: h });
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                log.warn('CSRF injection skipped', e);
+            }
+            return nativeFetch(input, init);
+        };
+    }());
+
     global.Platform.register('fetch', platformFetch);
 
 }(window));
