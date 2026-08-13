@@ -249,9 +249,11 @@ def _backfill_one(conn, table, subquery_sql, dry_run, org_id):
             "backfilled": 0, "assigned_orphans": 0,
         }
 
-    total = conn.execute(text(f'SELECT count(*) FROM "{table}"')).scalar()
+    # `table` is never user input — it comes only from the hardcoded
+    # MODEL_SPECS list at module scope (nosec B608).
+    total = conn.execute(text(f'SELECT count(*) FROM "{table}"')).scalar()  # nosec B608
     null_count = conn.execute(
-        text(f'SELECT count(*) FROM "{table}" WHERE organization_id IS NULL')
+        text(f'SELECT count(*) FROM "{table}" WHERE organization_id IS NULL')  # nosec B608
     ).scalar()
 
     stats = {
@@ -269,8 +271,10 @@ def _backfill_one(conn, table, subquery_sql, dry_run, org_id):
         stats["global"] = null_count
         return stats
 
+    # `subquery_sql` is also never user input — one of the fixed SQL
+    # fragments in MODEL_SPECS, not request/CLI-argument derived (nosec B608).
     derivable = conn.execute(
-        text(f"SELECT count(*) FROM ({subquery_sql}) sub WHERE sub.derived_org IS NOT NULL")
+        text(f"SELECT count(*) FROM ({subquery_sql}) sub WHERE sub.derived_org IS NOT NULL")  # nosec B608
     ).scalar()
     orphan = null_count - derivable
     stats["derivable"] = derivable
@@ -280,19 +284,23 @@ def _backfill_one(conn, table, subquery_sql, dry_run, org_id):
         return stats
 
     if derivable:
-        result = conn.execute(
-            text(
-                f'UPDATE "{table}" AS t '
-                f'SET organization_id = sub.derived_org '
-                f'FROM ({subquery_sql}) AS sub '
-                f'WHERE t.id = sub.id AND t.organization_id IS NULL AND sub.derived_org IS NOT NULL'
-            )
+        # `table` / `subquery_sql`: fixed MODEL_SPECS fragments, not user
+        # input; the write predicate (organization_id IS NULL) is bound
+        # server-side, not interpolated (nosec B608).
+        update_sql = (
+            f'UPDATE "{table}" AS t '  # nosec B608
+            f'SET organization_id = sub.derived_org '
+            f'FROM ({subquery_sql}) AS sub '
+            f'WHERE t.id = sub.id AND t.organization_id IS NULL AND sub.derived_org IS NOT NULL'
         )
+        result = conn.execute(text(update_sql))
         stats["backfilled"] = result.rowcount or 0
 
     if orphan and org_id is not None:
+        # `table` is a fixed MODEL_SPECS name; the org value itself is a
+        # bound parameter (:o), not interpolated (nosec B608).
         result = conn.execute(
-            text(f'UPDATE "{table}" SET organization_id = :o WHERE organization_id IS NULL'),
+            text(f'UPDATE "{table}" SET organization_id = :o WHERE organization_id IS NULL'),  # nosec B608
             {"o": org_id},
         )
         stats["assigned_orphans"] = result.rowcount or 0
