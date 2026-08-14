@@ -28,13 +28,13 @@
                 <tr class="border-b border-border last:border-0">
                     <td class="px-4 py-3 text-sm font-medium text-foreground">{{ tier.name }}</td>
                     <td class="px-4 py-3 text-right text-sm text-muted-foreground">{{ tier.total }}</td>
-                    <td class="px-4 py-3 text-right text-sm text-emerald-600">{{ tier.accepted }}</td>
-                    <td class="px-4 py-3 text-right text-sm text-amber-600">{{ tier.modified }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-success">{{ tier.accepted }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-warning">{{ tier.modified }}</td>
                     <td class="px-4 py-3 text-right text-sm text-destructive">{{ tier.rejected }}</td>
                     <td class="px-4 py-3 text-right text-sm text-muted-foreground">{{ tier.no_verdict }}</td>
                     <td class="px-4 py-3 text-right text-sm font-medium
-                        {% if tier.acceptance_rate >= 80 %}text-emerald-600
-                        {% elif tier.acceptance_rate >= 50 %}text-amber-600
+                        {% if tier.acceptance_rate >= 80 %}text-success
+                        {% elif tier.acceptance_rate >= 50 %}text-warning
                         {% else %}text-destructive{% endif %}">
                         {{ tier.acceptance_rate }}%
                     </td>

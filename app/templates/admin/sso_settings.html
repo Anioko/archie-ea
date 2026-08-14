@@ -129,7 +129,7 @@
                             Enterprise Architect
                         </li>
                         <li class="flex items-center gap-2 text-sm">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30">3</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">3</span>
                             ARB Member
                         </li>
                         <li class="flex items-center gap-2 text-sm">
@@ -180,7 +180,7 @@
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
                                         {% if mapping.role_name == 'platform_admin' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                                         {% elif mapping.role_name == 'enterprise_architect' %}bg-primary/10 text-primary border border-primary/30
-                                        {% elif mapping.role_name == 'arb_member' %}bg-orange-500/10 text-orange-600 border border-orange-500/30
+                                        {% elif mapping.role_name == 'arb_member' %}bg-warning/10 text-warning-emphasis border border-warning/30
                                         {% elif mapping.role_name == 'portfolio_manager' %}bg-blue-500/10 text-blue-600 border border-blue-500/30 <!-- token-migration-ok -->
                                         {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                                         {{ mapping.role_name | replace('_', ' ') | title }}

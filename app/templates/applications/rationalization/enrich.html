@@ -75,7 +75,7 @@
                     <tbody>
                         <template x-for="(app, idx) in apps" :key="app.id">
                             <tr class="border-b border-border/50 hover:bg-muted/20 transition-colors"
-                                :class="app._saved ? 'bg-emerald-500/5' : ''">
+                                :class="app._saved ? 'bg-success/5' : ''">
                                 <td class="px-4 py-3 text-muted-foreground text-xs" x-text="idx + 1"></td>
                                 <td class="px-4 py-3">
                                     <span class="font-medium text-foreground" x-text="app.name"></span>
@@ -84,9 +84,9 @@
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
                                           :class="app.health_score === null ? 'bg-muted/50 text-muted-foreground' :
                                                   app.health_score <= 25 ? 'bg-destructive/10 text-destructive-emphasis' :
-                                                  app.health_score <= 50 ? 'bg-amber-500/10 text-amber-600' :
+                                                  app.health_score <= 50 ? 'bg-warning/10 text-warning-emphasis' :
                                                   app.health_score <= 75 ? 'bg-primary/10 text-primary' :
-                                                  'bg-emerald-500/10 text-emerald-600'"
+                                                  'bg-success/10 text-success-emphasis'"
                                           x-text="app.health_score !== null ? app.health_score + '%' : 'N/A'"></span>
                                 </td>
                                 <td class="px-4 py-3">
@@ -138,7 +138,7 @@
                                             </template>
                                         </button>
                                     </div>
-                                    <p x-show="app._rescored" x-cloak class="text-[10px] text-emerald-600 mt-1" x-text="app._newDisposition || 'Re-scored'"></p>
+                                    <p x-show="app._rescored" x-cloak class="text-[10px] text-success-emphasis mt-1" x-text="app._newDisposition || 'Re-scored'"></p>
                                 </td>
                             </tr>
                         </template>

@@ -478,9 +478,9 @@
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                         {% for level, bg, text in [
                             ('critical', 'bg-destructive/10 border-destructive/30', 'text-destructive'),
-                            ('high', 'bg-warning/10 border-amber-500/30', 'text-warning-emphasis'),
+                            ('high', 'bg-warning/10 border-warning/30', 'text-warning-emphasis'),
                             ('medium', 'bg-info/10 border-info/30', 'text-primary'),
-                            ('low', 'bg-success/10 border-emerald-500/30', 'text-success-emphasis'),
+                            ('low', 'bg-success/10 border-success/30', 'text-success-emphasis'),
                         ] %}
                         {% set count = (persona_metrics.get('cto') or {}).get('risk_counts', {}).get(level, 0) %}
                         <div class="rounded-lg border p-4 {{ bg }}">
@@ -492,8 +492,8 @@
                     <h4 class="text-sm font-semibold text-foreground mb-3">ARB Pipeline</h4>
                     <div class="grid grid-cols-3 gap-3">
                         {% for status_key, label, bg, text in [
-                            ('pending', 'Pending', 'bg-warning/10 border-amber-500/30', 'text-warning-emphasis'),
-                            ('approved', 'Approved', 'bg-success/10 border-emerald-500/30', 'text-success-emphasis'),
+                            ('pending', 'Pending', 'bg-warning/10 border-warning/30', 'text-warning-emphasis'),
+                            ('approved', 'Approved', 'bg-success/10 border-success/30', 'text-success-emphasis'),
                             ('rejected', 'Rejected', 'bg-destructive/10 border-destructive/30', 'text-destructive'),
                         ] %}
                         {% set count = (persona_metrics.get('cto') or {}).get('arb_pipeline', {}).get(status_key, 0) %}

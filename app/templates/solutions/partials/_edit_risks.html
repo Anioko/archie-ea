@@ -49,9 +49,9 @@
                                         <div class="w-7 h-7 rounded flex items-center justify-center mx-auto font-medium text-xs transition-colors"
                                              :class="{
                                                  'bg-destructive/80 text-primary-foreground': cell.count > 0 && (cell.impact === 'critical' || cell.impact === 'high') && (cell.probability === 'high' || cell.probability === 'critical'),
-                                                 'bg-orange-400/70 text-primary-foreground': cell.count > 0 && ((cell.impact === 'high' && cell.probability === 'medium') || (cell.impact === 'medium' && cell.probability === 'high')),
-                                                 'bg-amber-300/70 text-foreground': cell.count > 0 && cell.impact === 'medium' && cell.probability === 'medium',
-                                                 'bg-emerald-400/60 text-primary-foreground': cell.count > 0 && (cell.impact === 'low' || cell.probability === 'low'),
+                                                 'bg-orange-400/70 text-primary-foreground': cell.count > 0 && ((cell.impact === 'high' && cell.probability === 'medium') || (cell.impact === 'medium' && cell.probability === 'high')), {# design-tokens-ok: 4-tier risk heatmap scale, distinct tiers can't collapse onto one semantic token #}
+                                                 'bg-amber-300/70 text-foreground': cell.count > 0 && cell.impact === 'medium' && cell.probability === 'medium', {# design-tokens-ok: 4-tier risk heatmap scale #}
+                                                 'bg-emerald-400/60 text-primary-foreground': cell.count > 0 && (cell.impact === 'low' || cell.probability === 'low'), {# design-tokens-ok: 4-tier risk heatmap scale #}
                                                  'bg-muted/30': cell.count === 0
                                              }"
                                              x-text="cell.count || ''"></div>

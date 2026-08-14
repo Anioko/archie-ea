@@ -49,10 +49,10 @@
           <span x-text="patch.file.split('/').pop()"></span>
           <span
             x-show="patch.applied"
-            class="w-1.5 h-1.5 rounded-full bg-emerald-500"
+            class="w-1.5 h-1.5 rounded-full bg-success"
           ></span>
           <template x-if="patch.warnings && patch.warnings.length > 0">
-            <span class="text-amber-500">⚠</span>
+            <span class="text-warning">⚠</span>
           </template>
         </button>
       </template>
@@ -64,7 +64,7 @@
         <div>
           <p class="text-xs font-mono text-[var(--color-text)]" x-text="patches[activeIndex]?.file"></p>
           <template x-if="patches[activeIndex]?.warnings?.length > 0">
-            <p class="text-xs text-amber-600 mt-0.5">
+            <p class="text-xs text-warning-emphasis mt-0.5">
               ⚠ Security warning: <span x-text="patches[activeIndex].warnings.join(', ')"></span>
             </p>
           </template>
@@ -74,7 +74,7 @@
             @click="acceptOne(activeIndex)"
             :disabled="patches[activeIndex]?.applied || isApplying"
             class="px-3 py-1 text-xs font-semibold text-primary-foreground rounded"
-            :class="patches[activeIndex]?.applied ? 'bg-emerald-500 cursor-default' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'"
+            :class="patches[activeIndex]?.applied ? 'bg-success cursor-default' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'"
             x-text="patches[activeIndex]?.applied ? '✓ Applied' : 'Accept this file'"
           ></button>
           <button
@@ -151,7 +151,7 @@ function wbDiffReview() {
     renderDiff(diff) {
       return diff.split('\n').map(line => {
         const escaped = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="text-emerald-600 dark:text-emerald-400">${escaped}</span>`;
+        if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="text-success-emphasis">${escaped}</span>`;
         if (line.startsWith('-') && !line.startsWith('---')) return `<span class="text-destructive-emphasis">${escaped}</span>`;
         if (line.startsWith('@@')) return `<span class="text-info-emphasis">${escaped}</span>`;
         if (line.startsWith('---') || line.startsWith('+++')) return `<span class="text-muted-foreground/60">${escaped}</span>`;

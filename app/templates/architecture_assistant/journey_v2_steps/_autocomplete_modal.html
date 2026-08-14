@@ -54,8 +54,8 @@
                   <span class="text-sm font-medium text-foreground" x-text="comp.field_path"></span>
                   <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
                         :class="{
-                          'bg-emerald-500/10 text-emerald-600': comp.confidence >= 0.8,
-                          'bg-amber-500/10 text-amber-600': comp.confidence >= 0.5 && comp.confidence < 0.8,
+                          'bg-success/10 text-success-emphasis': comp.confidence >= 0.8,
+                          'bg-warning/10 text-warning-emphasis': comp.confidence >= 0.5 && comp.confidence < 0.8,
                           'bg-muted text-muted-foreground': comp.confidence < 0.5,
                         }"
                         x-text="Math.round(comp.confidence * 100) + '% confidence'"></span>
@@ -78,7 +78,7 @@
 
                 {# Completed value #}
                 <div>
-                  <span class="text-[10px] uppercase tracking-wide text-emerald-600">Suggested</span>
+                  <span class="text-[10px] uppercase tracking-wide text-success-emphasis">Suggested</span>
                   <p class="text-sm text-foreground mt-0.5"
                      x-text="typeof comp.completed_value === 'string' ? comp.completed_value : JSON.stringify(comp.completed_value)"></p>
                 </div>

@@ -66,7 +66,7 @@
                 x-model="storyForm.title"
                 type="text"
                 placeholder="Story title (As a user...)"
-                class="flex-1 px-3 py-1.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                class="flex-1 px-3 py-1.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 @keydown.enter="createStory(epic)"
                aria-label="Story title (As a user...)"/>
               <input
@@ -76,7 +76,7 @@
                 placeholder="pts"
                 class="w-16 px-2 py-1.5 border border-border rounded text-sm focus:outline-none"
                aria-label="pts"/>
-              <button @click="createStory(epic)" class="px-3 py-1.5 bg-emerald-600 text-primary-foreground rounded text-xs hover:bg-green-700">Add</button>
+              <button @click="createStory(epic)" class="px-3 py-1.5 bg-success text-primary-foreground rounded text-xs hover:bg-success/90">Add</button>
               <button @click="storyForm.epicId = null" class="px-3 py-1.5 bg-muted text-foreground rounded text-xs">Cancel</button>
             </div>
             <p x-show="storyForm.error" x-cloak x-text="storyForm.error" class="mt-1 text-destructive text-xs"></p>
@@ -109,10 +109,10 @@
                       x-model="subtaskForm.title"
                       type="text"
                       placeholder="Sub-task title"
-                      class="flex-1 px-3 py-1 border border-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      class="flex-1 px-3 py-1 border border-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                       @keydown.enter="createSubtask(story)"
                      aria-label="Sub-task title"/>
-                    <button @click="createSubtask(story)" class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-purple-700">Add</button>
+                    <button @click="createSubtask(story)" class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90">Add</button>
                     <button @click="subtaskForm.storyId = null" class="px-3 py-1 bg-muted text-foreground rounded text-xs">Cancel</button>
                   </div>
                   <p x-show="subtaskForm.error" x-cloak x-text="subtaskForm.error" class="mt-1 text-destructive text-xs"></p>

@@ -87,8 +87,8 @@
                 <span class="text-xs text-muted-foreground">
                     {% set lifecycle = item.application.lifecycle_status if item.application.lifecycle_status else 'unknown' %}
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
-                        {% if lifecycle in ['active', 'production'] %}bg-green-100 text-green-700
-                        {% elif lifecycle in ['sunset', 'retiring'] %}bg-amber-100 text-amber-700
+                        {% if lifecycle in ['active', 'production'] %}bg-success/10 text-success-emphasis
+                        {% elif lifecycle in ['sunset', 'retiring'] %}bg-warning/10 text-warning-emphasis
                         {% elif lifecycle in ['decommissioned', 'retired'] %}bg-destructive/10 text-destructive-emphasis
                         {% else %}bg-muted text-muted-foreground{% endif %}">
                         {{ lifecycle }}

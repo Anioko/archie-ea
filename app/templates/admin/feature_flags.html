@@ -192,11 +192,11 @@
         <!-- ====== LABS SECTION ====== -->
         {% set labs_features = features|selectattr('state', 'equalto', FeatureState.LABS)|list if features else [] %}
         {% if labs_features %}
-        <div class="bg-card rounded-lg border border-violet-500/30 shadow-sm overflow-hidden mb-4">
-            <div class="flex items-center gap-2 px-5 py-3 bg-violet-500/5 border-b border-violet-500/20">
-                <i data-lucide="flask-conical" class="w-4 h-4 text-violet-500" aria-hidden="true"></i>
+        <div class="bg-card rounded-lg border border-info/30 shadow-sm overflow-hidden mb-4">
+            <div class="flex items-center gap-2 px-5 py-3 bg-info/5 border-b border-info/20">
+                <i data-lucide="flask-conical" class="w-4 h-4 text-info" aria-hidden="true"></i>
                 <span class="text-sm font-semibold">Labs</span>
-                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-500/10 text-violet-500">Experimental</span>
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-info/10 text-info-emphasis">Experimental</span>
                 <span class="text-xs text-muted-foreground ml-auto">{{ labs_features|length }} feature{{ 's' if labs_features|length != 1 else '' }}</span>
             </div>
             <div class="divide-y divide-border">

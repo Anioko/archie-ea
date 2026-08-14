@@ -37,7 +37,7 @@
     {% set has_priorities = gaps_by_severity.critical > 0 or gaps_by_severity.high > 0 or apps_needing_review|length > 0 %}
     {% if has_priorities %}
     <div class="rounded-lg border bg-card shadow-sm border-warning/20">
-        <div class="border-b border-orange-100 bg-warning/5/50 p-4">
+        <div class="border-b border-warning/20 bg-warning/5/50 p-4">
             <h2 class="text-lg font-semibold flex items-center gap-2 text-warning">
                 <i data-lucide="target" class="h-5 w-5" aria-hidden="true"></i>
                 Top Priorities

@@ -125,12 +125,12 @@
                 <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg"></div>
 
                 {# Suggestion for AI docs #}
-                <div x-show="suggestion" x-cloak class="rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-sm text-amber-700" x-text="suggestion"></div>
+                <div x-show="suggestion" x-cloak class="rounded-md bg-warning/10 border border-warning/30 px-3 py-2 text-sm text-warning-emphasis" x-text="suggestion"></div>
 
                 {# Results #}
                 <div x-show="result" x-cloak class="space-y-4">
-                    <div class="rounded-md bg-emerald-500/10 border border-emerald-500/30 px-4 py-3">
-                        <p class="text-sm font-medium text-emerald-700">
+                    <div class="rounded-md bg-success/10 border border-success/30 px-4 py-3">
+                        <p class="text-sm font-medium text-success-emphasis">
                             <span x-text="result?.created_count || 0"></span> elements created,
                             <span x-text="result?.skipped_count || 0"></span> duplicates skipped,
                             <span x-text="result?.error_count || 0"></span> errors

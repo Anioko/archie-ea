@@ -2,7 +2,7 @@
    Included in solutions/detail.html within solutionDetail() x-data scope #}
 <div class="mt-7">
     <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-cyan-500 inline-block"></span>Integration Flows</h3>
+        <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-info inline-block"></span>Integration Flows</h3>
         <div class="sad-actions"><button @click="openEntityModal('integration_flow')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Flow</button></div>
     </div>
     <template x-if="sadIntegrationFlows.length > 0">
@@ -22,7 +22,7 @@
                             <td class="py-2 px-3 font-medium text-foreground" x-text="item.flow_name"></td>
                             <td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/30" x-text="item.flow_type"></span></td>
                             <td class="py-2 px-3 text-muted-foreground" x-text="item.protocol || '\u2014'"></td>
-                            <td class="py-2 px-3"><span :class="{'text-destructive': item.criticality === 'critical', 'text-orange-600': item.criticality === 'high', 'text-amber-600': item.criticality === 'medium', 'text-emerald-600': item.criticality === 'low'}" x-text="item.criticality"></span></td>
+                            <td class="py-2 px-3"><span :class="{'text-destructive': item.criticality === 'critical', 'text-orange-600': item.criticality === 'high', 'text-amber-600': item.criticality === 'medium', 'text-emerald-600': item.criticality === 'low'}" x-text="item.criticality"></span></td> {# design-tokens-ok: 4-tier criticality scale (critical/high/medium/low); high(orange) and medium(amber) both map to warning under DESIGN.md convention, which would collide in one legend #}
                             <td class="py-2 px-3 text-muted-foreground" x-text="item.latency_sla_ms ? item.latency_sla_ms + 'ms' : '\u2014'"></td>
                             <td class="py-2 px-3 text-right sad-actions">
                                 <button @click="openEntityModal('integration_flow', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>

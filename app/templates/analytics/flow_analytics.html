@@ -61,7 +61,7 @@
         <!-- Avg Throughput -->
         <div class="bg-background rounded-lg border shadow-sm p-5">
             <p class="text-sm text-muted-foreground">Avg Throughput / Week</p>
-            <p class="text-3xl font-bold text-emerald-600 mt-1"
+            <p class="text-3xl font-bold text-success mt-1"
                x-text="throughputData ? throughputData.average_throughput : '—'"></p>
             <p class="text-xs text-muted-foreground mt-1">cards / period</p>
         </div>
@@ -69,7 +69,7 @@
         <!-- Avg Lead Time -->
         <div class="bg-background rounded-lg border shadow-sm p-5">
             <p class="text-sm text-muted-foreground">Avg Lead Time</p>
-            <p class="text-3xl font-bold text-amber-600 mt-1"
+            <p class="text-3xl font-bold text-warning mt-1"
                x-text="leadData ? leadData.average_lead_time_days + 'd' : '—'"></p>
             <p class="text-xs text-muted-foreground mt-1">creation → done</p>
         </div>

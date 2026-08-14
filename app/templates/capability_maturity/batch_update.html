@@ -100,14 +100,14 @@
         <!-- Import result -->
         <div x-show="result" x-cloak class="px-6 py-4 border-t border-border">
             <div x-show="result && result.success"
-                 class="flex items-start gap-2 text-sm text-emerald-700 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-3">
+                 class="flex items-start gap-2 text-sm text-success-emphasis bg-success/10 border border-success/30 rounded-lg px-4 py-3"
                 <i data-lucide="check-circle" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
                 <div>
                     <span x-text="result && result.message"></span>
                     <template x-if="result && result.errors && result.errors.length > 0">
                         <ul class="mt-2 space-y-0.5">
                             <template x-for="e in result.errors" :key="e.row">
-                                <li class="text-amber-700" x-text="'Row ' + e.row + ': ' + e.reason"></li>
+                                <li class="text-warning-emphasis" x-text="'Row ' + e.row + ': ' + e.reason"></li>
                             </template>
                         </ul>
                     </template>

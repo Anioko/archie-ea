@@ -425,21 +425,21 @@ function solutionWorkspace() {
         scoreTextClass(score) {
             if (score === null || score === undefined) return 'text-muted-foreground';
             if (score >= 70) return 'text-success';
-            if (score >= 40) return 'text-amber-500';
+            if (score >= 40) return 'text-warning';
             return 'text-destructive';
         },
         scoreBarClass(score) {
             if (score >= 70) return 'bg-success';
-            if (score >= 40) return 'bg-amber-500';
+            if (score >= 40) return 'bg-warning';
             return 'bg-destructive';
         },
         riskBadgeClass(risk) {
             if (risk === 'LOW') return 'bg-success/10 text-success';
-            if (risk === 'MEDIUM') return 'bg-amber-500/10 text-amber-600';
+            if (risk === 'MEDIUM') return 'bg-warning/10 text-warning-emphasis';
             return 'bg-destructive/10 text-destructive';
         },
         optionBadgeClass(type) {
-            return { REUSE: 'bg-emerald-600', BUY: 'bg-primary', BUILD: 'bg-orange-600', HYBRID: 'bg-primary' }[type] || 'bg-muted-foreground';
+            return { REUSE: 'bg-success', BUY: 'bg-primary', BUILD: 'bg-warning', HYBRID: 'bg-primary' }[type] || 'bg-muted-foreground';
         },
         formatCost(v) {
             if (!v && v !== 0) return '';

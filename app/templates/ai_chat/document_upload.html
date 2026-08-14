@@ -400,9 +400,9 @@
 
                     {# Select All / None Controls #}
                     <div class="flex items-center gap-2 mb-2 pb-2 border-b border-warning/20">
-                        <button type="button" @click="selectAllElements()" class="text-xs text-warning hover:text-amber-900 underline" aria-label="Select all preview elements">Select All</button>
+                        <button type="button" @click="selectAllElements()" class="text-xs text-warning hover:text-warning-emphasis underline" aria-label="Select all preview elements">Select All</button>
                         <span class="text-warning">|</span>
-                        <button type="button" @click="selectNoneElements()" class="text-xs text-warning hover:text-amber-900 underline" aria-label="Deselect all preview elements">Select None</button>
+                        <button type="button" @click="selectNoneElements()" class="text-xs text-warning hover:text-warning-emphasis underline" aria-label="Deselect all preview elements">Select None</button>
                         <span class="text-xs text-warning ml-auto" x-text="getSelectedCount() + ' selected'"></span>
                     </div>
 

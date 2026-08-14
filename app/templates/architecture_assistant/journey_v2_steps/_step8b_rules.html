@@ -75,8 +75,8 @@
 
         {# Clarification question #}
         <template x-if="ruleError">
-            <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <p class="text-sm text-amber-700" x-text="ruleError"></p>
+            <div class="p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                <p class="text-sm text-warning-emphasis" x-text="ruleError"></p>
             </div>
         </template>
     </div>
@@ -100,7 +100,7 @@
                                 <span x-text="'v' + rule.version"></span>
                             </p>
                         </div>
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Active</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Active</span>
                     </div>
                 </template>
             </div>

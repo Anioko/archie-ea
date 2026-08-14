@@ -30,13 +30,13 @@ input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
   <!-- Tab bar -->
   <div class="flex gap-2 mb-6 border-b border-border">
     <button @click="tab='moscow'"
-            :class="tab==='moscow' ? 'border-b-2 border-indigo-600 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
+            :class="tab==='moscow' ? 'border-b-2 border-info text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
             class="pb-2 px-3 text-sm">MoSCoW</button>
     <button @click="tab='wsjf'"
-            :class="tab==='wsjf' ? 'border-b-2 border-indigo-600 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
+            :class="tab==='wsjf' ? 'border-b-2 border-info text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
             class="pb-2 px-3 text-sm">WSJF</button>
     <button @click="tab='rice'"
-            :class="tab==='rice' ? 'border-b-2 border-indigo-600 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
+            :class="tab==='rice' ? 'border-b-2 border-info text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
             class="pb-2 px-3 text-sm">RICE</button>
   </div>
 
@@ -106,7 +106,7 @@ input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
               <td class="px-3 py-2 wsjf-score-cell" x-text="calcWsjf(req).toFixed(2)"></td>
               <td class="px-3 py-2">
                 <button @click="saveWsjf(req)"
-                        class="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-indigo-700">Save</button>
+                        class="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90">Save</button>
               </td>
             </tr>
           </template>
@@ -140,7 +140,7 @@ input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
               <td class="px-3 py-2 rice-score-cell" x-text="calcRice(req).toFixed(2)"></td>
               <td class="px-3 py-2">
                 <button @click="saveRice(req)"
-                        class="px-2 py-1 text-xs bg-cyan-600 text-primary-foreground rounded hover:bg-cyan-700">Save</button>
+                        class="px-2 py-1 text-xs bg-info text-primary-foreground rounded hover:bg-info/90">Save</button>
               </td>
             </tr>
           </template>

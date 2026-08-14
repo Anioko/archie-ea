@@ -88,7 +88,7 @@
                   <div class="flex items-center justify-between px-2 py-1 bg-[var(--color-surface-tertiary)] text-[var(--color-muted)] font-mono">
                     <span class="text-[10px] truncate" x-text="patch.file"></span>
                     <template x-if="patch.warnings && patch.warnings.length > 0">
-                      <span class="text-amber-500 text-[10px]">⚠ security warning</span>
+                      <span class="text-warning-emphasis text-[10px]">⚠ security warning</span>
                     </template>
                   </div>
                   <pre class="p-2 text-[10px] font-mono overflow-x-auto max-h-40 bg-muted text-foreground/90" x-text="patch.diff.substring(0, 800) + (patch.diff.length > 800 ? '\n...' : '')"></pre>
@@ -96,7 +96,7 @@
                     <button
                       @click="applyPatch(msg, patch, pi)"
                       :disabled="patch.applied"
-                      :class="patch.applied ? 'bg-emerald-500 cursor-default' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'"
+                      :class="patch.applied ? 'bg-success cursor-default' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'"
                       class="px-2.5 py-1 text-primary-foreground text-[10px] font-semibold rounded"
                       x-text="patch.applied ? '✓ Applied' : 'Accept'"
                     ></button>
@@ -111,7 +111,7 @@
               <template x-if="msg.patches.length > 1 && !msg.allApplied">
                 <button
                   @click="applyAllPatches(msg)"
-                  class="w-full px-2 py-1.5 bg-emerald-600 hover:bg-green-700 text-primary-foreground text-[10px] font-semibold rounded"
+                  class="w-full px-2 py-1.5 bg-success hover:bg-success/90 text-primary-foreground text-[10px] font-semibold rounded"
                   x-text="`Accept All (${msg.patches.length} files)`"
                 ></button>
               </template>

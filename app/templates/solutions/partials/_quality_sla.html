@@ -29,10 +29,10 @@
                         <template x-for="item in sadQualityAttributes" :key="item.id">
                             <tr class="border-b border-border/50 hover:bg-muted/30">
                                 <td class="py-2 px-3 font-semibold text-foreground" x-text="item.attribute_name"></td>
-                                <td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-500/10 text-primary border border-purple-500/30" x-text="item.attribute_type"></span></td>
+                                <td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/30" x-text="item.attribute_type"></span></td>
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.target_value || '\u2014'"></td>
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.current_value || '\u2014'"></td>
-                                <td class="py-2 px-3"><span :class="{'text-emerald-600': item.test_status === 'passed', 'text-destructive': item.test_status === 'failed', 'text-muted-foreground': item.test_status === 'not_tested'}" x-text="item.test_status?.replace('_', ' ')"></span></td>
+                                <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.test_status === 'passed', 'text-destructive': item.test_status === 'failed', 'text-muted-foreground': item.test_status === 'not_tested'}" x-text="item.test_status?.replace('_', ' ')"></span></td>
                                 <td class="py-2 px-3 text-right sad-actions">
                                     <button @click="openEntityModal('quality_attribute', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
                                     <button @click="confirmDeleteEntity('quality_attribute', item)" class="text-destructive hover:underline text-xs">Delete</button>
@@ -67,7 +67,7 @@
                                 <td class="py-2 px-3 text-center font-mono" x-text="item.response_time_ms || '\u2014'"></td>
                                 <td class="py-2 px-3 text-center font-mono" x-text="item.rto_hours || '\u2014'"></td>
                                 <td class="py-2 px-3 text-center font-mono" x-text="item.rpo_hours || '\u2014'"></td>
-                                <td class="py-2 px-3"><span :class="{'text-emerald-600': item.status === 'active', 'text-muted-foreground': item.status === 'draft'}" x-text="item.status"></span></td>
+                                <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.status === 'active', 'text-muted-foreground': item.status === 'draft'}" x-text="item.status"></span></td>
                                 <td class="py-2 px-3 text-right sad-actions">
                                     <button @click="openEntityModal('sla', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
                                     <button @click="confirmDeleteEntity('sla', item)" class="text-destructive hover:underline text-xs">Delete</button>

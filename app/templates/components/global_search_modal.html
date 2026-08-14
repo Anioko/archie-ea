@@ -182,9 +182,9 @@
                             <div 
                                 :class="{
                                     'bg-info/10 text-primary':   result.type === 'application',
-                                    'bg-violet-500/10 text-violet-600': result.type === 'solution',
-                                    'bg-emerald-500/10 text-emerald-600': result.type === 'capability',
-                                    'bg-amber-500/10 text-amber-600': result.type === 'archimate_element',
+                                    'bg-violet-500/10 text-violet-600': result.type === 'solution', {# design-tokens-ok: 4-category legend, info already used by 'application' above; collision avoided by leaving this raw #}
+                                    'bg-success/10 text-success-emphasis': result.type === 'capability',
+                                    'bg-warning/10 text-warning-emphasis': result.type === 'archimate_element',
                                     'bg-muted text-muted-foreground': !['application','solution','capability','archimate_element'].includes(result.type)
                                 }"
                                 class="flex-shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold"

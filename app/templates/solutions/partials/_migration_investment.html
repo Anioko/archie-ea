@@ -29,7 +29,7 @@
                             <td class="py-2 px-3 text-right font-mono" x-text="item.authorized_amount ? (item.currency || '\u00a3') + ' ' + Number(item.authorized_amount).toLocaleString() : '\u2014'"></td>
                             <td class="py-2 px-3 text-right font-mono" x-text="item.spend_to_date ? (item.currency || '\u00a3') + ' ' + Number(item.spend_to_date).toLocaleString() : '\u2014'"></td>
                             <td class="py-2 px-3 text-muted-foreground" x-text="item.funding_source || '\u2014'"></td>
-                            <td class="py-2 px-3"><span :class="{'text-emerald-600': item.status === 'approved', 'text-amber-600': item.status === 'pending', 'text-primary': item.status === 'in_progress'}" x-text="item.status"></span></td>
+                            <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.status === 'approved', 'text-warning-emphasis': item.status === 'pending', 'text-primary': item.status === 'in_progress'}" x-text="item.status"></span></td>
                             <td class="py-2 px-3 text-right sad-actions">
                                 <button @click="openEntityModal('investment_phase', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
                                 <button @click="confirmDeleteEntity('investment_phase', item)" class="text-destructive hover:underline text-xs">Delete</button>
