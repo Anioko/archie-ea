@@ -18,7 +18,7 @@ is what makes each handler safe on its own terms rather than by inheritance.
 
 from datetime import date, datetime
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 
@@ -27,8 +27,14 @@ from app.extensions import db
 from app.models.application_portfolio import VendorContract
 from app.models.license_entitlement import LicenseEntitlement
 from app.models.vendor.vendor_organization import VendorOrganization
+from app.services.feature_flag_service import FeatureFlagService
 
 from . import procurement_bp
+from .contract_extraction_service import (
+    MAX_CONTRACT_TEXT_CHARS,
+    ContractExtractionError,
+    extract_contract_terms,
+)
 
 CONTRACT_TYPES = ["license", "subscription", "maintenance", "support", "custom_development"]
 CONTRACT_CATEGORIES = ["software", "hardware", "service", "consulting"]
@@ -205,6 +211,44 @@ def contract_delete(contract_id):
     db.session.commit()
     flash("Contract deleted.", "success")
     return redirect(url_for("procurement.contracts_list"))
+
+
+@procurement_bp.route("/api/contracts/ai-extract", methods=["POST"])
+@login_required
+@requires_procurement
+def contract_ai_extract():
+    """POST /procurement/api/contracts/ai-extract
+
+    Body: {"text": "<pasted contract text>"}
+    200: {"extracted": {...}} - every field the pasted text doesn't state is
+         null; the caller (contract_form.html) must not treat null as "no
+         change needed" and must not invent a display value for it.
+    400: empty or oversized text.
+    502: the LLM call failed, or its response could not be trusted as the
+         expected JSON shape. Never 200 with a fabricated body.
+    503: AI is not configured for this deployment (FeatureFlagService gate).
+    """
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS, endpoint_name="procurement.contract_ai_extract"
+    )
+    if feature_guard:
+        return feature_guard
+
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    if len(text) > MAX_CONTRACT_TEXT_CHARS:
+        return jsonify({
+            "error": f"text is too long (max {MAX_CONTRACT_TEXT_CHARS} characters)"
+        }), 400
+
+    try:
+        extracted = extract_contract_terms(text)
+    except ContractExtractionError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    return jsonify({"extracted": extracted}), 200
 
 
 def _license_form_context(entitlement, form):

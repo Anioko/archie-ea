@@ -26,6 +26,146 @@
       ]
   ) }}
 
+  {#
+    AI clause extraction — paste contract text, get a structured first pass at
+    the fields below. Nothing here submits on its own; "Apply" only writes into
+    the existing form inputs (by id, matching the fields already on this page)
+    so the user still reviews and saves through the normal POST. A null field
+    from the extraction is never applied - it renders as "-" and is skipped,
+    per CLAUDE.md's never-invent-data rule.
+  #}
+  <div class="bg-card border border-border rounded-lg p-6 space-y-4"
+       x-data="{
+         open: false,
+         extracting: false,
+         error: null,
+         extracted: null,
+         text: '',
+         fieldLabels: {
+           contract_name: 'Contract name', contract_number: 'Contract number',
+           vendor_name: 'Vendor name', start_date: 'Start date', end_date: 'End date',
+           renewal_date: 'Renewal date', notice_period_days: 'Notice period (days)',
+           auto_renewal: 'Auto-renews', contract_value: 'Total value', currency: 'Currency',
+           payment_terms: 'Payment terms', termination_clause_summary: 'Termination clause',
+           liability_cap: 'Liability cap', risk_flags: 'Risk flags'
+         },
+         async extract() {
+           if (!this.text.trim()) { return; }
+           this.extracting = true;
+           this.error = null;
+           this.extracted = null;
+           try {
+             const resp = await fetch('{{ url_for('procurement.contract_ai_extract') }}', {
+               method: 'POST',
+               headers: {
+                 'Content-Type': 'application/json',
+                 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
+               },
+               body: JSON.stringify({ text: this.text })
+             });
+             const body = await resp.json();
+             if (!resp.ok) {
+               this.error = body.error || body.message || ('Extraction failed (' + resp.status + ')');
+               return;
+             }
+             this.extracted = body.extracted;
+           } catch (e) {
+             this.error = 'Extraction request failed - check your connection and try again.';
+           } finally {
+             this.extracting = false;
+           }
+         },
+         applyField(key, value) {
+           if (value === null || value === undefined || value === '') { return; }
+           if (key === 'vendor_name') {
+             // No free-text vendor input on this form - the vendor field is a
+             // picker keyed by id, and a name alone cannot be resolved to one
+             // safely here. Surfaced in the preview only.
+             return;
+           }
+           if (key === 'notice_period_days') {
+             // No dedicated notice-period input on this form yet; shown in the
+             // preview so the reviewer can factor it into the renewal date.
+             return;
+           }
+           if (key === 'auto_renewal') {
+             document.getElementById('auto_renewal').checked = !!value;
+             return;
+           }
+           if (key === 'risk_flags') { return; }
+           if (key === 'termination_clause_summary' || key === 'liability_cap' || key === 'payment_terms') {
+             const el = document.getElementById('contract_description');
+             if (el) {
+               const note = this.fieldLabels[key] + ': ' + value;
+               el.value = el.value ? (el.value + '\n\n' + note) : note;
+             }
+             return;
+           }
+           const el = document.getElementById(key);
+           if (el) { el.value = value; }
+         },
+         applyOne(key) {
+           this.applyField(key, this.extracted[key]);
+           if (window.Platform && Platform.toast) Platform.toast.success(this.fieldLabels[key] + ' applied');
+         },
+         applyAll() {
+           if (!this.extracted) { return; }
+           Object.keys(this.extracted).forEach(key => this.applyField(key, this.extracted[key]));
+           if (window.Platform && Platform.toast) Platform.toast.success('Extracted fields applied - review before saving');
+         }
+       }">
+    <button type="button" @click="open = !open"
+            class="w-full flex items-center justify-between text-left">
+      <span class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+        Extract from contract text (AI)
+      </span>
+      <i data-lucide="chevron-down" class="w-4 h-4 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+    </button>
+
+    <div x-show="open" x-cloak class="space-y-4">
+      <p class="text-sm text-muted-foreground">
+        Paste the contract text below and Archie will pull out the fields it can find.
+        Anything not stated in the text is left blank - review every applied value before saving.
+      </p>
+      <textarea x-model="text" rows="8" placeholder="Paste contract text here…"
+                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring resize-y"></textarea>
+
+      <div class="flex items-center gap-3">
+        <button type="button" @click="extract()" :disabled="extracting || !text.trim()"
+                class="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors disabled:opacity-60">
+          <span x-show="extracting" class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+          <i data-lucide="sparkles" class="w-4 h-4" x-show="!extracting"></i>
+          <span x-text="extracting ? 'Extracting…' : 'Extract from text'"></span>
+        </button>
+        <span x-show="text.length > 0" class="text-xs text-muted-foreground" x-text="text.length + ' characters'"></span>
+      </div>
+
+      <div x-show="error" x-cloak class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive-emphasis" x-text="error"></div>
+
+      <div x-show="extracted" x-cloak class="border border-border rounded-md divide-y divide-border">
+        <div class="px-3 py-2 flex items-center justify-between bg-muted/50">
+          <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Extracted values</span>
+          <button type="button" @click="applyAll()"
+                  class="text-xs font-medium text-primary hover:underline">Apply all</button>
+        </div>
+        <template x-for="key in Object.keys(fieldLabels)" :key="key">
+          <div class="px-3 py-2 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-xs text-muted-foreground" x-text="fieldLabels[key]"></div>
+              <div class="text-sm truncate"
+                   x-text="(extracted && extracted[key] !== null && extracted[key] !== undefined && extracted[key] !== '')
+                            ? (Array.isArray(extracted[key]) ? extracted[key].join(', ') : String(extracted[key]))
+                            : '—'"></div>
+            </div>
+            <button type="button" @click="applyOne(key)"
+                    x-show="extracted && extracted[key] !== null && extracted[key] !== undefined && extracted[key] !== ''"
+                    class="shrink-0 text-xs font-medium text-primary hover:underline">Apply</button>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
   <form method="POST"
         action="{{ url_for('procurement.contract_edit', contract_id=contract.id) if contract else url_for('procurement.contract_create') }}"
         class="space-y-6"
