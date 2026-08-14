@@ -1,5 +1,5 @@
 <!-- Async-loaded AI suggestions panel for solution detail view -->
-<div id="ai-suggestions-panel" class="space-y-4 p-4 bg-gradient-to-br from-info/10 to-indigo-50 rounded-lg border border-primary/20">
+<div id="ai-suggestions-panel" class="space-y-4 p-4 bg-gradient-to-br from-info/10 to-info/5 rounded-lg border border-primary/20">
     <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-foreground flex items-center">
             <svg class="w-5 h-5 mr-2 text-primary" fill="currentColor" viewBox="0 0 20 20">
@@ -13,7 +13,7 @@
     <!-- Vendor Recommendations -->
     <div id="vendor-suggestions-container" class="hidden">
         <h4 class="font-semibold text-foreground mb-2 flex items-center">
-            <span class="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>
+            <span class="w-2 h-2 bg-success rounded-full mr-2"></span>
             Recommended Vendors
         </h4>
         <div id="vendor-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
@@ -40,10 +40,10 @@
     <!-- Cost Estimate -->
     <div id="cost-suggestions-container" class="hidden">
         <h4 class="font-semibold text-foreground mb-2 flex items-center">
-            <span class="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
+            <span class="w-2 h-2 bg-warning rounded-full mr-2"></span>
             Cost Estimate
         </h4>
-        <div id="cost-data" class="p-3 bg-background rounded border border-yellow-200"></div>
+        <div id="cost-data" class="p-3 bg-background rounded border border-warning/20"></div>
     </div>
 
     <!-- Next Actions -->
@@ -177,7 +177,7 @@
                 const container = document.getElementById('vendor-suggestions-container');
                 const list = document.getElementById('vendor-list');
                 list.innerHTML = data.suggestions.map(v => `
-                    <div class="p-2 bg-background rounded border border-emerald-200 text-sm cursor-pointer hover:bg-emerald-500/5 vendor-suggestion-item" 
+                    <div class="p-2 bg-background rounded border border-success/20 text-sm cursor-pointer hover:bg-success/5 vendor-suggestion-item"
                          data-action="toggle-vendor-select">
                         <strong>${v.name || 'Vendor'}</strong>
                         ${v.match_score ? `<span class="text-xs text-muted-foreground ml-2">${(v.match_score*100).toFixed(0)}% fit</span>` : ''}
@@ -229,11 +229,11 @@
                             <strong>${r.category || 'Risk'}</strong>
                             <span class="text-xs font-semibold ${
                                 r.severity === 'high' ? 'text-destructive' :
-                                r.severity === 'medium' ? 'text-amber-600' : 'text-primary'
+                                r.severity === 'medium' ? 'text-warning-emphasis' : 'text-primary'
                             }">${r.severity || 'medium'}</span>
                         </div>
                         <p class="text-xs text-muted-foreground mt-1">${r.description || ''}</p>
-                        ${r.mitigation ? `<p class="text-xs text-emerald-700 mt-1"><strong>Mitigation:</strong> ${r.mitigation}</p>` : ''}
+                        ${r.mitigation ? `<p class="text-xs text-success-emphasis mt-1"><strong>Mitigation:</strong> ${r.mitigation}</p>` : ''}
                     </div>
                 `).join('');
                 container.classList.remove('hidden');
@@ -282,8 +282,9 @@
             if (data.next_actions && data.next_actions.length > 0) {
                 const container = document.getElementById('next-actions-container');
                 const list = document.getElementById('actions-list');
+                const aiIndicatorBorderClass = 'border-purple-200'; // token-migration-ok: purple is the AI-generated indicator colour (DESIGN.md), kept off the semantic scale
                 list.innerHTML = data.next_actions.map((a, i) => `
-                    <div class="p-2 bg-background rounded border border-purple-200 text-sm flex gap-2">
+                    <div class="p-2 bg-background rounded border ${aiIndicatorBorderClass} text-sm flex gap-2">
                         <span class="font-bold text-primary">${i + 1}</span>
                         <div>
                             <strong>${a.action || 'Action'}</strong>
@@ -350,7 +351,7 @@
     // CSP-safe: handle toggle-select clicks on suggestion items
     document.getElementById('ai-suggestions-panel').addEventListener('click', function(e) {
         const item = e.target.closest('[data-action="toggle-vendor-select"]');
-        if (item) { item.classList.toggle('bg-emerald-500/10'); return; }
+        if (item) { item.classList.toggle('bg-success/10'); return; }
         const aItem = e.target.closest('[data-action="toggle-archimate-select"]');
         if (aItem) { aItem.classList.toggle('bg-primary/10'); }
     });

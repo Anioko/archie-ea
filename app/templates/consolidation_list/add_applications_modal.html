@@ -258,7 +258,7 @@ function displayApps(apps) {
     const html = apps.map(function (app) {
         const checked = selectedAppIds.has(app.id) ? ' checked' : '';
         const costLine = app.total_cost_of_ownership
-            ? '<span class="text-xs font-medium text-emerald-600">TCO: &pound;' +
+            ? '<span class="text-xs font-medium text-success-emphasis">TCO: &pound;' +
               Platform.sanitize.escape(parseFloat(app.total_cost_of_ownership).toLocaleString()) + '</span>'
             : '';
         const critBadge = app.criticality && app.criticality !== 'Not assessed'
@@ -380,12 +380,12 @@ function showError(msg) {
 
 function getStatusClasses(status) {
     const map = {
-        '2.1 STRATEGIC':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-emerald-600',
+        '2.1 STRATEGIC':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis',
         '2.2 TACTICAL':       'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary',
-        '3. SUNSET':          'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
+        '3. SUNSET':          'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis',
         '4.1 DECOM DECIDED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive',
         '4.2 DECOM PLANNED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive',
-        '4.3 READ-ONLY':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
+        '4.3 READ-ONLY':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis',
         '5. DECOMMISSIONED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted-foreground/10 text-muted-foreground',
         '1. UNDETERMINED':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted-foreground/10 text-muted-foreground'
     };
@@ -395,7 +395,7 @@ function getStatusClasses(status) {
 function getCriticalityClasses(crit) {
     const map = {
         'mission_critical':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive',
-        'business_critical':   'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
+        'business_critical':   'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis',
         'business_operational':'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary',
         'administrative':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted-foreground/10 text-muted-foreground'
     };

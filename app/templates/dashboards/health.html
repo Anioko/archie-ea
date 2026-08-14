@@ -51,7 +51,7 @@
             {% endcall %}
             {% call card.card_content() %}
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {% set risk_colors = {'critical': 'text-destructive', 'high': 'text-orange-500', 'medium': 'text-amber-500', 'low': 'text-success'} %}
+                    {% set risk_colors = {'critical': 'text-destructive', 'high': 'text-orange-500', 'medium': 'text-amber-500', 'low': 'text-success'} %}{# design-tokens-ok: 4-tier severity scale (critical/high/medium/low) beyond the 3-tier RAG semantic set — kept raw so each tier stays visually distinct #}
                     {% for level in ['critical', 'high', 'medium', 'low'] %}
                     <div class="rounded-lg border border-border bg-background p-4 text-center">
                         <p class="text-xs text-muted-foreground capitalize mb-1">{{ level }}</p>
@@ -80,7 +80,7 @@
                 <div class="grid grid-cols-3 gap-3 mb-3">
                     <div class="rounded-lg border border-border bg-background p-4 text-center">
                         <p class="text-xs text-muted-foreground mb-1">Pending</p>
-                        <p class="text-3xl font-bold text-amber-500">{{ arb_pipeline.pending }}</p>
+                        <p class="text-3xl font-bold text-warning">{{ arb_pipeline.pending }}</p>
                     </div>
                     <div class="rounded-lg border border-border bg-background p-4 text-center">
                         <p class="text-xs text-muted-foreground mb-1">Under Review</p>
@@ -112,20 +112,12 @@
         {% call card.card() %}
             {% call card.card_header(class='pb-3') %}
                 {% call card.card_title(class='text-lg') %}
-                    <i data-lucide="layers" class="h-5 w-5 inline mr-2 text-amber-500" aria-hidden="true"></i>
+                    <i data-lucide="layers" class="h-5 w-5 inline mr-2 text-warning" aria-hidden="true"></i>
                     ArchiMate Coverage by Layer
                 {% endcall %}
             {% endcall %}
             {% call card.card_content() %}
-                {% set layer_colors = {
-                    'motivation': 'bg-violet-100',
-                    'strategy': 'bg-primary/10',
-                    'business': 'bg-amber-500/10',
-                    'application': 'bg-emerald-500/10',
-                    'technology': 'bg-cyan-100',
-                    'implementation': 'bg-orange-100',
-                    'other': 'bg-muted'
-                } %}
+                {% set layer_colors = {'motivation': 'bg-violet-100', 'strategy': 'bg-primary/10', 'business': 'bg-amber-500/10', 'application': 'bg-emerald-500/10', 'technology': 'bg-cyan-100', 'implementation': 'bg-orange-100', 'other': 'bg-muted'} %}{# design-tokens-ok: 6-tier ArchiMate layer legend needs one distinct hue per layer; only 4 semantic tokens exist, so mapping any two layers onto the same token would collapse the legend — kept raw per the layer colours in DESIGN.md's ArchiMate Layer Colors table #}
                 <div class="rounded-lg border border-border overflow-hidden">
                     <table class="w-full text-sm">
                         <thead class="bg-muted/50">
@@ -165,7 +157,7 @@
         {% call card.card() %}
             {% call card.card_header(class='pb-3') %}
                 {% call card.card_title(class='text-lg') %}
-                    <i data-lucide="milestone" class="h-5 w-5 inline mr-2 text-emerald-500" aria-hidden="true"></i>
+                    <i data-lucide="milestone" class="h-5 w-5 inline mr-2 text-success" aria-hidden="true"></i>
                     ADM Phase Distribution
                 {% endcall %}
             {% endcall %}

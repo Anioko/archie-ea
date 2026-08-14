@@ -119,14 +119,14 @@
                     <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                         <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_elements ?? '—'"></div><div class="text-[10px] text-muted-foreground">Elements</div></div>
                         <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_relationships ?? '—'"></div><div class="text-[10px] text-muted-foreground">Relationships</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'text-destructive':'text-amber-600'" x-text="rhData.zero_relationship_count ?? '—'"></div><div class="text-[10px] text-muted-foreground">Unconnected</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'text-destructive':'text-warning'" x-text="rhData.zero_relationship_count ?? '—'"></div><div class="text-[10px] text-muted-foreground">Unconnected</div></div>
                         <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.average_per_element ?? '—'"></div><div class="text-[10px] text-muted-foreground">Avg Rels/El</div></div>
                     </div>
                     <div class="space-y-1">
                         <template x-for="l in rhData.by_layer" :key="l.layer">
                             <div class="flex items-center gap-2 text-xs">
                                 <span class="w-24 font-medium truncate" x-text="l.layer"></span>
-                                <div class="flex-1 bg-muted rounded-full h-1.5"><div class="h-full rounded-full" :class="{'bg-violet-500':l.layer?.toLowerCase()==='motivation','bg-indigo-500':l.layer?.toLowerCase()==='strategy','bg-amber-500':l.layer?.toLowerCase()==='business','bg-info':l.layer?.toLowerCase()==='application','bg-green-500':l.layer?.toLowerCase()==='technology','bg-muted-foreground':l.layer?.toLowerCase()==='implementation'}" :style="'width:'+Math.min(100,(l.avg/Math.max(...rhData.by_layer.map(x=>x.avg||1)))*100)+'%'"></div></div>
+                                <div class="flex-1 bg-muted rounded-full h-1.5"><div class="h-full rounded-full" :class="{'bg-violet-500':l.layer?.toLowerCase()==='motivation','bg-indigo-500':l.layer?.toLowerCase()==='strategy','bg-amber-500':l.layer?.toLowerCase()==='business','bg-info':l.layer?.toLowerCase()==='application','bg-green-500':l.layer?.toLowerCase()==='technology','bg-muted-foreground':l.layer?.toLowerCase()==='implementation'}" :style="'width:'+Math.min(100,(l.avg/Math.max(...rhData.by_layer.map(x=>x.avg||1)))*100)+'%'"></div></div><!-- design-tokens-ok: 6-way ArchiMate layer legend (motivation/strategy/business/application/technology/implementation) — only 4 semantic tokens exist, and 'application' already occupies bg-info, so folding violet+indigo both into info would collapse two distinct layers onto one swatch colour -->
                                 <span class="w-10 text-right text-muted-foreground" x-text="l.element_count"></span>
                                 <span class="w-10 text-right text-muted-foreground" x-text="l.relationship_count"></span>
                                 <span class="w-10 text-right font-medium" x-text="l.avg+'/el'"></span>
@@ -340,8 +340,8 @@
                         <p class="text-sm text-muted-foreground">Nested capability containers grouped by Business Domain. Boxes are heat-shaded by maturity gap (target − current). Click a capability to open its drill-down detail.</p>
                     </div>
                     <div data-testid="capability-legend" class="flex items-center gap-3 text-xs flex-wrap">
-                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-500"></span> On Target (gap ≤ 0)</span>
-                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500"></span> Minor Gap (1)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-success"></span> On Target (gap ≤ 0)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-warning"></span> Minor Gap (1)</span>
                         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-destructive"></span> Major Gap (2+)</span>
                     </div>
                 </div>
@@ -1442,8 +1442,8 @@
                             </select>
                         </div>
                         <div class="flex items-center gap-3 text-xs">
-                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-500"></span> Covered (2+)</span>
-                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500"></span> Partial (1)</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-success"></span> Covered (2+)</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-warning"></span> Partial (1)</span>
                             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-destructive"></span> Gap (0)</span>
                         </div>
                     </div>
@@ -2426,7 +2426,7 @@
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#6B7280'" class="w-6 h-6 rounded-full bg-muted-foreground hover:ring-2 ring-offset-1 ring-muted-foreground" aria-label="Set roadmap color to gray"></button>
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#EAB308'" class="w-6 h-6 rounded-full bg-warning hover:ring-2 ring-offset-1 ring-warning" aria-label="Set roadmap color to warning"></button>
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#EF4444'" class="w-6 h-6 rounded-full bg-destructive hover:ring-2 ring-offset-1 ring-destructive" aria-label="Set roadmap color to destructive"></button>
-                                <button type="button" @click="document.getElementById('add-roadmap-color').value='#A855F7'" class="w-6 h-6 rounded-full bg-primary hover:ring-2 ring-offset-1 ring-purple-500" aria-label="Set roadmap color to purple"></button>
+                                <button type="button" @click="document.getElementById('add-roadmap-color').value='#A855F7'" class="w-6 h-6 rounded-full bg-primary hover:ring-2 ring-offset-1 ring-purple-500" aria-label="Set roadmap color to purple"></button><!-- design-tokens-ok: literal purple swatch in a 6-colour roadmap picker (gray/warning/destructive/purple/blue/success) — no semantic token renders true purple, and re-pointing the ring at info/primary would visually merge it with the adjacent blue swatch -->
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#3B82F6'" class="w-6 h-6 rounded-full bg-primary hover:ring-2 ring-offset-1 ring-primary" aria-label="Set roadmap color to blue"></button>
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#22C55E'" class="w-6 h-6 rounded-full bg-success hover:ring-2 ring-offset-1 ring-success" aria-label="Set roadmap color to success"></button>
                             </div>

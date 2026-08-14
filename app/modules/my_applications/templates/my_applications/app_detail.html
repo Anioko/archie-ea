@@ -33,8 +33,8 @@
                     {% endif %}
                     {% set lifecycle = app.lifecycle_status or 'unknown' %}
                     <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                        {% if lifecycle in ['active', 'production'] %}bg-green-100 text-green-700
-                        {% elif lifecycle in ['sunset', 'retiring'] %}bg-amber-100 text-amber-700
+                        {% if lifecycle in ['active', 'production'] %}bg-success/10 text-success-emphasis
+                        {% elif lifecycle in ['sunset', 'retiring'] %}bg-warning/10 text-warning-emphasis
                         {% elif lifecycle in ['decommissioned', 'retired'] %}bg-destructive/10 text-destructive-emphasis
                         {% else %}bg-muted text-muted-foreground{% endif %}">
                         {{ lifecycle }}
@@ -90,7 +90,7 @@
                         <dd class="font-medium">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
                                 {% if app.business_criticality == 'critical' %}bg-destructive/10 text-destructive-emphasis
-                                {% elif app.business_criticality == 'high' %}bg-amber-100 text-amber-700
+                                {% elif app.business_criticality == 'high' %}bg-warning/10 text-warning-emphasis
                                 {% elif app.business_criticality == 'medium' %}bg-info/10 text-info-emphasis
                                 {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ app.business_criticality }}
@@ -141,7 +141,7 @@
                         <dd class="font-medium">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
                                 {% if app.data_classification == 'confidential' %}bg-destructive/10 text-destructive-emphasis
-                                {% elif app.data_classification == 'internal' %}bg-amber-100 text-amber-700
+                                {% elif app.data_classification == 'internal' %}bg-warning/10 text-warning-emphasis
                                 {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ app.data_classification }}
                             </span>
@@ -167,7 +167,7 @@
                         <dt class="text-sm text-muted-foreground">Primary Owner</dt>
                         <dd class="font-medium">
                             {% if ownership.is_primary %}
-                            <span class="text-green-600">Yes</span>
+                            <span class="text-success">Yes</span>
                             {% else %}
                             <span class="text-muted-foreground">No</span>
                             {% endif %}
@@ -196,7 +196,7 @@
                     {% if app.sunset_date %}
                     <div class="flex justify-between">
                         <dt class="text-sm text-muted-foreground">Sunset Date</dt>
-                        <dd class="font-medium text-amber-600">{{ app.sunset_date.strftime('%d %b %Y') }}</dd>
+                        <dd class="font-medium text-warning">{{ app.sunset_date.strftime('%d %b %Y') }}</dd>
                     </div>
                     {% endif %}
                     {% if app.last_review_date %}

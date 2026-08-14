@@ -26,14 +26,14 @@
             </div>
             <div class="text-3xl font-bold">{{ ownership_summary.total }}</div>
         </div>
-        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
+        <div class="bg-card border border-warning/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="calendar" class="w-5 h-5 text-amber-600"></i>
+                <div class="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="calendar" class="w-5 h-5 text-warning"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Impacts</div>
             </div>
-            <div class="text-3xl font-bold text-amber-600">{{ impacts|length }}</div>
+            <div class="text-3xl font-bold text-warning">{{ impacts|length }}</div>
         </div>
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
@@ -67,7 +67,7 @@
                 <div class="flex items-start gap-4">
                     <!-- Impact Icon -->
                     <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0
-                        {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-600
+                        {% if impact.impact_type == 'sunset' %}bg-warning/10 text-warning
                         {% elif impact.impact_type == 'lifecycle_change' %}bg-info/10 text-info-emphasis
                         {% else %}bg-muted text-muted-foreground{% endif %}">
                         <i data-lucide="{% if impact.impact_type == 'sunset' %}sunset{% elif impact.impact_type == 'lifecycle_change' %}refresh-cw{% else %}calendar{% endif %}" class="w-6 h-6"></i>
@@ -85,10 +85,13 @@
                                 <div class="text-sm font-medium">{{ impact.date.strftime('%d %b %Y') }}</div>
                                 {% set days_until = (impact.date - today).days if today else none %}
                                 {% if days_until is not none %}
+                                {# 4-tier RAG scale (overdue/soon/upcoming/later) — beyond the 3 tiers a
+                                   single warning token can express without collapsing distinct urgency
+                                   levels onto the same hue, so amber/yellow stay raw. #}
                                 <div class="text-xs
                                     {% if days_until < 0 %}text-destructive-emphasis
-                                    {% elif days_until < 30 %}text-amber-600
-                                    {% elif days_until < 90 %}text-yellow-600
+                                    {% elif days_until < 30 %}text-amber-600{# design-tokens-ok: 4-tier RAG scale #}
+                                    {% elif days_until < 90 %}text-yellow-600{# design-tokens-ok: 4-tier RAG scale #}
                                     {% else %}text-muted-foreground{% endif %}">
                                     {% if days_until < 0 %}{{ -days_until }} days ago
                                     {% elif days_until == 0 %}Today
@@ -102,7 +105,7 @@
                         <!-- Tags -->
                         <div class="flex items-center gap-2 mt-3">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
-                                {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-700
+                                {% if impact.impact_type == 'sunset' %}bg-warning/10 text-warning-emphasis
                                 {% elif impact.impact_type == 'lifecycle_change' %}bg-info/10 text-info-emphasis
                                 {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ impact.impact_type|replace('_', ' ')|title }}
@@ -119,8 +122,8 @@
     {% else %}
     <!-- No Impacts -->
     <div class="bg-card border border-border rounded-lg p-12 text-center">
-        <div class="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
-            <i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i>
+        <div class="w-16 h-16 mx-auto mb-4 bg-success/10 rounded-full flex items-center justify-center">
+            <i data-lucide="check-circle" class="w-8 h-8 text-success"></i>
         </div>
         <h3 class="text-lg font-medium mb-2">No Roadmap Impacts</h3>
         <p class="text-muted-foreground">Great news! None of your applications have upcoming roadmap impacts.</p>

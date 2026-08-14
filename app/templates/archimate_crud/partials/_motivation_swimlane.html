@@ -4,10 +4,10 @@
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <template x-for="col in [
             {type: 'Stakeholder', label: 'Stakeholders', icon: 'users',     color: 'bg-primary/10 text-primary'},
-            {type: 'Driver',      label: 'Drivers',      icon: 'zap',       color: 'bg-amber-500/10 text-amber-600'},
-            {type: 'Goal',        label: 'Goals',        icon: 'target',    color: 'bg-emerald-500/10 text-emerald-600'},
+            {type: 'Driver',      label: 'Drivers',      icon: 'zap',       color: 'bg-warning/10 text-warning'},
+            {type: 'Goal',        label: 'Goals',        icon: 'target',    color: 'bg-success/10 text-success'},
             {type: 'Principle',   label: 'Principles',   icon: 'book-open', color: 'bg-primary/10 text-primary'},
-            {type: 'Requirement', label: 'Requirements', icon: 'list',      color: 'bg-amber-500/10 text-amber-600'},
+            {type: 'Requirement', label: 'Requirements', icon: 'list',      color: 'bg-warning/10 text-warning'},
             {type: 'Constraint',  label: 'Constraints',  icon: 'lock',      color: 'bg-destructive/10 text-destructive'}
         ]" :key="col.type">
             <div class="bg-card border border-border rounded-lg p-3 flex flex-col items-center gap-1 text-center">
@@ -24,10 +24,10 @@
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
         <template x-for="col in [
             {type: 'Stakeholder', label: 'Stakeholders', bg: 'bg-primary/5',     border: 'border-primary/20'},
-            {type: 'Driver',      label: 'Drivers',      bg: 'bg-amber-500/5',   border: 'border-amber-500/20'},
-            {type: 'Goal',        label: 'Goals',        bg: 'bg-emerald-500/5', border: 'border-emerald-500/20'},
+            {type: 'Driver',      label: 'Drivers',      bg: 'bg-warning/5',     border: 'border-warning/20'},
+            {type: 'Goal',        label: 'Goals',        bg: 'bg-success/5',     border: 'border-success/20'},
             {type: 'Principle',   label: 'Principles',   bg: 'bg-primary/5',     border: 'border-primary/20'},
-            {type: 'Requirement', label: 'Requirements', bg: 'bg-amber-500/5',   border: 'border-amber-500/20'},
+            {type: 'Requirement', label: 'Requirements', bg: 'bg-warning/5',     border: 'border-warning/20'},
             {type: 'Constraint',  label: 'Constraints',  bg: 'bg-destructive/5', border: 'border-destructive/20'}
         ]" :key="col.type">
             <div class="flex flex-col gap-2">

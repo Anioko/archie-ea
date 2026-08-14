@@ -62,7 +62,7 @@
                     </div>
                 </div>
                 <div class="shrink-0 w-12 text-center">
-                    <span class="text-xs font-medium" :class="s.confidence >= 0.8 ? 'text-primary' : s.confidence >= 0.5 ? 'text-amber-600' : 'text-muted-foreground'" x-text="Math.round(s.confidence * 100) + '%'"></span>
+                    <span class="text-xs font-medium" :class="s.confidence >= 0.8 ? 'text-primary' : s.confidence >= 0.5 ? 'text-warning' : 'text-muted-foreground'" x-text="Math.round(s.confidence * 100) + '%'"></span>
                 </div>
                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground shrink-0" x-text="s.source_method"></span>
                 <div class="flex items-center gap-1 shrink-0">
@@ -117,7 +117,9 @@ function reviewQueue() {
             try { const r = await fetch('/capability-map/api/archimate/relationship-suggestions/bulk-accept', {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''},body:JSON.stringify({min_confidence:mc})}); const d = await r.json(); if(d.success){this.showStatus(`Accepted ${d.accepted_count}`);await this.loadSuggestions();}else{this.showStatus(d.error||'Failed',true);}} catch(e){this.showStatus('Error',true);}
             finally { this.processing = false; }
         },
-        layerClass(l) { const c={'motivation':'bg-violet-500/10 text-violet-600 border-violet-500/30','strategy':'bg-indigo-500/10 text-primary border-indigo-500/30','business':'bg-amber-500/10 text-amber-600 border-amber-500/30','application':'bg-info/10 text-primary border-info/30','technology':'bg-green-500/10 text-emerald-600 border-green-500/30','implementation':'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30'}; return c[(l||'').toLowerCase()]||'bg-muted text-muted-foreground border-input'; },
+        // ArchiMate layer legend — hues aligned to DESIGN.md's layer-colour table; kept as raw
+        // Tailwind families (not semantic tokens) so each layer stays visually distinct. design-tokens-ok
+        layerClass(l) { const c={'motivation':'bg-violet-500/10 text-violet-600 border-violet-500/30','strategy':'bg-amber-500/10 text-amber-600 border-amber-500/30','business':'bg-emerald-500/10 text-emerald-600 border-emerald-500/30','application':'bg-info/10 text-primary border-info/30','technology':'bg-green-500/10 text-green-600 border-green-500/30','implementation':'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30'}; return c[(l||'').toLowerCase()]||'bg-muted text-muted-foreground border-input'; }, // design-tokens-ok: ArchiMate layer legend, see DESIGN.md layer-colour table
         showStatus(m,e=false) { this.statusMessage=m; this.statusError=e; setTimeout(()=>this.statusMessage='',3000); }
     };
 }
