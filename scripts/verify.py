@@ -207,6 +207,18 @@ def gate_lint_core(baseline: int) -> Result:
     return Result("lint-core", PASS if count == 0 else FAIL, sample, count, 0)
 
 
+def gate_design_tokens_extended(baseline: int) -> Result:
+    """Non-banned colour families (emerald/orange/teal/...) - their own ratchet."""
+    proc = _run([sys.executable, "scripts/check_design_tokens.py", "--extended", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("design-tokens-extended", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("design-tokens-extended", PASS if count <= baseline else FAIL,
+                  "", count, baseline)
+
+
 def gate_design_tokens(baseline: int) -> Result:
     """DESIGN.md's colour-token rule, which nothing enforced before this."""
     proc = _run([sys.executable, "scripts/check_design_tokens.py", "--count"])
@@ -930,6 +942,12 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_design_tokens(baseline["design_tokens"]),
              remediation="use semantic tokens; see the table in DESIGN.md",
              tags=["static", "ui"]),
+        Gate("design-tokens-extended",
+             "No new raw colours in the remaining families (emerald/orange/...)",
+             "ratchet",
+             lambda: gate_design_tokens_extended(baseline["design_tokens_extended"]),
+             remediation="use success/warning/info/destructive or layer tokens",
+             tags=["static", "ui"]),
         Gate("air-gap", "No UI assets loaded from public CDNs", "ratchet",
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
@@ -1047,6 +1065,7 @@ DEFAULT_BASELINE = {
     "redefinitions": 73,
     "lint_core": 4482,
     "design_tokens": 1255,
+    "design_tokens_extended": 4552,
     "air_gap": 78,
 }
 

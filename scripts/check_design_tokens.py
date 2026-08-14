@@ -12,11 +12,13 @@ Raw Tailwind colour utilities on the neutral/blue/red families, which all have
 semantic token equivalents (see the mapping table in DESIGN.md), plus bare
 ``bg-white`` / ``text-white``.
 
-What is deliberately allowed
-----------------------------
-``emerald`` / ``amber`` scales: DESIGN.md explicitly says green and yellow have
-no semantic tokens and these should be used directly for status colours. Arbitrary
-values (``bg-[#fff]``) are out of scope — a separate concern.
+What ratchets separately
+------------------------
+``emerald`` / ``amber`` / ``orange`` and the other non-banned families: they
+now have token replacements too (success/warning/info-emphasis landed Aug
+2026), but at ~4.5k occurrences the debt only ratchets down — see
+``--extended`` and ``design_tokens_extended`` in verification_baseline.json.
+Arbitrary values (``bg-[#fff]``) are out of scope — a separate concern.
 
 Usage
 -----
@@ -44,6 +46,19 @@ SCALED = re.compile(
 # Bare white utilities — DESIGN.md maps these to bg-background / text-primary-foreground.
 BARE_WHITE = re.compile(r"\b(?:[a-z-]+:)*(bg|text|border)-white\b")
 
+# The remaining raw families: they too have token replacements (success/warning/
+# info/destructive and the ArchiMate layer tokens), but at 4,657 occurrences the
+# debt is too large to clear in one pass, so they ratchet separately from
+# BANNED_FAMILIES (design_tokens_extended in verification_baseline.json).
+EXTENDED_FAMILIES = (
+    "emerald", "purple", "orange", "cyan", "green", "yellow", "amber",
+    "teal", "indigo", "pink", "rose", "violet", "lime", "sky", "fuchsia",
+)
+SCALED_EXTENDED = re.compile(
+    r"\b(?:[a-z-]+:)*(bg|text|border|ring|divide|from|via|to|placeholder|decoration|outline|shadow)"
+    r"-(" + "|".join(EXTENDED_FAMILIES) + r")-(\d{2,3})\b"
+)
+
 SUGGESTIONS = {
     "bg": "bg-background / bg-card / bg-muted",
     "text": "text-foreground / text-muted-foreground / text-primary",
@@ -53,8 +68,9 @@ SUGGESTIONS = {
 }
 
 
-def scan_file(path: str) -> list[tuple[int, str, str]]:
+def scan_file(path: str, extended: bool = False) -> list[tuple[int, str, str]]:
     """Return [(line_no, matched_text, suggestion)] for *path*."""
+    pattern = SCALED_EXTENDED if extended else SCALED
     findings: list[tuple[int, str, str]] = []
     try:
         with open(path, encoding="utf-8", errors="ignore") as fh:
@@ -78,12 +94,13 @@ def scan_file(path: str) -> list[tuple[int, str, str]]:
         # name is the one to keep using.
         if "design-tokens-ok" in line or "token-migration-ok" in line:
             continue
-        for match in SCALED.finditer(line):
+        for match in pattern.finditer(line):
             utility = match.group(1)
             findings.append((lineno, match.group(0), SUGGESTIONS.get(utility, "a semantic token")))
-        for match in BARE_WHITE.finditer(line):
-            utility = match.group(1)
-            findings.append((lineno, match.group(0), SUGGESTIONS.get(utility, "a semantic token")))
+        if not extended:
+            for match in BARE_WHITE.finditer(line):
+                utility = match.group(1)
+                findings.append((lineno, match.group(0), SUGGESTIONS.get(utility, "a semantic token")))
     return findings
 
 
@@ -102,6 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("paths", nargs="*", help="files to scan (default: all templates)")
     parser.add_argument("--count", action="store_true", help="print only the total count")
     parser.add_argument("--max", type=int, default=None, help="fail if count exceeds this")
+    parser.add_argument("--extended", action="store_true",
+                        help="scan the non-banned colour families (their own ratchet)")
     args = parser.parse_args(argv)
 
     paths = args.paths or default_paths()
@@ -111,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     total = 0
     report: list[str] = []
     for path in paths:
-        findings = scan_file(path)
+        findings = scan_file(path, extended=args.extended)
         total += len(findings)
         for lineno, text, suggestion in findings:
             report.append(f"{path}:{lineno}: {text}  ->  use {suggestion}")

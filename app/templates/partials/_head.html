@@ -126,3 +126,4 @@
   posthog.init('{{ posthog_key }}', {api_host: '{{ config.get("POSTHOG_HOST", "https://app.posthog.com") }}'});
 </script>
 {% endif %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
