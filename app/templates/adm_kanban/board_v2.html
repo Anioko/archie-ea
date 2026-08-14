@@ -572,6 +572,39 @@
 
     </div>
 
+    {# Bulk actions floating toolbar #}
+    <div x-show="selectedCardIds.length >= 2" x-cloak
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="translate-y-4 opacity-0"
+         x-transition:enter-end="translate-y-0 opacity-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="translate-y-0 opacity-100"
+         x-transition:leave-end="translate-y-4 opacity-0"
+         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card border border-border rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-3"
+         @keydown.escape.window="clearSelection()">
+        <span class="text-xs font-medium text-foreground" x-text="selectedCardIds.length + ' selected'"></span>
+        <div class="h-4 w-px bg-border"></div>
+        <div class="flex items-center gap-1.5">
+            <label class="text-xs text-muted-foreground">Move to:</label>
+            <select x-model="bulkMoveTarget"
+                    class="h-7 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Move to">
+                <option value="">Choose...</option>
+                <template x-for="col in columns" :key="col.id">
+                    <option :value="col.id" x-text="col.label"></option>
+                </template>
+            </select>
+            <button @click="bulkMove()" :disabled="!bulkMoveTarget"
+                    class="h-7 px-3 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors disabled:opacity-50">
+                Move
+            </button>
+        </div>
+        <div class="h-4 w-px bg-border"></div>
+        <button @click="clearSelection()"
+                class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Cancel
+        </button>
+    </div>
+
     </div>
 
 <script src="{{ url_for('static', filename='js/adm_kanban/board_v2.js') }}"></script>
@@ -972,38 +1005,6 @@
         </div>
     </div>
 
-    {# Bulk actions floating toolbar #}
-    <div x-show="selectedCardIds.length >= 2" x-cloak
-         x-transition:enter="transition ease-out duration-150"
-         x-transition:enter-start="translate-y-4 opacity-0"
-         x-transition:enter-end="translate-y-0 opacity-100"
-         x-transition:leave="transition ease-in duration-100"
-         x-transition:leave-start="translate-y-0 opacity-100"
-         x-transition:leave-end="translate-y-4 opacity-0"
-         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card border border-border rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-3"
-         @keydown.escape.window="clearSelection()">
-        <span class="text-xs font-medium text-foreground" x-text="selectedCardIds.length + ' selected'"></span>
-        <div class="h-4 w-px bg-border"></div>
-        <div class="flex items-center gap-1.5">
-            <label class="text-xs text-muted-foreground">Move to:</label>
-            <select x-model="bulkMoveTarget"
-                    class="h-7 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Move to">
-                <option value="">Choose...</option>
-                <template x-for="col in columns" :key="col.id">
-                    <option :value="col.id" x-text="col.label"></option>
-                </template>
-            </select>
-            <button @click="bulkMove()" :disabled="!bulkMoveTarget"
-                    class="h-7 px-3 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors disabled:opacity-50">
-                Move
-            </button>
-        </div>
-        <div class="h-4 w-px bg-border"></div>
-        <button @click="clearSelection()"
-                class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Cancel
-        </button>
-    </div>
 </div>
 
 {# Card Detail Modal — rendered outside overflow-hidden layout per admin_base.html rule #}

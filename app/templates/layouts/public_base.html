@@ -63,6 +63,10 @@
                 Alpine.store('modal', {
                     _openIds: [],
                     isOpen: function(id) { return this._openIds.indexOf(id) > -1; },
+                    register: function(id, config) {
+                        const m = (window.Platform && window.Platform.modal) || window.Modal;
+                        if (m && m.register) m.register(id, config);
+                    },
                     open:    function(id, payload) {
                         const m = (window.Platform && window.Platform.modal) || window.Modal;
                         if (m) m.open(id, payload);
