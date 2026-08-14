@@ -1909,6 +1909,8 @@ from app.modules.architecture.routes import arb_decision_routes  # noqa: F401  #
 from app.modules.architecture.routes import arb_document_routes  # noqa: F401  # dead-code-ok
 # Import reviewer-side AI pre-brief route — adds POST /api/reviews/<id>/ai-prebrief (side-effect import)
 from app.modules.architecture.routes import arb_review_ai_routes  # noqa: F401  # dead-code-ok
+# Import queue-clerk AI routes — adds queue triage + session agenda/minutes draft endpoints (side-effect import)
+from app.modules.architecture.routes import arb_queue_ai_routes  # noqa: F401  # dead-code-ok
 import logging
 logger = logging.getLogger(__name__)
 
