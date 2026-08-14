@@ -54,9 +54,9 @@
                             <dd class="text-sm text-foreground">
                                 {% if capability.strategic_importance %}
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
- {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
- {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning
- {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning
+ {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive-emphasis
+ {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning-emphasis
+ {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning-emphasis
  {% else %}bg-muted text-foreground{% endif %}">
                                         {{ capability.strategic_importance }}
                                     </span>
@@ -232,7 +232,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive-emphasis{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
                     {{ message }}
                 </div>
             {% endfor %}

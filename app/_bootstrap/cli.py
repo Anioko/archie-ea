@@ -275,3 +275,11 @@ def init_cli(app):
         app.logger.info("\u2705 Motivation bridge CLI command registered")
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register motivation bridge CLI: {e}")
+
+    # Wave 4 Phase A: ARB/EA-workflow tenancy backfill (derives org from FK parents)
+    try:
+        from app.commands.backfill_arb_ea_tenancy import init_app as init_arb_ea_tenancy
+        init_arb_ea_tenancy(app)
+        app.logger.info("\u2705 ARB/EA tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register ARB/EA tenancy backfill CLI: {e}")

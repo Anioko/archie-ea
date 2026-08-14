@@ -61,7 +61,7 @@
                     {% endif %}
                     {% if can_delete %}
                     <button type="button" onclick="deleteCap({{ cap.id }}, this.closest('.cap-card').dataset.capName)"
-                        class="p-1 rounded hover:bg-destructive/10 text-destructive" aria-label="Delete {{ cap.name|e }}">
+                        class="p-1 rounded hover:bg-destructive/10 text-destructive-emphasis" aria-label="Delete {{ cap.name|e }}">
                         <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
                     {% endif %}

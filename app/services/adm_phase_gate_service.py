@@ -22,8 +22,9 @@ Default required outputs per phase (used when definition.phase_gate_contract is 
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from flask import g
+
 from app import db
-from app.utils.tenant_sql import org_scope
 
 
 # Default phase gate chain: phase → list of prior phases whose outputs are required
@@ -140,8 +141,31 @@ class ADMPhaseGateService:
             message=msg,
         )
 
-    def _count_phase_outputs(self, architecture_id: int, phase_code: str) -> int:
+    def _count_phase_outputs(self, architecture_id: Optional[int], phase_code: str) -> int:
         """Count ArchiMate elements produced in a given ADM phase for this architecture.
+
+        ``ea_workflow_instances`` has no ``architecture_id`` column — the
+        architecture context an instance runs against is only ever recorded in
+        its JSON ``context`` (see ``EAWorkflowEngine.start_workflow``, which reads
+        ``context.get("architecture_id")``), never as a table column. A query
+        against ``i.architecture_id`` therefore fails with ``UndefinedColumn`` on
+        every call, 500ing every caller. Filter through the JSON field instead;
+        when no architecture is given (the phase-summary caller's default),
+        count across all instances rather than filtering on nothing.
+
+        Joins ``archimate_elements`` and filters it on organization_id
+        explicitly: neither ``ea_workflow_instances`` nor
+        ``workflow_instance_archimate_elements`` carries ``organization_id``,
+        but ``archimate_elements`` does (it is ``TenantMixin``-scoped), and
+        it's the only tenant-scoped table reachable from this junction.
+        Without that predicate this raw query — which the ORM tenant listener
+        does not touch — would aggregate every organization's ADM phase
+        outputs and present them as the current org's. The predicate is
+        written as ``:org_id IS NULL OR ae.organization_id = :org_id`` so the
+        SQL text itself stays fully static (no string concatenation of a
+        conditional clause) — for system/CLI callers with no
+        ``g.current_org_id``, ``org_id`` binds to ``None`` and the OR passes
+        every row, matching the prior no-clause behaviour.
 
         No exception handler: a swallowed query error would report ``0``, which
         ``can_enter_phase`` and ``get_phase_summary`` state as fact — "missing
@@ -149,63 +173,79 @@ class ADMPhaseGateService:
         phase. Both callers run inside handlers that surface the failure, so the
         error is better reported than converted into a gate verdict.
         """
-        # ea_workflow_instances has NO architecture_id column (this query used
-        # to assume one and raised UndefinedColumn, 500ing every caller). The
-        # architecture linkage lives on the produced elements themselves —
-        # archimate_elements.architecture_id — so scope there, and only when a
-        # specific architecture was asked for.
-        _org_clause, _org_params = org_scope(prefix="ae.")
-        _arch_clause = "AND ae.architecture_id = :arch_id " if architecture_id is not None else ""
-        _params = {"phase": phase_code, **_org_params}
-        if architecture_id is not None:
-            _params["arch_id"] = architecture_id
-        row = db.session.execute(
-            db.text(
-                "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
-                "JOIN ea_workflow_instances i ON i.id = w.instance_id "
-                "JOIN archimate_elements ae ON ae.id = w.element_id "
-                "WHERE w.adm_phase = :phase "
-                + _arch_clause +
-                "AND w.element_role = 'output'" + _org_clause
-            ),
-            _params,
-        ).scalar()
+        org_id = getattr(g, "current_org_id", None)
+        if architecture_id is None:
+            row = db.session.execute(
+                db.text(
+                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                    "JOIN archimate_elements ae ON ae.id = w.element_id "
+                    "WHERE w.adm_phase = :phase "
+                    "AND w.element_role = 'output' "
+                    "AND (:org_id IS NULL OR ae.organization_id = :org_id)"
+                ),
+                {"phase": phase_code, "org_id": org_id},
+            ).scalar()
+        else:
+            row = db.session.execute(
+                db.text(
+                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                    "JOIN archimate_elements ae ON ae.id = w.element_id "
+                    "WHERE i.context->>'architecture_id' = :arch_id "
+                    "AND w.adm_phase = :phase "
+                    "AND w.element_role = 'output' "
+                    "AND (:org_id IS NULL OR ae.organization_id = :org_id)"
+                ),
+                {"arch_id": str(architecture_id), "phase": phase_code, "org_id": org_id},
+            ).scalar()
         return int(row or 0)
 
-    def _has_type_in_phase(self, architecture_id: int, phase_code: str, element_type: str) -> bool:
+    def _has_type_in_phase(self, architecture_id: Optional[int], phase_code: str, element_type: str) -> bool:
         """Check if a specific ArchiMate element type exists for a phase/architecture.
+
+        See ``_count_phase_outputs`` for why this filters through the JSON
+        ``context`` field rather than a nonexistent ``architecture_id`` column,
+        and why the ``:org_id IS NULL OR ae.organization_id = :org_id``
+        predicate is applied explicitly against the joined
+        ``archimate_elements`` row (keeps the query text static for bandit
+        B608 while still preserving org scoping).
 
         No exception handler, for the same reason as ``_count_phase_outputs``:
         ``False`` here becomes a "missing element types" gate rejection that
         names a cause which was never established.
         """
-        # Neither junction table nor ea_workflow_instances carries an
-        # organization_id column, so architecture_id proves nothing about
-        # ownership. archimate_elements is in this join and does carry one —
-        # scope there, which also keeps the gate verdict about this tenant's
-        # own outputs rather than another organisation's.
-        _org_clause, _org_params = org_scope(prefix="ae.")
-        # Same UndefinedColumn as _count_phase_outputs: the architecture link
-        # is ae.architecture_id, not a column on ea_workflow_instances.
-        _arch_clause = "AND ae.architecture_id = :arch_id " if architecture_id is not None else ""
-        _params = {"phase": phase_code, "etype": element_type, **_org_params}
-        if architecture_id is not None:
-            _params["arch_id"] = architecture_id
-        row = db.session.execute(
-            db.text(
-                "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
-                "JOIN ea_workflow_instances i ON i.id = w.instance_id "
-                "JOIN archimate_elements ae ON ae.id = w.element_id "
-                "WHERE w.adm_phase = :phase "
-                + _arch_clause +
-                "AND ae.type = :etype "
-                "AND w.element_role = 'output'" + _org_clause
-            ),
-            _params,
-        ).scalar()
+        org_id = getattr(g, "current_org_id", None)
+        if architecture_id is None:
+            row = db.session.execute(
+                db.text(
+                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                    "JOIN archimate_elements ae ON ae.id = w.element_id "
+                    "WHERE w.adm_phase = :phase "
+                    "AND ae.type = :etype "
+                    "AND w.element_role = 'output' "
+                    "AND (:org_id IS NULL OR ae.organization_id = :org_id)"
+                ),
+                {"phase": phase_code, "etype": element_type, "org_id": org_id},
+            ).scalar()
+        else:
+            row = db.session.execute(
+                db.text(
+                    "SELECT COUNT(*) FROM workflow_instance_archimate_elements w "
+                    "JOIN ea_workflow_instances i ON i.id = w.instance_id "
+                    "JOIN archimate_elements ae ON ae.id = w.element_id "
+                    "WHERE i.context->>'architecture_id' = :arch_id "
+                    "AND w.adm_phase = :phase "
+                    "AND ae.type = :etype "
+                    "AND w.element_role = 'output' "
+                    "AND (:org_id IS NULL OR ae.organization_id = :org_id)"
+                ),
+                {"arch_id": str(architecture_id), "phase": phase_code, "etype": element_type, "org_id": org_id},
+            ).scalar()
         return int(row or 0) > 0
 
-    def get_phase_summary(self, architecture_id: int) -> list[dict]:
+    def get_phase_summary(self, architecture_id: Optional[int]) -> list[dict]:
         """Return a summary of all ADM phases A-H with element counts and gate status."""
         results = []
         for phase in ["A", "B", "C", "D", "E", "F", "G", "H"]:

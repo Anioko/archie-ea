@@ -360,7 +360,7 @@ if (!window._dataTableEngine) {
                                 <span class="text-sm" x-text="row['{{ col.key }}'] || '—'"></span>
                             </div>
                             {% elif col.get('type') == 'boolean' %}
-                            <span x-show="row['{{ col.key }}']" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+                            <span x-show="row['{{ col.key }}']" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
                             <span x-show="!row['{{ col.key }}']" class="text-muted-foreground">—</span>
                             {% elif col.get('type') == 'truncate' %}
                             <span class="line-clamp-1 max-w-[300px]" x-text="row['{{ col.key }}'] || '—'" :title="row['{{ col.key }}']"></span>
@@ -395,7 +395,7 @@ if (!window._dataTableEngine) {
                                     {% if on_delete %}
                                     <div class="my-1 h-px bg-border"></div>
                                     <button type="button" @click="{{ on_delete }}; menuOpen = false"
-                                            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-destructive hover:bg-destructive/10 transition-colors">
+                                            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                                         <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i> Delete
                                     </button>
                                     {% endif %}

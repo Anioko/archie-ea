@@ -15,7 +15,7 @@ URL prefix /dashboard applied via register() in v2/__init__.py — route decorat
 
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, g, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
 from app import db
@@ -60,9 +60,16 @@ def overview():
         metrics["vendors"] = (
             db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0
         )
-        metrics["users"] = db.session.query(db.func.count(User.id)).scalar() or 0
+        metrics["users"] = (
+            db.session.query(db.func.count(User.id))
+            .filter(User.organization_id == g.current_org_id)
+            .scalar()
+            or 0
+        )
 
-        active_sessions_query = db.session.query(db.func.count(User.id))
+        active_sessions_query = db.session.query(db.func.count(User.id)).filter(
+            User.organization_id == g.current_org_id
+        )
         if hasattr(User, "confirmed"):
             active_sessions_query = active_sessions_query.filter(User.confirmed.is_(True))
         metrics["active_sessions"] = active_sessions_query.scalar() or 0
@@ -73,6 +80,7 @@ def overview():
     # Navigation hub stats
     nav_stats = {
         "elements": 0,
+        "relationships": 0,
         "consolidation": 0,
         "solutions": 0,
         "capabilities": 0,
@@ -82,6 +90,15 @@ def overview():
 
         nav_stats["elements"] = (
             db.session.query(db.func.count(ArchiMateElement.id)).scalar() or 0
+        )
+    except Exception:
+        db.session.rollback()
+
+    try:
+        from app.models.archimate_core import ArchiMateRelationship
+
+        nav_stats["relationships"] = (
+            db.session.query(db.func.count(ArchiMateRelationship.id)).scalar() or 0
         )
     except Exception:
         db.session.rollback()
@@ -355,9 +372,21 @@ def overview():
 
         for cap in l1_caps:
             subtree = _subtree_ids(cap.id)
+            # ApplicationCapabilityMapping is plain db.Model, not TenantMixin, so
+            # do_orm_execute's tenant filter never applies to it directly -- but
+            # its own organization_id column is NULL on every row in production
+            # (added nullable by reconcile-schema, never backfilled), so a
+            # predicate on THAT column would always report a gap. `subtree` is
+            # already scoped: it is built from l1_caps / _BC.query.all(), both
+            # TenantMixin BusinessCapability reads auto-filtered to this org, so
+            # business_capability_id.in_(subtree) alone scopes this count via the
+            # FK parent. See e622d36 / rationalization_scoring_service.py.
             app_count = (
+                # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
                 db.session.query(db.func.count(ApplicationCapabilityMapping.id))
-                .filter(ApplicationCapabilityMapping.business_capability_id.in_(subtree))
+                .filter(
+                    ApplicationCapabilityMapping.business_capability_id.in_(subtree),
+                )
                 .scalar()
             ) or 0
             if app_count >= 2:
@@ -535,6 +564,57 @@ def overview():
     # PLT-040: Role-based workspace cards
     enterprise_role = getattr(current_user, "enterprise_role", "platform_admin")
 
+    # Dashboard mode (shell-wave-1 Task 5): guided setup for a sparse org vs. the
+    # data-led view once there is something to show. Reuses counts already fetched
+    # above — no new queries. capability_mapping_count sums the per-L1-capability
+    # ApplicationCapabilityMapping counts collected while building capability_health.
+    capability_mapping_count = sum(c.get("app_count", 0) for c in capability_health)
+    applications_count = metrics.get("applications") or 0
+    dashboard_mode = (
+        "guided" if applications_count < 5 and capability_mapping_count == 0 else "data"
+    )
+
+    guided_steps = []
+    if dashboard_mode == "guided":
+        guided_steps = [
+            {
+                "title": "Import applications",
+                "description": "Bring your application portfolio into Archie.",
+                "href": "/applications/",
+                "done": applications_count > 0,
+            },
+            {
+                "title": "Map capabilities",
+                "description": "Connect applications to the capabilities they support.",
+                "href": "/capability-map/",
+                "done": capability_mapping_count > 0,
+            },
+        ]
+        try:
+            _can_invite = bool(current_user.is_admin())
+        except Exception:
+            _can_invite = False
+        if _can_invite:
+            # metrics["users"] is a GLOBAL count across every tenant (User is not
+            # TenantMixin, so nothing auto-scopes it) -- using it here would show
+            # "Done" for a 1-user org purely because some other org has users.
+            # Scope explicitly to the current org, same as any other cross-tenant
+            # aggregate outside an auto-filtered query.
+            try:
+                org_user_count = User.query.filter_by(
+                    organization_id=current_user.organization_id
+                ).count()
+            except Exception:
+                org_user_count = 0
+            guided_steps.append(
+                {
+                    "title": "Invite your team",
+                    "description": "Bring in the colleagues who'll use Archie with you.",
+                    "href": "/admin/users",
+                    "done": org_user_count > 1,
+                }
+            )
+
     # PROG-019: AI-governance alerts — cheap read of the latest EA briefing only
     # (never re-runs the expensive stewardship review on a dashboard load).
     governance_alerts = None
@@ -569,6 +649,9 @@ def overview():
         enterprise_role=enterprise_role,
         data_coverage=data_coverage,
         governance_alerts=governance_alerts,
+        dashboard_mode=dashboard_mode,
+        guided_steps=guided_steps,
+        capability_mapping_count=capability_mapping_count,
     )
 
 
@@ -609,6 +692,27 @@ def api_onboarding_complete():
         db.session.rollback()
         logger.error("PLT-040: onboarding-complete failed: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500
+    return jsonify({"success": True})
+
+
+@dashboard_bp_v2.route("/api/welcome-dismiss", methods=["POST"])
+@timed_route
+@login_required
+def api_welcome_dismiss():
+    """Dismiss the one-line "Welcome to A.R.C.H.I.E." banner, once per user,
+    forever (shell-wave-1 Task 5). Deliberately separate from
+    /api/onboarding-complete, which also rewrites enterprise_role -- this
+    endpoint has exactly one side effect: setting the dismiss timestamp."""
+    import datetime
+
+    if current_user.welcome_banner_dismissed_at is None:
+        current_user.welcome_banner_dismissed_at = datetime.datetime.utcnow()
+        try:
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            logger.error("welcome-dismiss failed: %s", exc)
+            return jsonify({"success": False, "error": str(exc)}), 500
     return jsonify({"success": True})
 
 

@@ -82,7 +82,7 @@
 
             {# ── Error state ── #}
             <div x-show="error && !loading" x-cloak
-                 class="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+                 class="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive-emphasis"
                  x-text="error"></div>
 
             {# ── Content ── #}
@@ -125,7 +125,7 @@
                                               :class="{
                                                   'bg-amber-500/10 text-amber-600 border-amber-500/30':  d.status === 'proposed',
                                                   'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': d.status === 'approved',
-                                                  'bg-destructive/10 text-destructive border-destructive/30': d.status === 'rejected',
+                                                  'bg-destructive/10 text-destructive-emphasis border-destructive/30': d.status === 'rejected',
                                                   'bg-muted text-muted-foreground border-border': !['proposed','approved','rejected'].includes(d.status)
                                               }"
                                               x-text="(d.status || 'proposed').replace(/_/g, ' ')"></span>
@@ -165,7 +165,7 @@
                                             type="button"
                                             @click="openRejectModal(d)"
                                             :disabled="actionLoading[d.id]"
-                                            class="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                                            class="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 hover:bg-destructive/20 transition-colors disabled:opacity-50"
                                             title="Reject decision">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                                         Reject

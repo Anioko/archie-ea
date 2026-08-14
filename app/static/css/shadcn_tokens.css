@@ -12,7 +12,7 @@
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215.4 16.3% 45%; /* 4.51:1 on bg-muted (46.9% was 4.34, a WCAG AA fail on every bg-muted chip) */
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
@@ -24,6 +24,7 @@
     --destructive-emphasis: 0 72% 42%;
     --success: 142.1 76.2% 36.3%;
     --success-foreground: 0 0% 100%;
+    --success-emphasis: 142.1 76.2% 28%;  /* 4.63 on bg-success/10; base is 2.95 */
     --warning: 37.7 92.1% 50.2%;
     --warning-foreground: 0 0% 0%;
     /* 5.62 on bg-warning/10. --warning-foreground is pure black in BOTH themes,
@@ -69,6 +70,7 @@
     --destructive-emphasis: 0 91% 71%;
     --success: 142.1 70.6% 45.3%;
     --success-foreground: 0 0% 0%;
+    --success-emphasis: 142.1 70.6% 60%;  /* light-on-dark counterpart; matches warning/info-emphasis pattern */
     --warning: 45.4 93.4% 47.5%;
     --warning-foreground: 0 0% 0%;
     --warning-emphasis: 45 93% 65%;   /* 11.81 on bg-warning/10 */

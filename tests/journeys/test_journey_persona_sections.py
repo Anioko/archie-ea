@@ -87,34 +87,23 @@ def test_no_archetype_is_promised_a_section_the_app_does_not_serve():
     )
 
 
-def test_the_persona_map_and_the_live_navigation_use_different_taxonomies():
-    """The persona model is orphaned from the navigation users actually see.
-
-    ENTERPRISE_ROLE_SECTION_MAP is keyed on workflow sections (solutions,
-    portfolio, governance). The sidebar rendered by 175 of 177 templates,
-    admin_sidebar_northstar_phase2.html, is organised by ArchiMate element
-    types (Business Actors, Application Components). There is no overlap, and
-    the sidebar consumes no authorisation construct at all.
-
-    This is a product-strategy gap, not a bug, so it is asserted rather than
-    fixed: retrofitting a mapping between the two taxonomies would mean
-    inventing one.
-    """
-    import io
-    import os
-
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    live = io.open(
-        os.path.join(root, "app/templates/components/admin_sidebar_northstar_phase2.html"),
-        encoding="utf-8",
-    ).read()
-
-    gates = [
-        "user_visible_sections", "show_all_sections", "current_user.can",
-        "is_platform_admin", "enterprise_role", "required_roles", "has_role",
-    ]
-    present = {g: live.count(g) for g in gates if live.count(g)}
-    assert not present, (
-        "The live sidebar now references %s. If persona gating has been wired "
-        "up, delete this test - it exists to record that it was not." % present
-    )
+# test_the_persona_map_and_the_live_navigation_use_different_taxonomies was
+# removed in shell-overhaul Wave 3, Task 5. It opened
+# admin_sidebar_northstar_phase2.html (deleted as dead code in this same
+# change - nothing had included it since Wave 1, Task 3) and asserted that it
+# contained no persona-gating construct, i.e. that ENTERPRISE_ROLE_SECTION_MAP
+# was orphaned from the sidebar users actually see.
+#
+# That premise is now doubly stale: the sidebar that actually ships,
+# components/admin_sidebar.html, has rendered
+# app.utils.role_access.get_sidebar_zones(current_user) - a real per-role
+# gating construct - since Wave 1 Task 3, which predates this cleanup. The
+# test's own docstring named its exit condition: "If persona gating has been
+# wired up, delete this test - it exists to record that it was not." Persona
+# gating is wired up (see tests/test_sidebar_render.py for the coverage), so
+# per that condition the test is removed rather than repointed.
+#
+# ENTERPRISE_ROLE_SECTION_MAP and SIDEBAR_ZONES remain two different
+# taxonomies (workflow sections vs. sidebar zones) - that part of the
+# original finding still holds - but that is no longer "no authorisation
+# construct at all", which is what this test asserted.

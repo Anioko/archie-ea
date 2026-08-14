@@ -140,7 +140,7 @@
                                           :class="{
                                               'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': product.risk.overall === 'low',
                                               'bg-amber-500/10 text-amber-600 border border-amber-500/30': product.risk.overall === 'medium',
-                                              'bg-destructive/10 text-destructive border border-destructive/30': product.risk.overall === 'high'
+                                              'bg-destructive/10 text-destructive-emphasis border border-destructive/30': product.risk.overall === 'high'
                                           }"
                                           x-text="product.risk.overall.charAt(0).toUpperCase() + product.risk.overall.slice(1)">
                                     </span>

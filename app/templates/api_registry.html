@@ -118,8 +118,8 @@
                             <span
                                 class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
                                 x-bind:class="{
-                                    'bg-success/10 text-success border-success/30': spec.status === 'published',
-                                    'bg-warning/10 text-warning border-warning/30': spec.status === 'draft',
+                                    'bg-success/10 text-success-emphasis border-success/30': spec.status === 'published',
+                                    'bg-warning/10 text-warning-emphasis border-warning/30': spec.status === 'draft',
                                     'bg-muted/50 text-muted-foreground border-border': spec.status === 'deprecated'
                                 }"
                                 x-text="spec.status"
@@ -169,7 +169,7 @@
                                                     'bg-green-500/10 text-green-600': ep.method === 'GET',
                                                     'bg-info/10 text-info': ep.method === 'POST',
                                                     'bg-yellow-500/10 text-yellow-600': ep.method === 'PUT' || ep.method === 'PATCH',
-                                                    'bg-destructive/10 text-destructive': ep.method === 'DELETE',
+                                                    'bg-destructive/10 text-destructive-emphasis': ep.method === 'DELETE',
                                                 }"
                                                 x-text="ep.method"
                                             ></span>

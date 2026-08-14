@@ -9,7 +9,7 @@ Registered at /api/adm-kanban/v2
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 from flask_login import current_user, login_required
 
 from app import db
@@ -962,7 +962,7 @@ def suggestions_users():
     from app.models import User
     q = request.args.get('q', '').strip()
     try:
-        query = User.query.filter(User.confirmed == True)  # noqa: E712
+        query = User.query.filter(User.confirmed == True, User.organization_id == g.current_org_id)  # noqa: E712
         if len(q) >= 1:
             query = query.filter(
                 db.or_(

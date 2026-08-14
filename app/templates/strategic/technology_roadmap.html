@@ -76,8 +76,8 @@
                             <td class="p-3">{{ tech.technology_name|default('N/A') }}</td>
                             <td class="p-3">
                                 <span class="px-2 py-1 text-xs rounded-full
-                                    {% if tech.status == 'Sunset' %}bg-destructive/20 text-destructive
-                                    {% elif tech.status == 'Invest' %}bg-success/20 text-success
+                                    {% if tech.status == 'Sunset' %}bg-destructive/20 text-destructive-emphasis
+                                    {% elif tech.status == 'Invest' %}bg-success/20 text-success-emphasis
                                     {% else %}bg-primary/20 text-primary{% endif %}">
                                     {{ tech.status|default('Maintain') }}
                                 </span>

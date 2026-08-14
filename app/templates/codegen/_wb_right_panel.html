@@ -217,7 +217,7 @@
                                             <div class="flex items-start gap-2 px-3 py-2 rounded-lg"
                                                  :class="v.severity === 'error' ? 'bg-destructive/5 border border-destructive/20' : 'bg-amber-500/5 border border-amber-500/20'">
                                                 <span class="shrink-0 text-[9px] font-bold uppercase px-1 py-0.5 rounded"
-                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-amber-100 text-amber-700'"
+                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-amber-100 text-amber-700'"
                                                       x-text="v.severity"></span>
                                                 <div class="flex-1 min-w-0">
                                                     <p class="text-[11px] font-medium text-foreground leading-snug" x-text="v.constraint"></p>
@@ -225,7 +225,7 @@
                                                 </div>
                                                 <button @click="patchViolation(v.constraint)"
                                                         class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-colors"
-                                                        :class="v.severity === 'error' ? 'border-destructive/50 text-destructive hover:bg-destructive/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
+                                                        :class="v.severity === 'error' ? 'border-destructive/50 text-destructive-emphasis hover:bg-destructive/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
                                                         title="Auto-patch this violation">Patch</button>
                                             </div>
                                         </template>
@@ -584,7 +584,7 @@
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Build and run the generated FastAPI app in Docker. Opens /docs (Swagger UI) for the live API.</p>
                         <div x-show="dockerError" x-cloak
-                             class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[10px] text-destructive mb-2"
+                             class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[10px] text-destructive-emphasis mb-2"
                              x-text="dockerError"></div>
                         <div x-show="!dockerRunning" x-cloak>
                             <button @click="dockerPreview()" :disabled="dockerBuilding || !fileList.length"
@@ -765,7 +765,7 @@ eas build --platform android --profile preview</pre>
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/10 text-amber-700 border border-amber-500/30">No NativeWind styling</span>
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Shows app structure and logic in a browser simulator. NativeWind <code class="font-mono bg-muted px-1 rounded">className</code> props are ignored in Snack — UI renders unstyled. Useful for checking navigation flow and data loading.</p>
-                        <div x-show="snackError" x-cloak class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[10px] text-destructive mb-2" x-text="snackError"></div>
+                        <div x-show="snackError" x-cloak class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[10px] text-destructive-emphasis mb-2" x-text="snackError"></div>
 
                         <!-- Action buttons (shown after upload) -->
                         <div x-show="snackUrl" x-cloak class="flex gap-2 mb-3">
@@ -967,7 +967,7 @@ eas build --platform android --profile preview</pre>
                             <div class="flex items-start justify-between gap-2">
                                 <p class="text-[11px] text-foreground/90 leading-relaxed" x-text="intentPlan && intentPlan.summary"></p>
                                 <span class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider"
-                                      :class="(intentPlan && intentPlan.risk) === 'high' ? 'text-destructive border-destructive/40 bg-destructive/5' : (intentPlan && intentPlan.risk) === 'medium' ? 'text-amber-600 border-amber-400/40 bg-amber-500/5' : 'text-emerald-600 border-emerald-400/40 bg-emerald-500/5'"
+                                      :class="(intentPlan && intentPlan.risk) === 'high' ? 'text-destructive-emphasis border-destructive/40 bg-destructive/5' : (intentPlan && intentPlan.risk) === 'medium' ? 'text-amber-600 border-amber-400/40 bg-amber-500/5' : 'text-emerald-600 border-emerald-400/40 bg-emerald-500/5'"
                                       x-text="(intentPlan && intentPlan.risk) ? (intentPlan.risk + ' risk') : 'low risk'"></span>
                             </div>
 
@@ -1396,7 +1396,7 @@ npm run dev</pre>
                                             <svg x-show="snacking" class="w-4 h-4 wb-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
                                             <span x-text="snacking ? 'Uploading…' : 'Launch Expo Snack'"></span>
                                         </button>
-                                        <p x-show="snackError" x-cloak class="text-[11px] text-destructive bg-destructive/5 border border-destructive/20 rounded-lg p-2.5" x-text="snackError"></p>
+                                        <p x-show="snackError" x-cloak class="text-[11px] text-destructive-emphasis bg-destructive/5 border border-destructive/20 rounded-lg p-2.5" x-text="snackError"></p>
                                         <div x-show="snackUrl" x-cloak class="space-y-2">
                                             <p class="text-[10px] text-muted-foreground font-medium">Snack URL</p>
                                             <a :href="snackUrl" target="_blank"

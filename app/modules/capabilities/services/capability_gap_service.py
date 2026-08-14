@@ -615,6 +615,7 @@ class CapabilityGapAnalysisService:
         )
 
         from app.models.application_capability import ApplicationCapabilityMapping
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         app_mappings = ApplicationCapabilityMapping.query.filter_by(business_capability_id=capability.id).all()
         applications = [ApplicationComponent.query.get(m.application_component_id) for m in app_mappings if m.application_component_id]
         applications = [a for a in applications if a is not None]

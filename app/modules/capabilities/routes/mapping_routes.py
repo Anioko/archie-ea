@@ -433,7 +433,22 @@ def api_unified_capabilities():
         # Use BusinessCapability (real APQC data) as the primary source
         app_capabilities = BusinessCapability.query.limit(500).all()
 
-        app_mappings = ApplicationCapabilityMapping.query.limit(500).all()
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would report
+        # every capability as unmapped. Joining BusinessCapability lets
+        # do_orm_execute scope the join automatically. See e622d36 /
+        # rationalization_scoring_service.py.
+        app_mappings = (
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            ApplicationCapabilityMapping.query
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .limit(500)
+            .all()
+        )
         mapped_app_cap_ids = {mapping.business_capability_id for mapping in app_mappings}
 
         # Build mapping index (business_capability_id -> list of mappings)

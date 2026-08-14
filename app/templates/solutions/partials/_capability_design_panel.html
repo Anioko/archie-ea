@@ -113,7 +113,7 @@
                                                 <div class="font-medium text-foreground" x-text="app.application_name"></div>
                                                 <div class="mt-1 flex flex-wrap gap-1.5">
                                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs"
-                                                          :class="(app.coverage_percentage || 0) >= 70 ? 'bg-emerald-500/10 text-emerald-600' : (app.coverage_percentage || 0) >= 40 ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'"
+                                                          :class="(app.coverage_percentage || 0) >= 70 ? 'bg-emerald-500/10 text-emerald-600' : (app.coverage_percentage || 0) >= 40 ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive-emphasis'"
                                                           x-text="(app.coverage_percentage || 0) + '% coverage'"></span>
                                                     <span x-show="app.support_level" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-xs" x-text="app.support_level"></span>
                                                 </div>
@@ -161,7 +161,7 @@
                                             <div class="text-xs text-muted-foreground flex items-center gap-1.5">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-destructive flex-shrink-0"></span>
                                                 <span x-text="gap.name"></span>
-                                                <span x-show="gap.severity" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-destructive/10 text-destructive text-xs" x-text="gap.severity"></span>
+                                                <span x-show="gap.severity" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-destructive/10 text-destructive-emphasis text-xs" x-text="gap.severity"></span>
                                             </div>
                                         </template>
                                     </div>
@@ -199,7 +199,7 @@
                     <div class="flex flex-wrap gap-2">
                         <template x-for="iq in analysisData.input_quality_report" :key="iq.application_id">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-                                  :class="iq.data_freshness_tier === 'fresh' ? 'bg-emerald-500/10 text-emerald-600' : iq.data_freshness_tier === 'stale' ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'">
+                                  :class="iq.data_freshness_tier === 'fresh' ? 'bg-emerald-500/10 text-emerald-600' : iq.data_freshness_tier === 'stale' ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive-emphasis'">
                                 <span x-text="iq.application_name"></span>
                                 <span x-text="iq.completeness_score + '%'"></span>
                             </span>

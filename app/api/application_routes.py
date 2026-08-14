@@ -29,6 +29,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from sqlalchemy import inspect
 from sqlalchemy.orm import joinedload
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.decorators import audit_log, require_roles
@@ -301,6 +302,8 @@ def api_application_solutions(app_id):
                 for s in solutions
             ]
         })
+    except HTTPException:
+        raise
     except Exception as exc:
         db.session.rollback()
         logger.error(f"Error fetching solutions for application {app_id}: {exc}", exc_info=True)
@@ -368,6 +371,8 @@ def api_application_details(id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching application details: {e}")
         return jsonify(
@@ -526,6 +531,8 @@ def api_arch_elements(id):
                     }
                 ), 201
 
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error with architecture elements: {e}")
@@ -666,6 +673,8 @@ def api_arch_export(id):
             },
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error exporting architecture: {e}")
         return jsonify(
@@ -1109,6 +1118,8 @@ def api_process_links(app_id):
                 }
             ), 201
 
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error with process links: {e}")
@@ -1190,6 +1201,8 @@ def api_work_packages(id):
             )
 
         return jsonify({"work_packages": wp_data})
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching work packages for app {id}: {e}")
         return api_error("An internal error occurred", "INTERNAL_ERROR", 500)
@@ -1256,7 +1269,12 @@ def api_bulk_process_link():
 
     app_ids = data.get("application_ids", [])
     auto_link = data.get("auto_link", False)
-    confidence_threshold = float(data.get("confidence_threshold", 0.5))
+    try:
+        confidence_threshold = float(data.get("confidence_threshold", 0.5))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number between 0 and 1"}), 400
+    if not 0 <= confidence_threshold <= 1:
+        return jsonify({"error": "confidence_threshold must be between 0 and 1"}), 400
     dry_run = data.get("dry_run", True)
 
     if app_ids == "all":

@@ -215,7 +215,7 @@
             <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
                   :class="(acmCoverageComputed && acmCoverageComputed.covered_count >= 5) ? 'bg-emerald-500/10 text-emerald-700'
                         : (acmCoverageComputed && acmCoverageComputed.covered_count >= 3) ? 'bg-amber-500/10 text-amber-700'
-                        : 'bg-destructive/10 text-destructive'"
+                        : 'bg-destructive/10 text-destructive-emphasis'"
                   x-text="acmCoverageComputed ? (acmCoverageComputed.covered_count + '/7 domains') : '...'">
             </span>
         </div>

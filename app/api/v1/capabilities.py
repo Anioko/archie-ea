@@ -233,23 +233,22 @@ def get_manufacturing_capabilities():
 
         capabilities = []
         for cap in pagination.items:
-            # ManufacturingCapability is a specialization row: name, level,
-            # status etc. live on the linked UnifiedCapability, and its own
-            # domain is the manufacturing_domain string. Reading cap.name /
-            # cap.domain.name here raised AttributeError on the first real row
-            # (the empty-table case masked it).
+            # ManufacturingCapability only carries manufacturing-specific KPIs (OEE,
+            # FPY, etc.) — identity/ownership fields (name, description, domain,
+            # level, owner, status, priority, coverage) live on the UnifiedCapability
+            # it specializes, reached via the unified_capability relationship.
             uc = cap.unified_capability
             capabilities.append(
                 {
                     "id": str(cap.id),
                     "name": uc.name if uc else None,
                     "description": (uc.description if uc else None) or "",
-                    "domain": cap.manufacturing_domain,
+                    "domain": uc.domain.name if uc and uc.domain else None,
                     "level": uc.level if uc else None,
                     "business_owner": uc.business_owner if uc else None,
-                    "business_impact": uc.business_criticality if uc else None,
-                    "priority": uc.roadmap_priority if uc else None,
-                    "coverage": uc.process_coverage if uc else None,
+                    "business_impact": getattr(uc, "business_criticality", None) if uc else None,
+                    "priority": getattr(uc, "roadmap_priority", None) if uc else None,
+                    "coverage": getattr(uc, "process_coverage", None) if uc else None,
                     "status": uc.status if uc else None,
                     "unified_capability_id": str(cap.unified_capability_id)
                     if cap.unified_capability_id

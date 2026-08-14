@@ -18,7 +18,7 @@
     <!-- Status message -->
     <template x-if="message">
         <div class="mb-4 rounded-lg border px-4 py-3 text-sm"
-             :class="messageType === 'success' ? 'bg-success/10 text-success border-success/30' : 'bg-destructive/10 text-destructive border-destructive/30'">
+             :class="messageType === 'success' ? 'bg-success/10 text-success-emphasis border-success/30' : 'bg-destructive/10 text-destructive-emphasis border-destructive/30'">
             <span x-text="message"></span>
         </div>
     </template>
@@ -142,7 +142,7 @@
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
                                       :class="gate.enabled
-                                          ? 'bg-success/10 text-success border border-success/30'
+                                          ? 'bg-success/10 text-success-emphasis border border-success/30'
                                           : 'bg-muted text-muted-foreground border border-border'">
                                     <span x-text="gate.enabled ? 'Enabled' : 'Disabled'"></span>
                                 </span>
@@ -237,7 +237,7 @@
                                         class="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="e.g. vision_motivation">
                                     <button type="button"
                                             @click="removeSection(idx)"
-                                            class="p-1.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors" aria-label="Remove section">
+                                            class="p-1.5 rounded-md hover:bg-destructive/10 text-destructive-emphasis transition-colors" aria-label="Remove section">
                                         <i data-lucide="x" class="h-3.5 w-3.5"></i>
                                     </button>
                                 </div>

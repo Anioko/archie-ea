@@ -76,7 +76,7 @@
                     <p class="text-xs text-muted-foreground mt-0.5">{{ item.get('impact', item.get('recommendation', '')) }}</p>
                 </div>
                 <span class="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium
-                    {% if item.get('severity') == 'high' %}bg-destructive/10 text-destructive border border-destructive/30
+                    {% if item.get('severity') == 'high' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                     {% elif item.get('severity') == 'medium' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
                     {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                     {{ item.get('severity', 'info') }}

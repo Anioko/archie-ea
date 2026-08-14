@@ -6,6 +6,8 @@ logic this module owns — building an org tree out of BusinessActor rows
 linked by composition/aggregation ArchiMateRelationships.
 """
 
+from flask import g
+
 from app import db
 from app.models.archimate_core import ArchiMateRelationship
 from app.models.business_layer import BusinessActor, BusinessRole
@@ -181,6 +183,7 @@ def search_stakeholders(query, limit=10):
 
     user_matches = (
         User.query.filter(
+            User.organization_id == g.current_org_id,
             db.or_(
                 User.first_name.ilike(like),
                 User.last_name.ilike(like),

@@ -16,7 +16,7 @@
         {% if messages %}
             <div class="space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success-emphasis{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive-emphasis{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -25,7 +25,7 @@
     {% endwith %}
 
     {% if error %}
-        <div class="rounded-md border p-4 bg-destructive/5 border-destructive/20 text-destructive">
+        <div class="rounded-md border p-4 bg-destructive/5 border-destructive/20 text-destructive-emphasis">
             {{ error }}
         </div>
     {% endif %}
@@ -42,7 +42,7 @@
             {% set plan_val = subscription.plan.value %}
             <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold
                 {% if plan_val == 'enterprise' %}bg-primary/10 text-primary border border-primary/20
-                {% elif plan_val == 'pro' %}bg-success/10 text-success border border-success/20
+                {% elif plan_val == 'pro' %}bg-success/10 text-success-emphasis border border-success/20
                 {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                 {{ plan_val | capitalize }}
             </span>

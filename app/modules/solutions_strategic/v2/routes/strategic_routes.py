@@ -102,6 +102,7 @@ def _build_solution_impact_fallback(element_id: int, change_type: str = "MODIFY"
 
     if app is not None:
         cap_rows = (
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             db.session.query(BusinessCapability, ApplicationCapabilityMapping)
             .join(
                 ApplicationCapabilityMapping,

@@ -35,7 +35,7 @@
 
   <div class="rounded-lg border border-border bg-card p-6" x-data="frameworkStats()" x-init="load()">
     <h2 class="text-base font-semibold text-foreground mb-4">Overview</h2>
-    <div x-show="error" x-cloak class="mb-4 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="error"></div>
+    <div x-show="error" x-cloak class="mb-4 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="error"></div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <div class="text-center">
         <div class="text-2xl font-bold text-foreground" x-text="stats.total_configurations ?? '—'"></div>

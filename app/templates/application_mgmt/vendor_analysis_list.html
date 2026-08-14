@@ -144,9 +144,9 @@
               <td class="px-4 py-3">
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium border"
                   :class="{
-                    'bg-success/10 text-success border-success/30': a.status === 'completed' || a.approval_status === 'approved',
-                    'bg-warning/10 text-warning border-warning/30': a.status === 'draft' || a.status === 'running',
-                    'bg-destructive/10 text-destructive border-destructive/30': a.approval_status === 'rejected',
+                    'bg-success/10 text-success-emphasis border-success/30': a.status === 'completed' || a.approval_status === 'approved',
+                    'bg-warning/10 text-warning-emphasis border-warning/30': a.status === 'draft' || a.status === 'running',
+                    'bg-destructive/10 text-destructive-emphasis border-destructive/30': a.approval_status === 'rejected',
                     'bg-muted-foreground/10 text-foreground/80 border-muted-foreground/30': !['completed','draft','running'].includes(a.status) && !a.approval_status
                   }"
                   x-text="a.approval_status || a.status"></span>
@@ -161,7 +161,7 @@
                   <a :href="'{{ url_for("application_mgmt.vendor_analysis_detail", analysis_id=0) }}'.replace('/0', '/' + a.id)" class="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="View" aria-label="View analysis">
                     <i data-lucide="eye" class="h-4 w-4"></i>
                   </a>
-                  <button @click="confirmDelete(a.id, a.name)" class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Delete" aria-label="Delete analysis">
+                  <button @click="confirmDelete(a.id, a.name)" class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive-emphasis" title="Delete" aria-label="Delete analysis">
                     <i data-lucide="trash-2" class="h-4 w-4"></i>
                   </button>
                 </div>

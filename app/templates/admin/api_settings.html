@@ -18,7 +18,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success-emphasis{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive-emphasis{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -146,7 +146,7 @@
                                                 <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border font-mono">{{ settings.key_label }}</span>
                                             {% endif %}
                                             {% if settings.enabled %}
-                                                <span class="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success">Enabled</span>
+                                                <span class="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success-emphasis">Enabled</span>
                                             {% else %}
                                                 <span class="text-xs px-2 py-0.5 rounded-full bg-muted text-foreground">Disabled</span>
                                             {% endif %}

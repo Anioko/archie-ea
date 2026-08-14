@@ -49,8 +49,8 @@
                             <td class="p-3">{{ process.efficiency_score|default(0) }}%</td>
                             <td class="p-3">
                                 <span class="px-2 py-1 text-xs rounded-full
-                                    {% if process.priority == 'Critical' %}bg-destructive/20 text-destructive
-                                    {% elif process.priority == 'High' %}bg-warning/20 text-warning
+                                    {% if process.priority == 'Critical' %}bg-destructive/20 text-destructive-emphasis
+                                    {% elif process.priority == 'High' %}bg-warning/20 text-warning-emphasis
                                     {% else %}bg-primary/20 text-primary{% endif %}">
                                     {{ process.priority|default('Normal') }}
                                 </span>

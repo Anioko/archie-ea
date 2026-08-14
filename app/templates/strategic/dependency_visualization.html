@@ -57,9 +57,9 @@
                     <div class="flex items-center justify-between mb-2">
                         <span class="font-medium">{{ item.component|default('Unknown') }}</span>
                         <span class="px-2 py-1 text-xs rounded-full
-                            {% if item.health == 'Critical' %}bg-destructive/20 text-destructive
-                            {% elif item.health == 'Warning' %}bg-warning/20 text-warning
-                            {% else %}bg-success/20 text-success{% endif %}">
+                            {% if item.health == 'Critical' %}bg-destructive/20 text-destructive-emphasis
+                            {% elif item.health == 'Warning' %}bg-warning/20 text-warning-emphasis
+                            {% else %}bg-success/20 text-success-emphasis{% endif %}">
                             {{ item.health|default('Healthy') }}
                         </span>
                     </div>

@@ -260,10 +260,17 @@
     function populateDomainFilter(tabType, data) {
         const domainFilter = getEl(`${tabType}-domain-filter`);
         if (domainFilter) {
+            // The API returns the literal code "UNK" (and sometimes "Unknown")
+            // for capabilities with no business domain set — show "Unassigned"
+            // rather than the raw code, same normalisation already applied in
+            // generateTableRow() below. This is a display-level fix only; the
+            // option's value stays the raw code so filtering still matches
+            // the underlying data.
             const domains = [...new Set(data.map(item => item.domain?.code || item.domain?.name || 'Unassigned').filter(Boolean))];
             safeHTML(domainFilter, '<option value="">All Domains</option>');
             domains.forEach(domain => {
-                domainFilter.innerHTML += `<option value="${escapeHtml(domain)}">${escapeHtml(domain)}</option>`; // safe: escapeHtml applied
+                const label = (domain === 'UNK' || domain === 'Unknown') ? 'Unassigned' : domain;
+                domainFilter.innerHTML += `<option value="${escapeHtml(domain)}">${escapeHtml(label)}</option>`; // safe: escapeHtml applied
             });
         }
     }
@@ -798,22 +805,31 @@
                 const urlTab = new URLSearchParams(window.location.search).get('tab');
                 if (urlTab) {
                     this.activeTab = urlTab;
-                    // Trigger tab-specific initialization
-                    if (urlTab === 'roadmap') {
-                        setTimeout(() => initRoadmapTab(), 100);
-                    } else if (urlTab === 'unified') {
-                        setTimeout(() => loadBusinessDomainCards(), 100);
-                    } else if (urlTab === 'manufacturing') {
-                        setTimeout(() => loadManufacturingDomainStats(), 100);
-                    } else if (urlTab === 'gaps') {
-                        setTimeout(() => loadACMGapAnalysis(), 100);
-                    } else if (urlTab === 'process-gaps') {
-                        setTimeout(() => { loadProcessGapData(); loadProcessCategoryStats(); }, 100);
-                    } else if (urlTab === 'technical') {
-                        setTimeout(() => loadTechnicalTab(), 100);
-                    } else if (urlTab === 'heatmap') {
-                        setTimeout(() => loadHeatMap(), 100);
-                    }
+                    this.onLensChange(urlTab);
+                }
+            },
+            // Shared by the Lens dropdown's @change and init()'s ?tab= handling
+            // — replaces the per-button @click handlers the old 11-button tab
+            // row used to call directly.
+            onLensChange(tab) {
+                if (tab === 'roadmap') {
+                    setTimeout(() => initRoadmapTab(), 100);
+                } else if (tab === 'unified') {
+                    setTimeout(() => loadBusinessDomainCards(), 100);
+                } else if (tab === 'capability-model') {
+                    setTimeout(() => loadCapabilityModelTab(), 100);
+                } else if (tab === 'manufacturing') {
+                    setTimeout(() => loadManufacturingDomainStats(), 100);
+                } else if (tab === 'gaps') {
+                    setTimeout(() => loadACMGapAnalysis(), 100);
+                } else if (tab === 'process-gaps') {
+                    setTimeout(() => { loadProcessGapData(); loadProcessCategoryStats(); }, 100);
+                } else if (tab === 'technical') {
+                    setTimeout(() => loadTechnicalTab(), 100);
+                } else if (tab === 'heatmap') {
+                    setTimeout(() => loadHeatMap(), 100);
+                } else if (tab === 'maturity') {
+                    setTimeout(() => loadMaturityRadarTab(), 100);
                 }
             }
         }

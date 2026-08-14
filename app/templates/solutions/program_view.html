@@ -75,7 +75,7 @@
                     <tr class="border-t border-border hover:bg-muted/30">
                         <td class="px-4 py-2 font-medium text-foreground">{{ sol_map.get(dep.source, 'Solution #' ~ dep.source) }}</td>
                         <td class="px-4 py-2">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium {% if dep.type == 'blocks' %}bg-destructive/10 text-destructive{% elif dep.type == 'enables' %}bg-primary/10 text-primary{% else %}bg-muted text-muted-foreground{% endif %}">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium {% if dep.type == 'blocks' %}bg-destructive/10 text-destructive-emphasis{% elif dep.type == 'enables' %}bg-primary/10 text-primary{% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ dep.type or 'depends_on' }}
                             </span>
                         </td>

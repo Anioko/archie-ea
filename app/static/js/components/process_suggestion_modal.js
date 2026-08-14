@@ -231,6 +231,8 @@ function hideManualProcessMapping() {
 (function() {
   let searchEl = document.getElementById('process-search');
   let _searchErrorShown = false;
+  let _searchTimer = null;
+  let _searchAbort = null;
   if (searchEl) {
     searchEl.addEventListener('input', function(e) {
       let query = e.target.value.trim();
@@ -240,7 +242,13 @@ function hideManualProcessMapping() {
         return;
       }
 
-      fetch('/api/applications/processes/search?q=' + encodeURIComponent(query))
+      // Debounce + abort: a request per keystroke let a slow early response
+      // overwrite the results of a later, more specific query.
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(function() {
+      if (_searchAbort) _searchAbort.abort();
+      _searchAbort = new AbortController();
+      fetch('/api/applications/processes/search?q=' + encodeURIComponent(query), { signal: _searchAbort.signal })
         .then(function(response) {
           if (!response.ok) throw new Error('HTTP ' + response.status);
           return response.json();
@@ -250,13 +258,15 @@ function hideManualProcessMapping() {
           _searchErrorShown = false;
         })
         .catch(function(error) {
+          if (error.name === 'AbortError') return; // superseded by a newer query
           console.error('Error searching processes:', error);
-          // Fires on every keystroke — toast once per outage, not on every retry.
+          // Toast once per outage, not on every retry.
           if (!_searchErrorShown) {
             _searchErrorShown = true;
             if (window.Platform && Platform.toast) Platform.toast.error('Process search failed.');
           }
         });
+      }, 300);
     });
   }
 })();

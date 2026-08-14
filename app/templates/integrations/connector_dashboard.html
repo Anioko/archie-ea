@@ -76,8 +76,8 @@
                   <span class="text-xs px-2 py-1 rounded-full"
                         :class="{
                           'bg-primary/10 text-primary': sync.status === 'success',
-                          'bg-destructive/10 text-destructive': sync.status === 'error',
-                          'bg-warning/10 text-warning': sync.status === 'partial'
+                          'bg-destructive/10 text-destructive-emphasis': sync.status === 'error',
+                          'bg-warning/10 text-warning-emphasis': sync.status === 'partial'
                         }"
                         x-text="sync.status"></span>
                 </div>

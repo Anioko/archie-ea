@@ -411,18 +411,13 @@ def api_list_instances():
             query.order_by(EAWorkflowInstance.started_at.desc()).limit(limit).all()
         )
 
-        # workflow_code lives on the definition, and the step column is
-        # current_step_id — i.workflow_code / i.current_step raised
-        # AttributeError on the first real row (an empty table masked it).
         return jsonify(
             {
                 "success": True,
                 "instances": [
                     {
                         "id": i.id,
-                        "workflow_code": i.definition.workflow_code
-                        if i.definition
-                        else None,
+                        "workflow_code": i.definition.workflow_code if i.definition else None,
                         "status": i.status,
                         "started_at": i.started_at.isoformat()
                         if i.started_at

@@ -1,7 +1,7 @@
 """Stakeholder Map — Power/Interest Grid routes."""
 import logging
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, render_template, request
 
 from app import db
 from app.models.solution_stakeholder import SolutionStakeholder, SolutionStakeholderMapping
@@ -87,6 +87,7 @@ def search_people():
 
     # Search Users
     users = User.query.filter(
+        User.organization_id == g.current_org_id,
         db.or_(
             User.first_name.ilike(f"%{q}%"),
             User.last_name.ilike(f"%{q}%"),
@@ -117,13 +118,21 @@ def create_stakeholder():
     business_actor_id = data.get("business_actor_id")
     user_id = data.get("user_id")
 
+    try:
+        influence_level = int(data.get("influence_level", 3))
+        interest_level = int(data.get("interest_level", 3))
+        business_actor_id = int(business_actor_id) if business_actor_id else None
+        user_id = int(user_id) if user_id else None
+    except (ValueError, TypeError):
+        return jsonify({"error": "influence_level, interest_level, business_actor_id and user_id must be integers"}), 400
+
     s = SolutionStakeholder(
         name=data.get("name", "New Stakeholder"),
         description=data.get("description", ""),
-        influence_level=int(data.get("influence_level", 3)),
-        interest_level=int(data.get("interest_level", 3)),
-        business_actor_id=int(business_actor_id) if business_actor_id else None,
-        user_id=int(user_id) if user_id else None,
+        influence_level=influence_level,
+        interest_level=interest_level,
+        business_actor_id=business_actor_id,
+        user_id=user_id,
     )
     try:
         s.stakeholder_type = StakeholderType(data.get("stakeholder_type", "individual"))
@@ -140,9 +149,14 @@ def create_stakeholder():
     # Link to solution if provided
     solution_id = data.get("solution_id")
     if solution_id:
+        try:
+            solution_id = int(solution_id)
+        except (ValueError, TypeError):
+            db.session.rollback()
+            return jsonify({"error": "solution_id must be an integer"}), 400
         mapping = SolutionStakeholderMapping(
             stakeholder_id=s.id,
-            solution_id=int(solution_id),
+            solution_id=solution_id,
         )
         db.session.add(mapping)
 
@@ -157,10 +171,13 @@ def update_stakeholder(stakeholder_id):
     s = SolutionStakeholder.query.get_or_404(stakeholder_id)
     data = request.get_json(force=True) or {}
 
-    if "influence_level" in data:
-        s.influence_level = max(1, min(5, int(data["influence_level"])))
-    if "interest_level" in data:
-        s.interest_level = max(1, min(5, int(data["interest_level"])))
+    try:
+        if "influence_level" in data:
+            s.influence_level = max(1, min(5, int(data["influence_level"])))
+        if "interest_level" in data:
+            s.interest_level = max(1, min(5, int(data["interest_level"])))
+    except (ValueError, TypeError):
+        return jsonify({"error": "influence_level and interest_level must be integers"}), 400
     if "attitude" in data:
         from app.models.solution_stakeholder import StakeholderAttitude
         try:

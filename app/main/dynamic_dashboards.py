@@ -278,7 +278,22 @@ def workflow_pipeline():
         all_applications = ApplicationComponent.query.limit(2000).all()
 
         # Get all mappings
-        mappings = ApplicationCapabilityMapping.query.limit(5000).all()
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would match zero
+        # rows and report every capability as a gap. Joining
+        # BusinessCapability lets do_orm_execute scope the join
+        # automatically. See e622d36 / rationalization_scoring_service.py.
+        mappings = (
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            ApplicationCapabilityMapping.query
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .limit(5000)
+            .all()
+        )
 
         # Analyze gaps
         capability_gaps = []

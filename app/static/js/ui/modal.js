@@ -777,6 +777,48 @@
     if (typeof global.openDrawer  === 'undefined') global.openDrawer  = openDrawer;
     if (typeof global.closeDrawer === 'undefined') global.closeDrawer = closeDrawer;
 
+    // Object shim (modal_manager.js compat): review_queue.js, solutions/detail.js,
+    // roadmap_builder, duplicate_detection, vendor_catalog.js and import_history.js all
+    // call window.modalManager.createModal({buttons:[{text,class,action,handler}]}) —
+    // the old API. Without this object every one of those actions throws a TypeError.
+    if (typeof global.modalManager === 'undefined') {
+        global.modalManager = {
+            createModal: function (opts) {
+                opts = opts || {};
+                const buttons = (opts.buttons || []).map(function (b) {
+                    let variant = b.variant;
+                    if (!variant) {
+                        const cls = b.class || '';
+                        if (/destructive|red-/.test(cls)) variant = 'destructive';
+                        else if (/bg-primary|emerald|green-|success/.test(cls)) variant = 'primary';
+                        else if (/border/.test(cls) && /bg-background|bg-white/.test(cls)) variant = 'outline';
+                        else variant = 'secondary';
+                    }
+                    return {
+                        label: b.label || b.text || 'OK',
+                        variant: variant,
+                        handler: b.handler,
+                        resolve: b.resolve,
+                        closeOnClick: b.closeOnClick
+                    };
+                });
+                return create({
+                    id: opts.id,
+                    title: opts.title,
+                    content: opts.content,
+                    size: opts.size,
+                    buttons: buttons,
+                    backdrop: opts.backdrop,
+                    keyboard: opts.keyboard
+                });
+            },
+            open: open,
+            close: close,
+            destroy: destroy,
+            isOpen: function (id) { return _registry[id] ? _registry[id].isOpen : false; }
+        };
+    }
+
     // Named convenience shims (modal_manager.js compat)
     global.openAddApplicationsModal  = function () { open('add-applications-modal'); };
     global.closeAddApplicationsModal = function () { close('add-applications-modal'); };

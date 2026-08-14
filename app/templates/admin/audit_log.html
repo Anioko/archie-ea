@@ -115,7 +115,7 @@
                         <td class="px-4 py-3">
                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
                                 {% if entry.action == 'create' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-                                {% elif entry.action == 'delete' %}bg-destructive/10 text-destructive border border-destructive/30
+                                {% elif entry.action == 'delete' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                                 {% elif entry.action == 'update' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
                                 {% elif entry.action == 'login' %}bg-info/10 text-primary border border-info/30
                                 {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
@@ -137,7 +137,7 @@
                             {% if entry.status == 'success' %}
                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">success</span>
                             {% else %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">{{ entry.status }}</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">{{ entry.status }}</span>
                             {% endif %}
                         </td>
                     </tr>

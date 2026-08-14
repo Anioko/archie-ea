@@ -40,10 +40,13 @@
         {% block header %}{% endblock %}
 
         <!-- Main Content Area -->
-        <main id="main-content" 
+        <main id="main-content"
               class="flex-1 overflow-x-hidden overflow-y-auto bg-background"
               role="main">
-            {% include 'partials/_flashes.html' %}
+            {# Flash messages surface as toasts only (components/toast-container.html,
+               included below) — this used to also render partials/_flashes.html as an
+               inline banner, which duplicated every flash (mirrors the admin_base.html
+               fix in shell-overhaul Wave 1, Task 4). #}
             {% block content %}{% endblock %}
         </main>
     </div>

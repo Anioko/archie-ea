@@ -141,7 +141,7 @@
                     <td class="px-4 py-3">
                         {% if entity.data_classification %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
-                            {% if entity.data_classification == 'restricted' %}bg-destructive/10 text-destructive border border-destructive/30
+                            {% if entity.data_classification == 'restricted' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                             {% elif entity.data_classification == 'confidential' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
                             {% elif entity.data_classification == 'internal' %}bg-primary/10 text-primary border border-primary/30
                             {% else %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30{% endif %}">
@@ -153,7 +153,7 @@
                     </td>
                     <td class="px-4 py-3">
                         {% if entity.contains_pii %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">
                             PII
                         </span>
                         {% else %}

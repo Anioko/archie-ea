@@ -717,7 +717,7 @@
                                         <div class="flex items-center justify-between p-3 rounded-lg bg-muted">
                                             <div class="flex items-center gap-3">
                                                 <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold"
-                                                      :class="idx === 0 ? 'bg-success/10 text-success' : 'bg-background text-foreground'"
+                                                      :class="idx === 0 ? 'bg-success/10 text-success-emphasis' : 'bg-background text-foreground'"
                                                       x-text="'#' + (idx + 1)"></span>
                                                 <span class="font-medium" x-text="sr.option_type"></span>
                                             </div>
@@ -776,7 +776,7 @@
                     </p>
                 </div>
                 <template x-if="!hasProblemDefinition">
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/5 border border-warning/20 text-warning text-sm">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/5 border border-warning/20 text-warning-emphasis text-sm">
                         <i data-lucide="alert-triangle" class="h-4 w-4" aria-hidden="true"></i>
                         Problem definition required
                     </span>
@@ -902,7 +902,7 @@
                                 <div class="flex items-start justify-between mb-2">
                                     <h4 class="font-semibold text-sm" x-text="pattern.name"></h4>
                                     <span class="text-xs font-bold px-2 py-0.5 rounded"
-                                          :class="pattern.is_match ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'"
+                                          :class="pattern.is_match ? 'bg-success/10 text-success-emphasis' : 'bg-muted text-muted-foreground'"
                                           x-text="(pattern.confidence * 100).toFixed(0) + '% match'"></span>
                                 </div>
                                 <p class="text-xs text-muted-foreground mb-3" x-text="pattern.description"></p>
@@ -918,7 +918,7 @@
                                 <template x-if="pattern.matched_triggers.length > 0">
                                     <div class="flex flex-wrap gap-1 mt-2">
                                         <template x-for="trigger in pattern.matched_triggers" :key="trigger">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-success/10 text-success"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-success/10 text-success-emphasis"
                                                   x-text="trigger"></span>
                                         </template>
                                     </div>
@@ -1002,9 +1002,9 @@
                                                 <div class="text-xs text-muted-foreground mt-1" x-text="req.description"></div>
                                             </div>
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0"
-                                                  :class="req.priority === 'critical' ? 'bg-destructive/10 text-destructive' :
-                                                           req.priority === 'high' ? 'bg-warning/10 text-warning' :
-                                                           req.priority === 'medium' ? 'bg-warning/10 text-warning' :
+                                                  :class="req.priority === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' :
+                                                           req.priority === 'high' ? 'bg-warning/10 text-warning-emphasis' :
+                                                           req.priority === 'medium' ? 'bg-warning/10 text-warning-emphasis' :
                                                            'bg-muted text-muted-foreground'"
                                                   x-text="req.priority"></span>
                                         </div>
@@ -1105,9 +1105,9 @@
                                             </div>
                                             <div class="flex items-center gap-2 shrink-0">
                                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive' :
-                                                               item.priority === 'high' ? 'bg-warning/10 text-warning' :
-                                                               item.priority === 'medium' ? 'bg-warning/10 text-warning' :
+                                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' :
+                                                               item.priority === 'high' ? 'bg-warning/10 text-warning-emphasis' :
+                                                               item.priority === 'medium' ? 'bg-warning/10 text-warning-emphasis' :
                                                                'bg-muted text-muted-foreground'"
                                                       x-text="item.priority"></span>
                                                 <span class="text-xs text-muted-foreground tabular-nums"

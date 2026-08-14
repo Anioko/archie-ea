@@ -46,8 +46,11 @@
             <i data-lucide="search" class="h-5 w-5"></i>
         </button>
 
-        <!-- LLM Selector -->
-        {% with selector_id='llm-selector-navbar' %}{% include 'components/llm_selector.html' %}{% endwith %}
+        {# LLM/model choice lives in AI Chat's own Settings (app/templates/ai_chat/index.html
+           #model-selector), not in the global header — every page showed a provider
+           selector unrelated to what that page displays, and its options ("OpenAI (GPT-4,
+           GPT-3.5)", "DeepSeek", ...) reflected the same /api/v1/llm/available registry AI
+           Chat already reads, so removing it here loses no capability. #}
 
         {% if resolved_page_guide_context.enabled %}
         <button id="page-guide-trigger"
@@ -183,7 +186,7 @@
                     <div class="h-px bg-border my-1" role="separator"></div>
                     <a href="{{ url_for('account.logout') }}"
                        role="menuitem"
-                       class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+                       class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                         <i data-lucide="log-out" class="h-4 w-4"></i>
                         Log out
                     </a>

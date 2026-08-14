@@ -20,7 +20,7 @@
                 {% for category, message in messages %}
                     <div class="rounded-md border p-4
                         {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground
-                        {% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive
+                        {% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis
                         {% else %}bg-muted border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>

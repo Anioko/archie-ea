@@ -1,7 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
-{% from 'components/metrics_card.html' import metrics_card %}
 {% from 'components/skeleton.html' import skeleton_table %}
 {% from 'components/empty_state.html' import empty_state %}
+{% from 'macros/page_shell.html' import page_shell, stat_card %}
 
 {% block title %}Applications{% endblock %}
 
@@ -39,23 +39,23 @@
   '2.2 tactical':      {'label': '2.2 TACTICAL',      'cls': 'bg-primary/10 text-primary'},
   '1. undetermined':   {'label': '1. UNDETERMINED',   'cls': 'bg-muted text-muted-foreground'},
   '3. sunset':         {'label': '3. SUNSET',         'cls': 'bg-warning/10 text-warning'},
-  '4.1 decom decided': {'label': '4.1 DECOM DECIDED', 'cls': 'bg-destructive/10 text-destructive'},
-  '4.2 decom planned': {'label': '4.2 DECOM PLANNED', 'cls': 'bg-destructive/10 text-destructive'},
-  '4.3 read-only':     {'label': '4.3 READ-ONLY',     'cls': 'bg-destructive/10 text-destructive'},
-  '4.4 stopped':       {'label': '4.4 STOPPED',       'cls': 'bg-destructive/10 text-destructive'},
-  '5. decommissioned': {'label': '5. DECOMMISSIONED', 'cls': 'bg-destructive/10 text-destructive'},
+  '4.1 decom decided': {'label': '4.1 DECOM DECIDED', 'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  '4.2 decom planned': {'label': '4.2 DECOM PLANNED', 'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  '4.3 read-only':     {'label': '4.3 READ-ONLY',     'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  '4.4 stopped':       {'label': '4.4 STOPPED',       'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  '5. decommissioned': {'label': '5. DECOMMISSIONED', 'cls': 'bg-destructive/10 text-destructive-emphasis'},
   'development':       {'label': 'Development',       'cls': 'bg-primary/10 text-primary'},
   'testing':           {'label': 'Testing',            'cls': 'bg-primary/10 text-primary'},
   'staging':           {'label': 'Staging',            'cls': 'bg-primary/10 text-primary'},
   'in_process':        {'label': 'In Process',         'cls': 'bg-primary/10 text-primary'},
   'planned':           {'label': 'Planned',            'cls': 'bg-muted text-muted-foreground'},
   'not_started':       {'label': 'Not Started',        'cls': 'bg-muted text-muted-foreground'},
-  'retired':           {'label': 'Retired',            'cls': 'bg-destructive/10 text-destructive'},
-  'deprecated':        {'label': 'Deprecated',         'cls': 'bg-destructive/10 text-destructive'},
-  'decommissioned':    {'label': 'Decommissioned',     'cls': 'bg-destructive/10 text-destructive'}
+  'retired':           {'label': 'Retired',            'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  'deprecated':        {'label': 'Deprecated',         'cls': 'bg-destructive/10 text-destructive-emphasis'},
+  'decommissioned':    {'label': 'Decommissioned',     'cls': 'bg-destructive/10 text-destructive-emphasis'}
 } -%}
 {%- set CRIT_MAP = {
-  'critical': 'bg-destructive/10 text-destructive',
+  'critical': 'bg-destructive/10 text-destructive-emphasis',
   'high':     'bg-warning/10 text-warning',
   'medium':   'bg-warning/10 text-warning',
   'low':      'bg-muted text-muted-foreground'
@@ -68,54 +68,55 @@
   class="space-y-6"
 >
 
-  {# ─ PAGE HEADER ─ #}
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-    <div>
-      <nav aria-label="Breadcrumb" class="mb-1">
-        <ol class="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <li><a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a></li>
-          <li aria-hidden="true"><i data-lucide="chevron-right" class="h-3 w-3 inline" aria-hidden="true"></i></li>
-          <li class="text-foreground font-medium" aria-current="page">Applications</li>
-        </ol>
-      </nav>
-      <h1 class="text-2xl font-bold tracking-tight text-foreground">Applications</h1>
-      <p class="text-sm text-muted-foreground mt-0.5">Manage your application portfolio across the enterprise.</p>
-    </div>
-    <div class="flex flex-wrap items-center gap-2 shrink-0">
+  {# ─ PAGE HEADER — screen system: one primary action, the rest secondary
+       and wrapping so nothing clips at 1024px (was: six competing buttons,
+       "Vendor Match" clipped off the right edge). ─ #}
+  {% macro _apps_page_actions() %}
+    <div class="flex flex-wrap items-center gap-2" data-testid="page-actions">
       <button type="button" data-testid="btn-import" data-modal-open="application-import-modal"
-        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Action">
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Import applications">
         <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>Import
       </button>
       <button type="button" data-testid="btn-export" @click="exportCSV()"
-        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Export">
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Export applications">
         <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>Export
       </button>
+      {% if 'consolidation_list.dashboard' in flask.current_app.view_functions %}
       <a href="{{ url_for('consolidation_list.dashboard') }}" data-testid="btn-consolidation"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layers-2" class="h-4 w-4" aria-hidden="true"></i>Consolidation
       </a>
+      {% endif %}
+      {% if 'solution_design.list_solutions' in flask.current_app.view_functions %}
       <a href="{{ url_for('solution_design.list_solutions') }}" data-testid="btn-design-solution"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="star" class="h-4 w-4" aria-hidden="true"></i>Design Solution
       </a>
+      {% endif %}
       <button type="button" data-testid="btn-match-vendors" @click="openUnifiedMappingModalDiscovery({context:'vendor'})"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Match vendors">
         <i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i>Vendor Match
       </button>
       <button type="button" data-testid="btn-add-application" data-modal-open="modal-create"
-        class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Action">
+        class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Add application">
         <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Add Application
       </button>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(
+       title="Applications",
+       subtitle="Manage your application portfolio across the enterprise.",
+       breadcrumb=[("Dashboard", url_for('main.index')), ("Applications", None)],
+       actions_caller=_apps_page_actions
+  ) }}
 
   {# ─ STATS CARDS ─ #}
   <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" role="region" aria-label="Portfolio statistics">
-    {{ metrics_card(title='Active Portfolio', value=stats.active_portfolio|dash, icon='layout-grid', description='All non-decommissioned applications', class='min-h-[120px]') }}
-    {{ metrics_card(title='Strategic', value=stats.strategic|dash, icon='check-circle', value_class='text-success', description='Strategic investments', class='min-h-[120px]') }}
-    {{ metrics_card(title='Tactical', value=stats.tactical|dash, icon='code-2', value_class='text-primary', description='Tactical / maintain', class='min-h-[120px]') }}
-    {{ metrics_card(title='Sunset/Decom Pipeline', value=stats.sunset_decom_pipeline|dash, icon='archive', value_class='text-warning', description='Sunset or decommission planned', class='min-h-[120px]') }}
-    {{ metrics_card(title='Decommissioned', value=stats.decommissioned|dash, icon='alert-triangle', value_class='text-destructive', description='Retired from the estate', class='min-h-[120px]') }}
+    {{ stat_card(label='Active Portfolio', value=stats.active_portfolio, hint='All non-decommissioned applications', variant='hero') }}
+    {{ stat_card(label='Strategic', value=stats.strategic, hint='Strategic investments') }}
+    {{ stat_card(label='Tactical', value=stats.tactical, hint='Tactical / maintain') }}
+    {{ stat_card(label='Sunset/Decom Pipeline', value=stats.sunset_decom_pipeline, hint='Sunset or decommission planned') }}
+    {{ stat_card(label='Decommissioned', value=stats.decommissioned, hint='Retired from the estate') }}
   </div>
 
   {# ─ DATA QUALITY BANNER ─ #}
@@ -161,7 +162,7 @@
           <a href="/archimate/composer" class="text-[10px] text-primary hover:underline">Full Composer →</a>
         </div>
         {# A failed load must look different from a genuinely empty viewpoint. #}
-        <div x-show="appDiagramError" x-cloak class="px-4 py-3 text-sm text-destructive" x-text="appDiagramError"></div>
+        <div x-show="appDiagramError" x-cloak class="px-4 py-3 text-sm text-destructive-emphasis" x-text="appDiagramError"></div>
         <div id="app-cooperation-diagram" class="w-full" style="min-height:300px;"></div>
       </div>
     </div>
@@ -294,7 +295,7 @@
         </button>
         {% if current_user.is_admin() or current_user.role_archetype == 'architect' %}
         <button type="button" data-testid="bulk-btn-delete" @click="confirmBulkDelete()"
-          class="h-8 px-3 rounded-md border border-destructive/30 bg-destructive/5 text-destructive text-xs font-medium hover:bg-destructive/10 transition-colors inline-flex items-center gap-1.5" aria-label="Delete">
+          class="h-8 px-3 rounded-md border border-destructive/30 bg-destructive/5 text-destructive-emphasis text-xs font-medium hover:bg-destructive/10 transition-colors inline-flex items-center gap-1.5" aria-label="Delete">
           <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>Delete
         </button>
         {% endif %}
@@ -333,7 +334,7 @@
             <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-20">ID</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[180px]">Application</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[120px]">Type</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-10" title="ArchiMate linked">AM</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-10" title="ArchiMate: whether this application has a linked ArchiMate element" aria-label="ArchiMate link status">AM</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[160px]">Lifecycle Status</th>
             {# Hidden until data enrichment — Criticality, Business Owner, Vendor #}
             {#
@@ -367,9 +368,9 @@
             <td class="px-4 py-3"><span class="text-sm text-muted-foreground">{{ app.application_category or '—' }}</span></td>
             <td class="px-4 py-3 text-center">
               {% if app.archimate_element_id %}
-              <span class="inline-block h-2.5 w-2.5 rounded-full bg-primary" title="ArchiMate linked"></span>
+              <span class="inline-block h-2.5 w-2.5 rounded-full bg-primary" title="ArchiMate linked" aria-label="Linked to an ArchiMate element"></span>
               {% else %}
-              <span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/30" title="No ArchiMate link"></span>
+              <span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/30" title="No ArchiMate link" aria-label="Not linked to an ArchiMate element"></span>
               {% endif %}
             </td>
             <td class="px-4 py-3">
@@ -439,7 +440,7 @@
                   @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete {{ app.name | e }}? This cannot be undone.')">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" data-testid="btn-delete-{{ app.id }}"
-                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-destructive-emphasis hover:bg-destructive/10 transition-colors"
                     aria-label="Delete {{ app.name }}">
                     <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
                   </button>
@@ -675,7 +676,7 @@
               class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"></textarea>
           </div>
         </div>
-        <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg" role="alert"></div>
+        <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg" role="alert"></div>
         <div class="flex justify-end gap-3 pt-2 border-t">
           <!-- inline-event-ok --><button type="button" @click="Platform.modal.close('modal-create')"
             class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>

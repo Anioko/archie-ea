@@ -1300,6 +1300,19 @@ def _register_persona_modules(app):
     except Exception as e:  # noqa: BLE001
         logger.error("[Blueprint] procurement FAILED to register: %s", e)
 
+    # All-modules directory (shell-overhaul Wave 1, Task 3 fix round). Not
+    # role-gated — every authenticated user can see the full surface list,
+    # same as the sidebar's own view_functions guard already lets a curious
+    # user reach anything by URL; this just makes that discoverable.
+    try:
+        from app.modules.modules_directory import modules_directory_bp
+        from app.modules.modules_directory import routes as _modules_dir_routes  # noqa: F401
+
+        app.register_blueprint(modules_directory_bp)
+        logger.info("[Blueprint] modules_directory registered (/modules)")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[Blueprint] modules_directory FAILED to register: %s", e)
+
 
 # ---------------------------------------------------------------------------
 # Misc unconditional

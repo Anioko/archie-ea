@@ -58,7 +58,7 @@
                 </span>
                 {% endif %}
                 {% if element.status %}
-                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {% if element.status == 'Active' %}bg-emerald-500/5 text-emerald-700 border-emerald-200{% elif element.status in ('Deprecated','Retired') %}bg-destructive/5 text-destructive border-destructive/20{% else %}bg-muted text-foreground border-border{% endif %}">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {% if element.status == 'Active' %}bg-emerald-500/5 text-emerald-700 border-emerald-200{% elif element.status in ('Deprecated','Retired') %}bg-destructive/5 text-destructive-emphasis border-destructive/20{% else %}bg-muted text-foreground border-border{% endif %}">
                     {{ element.status }}
                 </span>
                 {% endif %}

@@ -130,6 +130,13 @@ class User(UserMixin, db.Model):
     primary_concern = db.Column(db.Text)
     primary_frameworks = db.Column(db.Text)  # JSON array as string
     onboarding_completed_at = db.Column(db.DateTime)
+    # Dashboard "Welcome to A.R.C.H.I.E." one-line banner, dismissed once per
+    # user, forever (shell-wave-1 Task 5). Deliberately separate from
+    # onboarding_completed_at: that column is set by /dashboard/api/
+    # onboarding-complete, which also rewrites enterprise_role -- reusing it for
+    # a plain dismiss click would carry a side effect the UI never asks for.
+    # Nullable, no backfill, tolerated when NULL (reconcile-schema adds it).
+    welcome_banner_dismissed_at = db.Column(db.DateTime, nullable=True)
     generation_method = db.Column(db.String(50))  # text, upload, template
     first_architecture_id = db.Column(db.Integer)
 

@@ -514,6 +514,7 @@ def _build_relationship_maps(result, solution_id=None):
     from app.models.motivation import Goal
     from app.models.requirements import Requirement
     from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.business_capabilities import BusinessCapability
     from app.models.relationship_tables import ApplicationRequirementMapping
 
     maps = result["relationship_maps"]
@@ -567,10 +568,25 @@ def _build_relationship_maps(result, solution_id=None):
     # Requirement -> Capabilities (TRC-024): via ApplicationRequirementMapping (req -> app)
     # and ApplicationCapabilityMapping (app -> capability). Aggregate req_id -> [capability_id].
     try:
-        cap_mappings = ApplicationCapabilityMapping.query.filter(
-            ApplicationCapabilityMapping.business_capability_id.isnot(None),
-            ApplicationCapabilityMapping.application_component_id.isnot(None),
-        ).all()
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would silently
+        # empty this traceability chain. Joining BusinessCapability lets
+        # do_orm_execute scope the join automatically. See e622d36 /
+        # rationalization_scoring_service.py.
+        cap_mappings = (
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            ApplicationCapabilityMapping.query
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .filter(
+                ApplicationCapabilityMapping.business_capability_id.isnot(None),
+                ApplicationCapabilityMapping.application_component_id.isnot(None),
+            )
+            .all()
+        )
         app_to_caps = {}
         for row in cap_mappings:
             app_id = int(row.application_component_id)
@@ -598,9 +614,18 @@ def _build_relationship_maps(result, solution_id=None):
         maps["requirement_to_capabilities"] = {}
 
     # Capability -> Applications (via application_capability_mapping)
+    # tenant-scoping-ok: scoped via the TenantMixin FK parent
+    # BusinessCapability in the join below, not ACM.organization_id -- see
+    # the requirement_to_capabilities block above for why.
     _safe_map(
         "capability_to_apps",
-        lambda: ApplicationCapabilityMapping.query.filter(
+        # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+        lambda: ApplicationCapabilityMapping.query
+        .join(
+            BusinessCapability,
+            ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+        )
+        .filter(
             ApplicationCapabilityMapping.business_capability_id.isnot(None),
             ApplicationCapabilityMapping.application_component_id.isnot(None),
         ).all(),

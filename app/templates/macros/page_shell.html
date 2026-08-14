@@ -1,0 +1,177 @@
+{# Screen-system macros — page_shell / empty_state / stat_card / section_card.
+
+   These are the ONLY sanctioned page header, empty state, stat card, and
+   section container for screens rebuilt from 2026-08-12 onward
+   (docs/superpowers/plans/2026-08-12-shell-wave-1.md, Task 1). Signatures are
+   consumed verbatim by later tasks in that plan — do not change them without
+   updating every caller.
+
+   Reviewed before writing this file: `macros/page_macros.html` (only holds
+   `render_inline_editor`, unrelated), `macros/nav_macros_shadcn.html`
+   (`pill_tabs` renders a full tab bar off a differently-shaped `tabs` dict
+   keyed by id, not this macro's `(label, href, active_bool)` tuples — kept
+   separate rather than reshaped, since callers of `pill_tabs` still need its
+   existing shape), `components/page_header.html` (`page_header` — a close
+   analogue: dict-based `breadcrumbs`/`actions`, no `tabs` or `actions_caller`
+   slot), `components/empty_state.html` (`empty_state` — dict-style kwargs,
+   `title`/`description` instead of `headline`/`body`), `macros/shadcn_compat.html`
+   (`metric_card` — mandatory `delta`, no `None`-safe `|dash` value, no
+   `variant`), and `components/card.html` (`card`/`card_header`/`card_title` —
+   composable but needs three macro calls per card and has no single-call
+   `title` + `actions_caller` + body-via-`caller()` shape). None match the
+   exact interfaces this plan's later tasks require, so new macros are
+   introduced here rather than duplicating an existing job under a new name.
+   Existing pages keep using the older macros unless a later task migrates them.
+#}
+
+{% macro page_shell(title, subtitle=None, breadcrumb=[], actions_caller=None, tabs=[]) %}
+<div class="mb-6">
+    {% if breadcrumb %}
+    <nav aria-label="Breadcrumb" class="mb-3">
+        <ol class="flex items-center gap-1.5 text-sm text-muted-foreground">
+            {% for label, href in breadcrumb %}
+            <li class="flex items-center gap-1.5"{% if loop.last %} aria-current="page"{% endif %}>
+                {% if loop.last %}
+                    <span class="text-foreground font-medium">{{ label }}</span>
+                {% elif href %}
+                    <a href="{{ href }}" class="hover:text-foreground transition-colors">{{ label }}</a>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i>
+                {% else %}
+                    <span>{{ label }}</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+    </nav>
+    {% endif %}
+
+    {# Below xl (1280px) the actions block drops to its own full-width row and
+       wraps via flex-wrap — sharing the title's row only when there's room
+       (xl+) avoids cramping the title/subtitle and clipping action buttons at
+       narrower viewports (confirmed at 1024px with the sidebar open). At
+       1280+ this renders identically to the previous side-by-side layout. #}
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            {% if subtitle %}
+            <p class="mt-1 text-sm text-muted-foreground">{{ subtitle }}</p>
+            {% endif %}
+        </div>
+        {% if actions_caller %}
+        <div class="flex flex-wrap items-center gap-2 xl:shrink-0">
+            {{ actions_caller() }}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if tabs %}
+    <ul class="mt-4 flex items-center gap-1 border-b border-border text-sm">
+        {% for label, href, active in tabs %}
+        <li>
+            <a href="{{ href }}"
+               class="inline-flex items-center px-3 py-2 border-b-2 -mb-px transition-colors {% if active %}border-primary text-foreground font-medium{% else %}border-transparent text-muted-foreground hover:text-foreground{% endif %}"
+               {% if active %}aria-current="page"{% endif %}>
+                {{ label }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro empty_state(icon, headline, body, cta_label=None, cta_href=None) %}
+<div class="text-center py-12 px-4" role="status">
+    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+        <i data-lucide="{{ icon }}" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+    </div>
+
+    <h3 class="text-base font-semibold text-foreground">{{ headline }}</h3>
+
+    {% if body %}
+    <p class="mt-2 text-sm text-muted-foreground max-w-[60ch] mx-auto">{{ body }}</p>
+    {% endif %}
+
+    {% if cta_label and cta_href %}
+    <div class="mt-6">
+        <a href="{{ cta_href }}"
+           class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            {{ cta_label }}
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro stat_card(label, value, hint=None, variant='standard', href=None, icon=None, icon_bg='bg-primary', active=False) %}
+{# href/icon/active are optional — a plain stat_card() call with none of them
+   renders exactly the static card as before (Task 1's contract, pinned by
+   tests/test_page_shell_macros.py). Passing href turns it into a clickable
+   filter card (Task 4: the Solutions triage cards — Needs Setup / In Design
+   / Needs Attention / Ready for Review — need to stay clickable filters and
+   show which one is selected, which a bare div can't do). #}
+{% set value_classes = {
+    'hero': 'text-3xl',
+    'standard': 'text-2xl',
+    'compact': 'text-lg'
+} %}
+{% set is_warning = variant == 'warning' %}
+{# 'warning' is a card-affordance variant, orthogonal to the hero/standard/compact
+   text-size variants — it reuses 'standard' sizing but swaps the card's border/bg/text
+   tokens to the DESIGN.md warning tint (bg-warning/10, border-warning/40,
+   text-warning-emphasis — see DESIGN.md's "Warning is the trap" note on why
+   text-warning-foreground is unsafe on this tint). Additive only: a caller that never
+   passes variant='warning' renders byte-identical to before. #}
+{% set tag = 'a' if href else 'div' %}
+{% if href %}
+    {% set state_classes = ('border-warning ring-2 ring-warning/20 bg-warning/10' if active else 'border-warning/40 bg-warning/10 hover:border-warning/60') if is_warning else ('border-primary ring-2 ring-primary/20 bg-primary/5' if active else 'border-input bg-background hover:border-primary/50') %}
+    {% set card_classes = 'rounded-xl border-2 ' ~ state_classes ~ ' cursor-pointer hover:shadow-md transition-all duration-200 p-5 block no-underline text-inherit' %}
+{% else %}
+    {% set card_classes = 'rounded-xl border border-warning/40 bg-warning/10 text-card-foreground p-6' if is_warning else 'rounded-xl border border-border bg-card text-card-foreground p-6' %}
+{% endif %}
+{% set hint_classes = 'text-warning-emphasis' if is_warning else 'text-muted-foreground' %}
+{% set value_size = value_classes['standard'] if is_warning else value_classes[variant] %}
+<{{ tag }}{% if href %} href="{{ href }}"{% endif %} class="{{ card_classes }}"{% if active %} aria-current="true"{% endif %}>
+    {% if icon %}
+    <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg {{ icon_bg }}">
+            <i data-lucide="{{ icon }}" class="h-5 w-5 text-primary-foreground"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-muted-foreground">{{ label }}</div>
+            <div class="mt-1 font-semibold text-foreground tabular-nums {{ value_size }}">{{ value|dash }}</div>
+            {% if hint %}
+            <div class="mt-1 text-xs {{ hint_classes }}">{{ hint }}</div>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="text-sm text-muted-foreground">{{ label }}</div>
+    <div class="mt-1 font-semibold text-foreground tabular-nums {{ value_size }}">{{ value|dash }}</div>
+    {% if hint %}
+    <div class="mt-1 text-xs {{ hint_classes }}">{{ hint }}</div>
+    {% endif %}
+    {% endif %}
+</{{ tag }}>
+{% endmacro %}
+
+{% macro section_card(title=None, actions_caller=None) %}
+<div class="rounded-xl border border-border bg-card text-card-foreground">
+    {% if title or actions_caller %}
+    <div class="flex items-center justify-between gap-4 p-6 pb-0">
+        {% if title %}
+        <h2 class="text-lg font-semibold text-foreground">{{ title }}</h2>
+        {% endif %}
+        {% if actions_caller %}
+        <div class="flex items-center gap-2 shrink-0">
+            {{ actions_caller() }}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    <div class="p-6">
+        {{ caller() }}
+    </div>
+</div>
+{% endmacro %}

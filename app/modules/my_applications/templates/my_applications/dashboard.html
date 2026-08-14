@@ -44,14 +44,14 @@
             </div>
             <div class="text-3xl font-bold text-amber-600">{{ health_summary.at_risk }}</div>
         </div>
-        <div class="bg-card border border-red-500/50 rounded-lg p-4">
+        <div class="bg-card border border-destructive/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
+                <div class="w-10 h-10 bg-destructive/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-destructive-emphasis"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Critical</div>
             </div>
-            <div class="text-3xl font-bold text-red-600">{{ health_summary.critical }}</div>
+            <div class="text-3xl font-bold text-destructive-emphasis">{{ health_summary.critical }}</div>
         </div>
     </div>
 
@@ -102,7 +102,7 @@
                 <div class="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
                         {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-600
-                        {% else %}bg-blue-100 text-blue-600{% endif %}">
+                        {% else %}bg-info/10 text-info-emphasis{% endif %}">
                         <i data-lucide="{% if impact.impact_type == 'sunset' %}sunset{% else %}calendar{% endif %}" class="w-4 h-4"></i>
                     </div>
                     <div>

@@ -39,7 +39,7 @@
   <div x-show="qualityBaselineWarnings.length > 0" x-cloak class="space-y-2">
     <template x-for="w in qualityBaselineWarnings" :key="w.message">
       <div class="flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
-        :class="w.severity === 'error' ? 'border-destructive/40 bg-destructive/5 text-destructive' : 'border-amber-500/30 bg-amber-500/5 text-amber-700'">
+        :class="w.severity === 'error' ? 'border-destructive/40 bg-destructive/5 text-destructive-emphasis' : 'border-amber-500/30 bg-amber-500/5 text-amber-700'">
         <i :data-lucide="w.severity === 'error' ? 'x-circle' : 'alert-triangle'" class="h-4 w-4 shrink-0 mt-0.5"></i>
         <span x-text="w.message"></span>
       </div>
@@ -58,9 +58,9 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('identity_access') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">1</span>
+            :class="qbDomainComplete('identity_access') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">1</span>
           <span>Identity &amp; Access</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'identity_access' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -104,9 +104,9 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('data_management') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">2</span>
+            :class="qbDomainComplete('data_management') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">2</span>
           <span>Data Management</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'data_management' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -156,9 +156,9 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('security_controls') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">3</span>
+            :class="qbDomainComplete('security_controls') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">3</span>
           <span>Security Controls</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'security_controls' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -209,9 +209,9 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('integration') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">4</span>
+            :class="qbDomainComplete('integration') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">4</span>
           <span>Integration</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'integration' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -255,9 +255,9 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('observability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">5</span>
+            :class="qbDomainComplete('observability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">5</span>
           <span>Observability</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'observability' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>
@@ -294,9 +294,9 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('reliability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">6</span>
+            :class="qbDomainComplete('reliability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">6</span>
           <span>Reliability</span>
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
         <i :data-lucide="qbOpenDomain === 'reliability' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
       </button>

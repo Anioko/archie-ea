@@ -109,7 +109,7 @@ class ARBAuditAction(str, Enum):
     DECISION_REOPEN = "decision_reopen"
 
 
-class ARBAuditLog(db.Model):
+class ARBAuditLog(TenantMixin, db.Model):
     """Lightweight audit log model for ARB actions.
 
     This is a compact compatibility shim used by services that expect
@@ -120,6 +120,8 @@ class ARBAuditLog(db.Model):
     __tablename__ = "arb_audit_logs"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     entity_type = db.Column(db.String(100), nullable=False)
     entity_id = db.Column(db.Integer, nullable=False)
     entity_reference = db.Column(db.String(255))
@@ -136,12 +138,14 @@ class ARBAuditLog(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class ARBException(db.Model):
+class ARBException(TenantMixin, db.Model):
     """Exception request model for architecture governance standards."""
 
     __tablename__ = "arb_exceptions"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     exception_number = db.Column(db.String(50), unique=True)
     standard_id = db.Column(db.Integer)
     exception_type = db.Column(db.String(100))
@@ -208,12 +212,15 @@ DEFAULT_WORKFLOW_STAGES = [
 ]
 
 
+# Global reference data (shared across tenants) — intentionally NOT TenantMixin; org column unused. See wave-4 Task-2 review.
 class ARBWorkflowStage(db.Model):
     """Lightweight workflow stage model for ARB processes."""
 
     __tablename__ = "arb_workflow_stages"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Global reference data (shared across tenants) — intentionally NOT TenantMixin; org column unused. See wave-4 Task-2 review.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     code = db.Column(db.String(50), unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)
     order = db.Column(db.Integer, default=0)
@@ -359,12 +366,14 @@ class ArchitectureReviewBoard(TenantMixin, db.Model, OptimisticLockMixin):
         }
 
 
-class ARBBoardMember(db.Model):
+class ARBBoardMember(TenantMixin, db.Model):
     """Board members for an ARB session."""
 
     __tablename__ = "arb_board_members"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     arb_session_id = db.Column(
         db.Integer, db.ForeignKey("architecture_review_boards.id"), nullable=False
     )
@@ -389,7 +398,7 @@ class ARBBoardMember(db.Model):
     __table_args__ = (db.UniqueConstraint("arb_session_id", "user_id", name="uix_arb_member"),)
 
 
-class ARBReviewItem(db.Model, OptimisticLockMixin):
+class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
     """
     Individual item submitted for ARB review.
 
@@ -399,6 +408,8 @@ class ARBReviewItem(db.Model, OptimisticLockMixin):
     __tablename__ = "arb_review_items"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     review_number = db.Column(db.String(50), unique=True, nullable=False)  # REV - 2026 - 001
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
@@ -599,12 +610,14 @@ class ARBReviewItem(db.Model, OptimisticLockMixin):
         return base_dict
 
 
-class ARBReviewComment(db.Model):
+class ARBReviewComment(TenantMixin, db.Model):
     """Comments and discussion on ARB review items."""
 
     __tablename__ = "arb_review_comments"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     review_item_id = db.Column(db.Integer, db.ForeignKey("arb_review_items.id"), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
@@ -632,12 +645,14 @@ class ARBReviewComment(db.Model):
     replies = db.relationship("ARBReviewComment", backref=db.backref("parent", remote_side=[id]))
 
 
-class ARBCapabilityImpact(db.Model):
+class ARBCapabilityImpact(TenantMixin, db.Model):
     """Links ARB review items to impacted capabilities."""
 
     __tablename__ = "arb_capability_impacts"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     review_item_id = db.Column(db.Integer, db.ForeignKey("arb_review_items.id"), nullable=False)
     capability_id = db.Column(db.Integer, db.ForeignKey("unified_capabilities.id"), nullable=False)
 
@@ -664,6 +679,7 @@ class ARBCapabilityImpact(db.Model):
     )
 
 
+# Global reference data (shared across tenants) — intentionally NOT TenantMixin; org column unused. See wave-4 Task-2 review.
 class ARBGovernanceStandard(db.Model):
     """
     Architecture governance standards and policies.
@@ -674,6 +690,8 @@ class ARBGovernanceStandard(db.Model):
     __tablename__ = "arb_governance_standards"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Global reference data (shared across tenants) — intentionally NOT TenantMixin; org column unused. See wave-4 Task-2 review.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     code = db.Column(db.String(50), unique=True, nullable=False)  # STD-SEC - 001
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
@@ -992,7 +1010,7 @@ if not _FAST_INIT:
 
 if not _FAST_INIT:
 
-    class ARBDocument(db.Model):
+    class ARBDocument(TenantMixin, db.Model):
         """File attachment for ARB change requests and review items.
 
         Provides a governance-trail document store. Each row represents one
@@ -1010,6 +1028,10 @@ if not _FAST_INIT:
         __table_args__ = {"extend_existing": True}
 
         id = db.Column(db.Integer, primary_key=True)
+        # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+        organization_id = db.Column(
+            db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True
+        )
 
         # Polymorphic parent — exactly one must be set.
         # change_request_id → architecture_change_requests (ArchitectureChangeRequest, Phase H form)

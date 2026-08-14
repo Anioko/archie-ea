@@ -69,7 +69,7 @@
                     <button @click="acceptSuggestion(s.id)" :disabled="processing" class="inline-flex items-center justify-center h-7 w-7 rounded-md bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50" title="Accept">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                     </button>
-                    <button @click="rejectSuggestion(s.id)" :disabled="processing" class="inline-flex items-center justify-center h-7 w-7 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-50" title="Reject">
+                    <button @click="rejectSuggestion(s.id)" :disabled="processing" class="inline-flex items-center justify-center h-7 w-7 rounded-md bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20 disabled:opacity-50" title="Reject">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>

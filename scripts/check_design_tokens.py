@@ -88,7 +88,13 @@ def scan_file(path: str) -> list[tuple[int, str, str]]:
 
 
 def default_paths() -> list[str]:
-    return sorted(glob.glob("app/templates/**/*.html", recursive=True))
+    # app/modules/*/templates are served exactly like app/templates and must be
+    # held to the same token rules — procurement's compliance dashboard shipped
+    # bg-red-500/bg-blue-500 for months because this scan didn't look there.
+    return sorted(
+        glob.glob("app/templates/**/*.html", recursive=True)
+        + glob.glob("app/modules/*/templates/**/*.html", recursive=True)
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

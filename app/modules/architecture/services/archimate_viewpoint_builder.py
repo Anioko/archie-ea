@@ -193,6 +193,7 @@ class ArchiMateViewpointBuilder:
         from app.models.application_capability import ApplicationCapabilityMapping
 
         capability_mappings = (
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             db.session.query(ApplicationCapabilityMapping, BusinessCapability)
             .join(
                 BusinessCapability,

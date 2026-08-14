@@ -148,7 +148,7 @@
             <div class="flex items-center gap-2 mb-1">
               <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30" x-text="entry.phase"></span>
               <span x-show="entry.approval_status" x-cloak
-                    :class="entry.approval_status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : entry.approval_status === 'rejected' ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'"
+                    :class="entry.approval_status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : entry.approval_status === 'rejected' ? 'bg-destructive/10 text-destructive-emphasis border-destructive/30' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'"
                     class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
                     x-text="entry.approval_status"></span>
             </div>
@@ -172,7 +172,7 @@
         x-transition:leave-end="opacity-0 translate-x-4"
         :class="{
           'border-emerald-500/30 bg-emerald-500/10 text-emerald-700': toast.type === 'success',
-          'border-destructive/30 bg-destructive/10 text-destructive': toast.type === 'error',
+          'border-destructive/30 bg-destructive/10 text-destructive-emphasis': toast.type === 'error',
           'border-amber-500/30 bg-amber-500/10 text-amber-700': toast.type === 'warning',
           'border-border bg-background text-foreground': toast.type === 'info',
         }"

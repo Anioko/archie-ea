@@ -10,7 +10,7 @@
     </div>
 
     <!-- Fetch Error Banner -->
-    <div x-show="fetchError" x-cloak class="bg-destructive/10 border border-destructive text-destructive rounded-lg px-4 py-3 mb-6 flex items-center gap-2">
+    <div x-show="fetchError" x-cloak class="bg-destructive/10 border border-destructive text-destructive-emphasis rounded-lg px-4 py-3 mb-6 flex items-center gap-2">
         <svg class="h-5 w-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
         </svg>
@@ -192,9 +192,9 @@
                                 <div class="flex items-center">
                                     <h3 class="font-medium text-foreground" x-text="violation.rule_name"></h3>
                                     <span :class="{
-                                        'bg-destructive/10 text-destructive': violation.severity === 'termination',
-                                        'bg-warning/10 text-warning': violation.severity === 'critical',
-                                        'bg-warning/10 text-warning': violation.severity === 'warning',
+                                        'bg-destructive/10 text-destructive-emphasis': violation.severity === 'termination',
+                                        'bg-warning/10 text-warning-emphasis': violation.severity === 'critical',
+                                        'bg-warning/10 text-warning-emphasis': violation.severity === 'warning',
                                         'bg-primary/10 text-primary': violation.severity === 'info'
                                     }" class="ml-2 px-2 py-1 text-xs font-medium rounded-full"><span class="sr-only">Severity: </span><span x-text="violation.severity"></span></span>
                                 </div>

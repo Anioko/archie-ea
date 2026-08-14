@@ -19,7 +19,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis{% else %}bg-accent border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -79,7 +79,7 @@
 
     <!-- Upload Error -->
     {% if upload_error %}
-    <div class="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive mb-6">
+    <div class="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive-emphasis mb-6">
         <div class="flex items-center gap-2">
             <i data-lucide="alert-circle" class="h-4 w-4 flex-shrink-0"></i>
             <span>{{ upload_error }}</span>
@@ -105,7 +105,7 @@
                             class="inline-flex items-center justify-center rounded-md text-sm font-medium
                                    ring-offset-background transition-colors
                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                                   border border-destructive/50 text-destructive hover:bg-destructive/10
+                                   border border-destructive/50 text-destructive-emphasis hover:bg-destructive/10
                                    h-9 px-3">
                         <i data-lucide="x-circle" class="h-4 w-4 mr-1.5"></i>
                         Discard All
@@ -165,7 +165,7 @@
                             <td class="px-4 py-3 text-right">
                                 <button @click="removeItem(idx)"
                                         class="inline-flex items-center justify-center rounded-md text-xs font-medium
-                                               border border-destructive/50 text-destructive hover:bg-destructive/10
+                                               border border-destructive/50 text-destructive-emphasis hover:bg-destructive/10
                                                h-7 px-2 transition-colors">
                                     Remove
                                 </button>
@@ -186,7 +186,7 @@
              class="p-4 sm:p-6 border-t border-border rounded-b-xl text-sm"
              :class="confirmResult && confirmResult.success
                      ? 'bg-green-500/10 border-green-500/30 text-emerald-700'
-                     : 'bg-destructive/10 border-destructive/30 text-destructive'">
+                     : 'bg-destructive/10 border-destructive/30 text-destructive-emphasis'">
             <template x-if="confirmResult && confirmResult.success">
                 <div class="flex items-center gap-2">
                     <i data-lucide="check-circle" class="h-4 w-4 flex-shrink-0"></i>

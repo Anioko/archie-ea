@@ -149,7 +149,7 @@
                                          x-text="candidate.similarity + '%'">
                                     </div>
                                     <template x-if="candidate.similarity > 95">
-                                        <span class="px-2 py-1 text-xs font-semibold text-success bg-success/10 rounded-full">
+                                        <span class="px-2 py-1 text-xs font-semibold text-success-emphasis bg-success/10 rounded-full">
                                             Auto
                                         </span>
                                     </template>
@@ -173,7 +173,7 @@
                             <!-- Code Match -->
                             <td class="px-6 py-4">
                                 <template x-if="candidate.code_match">
-                                    <span class="px-2 py-1 text-xs font-semibold text-success bg-success/10 rounded-full">
+                                    <span class="px-2 py-1 text-xs font-semibold text-success-emphasis bg-success/10 rounded-full">
                                         ✓ Match
                                     </span>
                                 </template>

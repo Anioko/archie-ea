@@ -2065,6 +2065,7 @@ class RationalizationScoringService:
             if cap_ids:
                 from app.models.application_capability import ApplicationCapabilityMapping
                 sibling_count = (
+                    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                     ApplicationCapabilityMapping.query.filter(
                         ApplicationCapabilityMapping.business_capability_id.in_(cap_ids),
                         ApplicationCapabilityMapping.application_component_id != app.id,
@@ -2739,6 +2740,7 @@ class RationalizationScoringService:
                 if cap_mappings:
                     cap_ids = [m.business_capability_id for m in cap_mappings]
                     sibling_count = (
+                        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                         ApplicationCapabilityMapping.query.filter(
                             ApplicationCapabilityMapping.business_capability_id.in_(cap_ids),
                             ApplicationCapabilityMapping.application_component_id != app.id,

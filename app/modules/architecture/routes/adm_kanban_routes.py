@@ -14,7 +14,7 @@ Provides:
 
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 from flask_login import current_user, login_required
 
 from app.decorators import audit_log
@@ -848,7 +848,7 @@ def assign_reviewer(approval_id):
     if not reviewer_id:
         return jsonify({"success": False, "error": "reviewer_id is required"}), 400
 
-    reviewer = User.query.get(reviewer_id)
+    reviewer = User.query.filter_by(id=reviewer_id, organization_id=g.current_org_id).first()
     if not reviewer:
         return jsonify({"success": False, "error": "Reviewer not found"}), 404
 

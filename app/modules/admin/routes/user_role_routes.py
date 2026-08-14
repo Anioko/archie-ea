@@ -5,7 +5,7 @@ Allows platform admins to assign enterprise roles to users.
 Part of North Star Persona MVP.
 """
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from app.decorators import admin_required
@@ -32,7 +32,9 @@ VALID_ENTERPRISE_ROLES = [
 @admin_required
 def edit_user_role(user_id):
     """Edit a user's enterprise role."""
-    user = User.query.get_or_404(user_id)
+    # admin_required is org-scoped admin, not platform_admin — restrict to the
+    # current org (tenant-scoping-ok: fixes cross-org role-escalation IDOR).
+    user = User.query.filter_by(id=user_id, organization_id=g.current_org_id).first_or_404()
     return render_template("admin/user_role_edit.html", user=user)
 
 
@@ -41,7 +43,9 @@ def edit_user_role(user_id):
 @admin_required
 def update_user_role(user_id):
     """Update a user's enterprise role."""
-    user = User.query.get_or_404(user_id)
+    # admin_required is org-scoped admin, not platform_admin — restrict to the
+    # current org (tenant-scoping-ok: fixes cross-org role-escalation IDOR).
+    user = User.query.filter_by(id=user_id, organization_id=g.current_org_id).first_or_404()
 
     new_role = request.form.get("enterprise_role")
 

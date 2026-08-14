@@ -482,7 +482,7 @@
                     <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-500"></i>
                     <span class="font-semibold text-sm">Capability Concentration Risk</span>
                     <template x-if="loaded && soleCount > 0">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30"
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30"
                               x-text="soleCount + ' sole-vendor'"></span>
                     </template>
                     <template x-if="loaded && soleCount === 0">
@@ -512,7 +512,7 @@
                                     <span class="text-xs text-muted-foreground"
                                           x-text="risk.vendor_count + (risk.vendor_count === 1 ? ' vendor' : ' vendors')"></span>
                                     <template x-if="risk.is_sole_vendor">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Risk</span>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Risk</span>
                                     </template>
                                     <template x-if="!risk.is_sole_vendor">
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/30">Safe</span>

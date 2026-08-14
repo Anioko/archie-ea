@@ -12,6 +12,7 @@ import logging
 
 from flask import Blueprint, jsonify, render_template, request
 from flask_login import login_required
+from werkzeug.exceptions import HTTPException
 
 from app.decorators import audit_log, require_roles
 from app.models.unified_capability import UnifiedCapability
@@ -337,6 +338,8 @@ def api_capability_details(capability_id):
                 },
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting capability details: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

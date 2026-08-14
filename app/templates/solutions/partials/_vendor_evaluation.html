@@ -135,7 +135,7 @@
                     </div>
                     <button type="button" @click="removeFromShortlist(item.id)"
                             :disabled="removingId === item.id"
-                            class="flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
+                            class="flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-destructive-emphasis hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
                             :aria-label="'Remove ' + item.name + ' from shortlist'"
                             title="Remove from shortlist">
                         <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
@@ -163,7 +163,7 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100 translate-y-0"
          x-transition:leave-end="opacity-0 translate-y-1"
-         class="fixed bottom-4 right-4 z-50 max-w-sm px-4 py-3 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive text-sm shadow-lg"
+         class="fixed bottom-4 right-4 z-50 max-w-sm px-4 py-3 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive-emphasis text-sm shadow-lg"
          @click="errorMsg = ''">
         <span x-text="errorMsg"></span>
     </div>

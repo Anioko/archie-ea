@@ -105,6 +105,7 @@ class PowerPointExportService:
 
         architect_name = "Unknown"
         if solution.created_by_id:
+            # tenant-scoping-ok: FK id from an already org-scoped Solution load.
             user = User.query.get(solution.created_by_id)
             if user:
                 architect_name = (user.full_name() if (user and callable(getattr(user, "full_name", None))) else None) or getattr(user, "name", None) or user.email or "Unknown"

@@ -120,6 +120,8 @@ def get_comparison(analysis_id):
     try:
         comparison_data = analysis_service.get_comparison_data(analysis_id)
         return jsonify(comparison_data)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error getting comparison data: {e}")
         return jsonify({"error": "Failed to load comparison data"}), 500
@@ -131,6 +133,8 @@ def get_results(analysis_id):
     try:
         results = analysis_service.get_comparison_data(analysis_id)
         return jsonify(results)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error getting results: {e}")
         return jsonify({"error": "Failed to load results"}), 500

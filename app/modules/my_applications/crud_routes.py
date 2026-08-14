@@ -38,6 +38,7 @@ HEALTH_STATUSES = ["healthy", "at_risk", "critical"]
 
 def _owned_application_or_404(app_id):
     """The application, only if the current user is a registered owner of it."""
+    # tenant-scoping-ok: self-lookup, filtered by the authenticated user's own id.
     ownership = ApplicationOwner.query.filter_by(
         user_id=current_user.id, application_id=app_id
     ).first()

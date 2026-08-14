@@ -18,7 +18,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md p-4 {% if category == 'error' %}bg-destructive/5 text-destructive{% else %}bg-emerald-500/5 text-emerald-700{% endif %}">
+                    <div class="rounded-md p-4 {% if category == 'error' %}bg-destructive/5 text-destructive-emphasis{% else %}bg-emerald-500/5 text-emerald-700{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}

@@ -19,9 +19,9 @@
         <div class="flex items-center gap-2">
             <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
                 {% if instance.status == 'running' %}border-transparent bg-primary/10 text-primary
-                {% elif instance.status == 'completed' %}border-transparent bg-success/10 text-success
-                {% elif instance.status == 'failed' %}border-transparent bg-destructive/10 text-destructive
-                {% elif instance.status == 'waiting_approval' %}border-transparent bg-warning/10 text-warning
+                {% elif instance.status == 'completed' %}border-transparent bg-success/10 text-success-emphasis
+                {% elif instance.status == 'failed' %}border-transparent bg-destructive/10 text-destructive-emphasis
+                {% elif instance.status == 'waiting_approval' %}border-transparent bg-warning/10 text-warning-emphasis
                 {% else %}border-transparent bg-muted text-foreground{% endif %}">
                 {{ instance.status|replace('_', ' ')|title }}
             </span>
@@ -83,10 +83,10 @@
                             {% for step in step_executions %}
                             <div class="relative pl-10 group">
                                 <div class="absolute left-0 top-1 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-medium z-10 transition-colors
-                                    {% if step.status == 'completed' %}bg-success/10 text-success border-success/20
-                                    {% elif step.status == 'failed' %}bg-destructive/10 text-destructive border-destructive/20
+                                    {% if step.status == 'completed' %}bg-success/10 text-success-emphasis border-success/20
+                                    {% elif step.status == 'failed' %}bg-destructive/10 text-destructive-emphasis border-destructive/20
                                     {% elif step.status == 'running' %}bg-primary/10 text-primary border-primary/20 animate-pulse
-                                    {% elif step.status == 'waiting_approval' %}bg-warning/10 text-warning border-warning/20
+                                    {% elif step.status == 'waiting_approval' %}bg-warning/10 text-warning-emphasis border-warning/20
                                     {% else %}bg-background text-muted-foreground border-border{% endif %}">
                                     {% if step.status == 'completed' %}
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -105,14 +105,14 @@
                                     <p class="text-xs text-muted-foreground">{{ step.step_type|title }} • {{ step.duration_seconds if step.duration_seconds else 0 }}s</p>
                                     
                                     {% if step.error_message %}
-                                        <div class="mt-2 rounded-md bg-destructive/10 p-3 text-xs text-destructive">
+                                        <div class="mt-2 rounded-md bg-destructive/10 p-3 text-xs text-destructive-emphasis">
                                             <p class="font-semibold">Error:</p>
                                             <p>{{ step.error_message }}</p>
                                         </div>
                                     {% endif %}
                                     
                                     {% if step.status == 'waiting_approval' %}
-                                        <div class="mt-2 rounded-md bg-warning/5 p-3 text-xs text-warning border border-warning/20">
+                                        <div class="mt-2 rounded-md bg-warning/5 p-3 text-xs text-warning-emphasis border border-warning/20">
                                             <p class="font-semibold">Waiting for Approval</p>
                                             <p>This step requires manual confirmation to proceed.</p>
                                         </div>

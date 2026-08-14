@@ -1,5 +1,5 @@
 {% extends "layouts/admin_base.html" %}
-{% from "components/page_header.html" import page_header %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/status_badge.html' import status_badge %}
 {% from 'components/modal.html' import modal %}
 
@@ -9,30 +9,32 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {% if is_reviews_view %}
-    {{ page_header(
+    {% macro _arb_reviews_actions() %}
+    <button type="button" @click="Platform.modal.open('create-arb-review')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label="New Review">
+        <i data-lucide="plus" class="w-4 h-4 mr-2" aria-hidden="true"></i>New Review
+    </button>
+    {% endmacro %}
+    {{ page_shell(
         title='ARB Reviews',
-        description='Architecture review items submitted for governance assessment',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Governance'},
-            {'label': 'ARB Reviews'}
-        ],
-        actions=[
-            {'text': 'New Review', 'icon': 'plus', 'onclick': 'Platform.modal.open("create-arb-review")', 'variant': 'default'}
-        ]
+        subtitle='Architecture review items submitted for governance assessment',
+        breadcrumb=[('Dashboard', url_for('main.index')), ('Governance', None), ('ARB Reviews', None)],
+        actions_caller=_arb_reviews_actions
     ) }}
     {% else %}
-    {{ page_header(
+    {% macro _arb_sessions_actions() %}
+    <button type="button" @click="Platform.modal.open('create-arb-session')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label="New Session">
+        <i data-lucide="plus" class="w-4 h-4 mr-2" aria-hidden="true"></i>New Session
+    </button>
+    {% endmacro %}
+    {{ page_shell(
         title='ARB Sessions',
-        description='Scheduled Architecture Review Board meetings',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Governance'},
-            {'label': 'ARB Sessions'}
-        ],
-        actions=[
-            {'text': 'New Session', 'icon': 'plus', 'onclick': 'Platform.modal.open("create-arb-session")', 'variant': 'default'}
-        ]
+        subtitle='Scheduled Architecture Review Board meetings',
+        breadcrumb=[('Dashboard', url_for('main.index')), ('Governance', None), ('ARB Sessions', None)],
+        actions_caller=_arb_sessions_actions
     ) }}
     {% endif %}
 
@@ -288,7 +290,7 @@
                    placeholder="https://teams.microsoft.com/...">
         </div>
     </div>
-    <div x-cloak x-show="errorMsg" class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+    <div x-cloak x-show="errorMsg" class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg"></div>
     <div class="flex justify-end gap-3 pt-2 border-t border-border">
         <button type="button" data-modal-close="create-arb-session"
                 class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>

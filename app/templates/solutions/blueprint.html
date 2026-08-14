@@ -144,7 +144,7 @@
                             </button>
                             <button type="button" @click="rejectAll()"
                                     :disabled="accepting"
-                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 disabled:opacity-50 transition-colors">
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 hover:bg-destructive/20 disabled:opacity-50 transition-colors">
                                 <i data-lucide="x" class="w-3.5 h-3.5"></i> Dismiss All
                             </button>
                             <button type="button" @click="resetPanel()"
@@ -193,7 +193,7 @@
                                     <button type="button" @click="reject(p.id)"
                                             :disabled="accepting"
                                             title="Dismiss — don't add to blueprint"
-                                            class="p-1.5 rounded-md text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors">
+                                            class="p-1.5 rounded-md text-destructive-emphasis hover:bg-destructive/10 disabled:opacity-50 transition-colors">
                                         <i data-lucide="x" class="w-4 h-4"></i>
                                     </button>
                                 </div>
@@ -703,7 +703,7 @@
                                             <td class="px-3 py-2">
                                                 {# Decommission / low score flag #}
                                                 <template x-if="elem.context_flag === 'decommission'">
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20"
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20"
                                                           :title="'Lifecycle: ' + elem.lifecycle">&#9888; Decommission risk</span>
                                                 </template>
                                                 <template x-if="elem.context_flag === 'low_score'">

@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 from flask import (
     Blueprint,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -299,9 +300,11 @@ def index():
 
     # Recent users
     try:
-        recent_users = User.query.order_by(User.id.desc()).limit(8).all()
-        total_users = User.query.count()
-        unconfirmed = User.query.filter_by(confirmed=False).count()
+        # admin_required is org-scoped admin, not platform_admin — restrict to
+        # the current org (tenant-scoping-ok: org-admin cross-org IDOR fix).
+        recent_users = User.query.filter_by(organization_id=g.current_org_id).order_by(User.id.desc()).limit(8).all()
+        total_users = User.query.filter_by(organization_id=g.current_org_id).count()
+        unconfirmed = User.query.filter_by(organization_id=g.current_org_id, confirmed=False).count()
     except Exception:
         recent_users = []
         total_users = unconfirmed = 0
@@ -341,9 +344,11 @@ def dashboard():
     except Exception:
         flags_enabled = flags_disabled = 0
     try:
-        recent_users = User.query.order_by(User.id.desc()).limit(8).all()
-        total_users = User.query.count()
-        unconfirmed_users = User.query.filter_by(confirmed=False).count()
+        # admin_required is org-scoped admin, not platform_admin — restrict to
+        # the current org (tenant-scoping-ok: org-admin cross-org IDOR fix).
+        recent_users = User.query.filter_by(organization_id=g.current_org_id).order_by(User.id.desc()).limit(8).all()
+        total_users = User.query.filter_by(organization_id=g.current_org_id).count()
+        unconfirmed_users = User.query.filter_by(organization_id=g.current_org_id, confirmed=False).count()
     except Exception:
         recent_users = []
         total_users = unconfirmed_users = 0
@@ -2208,7 +2213,9 @@ def sso_settings():
             from app.models.user import User
             from app.auth.sso import sso_service
 
-            sso_users = User.query.filter(User.sso_provider.isnot(None)).all()
+            sso_users = User.query.filter(
+                User.sso_provider.isnot(None), User.organization_id == g.current_org_id
+            ).all()
             for user in sso_users:
                 # Re-evaluate via sso_service which now reads DB mappings.
                 # We pass the user's stored external groups claim if available;
@@ -3094,7 +3101,7 @@ def api_list_users():
     if sort_by not in ALLOWED_SORT:
         sort_by = "id"
 
-    query = User.query.options(joinedload(User.role))
+    query = User.query.options(joinedload(User.role)).filter(User.organization_id == g.current_org_id)
     if search:
         term = f"%{search}%"
         query = query.filter(
@@ -3143,7 +3150,9 @@ def api_bulk_delete_users():
     if not ids or not isinstance(ids, list):
         return jsonify({"error": "ids list required"}), 400
     safe_ids = [i for i in ids if i != current_user.id]
-    deleted = User.query.filter(User.id.in_(safe_ids)).delete(synchronize_session=False)
+    deleted = User.query.filter(
+        User.id.in_(safe_ids), User.organization_id == g.current_org_id
+    ).delete(synchronize_session=False)
     db.session.commit()
     return jsonify({"deleted": deleted})
 
@@ -3159,7 +3168,7 @@ def api_list_roles():
     roles = Role.query.order_by(Role.name).all()
     items = []
     for role in roles:
-        users = User.query.filter_by(role_id=role.id).all()
+        users = User.query.filter_by(role_id=role.id, organization_id=g.current_org_id).all()
         items.append({
             "id": role.id,
             "name": role.name,
@@ -3185,7 +3194,7 @@ def api_list_roles():
 def api_get_role(role_id):
     """Get a single role by ID."""
     role = Role.query.get_or_404(role_id)
-    users = User.query.filter_by(role_id=role.id).all()
+    users = User.query.filter_by(role_id=role.id, organization_id=g.current_org_id).all()
     return jsonify({
         "success": True,
         "role": {
@@ -3250,7 +3259,9 @@ def api_delete_role(role_id):
     if role.name in ("Administrator", "User"):
         return jsonify({"success": False, "error": "System roles cannot be deleted"}), 403
     default_role = Role.query.filter_by(default=True).first()
-    User.query.filter_by(role_id=role.id).update({"role_id": default_role.id if default_role else None})
+    User.query.filter_by(role_id=role.id, organization_id=g.current_org_id).update(
+        {"role_id": default_role.id if default_role else None}
+    )
     db.session.delete(role)
     db.session.commit()
     return jsonify({"success": True})
@@ -3267,7 +3278,7 @@ def api_list_enterprise_roles():
     from app.models.user import VALID_ROLES
     role_counts = {}
     for r in VALID_ROLES:
-        role_counts[r] = User.query.filter_by(enterprise_role=r).count()
+        role_counts[r] = User.query.filter_by(enterprise_role=r, organization_id=g.current_org_id).count()
 
     items = []
     for r in VALID_ROLES:
@@ -3292,7 +3303,7 @@ def api_list_enterprise_roles():
 @admin_required
 def api_enterprise_role_users():
     """List all users with their enterprise role assignments."""
-    users = User.query.order_by(User.last_name, User.first_name).all()
+    users = User.query.filter_by(organization_id=g.current_org_id).order_by(User.last_name, User.first_name).all()
     items = []
     for u in users:
         items.append({
@@ -3319,7 +3330,7 @@ def api_assign_enterprise_role():
         return jsonify({"success": False, "error": "user_id and role are required"}), 400
     if role not in VALID_ROLES:
         return jsonify({"success": False, "error": f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}"}), 400
-    user = User.query.get_or_404(user_id)
+    user = User.query.filter_by(id=user_id, organization_id=g.current_org_id).first_or_404()
     user.enterprise_role = role
     db.session.commit()
     return jsonify({"success": True, "user_id": user_id, "role": role})
@@ -3362,7 +3373,9 @@ def audit_log_viewer():
         # record_id (no timestamp/user_email/entity_type/description/is_deleted).
         # Filters below use the real columns; the model exposes the old names as
         # read-only display properties for the template/CSV.
-        query = AuditLog.query
+        # admin_required is org-scoped admin, not platform_admin — restrict to
+        # the current org's audit trail.
+        query = AuditLog.query.filter_by(organization_id=g.current_org_id)
 
         if date_from:
             try:
@@ -3381,7 +3394,13 @@ def audit_log_viewer():
             # AuditLog stores user_id, not email — resolve matching users first.
             from app.models.user import User
 
-            _uids = [u.id for u in User.query.filter(User.email.ilike(f"%{user_email}%")).all()]
+            _uids = [
+                u.id
+                for u in User.query.filter(
+                    User.email.ilike(f"%{user_email}%"),
+                    User.organization_id == g.current_org_id,
+                ).all()
+            ]
             query = query.filter(AuditLog.user_id.in_(_uids or [-1]))
 
         if action_filter:

@@ -188,6 +188,7 @@ def _get_solution_capabilities_payload(solution: Solution) -> list[dict]:
         return []
 
     rows = (
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         db.session.query(BusinessCapability, ApplicationCapabilityMapping)
         .join(
             ApplicationCapabilityMapping,
@@ -7643,9 +7644,11 @@ def api_solution_traceability(solution_id: int):
                 "domain_count": len({d for n in chain for d in n["domains"]}),
             },
         })
+    except HTTPException as e:
+        return jsonify({"error": e.description}), e.code
     except Exception as e:
         logger.error(f"api_solution_traceability error: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "An internal error occurred"}), 500
 
 
 # =============================================================================
@@ -8432,12 +8435,14 @@ def create_comment(solution_id):
             matched_user = None
             if len(parts) >= 2:
                 matched_user = User.query.filter(
+                    User.organization_id == g.current_org_id,
                     User.first_name.ilike(parts[0]),
                     User.last_name.ilike(parts[-1]),
                 ).first()
             if not matched_user:
                 term = f"%{name_stripped}%"
                 matched_user = User.query.filter(
+                    User.organization_id == g.current_org_id,
                     or_(
                         User.email.ilike(term),
                         User.first_name.ilike(term),

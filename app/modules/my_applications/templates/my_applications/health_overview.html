@@ -44,14 +44,14 @@
             </div>
             <div class="text-3xl font-bold text-amber-600">{{ health_summary.at_risk }}</div>
         </div>
-        <div class="bg-card border border-red-500/50 rounded-lg p-4">
+        <div class="bg-card border border-destructive/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
+                <div class="w-10 h-10 bg-destructive/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-destructive-emphasis"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Critical</div>
             </div>
-            <div class="text-3xl font-bold text-red-600">{{ health_summary.critical }}</div>
+            <div class="text-3xl font-bold text-destructive-emphasis">{{ health_summary.critical }}</div>
         </div>
     </div>
 
@@ -59,21 +59,21 @@
     <div class="space-y-6">
         <!-- Critical Applications -->
         {% if critical %}
-        <div class="bg-card border border-red-500/50 rounded-lg overflow-hidden">
-            <div class="bg-red-500/10 px-6 py-4 border-b border-red-500/30">
+        <div class="bg-card border border-destructive/50 rounded-lg overflow-hidden">
+            <div class="bg-destructive/10 px-6 py-4 border-b border-destructive/30">
                 <div class="flex items-center gap-3">
-                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
-                    <h2 class="text-lg font-semibold text-red-700">Critical ({{ critical|length }})</h2>
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-destructive-emphasis"></i>
+                    <h2 class="text-lg font-semibold text-destructive-emphasis">Critical ({{ critical|length }})</h2>
                 </div>
-                <p class="text-sm text-red-600 mt-1">Applications that are decommissioned or retired</p>
+                <p class="text-sm text-destructive-emphasis mt-1">Applications that are decommissioned or retired</p>
             </div>
             <div class="divide-y divide-border">
                 {% for item in critical %}
                 <div class="p-4 hover:bg-muted/30 transition-colors">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                                <i data-lucide="package" class="w-5 h-5 text-red-600"></i>
+                            <div class="w-10 h-10 bg-destructive/10 rounded-lg flex items-center justify-center">
+                                <i data-lucide="package" class="w-5 h-5 text-destructive-emphasis"></i>
                             </div>
                             <div>
                                 <div class="font-medium">{{ item.application.name }}</div>
@@ -81,7 +81,7 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
-                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-red-100 text-red-700">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-destructive/10 text-destructive-emphasis">
                                 {{ item.application.lifecycle_status or 'unknown' }}
                             </span>
                             <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"
@@ -192,7 +192,7 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
-                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-muted text-muted-foreground">
                                 unknown
                             </span>
                             <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"

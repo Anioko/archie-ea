@@ -322,7 +322,7 @@
                         </td>
                         <td class="px-6 py-4">
                             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-                                {% if sol.status == 'deployed' %}bg-success/10 text-success
+                                {% if sol.status == 'deployed' %}bg-success/10 text-success-emphasis
                                 {% elif sol.status == 'in_progress' %}bg-primary/10 text-primary
                                 {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ sol.status|title }}

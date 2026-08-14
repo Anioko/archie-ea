@@ -53,7 +53,7 @@
                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">{{ vs.value_stream_type|replace('_', ' ')|title }}</span>
                     {% endif %}
                     {% if vs.strategic_importance == 'critical' %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Critical</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Critical</span>
                     {% elif vs.strategic_importance == 'high' %}
                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">High</span>
                     {% endif %}

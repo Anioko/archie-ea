@@ -263,7 +263,7 @@
                     Edit
                   </button>
                   <button type="button"
-                    class="rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                    class="rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-destructive-emphasis hover:bg-destructive/10"
                     @click="deleteWorkPackage(wp)">
                     Delete
                   </button>
@@ -278,7 +278,7 @@
 
   {# ── Error Banner ── #}
   <template x-if="errorMessage">
-    <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+    <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis"
       x-text="errorMessage"></div>
   </template>
 

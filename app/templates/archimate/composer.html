@@ -575,7 +575,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                       @keydown.escape.prevent="$el.textContent = tab.name; $el.blur()"
                       class="outline-none"></span>
                 <button type="button" @click.stop="if (viewpointDirty && activeTabId === tab.id && !(await Platform.modal.confirm('This tab has unsaved changes. Close anyway?'))) return; viewpointTabs = viewpointTabs.filter(t => t.id !== tab.id); if (activeTabId === tab.id) { if (viewpointTabs.length) { activeTabId = viewpointTabs[0].id; loadSavedViewpoint(viewpointTabs[0].id, viewpointTabs[0].name); } else { newDiagram(); } }"
-                        class="ml-1 w-4 h-4 rounded-full flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors text-[10px] leading-none"
+                        class="ml-1 w-4 h-4 rounded-full flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive-emphasis transition-colors text-[10px] leading-none"
                         aria-label="Close tab"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-width="2"/></svg></button>
             </div>
         </template>
@@ -921,7 +921,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                     <span class="text-xs text-muted-foreground max-w-[200px] truncate"
                           x-text="presentationSlides[presentationIndex] ? presentationSlides[presentationIndex].name : ''"></span>
                     <div class="w-px h-6 bg-border mx-1"></div>
-                    <button type="button" @click="exitPresentationMode()" class="p-2 rounded-lg hover:bg-destructive/10 text-destructive transition-colors" title="Exit (Esc)">
+                    <button type="button" @click="exitPresentationMode()" class="p-2 rounded-lg hover:bg-destructive/10 text-destructive-emphasis transition-colors" title="Exit (Esc)">
                         <i data-lucide="x" class="w-5 h-5 pointer-events-none"></i>
                     </button>
                 </div>
@@ -1254,7 +1254,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
                                               :class="{
                                                   'bg-emerald-500/10 text-emerald-700': entry.action.indexOf('added') !== -1,
-                                                  'bg-destructive/10 text-destructive': entry.action.indexOf('removed') !== -1,
+                                                  'bg-destructive/10 text-destructive-emphasis': entry.action.indexOf('removed') !== -1,
                                                   'bg-info/10 text-primary': entry.action.indexOf('added') === -1 && entry.action.indexOf('removed') === -1,
                                               }"
                                               x-text="entry.action.replace(/_/g, ' ')"></span>
@@ -1749,7 +1749,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                             <div class="flex flex-wrap gap-1 mt-1">
                                 <template x-for="sig in (intelligenceData[String(selectedNode.elementId)].signals || [])" :key="sig">
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                          :class="sig === 'eol_risk' || sig === 'lifecycle_risk' ? 'bg-destructive/10 text-destructive border border-destructive/30' : sig === 'maturity_gap' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-primary/10 text-primary border border-primary/30'"
+                                          :class="sig === 'eol_risk' || sig === 'lifecycle_risk' ? 'bg-destructive/10 text-destructive-emphasis border border-destructive/30' : sig === 'maturity_gap' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-primary/10 text-primary border border-primary/30'"
                                           x-text="sig.replace(/_/g, ' ')"></span>
                                 </template>
                             </div>
@@ -1825,7 +1825,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                     <button type="button" @click="drillDown(_currentSelectedCell)" class="flex-1 px-2 py-1 rounded text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
                                         <i data-lucide="arrow-down-right" class="w-3 h-3 inline"></i> Drill Down
                                     </button>
-                                    <button type="button" @click="unlinkViewpoint()" class="px-2 py-1 rounded text-xs text-destructive hover:bg-destructive/10 transition-colors">
+                                    <button type="button" @click="unlinkViewpoint()" class="px-2 py-1 rounded text-xs text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                                         <i data-lucide="unlink" class="w-3 h-3 inline"></i>
                                     </button>
                                 </div>

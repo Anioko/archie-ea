@@ -21,26 +21,26 @@
             <div class="text-sm text-muted-foreground mb-1">Total Licenses</div>
             <div class="text-2xl font-bold">{{ summary.total }}</div>
         </div>
-        <div class="bg-card border border-green-500/50 rounded-lg p-4">
-            <div class="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mb-1">
+        <div class="bg-card border border-success/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-success-emphasis mb-1">
                 <i data-lucide="check-circle" class="w-4 h-4"></i>
                 Compliant
             </div>
-            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ summary.compliant }}</div>
+            <div class="text-2xl font-bold text-success-emphasis">{{ summary.compliant }}</div>
         </div>
-        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
-            <div class="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 mb-1">
+        <div class="bg-card border border-warning/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-warning-emphasis mb-1">
                 <i data-lucide="alert-triangle" class="w-4 h-4"></i>
                 Warning
             </div>
-            <div class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ summary.warning }}</div>
+            <div class="text-2xl font-bold text-warning-emphasis">{{ summary.warning }}</div>
         </div>
-        <div class="bg-card border border-red-500/50 rounded-lg p-4">
-            <div class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mb-1">
+        <div class="bg-card border border-destructive/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-destructive-emphasis mb-1">
                 <i data-lucide="x-circle" class="w-4 h-4"></i>
                 Violation
             </div>
-            <div class="text-2xl font-bold text-red-600 dark:text-red-400">{{ summary.violation }}</div>
+            <div class="text-2xl font-bold text-destructive-emphasis">{{ summary.violation }}</div>
         </div>
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="text-sm text-muted-foreground mb-1">Overall Utilization</div>
@@ -60,10 +60,10 @@
                 <div class="h-4 bg-muted rounded-full overflow-hidden">
                     {% set util = summary.utilization %}
                     <div class="h-full rounded-full transition-all
-                        {% if util > 100 %}bg-red-500
-                        {% elif util > 90 %}bg-amber-500
-                        {% elif util > 70 %}bg-blue-500
-                        {% else %}bg-green-500{% endif %}"
+                        {% if util > 100 %}bg-destructive
+                        {% elif util > 90 %}bg-warning
+                        {% elif util > 70 %}bg-info
+                        {% else %}bg-success{% endif %}"
                          {# Jinja has no min() global - Python builtins are not exposed
                            to templates. [a, b]|min is the idiomatic form and keeps the
                            fix inside this template rather than mutating the global
@@ -83,7 +83,7 @@
             </div>
             <div>
                 <div class="text-muted-foreground">Available</div>
-                <div class="font-bold text-lg text-green-600">{{ summary.total_entitled - summary.total_consumed }}</div>
+                <div class="font-bold text-lg text-success-emphasis">{{ summary.total_entitled - summary.total_consumed }}</div>
             </div>
         </div>
     </div>
@@ -99,14 +99,14 @@
     {% set warnings = licenses | selectattr('compliance_status', 'equalto', 'under_utilized') | list %}
 
     {% if violations %}
-    <div class="bg-card border border-red-500/50 rounded-lg p-6 mb-6">
-        <h2 class="text-lg font-semibold text-red-600 dark:text-red-400 mb-4 flex items-center gap-2">
+    <div class="bg-card border border-destructive/50 rounded-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold text-destructive-emphasis mb-4 flex items-center gap-2">
             <i data-lucide="alert-circle" class="w-5 h-5"></i>
             License Violations ({{ violations | length }})
         </h2>
         <div class="space-y-3">
             {% for license in violations %}
-            <div class="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+            <div class="flex items-center justify-between p-3 bg-destructive/10 rounded-lg">
                 <div>
                     <div class="font-medium">{{ license.product_name }}</div>
                     <div class="text-sm text-muted-foreground">
@@ -122,14 +122,14 @@
     {% endif %}
 
     {% if warnings %}
-    <div class="bg-card border border-amber-500/50 rounded-lg p-6">
-        <h2 class="text-lg font-semibold text-amber-600 dark:text-amber-400 mb-4 flex items-center gap-2">
+    <div class="bg-card border border-warning/50 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-warning-emphasis mb-4 flex items-center gap-2">
             <i data-lucide="alert-triangle" class="w-5 h-5"></i>
             Licenses at Risk ({{ warnings | length }})
         </h2>
         <div class="space-y-3">
             {% for license in warnings %}
-            <div class="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+            <div class="flex items-center justify-between p-3 bg-warning/10 rounded-lg">
                 <div>
                     <div class="font-medium">{{ license.product_name }}</div>
                     <div class="text-sm text-muted-foreground">

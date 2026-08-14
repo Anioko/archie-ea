@@ -76,6 +76,7 @@ class CapabilityHealthService:
         # Pre-load all application mappings in one query
         capability_ids = [cap.id for cap in capabilities]
         app_mappings_query = (
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             db.session.query(ApplicationCapabilityMapping, ApplicationComponent)
             .join(
                 ApplicationComponent,

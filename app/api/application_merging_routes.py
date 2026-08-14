@@ -12,6 +12,7 @@ import logging
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
+from werkzeug.exceptions import HTTPException
 from app.decorators import audit_log
 from app.models.application_portfolio import (
     ApplicationComponent as ApplicationComponent,
@@ -30,6 +31,13 @@ merging_bp = Blueprint(
     "application_merging", __name__, url_prefix="/dashboard/api/applications/merging"
 )
 
+# ApplicationMatchingService.find_merge_candidates() is O(n^2) pairwise comparison
+# (SequenceMatcher-based text similarity). On a 920-app portfolio that is ~420k pairs
+# and ran 10+ minutes in-request (Task 4, P0 wave). Bound the comparison set so the
+# endpoint always responds in seconds; the response reports when it did so via
+# "truncated": true rather than silently comparing a subset.
+MAX_MERGE_CANDIDATE_APPLICATIONS = 200
+
 # Mark as guardrailed BEFORE routes are registered
 from app.core.compat import mark_blueprint_guardrailed
 
@@ -45,11 +53,18 @@ def get_merge_candidates():
     Query Parameters:
     - threshold: Similarity threshold (default: 0.7)
     - limit: Maximum number of candidates to return (default: 50)
+    - offset: Position (by id order) to start the compared window at (default: 0).
+      Comparisons only happen *within* a window — an app in one window is never
+      compared against an app in another — so covering the whole portfolio means
+      repeating the call with successive offsets (see "next_offset" in the
+      response). This does not find duplicate pairs that straddle two windows;
+      see the truncation_note for that caveat when it applies.
     """
     try:
         threshold = float(request.args.get("threshold", 0.7))
         limit = int(request.args.get("limit", 50))
         mode = request.args.get("mode", "balanced")
+        offset = max(0, int(request.args.get("offset", 0)))
 
         # Adjust threshold based on merge mode
         mode_multipliers = {
@@ -61,33 +76,40 @@ def get_merge_candidates():
         threshold = max(0.4, min(threshold, 0.99))  # Clamp to valid range
 
         # Get all active applications (exclude retired/deprecated)
-        applications = ApplicationComponent.query.filter(
+        active_applications_query = ApplicationComponent.query.filter(
             ApplicationComponent.lifecycle_status.notin_(
                 ["retired", "deprecated"]
             )
-        ).order_by(ApplicationComponent.id).all()
+        )
+        total_active_applications = active_applications_query.count()
 
-        # The pair scan is O(n²); a 920-app portfolio ran 10+ minutes inside
-        # this request. Bound both the comparison set and the wall clock, and
-        # SAY SO in the response — a silently partial analysis reads as "no
-        # further duplicates exist".
-        total_applications = len(applications)
-        max_apps = int(request.args.get("max_apps", 300))
-        max_apps = max(2, min(max_apps, 2000))
-        truncated = False
-        if total_applications > max_apps:
-            applications = applications[:max_apps]
-            truncated = True
+        # Bound the O(n^2) comparison set — see MAX_MERGE_CANDIDATE_APPLICATIONS
+        # above — with an offset so successive calls can walk the whole
+        # portfolio instead of always re-scanning the same lowest-id window
+        # (that was the bug: offset-less limit() made every app past the cap
+        # permanently invisible to merge detection, however many times this
+        # was re-run).
+        applications = (
+            active_applications_query.order_by(ApplicationComponent.id)
+            .offset(offset)
+            .limit(MAX_MERGE_CANDIDATE_APPLICATIONS)
+            .all()
+        )
+        window_end = offset + len(applications)
+        has_more = window_end < total_active_applications
+        next_offset = window_end if has_more else None
+        # "Truncated" whenever the portfolio doesn't fit in one window — even on
+        # the last window, cross-window pairs (e.g. app #5 vs app #250) were
+        # never compared, so the result set is never a complete duplicate scan
+        # of a portfolio bigger than the cap.
+        truncated = total_active_applications > MAX_MERGE_CANDIDATE_APPLICATIONS
 
         # Configure matching service
         config = MergeConfig(similarity_threshold=threshold)
         matching_service = ApplicationMatchingService(config)
 
-        # Find candidates, bounded to seconds rather than minutes
-        candidates = matching_service.find_merge_candidates(
-            applications, time_budget_seconds=20
-        )
-        truncated = truncated or matching_service.truncated
+        # Find candidates
+        candidates = matching_service.find_merge_candidates(applications)
 
         # Filter out ignored pairs
         ignored_entries = ARBAuditLog.query.filter_by(
@@ -112,11 +134,32 @@ def get_merge_candidates():
             "success": True,
             "candidates": [],
             "total_analyzed": len(applications),
-            "total_applications": total_applications,
-            "truncated": truncated,
+            "total_active_applications": total_active_applications,
             "threshold_used": threshold,
             "total_candidates": len(candidates),
+            "truncated": truncated,
+            "offset": offset,
+            "next_offset": next_offset,
         }
+        if truncated:
+            if has_more:
+                coverage_hint = (
+                    f"Pass offset={next_offset} to scan the next "
+                    f"{min(MAX_MERGE_CANDIDATE_APPLICATIONS, total_active_applications - next_offset)} "
+                    f"applications; repeat until next_offset is null to reach all "
+                    f"{total_active_applications}."
+                )
+            else:
+                coverage_hint = (
+                    "This was the last window (offset resets to 0 to scan again)."
+                )
+            response_data["truncation_note"] = (
+                f"Portfolio has {total_active_applications} active applications; this "
+                f"response compared only the {len(applications)} at offset {offset} "
+                f"(ordered by id) against each other — apps in a different window are "
+                f"NOT compared against apps in this one, so a duplicate pair split "
+                f"across two windows will not be found. {coverage_hint}"
+            )
 
         for candidate in candidates:
             candidate_data = {
@@ -190,16 +233,18 @@ def analyze_application_merges(app_id):
         config = MergeConfig(similarity_threshold=threshold)
         matching_service = ApplicationMatchingService(config)
 
-        # Compare the target against each other app directly. This used to run
-        # the full O(n²) scan over the whole portfolio and then throw away
-        # every pair not involving the target — ~423k comparisons on 920 apps
-        # to keep 919.
-        target_candidates = []
-        for other_app in other_apps:
-            target_candidates.extend(
-                matching_service.find_merge_candidates([target_app, other_app])
-            )
-        target_candidates.sort(key=lambda c: c.similarity_score, reverse=True)
+        # Find candidates for this specific app
+        all_candidates = matching_service.find_merge_candidates(
+            [target_app] + other_apps
+        )
+
+        # Filter to only candidates involving the target app
+        target_candidates = [
+            candidate
+            for candidate in all_candidates
+            if candidate.primary_app.id == app_id
+            or candidate.duplicate_app.id == app_id
+        ]
 
         # Format response
         response_data = {
@@ -247,6 +292,8 @@ def analyze_application_merges(app_id):
 
         return jsonify(response_data)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error analyzing application merges: {str(e)}")
         return jsonify({"success": False, "error": "Failed to analyze merges"}), 500

@@ -1,0 +1,61 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}All modules — {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+{% from 'macros/page_shell.html' import page_shell %}
+<div class="p-6 space-y-6">
+    {{ page_shell(
+        title="All modules",
+        subtitle="Every surface in Archie, grouped and searchable — the long tail your persona's sidebar doesn't show.",
+        breadcrumb=[('Home', url_for('dashboard.overview')), ('All modules', None)]
+    ) }}
+
+    <div class="space-y-8" data-testid="modules-directory">
+        {% for section in sections %}
+        <div>
+            <h2 class="mb-3 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                {{ section.title }}
+            </h2>
+            <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {% for link in section.links %}
+                {% if link.endpoint in flask.current_app.view_functions %}
+                <li>
+                    <a href="{{ url_for(link.endpoint) }}"
+                       class="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                        <i data-lucide="{{ link.icon }}" class="h-4 w-4 flex-shrink-0 text-muted-foreground"></i>
+                        <span class="flex-1 truncate">{{ link.label }}</span>
+                    </a>
+                </li>
+                {% endif %}
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+
+        {% if more_tools %}
+        <div>
+            <h2 class="mb-3 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                More tools
+            </h2>
+            <p class="mb-3 text-xs text-muted-foreground max-w-[60ch]">
+                Working surfaces not assigned to any persona's sidebar — reachable here until a future
+                wave gives them a permanent home.
+            </p>
+            <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {% for link in more_tools %}
+                {% if link.endpoint in flask.current_app.view_functions %}
+                <li>
+                    <a href="{{ url_for(link.endpoint) }}"
+                       class="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                        <i data-lucide="{{ link.icon }}" class="h-4 w-4 flex-shrink-0 text-muted-foreground"></i>
+                        <span class="flex-1 truncate">{{ link.label }}</span>
+                    </a>
+                </li>
+                {% endif %}
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

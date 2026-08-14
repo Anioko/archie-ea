@@ -198,6 +198,7 @@ class MetricsService:
             for cap in capabilities:
                 # Count apps mapped to this capability
                 app_count = (
+                    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                     db.session.query(ApplicationCapabilityMapping)
                     .filter_by(business_capability_id=cap.id)
                     .count()

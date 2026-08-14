@@ -57,6 +57,14 @@ INTENTIONALLY_GLOBAL = {
     "OrgConnectorConfig": "queried by explicit organization_id in every caller",
     "DevOpsConnectorConfig": "queried by explicit organization_id in every caller",
     "LucidchartConnectorConfig": "queried by explicit organization_id in every caller",
+    # Wave-4 Phase B (ARB/EA tenant partitioning): these 3 are shared catalogs/
+    # templates, not per-tenant governance data — see docs/superpowers/plans/
+    # 2026-08-13-tenancy-wave-4.md Task 3. Their organization_id column exists
+    # (Phase A, for schema symmetry with the sibling per-tenant models) but is
+    # unused; TenantMixin would hide them from every org.
+    "ARBGovernanceStandard": "shared governance standards catalogue, not org-owned",
+    "ARBWorkflowStage": "shared workflow stage catalogue, not org-owned",
+    "EAWorkflowDefinition": "shared workflow template catalogue, not org-owned",
 }
 
 

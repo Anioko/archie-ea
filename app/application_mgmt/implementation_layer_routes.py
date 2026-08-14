@@ -13,6 +13,7 @@ import logging
 
 from flask import current_app, flash, jsonify, redirect, request, session, url_for
 from flask_login import login_required
+from werkzeug.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,8 @@ def get_application_work_packages(id):
             )
 
         return jsonify({"work_packages": wp_data})
+    except HTTPException:
+        raise
     except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 

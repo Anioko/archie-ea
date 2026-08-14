@@ -37,7 +37,7 @@
                 <p class="text-sm text-muted-foreground mt-1">{{ active_config.configuration_name }}</p>
             </div>
             <div class="flex items-center space-x-2">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success-emphasis">
                     Active
                 </span>
                 <a href="{{ url_for('framework_config_ui.view_configuration', config_id=active_config.id) }}" 
@@ -217,8 +217,8 @@
                             <td class="px-4 py-3 text-sm text-foreground">{{ config.industry_focus }}</td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                       {% if config.status == 'active' %}bg-success/10 text-success
-                                       {% elif config.status == 'draft' %}bg-warning/10 text-warning
+                                       {% if config.status == 'active' %}bg-success/10 text-success-emphasis
+                                       {% elif config.status == 'draft' %}bg-warning/10 text-warning-emphasis
                                        {% else %}bg-muted text-foreground{% endif %}">
                                     {{ config.status.title() }}
                                 </span>
@@ -281,7 +281,7 @@
                   class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   placeholder="Describe this configuration"></textarea>
     </div>
-    <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+    <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg"></div>
     <div class="flex justify-end gap-3 pt-2 border-t border-border">
         <button type="button" @click="Platform.modal.close('create-framework-config')"
                 class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Close">Cancel</button>

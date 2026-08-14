@@ -211,6 +211,8 @@ scripts/check_*.py
 !scripts/check_fetch_guards.py
 !scripts/check_null_filters.py
 !scripts/check_template_references.py
+!scripts/check_sidebar_links.py
+!scripts/check_tenant_scoping.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py
@@ -297,3 +299,7 @@ si.py
 readgen.py
 recheck.py
 .worktrees/
+
+# Wave verification screenshot-matrix output (scripts/screenshot_matrix.py) --
+# reviewed in-session, not committed.
+docs/superpowers/evidence/

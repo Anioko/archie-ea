@@ -27,7 +27,7 @@
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
                                  {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' if score.overall_health_score and score.overall_health_score >= 70
                                     else 'bg-amber-500/10 text-amber-600 border border-amber-500/30' if score.overall_health_score and score.overall_health_score >= 40
-                                    else 'bg-destructive/10 text-destructive border border-destructive/30' }}">
+                                    else 'bg-destructive/10 text-destructive-emphasis border border-destructive/30' }}">
                         Health: {{ score.overall_health_score or '—' }}
                     </span>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
@@ -126,7 +126,7 @@
                                       :class="{'bg-primary/10 text-primary border border-primary/30': evidenceData.time_action === 'TOLERATE',
                                                'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': evidenceData.time_action === 'INVEST',
                                                'bg-amber-500/10 text-amber-600 border border-amber-500/30': evidenceData.time_action === 'MIGRATE',
-                                               'bg-destructive/10 text-destructive border border-destructive/30': evidenceData.time_action === 'ELIMINATE'}"
+                                               'bg-destructive/10 text-destructive-emphasis border border-destructive/30': evidenceData.time_action === 'ELIMINATE'}"
                                       x-text="evidenceData.time_action || '—'"></span>
                                 <span class="text-xs text-muted-foreground"
                                       :title="(evidenceData.confidence_reasons || []).join('; ')"
@@ -153,7 +153,7 @@
                                 <div class="flex flex-wrap gap-2">
                                     <template x-for="(satisfied, dimName) in (evidenceData.readiness_dimensions || {})" :key="dimName">
                                         <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md"
-                                              :class="satisfied ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'">
+                                              :class="satisfied ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive-emphasis'">
                                             <i :data-lucide="satisfied ? 'check' : 'x'" class="h-3 w-3"></i>
                                             <span x-text="dimName"></span>
                                         </span>
@@ -343,7 +343,7 @@
                             <p class="text-xs text-amber-600" x-text="'Expires: ' + (tabData.overrides.override_expiry || 'No expiry')"></p>
                         </div>
                         <button type="button" @click="removeOverride()"
-                                class="px-3 py-1.5 text-xs font-medium rounded-md border border-destructive text-destructive hover:bg-destructive/10">
+                                class="px-3 py-1.5 text-xs font-medium rounded-md border border-destructive text-destructive-emphasis hover:bg-destructive/10">
                             Remove Override
                         </button>
                     </div>

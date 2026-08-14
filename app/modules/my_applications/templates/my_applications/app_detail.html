@@ -35,8 +35,8 @@
                     <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
                         {% if lifecycle in ['active', 'production'] %}bg-green-100 text-green-700
                         {% elif lifecycle in ['sunset', 'retiring'] %}bg-amber-100 text-amber-700
-                        {% elif lifecycle in ['decommissioned', 'retired'] %}bg-red-100 text-red-700
-                        {% else %}bg-gray-100 text-gray-700{% endif %}">
+                        {% elif lifecycle in ['decommissioned', 'retired'] %}bg-destructive/10 text-destructive-emphasis
+                        {% else %}bg-muted text-muted-foreground{% endif %}">
                         {{ lifecycle }}
                     </span>
                 </div>
@@ -89,10 +89,10 @@
                         <dt class="text-sm text-muted-foreground">Business Criticality</dt>
                         <dd class="font-medium">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
-                                {% if app.business_criticality == 'critical' %}bg-red-100 text-red-700
+                                {% if app.business_criticality == 'critical' %}bg-destructive/10 text-destructive-emphasis
                                 {% elif app.business_criticality == 'high' %}bg-amber-100 text-amber-700
-                                {% elif app.business_criticality == 'medium' %}bg-blue-100 text-blue-700
-                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {% elif app.business_criticality == 'medium' %}bg-info/10 text-info-emphasis
+                                {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ app.business_criticality }}
                             </span>
                         </dd>
@@ -140,9 +140,9 @@
                         <dt class="text-sm text-muted-foreground">Data Classification</dt>
                         <dd class="font-medium">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
-                                {% if app.data_classification == 'confidential' %}bg-red-100 text-red-700
+                                {% if app.data_classification == 'confidential' %}bg-destructive/10 text-destructive-emphasis
                                 {% elif app.data_classification == 'internal' %}bg-amber-100 text-amber-700
-                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ app.data_classification }}
                             </span>
                         </dd>

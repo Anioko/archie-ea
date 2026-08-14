@@ -135,7 +135,7 @@
         {# Result preview #}
         <template x-if="importResult">
           <div :class="importResult.error
-                  ? 'bg-destructive/10 border-destructive/30 text-destructive'
+                  ? 'bg-destructive/10 border-destructive/30 text-destructive-emphasis'
                   : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'"
                class="rounded-lg border px-3 py-2 text-[11px]">
             <template x-if="!importResult.error">

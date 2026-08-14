@@ -8,6 +8,7 @@ and tracking tagging analytics.
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.decorators import audit_log
@@ -52,6 +53,8 @@ def get_application_tags(app_id):
                 "total": len(tags),
             }
         )
+    except HTTPException:
+        raise
     except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 

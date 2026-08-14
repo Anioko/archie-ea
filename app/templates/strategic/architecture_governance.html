@@ -48,9 +48,9 @@
                             <td class="p-3">{{ item.element_name|default('N/A') }}</td>
                             <td class="p-3">
                                 <span class="px-2 py-1 text-xs rounded-full
-                                    {% if item.status == 'Critical' %}bg-destructive/20 text-destructive
-                                    {% elif item.status == 'Review Required' %}bg-warning/20 text-warning
-                                    {% else %}bg-success/20 text-success{% endif %}">
+                                    {% if item.status == 'Critical' %}bg-destructive/20 text-destructive-emphasis
+                                    {% elif item.status == 'Review Required' %}bg-warning/20 text-warning-emphasis
+                                    {% else %}bg-success/20 text-success-emphasis{% endif %}">
                                     {{ item.status|default('Compliant') }}
                                 </span>
                             </td>

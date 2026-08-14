@@ -5,7 +5,7 @@ import logging
 import re
 from datetime import datetime
 
-from flask import current_app, jsonify, redirect, render_template, request, url_for
+from flask import current_app, g, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
@@ -153,7 +153,7 @@ def list_users_for_assignment():
     try:
         from app.models.user import User
 
-        users = User.query.order_by(User.first_name.asc()).all()
+        users = User.query.filter_by(organization_id=g.current_org_id).order_by(User.first_name.asc()).all()
         return jsonify(
             {
                 "success": True,

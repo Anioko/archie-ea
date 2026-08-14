@@ -91,10 +91,21 @@ def generate_smart_defaults(solution):
         from app.models.application_capability import ApplicationCapabilityMapping
 
         # Count apps per capability
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would score every
+        # capability as zero app coverage. Joining BusinessCapability lets
+        # do_orm_execute scope the join automatically. See e622d36 /
+        # rationalization_scoring_service.py.
         cap_app_counts = dict(
             db.session.query(
                 ApplicationCapabilityMapping.business_capability_id,
+                # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
                 func.count(ApplicationCapabilityMapping.id),
+            )
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
             )
             .group_by(ApplicationCapabilityMapping.business_capability_id)
             .all()
@@ -189,6 +200,7 @@ def generate_smart_defaults(solution):
         if results["capabilities"]:
             cap_ids = [c["id"] for c in results["capabilities"]]
             app_mappings = (
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 ApplicationCapabilityMapping.query
                 .filter(ApplicationCapabilityMapping.business_capability_id.in_(cap_ids))
                 .all()

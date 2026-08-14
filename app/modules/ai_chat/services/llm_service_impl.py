@@ -1338,6 +1338,7 @@ Output clean, executable test code."""
         cache_ttl: int = CACHE_TTL_SECONDS,
         expected_schema: Optional[str] = None,
         job_id: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> str:
         """
         Generic method to generate content from any prompt with caching.
@@ -1347,6 +1348,14 @@ Output clean, executable test code."""
             pipeline_stage_id: Optional PipelineStage ID for tracking
             use_cache: Whether to use cache (default: True)
             cache_ttl: Cache TTL in seconds (default: 3600)
+            timeout: Optional per-call client-level timeout override, in seconds.
+                Passed through to the underlying provider client for THIS call
+                only — leaves every other caller's (unset) default timeout
+                unchanged. Added for Task 4 (P0 wave):
+                application_pattern_classifier_service.py needs a ≤60s bound
+                on this path without lowering the global OpenAI/Anthropic/
+                OpenRouter defaults used elsewhere (e.g. chat, ArchiMate
+                generation).
 
         Returns:
             Generated response text
@@ -1368,6 +1377,7 @@ Output clean, executable test code."""
             pipeline_stage_id=pipeline_stage_id,
             expected_schema=expected_schema,
             job_id=job_id,
+            timeout=timeout,
         )
 
         # Cache the response
@@ -1507,23 +1517,26 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         max_tokens: Optional[int] = None,
         pipeline_stage_id: Optional[int] = None,
         _already_tried: Optional[List[str]] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, LLMInteraction]:
         """
         Call LLM with automatic API key failover.
-        
+
         Tries multiple API keys in sequence until one succeeds.
         This ensures elements are not lost due to API key issues.
-        
+
         Args:
             prompt: The prompt text
             model: Model name
             provider: Provider name
             max_tokens: Optional max tokens
             pipeline_stage_id: Optional tracking ID
-            
+            timeout: Optional per-call client-level timeout override (seconds),
+                passed through to the provider-specific call for this call only.
+
         Returns:
             Tuple of (response_text, interaction)
-            
+
         Raises:
             RuntimeError: If ALL API keys fail
         """
@@ -1555,19 +1568,19 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 # Call the appropriate provider method
                 if provider == "openai":
                     response_text, token_input, token_output, cost = LLMService._call_openai(
-                        prompt, model, api_key, max_tokens=max_tokens
+                        prompt, model, api_key, max_tokens=max_tokens, timeout=timeout
                     )
                 elif provider == "anthropic":
                     response_text, token_input, token_output, cost = LLMService._call_anthropic(
-                        prompt, model, api_key, max_tokens=max_tokens
+                        prompt, model, api_key, max_tokens=max_tokens, timeout=timeout
                     )
                 elif provider == "gemini":
                     response_text, token_input, token_output, cost = LLMService._call_gemini(
-                        prompt, model, api_key, max_tokens=max_tokens
+                        prompt, model, api_key, max_tokens=max_tokens, timeout=timeout
                     )
                 elif provider == "deepseek":
                     response_text, token_input, token_output, cost = LLMService._call_deepseek(
-                        prompt, model, api_key, max_tokens=max_tokens
+                        prompt, model, api_key, max_tokens=max_tokens, timeout=timeout
                     )
                 elif provider == "huggingface":
                     response_text, token_input, token_output, cost = LLMService._call_huggingface(
@@ -1582,7 +1595,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     for or_model in or_models:
                         try:
                             response_text, token_input, token_output, cost = LLMService._call_openrouter(
-                                prompt, or_model, api_key, max_tokens=max_tokens
+                                prompt, or_model, api_key, max_tokens=max_tokens, timeout=timeout
                             )
                             model = or_model  # Update model for interaction record
                             or_success = True
@@ -1684,6 +1697,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     max_tokens=max_tokens,
                     pipeline_stage_id=pipeline_stage_id,
                     _already_tried=_already_tried,
+                    timeout=timeout,
                 )
             except Exception as fb_err:
                 logger.warning(f"Cross-provider fallback to {fallback_provider} also failed: {str(fb_err)[:80]}")
@@ -1706,6 +1720,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         max_tokens: Optional[int] = None,
         expected_schema: Optional[str] = None,
         job_id: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, LLMInteraction]:
         """
         Internal method to call LLM API and track the interaction.
@@ -1723,6 +1738,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             pipeline_stage_id: Optional PipelineStage ID for tracking
             user_id: Optional user ID for budget tracking
             project_id: Optional project ID for budget tracking
+            timeout: Optional per-call client-level timeout override (seconds),
+                passed through to the provider client for this call only.
 
         Returns:
             Tuple of (response_text, LLMInteraction instance)
@@ -1755,6 +1772,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 provider=provider,
                 max_tokens=max_tokens,
                 pipeline_stage_id=pipeline_stage_id,
+                timeout=timeout,
             )
         except RuntimeError as e:
             # All API keys failed
@@ -1793,6 +1811,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                         max_tokens=max_tokens,
                         expected_schema=expected_schema,
                         job_id=job_id,
+                        timeout=timeout,
                     )
                 except ValueError as fallback_error:
                     logger.error(f"❌ No alternative provider available: {fallback_error}")
@@ -1862,13 +1881,23 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
 
     @staticmethod
     @retry_on_transient_error(max_attempts=3, min_wait=2, max_wait=10)
-    def _call_openai(prompt: str, model: str, api_key: str, max_tokens: Optional[int] = None) -> Tuple[str, int, int, float]:
+    def _call_openai(
+        prompt: str,
+        model: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> Tuple[str, int, int, float]:
         """
         Call OpenAI API with automatic retry on transient failures.
 
         Retries on: Timeout, ConnectionError, RateLimitError
         Max attempts: 3
         Backoff: Exponential (2s, 4s, 8s)
+
+        ``timeout`` overrides the default 90s client-level timeout for this
+        call only (e.g. application_pattern_classifier_service.py passes a
+        tighter bound); other callers keep the 90s default.
         """
         try:
             from openai import OpenAI
@@ -1879,6 +1908,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             # gpt-4/gpt-5 series support 16K output; gpt-3.5 supports 4K.
             if max_tokens is None:
                 max_tokens = 8192 if ("gpt-4" in model or "gpt-5" in model) else 4096
+
+            effective_timeout = timeout if timeout is not None else 90.0
 
             # Enforce deterministic output for critical generation tasks
             response = client.chat.completions.create(
@@ -1892,7 +1923,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 ],
                 temperature=0.0,
                 max_completion_tokens=max_tokens,
-                timeout=90.0,  # 90 second timeout (expanded prompts need more time)
+                timeout=effective_timeout,
             )
 
             response_text = response.choices[0].message.content
@@ -1926,7 +1957,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
     @staticmethod
     @retry_on_transient_error(max_attempts=3, min_wait=2, max_wait=10)
     def _call_anthropic(
-        prompt: str, model: str, api_key: str, max_tokens: Optional[int] = None
+        prompt: str,
+        model: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, int, int, float]:
         """
         Call Anthropic Claude API with prompt caching for 90% cost reduction.
@@ -1941,6 +1976,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         - Max attempts: 3
         - Backoff: Exponential (2s, 4s, 8s)
         - Retries on: Timeout, ConnectionError, RateLimitError, APIError
+
+        ``timeout`` overrides the default 85s client-level timeout for this
+        call only; other callers keep the 85s default.
         """
         try:
             import anthropic
@@ -1956,8 +1994,10 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             logger.info(f"System prompt length: {len(ARCHIMATE_SYSTEM_PROMPT)} characters")
             logger.info("=" * 80 + "\n")
 
+            effective_timeout = timeout if timeout is not None else 85.0
+
             client = anthropic.Anthropic(
-                api_key=api_key, timeout=85.0
+                api_key=api_key, timeout=effective_timeout
             )
 
             # Use prompt caching to reduce costs by 90%
@@ -1989,7 +2029,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     }
                 ],
                 messages=[{"role": "user", "content": prompt}],
-                timeout=85.0,
+                timeout=effective_timeout,
             )
 
             response_text = response.content[0].text
@@ -2086,9 +2126,17 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
     @staticmethod
     @retry_on_transient_error(max_attempts=3, min_wait=2, max_wait=10)
     def _call_gemini(
-        prompt: str, model: str, api_key: str, max_tokens: Optional[int] = None
+        prompt: str,
+        model: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, int, int, float]:
-        """Call Google Gemini models via REST API."""
+        """Call Google Gemini models via REST API.
+
+        ``timeout`` overrides the default 60s request timeout for this call
+        only; other callers keep the 60s default.
+        """
 
         # Normalize Gemini model names to correct API format
         # Try multiple model name formats if first fails
@@ -2123,8 +2171,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         if max_tokens is not None:
             payload["generationConfig"] = {"maxOutputTokens": max_tokens}
 
+        effective_timeout = timeout if timeout is not None else 60
         try:
-            response = requests.post(endpoint, params={"key": api_key}, json=payload, timeout=60)
+            response = requests.post(
+                endpoint, params={"key": api_key}, json=payload, timeout=effective_timeout
+            )
             response.raise_for_status()
         except requests.exceptions.HTTPError as exc:
             status = exc.response.status_code if exc.response else "unknown"
@@ -2181,7 +2232,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
     @staticmethod
     @retry_on_transient_error(max_attempts=3, min_wait=2, max_wait=10)
     def _call_deepseek(
-        prompt: str, model: str, api_key: str, max_tokens: Optional[int] = None
+        prompt: str,
+        model: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, int, int, float]:
         """
         Call DeepSeek API with automatic retry on transient failures.
@@ -2191,11 +2246,20 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         Retries on: Timeout, ConnectionError, RateLimitError
         Max attempts: 3
         Backoff: Exponential (2s, 4s, 8s)
+
+        ``timeout`` overrides the default 60s client-level timeout for this
+        call only; other callers keep the 60s default.
         """
         try:
             from openai import OpenAI
 
-            client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
+            # NOTE: the OpenAI client has no request timeout by default, which let a
+            # stalled DeepSeek connection hang a worker indefinitely (see Task 4,
+            # P0 wave). Bound it explicitly at the client level.
+            effective_timeout = timeout if timeout is not None else 60.0
+            client = OpenAI(
+                api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=effective_timeout
+            )
 
             # Use model-specific optimal token limits
             if max_tokens is None:
@@ -2216,6 +2280,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 ],
                 temperature=0.0,
                 max_tokens=max_tokens,
+                timeout=effective_timeout,
             )
 
             response_text = response.choices[0].message.content
@@ -2417,6 +2482,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         model: str,
         api_key: str,
         max_tokens: Optional[int] = 4096,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, int, int, float]:
         """
         Call OpenRouter API (OpenAI-compatible chat completions).
@@ -2429,6 +2495,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             model: Model ID in provider/model format (e.g. "google/gemini-2.5-flash-preview:free")
             api_key: OpenRouter API key
             max_tokens: Maximum response tokens
+            timeout: Optional override for the read timeout (seconds) of this
+                call only; other callers keep the default (10s connect, 80s
+                read). The connect timeout is left at 10s regardless.
 
         Returns:
             Tuple of (response_text, input_tokens, output_tokens, cost)
@@ -2452,12 +2521,13 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             "temperature": 0.0,
         }
 
+        read_timeout = timeout if timeout is not None else 80
         try:
             response = http_requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=(10, 80),
+                timeout=(10, read_timeout),
             )
             response.raise_for_status()
             data = response.json()

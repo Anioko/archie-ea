@@ -1110,6 +1110,7 @@ def accept_capability_suggestion(id):
         return jsonify({"success": False, "error": "capability_id required"}), 400
 
     # Check if already mapped
+    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
     existing = ApplicationCapabilityMapping.query.filter_by(
         application_component_id=id, business_capability_id=cap_id
     ).first()

@@ -1,29 +1,55 @@
 {% extends "layouts/admin_base.html" %}
-{% from "components/page_header.html" import page_header %}
 {% from "components/filter_bar.html" import filter_bar %}
 {% from 'components/status_badge.html' import status_badge, status_badge_auto %}
 {% from "components/sol_confirm_modal.html" import sol_confirm_modal %}
 {% from 'components/modal.html' import modal %}
+{% from 'macros/page_shell.html' import page_shell, stat_card %}
 
 
 {% block title %}All Solutions{% endblock %}
 
 {% block content %}
 <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="solutionListCompare()">
-    {{ page_header(
-        title='All Solutions',
-        description='Resume solution design work, surface blockers, and launch architect workflows quickly.',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Solutions Management'},
-            {'label': 'All Solutions'}
-        ],
-        actions=[
-            {'text': 'New Programme', 'icon': 'layers', 'href': url_for('solution_design.new_programme'), 'variant': 'default'},
-            {'text': 'New from Template', 'icon': 'layout-template', 'onclick': "openTemplateModal()", 'variant': 'outline'},
-            {'text': 'New Solution', 'icon': 'zap', 'href': url_for('architecture_journey.index'), 'variant': 'outline', 'aria_label': 'Create new solution using the guided architecture journey'}
-        ]
+    {# ─ PAGE HEADER — screen system: one primary action whose label matches
+       where it actually goes. Was: three competing creation CTAs, with the
+       visually-primary one ("New Programme") not matching the page's job
+       (browsing/resuming solutions), and "New Solution" opening a page
+       titled "Architecture Journey" — a label that lied about its
+       destination. ─ #}
+    {% macro _solutions_page_actions() %}
+    <div class="flex flex-wrap items-center gap-2" data-testid="page-actions">
+      <a href="{{ url_for('solution_design.new_programme') }}" data-testid="btn-new-programme"
+         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
+        <i data-lucide="layers" class="h-4 w-4" aria-hidden="true"></i>New Programme
+      </a>
+      <button type="button" data-testid="btn-new-from-template" onclick="openTemplateModal()"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
+        <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>New from Template
+      </button>
+      <a href="{{ url_for('architecture_journey.index') }}" data-testid="btn-start-journey"
+         class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+         aria-label="Start the guided Architecture Journey to design a new solution">
+        <i data-lucide="zap" class="h-4 w-4" aria-hidden="true"></i>Start Architecture Journey
+      </a>
+    </div>
+    {% endmacro %}
+    {{ page_shell(
+         title="All Solutions",
+         subtitle="Resume solution design work, surface blockers, and launch architect workflows quickly.",
+         breadcrumb=[('Dashboard', url_for('main.index')), ('Solutions Management', None), ('All Solutions', None)],
+         actions_caller=_solutions_page_actions
     ) }}
+
+    {# Programme / Solution relationship — verified against the models: a
+       "Programme" (created via New Programme) is a StrategicInitiative row;
+       the Solution it creates alongside it is linked via
+       Solution.initiative_id, and further solutions can join the same
+       initiative (app/modules/solutions_strategic/v2/services/programme_setup_service.py,
+       _create_initiative_for). The Architecture Journey always designs one
+       Solution end-to-end and does not create an initiative. #}
+    <p class="text-sm text-muted-foreground -mt-4 mb-6" data-testid="programme-solution-relationship">
+        A Programme groups multiple solutions under one shared initiative; the Architecture Journey designs one solution end-to-end.
+    </p>
 
     {# ════════════════════════════════════════════════════════════════════════ #}
     {# EXECUTIVE METRICS                                                        #}
@@ -37,22 +63,15 @@
     ] %}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
       {% for metric in metric_cards %}
-      <a href="?status={{ metric.status_param }}"
-         class="rounded-xl border-2 {% if selected_workspace == metric.status_param %}border-primary ring-2 ring-primary/20 bg-primary/5{% else %}border-input bg-background hover:border-primary/50{% endif %} cursor-pointer hover:shadow-md transition-all duration-200 p-5 block no-underline text-inherit"
-         {% if selected_workspace == metric.status_param %}aria-current="true"{% endif %}>
-        <div class="flex items-start gap-4">
-          <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg {{ metric.icon_gradient }}">
-            <i data-lucide="{{ metric.icon }}" class="h-5 w-5 text-primary-foreground"></i>
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-muted-foreground">{{ metric.label }}</p>
-            <p class="text-2xl font-bold tracking-tight mt-1">{{ metric.value }}</p>
-            {% if metric.sublabel %}
-            <p class="text-xs text-muted-foreground mt-1">{{ metric.sublabel }}</p>
-            {% endif %}
-          </div>
-        </div>
-      </a>
+      {{ stat_card(
+           label=metric.label,
+           value=metric.value,
+           hint=metric.sublabel,
+           href='?status=' ~ metric.status_param,
+           icon=metric.icon,
+           icon_bg=metric.icon_gradient,
+           active=(selected_workspace == metric.status_param)
+      ) }}
       {% endfor %}
     </div>
     {% endif %}
@@ -153,7 +172,7 @@
                 <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>Export
               </button>
               <button type="button" data-action="bulk-delete-solutions"
-                      class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-destructive/30 bg-card hover:bg-destructive/10 text-destructive transition-colors" aria-label="Delete selected">
+                      class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-destructive/30 bg-card hover:bg-destructive/10 text-destructive-emphasis transition-colors" aria-label="Delete selected">
                 <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>Delete
               </button>
           </div>
@@ -299,7 +318,7 @@
                                                 class="text-[10px] px-2 py-1 rounded-md border font-medium transition-colors"
                                                 x-text="isInCompare({{ solution.id }}) ? '✓ Compare' : '+ Compare'"></button>
                                         <button type="button" @click="window.deleteSolution({{ solution.id }}, '{{ solution.name|e }}')"
-                                                class="text-[10px] px-2 py-1 rounded-md border border-destructive/20 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors" aria-label="Delete">Delete</button>
+                                                class="text-[10px] px-2 py-1 rounded-md border border-destructive/20 text-destructive-emphasis/70 hover:bg-destructive/10 hover:text-destructive-emphasis transition-colors" aria-label="Delete">Delete</button>
                                     </div>
                                 </div>
                             </td>
@@ -379,9 +398,9 @@
             <h2 class="mt-4 text-lg font-medium">No solutions found</h2>
             <p class="mt-2 text-sm text-muted-foreground max-w-md mx-auto">Get started by creating your first solution</p>
             <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
-                <a href="{{ url_for('architecture_journey.index') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Create new solution using the guided architecture journey">
+                <a href="{{ url_for('architecture_journey.index') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Start the guided Architecture Journey to design a new solution">
                     <i data-lucide="zap" class="h-4 w-4" aria-hidden="true"></i>
-                    New Solution
+                    Start Architecture Journey
                 </a>
                 <button type="button" @click="openTemplateModal()" class="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg border border-border/50 bg-card hover:bg-accent transition-colors text-sm font-medium" aria-label="Create from template">
                     <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>

@@ -31,7 +31,7 @@
                     <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-muted">
                         Version {{ template_content.schema_version }}
                     </span>
-                    <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium {{ 'bg-success/10 text-success' if readiness_summary.can_submit_for_review else 'bg-warning/10 text-warning' }}">
+                    <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium {{ 'bg-success/10 text-success-emphasis' if readiness_summary.can_submit_for_review else 'bg-warning/10 text-warning-emphasis' }}">
                         {{ 'Ready for review' if readiness_summary.can_submit_for_review else 'Draft shell' }}
                     </span>
                 </div>
@@ -82,7 +82,7 @@
                                 {{ section.status|replace("_", " ")|title }}
                             </span>
                             {% if section.required %}
-                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-destructive/10 text-destructive">Required</span>
+                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-destructive/10 text-destructive-emphasis">Required</span>
                             {% endif %}
                         </div>
                         <p class="text-sm text-muted-foreground mt-2">{{ section.description }}</p>

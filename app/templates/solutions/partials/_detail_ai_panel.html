@@ -148,7 +148,7 @@
                         <template x-for="(r, i) in aiInsightsData.risks.suggestions.slice(0,6)" :key="i">
                             <div class="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
                                 <span class="mt-0.5 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium border shrink-0"
-                                      :class="(r.severity || r.impact || '').toLowerCase() === 'high' ? 'bg-destructive/10 text-destructive border-destructive/30'
+                                      :class="(r.severity || r.impact || '').toLowerCase() === 'high' ? 'bg-destructive/10 text-destructive-emphasis border-destructive/30'
                                             : (r.severity || r.impact || '').toLowerCase() === 'medium' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                                             : 'bg-muted text-muted-foreground border-border'"
                                       x-text="(r.severity || r.impact || 'Unknown').charAt(0).toUpperCase() + (r.severity || r.impact || '').slice(1)"></span>
@@ -372,7 +372,7 @@
                                     Accept (<span x-text="archSelected.size"></span>)
                                 </button>
                                 <button type="button" @click="bulkReject()"
-                                        class="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors">
+                                        class="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 hover:bg-destructive/20 transition-colors">
                                     <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
                                     Reject (<span x-text="archSelected.size"></span>)
                                 </button>
@@ -435,7 +435,7 @@
                                     </span>
                                 </template>
                                 <template x-if="archRejected.has(i)">
-                                    <span class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30 shrink-0">
+                                    <span class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 shrink-0">
                                         <i data-lucide="x-circle" class="h-3 w-3" aria-hidden="true"></i>Rejected
                                     </span>
                                 </template>
@@ -449,7 +449,7 @@
                                            :class="archAcceptingIdx === i ? 'animate-spin' : ''"></i>
                                     </button>
                                     <button type="button" @click="rejectOne(i)" title="Reject"
-                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors">
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                                         <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
                                     </button>
                                     <button type="button" @click="startEdit(i)" title="Edit before accepting"
@@ -620,7 +620,7 @@
                 </div>
 
                 <template x-if="relChatError">
-                    <div class="mb-3 p-2 rounded-md bg-destructive/10 text-destructive text-xs" x-text="relChatError"></div>
+                    <div class="mb-3 p-2 rounded-md bg-destructive/10 text-destructive-emphasis text-xs" x-text="relChatError"></div>
                 </template>
 
                 <template x-if="relChatProposals.length > 0">

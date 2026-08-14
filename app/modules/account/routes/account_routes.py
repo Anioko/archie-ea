@@ -433,6 +433,8 @@ def sso_callback(provider):
     from app import db
     from app.models.user import User
 
+    # tenant-scoping-ok: pre-auth SSO callback, no org context yet -- scoped
+    # by the (external_id, sso_provider) pair, which is unique per IdP.
     user = User.query.filter_by(external_id=external_id, sso_provider=provider).first()
     if user is None:
         # Try matching by email for existing password-auth users linking SSO

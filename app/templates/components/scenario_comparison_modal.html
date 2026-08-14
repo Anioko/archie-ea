@@ -261,7 +261,7 @@
                                     <span x-text="`Scenario ${index + 1}`"></span>
                                     <span
                                         x-show="getRecommendedIndex() === index" x-cloak
-                                        class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning border border-warning/30"
+                                        class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
                                     >
                                         Recommended
                                     </span>
@@ -292,7 +292,7 @@
                     <tr class="bg-muted/30">
                         <td class="px-4 py-3 font-medium">ROI %</td>
                         <template x-for="(scenario, index) in scenarios" :key="`roi-${index}`">
-                            <td class="px-4 py-3 text-center font-bold" :class="[getRecommendedIndex() === index ? 'bg-warning/5' : '', scenario?.roi >= 20 ? 'text-success' : scenario?.roi >= 0 ? 'text-warning' : 'text-destructive']" x-show="scenario" x-cloak x-text="formatPercentage(scenario?.roi || 0)"></td>
+                            <td class="px-4 py-3 text-center font-bold" :class="[getRecommendedIndex() === index ? 'bg-warning/5' : '', scenario?.roi >= 20 ? 'text-success' : scenario?.roi >= 0 ? 'text-warning-emphasis' : 'text-destructive']" x-show="scenario" x-cloak x-text="formatPercentage(scenario?.roi || 0)"></td>
                         </template>
                     </tr>
                     <tr>
@@ -316,7 +316,7 @@
                     <tr class="bg-muted/30">
                         <td class="px-4 py-3 font-medium">Risk Score</td>
                         <template x-for="(scenario, index) in scenarios" :key="`risk-${index}`">
-                            <td class="px-4 py-3 text-center" :class="[getRecommendedIndex() === index ? 'bg-warning/5' : '', scenario?.risk_score <= 10 ? 'text-success' : scenario?.risk_score <= 15 ? 'text-warning' : 'text-destructive']" x-show="scenario" x-cloak x-text="`${scenario?.risk_score || 0} / 25`"></td>
+                            <td class="px-4 py-3 text-center" :class="[getRecommendedIndex() === index ? 'bg-warning/5' : '', scenario?.risk_score <= 10 ? 'text-success' : scenario?.risk_score <= 15 ? 'text-warning-emphasis' : 'text-destructive']" x-show="scenario" x-cloak x-text="`${scenario?.risk_score || 0} / 25`"></td>
                         </template>
                     </tr>
                     <tr>
@@ -326,9 +326,9 @@
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
                                     :class="{
-                                        'bg-destructive/10 text-destructive border border-destructive/30': scenario?.priority === 'CRITICAL',
-                                        'bg-warning/10 text-warning border border-warning/30': scenario?.priority === 'HIGH',
-                                        'bg-warning/10 text-warning border border-warning/30': scenario?.priority === 'MEDIUM',
+                                        'bg-destructive/10 text-destructive-emphasis border border-destructive/30': scenario?.priority === 'CRITICAL',
+                                        'bg-warning/10 text-warning-emphasis border border-warning/30': scenario?.priority === 'HIGH',
+                                        'bg-warning/10 text-warning-emphasis border border-warning/30': scenario?.priority === 'MEDIUM',
                                         'bg-muted text-muted-foreground': scenario?.priority === 'LOW'
                                     }"
                                     x-text="scenario?.priority || 'MEDIUM'"

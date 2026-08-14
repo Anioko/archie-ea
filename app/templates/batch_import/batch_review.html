@@ -365,7 +365,7 @@
                                         <button
                                             @click="approveElement(element.id)"
                                             x-show="_normApproval(element.approval_status) !== 'approved'" x-cloak
-                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-success/10 text-success h-8 w-8 transition-colors"
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-success/10 text-success-emphasis h-8 w-8 transition-colors"
                                             title="Approve"
                                         >
                                             <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
@@ -373,7 +373,7 @@
                                         <button
                                             @click="rejectElement(element.id)"
                                             x-show="_normApproval(element.approval_status) !== 'rejected'" x-cloak
-                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-destructive/10 text-destructive h-8 w-8 transition-colors"
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-destructive/10 text-destructive-emphasis h-8 w-8 transition-colors"
                                             title="Reject"
                                         >
                                             <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
@@ -529,7 +529,7 @@
                     <button
                         @click="rejectElement(selectedElement?.id); showDetailModal = false"
                         x-show="_normApproval(selectedElement?.approval_status) !== 'rejected'" x-cloak
-                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-destructive text-destructive hover:bg-destructive/10 h-10 px-4 py-2 transition-colors"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-destructive text-destructive-emphasis hover:bg-destructive/10 h-10 px-4 py-2 transition-colors"
                      aria-label="Reject">
                         <i data-lucide="x" class="mr-2 h-4 w-4" aria-hidden="true"></i>
                         Reject

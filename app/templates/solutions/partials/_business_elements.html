@@ -127,7 +127,7 @@
                         {# Impact level badge #}
                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
                             :class="{
-                                'bg-destructive/10 text-destructive border border-destructive/30': gap.impact_level === 'critical' || gap.impact_level === 'high',
+                                'bg-destructive/10 text-destructive-emphasis border border-destructive/30': gap.impact_level === 'critical' || gap.impact_level === 'high',
                                 'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.impact_level === 'medium',
                                 'bg-green-500/10 text-emerald-600 border border-green-500/30': gap.impact_level === 'low'
                             }"
@@ -248,7 +248,7 @@
                                     </td>
                                     <td class="px-3 py-2">
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
-                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30">Gap</span>
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Gap</span>
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
                                         <span x-show="!el.baseline_state || !el.target_state" x-cloak
@@ -302,7 +302,7 @@
                                     </td>
                                     <td class="px-3 py-2">
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
-                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30">Gap</span>
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Gap</span>
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
                                         <span x-show="!el.baseline_state || !el.target_state" x-cloak
@@ -356,7 +356,7 @@
                                     </td>
                                     <td class="px-3 py-2">
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
-                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30">Gap</span>
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Gap</span>
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
                                         <span x-show="!el.baseline_state || !el.target_state" x-cloak

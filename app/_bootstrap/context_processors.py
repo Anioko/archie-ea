@@ -515,10 +515,15 @@ def init_context_processors(app):
     app.jinja_env.globals["flask"] = flask
 
     # NS-006: Register role-based access functions for persona navigation
-    from app.utils.role_access import role_access_context_processor
+    from app.utils.role_access import get_sidebar_zones, role_access_context_processor
     role_funcs = role_access_context_processor()
     for name, func in role_funcs.items():
         app.jinja_env.globals[name] = func
+
+    # Shell-overhaul Wave 1 (Task 3): persona sidebar zones. The sidebar
+    # template (components/admin_sidebar.html) renders from this only — see
+    # app/utils/role_access.py for the single source of truth.
+    app.jinja_env.globals["get_sidebar_zones"] = get_sidebar_zones
 
     # Register HTML sanitizer filter for safe rendering of user-generated rich text
     from app.utils.html_sanitizer import sanitize_html
@@ -545,6 +550,26 @@ def init_context_processors(app):
 
     app.jinja_env.filters["format_date"] = _filter_format_date
     app.jinja_env.filters["format_datetime"] = _filter_format_datetime
+
+    # Shell-overhaul Wave 2 (Task 5): templates need a safe way to compare a
+    # stored date against "today" (e.g. contract-expiry urgency banners)
+    # without doing date arithmetic in Jinja directly, which has no
+    # `datetime` module in scope and previously produced a `None`-minus-date
+    # TypeError (applications/dashboard.html 500'd on any app with
+    # contract_expiry_date set). Returns None — never a fabricated number —
+    # when there is nothing to compare.
+    def _days_until(value):
+        import datetime as _dt
+        if value is None:
+            return None
+        try:
+            if isinstance(value, _dt.datetime):
+                value = value.date()
+            return (value - _dt.date.today()).days
+        except TypeError:
+            return None
+
+    app.jinja_env.globals["days_until"] = _days_until
 
     # Cache-busting: compute git hash once at startup for static file versioning
     import subprocess
