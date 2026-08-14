@@ -149,7 +149,7 @@
                             <div class="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
                                 <span class="mt-0.5 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium border shrink-0"
                                       :class="(r.severity || r.impact || '').toLowerCase() === 'high' ? 'bg-destructive/10 text-destructive-emphasis border-destructive/30'
-                                            : (r.severity || r.impact || '').toLowerCase() === 'medium' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                                            : (r.severity || r.impact || '').toLowerCase() === 'medium' ? 'bg-warning/10 text-warning-emphasis border-warning/30'
                                             : 'bg-muted text-muted-foreground border-border'"
                                       x-text="(r.severity || r.impact || 'Unknown').charAt(0).toUpperCase() + (r.severity || r.impact || '').slice(1)"></span>
                                 <div class="min-w-0">
@@ -367,7 +367,7 @@
                         <template x-if="archBulkMode && archSelected.size > 0">
                             <div class="flex items-center gap-1">
                                 <button type="button" @click="bulkAccept()"
-                                        class="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors">
+                                        class="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 transition-colors">
                                     <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
                                     Accept (<span x-text="archSelected.size"></span>)
                                 </button>
@@ -399,7 +399,7 @@
                     <template x-for="(el, i) in archSuggestions" :key="el.suggestion_id">
                         <div class="rounded-lg border bg-muted/30 px-3 py-2.5 transition-colors"
                              :class="{
-                                 'border-emerald-500/40 bg-emerald-500/5': archAccepted.has(i),
+                                 'border-success/40 bg-success/5': archAccepted.has(i),
                                  'border-destructive/40 bg-destructive/5 opacity-60': archRejected.has(i),
                                  'border-primary/30': archSelected.has(i) && !archAccepted.has(i) && !archRejected.has(i),
                                  'border-border': !archAccepted.has(i) && !archRejected.has(i) && !archSelected.has(i)
@@ -430,7 +430,7 @@
 
                                 {# Status badge for accepted/rejected #}
                                 <template x-if="archAccepted.has(i)">
-                                    <span class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 shrink-0">
+                                    <span class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 shrink-0">
                                         <i data-lucide="check-circle" class="h-3 w-3" aria-hidden="true"></i>Accepted
                                     </span>
                                 </template>
@@ -444,7 +444,7 @@
                                 <div x-show="!archAccepted.has(i) && !archRejected.has(i)" x-cloak class="flex items-center gap-1 shrink-0">
                                     <button type="button" @click="acceptOne(i)" title="Accept"
                                             :disabled="archAcceptingIdx === i"
-                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-500/10 transition-colors">
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md text-success hover:bg-success/10 transition-colors">
                                         <i data-lucide="check" class="h-4 w-4" aria-hidden="true"
                                            :class="archAcceptingIdx === i ? 'animate-spin' : ''"></i>
                                     </button>
@@ -473,7 +473,7 @@
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button type="button" @click="acceptOne(i)"
-                                            class="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors">
+                                            class="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 transition-colors">
                                         <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>Accept
                                     </button>
                                     <button type="button" @click="cancelEdit()"
@@ -488,7 +488,7 @@
                     {# Summary bar #}
                     <div x-show="archAccepted.size > 0 || archRejected.size > 0" x-cloak
                          class="flex items-center gap-3 pt-2 border-t border-border text-xs text-muted-foreground">
-                        <span x-show="archAccepted.size > 0" x-cloak class="flex items-center gap-1 text-emerald-600">
+                        <span x-show="archAccepted.size > 0" x-cloak class="flex items-center gap-1 text-success-emphasis">
                             <i data-lucide="check-circle" class="h-3 w-3" aria-hidden="true"></i>
                             <span x-text="archAccepted.size + ' accepted'"></span>
                         </span>
@@ -594,8 +594,8 @@
                      },
 
                      relConfBadge(c) {
-                         if (c >= 80) return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
-                         if (c >= 60) return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
+                         if (c >= 80) return 'bg-success/10 text-success-emphasis border-success/30';
+                         if (c >= 60) return 'bg-warning/10 text-warning-emphasis border-warning/30';
                          return 'bg-destructive/10 text-destructive border-destructive/30';
                      }
                  }">
@@ -683,8 +683,8 @@
                      bpError: null,
                      get bpSid() { return (window.__SOLUTION_CONFIG__ || {}).solutionId; },
                      toneClass(tone) {
-                         return tone === 'good'  ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'
-                              : tone === 'warn'  ? 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+                         return tone === 'good'  ? 'bg-success/10 text-success-emphasis border-success/30'
+                              : tone === 'warn'  ? 'bg-warning/10 text-warning-emphasis border-warning/30'
                               : 'bg-info/10 text-info border-info/30';
                      },
                      async load() {
@@ -734,7 +734,7 @@
                                     <li class="flex items-center gap-2 text-sm">
                                         <i :data-lucide="item.ok ? 'check-circle' : 'circle'"
                                            class="h-4 w-4 shrink-0"
-                                           :class="item.ok ? 'text-emerald-600' : 'text-muted-foreground'"
+                                           :class="item.ok ? 'text-success' : 'text-muted-foreground'"
                                            aria-hidden="true"></i>
                                         <span :class="item.ok ? 'text-foreground' : 'text-muted-foreground'" x-text="item.label"></span>
                                     </li>
@@ -749,7 +749,7 @@
                                 <ul class="space-y-1">
                                     <template x-for="(f, i) in bpData.conformance.findings.slice(0,5)" :key="i">
                                         <li class="flex items-start gap-2 text-xs text-muted-foreground">
-                                            <i data-lucide="alert-triangle" class="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" aria-hidden="true"></i>
+                                            <i data-lucide="alert-triangle" class="h-3.5 w-3.5 shrink-0 mt-0.5 text-warning" aria-hidden="true"></i>
                                             <span x-text="typeof f === 'string' ? f : (f.message || f.title || JSON.stringify(f))"></span>
                                         </li>
                                     </template>
@@ -871,7 +871,7 @@
                                 <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Uncertainty Factors</p>
                                 <ul class="space-y-0.5">
                                     <template x-for="(uf, i) in explainData.uncertainty_factors" :key="i">
-                                        <li class="text-xs text-amber-600 flex items-center gap-1">
+                                        <li class="text-xs text-warning-emphasis flex items-center gap-1">
                                             <i data-lucide="alert-triangle" class="h-3 w-3" aria-hidden="true"></i>
                                             <span x-text="typeof uf === 'string' ? uf : (uf.factor || JSON.stringify(uf))"></span>
                                         </li>

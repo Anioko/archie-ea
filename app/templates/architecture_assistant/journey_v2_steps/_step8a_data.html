@@ -304,8 +304,8 @@
                         Upload Excel or CSV files, map columns to your data model, and import rows into your live application.
                     </p>
                 </div>
-                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 shrink-0">
-                    <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 shrink-0">
+                    <span class="w-1.5 h-1.5 bg-success rounded-full"></span>
                     App Deployed
                 </span>
             </div>
@@ -318,7 +318,7 @@
                         class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium transition-colors"
                         :class="dataPhase === 'upload' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'">
                     <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
-                          :class="dataPhase === 'upload' ? 'border-primary text-primary bg-primary/10' : (dataPhase !== 'upload' ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-border text-muted-foreground')">
+                          :class="dataPhase === 'upload' ? 'border-primary text-primary bg-primary/10' : (dataPhase !== 'upload' ? 'border-success text-success-emphasis bg-success/10' : 'border-border text-muted-foreground')">
                         <template x-if="dataPhase !== 'upload'">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                         </template>
@@ -330,7 +330,7 @@
                 <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium"
                       :class="dataPhase === 'mapping' ? 'bg-primary/10 text-primary' : (dataPhase === 'importing' || dataPhase === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/50')">
                     <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
-                          :class="dataPhase === 'mapping' ? 'border-primary text-primary bg-primary/10' : (dataPhase === 'importing' || dataPhase === 'done' ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-border text-muted-foreground')">
+                          :class="dataPhase === 'mapping' ? 'border-primary text-primary bg-primary/10' : (dataPhase === 'importing' || dataPhase === 'done' ? 'border-success text-success-emphasis bg-success/10' : 'border-border text-muted-foreground')">
                         <template x-if="dataPhase === 'importing' || dataPhase === 'done'">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                         </template>
@@ -342,7 +342,7 @@
                 <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium"
                       :class="dataPhase === 'importing' ? 'bg-primary/10 text-primary' : (dataPhase === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/50')">
                     <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
-                          :class="dataPhase === 'importing' ? 'border-primary text-primary bg-primary/10' : (dataPhase === 'done' ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-border text-muted-foreground')">
+                          :class="dataPhase === 'importing' ? 'border-primary text-primary bg-primary/10' : (dataPhase === 'done' ? 'border-success text-success-emphasis bg-success/10' : 'border-border text-muted-foreground')">
                         <template x-if="dataPhase === 'done'">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                         </template>
@@ -476,10 +476,10 @@
 
                 {# Summary badges #}
                 <div class="flex items-center gap-3">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30"
                           x-text="getMappedCount() + ' mapped'"></span>
                     <span x-show="getUnmappedCount() > 0" x-cloak
-                          class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+                          class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
                           x-text="getUnmappedCount() + ' unmapped'"></span>
                     <span class="text-xs text-muted-foreground" x-text="getRowCount() + ' rows to import'"></span>
                 </div>
@@ -520,9 +520,9 @@
                                     <td class="px-4 py-2.5">
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
                                               :class="m.confidence >= 0.85
-                                                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                                  ? 'bg-success/10 text-success-emphasis border-success/30'
                                                   : m.confidence >= 0.55
-                                                      ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                                                      ? 'bg-warning/10 text-warning-emphasis border-warning/30'
                                                       : 'bg-destructive/10 text-destructive-emphasis border-destructive/30'"
                                               x-text="m.confidence ? Math.round(m.confidence * 100) + '%' : '—'"></span>
                                     </td>
@@ -572,11 +572,11 @@
                     <p class="text-xs text-muted-foreground mt-0.5">Rows</p>
                 </div>
                 <div class="bg-muted/50 rounded-lg p-4 text-center">
-                    <p class="text-2xl font-bold text-emerald-600" x-text="getMappedCount()"></p>
+                    <p class="text-2xl font-bold text-success" x-text="getMappedCount()"></p>
                     <p class="text-xs text-muted-foreground mt-0.5">Columns Mapped</p>
                 </div>
                 <div class="bg-muted/50 rounded-lg p-4 text-center">
-                    <p class="text-2xl font-bold" :class="getUnmappedCount() > 0 ? 'text-amber-600' : 'text-muted-foreground'" x-text="getUnmappedCount()"></p>
+                    <p class="text-2xl font-bold" :class="getUnmappedCount() > 0 ? 'text-warning' : 'text-muted-foreground'" x-text="getUnmappedCount()"></p>
                     <p class="text-xs text-muted-foreground mt-0.5">Unmapped (skipped)</p>
                 </div>
             </div>
@@ -630,8 +630,8 @@
            ════════════════════════════════════════════════════════════════ #}
         <div x-show="dataPhase === 'done'" x-cloak class="bg-card border border-border rounded-lg p-6 space-y-4">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-emerald-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600" aria-hidden="true"></i>
+                <div class="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="check-circle-2" class="w-5 h-5 text-success" aria-hidden="true"></i>
                 </div>
                 <div>
                     <p class="text-sm font-semibold text-foreground">Data imported successfully</p>
@@ -642,13 +642,13 @@
 
             {# Import details #}
             <div x-show="importResult && importResult.errors && importResult.errors.length > 0" x-cloak
-                 class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-1">
-                <p class="text-xs font-medium text-amber-600">Some rows had issues:</p>
+                 class="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 space-y-1">
+                <p class="text-xs font-medium text-warning-emphasis">Some rows had issues:</p>
                 <template x-for="err in (importResult ? importResult.errors.slice(0, 5) : [])" :key="err">
-                    <p class="text-xs text-amber-600/80 pl-2" x-text="'— ' + err"></p>
+                    <p class="text-xs text-warning-emphasis/80 pl-2" x-text="'— ' + err"></p>
                 </template>
                 <p x-show="importResult && importResult.errors.length > 5" x-cloak
-                   class="text-xs text-amber-600/60 pl-2"
+                   class="text-xs text-warning-emphasis/60 pl-2"
                    x-text="'...and ' + (importResult.errors.length - 5) + ' more'"></p>
             </div>
 

@@ -328,7 +328,7 @@
                         </div>
 
                         <div id="lucidchart-import-summary"
-                             class="hidden rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                             class="hidden rounded-xl border border-success/30 bg-success/5 p-4">
                             <div id="lucidchart-import-summary-title" class="text-sm font-semibold text-foreground">
                                 Import complete
                             </div>
@@ -369,7 +369,7 @@
                                 </button>
                             </div>
 
-                            <div id="lucidchart-auth-hint" class="hidden mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700">
+                            <div id="lucidchart-auth-hint" class="hidden mt-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-emphasis">
                                 This organization is not connected to Lucidchart yet. You can still import an exported Lucid file immediately, or connect the workspace and then refresh the document list.
                             </div>
 
@@ -1080,14 +1080,14 @@
                     {# Added Elements #}
                     <template x-if="diffDetails.addedElements.length > 0">
                         <div class="diff-summary-section">
-                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-                                <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
-                                <span class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Added Elements</span>
-                                <span class="ml-auto text-[10px] font-bold text-emerald-600" x-text="diffDetails.addedElements.length"></span>
+                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-success/10 border border-success/20">
+                                <span class="w-2 h-2 rounded-full bg-success flex-shrink-0"></span>
+                                <span class="text-[10px] font-semibold text-success-emphasis uppercase tracking-wide">Added Elements</span>
+                                <span class="ml-auto text-[10px] font-bold text-success-emphasis" x-text="diffDetails.addedElements.length"></span>
                             </div>
                             <template x-for="el in diffDetails.addedElements" :key="'add-' + el.id">
                                 <div class="px-2.5 py-1 text-[11px] text-foreground flex items-center gap-1.5">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">NEW</span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-success/10 text-success-emphasis border border-success/30">NEW</span>
                                     <span class="truncate" x-text="el.name"></span>
                                     <span class="text-muted-foreground text-[9px] ml-auto flex-shrink-0" x-text="el.type"></span>
                                 </div>
@@ -1134,14 +1134,14 @@
                     {# Added Relationships #}
                     <template x-if="diffDetails.addedRelationships.length > 0">
                         <div class="diff-summary-section">
-                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-                                <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
-                                <span class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Added Relationships</span>
-                                <span class="ml-auto text-[10px] font-bold text-emerald-600" x-text="diffDetails.addedRelationships.length"></span>
+                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-success/10 border border-success/20">
+                                <span class="w-2 h-2 rounded-full bg-success flex-shrink-0"></span>
+                                <span class="text-[10px] font-semibold text-success-emphasis uppercase tracking-wide">Added Relationships</span>
+                                <span class="ml-auto text-[10px] font-bold text-success-emphasis" x-text="diffDetails.addedRelationships.length"></span>
                             </div>
                             <template x-for="rel in diffDetails.addedRelationships" :key="'radd-' + rel.id">
                                 <div class="px-2.5 py-1 text-[11px] text-foreground flex items-center gap-1.5">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">NEW</span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-success/10 text-success-emphasis border border-success/30">NEW</span>
                                     <span class="truncate" x-text="rel.type"></span>
                                 </div>
                             </template>
@@ -1194,7 +1194,7 @@
             <div class="border-b border-border">
                 <button @click="portfolioSectionOpen = !portfolioSectionOpen; if (portfolioSectionOpen && portfolioTemplates.length === 0) loadPortfolioTemplates(); $nextTick(() => { if (window.lucide) lucide.createIcons() })"
                         class="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-accent/50 transition-colors">
-                    <i data-lucide="building-2" class="w-4 h-4 text-emerald-500 flex-shrink-0"></i>
+                    <i data-lucide="building-2" class="w-4 h-4 text-success flex-shrink-0"></i>
                     <span class="text-xs font-semibold uppercase tracking-wide text-foreground">From Your Portfolio</span>
                     <span class="text-[10px] text-muted-foreground ml-1">Real applications</span>
                     <i :data-lucide="portfolioSectionOpen ? 'chevron-up' : 'chevron-down'"
@@ -1221,7 +1221,7 @@
                                     <span x-text="ptpl.app_count"></span> apps in <span x-text="ptpl.domain"></span> domain
                                 </div>
                             </div>
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 flex-shrink-0">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30 flex-shrink-0">
                                 <span x-text="ptpl.element_count"></span>&nbsp;elements
                             </span>
                         </button>
@@ -1297,7 +1297,7 @@
              @click.outside="dismissStalenessReview()">
             {# Header #}
             <div class="flex items-start gap-3 p-5 border-b border-border">
-                <div class="size-10 rounded-xl flex-shrink-0 flex items-center justify-center bg-orange-100 text-orange-600">
+                <div class="size-10 rounded-xl flex-shrink-0 flex items-center justify-center bg-warning/10 text-warning">
                     <i data-lucide="alert-triangle" class="w-5 h-5"></i>
                 </div>
                 <div class="flex-1 min-w-0">
@@ -1316,7 +1316,7 @@
             {# Relationship list #}
             <div class="overflow-y-auto p-4 space-y-3" style="max-height: calc(80vh - 140px);" {# inline-style-ok #}>
                 <template x-for="rel in staleRelationships" :key="rel.rel_id">
-                    <div class="flex items-center gap-3 p-3 rounded-xl border border-orange-200 bg-orange-50/30">
+                    <div class="flex items-center gap-3 p-3 rounded-xl border border-warning/20 bg-warning/5">
                         <div class="flex-1 min-w-0">
                             <div class="text-sm font-medium text-foreground flex items-center gap-1.5 flex-wrap">
                                 <span x-text="rel.source_name"></span>
@@ -1325,7 +1325,7 @@
                                 <span class="text-muted-foreground">→</span>
                                 <span x-text="rel.target_name"></span>
                             </div>
-                            <div class="text-xs text-orange-700 mt-0.5">
+                            <div class="text-xs text-warning-emphasis mt-0.5">
                                 <span class="font-medium" x-text="rel.stale_app_name"></span>
                                 last seen in portfolio:
                                 <span x-text="rel.last_seen ? new Date(rel.last_seen).toLocaleDateString() : 'unknown'"></span>

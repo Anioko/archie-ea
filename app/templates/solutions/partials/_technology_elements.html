@@ -40,12 +40,12 @@
                                 <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="item.description" x-show="item.description" x-cloak></p>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/10 text-primary border border-indigo-500/30" x-text="item.element_type?.replace('_', ' ')"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="item.element_type?.replace('_', ' ')"></span>
                             </td>
                             <td class="px-3 py-2 text-muted-foreground" x-text="item.technology || '\u2014'"></td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.status === 'current' ? 'bg-emerald-500/10 text-emerald-600' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-600'"
+                                      :class="item.status === 'current' ? 'bg-success/10 text-success-emphasis' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-warning/10 text-warning-emphasis'"
                                       x-text="item.status"></span>
                             </td>
                             <td class="px-3 py-2 sad-actions">
@@ -74,11 +74,11 @@
     <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
             <h3 class="text-sm font-semibold text-foreground">Technology Elements</h3>
-            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">Phase D</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">Phase D</span>
         </div>
         <div class="flex items-center gap-1 sad-actions">
             <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'D', elementType: 'Node', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
-                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 border border-emerald-500/30 transition-colors"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-success hover:bg-success/10 border border-success/30 transition-colors"
                 title="Link an existing ArchiMate Technology element">
                 <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
             </button>
@@ -114,12 +114,12 @@
                                 <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="item.description" x-show="item.description" x-cloak></p>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="item.element_type?.replace('_', ' ')"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="item.element_type?.replace('_', ' ')"></span>
                             </td>
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[200px] truncate" x-text="item.specification || '\u2014'"></td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.status === 'current' ? 'bg-emerald-500/10 text-emerald-600' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-600'"
+                                      :class="item.status === 'current' ? 'bg-success/10 text-success-emphasis' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-warning/10 text-warning-emphasis'"
                                       x-text="item.status"></span>
                             </td>
                             <td class="px-3 py-2 sad-actions">
@@ -148,7 +148,7 @@
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-2">
             <h3 class="text-sm font-semibold text-foreground">Technology Architecture Model</h3>
-            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-teal-500/10 text-teal-600 border border-teal-500/30">Phase D · ArchiMate</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">Phase D · ArchiMate</span>
         </div>
     </div>
 
@@ -169,11 +169,11 @@
                         <tr class="hover:bg-muted/30 transition-colors">
                             <td class="px-3 py-2">
                                 <span class="font-semibold text-foreground" x-text="el.name"></span>
-                                <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-500/10 text-teal-600 border border-teal-500/20" x-text="el.element_type"></span>
+                                <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20" x-text="el.element_type"></span>
                             </td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                    :class="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-sky-500/10 text-sky-600 border border-sky-500/20' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-orange-500/10 text-orange-600 border border-orange-500/20' : 'bg-muted text-muted-foreground border border-border'"
+                                    :class="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-info/10 text-info-emphasis border border-info/20' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-warning/10 text-warning-emphasis border border-warning/20' : 'bg-muted text-muted-foreground border border-border'"
                                     x-text="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'Cloud' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'On-Prem' : 'TBD'">
                                 </span>
                             </td>
@@ -181,7 +181,7 @@
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[140px] truncate" x-text="el.target_state || '\u2014'"></td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                    :class="(!el.baseline_state || !el.target_state) ? 'bg-muted text-muted-foreground border border-border' : (el.baseline_state.trim().toLowerCase() === el.target_state.trim().toLowerCase()) ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'"
+                                    :class="(!el.baseline_state || !el.target_state) ? 'bg-muted text-muted-foreground border border-border' : (el.baseline_state.trim().toLowerCase() === el.target_state.trim().toLowerCase()) ? 'bg-success/10 text-success-emphasis border border-success/20' : 'bg-warning/10 text-warning-emphasis border border-warning/20'"
                                     x-text="(!el.baseline_state || !el.target_state) ? 'TBD' : (el.baseline_state.trim().toLowerCase() === el.target_state.trim().toLowerCase()) ? 'Aligned' : 'Gap'">
                                 </span>
                             </td>
