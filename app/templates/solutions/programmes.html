@@ -31,8 +31,8 @@
                     <p class="text-xs text-muted-foreground mt-1 line-clamp-2">{{ p.description or 'No description' }}</p>
                 </div>
                 <span class="shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-                    {% if p.initiative_type == 'brownfield' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
-                    {% else %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30{% endif %}">
+                    {% if p.initiative_type == 'brownfield' %}bg-warning/10 text-warning-emphasis border border-warning/30
+                    {% else %}bg-success/10 text-success-emphasis border border-success/30{% endif %}">
                     {{ p.initiative_type | title }}
                 </span>
             </div>

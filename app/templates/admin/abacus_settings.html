@@ -159,7 +159,7 @@
                     </div>
                     <div class="text-xs text-muted-foreground" x-text="details"></div>
                     <!-- Stale job warning -->
-                    <div x-show="isStale" x-cloak class="p-2 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-700">
+                    <div x-show="isStale" x-cloak class="p-2 bg-warning/10 border border-warning/30 rounded text-xs text-warning-emphasis">
                         This job has been running for over 1 hour without completing. It's likely stuck. Click "Clear Stale Job" above to reset.
                     </div>
                 </div>
@@ -419,7 +419,7 @@
                                 <input type="hidden" id="active-filters-data" value="{{ abacus_config.config_json|default('{}', true)|e if abacus_config else '{}' }}">
                                 <input type="hidden" id="dynamic_filters" name="dynamic_filters" value="">
                                 {% if not filter_dimensions %}
-                                <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-700">
+                                <div class="p-3 bg-warning/10 border border-warning/30 rounded-md text-sm text-warning-emphasis">
                                     <p class="font-medium">No filter dimensions available yet</p>
                                     <p class="text-xs mt-1">Click the button below to discover filter options from Abacus. They'll be saved and available on next page load.</p>
                                     <button type="button" id="btn-discover-now"
@@ -779,9 +779,9 @@
 
                     const map = {
                         no_jobs:     ['No sync jobs',  'bg-muted-foreground', 'text-muted-foreground'],
-                        pending:     ['Queued',        'bg-amber-500',        'text-foreground'],
+                        pending:     ['Queued',        'bg-warning',        'text-foreground'],
                         in_progress: ['Running',       'bg-primary animate-pulse', 'text-foreground'],
-                        completed:   ['Completed',     'bg-emerald-500',      'text-foreground'],
+                        completed:   ['Completed',     'bg-success',      'text-foreground'],
                         failed:      ['Failed',        'bg-destructive',      'text-destructive'],
                         cancelled:   ['Cancelled',     'bg-muted-foreground', 'text-muted-foreground'],
                     };

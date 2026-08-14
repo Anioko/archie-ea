@@ -4,7 +4,7 @@
 
 <div class="mt-6 space-y-3">
     <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+        <span class="w-2 h-2 rounded-full bg-warning inline-block"></span>
         Deployment Specifications
     </h4>
 
@@ -28,8 +28,8 @@
                 <div class="flex items-center gap-2">
                     <template x-if="deploymentSpecs[elem.element_id || elem.id] && deploymentSpecs[elem.element_id || elem.id].deployment">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
-                              :class="deploymentSpecs[elem.element_id || elem.id].deployment.deployment_status === 'confirmed' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
-                                      deploymentSpecs[elem.element_id || elem.id].deployment.deployment_status === 'proposed' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                              :class="deploymentSpecs[elem.element_id || elem.id].deployment.deployment_status === 'confirmed' ? 'bg-success/10 text-success-emphasis border border-success/30' :
+                                      deploymentSpecs[elem.element_id || elem.id].deployment.deployment_status === 'proposed' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' :
                                       'bg-muted text-muted-foreground border border-border'"
                               x-text="(deploymentSpecs[elem.element_id || elem.id].deployment.deployment_status || 'draft')"></span>
                     </template>
@@ -133,7 +133,7 @@
                                                 <tr class="hover:bg-muted/30 transition-colors">
                                                     <td class="py-1.5 px-2 font-mono text-foreground" x-text="envVar.name"></td>
                                                     <td class="py-1.5 px-2">
-                                                        <span :class="envVar.required ? 'text-emerald-600' : 'text-muted-foreground'" x-text="envVar.required ? 'Yes' : 'No'"></span>
+                                                        <span :class="envVar.required ? 'text-success-emphasis' : 'text-muted-foreground'" x-text="envVar.required ? 'Yes' : 'No'"></span>
                                                     </td>
                                                     <td class="py-1.5 px-2 text-muted-foreground" x-text="envVar.description || ''"></td>
                                                 </tr>

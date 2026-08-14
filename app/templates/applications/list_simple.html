@@ -31,11 +31,11 @@
   ============================================================
 #}
 {%- set STATUS_MAP = {
-  'production':        {'label': 'Production',       'cls': 'bg-success/10 text-emerald-800'},
-  'active':            {'label': 'Active',            'cls': 'bg-success/10 text-emerald-800'},
-  'done':              {'label': 'Done',              'cls': 'bg-success/10 text-emerald-800'},
-  'operational':       {'label': 'Operational',       'cls': 'bg-success/10 text-emerald-800'},
-  '2.1 strategic':     {'label': '2.1 STRATEGIC',     'cls': 'bg-success/10 text-emerald-800'},
+  'production':        {'label': 'Production',       'cls': 'bg-success/10 text-success-emphasis'},
+  'active':            {'label': 'Active',            'cls': 'bg-success/10 text-success-emphasis'},
+  'done':              {'label': 'Done',              'cls': 'bg-success/10 text-success-emphasis'},
+  'operational':       {'label': 'Operational',       'cls': 'bg-success/10 text-success-emphasis'},
+  '2.1 strategic':     {'label': '2.1 STRATEGIC',     'cls': 'bg-success/10 text-success-emphasis'},
   '2.2 tactical':      {'label': '2.2 TACTICAL',      'cls': 'bg-primary/10 text-primary'},
   '1. undetermined':   {'label': '1. UNDETERMINED',   'cls': 'bg-muted text-muted-foreground'},
   '3. sunset':         {'label': '3. SUNSET',         'cls': 'bg-warning/10 text-warning'},
@@ -120,10 +120,10 @@
   </div>
 
   {# ─ DATA QUALITY BANNER ─ #}
-  <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-4">
+  <div class="rounded-lg border border-warning/30 bg-warning/5 p-4 mb-4">
     <div class="flex items-center gap-2 mb-2">
-      <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-500"></i>
-      <span class="text-sm font-medium text-amber-700">Data Quality</span>
+      <i data-lucide="alert-triangle" class="h-4 w-4 text-warning"></i>
+      <span class="text-sm font-medium text-warning-emphasis">Data Quality</span>
     </div>
     <div class="flex flex-wrap gap-4 text-xs text-muted-foreground">
       <span>Owner: 0/{{ stats.total|dash }}</span>

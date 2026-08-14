@@ -71,7 +71,7 @@ function userSearchWidget(getVal, setVal) {
         </div>
         <div class="rounded-xl border-2 border-input bg-background p-5">
             <div class="flex items-start gap-4">
-                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-500">
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-warning">
                     <i data-lucide="alert-triangle" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                 </div>
                 <div class="flex-1">
@@ -83,7 +83,7 @@ function userSearchWidget(getVal, setVal) {
         </div>
         <div class="rounded-xl border-2 border-input bg-background p-5">
             <div class="flex items-start gap-4">
-                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-500">
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-success">
                     <i data-lucide="shield-check" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                 </div>
                 <div class="flex-1">
@@ -260,7 +260,7 @@ function userSearchWidget(getVal, setVal) {
                             </td>
                             <td class="px-4 py-3 align-middle text-sm">
                                 <template x-if="row.business_owner">
-                                    <span class="text-emerald-600" x-text="row.business_owner"></span>
+                                    <span class="text-success-emphasis" x-text="row.business_owner"></span>
                                 </template>
                                 <template x-if="!row.business_owner">
                                     <span class="italic text-muted-foreground">Not assigned</span>
@@ -281,17 +281,17 @@ function userSearchWidget(getVal, setVal) {
                                     <span class="text-sm" x-text="maturityDisplay(row)"></span>
                                 </template>
                                 <template x-if="!maturityDisplay(row)">
-                                    <span class="italic text-amber-600 text-xs">Not assessed</span>
+                                    <span class="italic text-warning-emphasis text-xs">Not assessed</span>
                                 </template>
                             </td>
                             <td class="px-4 py-3 align-middle">
                                 <template x-if="row.needs_attention">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-warning/10 text-warning-emphasis">
                                         Needs attention
                                     </span>
                                 </template>
                                 <template x-if="!row.needs_attention">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success-emphasis">
                                         Governed
                                     </span>
                                 </template>

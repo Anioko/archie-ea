@@ -231,16 +231,18 @@ function capabilityHeatmap() {
     },
 
     getHealthClass(score) {
-      if (score >= 80) return 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30';
+      // 4-tier RAG scale (score band), stays raw: design-tokens-ok
+      if (score >= 80) return 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30'; // design-tokens-ok: 4-tier RAG scale
       if (score >= 60) return 'bg-primary/10 text-primary border border-primary/30';
-      if (score >= 40) return 'bg-amber-500/10 text-amber-600 border border-amber-500/30';
+      if (score >= 40) return 'bg-amber-500/10 text-amber-600 border border-amber-500/30'; // design-tokens-ok: 4-tier RAG scale
       return 'bg-destructive/10 text-destructive border border-destructive/30';
     },
 
     getHealthTextClass(score) {
-      if (score >= 80) return 'text-emerald-600';
+      // 4-tier RAG scale (score band), stays raw: design-tokens-ok
+      if (score >= 80) return 'text-emerald-600'; // design-tokens-ok: 4-tier RAG scale
       if (score >= 60) return 'text-primary';
-      if (score >= 40) return 'text-amber-600';
+      if (score >= 40) return 'text-amber-600'; // design-tokens-ok: 4-tier RAG scale
       return 'text-destructive';
     }
   };

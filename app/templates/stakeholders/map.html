@@ -116,14 +116,14 @@
     <div class="flex items-center gap-2">
       {# Solution filter #}
       <select x-model="selectedSolution" @change="loadData()"
-              class="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:ring-2 focus:ring-indigo-400 outline-none" aria-label="Select a solution...">
+              class="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:ring-2 focus:ring-ring outline-none" aria-label="Select a solution...">
         <option value="">Select a solution...</option>
         {% for sol in solutions %}
         <option value="{{ sol.id }}">{{ sol.name }}</option>
         {% endfor %}
       </select>
       <button type="button" @click="openAddModal()"
-              class="inline-flex items-center gap-1.5 bg-primary hover:bg-indigo-700 text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition">
+              class="inline-flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
         </svg>
@@ -134,10 +134,10 @@
 
   {# ── Legend ─────────────────────────────────────── #}
   <div class="flex flex-wrap gap-4 text-xs text-muted-foreground">
-    <span><span class="legend-dot bg-emerald-500"></span>Champion</span>
+    <span><span class="legend-dot bg-success"></span>Champion</span>
     <span><span class="legend-dot bg-primary"></span>Supporter</span>
     <span><span class="legend-dot bg-muted/70"></span>Neutral</span>
-    <span><span class="legend-dot bg-amber-500"></span>Skeptic</span>
+    <span><span class="legend-dot bg-warning"></span>Skeptic</span>
     <span><span class="legend-dot bg-destructive"></span>Blocker</span>
     <span class="ml-4 text-muted-foreground/60">Node size = engagement weight</span>
   </div>
@@ -148,7 +148,7 @@
     <p class="text-destructive font-medium text-lg mb-1" x-text="loadError"></p>
     <p class="text-muted-foreground/60 text-sm mb-4">The map was not read — this is not a solution without stakeholders.</p>
     <button type="button" @click="loadData()"
-            class="bg-primary hover:bg-indigo-700 text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg transition">
+            class="bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg transition">
       Retry
     </button>
   </div>
@@ -162,7 +162,7 @@
     <p class="text-muted-foreground font-medium text-lg mb-1" x-text="selectedSolution ? 'No stakeholders yet' : 'Select a solution'"></p>
     <p class="text-muted-foreground/60 text-sm mb-4" x-text="selectedSolution ? 'Add stakeholders to visualise your Power/Interest grid' : 'Choose a solution from the dropdown above to view its stakeholder map'"></p>
     <button type="button" @click="openAddModal()"
-            class="bg-primary hover:bg-indigo-700 text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg transition">
+            class="bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg transition">
       + Add First Stakeholder
     </button>
   </div>

@@ -275,10 +275,10 @@
         if (!badge) return;
         const text = badge.textContent.trim().toLowerCase();
         const map = {
-              admin:    'bg-amber-500/10 text-amber-700 border-amber-500/30',
+              admin:    'bg-warning/10 text-warning-emphasis border-warning/30',
               user:     'bg-info/10 text-primary border-info/30',
-              analyst:  'bg-purple-500/10 text-primary border-purple-500/30',
-              architect:'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
+              analyst:  'bg-purple-500/10 text-primary border-purple-500/30', // design-tokens-ok: 5-role legend, info already used by 'user'
+              architect:'bg-success/10 text-success-emphasis border-success/30',
               viewer:   'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30',
         };
         const cls = Object.entries(map).find(([k]) => text.includes(k));

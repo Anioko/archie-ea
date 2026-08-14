@@ -42,9 +42,9 @@
       class="inline-flex items-center px-4 py-1 rounded-full text-sm font-semibold"
       :class="{
  'bg-destructive/10 text-destructive-emphasis': band === 'Incomplete',
- 'bg-amber-500/10 text-amber-700': band === 'Partial',
+ 'bg-warning/10 text-warning-emphasis': band === 'Partial',
  'bg-primary/10 text-primary': band === 'Substantial',
- 'bg-emerald-500/10 text-emerald-700': band === 'Complete'
+ 'bg-success/10 text-success-emphasis': band === 'Complete'
  }"
       x-text="band"
     ></span>
@@ -84,9 +84,9 @@
             class="h-2 rounded-full transition-all duration-500"
             :class="{
  'bg-destructive': dim.pct < 40,
- 'bg-amber-500': dim.pct >= 40 && dim.pct < 70,
+ 'bg-warning': dim.pct >= 40 && dim.pct < 70,
  'bg-primary': dim.pct >= 70 && dim.pct < 90,
- 'bg-emerald-500': dim.pct >= 90
+ 'bg-success': dim.pct >= 90
  }"
             :style="`width: ${dim.pct}%`"
           ></div>
@@ -95,7 +95,7 @@
         {# Found chips #}
         <div class="flex flex-wrap gap-1" x-show="dim.found && dim.found.length" x-cloak><!-- alpine-scope-ok -->
           <template x-for="t in dim.found" :key="t">
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-700">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis">
               ✓ <span x-text="t" class="ml-1"></span>
             </span>
           </template>

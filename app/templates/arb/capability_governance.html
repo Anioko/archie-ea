@@ -65,10 +65,10 @@
                     <template x-if="data && data.active_strategic_decision">
                         <div class="space-y-3">
                             <div class="flex flex-wrap items-start gap-3">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-info/10 text-info-emphasis">
                                     Strategic
                                 </span>
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-green-800"
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success-emphasis"
                                       x-text="data.active_strategic_decision.status ? data.active_strategic_decision.status.replace(/_/g, ' ') : 'Unknown'">
                                 </span>
                             </div>
@@ -115,7 +115,7 @@
                                     </span>
                                     <span class="text-xs font-mono text-muted-foreground" x-text="d.decision_id || ''"></span>
                                     <span class="font-medium text-foreground flex-1" x-text="d.title"></span>
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-green-800"
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success-emphasis"
                                           x-text="d.status ? d.status.replace(/_/g, ' ') : 'Unknown'">
                                     </span>
                                     <span class="text-xs text-muted-foreground" x-text="d.authority_level ? d.authority_level.replace(/_/g, ' ') : '—'"></span>
@@ -135,7 +135,7 @@
             <!-- Open Change Requests -->
             <div class="bg-card border border-border rounded-lg overflow-hidden">
                 <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-3">
-                    <i data-lucide="git-pull-request" class="w-5 h-5 text-amber-600" aria-hidden="true"></i>
+                    <i data-lucide="git-pull-request" class="w-5 h-5 text-warning" aria-hidden="true"></i>
                     <h2 class="text-base font-semibold text-foreground">Open Change Requests</h2>
                 </div>
                 <template x-if="data && data.open_change_requests && data.open_change_requests.length > 0">
@@ -161,7 +161,7 @@
                                         </td>
                                         <td class="px-4 py-3 text-muted-foreground" x-text="cr.trigger_type ? cr.trigger_type.replace(/_/g, ' ') : '—'"></td>
                                         <td class="px-4 py-3">
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning-emphasis"
                                                   x-text="cr.status ? cr.status.replace(/_/g, ' ') : 'Open'">
                                             </span>
                                         </td>

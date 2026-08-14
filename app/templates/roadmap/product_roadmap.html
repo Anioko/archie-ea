@@ -19,7 +19,7 @@
       <span class="text-xs text-muted-foreground">On Track (Now):</span>
       <span
         class="px-3 py-1 rounded-full text-sm font-semibold"
-        :class="onTrackPct >= 70 ? 'bg-emerald-500/10 text-emerald-700' : onTrackPct >= 40 ? 'bg-amber-500/10 text-amber-700' : 'bg-destructive/10 text-destructive-emphasis'"
+        :class="onTrackPct >= 70 ? 'bg-success/10 text-success-emphasis' : onTrackPct >= 40 ? 'bg-warning/10 text-warning-emphasis' : 'bg-destructive/10 text-destructive-emphasis'"
         x-text="onTrackPct + '%'"
       ></span>
       <span class="text-xs text-muted-foreground/60" x-text="'Total epics: ' + totalEpics"></span>
@@ -67,7 +67,7 @@
             <div class="w-full bg-muted rounded-full h-1.5">
               <div
                 class="h-1.5 rounded-full transition-all"
-                :class="epic.pct_done >= 70 ? 'bg-emerald-500' : epic.pct_done >= 30 ? 'bg-amber-500' : 'bg-primary'"
+                :class="epic.pct_done >= 70 ? 'bg-success' : epic.pct_done >= 30 ? 'bg-warning' : 'bg-primary'"
                 :style="'width:' + epic.pct_done + '%'"
               ></div>
             </div>
@@ -113,7 +113,7 @@
             <div class="w-full bg-muted rounded-full h-1.5">
               <div
                 class="h-1.5 rounded-full transition-all"
-                :class="epic.pct_done >= 70 ? 'bg-emerald-500' : epic.pct_done >= 30 ? 'bg-amber-500' : 'bg-primary/70'"
+                :class="epic.pct_done >= 70 ? 'bg-success' : epic.pct_done >= 30 ? 'bg-warning' : 'bg-primary/70'"
                 :style="'width:' + epic.pct_done + '%'"
               ></div>
             </div>

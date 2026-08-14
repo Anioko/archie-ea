@@ -41,7 +41,7 @@
                 <template x-for="opt in comparisonData.options" :key="'sf-'+opt.name">
                   <td class="text-center p-2">
                     <span x-text="Math.round((opt.scores?.strategic_fit || 0) * 100) + '%'"
-                      :class="(opt.scores?.strategic_fit || 0) >= 0.7 ? 'text-emerald-600' : 'text-amber-600'"></span>
+                      :class="(opt.scores?.strategic_fit || 0) >= 0.7 ? 'text-success-emphasis' : 'text-warning-emphasis'"></span>
                   </td>
                 </template>
               </tr>
@@ -50,7 +50,7 @@
                 <template x-for="opt in comparisonData.options" :key="'ri-'+opt.name">
                   <td class="text-center p-2">
                     <span x-text="Math.round((opt.scores?.risk_inverted || 0) * 100) + '%'"
-                      :class="(opt.scores?.risk_inverted || 0) >= 0.7 ? 'text-emerald-600' : 'text-amber-600'"></span>
+                      :class="(opt.scores?.risk_inverted || 0) >= 0.7 ? 'text-success-emphasis' : 'text-warning-emphasis'"></span>
                   </td>
                 </template>
               </tr>
@@ -59,7 +59,7 @@
                 <template x-for="opt in comparisonData.options" :key="'cv-'+opt.name">
                   <td class="text-center p-2">
                     <span x-text="Math.round((opt.scores?.coverage || 0) * 100) + '%'"
-                      :class="(opt.scores?.coverage || 0) >= 0.7 ? 'text-emerald-600' : 'text-amber-600'"></span>
+                      :class="(opt.scores?.coverage || 0) >= 0.7 ? 'text-success-emphasis' : 'text-warning-emphasis'"></span>
                   </td>
                 </template>
               </tr>
@@ -68,7 +68,7 @@
                 <template x-for="(opt, idx) in comparisonData.options" :key="'ws-'+opt.name">
                   <td class="text-center p-2">
                     <span x-text="(opt.weighted_score * 100).toFixed(1) + '%'"
-                      :class="idx === 0 ? 'text-emerald-600 text-lg' : ''"></span>
+                      :class="idx === 0 ? 'text-success text-lg' : ''"></span>
                   </td>
                 </template>
               </tr>

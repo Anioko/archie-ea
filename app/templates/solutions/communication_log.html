@@ -123,10 +123,10 @@
                     class="absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-background"
                     :class="{
                         'bg-primary':   entry.comm_type === 'meeting',
-                        'bg-emerald-500':  entry.comm_type === 'email',
+                        'bg-success':  entry.comm_type === 'email',
                         'bg-primary': entry.comm_type === 'decision',
                         'bg-destructive':    entry.comm_type === 'escalation',
-                        'bg-amber-500':  entry.comm_type === 'status_update'
+                        'bg-warning':  entry.comm_type === 'status_update'
                     }"
                     aria-hidden="true"
                 >
@@ -139,10 +139,10 @@
                             class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
                             :class="{
                                 'bg-primary/10 text-primary/90':   entry.comm_type === 'meeting',
-                                'bg-emerald-500/10 text-green-800':  entry.comm_type === 'email',
-                                'bg-purple-100 text-purple-800': entry.comm_type === 'decision',
+                                'bg-success/10 text-success-emphasis':  entry.comm_type === 'email',
+                                'bg-info/10 text-info-emphasis': entry.comm_type === 'decision',
                                 'bg-destructive/10 text-destructive-emphasis':    entry.comm_type === 'escalation',
-                                'bg-amber-100 text-amber-800':  entry.comm_type === 'status_update'
+                                'bg-warning/10 text-warning-emphasis':  entry.comm_type === 'status_update'
                             }"
                             x-text="entry.comm_type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())"
                         ></span>

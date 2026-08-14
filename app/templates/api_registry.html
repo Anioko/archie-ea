@@ -103,13 +103,7 @@
                         <td class="px-4 py-3 font-medium text-foreground" x-text="spec.solution_name || '—'"></td>
                         <td class="px-4 py-3 text-foreground" x-text="spec.title || 'Untitled'"></td>
                         <td class="px-4 py-3">
-                            <span
-                                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                                x-bind:class="spec.spec_type === 'openapi'
-                                    ? 'bg-info/10 text-info border border-info/30'
-                                    : 'bg-purple-500/10 text-purple-600 border border-purple-500/30'"
-                                x-text="spec.spec_type || '—'"
-                            ></span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium" x-bind:class="spec.spec_type === 'openapi' ? 'bg-info/10 text-info border border-info/30' : 'bg-purple-500/10 text-purple-600 border border-purple-500/30'" x-text="spec.spec_type || '—'"></span><!-- design-tokens-ok: spec-type legend, non-openapi kept distinct from openapi (info) -->
                         </td>
                         <td class="px-4 py-3 text-muted-foreground font-mono text-xs" x-text="spec.spec_version || '—'"></td>
                         <td class="px-4 py-3 text-muted-foreground" x-text="spec.endpoint_count ?? '—'"></td>
@@ -166,9 +160,9 @@
                                             <span
                                                 class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-bold w-14 justify-center"
                                                 x-bind:class="{
-                                                    'bg-green-500/10 text-green-600': ep.method === 'GET',
+                                                    'bg-success/10 text-success-emphasis': ep.method === 'GET',
                                                     'bg-info/10 text-info': ep.method === 'POST',
-                                                    'bg-yellow-500/10 text-yellow-600': ep.method === 'PUT' || ep.method === 'PATCH',
+                                                    'bg-warning/10 text-warning-emphasis': ep.method === 'PUT' || ep.method === 'PATCH',
                                                     'bg-destructive/10 text-destructive-emphasis': ep.method === 'DELETE',
                                                 }"
                                                 x-text="ep.method"

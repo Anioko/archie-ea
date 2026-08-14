@@ -41,13 +41,13 @@
         <div class="bg-background rounded-lg shadow p-6">
             <div class="flex items-center">
                 <div class="flex-shrink-0">
-                    <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
+                    <div class="w-8 h-8 bg-success rounded-full flex items-center justify-center">
                         <i class="fas fa-mouse-pointer text-primary-foreground text-sm"></i>
                     </div>
                 </div>
                 <div class="ml-4">
                     <h3 class="text-lg font-medium text-foreground">Feature Interactions</h3>
-                    <p class="text-2xl font-bold text-emerald-600" id="total-interactions">-</p>
+                    <p class="text-2xl font-bold text-success" id="total-interactions">-</p>
                 </div>
             </div>
         </div>
@@ -194,16 +194,16 @@ async function loadAnalyticsData() {
                 triageClass = 'bg-destructive/10 text-destructive-emphasis';
             } else if (users < 10) {
                 triage = 'DEFER';
-                triageClass = 'bg-amber-500/10 text-yellow-800';
+                triageClass = 'bg-amber-500/10 text-yellow-800'; // design-tokens-ok: 5-tier triage scale, not a pass/fail pair
             } else if (users < 100) {
                 triage = 'PRIORITIZE_LOW';
                 triageClass = 'bg-primary/10 text-primary/90';
             } else if (users < 1000) {
                 triage = 'PRIORITIZE_MEDIUM';
-                triageClass = 'bg-emerald-500/10 text-green-800';
+                triageClass = 'bg-emerald-500/10 text-green-800'; // design-tokens-ok: 5-tier triage scale
             } else {
                 triage = 'PRIORITIZE_HIGH';
-                triageClass = 'bg-purple-100 text-purple-800';
+                triageClass = 'bg-purple-100 text-purple-800'; // design-tokens-ok: 5-tier triage scale
             }
 
             const row = `
