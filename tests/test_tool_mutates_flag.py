@@ -14,7 +14,23 @@ The classification was derived by reading each implementation for
 db.session.add/commit/delete — including through the five tools that delegate to
 a service — not from the tool's name. This file pins that derivation so a new
 tool cannot join without a decision, and so a name that reads like a write
-(propose_rationalization, run_inference_engine) cannot be silently reclassified.
+(propose_rationalization) cannot be silently reclassified.
+
+CORRECTION: run_inference_engine was originally pinned here as read-only. It
+is not. `_tool_run_inference_engine` (tools/executor.py) defaults
+`dry_run = args.get("dry_run", False)` and calls
+`engine.repair(link.element_id, dry_run=dry_run)` unconditionally — with the
+default False, ArchiMateInferenceEngine.repair -> repair_chain ->
+get_or_create_node/get_or_create_relationship (architecture_graph_facade.py)
+call db.session.add + db.session.flush, committed by the chat turn's later
+db.session.commit(). The tool's own schema description already said as much
+("If true, show what would be created without writing to DB. Default
+false."). This is exactly the case
+test_the_declaration_matches_the_implementation's docstring calls out as
+undetectable by its own regex — the write happens through a delegated
+service call, not a literal `db.session.` token inside
+`_tool_run_inference_engine` itself — which is why a second, independent
+read of the call chain (not a regex) is what caught it.
 """
 
 import re
@@ -32,8 +48,8 @@ MUTATING = {
     "create_driver", "create_goal", "create_option", "create_requirement",
     "create_risk", "create_solution", "link_application_to_capability",
     "link_application_to_solution", "link_capability_to_solution", "link_vendor_product",
-    "mark_option_recommended", "submit_for_arb_review", "update_application_status",
-    "update_solution_fields", "update_solution_phase",
+    "mark_option_recommended", "run_inference_engine", "submit_for_arb_review",
+    "update_application_status", "update_solution_fields", "update_solution_phase",
 }
 
 
@@ -76,20 +92,34 @@ def test_known_writers_are_flagged(name):
 
 
 def test_a_name_that_sounds_like_a_write_is_not_assumed_to_be_one():
-    """propose_rationalization and run_inference_engine read only.
+    """propose_rationalization reads only despite its action-shaped name.
 
     A startswith("create_")-style heuristic would have missed
     mark_option_recommended and submit_for_arb_review while wrongly flagging
-    these — which is why the classification came from the implementations.
+    this one — which is why the classification came from the implementations.
+
+    run_inference_engine is deliberately NOT in this list any more: it reads
+    like a write and, on inspection, is one — see the module docstring's
+    CORRECTION. A name that sounds neutral ("run", "diagnose"-adjacent) is
+    just as unreliable a signal as one that sounds like a write; both were
+    only ever a hint, never the source of truth.
     """
     by_name = {t["name"]: t for t in TOOL_SCHEMAS}
-    for read_only in ("propose_rationalization", "run_inference_engine",
+    for read_only in ("propose_rationalization",
                       "generate_blueprint_narrative", "simulate_impact",
                       "validate_sap_clean_core"):
         assert by_name[read_only]["mutates"] is False, (
             f"{read_only} does not write; flagging it would put a read behind an "
             f"approval prompt and claim a receipt for a turn that changed nothing"
         )
+
+
+def test_run_inference_engine_is_flagged_mutating():
+    """Regression pin for the misclassification caught in adversarial review:
+    dry_run defaults False, so the un-dry-run path writes via
+    ArchiMateInferenceEngine.repair -> get_or_create_node/relationship."""
+    by_name = {t["name"]: t for t in TOOL_SCHEMAS}
+    assert by_name["run_inference_engine"]["mutates"] is True
 
 
 def test_the_helper_returns_the_same_set():

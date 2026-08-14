@@ -1437,6 +1437,15 @@ def approve_tool_action(approval_id: int):
     if record.status != ApprovalStatus.PENDING:
         return jsonify({"error": f"Approval is already {record.status.value}"}), 409
 
+    # Expiry check — mirrors the legacy path (AIChatApprovalService.approve_and_execute,
+    # ai_chat_approval_service.py). Without this, a PENDING record whose
+    # expires_at (set 24h out by AgentRunner._queue_approval) has passed would
+    # still execute on a stale Confirm click.
+    if record.is_expired():
+        record.status = ApprovalStatus.EXPIRED
+        db.session.commit()
+        return jsonify({"error": "Approval has expired. Please submit a new request."}), 409
+
     # Execute
     executor = ToolExecutor(current_user.id)
     try:
@@ -1477,6 +1486,26 @@ def reject_tool_action(approval_id: int):
     record.approved_at = datetime.utcnow()
     db.session.commit()
     return jsonify({"success": True, "message": "Action cancelled."})
+
+
+@unified_ai_chat_bp.route("/session/auto-execute", methods=["GET"])
+@login_required
+def get_auto_execute():
+    """Read (never flip) the session's current auto-execute preference.
+
+    M2 fix: blueprint_chat.js's `autoExecute` Alpine field used to have no way
+    to learn the server's real state on page load — it just assumed a
+    hardcoded default, so a session left ON from a previous page visit showed
+    as OFF in a freshly loaded panel (or vice versa) until the user clicked
+    the toggle once to force a resync. init() below calls this on mount to
+    seed the UI from ground truth. Deliberately a separate GET, not a change
+    to the POST toggle route's contract — the toggle intentionally has no
+    'give me the state without changing it' mode, and overloading it with a
+    query param would be a bigger change than adding four lines here.
+    """
+    from flask import session as flask_session
+
+    return jsonify({"success": True, "auto_execute": flask_session.get("agent_auto_execute", False)})
 
 
 @unified_ai_chat_bp.route("/session/toggle-auto-execute", methods=["POST"])

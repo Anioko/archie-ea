@@ -901,10 +901,23 @@ class AgentRunner:
 
         Pure and schema-driven so it can be exhaustively unit-tested without a
         DB, an LLM, or a Flask request/session.
+
+        Fails CLOSED on an unclassified tool. TOOL_SCHEMA_BY_NAME.get(name, {})
+        in the run loop below hands this {} for any tool name the registry does
+        not recognise, and `mutates` is absent from every real schema only in
+        that case (every registered tool declares it explicitly — see
+        tests/test_tool_mutates_flag.py). Treating "we don't know" the same as
+        "doesn't mutate" would let an unregistered or future tool execute
+        unqueued the moment it forgot to declare the flag; treating it as
+        "mutates" instead means the only failure mode is an unnecessary
+        confirmation prompt, never a silent write.
         """
         if schema.get("tier") == "approve":
             return True
-        return bool(schema.get("mutates")) and not auto_execute
+        mutates = schema.get("mutates")
+        if mutates is None:
+            return True
+        return bool(mutates) and not auto_execute
 
     def _queue_approval(self, tc: "ToolCall") -> int:
         """Write a pending AIChatCRUDApproval record and return its ID."""

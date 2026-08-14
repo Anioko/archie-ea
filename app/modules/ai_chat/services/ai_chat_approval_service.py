@@ -197,6 +197,27 @@ class AIChatApprovalService:
                 else:
                     return {"success": False, "error": f"Unknown entity type: {approval.entity_type}"}
 
+            elif approval.operation_type == "tool_use":
+                # AgentRunner._queue_approval (agent_runner.py) writes exactly this
+                # operation_type for every queued agent tool call — both the
+                # always-approve tier (update_application_status,
+                # submit_for_arb_review, generate_blueprint_narrative) and, since
+                # the write-approval gate, any mutating tool queued because
+                # auto-execute was off. entity_type carries the tool name and
+                # operation_payload carries its arguments, exactly what ToolCall
+                # needs. This mirrors POST /ai-chat/tools/approve/<id>
+                # (chat_core.py: approve_tool_action) — same dispatch, same
+                # ToolExecutor — so both approval surfaces (the blueprint panel's
+                # dedicated endpoint and the main chat's approval modal, which
+                # only ever calls this service) execute a queued tool call
+                # identically instead of the main chat modal 400ing with
+                # "Unsupported operation type: tool_use".
+                from app.modules.ai_chat.tools.executor import ToolCall, ToolExecutor
+
+                executor = ToolExecutor(self.user_id)
+                tc = ToolCall(id=str(approval_id), name=approval.entity_type, arguments=payload)
+                result = executor.execute(tc)
+
             elif approval.operation_type == "delete":
                 # Hard delete — admin-only at execution time (double guard)
                 # tenant-scoping-ok: self.user_id is the acting user's own id.

@@ -17,6 +17,13 @@ function blueprintChat() {
         // tools (update_application_status, submit_for_arb_review,
         // generate_blueprint_narrative) always queue regardless of this flag.
         // Read-only tools (mutates:false) always execute immediately.
+        //
+        // This starting value is only a placeholder until init() below
+        // overwrites it with the real session state via GET
+        // /ai-chat/session/auto-execute — the session flag can already be ON
+        // from an earlier page visit (Flask sessions outlive a page load), so
+        // hardcoding false here and never re-checking would show OFF in the
+        // UI while the server was actually queuing nothing.
         autoExecute: false,
         messages: [],
         inputText: '',
@@ -41,6 +48,23 @@ function blueprintChat() {
                     this.$refs.chatInput?.select();
                 });
             });
+
+            // Sync the placeholder above with the real session state. Read-only
+            // GET — never flips the flag, unlike toggleAutoExecute() below.
+            this.syncAutoExecute();
+        },
+
+        async syncAutoExecute() {
+            try {
+                const resp = await fetch('/ai-chat/session/auto-execute');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                this.autoExecute = !!data.auto_execute;
+            } catch (err) {
+                console.error('Failed to read auto-execute state:', err);
+                // Leave the placeholder value in place — a stale local guess
+                // is a smaller failure than blocking the panel on this call.
+            }
         },
 
         toggle() {
