@@ -234,3 +234,27 @@ def test_ai_health_assessment_unknown_app_is_404(logged_in_org, client, monkeypa
     _clear_auth_caches()
     resp = client.post(_endpoint(999999999))
     assert resp.status_code == 404
+
+
+def test_health_overview_renders_all_status_sections(db_session, make_org, logged_in_org, client):
+    """health_overview.html reads top-level `critical`/`at_risk`/`healthy`/`unknown`
+    vars, but the route only ever passed `by_health` (a dict keyed by status) -- so
+    every category section was permanently empty regardless of what applications
+    the user owned. Owning at least one app per status must make that app's name
+    show up in the rendered page."""
+    org, user = logged_in_org
+
+    critical_app = _make_app(db_session, org, name=f"Critical App {uuid.uuid4().hex[:8]}", health_status="critical")
+    at_risk_app = _make_app(db_session, org, name=f"AtRisk App {uuid.uuid4().hex[:8]}", health_status="at_risk")
+    healthy_app = _make_app(db_session, org, name=f"Healthy App {uuid.uuid4().hex[:8]}", health_status="healthy")
+
+    for a in (critical_app, at_risk_app, healthy_app):
+        _make_ownership(db_session, org, user, a)
+    _clear_auth_caches()
+
+    resp = client.get("/my-applications/health")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert critical_app.name in html
+    assert at_risk_app.name in html
+    assert healthy_app.name in html
