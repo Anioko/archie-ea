@@ -200,3 +200,26 @@ def test_ai_generate_endpoint_missing_prompt_is_a_400_not_500(client, logged_in_
         json={"prompt": "", "context": {}},
     )
     assert response.status_code == 400
+
+
+# --------------------------------------------------------- Part 3: gap detection
+
+# Part 3 — the rationalization dashboard
+# (app/templates/applications/rationalization/dashboard.html, served by
+# GET /applications/rationalization, unified_applications.rationalization_dashboard)
+# gets an "AI Gap Analysis" panel that lazy-loads the four existing, previously
+# uncalled GET endpoints on app/modules/ai_chat/routes/ai_gap_detection_routes.py
+# (blueprint url_prefix="/api/ai-gap-detection"): /summary, /critical-gaps,
+# /rationalization, /vendor-lifecycle.
+
+
+def test_rationalization_dashboard_has_ai_gap_panel(client, logged_in_org):
+    _clear_auth_caches()
+    response = client.get("/applications/rationalization")
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert 'data-testid="ai-gap-panel"' in body
+    assert "/api/ai-gap-detection/summary" in body
+    assert "/api/ai-gap-detection/critical-gaps" in body
+    assert "/api/ai-gap-detection/rationalization" in body
+    assert "/api/ai-gap-detection/vendor-lifecycle" in body
