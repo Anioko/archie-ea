@@ -57,21 +57,6 @@
 
 {% block content %}
 <div class="space-y-6" x-data="networkView()">
-    <!-- Breadcrumb -->
-    {% call breadcrumb.breadcrumb() %}
-        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
-            <i data-lucide="home" class="h-4 w-4"></i>
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(href=url_for('capability_map.index')) %}
-            Capability Map
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(active=true) %}
-            Network View
-        {% endcall %}
-    {% endcall %}
-
     <!-- Page Header -->
     <div class="flex items-center justify-between">
         <div class="flex items-center space-x-3">
@@ -85,6 +70,7 @@
             </button>
         </div>
     </div>
+    {% with active_view = 'network' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     <!-- Controls -->
     <div class="bg-card rounded-lg shadow border p-4">

@@ -7,6 +7,7 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {{ page_header(title='Capability Applications', description='Applications mapped to business capabilities') }}
+    {% with active_view = 'applications' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     {% set total = applications|length %}
     {% set active_count = applications|selectattr('status', 'equalto', 'active')|list|length %}

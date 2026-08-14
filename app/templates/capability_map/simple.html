@@ -20,6 +20,7 @@
         title='Capability Overview',
         description='A flat, read-only list of the capability hierarchy — Level 1 capabilities and their direct sub-capabilities.'
     ) }}
+    {% with active_view = 'simple' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     {% if load_error %}
     <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">

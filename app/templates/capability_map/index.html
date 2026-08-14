@@ -91,31 +91,7 @@
          set) — replaces what used to be this same row of links PLUS a
          second, competing row of 11 in-page tabs below (now a "Lens"
          dropdown, see the Lens control further down). -->
-    <div data-testid="capability-view-switcher" class="mb-6 inline-flex flex-wrap items-center gap-1 rounded-md border border-input bg-muted/50 p-1" role="navigation" aria-label="Capability Map view">
-        <span class="inline-flex items-center whitespace-nowrap rounded-sm text-sm font-medium h-8 px-3 bg-background text-foreground shadow-sm" aria-current="page">
-            <i data-lucide="briefcase" class="w-4 h-4 mr-2" aria-hidden="true"></i>Business
-        </span>
-        <a href="{{ url_for('capability_map.hierarchy') }}"
-           class="inline-flex items-center whitespace-nowrap rounded-sm text-sm font-medium h-8 px-3 text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors">
-            <i data-lucide="git-branch" class="w-4 h-4 mr-2" aria-hidden="true"></i>Hierarchy
-        </a>
-        <a href="{{ url_for('capability_map.network') }}"
-           class="inline-flex items-center whitespace-nowrap rounded-sm text-sm font-medium h-8 px-3 text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors">
-            <i data-lucide="share-2" class="w-4 h-4 mr-2" aria-hidden="true"></i>Network
-        </a>
-        <a href="{{ url_for('capability_map.simple_view') }}"
-           class="inline-flex items-center whitespace-nowrap rounded-sm text-sm font-medium h-8 px-3 text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors">
-            <i data-lucide="layout-list" class="w-4 h-4 mr-2" aria-hidden="true"></i>Simple
-        </a>
-        <a href="{{ url_for('unified_low_priority.capability_map_applications') }}"
-           class="inline-flex items-center whitespace-nowrap rounded-sm text-sm font-medium h-8 px-3 text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors">
-            <i data-lucide="app-window" class="w-4 h-4 mr-2" aria-hidden="true"></i>Applications
-        </a>
-        <a href="{{ url_for('unified_low_priority.capability_map_capabilities') }}"
-           class="inline-flex items-center whitespace-nowrap rounded-sm text-sm font-medium h-8 px-3 text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors">
-            <i data-lucide="layers" class="w-4 h-4 mr-2" aria-hidden="true"></i>Capabilities
-        </a>
-    </div>
+    {% with active_view = 'business' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
         <!-- ArchiMate Relationship Health Panel (BPP-012) -->
         {# Counters start null, not 0: an unloaded figure renders as an em dash,

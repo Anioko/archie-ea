@@ -1,0 +1,32 @@
+{# Shared six-view switcher for the capability-map suite.
+
+   Usage: {% with active_view = 'hierarchy' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
+   Valid active_view values: business | hierarchy | network | simple | applications | capabilities
+
+   Before this partial existed the switcher lived only on the Business view —
+   every other view was a navigational dead end whose only way back was the
+   breadcrumb. Cross-module targets are guarded per CLAUDE.md: a blueprint that
+   failed to register must degrade to a missing tab, not a BuildError that
+   500s the page. #}
+{% set _views = [
+    ('business',     'Business',     'briefcase',   'capability_map.index'),
+    ('hierarchy',    'Hierarchy',    'git-branch',  'capability_map.hierarchy'),
+    ('network',      'Network',      'share-2',     'capability_map.network'),
+    ('simple',       'Simple',       'layout-list', 'capability_map.simple_view'),
+    ('applications', 'Applications', 'app-window',  'unified_low_priority.capability_map_applications'),
+    ('capabilities', 'Capabilities', 'layers',      'unified_low_priority.capability_map_capabilities'),
+] %}
+<div data-testid="capability-view-switcher" class="mb-6 inline-flex flex-wrap items-center gap-1 rounded-md border border-input bg-muted/50 p-1" role="navigation" aria-label="Capability Map view">
+    {% for key, label, icon, endpoint in _views %}
+        {% if key == active_view %}
+        <span class="inline-flex items-center whitespace-nowrap rounded-sm text-sm font-medium h-8 px-3 bg-background text-foreground shadow-sm" aria-current="page">
+            <i data-lucide="{{ icon }}" class="w-4 h-4 mr-2" aria-hidden="true"></i>{{ label }}
+        </span>
+        {% elif endpoint in flask.current_app.view_functions %}
+        <a href="{{ url_for(endpoint) }}"
+           class="inline-flex items-center whitespace-nowrap rounded-sm text-sm font-medium h-8 px-3 text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors">
+            <i data-lucide="{{ icon }}" class="w-4 h-4 mr-2" aria-hidden="true"></i>{{ label }}
+        </a>
+        {% endif %}
+    {% endfor %}
+</div>
