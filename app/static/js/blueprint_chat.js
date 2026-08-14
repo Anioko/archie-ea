@@ -7,7 +7,17 @@
 function blueprintChat() {
     return {
         open: false,
-        autoExecute: true,  // auto-tier tools execute immediately; approve-tier still requires confirmation
+        // ENFORCED (agent_runner.py AgentRunner._should_queue): mirrors the
+        // server-side session flag agent_auto_execute, which toggleAutoExecute()
+        // below flips via POST /ai-chat/session/toggle-auto-execute. Server
+        // default is OFF (false) for a fresh session, so this starts false too
+        // rather than assuming a state the backend has not granted yet. When
+        // false, every tool whose registry schema has mutates:true is queued
+        // for confirmation instead of executing immediately; approve-tier
+        // tools (update_application_status, submit_for_arb_review,
+        // generate_blueprint_narrative) always queue regardless of this flag.
+        // Read-only tools (mutates:false) always execute immediately.
+        autoExecute: false,
         messages: [],
         inputText: '',
         loading: false,

@@ -81,11 +81,26 @@ class AgentRunner:
     yield_event : callable, optional
         SSE event callback: yield_event({"type": "...", "data": ...}).
         If None, events are discarded (non-streaming mode).
+    auto_execute : bool, default False
+        The user's write-approval preference (session flag `agent_auto_execute`,
+        toggled via POST /ai-chat/session/toggle-auto-execute). Read from
+        flask.session by the CALLER, not here: the streaming chat route runs
+        this class from a background thread with only an app context re-
+        established (see chat_core.py's run_agent()), so flask.session is not
+        reliably available at run() time. Default False means a fresh session,
+        or a caller that forgets to pass it, queues writes rather than firing
+        them - the safe default for a write-approval gate.
     """
 
-    def __init__(self, user_id: int, yield_event: Optional[Callable] = None):
+    def __init__(
+        self,
+        user_id: int,
+        yield_event: Optional[Callable] = None,
+        auto_execute: bool = False,
+    ):
         self.user_id = user_id
         self._emit = yield_event or (lambda _e: None)
+        self.auto_execute = bool(auto_execute)
 
     # ------------------------------------------------------------------ #
     # Public entry point                                                   #
@@ -457,8 +472,11 @@ class AgentRunner:
                 )
                 schema = TOOL_SCHEMA_BY_NAME.get(tc.name, {})
 
-                if schema.get("tier") == "approve":
-                    # Queue for user approval — destructive operations always need confirmation
+                if self._should_queue(schema, self.auto_execute):
+                    # Queue for user approval. Either the tool is always-approve
+                    # (destructive/significant regardless of the gate), or it
+                    # mutates and this session has auto-execute off - the
+                    # write-approval gate described in toggle_auto_execute.
                     approval_id = self._queue_approval(tc)
                     pending_approvals.append({
                         "approval_id": approval_id,
@@ -864,6 +882,29 @@ class AgentRunner:
     # ------------------------------------------------------------------ #
     # Approval queue                                                       #
     # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _should_queue(schema: dict, auto_execute: bool) -> bool:
+        """True if a tool call must be queued for confirmation, not executed now.
+
+        Two independent reasons, either one is sufficient:
+          - tier == "approve": always queued. These are destructive/significant
+            regardless of the write-approval gate, and unaffected by
+            auto_execute either way (update_application_status,
+            submit_for_arb_review, generate_blueprint_narrative).
+          - mutates is True and auto_execute is False: the write-approval gate
+            itself. A read tool (mutates False, e.g. find_applications,
+            query_capability_gaps) is never queued by this rule - gating reads
+            would put every search behind a confirmation prompt, which is the
+            failure mode toggle_auto_execute's docstring warned against before
+            'mutates' existed on the registry.
+
+        Pure and schema-driven so it can be exhaustively unit-tested without a
+        DB, an LLM, or a Flask request/session.
+        """
+        if schema.get("tier") == "approve":
+            return True
+        return bool(schema.get("mutates")) and not auto_execute
 
     def _queue_approval(self, tc: "ToolCall") -> int:
         """Write a pending AIChatCRUDApproval record and return its ID."""
