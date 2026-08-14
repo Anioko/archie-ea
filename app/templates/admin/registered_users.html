@@ -75,6 +75,10 @@
                                 </div>
                             </td>
                         </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="p-6 text-center text-sm text-muted-foreground">No registered users found.</td>
+                        </tr>
                     {% endfor %}
                     </tbody>
                 </table>

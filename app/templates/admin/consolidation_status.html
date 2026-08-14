@@ -70,6 +70,8 @@
                                 <div class="flex flex-wrap gap-1">
                                     {% for bp in target.consolidate_blueprints %}
                                     <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium">{{ bp }}</span>
+                                    {% else %}
+                                    <span class="text-xs text-muted-foreground">None</span>
                                     {% endfor %}
                                 </div>
                             </td>

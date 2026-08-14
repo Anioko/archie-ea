@@ -197,6 +197,8 @@
     <p class="mt-1 text-2xl font-bold text-foreground">{{ avg_tech_debt or 0 }}</p>
   </div>
 </div>
+{% else %}
+<p class="mb-6 text-sm text-muted-foreground">No metrics available for this application yet.</p>
 {% endif %}
 
 {# ─────────────────────────────────────────────────────────────────────────────

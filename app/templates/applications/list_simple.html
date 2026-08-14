@@ -368,9 +368,9 @@
             <td class="px-4 py-3"><span class="text-sm text-muted-foreground">{{ app.application_category or '—' }}</span></td>
             <td class="px-4 py-3 text-center">
               {% if app.archimate_element_id %}
-              <span class="inline-block h-2.5 w-2.5 rounded-full bg-primary" title="ArchiMate linked" aria-label="Linked to an ArchiMate element"></span>
+              <span class="inline-block h-2.5 w-2.5 rounded-full bg-primary" title="ArchiMate linked" role="img" aria-label="Linked to an ArchiMate element"></span>
               {% else %}
-              <span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/30" title="No ArchiMate link" aria-label="Not linked to an ArchiMate element"></span>
+              <span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/30" title="No ArchiMate link" role="img" aria-label="Not linked to an ArchiMate element"></span>
               {% endif %}
             </td>
             <td class="px-4 py-3">
