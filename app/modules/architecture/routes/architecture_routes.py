@@ -731,6 +731,58 @@ def investment_priorities():
     )
 
 
+def _org_scoped_investment_context(analysis, limit=50):
+    """Filter the whole-portfolio investment analysis down to capability
+    names this org has actually mapped, capped at `limit` entries.
+
+    InvestmentPrioritizationService.analyze_investment_priorities() is built
+    from UnifiedCapability.query.all() + UnifiedApplicationCapabilityMapping
+    .query.all() — neither model carries an organization_id column, so the
+    raw analysis spans every organization on the install. Reuses the same
+    org-scoped-name derivation as the value-stream AI suggest endpoint
+    (value_stream_ai_service._org_scoped_capability_names, join through
+    CapabilityValueStreamMapping and UnifiedApplicationCapabilityMapping ->
+    ApplicationComponent, both TenantMixin) so only what this org has
+    actually mapped — never another org's capability catalog — ever reaches
+    the LLM prompt.
+
+    Returns None when this org has no capability in the analysis that it has
+    actually mapped, so the caller can short-circuit before calling the LLM
+    at all (mirrors value_stream_ai_routes.ai_suggest_mappings).
+    """
+    from app.modules.capabilities.services.value_stream_ai_service import (
+        _org_scoped_capability_names,
+    )
+
+    org_names = set(_org_scoped_capability_names(limit=limit))
+    if not org_names:
+        return None
+
+    filtered_scores = [
+        c for c in analysis.get("capability_scores", [])
+        if c.get("capability_name") in org_names
+    ][:limit]
+    if not filtered_scores:
+        return None
+
+    kept_names = {c["capability_name"] for c in filtered_scores}
+
+    def _filtered(key, name_key="capability_name"):
+        return [
+            item for item in (analysis.get(key) or [])
+            if item.get(name_key) in kept_names
+        ]
+
+    return {
+        "capability_scores": filtered_scores,
+        "critical_investments": _filtered("critical_investments"),
+        "high_investments": _filtered("high_investments"),
+        "medium_investments": _filtered("medium_investments"),
+        "low_investments": _filtered("low_investments"),
+        "recommendations": _filtered("recommendations", name_key="capability"),
+    }
+
+
 @architecture_bp.route("/api/investment-priorities/ai-suggest", methods=["POST"])
 @login_required
 def ai_investment_suggestions():
@@ -766,8 +818,17 @@ def ai_investment_suggestions():
                      "(no capability mappings for this organization)."
         }), 502
 
+    # analysis spans every organization on the install (see
+    # _org_scoped_investment_context) — never hand it to the LLM as-is.
+    org_context = _org_scoped_investment_context(analysis)
+    if org_context is None:
+        return jsonify({
+            "suggestions": None,
+            "message": "No capabilities mapped in this organization yet",
+        })
+
     try:
-        suggestions = generate_investment_suggestions(analysis)
+        suggestions = generate_investment_suggestions(org_context)
     except ExecutiveBriefingAIError as e:
         logger.warning("Investment priority suggestions unparseable: %s", e)
         return jsonify({"error": f"AI investment suggestions failed: {e}"}), 502
