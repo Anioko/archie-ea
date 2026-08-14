@@ -258,3 +258,102 @@ def test_health_overview_renders_all_status_sections(db_session, make_org, logge
     assert critical_app.name in html
     assert at_risk_app.name in html
     assert healthy_app.name in html
+
+
+# ---------------------------------------------------------------------------
+# GET /my-applications/app/<id>/edit with ?suggest_health=&suggest_lifecycle=
+#
+# The AI health assessment's "Apply suggestion" link lands here. This must
+# only affect what the form pre-selects -- never mutate the session-attached
+# ApplicationComponent, or any later commit in the same request would
+# persist an AI suggestion nobody reviewed or submitted.
+# ---------------------------------------------------------------------------
+
+
+def _edit_url(app_id, **params):
+    from urllib.parse import urlencode
+
+    url = f"/my-applications/app/{app_id}/edit"
+    if params:
+        url += "?" + urlencode(params)
+    return url
+
+
+def test_app_edit_get_with_suggestion_params_does_not_dirty_db_row(
+    db_session, make_org, logged_in_org, client
+):
+    """A GET with suggest_health/suggest_lifecycle must not change the
+    stored row at all -- not even after the request completes."""
+    org, user = logged_in_org
+
+    application = _make_app(
+        db_session, org, health_status="healthy", lifecycle_status="planning"
+    )
+    _make_ownership(db_session, org, user, application)
+    _clear_auth_caches()
+
+    resp = client.get(
+        _edit_url(application.id, suggest_health="critical", suggest_lifecycle="deprecated")
+    )
+    assert resp.status_code == 200
+
+    db_session.refresh(application)
+    assert application.health_status == "healthy"
+    assert application.lifecycle_status == "planning"
+
+
+def test_app_edit_get_with_suggestion_params_preselects_suggested_value(
+    db_session, make_org, logged_in_org, client
+):
+    """The rendered form must preselect the suggested value even though the
+    stored row is untouched -- confirming the template, not the model, now
+    carries the prefill."""
+    org, user = logged_in_org
+
+    application = _make_app(
+        db_session, org, health_status="healthy", lifecycle_status="planning"
+    )
+    _make_ownership(db_session, org, user, application)
+    _clear_auth_caches()
+
+    resp = client.get(
+        _edit_url(application.id, suggest_health="critical", suggest_lifecycle="deprecated")
+    )
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    import re
+
+    health_select = re.search(r'<select id="health_status".*?</select>', html, re.DOTALL).group(0)
+    assert '<option value="critical" selected>' in health_select
+
+    lifecycle_select = re.search(
+        r'<select id="lifecycle_status".*?</select>', html, re.DOTALL
+    ).group(0)
+    assert '<option value="deprecated" selected>' in lifecycle_select
+
+
+def test_app_edit_get_with_out_of_vocabulary_suggestion_is_ignored(
+    db_session, make_org, logged_in_org, client
+):
+    """A stale link or hand-edited URL naming a value outside the pinned
+    vocabulary must fall back to the stored value, silently."""
+    org, user = logged_in_org
+
+    application = _make_app(
+        db_session, org, health_status="healthy", lifecycle_status="planning"
+    )
+    _make_ownership(db_session, org, user, application)
+    _clear_auth_caches()
+
+    resp = client.get(_edit_url(application.id, suggest_health="not_a_real_status"))
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    import re
+
+    health_select = re.search(r'<select id="health_status".*?</select>', html, re.DOTALL).group(0)
+    assert '<option value="healthy" selected>' in health_select
+
+    db_session.refresh(application)
+    assert application.health_status == "healthy"
