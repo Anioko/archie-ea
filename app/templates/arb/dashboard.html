@@ -629,7 +629,7 @@ function arbQueueTriagePanel() {
                 });
                 if (!r.ok) {
                     const d = await r.json().catch(() => ({}));
-                    throw new Error(d.error || d.message || `Triage failed (HTTP ${r.status})`);
+                    throw new Error(d.message || d.error || `Triage failed (HTTP ${r.status})`);
                 }
                 const d = await r.json();
                 this.triage = d.triage;

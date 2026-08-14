@@ -86,7 +86,7 @@
                                     open['{{ item.id }}'] = true;
                                 }).catch(err => {
                                     if (err && err.json) {
-                                        err.json().then(body => { error['{{ item.id }}'] = body.error || 'AI health assessment failed.'; });
+                                        err.json().then(body => { error['{{ item.id }}'] = body.message || body.error || 'AI health assessment failed.'; });
                                     } else {
                                         error['{{ item.id }}'] = 'AI health assessment failed.';
                                     }

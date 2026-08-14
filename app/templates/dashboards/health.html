@@ -292,7 +292,7 @@ function execBriefingPanel() {
                 });
                 if (!r.ok) {
                     const d = await r.json().catch(() => ({}));
-                    throw new Error(d.error || d.message || `Executive briefing failed (HTTP ${r.status})`);
+                    throw new Error(d.message || d.error || `Executive briefing failed (HTTP ${r.status})`);
                 }
                 const d = await r.json();
                 this.briefing = d.briefing;

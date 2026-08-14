@@ -240,7 +240,7 @@ function arbAgendaDraftPanel(sessionId) {
                 });
                 if (!r.ok) {
                     const d = await r.json().catch(() => ({}));
-                    throw new Error(d.error || d.message || `Agenda draft failed (HTTP ${r.status})`);
+                    throw new Error(d.message || d.error || `Agenda draft failed (HTTP ${r.status})`);
                 }
                 const d = await r.json();
                 this.agenda = d.agenda;
@@ -276,7 +276,7 @@ function arbMinutesDraftPanel(sessionId) {
                 });
                 if (!r.ok) {
                     const d = await r.json().catch(() => ({}));
-                    throw new Error(d.error || d.message || `Minutes draft failed (HTTP ${r.status})`);
+                    throw new Error(d.message || d.error || `Minutes draft failed (HTTP ${r.status})`);
                 }
                 const d = await r.json();
                 this.minutesText = this.assemble(d.minutes);

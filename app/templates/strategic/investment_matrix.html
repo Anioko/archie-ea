@@ -491,7 +491,7 @@ function investmentSuggestionsPanel() {
                 });
                 if (!r.ok) {
                     const d = await r.json().catch(() => ({}));
-                    throw new Error(d.error || d.message || `AI suggestions failed (HTTP ${r.status})`);
+                    throw new Error(d.message || d.error || `AI suggestions failed (HTTP ${r.status})`);
                 }
                 const d = await r.json();
                 this.suggestions = d.suggestions;

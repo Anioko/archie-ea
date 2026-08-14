@@ -198,7 +198,7 @@ document.addEventListener('alpine:init', () => {
         });
         const json = await resp.json();
         if (!resp.ok) {
-          throw new Error(json.error || 'Failed to draft block');
+          throw new Error(json.message || json.error || 'Failed to draft block');
         }
         this.blocks[blockKey] = json.draft.content;
       } catch (e) {

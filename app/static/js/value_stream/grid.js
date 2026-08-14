@@ -272,7 +272,7 @@
                     });
                     var data = await resp.json();
                     if (!resp.ok) {
-                        throw new Error(data.error || ('HTTP ' + resp.status));
+                        throw new Error(data.message || data.error || ('HTTP ' + resp.status));
                     }
                     this.aiSummary = data.summary || null;
                     this.aiSuggestions = (data.suggestions || []).map(function (s) {

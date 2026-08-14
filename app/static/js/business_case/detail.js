@@ -150,7 +150,7 @@ document.addEventListener('alpine:init', () => {
         });
         const json = await resp.json();
         if (!resp.ok) {
-          throw new Error(json.error || 'Failed to draft section');
+          throw new Error(json.message || json.error || 'Failed to draft section');
         }
         this.fields[sectionKey] = json.draft.content;
       } catch (e) {
