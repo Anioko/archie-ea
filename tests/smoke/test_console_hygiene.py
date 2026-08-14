@@ -37,6 +37,9 @@ AUDIT = [
     ("business_architect", "/capability-map/"),
     ("cto", "/dashboard/overview"),
     ("enterprise_architect", "/ai-chat"),
+    ("enterprise_architect", "/adm-kanban/"),
+    ("enterprise_architect", "/solutions/"),
+    ("cto", "/dashboard/rationalization"),
 ]
 
 # Noise that is not an application defect: browser quirks, extension chatter,

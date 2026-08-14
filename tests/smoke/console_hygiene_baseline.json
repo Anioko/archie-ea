@@ -32,6 +32,18 @@
    "failed_requests": [
     "503 /ai-chat/api/health/llm"
    ]
+  },
+  "/adm-kanban/": {
+   "console_errors": [],
+   "failed_requests": []
+  },
+  "/solutions/": {
+   "console_errors": [],
+   "failed_requests": []
+  },
+  "/dashboard/rationalization": {
+   "console_errors": [],
+   "failed_requests": []
   }
  }
 }
