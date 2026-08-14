@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
 {% block title %}{{ 'Edit Licence' if license else 'New Licence' }}{% endblock %}
 
 {% macro current(field, fallback='') -%}
@@ -6,22 +7,23 @@
 {%- endmacro %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6 max-w-3xl">
+<div class="p-6 space-y-6 max-w-3xl mx-auto">
 
-  <div class="mb-6">
-    <a href="{{ url_for('procurement.licenses_list') }}"
-       class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
-      <i data-lucide="arrow-left" class="w-4 h-4"></i> All Licences
-    </a>
-    <h1 class="text-2xl font-bold mt-2">{{ 'Edit Licence' if license else 'New Licence' }}</h1>
-    <p class="text-muted-foreground">
-      Entitlement and deployment counts drive the compliance dashboard.
-    </p>
-  </div>
+  {{ page_header(
+      title=('Edit Licence' if license else 'New Licence'),
+      description='Entitlement and deployment counts drive the compliance dashboard.',
+      breadcrumbs=[
+          {'label': 'Home', 'href': url_for('main.index')},
+          {'label': 'License Entitlements', 'href': url_for('procurement.licenses_list')},
+          {'label': ('Edit Licence' if license else 'New Licence')}
+      ]
+  ) }}
 
   <form method="POST"
         action="{{ url_for('procurement.license_edit', license_id=license.id) if license else url_for('procurement.license_create') }}"
-        class="space-y-6">
+        class="space-y-6"
+        x-data="{ submitting: false }"
+        @submit="submitting = true">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="bg-card border border-border rounded-lg p-6 space-y-4">
@@ -113,10 +115,11 @@
     </div>
 
     <div class="flex items-center justify-between">
-      <button type="submit"
-              class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
-        <i data-lucide="save" class="w-4 h-4"></i>
-        {{ 'Save changes' if license else 'Record licence' }}
+      <button type="submit" :disabled="submitting"
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60">
+        <span x-show="submitting" class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+        <i data-lucide="save" class="w-4 h-4" x-show="!submitting"></i>
+        <span x-text="submitting ? 'Saving…' : '{{ 'Save changes' if license else 'Record licence' }}'"></span>
       </button>
       <a href="{{ url_for('procurement.licenses_list') }}"
          class="text-sm text-muted-foreground hover:text-foreground">Cancel</a>
@@ -126,7 +129,7 @@
   {% if license %}
   <form method="POST" action="{{ url_for('procurement.license_delete', license_id=license.id) }}"
         class="mt-8 pt-6 border-t border-border"
-        onsubmit="return confirm('Delete this licence entitlement? This cannot be undone.');">
+        @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete this licence entitlement? This cannot be undone.')">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit"
             class="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-destructive/40 text-destructive-emphasis text-sm hover:bg-destructive/10 transition-colors">

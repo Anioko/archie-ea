@@ -92,10 +92,33 @@ def app_edit(app_id):
         flash("Application updated.", "success")
         return redirect(url_for("my_applications.app_detail", app_id=app.id))
 
+    # AI health assessment "Apply suggestion" links in here as
+    # ?suggest_health=...&suggest_lifecycle=..., one or both. This only
+    # changes what the <select> shows pre-selected - it never writes to
+    # the database on its own, and an out-of-vocabulary value (a stale
+    # link, a hand-edited URL) is silently ignored rather than applied,
+    # so the owner still has to review and submit the form to save it.
+    #
+    # Deliberately NOT written onto `app` here: this is a GET handler, but
+    # `app` is a session-attached ORM object, so setting an attribute on it
+    # leaves it dirty for the rest of the request. Any later commit in the
+    # same request - a middleware flush, another view sharing the session -
+    # would persist an AI suggestion the owner never reviewed or submitted.
+    # Passed to the template as separate variables instead; the form select
+    # decides its own preselection.
+    suggested_health = request.args.get("suggest_health")
+    if suggested_health not in HEALTH_STATUSES:
+        suggested_health = None
+    suggested_lifecycle = request.args.get("suggest_lifecycle")
+    if suggested_lifecycle not in LIFECYCLE_STATUSES:
+        suggested_lifecycle = None
+
     return render_template(
         "my_applications/app_form.html",
         app=app,
         statuses=LIFECYCLE_STATUSES,
         deployment_statuses=DEPLOYMENT_STATUSES,
         health_statuses=HEALTH_STATUSES,
+        suggested_health=suggested_health,
+        suggested_lifecycle=suggested_lifecycle,
     )

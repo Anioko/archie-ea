@@ -3,6 +3,21 @@
 {% from 'components/modal.html' import modal %}
 {% import 'components/card.html' as card %}
 
+{% macro draft_with_ai(section_key, label) %}
+<button type="button" @click="draftSection('{{ section_key }}')" :disabled="draftingSection === '{{ section_key }}'"
+        data-testid="bc-draft-ai-{{ section_key }}"
+        class="inline-flex items-center gap-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 px-2 py-1 disabled:opacity-50 disabled:pointer-events-none"
+        aria-label="Draft {{ label }} with AI">
+  <span x-show="draftingSection === '{{ section_key }}'" x-cloak class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+  <i data-lucide="sparkles" class="h-3 w-3" aria-hidden="true" x-show="draftingSection !== '{{ section_key }}'"></i>
+  <span>Draft with AI</span>
+</button>
+{% endmacro %}
+
+{% macro draft_ai_error(section_key) %}
+<div x-show="draftError === '{{ section_key }}'" x-cloak class="mt-1 text-xs text-destructive-emphasis bg-destructive/10 border border-destructive/30 rounded px-2 py-1" x-text="draftErrorMessage"></div>
+{% endmacro %}
+
 {% block title %}{{ business_case.title or 'Business Case' }}{% endblock %}
 
 {% set _status_badge = {
@@ -34,7 +49,8 @@
     solutionId: {{ business_case.solution_id | tojson }},
     fieldApiUrl: {{ url_for('business_case.save_field', business_case_id=business_case.id) | tojson }},
     updateApiUrl: {{ url_for('business_case.update', business_case_id=business_case.id) | tojson }},
-    pullFinancialsApiUrl: {{ url_for('business_case.pull_financials', business_case_id=business_case.id) | tojson }}
+    pullFinancialsApiUrl: {{ url_for('business_case.pull_financials', business_case_id=business_case.id) | tojson }},
+    draftSectionApiUrl: {{ url_for('business_case.ai_draft_section', business_case_id=business_case.id) | tojson }}
   })" x-cloak>
 
   {{ page_header(
@@ -110,11 +126,13 @@
           {% call card.card_title(class='text-base flex items-center gap-2') %}
             <i data-lucide="alert-circle" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i> Problem Statement
           {% endcall %}
+          {% call card.card_action() %}{{ draft_with_ai('problem_statement', 'Problem Statement') }}{% endcall %}
         {% endcall %}
         {% call card.card_content() %}
           <textarea x-model="fields.problem_statement" @blur="saveField('problem_statement')"
             data-testid="bc-textarea-problem_statement" rows="5" placeholder="What business problem or opportunity is driving this case?"
             class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="What business problem or opportunity is driving this case?"></textarea>
+          {{ draft_ai_error('problem_statement') }}
           <p class="mt-1 h-4 text-xs">
             <span x-show="savingField === 'problem_statement'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
             <span x-show="savedField === 'problem_statement'" x-cloak class="text-success">Saved</span>
@@ -127,11 +145,13 @@
           {% call card.card_title(class='text-base flex items-center gap-2') %}
             <i data-lucide="list-checks" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i> Options Considered
           {% endcall %}
+          {% call card.card_action() %}{{ draft_with_ai('options_considered', 'Options Considered') }}{% endcall %}
         {% endcall %}
         {% call card.card_content() %}
           <textarea x-model="fields.options_considered" @blur="saveField('options_considered')"
             data-testid="bc-textarea-options_considered" rows="5" placeholder="What alternatives were evaluated (including do-nothing)?"
             class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="What alternatives were evaluated (including do-nothing)?"></textarea>
+          {{ draft_ai_error('options_considered') }}
           <p class="mt-1 h-4 text-xs">
             <span x-show="savingField === 'options_considered'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
             <span x-show="savedField === 'options_considered'" x-cloak class="text-success">Saved</span>
@@ -145,11 +165,13 @@
         {% call card.card_title(class='text-base flex items-center gap-2') %}
           <i data-lucide="target" class="h-4 w-4 text-primary" aria-hidden="true"></i> Recommendation
         {% endcall %}
+        {% call card.card_action() %}{{ draft_with_ai('recommended_option', 'Recommendation') }}{% endcall %}
       {% endcall %}
       {% call card.card_content() %}
         <textarea x-model="fields.recommended_option" @blur="saveField('recommended_option')"
           data-testid="bc-textarea-recommended_option" rows="4" placeholder="Which option is recommended, and why?"
           class="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="Which option is recommended, and why?"></textarea>
+        {{ draft_ai_error('recommended_option') }}
         <p class="mt-1 h-4 text-xs">
           <span x-show="savingField === 'recommended_option'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
           <span x-show="savedField === 'recommended_option'" x-cloak class="text-success">Saved</span>
@@ -219,11 +241,13 @@
           {% call card.card_title(class='text-base flex items-center gap-2') %}
             <i data-lucide="trending-up" class="h-4 w-4 text-success" aria-hidden="true"></i> Expected Benefits
           {% endcall %}
+          {% call card.card_action() %}{{ draft_with_ai('expected_benefits', 'Expected Benefits') }}{% endcall %}
         {% endcall %}
         {% call card.card_content() %}
           <textarea x-model="fields.expected_benefits" @blur="saveField('expected_benefits')"
             data-testid="bc-textarea-expected_benefits" rows="5" placeholder="Quantified and qualitative benefits expected"
             class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="Quantified and qualitative benefits expected"></textarea>
+          {{ draft_ai_error('expected_benefits') }}
           <p class="mt-1 h-4 text-xs">
             <span x-show="savingField === 'expected_benefits'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
             <span x-show="savedField === 'expected_benefits'" x-cloak class="text-success">Saved</span>
@@ -236,11 +260,13 @@
           {% call card.card_title(class='text-base flex items-center gap-2') %}
             <i data-lucide="shield-alert" class="h-4 w-4 text-destructive" aria-hidden="true"></i> Key Risks
           {% endcall %}
+          {% call card.card_action() %}{{ draft_with_ai('key_risks', 'Key Risks') }}{% endcall %}
         {% endcall %}
         {% call card.card_content() %}
           <textarea x-model="fields.key_risks" @blur="saveField('key_risks')"
             data-testid="bc-textarea-key_risks" rows="5" placeholder="Delivery, adoption, financial and technical risks"
             class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="Delivery, adoption, financial and technical risks"></textarea>
+          {{ draft_ai_error('key_risks') }}
           <p class="mt-1 h-4 text-xs">
             <span x-show="savingField === 'key_risks'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
             <span x-show="savedField === 'key_risks'" x-cloak class="text-success">Saved</span>

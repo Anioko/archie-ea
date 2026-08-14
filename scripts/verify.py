@@ -229,6 +229,22 @@ def gate_design_tokens(baseline: int) -> Result:
     return Result("design-tokens", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_shell_conformance(baseline: int) -> Result:
+    """Pages hand-rolling their own header or page width.
+
+    The 14 Aug 2026 UX audit found three competing header systems and two page
+    widths shipping at once — the root cause of "every module looks different".
+    Counted by scripts/check_shell_conformance.py; the escape hatch is a
+    file-level `shell-ok: <reason>` comment.
+    """
+    proc = _run([sys.executable, "scripts/check_shell_conformance.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("shell-conformance", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("shell-conformance", PASS if count <= baseline else FAIL, "", count, baseline)
+
+
 def gate_air_gap(baseline: int) -> Result:
     """No UI assets loaded from the public internet.
 
@@ -947,6 +963,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet",
              lambda: gate_design_tokens_extended(baseline["design_tokens_extended"]),
              remediation="use success/warning/info/destructive or layer tokens",
+             tags=["static", "ui"]),
+        Gate("shell-conformance", "No new pages off the platform shell (header macro + page width)",
+             "ratchet", lambda: gate_shell_conformance(baseline["shell_conformance"]),
+             remediation="use page_header/page_shell and p-6 space-y-6; see DESIGN.md, or add 'shell-ok: <reason>'",
              tags=["static", "ui"]),
         Gate("air-gap", "No UI assets loaded from public CDNs", "ratchet",
              lambda: gate_air_gap(baseline["air_gap"]),

@@ -55,7 +55,11 @@ def get_application_patterns():
         )
 
         svc = ApplicationPatternClassifierService()
-        patterns = svc.classify_portfolio()
+        # A large portfolio is ~19 sequential LLM calls at batch_size=50, which
+        # stalled this request for 10+ minutes. Bound the wall clock; apps not
+        # reached in time get the deterministic rule engine, and the response
+        # reports the split (patterns.by_source / patterns.llm_truncated).
+        patterns = svc.classify_portfolio(time_budget_seconds=60)
         return jsonify({"patterns": patterns}), 200
     except LLMClassificationTimeoutError as exc:
         logger.error("application-patterns timed out: %s", exc)

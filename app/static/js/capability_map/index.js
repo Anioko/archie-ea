@@ -559,6 +559,7 @@
                     <input type="checkbox"
                         class="rounded border-input text-primary focus-visible:ring-ring"
                         ${isSelected ? 'checked' : ''}
+                        aria-label="Select ${escapeHtml(item.name || item.capability_name || 'capability')}"
                         onchange="toggleRowSelection('${capabilityId}', '${tabType}', this.checked)">
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
@@ -4125,6 +4126,7 @@
                         <div class="flex items-start space-x-3 flex-1">
                             <input type="checkbox"
                                    class="mt-1 rounded border-input text-primary focus-visible:ring-ring"
+                                   aria-label="Select ${escapeHtml(child.name)}"
                                    onchange="toggleWPChildSelection(${child.id}, this.checked)">
                             <div class="flex-1">
                                 <div class="flex items-center space-x-2 mb-1">
@@ -5322,6 +5324,7 @@
                                 onchange="toggleApplicationSelection('${app.id}')"
                                 class="mt-1 h-5 w-5 text-primary focus-visible:ring-ring border-input rounded cursor-pointer"
                                 title="${isSelected ? 'Deselect' : 'Select'} ${escapeHtml(app.name)}"
+                                aria-label="${isSelected ? 'Deselect' : 'Select'} ${escapeHtml(app.name)}"
                             />
                             <div class="flex-1">
                                 <div class="flex items-center space-x-2">
@@ -5427,6 +5430,7 @@
                             min="0"
                             max="100"
                             value="${mappingData.coverage_percentage || 0}"
+                            aria-label="Coverage %"
                             class="w-full text-sm border border-input rounded px-2 py-1"
                             onchange="updateApplicationMapping(${appId}, 'coverage_percentage', parseInt(this.value))"
                         />
@@ -5438,6 +5442,7 @@
                             min="1"
                             max="5"
                             value="${mappingData.support_quality || 3}"
+                            aria-label="Support Quality (1-5)"
                             class="w-full text-sm border border-input rounded px-2 py-1"
                             onchange="updateApplicationMapping(${appId}, 'support_quality', parseInt(this.value))"
                         />

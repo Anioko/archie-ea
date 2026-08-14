@@ -647,6 +647,35 @@ def software_architecture_dashboard():
         )
 
 
+def _assemble_investment_priorities_context():
+    """Assemble the Investment Priorities dashboard's real analysis data.
+
+    Returns (analysis, mapping_count). analysis is None when no capability
+    mapping data exists yet (mirrors investment_priorities()'s own prereq
+    check) — callers decide what to do with that case rather than this
+    helper silently substituting anything.
+
+    Factored out of investment_priorities() so the AI suggestion endpoint
+    can be handed the exact same, already-computed analysis rather than
+    re-querying (or worse, inventing numbers). Exceptions from the service
+    call are intentionally NOT caught here — each caller has its own
+    fallback behaviour for that case.
+    """
+    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
+
+    mapping_count = UnifiedApplicationCapabilityMapping.query.count()
+    if mapping_count == 0:
+        return None, mapping_count
+
+    from app.modules.solutions_strategic.v2.services.investment_prioritization_service import (
+        InvestmentPrioritizationService,
+    )
+
+    service = InvestmentPrioritizationService()
+    analysis = service.analyze_investment_priorities(include_risk_analysis=True)
+    return analysis, mapping_count
+
+
 @architecture_bp.route("/investment-priorities")
 @login_required
 def investment_priorities():
@@ -657,33 +686,8 @@ def investment_priorities():
     budget data where available (via RoadmapItem.linked_capabilities linkage).
     Canonical URL under /architecture/ for ArchiMate architects.
     """
-    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
-
-    mapping_count = UnifiedApplicationCapabilityMapping.query.count()
-    if mapping_count == 0:
-        return render_template(
-            "strategic/investment_matrix_prereq.html",
-            mapping_count=0,
-        )
-
-    from app.modules.solutions_strategic.v2.services.investment_prioritization_service import (
-        InvestmentPrioritizationService,
-    )
-
     try:
-        service = InvestmentPrioritizationService()
-        analysis = service.analyze_investment_priorities(include_risk_analysis=True)
-
-        return render_template(
-            "strategic/investment_matrix.html",
-            capability_scores=analysis["capability_scores"],
-            critical_investments=analysis["critical_investments"],
-            high_investments=analysis["high_investments"],
-            medium_investments=analysis["medium_investments"],
-            low_investments=analysis["low_investments"],
-            portfolio_metrics=analysis["portfolio_metrics"],
-            recommendations=analysis["recommendations"],
-        )
+        analysis, mapping_count = _assemble_investment_priorities_context()
     except Exception as e:
         current_app.logger.error(f"Error loading investment priorities: {e}")
         return render_template(
@@ -708,6 +712,131 @@ def investment_priorities():
             },
             recommendations=[],
         )
+
+    if analysis is None:
+        return render_template(
+            "strategic/investment_matrix_prereq.html",
+            mapping_count=mapping_count,
+        )
+
+    return render_template(
+        "strategic/investment_matrix.html",
+        capability_scores=analysis["capability_scores"],
+        critical_investments=analysis["critical_investments"],
+        high_investments=analysis["high_investments"],
+        medium_investments=analysis["medium_investments"],
+        low_investments=analysis["low_investments"],
+        portfolio_metrics=analysis["portfolio_metrics"],
+        recommendations=analysis["recommendations"],
+    )
+
+
+def _org_scoped_investment_context(analysis, limit=50):
+    """Filter the whole-portfolio investment analysis down to capability
+    names this org has actually mapped, capped at `limit` entries.
+
+    InvestmentPrioritizationService.analyze_investment_priorities() is built
+    from UnifiedCapability.query.all() + UnifiedApplicationCapabilityMapping
+    .query.all() — neither model carries an organization_id column, so the
+    raw analysis spans every organization on the install. Reuses the same
+    org-scoped-name derivation as the value-stream AI suggest endpoint
+    (value_stream_ai_service._org_scoped_capability_names, join through
+    CapabilityValueStreamMapping and UnifiedApplicationCapabilityMapping ->
+    ApplicationComponent, both TenantMixin) so only what this org has
+    actually mapped — never another org's capability catalog — ever reaches
+    the LLM prompt.
+
+    Returns None when this org has no capability in the analysis that it has
+    actually mapped, so the caller can short-circuit before calling the LLM
+    at all (mirrors value_stream_ai_routes.ai_suggest_mappings).
+    """
+    from app.modules.capabilities.services.value_stream_ai_service import (
+        _org_scoped_capability_names,
+    )
+
+    org_names = set(_org_scoped_capability_names(limit=limit))
+    if not org_names:
+        return None
+
+    filtered_scores = [
+        c for c in analysis.get("capability_scores", [])
+        if c.get("capability_name") in org_names
+    ][:limit]
+    if not filtered_scores:
+        return None
+
+    kept_names = {c["capability_name"] for c in filtered_scores}
+
+    def _filtered(key, name_key="capability_name"):
+        return [
+            item for item in (analysis.get(key) or [])
+            if item.get(name_key) in kept_names
+        ]
+
+    return {
+        "capability_scores": filtered_scores,
+        "critical_investments": _filtered("critical_investments"),
+        "high_investments": _filtered("high_investments"),
+        "medium_investments": _filtered("medium_investments"),
+        "low_investments": _filtered("low_investments"),
+        "recommendations": _filtered("recommendations", name_key="capability"),
+    }
+
+
+@architecture_bp.route("/api/investment-priorities/ai-suggest", methods=["POST"])
+@login_required
+def ai_investment_suggestions():
+    """POST /architecture/api/investment-priorities/ai-suggest
+
+    Generates AI investment-priority suggestions for the CTO from the
+    Investment Priorities dashboard's own analysis data. Advisory only —
+    nothing here is persisted; sequencing decisions remain manual.
+    """
+    from app.services.feature_flag_service import FeatureFlagService
+
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS,
+        endpoint_name="architecture.ai_investment_suggestions",
+    )
+    if feature_guard:
+        return feature_guard
+
+    from app.modules.dashboard.v2.services.executive_briefing_service import (
+        ExecutiveBriefingAIError,
+        generate_investment_suggestions,
+    )
+
+    try:
+        analysis, mapping_count = _assemble_investment_priorities_context()
+    except Exception as e:
+        current_app.logger.error(f"Error loading investment priorities for AI suggestions: {e}")
+        return jsonify({"error": f"Investment priorities data could not be loaded: {e}"}), 502
+
+    if analysis is None:
+        return jsonify({
+            "error": "Investment priorities data is not yet available "
+                     "(no capability mappings for this organization)."
+        }), 502
+
+    # analysis spans every organization on the install (see
+    # _org_scoped_investment_context) — never hand it to the LLM as-is.
+    org_context = _org_scoped_investment_context(analysis)
+    if org_context is None:
+        return jsonify({
+            "suggestions": None,
+            "message": "No capabilities mapped in this organization yet",
+        })
+
+    try:
+        suggestions = generate_investment_suggestions(org_context)
+    except ExecutiveBriefingAIError as e:
+        logger.warning("Investment priority suggestions unparseable: %s", e)
+        return jsonify({"error": f"AI investment suggestions failed: {e}"}), 502
+    except Exception as e:
+        logger.exception("Investment priority suggestion generation failed")
+        return jsonify({"error": f"AI investment suggestions failed: {e}"}), 502
+
+    return jsonify(suggestions)
 
 
 @architecture_bp.route("/vendor-templates")

@@ -177,3 +177,22 @@ def get_spend_summary() -> Dict[str, any]:
         "by_type": by_type,
         "top_vendors": top_vendors,
     }
+
+
+def get_spend_by_category(organization_id: int) -> "Dict[str, float]":
+    """Contract value grouped by contract_category, sorted highest spend first.
+
+    Extracted from the inline loop that used to live only in
+    routes.spend_analytics() so the AI spend-recommendations endpoint
+    (procurement_ai_service.py) reuses the exact same aggregate instead of
+    running a second, parallel query over the same rows - per the Task 4
+    brief's explicit "reuse, not reimplement" instruction.
+    """
+    contracts = VendorContract.query.filter_by(organization_id=organization_id).all()
+
+    spend_by_category: Dict[str, float] = {}
+    for c in contracts:
+        cat = c.contract_category or "Uncategorized"
+        spend_by_category[cat] = spend_by_category.get(cat, 0) + (c.contract_value or 0)
+
+    return dict(sorted(spend_by_category.items(), key=lambda x: -x[1]))

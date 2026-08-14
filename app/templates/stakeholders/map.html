@@ -129,6 +129,11 @@
         </svg>
         Add Stakeholder
       </button>
+      <button type="button" @click="openAiPanel()"
+              class="inline-flex items-center gap-1.5 border border-primary/40 text-primary hover:bg-primary/5 text-sm font-medium px-4 py-2 rounded-lg transition">
+        <i data-lucide="sparkles" class="h-4 w-4"></i>
+        AI Suggest
+      </button>
     </div>
   </div>
 
@@ -140,6 +145,7 @@
     <span><span class="legend-dot bg-warning"></span>Skeptic</span>
     <span><span class="legend-dot bg-destructive"></span>Blocker</span>
     <span class="ml-4 text-muted-foreground/60">Node size = engagement weight</span>
+    <span class="text-muted-foreground/60">Click a stakeholder for an AI engagement strategy</span>
   </div>
 
   {# ── Empty state ────────────────────────────────── #}
@@ -178,6 +184,92 @@
 {% endblock %}
 
 {% block modals %}
+{% call modal(id='ai-identify-modal', title='AI Suggest Stakeholders', size='default') %}
+  <div class="space-y-4">
+    <div>
+      <label class="block text-sm font-medium text-foreground mb-1">Business context</label>
+      <p class="text-xs text-muted-foreground mb-2">Describe the initiative — the AI will suggest likely stakeholders (executive sponsors, end users, compliance, vendors, etc.) for you to review and add.</p>
+      <textarea x-model="aiPanel.businessContext" rows="6"
+                placeholder="e.g. Building a customer portal for EU customers. Must comply with GDPR. CFO requires ROI within 18 months. 50K existing customers will use the portal."
+                class="w-full border border-border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none" aria-label="Business context"></textarea>
+    </div>
+
+    <div class="flex justify-end">
+      <button type="button" @click="generateStakeholderSuggestions()" :disabled="aiPanel.loading || !aiPanel.businessContext.trim()"
+              class="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:bg-muted-foreground/40 text-primary-foreground text-sm font-medium rounded-lg transition-colors" aria-label="Generate suggestions">
+        <i data-lucide="sparkles" class="h-4 w-4" :class="{ 'animate-spin': aiPanel.loading }"></i>
+        <span x-text="aiPanel.loading ? 'Generating…' : 'Generate Suggestions'"></span>
+      </button>
+    </div>
+
+    <div x-show="aiPanel.error" x-cloak
+         class="p-3 bg-destructive/5 border border-destructive/20 rounded-lg text-destructive-emphasis text-sm"
+         x-text="aiPanel.error"></div>
+
+    <div x-show="aiPanel.suggestions.length > 0" x-cloak class="space-y-2 max-h-72 overflow-y-auto">
+      <template x-for="(sugg, idx) in aiPanel.suggestions" :key="idx">
+        <div class="border border-border rounded-lg px-3 py-2 flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-foreground" x-text="sugg.name"></div>
+            <div class="text-xs text-muted-foreground" x-text="sugg.type || ''"></div>
+            <div class="text-xs text-muted-foreground/80 mt-0.5" x-text="sugg.interest || sugg.description || ''"></div>
+          </div>
+          <button type="button" @click="addSuggestedStakeholder(sugg)"
+                  class="shrink-0 px-3 py-1.5 text-xs font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg transition" aria-label="Add this stakeholder">
+            Add
+          </button>
+        </div>
+      </template>
+    </div>
+  </div>
+{% endcall %}
+
+{% call modal(id='engagement-strategy-modal', title='AI Engagement Strategy', size='default') %}
+  <div class="space-y-4">
+    <div x-show="aiPanel.strategyLoading" x-cloak class="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
+      <i data-lucide="sparkles" class="h-4 w-4 animate-spin"></i>
+      Generating strategy…
+    </div>
+
+    <div x-show="aiPanel.strategyError" x-cloak
+         class="p-3 bg-destructive/5 border border-destructive/20 rounded-lg text-destructive-emphasis text-sm"
+         x-text="aiPanel.strategyError"></div>
+
+    <template x-if="!aiPanel.strategyLoading && aiPanel.strategy">
+      <div class="space-y-3 text-sm">
+        <div>
+          <span class="font-medium text-foreground">Strategy:</span>
+          <span class="text-muted-foreground" x-text="(aiPanel.strategy.strategy || '').replace(/_/g,' ')"></span>
+        </div>
+        <div>
+          <span class="font-medium text-foreground">Communication frequency:</span>
+          <span class="text-muted-foreground" x-text="aiPanel.strategy.communication_frequency || '—'"></span>
+        </div>
+        <div>
+          <span class="font-medium text-foreground block mb-1">Communication channels</span>
+          <ul class="list-disc list-inside text-muted-foreground space-y-0.5">
+            <template x-for="(ch, i) in (aiPanel.strategy.communication_channels || [])" :key="i">
+              <li x-text="ch"></li>
+            </template>
+          </ul>
+        </div>
+        <div>
+          <span class="font-medium text-foreground block mb-1">Engagement actions</span>
+          <ul class="list-disc list-inside text-muted-foreground space-y-0.5">
+            <template x-for="(a, i) in (aiPanel.strategy.engagement_actions || [])" :key="i">
+              <li x-text="a"></li>
+            </template>
+          </ul>
+        </div>
+        <div>
+          <span class="font-medium text-foreground">Escalation path:</span>
+          <span class="text-muted-foreground" x-text="aiPanel.strategy.escalation_path || '—'"></span>
+        </div>
+      </div>
+    </template>
+  </div>
+{% endcall %}
+
 {% call modal(id='add-stakeholder-modal', title='Add Stakeholder', size='default') %}
   <div class="space-y-4">
     <div>
@@ -292,6 +384,15 @@ function stakeholderMap() {
     loadError: '',
     selectedPerson: null,
     _simulation: null,
+    aiPanel: {
+      businessContext: '',
+      loading: false,
+      error: null,
+      suggestions: [],
+      strategyLoading: false,
+      strategyError: null,
+      strategy: null,
+    },
 
     init() {
       // Don't auto-load all stakeholders — wait for solution selection
@@ -382,6 +483,87 @@ function stakeholderMap() {
       } catch(e) {
         console.error(e);
         Platform.toast.error('Could not add that stakeholder.');
+      }
+    },
+
+    openAiPanel() {
+      this.aiPanel.businessContext = '';
+      this.aiPanel.loading = false;
+      this.aiPanel.error = null;
+      this.aiPanel.suggestions = [];
+      Platform.modal.open('ai-identify-modal');
+    },
+
+    async generateStakeholderSuggestions() {
+      const context = this.aiPanel.businessContext.trim();
+      if (!context) return;
+      this.aiPanel.loading = true;
+      this.aiPanel.error = null;
+      this.aiPanel.suggestions = [];
+      try {
+        const resp = await fetch('/api/stakeholders/ai/identify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
+          body: JSON.stringify({ business_context: context })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+        this.aiPanel.suggestions = data.stakeholders || [];
+        if (this.aiPanel.suggestions.length === 0) {
+          this.aiPanel.error = 'No stakeholders suggested for that context.';
+        }
+      } catch (e) {
+        this.aiPanel.error = e.message || 'Stakeholder suggestion failed.';
+        Platform.toast.error(this.aiPanel.error);
+      } finally {
+        this.aiPanel.loading = false;
+      }
+    },
+
+    async addSuggestedStakeholder(sugg) {
+      if (!this.selectedSolution) {
+        Platform.toast.error('Select a solution first so this stakeholder can be linked to it.');
+        return;
+      }
+      const body = {
+        name: sugg.name,
+        description: sugg.description || '',
+        solution_id: parseInt(this.selectedSolution),
+        stakeholder_type: 'individual',
+        attitude: 'neutral',
+      };
+      try {
+        const resp = await fetch('/api/stakeholders/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
+          body: JSON.stringify(body)
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        Platform.toast.success(sugg.name + ' added.');
+        this.aiPanel.suggestions = this.aiPanel.suggestions.filter(s => s !== sugg);
+        await this.loadData();
+      } catch (e) {
+        Platform.toast.error('Could not add ' + sugg.name + '.');
+      }
+    },
+
+    async showEngagementStrategy(stakeholderId) {
+      this.aiPanel.strategy = null;
+      this.aiPanel.strategyError = null;
+      this.aiPanel.strategyLoading = true;
+      Platform.modal.open('engagement-strategy-modal');
+      try {
+        const resp = await fetch(`/api/stakeholders/${stakeholderId}/ai/engagement-strategy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+        this.aiPanel.strategy = data;
+      } catch (e) {
+        this.aiPanel.strategyError = e.message || 'Engagement strategy generation failed.';
+      } finally {
+        this.aiPanel.strategyLoading = false;
       }
     },
 
@@ -583,6 +765,9 @@ function stakeholderMap() {
         })
         .on('mouseleave', function() {
           tooltip.style.opacity = '0';
+        })
+        .on('click', function(event, d) {
+          self.showEngagementStrategy(d.id);
         });
     },
   };

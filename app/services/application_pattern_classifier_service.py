@@ -18,6 +18,7 @@ Primary entry points:
 import concurrent.futures
 import json
 import logging
+import time
 from typing import Dict, List, Optional
 
 from flask import current_app, g
@@ -332,11 +333,17 @@ class ApplicationPatternClassifierService:
     cannot be reached via LLM or when no LLM provider is configured.
     """
 
+    def __init__(self):
+        # True when a time budget stopped LLM classification partway; the
+        # remaining apps were classified by rules and labelled as such.
+        self.llm_truncated = False
+
     def classify_applications(
         self,
         app_ids: Optional[List[int]] = None,
         batch_size: int = 50,
         use_llm: bool = True,
+        time_budget_seconds: Optional[float] = None,
     ) -> List[Dict]:
         """
         Classify applications and persist arch_pattern to the database.
@@ -358,12 +365,28 @@ class ApplicationPatternClassifierService:
         apps: List[ApplicationComponent] = query.all()
 
         results: List[Dict] = []
+        self.llm_truncated = False
+        deadline = (
+            time.monotonic() + time_budget_seconds
+            if time_budget_seconds is not None
+            else None
+        )
 
-        # Process in batches
+        # Process in batches. Each LLM batch is one outbound call with a client
+        # timeout in the 60-90s range — but 920 apps at batch_size=50 is ~19
+        # sequential calls, which is what stalled this endpoint for 10+ minutes.
+        # The optional wall-clock budget stops issuing LLM calls once spent;
+        # remaining apps get the service's documented deterministic fallback,
+        # and every record says which engine produced it.
         for batch_start in range(0, len(apps), batch_size):
             batch = apps[batch_start: batch_start + batch_size]
 
-            if use_llm:
+            llm_this_batch = use_llm
+            if llm_this_batch and deadline is not None and time.monotonic() > deadline:
+                llm_this_batch = False
+                self.llm_truncated = True
+
+            if llm_this_batch:
                 classified = _llm_classify_batch(batch)
                 id_map = {r["id"]: r for r in classified}
             else:
@@ -373,8 +396,10 @@ class ApplicationPatternClassifierService:
                 if app.id in id_map:
                     pattern = id_map[app.id]["arch_pattern"]
                     confidence = id_map[app.id]["confidence"]
+                    source = id_map[app.id].get("source", "llm")
                 else:
                     pattern, confidence, _ = _rule_based_classify(app)
+                    source = "rules"
 
                 # Persist
                 app.arch_pattern = pattern
@@ -383,6 +408,7 @@ class ApplicationPatternClassifierService:
                     "app_name": app.name,
                     "arch_pattern": pattern,
                     "confidence": round(confidence, 4),
+                    "source": source,
                 })
 
         try:
@@ -393,22 +419,32 @@ class ApplicationPatternClassifierService:
 
         return results
 
-    def classify_portfolio(self, batch_size: int = 50) -> Dict:
+    def classify_portfolio(
+        self, batch_size: int = 50, time_budget_seconds: Optional[float] = None
+    ) -> Dict:
         """
         Classify the full application portfolio in batches.
 
         Returns aggregate statistics:
             {classified: N, by_pattern: {pattern: count},
-             confidence_distribution: {high/medium/low: count}}
+             confidence_distribution: {high/medium/low: count},
+             by_source: {llm/rules: count}, llm_truncated: bool}
         """
-        records = self.classify_applications(app_ids=None, batch_size=batch_size)
+        records = self.classify_applications(
+            app_ids=None,
+            batch_size=batch_size,
+            time_budget_seconds=time_budget_seconds,
+        )
 
         by_pattern: Dict[str, int] = {}
+        by_source: Dict[str, int] = {}
         confidence_distribution: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}
 
         for rec in records:
             pattern = rec["arch_pattern"]
             by_pattern[pattern] = by_pattern.get(pattern, 0) + 1
+            source = rec["source"]
+            by_source[source] = by_source.get(source, 0) + 1
 
             confidence = rec["confidence"]
             if confidence >= 0.75:  # fabricated-values-ok: confidence band thresholds (high/medium/low)
@@ -421,5 +457,7 @@ class ApplicationPatternClassifierService:
         return {
             "classified": len(records),
             "by_pattern": by_pattern,
+            "by_source": by_source,
+            "llm_truncated": self.llm_truncated,
             "confidence_distribution": confidence_distribution,
         }

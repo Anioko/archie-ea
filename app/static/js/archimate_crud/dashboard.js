@@ -34,6 +34,18 @@ document.addEventListener('alpine:init', function() {
             formError: '',
             saving: false,
 
+            // Generate with AI — wires the previously dead
+            // POST /<layer>/<element_type>/ai-generate endpoint. It only drafts
+            // a name/description/attributes; it never writes to the database.
+            aiGenerate: {
+                layer: 'motivation',
+                elementType: '',
+                prompt: '',
+                loading: false,
+                error: '',
+                result: null,
+            },
+
             showDeleteConfirm: false,
             deletingElement: null,
             deleting: false,
@@ -108,6 +120,12 @@ document.addEventListener('alpine:init', function() {
                 // undefined, or with duplicate :key values, throws Alpine's
                 // "reading 'after'" reconciliation error on tab switch.
                 let cfg = this.layerConfig[this.activeTab];
+                let arr = (cfg && Array.isArray(cfg.elements)) ? cfg.elements : [];
+                return Array.from(new Set(arr));
+            },
+
+            get aiGenerateLayerTypes() {
+                let cfg = this.layerConfig[this.aiGenerate.layer];
                 let arr = (cfg && Array.isArray(cfg.elements)) ? cfg.elements : [];
                 return Array.from(new Set(arr));
             },
@@ -543,6 +561,74 @@ document.addEventListener('alpine:init', function() {
                     this.formError = 'Error: ' + err.message;
                 } finally {
                     this.saving = false;
+                }
+            },
+
+            openAiGenerateModal() {
+                this.aiGenerate.layer = this.activeTab;
+                this.aiGenerate.elementType = '';
+                this.aiGenerate.prompt = '';
+                this.aiGenerate.error = '';
+                this.aiGenerate.result = null;
+                this.aiGenerate.loading = false;
+                if (window.Platform && window.Platform.modal) {
+                    window.Platform.modal.open('ai-generate-modal');
+                }
+            },
+            async runAiGenerate() {
+                this.aiGenerate.error = '';
+                if (!this.aiGenerate.layer || !this.aiGenerate.elementType) {
+                    this.aiGenerate.error = 'Please select a layer and element type';
+                    return;
+                }
+                if (!this.aiGenerate.prompt.trim()) {
+                    this.aiGenerate.error = 'Please describe what to generate';
+                    return;
+                }
+                this.aiGenerate.loading = true;
+                this.aiGenerate.result = null;
+                try {
+                    let url = '/architecture/' + this.aiGenerate.layer + '/' + this.aiGenerate.elementType + '/ai-generate';
+                    let resp = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: this.aiGenerate.prompt, context: {} }),
+                    });
+                    let data = await resp.json();
+                    if (!resp.ok || !data.success) {
+                        this.aiGenerate.error = data.error || data.message || 'AI generation failed';
+                        return;
+                    }
+                    let inner = data.data;
+                    if (!inner || inner.success === false) {
+                        this.aiGenerate.error = (inner && inner.error) || 'AI generation failed';
+                        return;
+                    }
+                    this.aiGenerate.result = inner.element || {};
+                } catch (err) {
+                    this.aiGenerate.error = 'Error: ' + err.message;
+                } finally {
+                    this.aiGenerate.loading = false;
+                }
+            },
+            useAiGenerateResult() {
+                // Never write silently: hand the draft to the existing
+                // create-element form so the user reviews and submits it
+                // themselves via the normal, already-audited create flow.
+                if (!this.aiGenerate.result) return;
+                this.editingElement = null;
+                this.activeTab = this.aiGenerate.layer;
+                this.formData = {
+                    element_type: this.aiGenerate.elementType,
+                    name: this.aiGenerate.result.name || '',
+                    description: this.aiGenerate.result.description || '',
+                };
+                let attrs = this.aiGenerate.result.attributes || {};
+                Object.assign(this.formData, this.typedFieldDefaults(this.aiGenerate.elementType, attrs));
+                this.formError = '';
+                if (window.Platform && window.Platform.modal) {
+                    window.Platform.modal.close('ai-generate-modal');
+                    window.Platform.modal.open('archimate-form-modal');
                 }
             },
 

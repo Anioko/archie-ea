@@ -11,12 +11,21 @@
         title='Duplicate Detection',
         description='Identify and consolidate duplicate applications'
     ) }}
-      <button type="button" @click="showRunDetectionModal = true"
-              :disabled="isRunningDetection"
-              class="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Run duplicate detection">
-        <i data-lucide="search" class="w-4 h-4 mr-2" aria-hidden="true"></i>
-        <span x-text="isRunningDetection ? 'Detection Running...' : 'Run Detection'">Run Detection</span>
-      </button>
+      <div class="flex items-center gap-2">
+        {% if 'unified_duplicate.ai_dashboard' in flask.current_app.view_functions %}
+        <a href="{{ url_for('unified_duplicate.ai_dashboard') }}"
+           class="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors bg-secondary text-secondary-foreground hover:bg-secondary/90 h-10 px-6" aria-label="View AI-enhanced detection dashboard">
+          <i data-lucide="sparkles" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+          AI-enhanced detection
+        </a>
+        {% endif %}
+        <button type="button" @click="showRunDetectionModal = true"
+                :disabled="isRunningDetection"
+                class="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Run duplicate detection">
+          <i data-lucide="search" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+          <span x-text="isRunningDetection ? 'Detection Running...' : 'Run Detection'">Run Detection</span>
+        </button>
+      </div>
     </div>
 
     <!-- Detection Run Feedback -->

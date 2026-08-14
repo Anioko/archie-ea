@@ -13,7 +13,7 @@ the full monolithic model graph during startup.
 import os
 from datetime import datetime  # dead-code-ok
 
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 
 from .. import db
 
@@ -66,6 +66,10 @@ if _FAST_INIT:
         # TOGAF Plateau classification for transition architectures
         # Values: 'Baseline', 'Target', 'Transition', or None
         plateau = db.Column(db.String(20), nullable=True, index=True)
+        # In normal runtime the column attribute is `togaf_plateau` ("plateau" is
+        # the Plateau.archimate_element backref); mirror the name here so queries
+        # can use ArchiMateElement.togaf_plateau under either mapping.
+        togaf_plateau = synonym("plateau")
 
         # Custom tagged-value properties (CMP-043)
         custom_properties = db.Column(db.JSON, nullable=True, default=dict)

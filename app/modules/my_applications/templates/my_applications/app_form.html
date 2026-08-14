@@ -36,12 +36,16 @@
           <select id="lifecycle_status" name="lifecycle_status"
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
             <option value="">Not set</option>
+            {% set preselected_lifecycle = suggested_lifecycle or app.lifecycle_status %}
             {% for value in statuses %}
-            <option value="{{ value }}" {% if app.lifecycle_status == value %}selected{% endif %}>
+            <option value="{{ value }}" {% if preselected_lifecycle == value %}selected{% endif %}>
               {{ value | replace('_', ' ') | title }}
             </option>
             {% endfor %}
           </select>
+          {% if suggested_lifecycle and suggested_lifecycle != app.lifecycle_status %}
+          <p class="text-xs text-muted-foreground mt-1">AI-suggested value shown - review before saving.</p>
+          {% endif %}
         </div>
         <div>
           <label for="deployment_status" class="block text-sm font-medium mb-1.5">Deployment</label>
@@ -60,13 +64,17 @@
           <select id="health_status" name="health_status"
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
             <option value="">Not assessed</option>
+            {% set preselected_health = suggested_health or app.health_status %}
             {% for value in health_statuses %}
-            <option value="{{ value }}" {% if app.health_status == value %}selected{% endif %}>
+            <option value="{{ value }}" {% if preselected_health == value %}selected{% endif %}>
               {{ value | replace('_', ' ') | title }}
             </option>
             {% endfor %}
           </select>
           <p class="text-xs text-muted-foreground mt-1">Drives the health overview.</p>
+          {% if suggested_health and suggested_health != app.health_status %}
+          <p class="text-xs text-muted-foreground mt-1">AI-suggested value shown - review before saving.</p>
+          {% endif %}
         </div>
       </div>
     </div>

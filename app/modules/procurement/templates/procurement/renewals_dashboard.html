@@ -1,23 +1,25 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
 {% block title %}Renewal Alerts{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold">Renewal Alerts</h1>
-            <p class="text-muted-foreground">Track upcoming contract renewals and expirations</p>
-        </div>
-        <a href="{{ url_for('procurement.contracts_list') }}"
-           class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
-            <i data-lucide="list" class="w-4 h-4"></i>
-            All Contracts
-        </a>
-    </div>
+<div class="p-6 space-y-6">
+    {{ page_header(
+        title='Renewal Alerts',
+        description='Track upcoming contract renewals and expirations',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Vendor Contracts', 'href': url_for('procurement.contracts_list')},
+            {'label': 'Renewal Alerts'}
+        ],
+        actions=[
+            {'text': 'All Contracts', 'icon': 'list', 'href': url_for('procurement.contracts_list'), 'variant': 'outline'}
+        ]
+    ) }}
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="text-sm text-muted-foreground mb-1">Total Active</div>
             <div class="text-2xl font-bold">{{ summary.total }}</div>
@@ -60,7 +62,7 @@
     </div>
 
     <!-- Filter -->
-    <div class="bg-card border border-border rounded-lg p-4 mb-6">
+    <div class="bg-card border border-border rounded-lg p-4">
         <form method="get" class="flex items-center gap-4">
             <label class="text-sm text-muted-foreground">Show contracts expiring within:</label>
             <select name="days" onchange="this.form.submit()"
@@ -82,7 +84,30 @@
             {% if item.urgency == 'critical' %}border-destructive/50
             {% elif item.urgency == 'warning' %}border-warning/50
             {% elif item.urgency == 'expired' %}border-destructive
-            {% else %}border-border{% endif %}">
+            {% else %}border-border{% endif %}"
+            x-data="{
+                open: false,
+                loading: false,
+                error: null,
+                brief: null,
+                async generate() {
+                    this.loading = true;
+                    this.error = null;
+                    try {
+                        const resp = await fetch('{{ url_for('procurement.contract_ai_renewal_brief', contract_id=item.contract.id) }}', {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
+                        });
+                        const body = await resp.json();
+                        if (!resp.ok) throw new Error(body.message || body.error || ('Request failed (' + resp.status + ')'));
+                        this.brief = body.brief;
+                    } catch (e) {
+                        this.error = e.message || 'AI renewal brief failed - check your connection and try again.';
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            }">
             <div class="flex items-start justify-between">
                 <div class="flex-1">
                     <div class="flex items-center gap-3 mb-2">
@@ -101,19 +126,19 @@
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                             <span class="text-muted-foreground">Vendor:</span>
-                            <span class="ml-1">{{ item.contract.vendor.name if item.contract.vendor else 'N/A' }}</span>
+                            <span class="ml-1">{{ item.contract.vendor.name if item.contract.vendor else '—' }}</span>
                         </div>
                         <div>
                             <span class="text-muted-foreground">Contract #:</span>
-                            <span class="ml-1">{{ item.contract.contract_number or 'N/A' }}</span>
+                            <span class="ml-1">{{ item.contract.contract_number or '—' }}</span>
                         </div>
                         <div>
                             <span class="text-muted-foreground">Annual Cost:</span>
-                            <span class="ml-1">{{ "${:,.0f}".format(item.contract.annual_cost) if item.contract.annual_cost else 'N/A' }}</span>
+                            <span class="ml-1">{{ "${:,.0f}".format(item.contract.annual_cost) if item.contract.annual_cost else '—' }}</span>
                         </div>
                         <div>
                             <span class="text-muted-foreground">Renewal Date:</span>
-                            <span class="ml-1">{{ (item.contract.renewal_date or item.contract.end_date).strftime('%d %b %Y') if (item.contract.renewal_date or item.contract.end_date) else 'N/A' }}</span>
+                            <span class="ml-1">{{ (item.contract.renewal_date or item.contract.end_date).strftime('%d %b %Y') if (item.contract.renewal_date or item.contract.end_date) else '—' }}</span>
                         </div>
                     </div>
                 </div>
@@ -129,20 +154,59 @@
                        class="text-sm text-primary hover:underline">View Details</a>
                 </div>
             </div>
+
+            <div class="mt-3 pt-3 border-t border-border">
+                <button type="button" @click="open = !open; if (open && !brief && !loading) generate()"
+                        class="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    <span x-text="open ? 'Hide AI brief' : 'AI brief'"></span>
+                </button>
+
+                <div x-show="open" x-cloak class="mt-3 space-y-3">
+                    <div x-show="loading" class="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+                        Generating renewal brief…
+                    </div>
+                    <div x-show="error" x-cloak class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive-emphasis" x-text="error"></div>
+                    <template x-if="brief">
+                        <div class="bg-muted/40 border border-border rounded-md p-3 space-y-2 text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stance</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary" x-text="brief.stance"></span>
+                            </div>
+                            <p x-text="brief.summary"></p>
+                            <div x-show="brief.leverage_points && brief.leverage_points.length">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Leverage points</div>
+                                <ul class="list-disc list-inside space-y-0.5">
+                                    <template x-for="point in brief.leverage_points" :key="point"><li x-text="point"></li></template>
+                                </ul>
+                            </div>
+                            <div x-show="brief.risks && brief.risks.length">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Risks</div>
+                                <ul class="list-disc list-inside space-y-0.5">
+                                    <template x-for="risk in brief.risks" :key="risk"><li x-text="risk"></li></template>
+                                </ul>
+                            </div>
+                            <div x-show="brief.questions_for_vendor && brief.questions_for_vendor.length">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Questions for vendor</div>
+                                <ul class="list-disc list-inside space-y-0.5">
+                                    <template x-for="q in brief.questions_for_vendor" :key="q"><li x-text="q"></li></template>
+                                </ul>
+                            </div>
+                            <p class="text-muted-foreground italic" x-text="brief.rationale"></p>
+                        </div>
+                    </template>
+                </div>
+            </div>
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <!-- Empty State -->
-    <div class="bg-card border border-border rounded-lg p-12 text-center">
-        <div class="w-16 h-16 mx-auto mb-4 bg-success/10 rounded-full flex items-center justify-center">
-            <i data-lucide="check-circle" class="w-8 h-8 text-success-emphasis"></i>
-        </div>
-        <h3 class="text-lg font-medium mb-2">No expiring contracts</h3>
-        <p class="text-muted-foreground">
-            No contracts are expiring within the next {{ days_filter }} days.
-        </p>
-    </div>
+    {{ empty_state(
+        icon='check-circle',
+        title='No expiring contracts',
+        description='No contracts are expiring within the next ' + days_filter|string + ' days.'
+    ) }}
     {% endif %}
 </div>
 

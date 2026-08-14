@@ -122,6 +122,55 @@
             </div>
         </div>
 
+        <!-- AI mapping suggestions -->
+        <div class="rounded-xl border border-input bg-background">
+            <div class="px-5 py-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="sparkles" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                    <h3 class="text-sm font-semibold text-foreground">AI Mapping Suggestions</h3>
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">AI-suggested draft</span>
+                </div>
+                <button type="button" @click="suggestMappings()" :disabled="aiLoading"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                        aria-label="Suggest capability mappings">
+                    <span x-show="aiLoading" x-cloak class="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+                    <span x-text="aiLoading ? 'Suggesting…' : (aiSuggestions.length ? 'Regenerate suggestions' : 'Suggest mappings')"></span>
+                </button>
+            </div>
+            <div class="p-5">
+                <p class="text-xs text-muted-foreground">
+                    AI-suggested capability &times; stage pairs from this stream's real stages and the org capability
+                    catalog. Advisory only — nothing is mapped until you click Apply, which writes through the same
+                    endpoint as a manual cell edit.
+                </p>
+
+                <div x-show="aiError" x-cloak class="mt-3 text-sm text-destructive-emphasis bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2" x-text="aiError"></div>
+
+                <div x-show="aiSummary" x-cloak class="mt-3 text-sm text-foreground" x-text="aiSummary"></div>
+
+                <ul x-show="aiSuggestions.length > 0" x-cloak class="mt-3 space-y-2">
+                    <template x-for="(suggestion, index) in aiSuggestions" :key="index">
+                        <li class="flex items-start justify-between gap-3 rounded-md border border-border p-3">
+                            <div class="min-w-0">
+                                <p class="text-sm font-medium text-foreground">
+                                    <span x-text="suggestion.capability"></span>
+                                    <span class="text-muted-foreground font-normal"> &rarr; </span>
+                                    <span x-text="suggestion.stage"></span>
+                                </p>
+                                <p class="text-xs text-muted-foreground mt-0.5" x-text="suggestion.rationale"></p>
+                            </div>
+                            <button type="button" @click="applySuggestion(index)"
+                                    :disabled="suggestion.applied || aiApplyingIndex === index"
+                                    class="shrink-0 inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 disabled:opacity-50 disabled:pointer-events-none">
+                                <span x-show="aiApplyingIndex === index" x-cloak class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block mr-1.5"></span>
+                                <span x-text="suggestion.applied ? 'Applied' : 'Apply'"></span>
+                            </button>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </div>
+
         <!-- BIZBOK Capability x Stage Grid -->
         <div class="rounded-xl border border-input bg-background">
             <div class="px-5 py-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">

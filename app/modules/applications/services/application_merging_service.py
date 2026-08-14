@@ -8,6 +8,7 @@ conflict resolution, and audit trail.
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
@@ -46,23 +47,48 @@ class ApplicationMatchingService:
 
     def __init__(self, config: MergeConfig = None):
         self.config = config or MergeConfig()
+        # Set by find_merge_candidates when a time budget cut the pair scan
+        # short. Callers that bound the work MUST surface this — a silently
+        # partial duplicate analysis reads as "no further duplicates exist".
+        self.truncated = False
+        self.pairs_compared = 0
 
     def find_merge_candidates(
-        self, applications: List[ApplicationComponent]
+        self,
+        applications: List[ApplicationComponent],
+        time_budget_seconds: Optional[float] = None,
     ) -> List[MergeCandidate]:
         """
         Find potential merge candidates among applications
 
+        The pair scan is O(n²) with SequenceMatcher text comparisons per pair
+        — a 920-app portfolio is ~423k pairs, which ran 10+ minutes inside a
+        request. ``time_budget_seconds`` bounds the wall clock; when the
+        deadline passes, the scan stops and ``self.truncated`` is set so the
+        caller can say the results are partial.
+
         Args:
             applications: List of applications to analyze
+            time_budget_seconds: Optional wall-clock bound for the pair scan.
 
         Returns:
             List of merge candidates with similarity scores
         """
         candidates = []
+        self.truncated = False
+        self.pairs_compared = 0
+        deadline = (
+            time.monotonic() + time_budget_seconds
+            if time_budget_seconds is not None
+            else None
+        )
 
         for i, app1 in enumerate(applications):
+            if deadline is not None and time.monotonic() > deadline:
+                self.truncated = True
+                break
             for app2 in applications[i + 1 :]:
+                self.pairs_compared += 1
                 similarity = self._calculate_similarity(app1, app2)
 
                 if similarity >= self.config.similarity_threshold:

@@ -283,3 +283,9 @@ def api_delete_mapping():
         db.session.rollback()
         logger.error("Failed to delete value stream mapping cell", exc_info=True)
         return jsonify({"error": "An internal error occurred"}), 500
+
+
+# Import AI mapping-suggestion route — adds POST /api/<id>/ai-suggest-mappings
+# to this blueprint (side-effect import), matching the
+# app/modules/architecture/routes/arb_review_ai_routes.py pattern.
+from app.modules.capabilities.routes import value_stream_ai_routes  # noqa: F401, E402  # dead-code-ok

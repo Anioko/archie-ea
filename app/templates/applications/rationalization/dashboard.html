@@ -606,6 +606,157 @@
         </div>
     </div>
 
+    {# ── AI Gap Analysis ──────────────────────────────────────────── #}
+    <div x-data="aiGapAnalysisPanel()" x-init="init()"
+         data-testid="ai-gap-panel"
+         data-summary-url="/api/ai-gap-detection/summary"
+         data-critical-gaps-url="/api/ai-gap-detection/critical-gaps"
+         data-rationalization-url="/api/ai-gap-detection/rationalization"
+         data-vendor-lifecycle-url="/api/ai-gap-detection/vendor-lifecycle"
+         class="rounded-xl border bg-card text-card-foreground shadow-sm p-6 mb-8" data-slot="card">
+        <div class="flex items-start gap-3 mb-5">
+            <div class="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="sparkles" class="h-4 w-4 text-primary"></i>
+            </div>
+            <div>
+                <h3 class="text-base font-semibold text-foreground">AI Gap Analysis</h3>
+                <p class="text-xs text-muted-foreground mt-0.5">AI-detected capability gaps, rationalization opportunities and vendor lifecycle risk</p>
+            </div>
+        </div>
+
+        {# Section tabs #}
+        <div class="flex flex-wrap gap-2 mb-5 border-b border-border">
+            <template x-for="tab in tabs" :key="tab.key">
+                <button type="button"
+                        @click="openTab(tab.key)"
+                        class="px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors"
+                        :class="activeTab === tab.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                        x-text="tab.label"></button>
+            </template>
+        </div>
+
+        {# ── Summary ─────────────────────────────────────────────── #}
+        <div x-show="activeTab === 'summary'" x-cloak>
+            <template x-if="sections.summary.error">
+                <p class="text-sm text-destructive-emphasis flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="h-4 w-4"></i>
+                    <span x-text="sections.summary.error"></span>
+                    <button type="button" @click="loadSection('summary')" class="text-primary hover:underline text-xs">Retry</button>
+                </p>
+            </template>
+            <template x-if="!sections.summary.error && !sections.summary.loaded">
+                <div class="space-y-3 animate-pulse">
+                    <div class="h-5 bg-muted rounded w-full"></div>
+                    <div class="h-5 bg-muted rounded w-4/5"></div>
+                </div>
+            </template>
+            <template x-if="!sections.summary.error && sections.summary.loaded">
+                <dl class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Critical Gaps</dt>
+                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.critical_gaps)"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Uncovered Capabilities</dt>
+                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.no_coverage_count)"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rationalization Ops</dt>
+                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.rationalization_opportunities)"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vendor Risks</dt>
+                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.vendor_lifecycle_risks)"></dd>
+                    </div>
+                </dl>
+            </template>
+        </div>
+
+        {# ── Critical Gaps ───────────────────────────────────────── #}
+        <div x-show="activeTab === 'critical-gaps'" x-cloak>
+            <template x-if="sections.criticalGaps.error">
+                <p class="text-sm text-destructive-emphasis flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="h-4 w-4"></i>
+                    <span x-text="sections.criticalGaps.error"></span>
+                    <button type="button" @click="loadSection('criticalGaps')" class="text-primary hover:underline text-xs">Retry</button>
+                </p>
+            </template>
+            <template x-if="!sections.criticalGaps.error && !sections.criticalGaps.loaded">
+                <div class="space-y-3 animate-pulse">
+                    <div class="h-5 bg-muted rounded w-full"></div>
+                    <div class="h-5 bg-muted rounded w-4/5"></div>
+                </div>
+            </template>
+            <template x-if="!sections.criticalGaps.error && sections.criticalGaps.loaded && sections.criticalGaps.data.length === 0">
+                <p class="text-sm text-muted-foreground">No critical gaps detected.</p>
+            </template>
+            <ul class="space-y-2" x-show="!sections.criticalGaps.error && sections.criticalGaps.loaded && sections.criticalGaps.data.length > 0">
+                <template x-for="(item, idx) in sections.criticalGaps.data" :key="idx">
+                    <li class="flex items-center justify-between border border-border rounded-lg px-3 py-2">
+                        <span class="text-sm text-foreground" x-text="item.capability_name || item.name || '—'"></span>
+                        <span class="text-xs text-muted-foreground" x-text="item.gap_severity || item.urgency_level || '—'"></span>
+                    </li>
+                </template>
+            </ul>
+        </div>
+
+        {# ── Rationalization Opportunities ───────────────────────── #}
+        <div x-show="activeTab === 'rationalization'" x-cloak>
+            <template x-if="sections.rationalization.error">
+                <p class="text-sm text-destructive-emphasis flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="h-4 w-4"></i>
+                    <span x-text="sections.rationalization.error"></span>
+                    <button type="button" @click="loadSection('rationalization')" class="text-primary hover:underline text-xs">Retry</button>
+                </p>
+            </template>
+            <template x-if="!sections.rationalization.error && !sections.rationalization.loaded">
+                <div class="space-y-3 animate-pulse">
+                    <div class="h-5 bg-muted rounded w-full"></div>
+                    <div class="h-5 bg-muted rounded w-4/5"></div>
+                </div>
+            </template>
+            <template x-if="!sections.rationalization.error && sections.rationalization.loaded && sections.rationalization.data.length === 0">
+                <p class="text-sm text-muted-foreground">No rationalization opportunities detected.</p>
+            </template>
+            <ul class="space-y-2" x-show="!sections.rationalization.error && sections.rationalization.loaded && sections.rationalization.data.length > 0">
+                <template x-for="(item, idx) in sections.rationalization.data" :key="idx">
+                    <li class="flex items-center justify-between border border-border rounded-lg px-3 py-2">
+                        <span class="text-sm text-foreground" x-text="item.capability_name || item.name || '—'"></span>
+                        <span class="text-xs text-muted-foreground" x-text="item.estimated_annual_savings != null ? formatCurrency(item.estimated_annual_savings) : '—'"></span>
+                    </li>
+                </template>
+            </ul>
+        </div>
+
+        {# ── Vendor Lifecycle Risks ──────────────────────────────── #}
+        <div x-show="activeTab === 'vendor-lifecycle'" x-cloak>
+            <template x-if="sections.vendorLifecycle.error">
+                <p class="text-sm text-destructive-emphasis flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="h-4 w-4"></i>
+                    <span x-text="sections.vendorLifecycle.error"></span>
+                    <button type="button" @click="loadSection('vendorLifecycle')" class="text-primary hover:underline text-xs">Retry</button>
+                </p>
+            </template>
+            <template x-if="!sections.vendorLifecycle.error && !sections.vendorLifecycle.loaded">
+                <div class="space-y-3 animate-pulse">
+                    <div class="h-5 bg-muted rounded w-full"></div>
+                    <div class="h-5 bg-muted rounded w-4/5"></div>
+                </div>
+            </template>
+            <template x-if="!sections.vendorLifecycle.error && sections.vendorLifecycle.loaded && sections.vendorLifecycle.data.length === 0">
+                <p class="text-sm text-muted-foreground">No vendor lifecycle risks detected.</p>
+            </template>
+            <ul class="space-y-2" x-show="!sections.vendorLifecycle.error && sections.vendorLifecycle.loaded && sections.vendorLifecycle.data.length > 0">
+                <template x-for="(item, idx) in sections.vendorLifecycle.data" :key="idx">
+                    <li class="flex items-center justify-between border border-border rounded-lg px-3 py-2">
+                        <span class="text-sm text-foreground" x-text="item.product_name || '—'"></span>
+                        <span class="text-xs text-muted-foreground" x-text="item.risk_level || item.status || '—'"></span>
+                    </li>
+                </template>
+            </ul>
+        </div>
+    </div>
+
     {# ── Detection Modal ──────────────────────────────────────────── #}
     {% include 'applications/rationalization/_detection_modal.html' %}
 
@@ -616,4 +767,5 @@
 {# RATA-010: Chart.js for TIME quadrant #}
 <script src="/static/vendor/chart.umd.min.js"></script>
 <script src="{{ url_for('static', filename='js/applications/rationalization_dashboard.js') }}?v=2"></script><!-- entity-picker-ok -->
+<script src="{{ url_for('static', filename='js/applications/ai_gap_analysis_panel.js') }}?v=1"></script>
 {% endblock %}

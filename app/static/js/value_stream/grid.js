@@ -52,6 +52,15 @@
             stageEditForm: {},
             stageDeleteForm: {},
 
+            // AI mapping-suggestion panel state. Advisory only: suggestions
+            // are never written automatically — "Apply" reuses the exact
+            // same POST /value-streams/api/mapping call as saveCell() above.
+            aiLoading: false,
+            aiError: null,
+            aiSummary: null,
+            aiSuggestions: [],
+            aiApplyingIndex: null,
+
             init() {
                 this.loadGrid();
             },
@@ -250,6 +259,117 @@
                     }
                 } finally {
                     this.saving = false;
+                }
+            },
+
+            async suggestMappings() {
+                this.aiLoading = true;
+                this.aiError = null;
+                try {
+                    var resp = await fetch('/value-streams/api/' + this.valueStreamId + '/ai-suggest-mappings', {
+                        method: 'POST',
+                        headers: jsonHeaders()
+                    });
+                    var data = await resp.json();
+                    if (!resp.ok) {
+                        throw new Error(data.message || data.error || ('HTTP ' + resp.status));
+                    }
+                    this.aiSummary = data.summary || null;
+                    this.aiSuggestions = (data.suggestions || []).map(function (s) {
+                        return Object.assign({}, s, { applied: false });
+                    });
+                } catch (err) {
+                    console.error('AI mapping suggestions failed', err);
+                    this.aiError = err.message || 'AI mapping suggestions failed';
+                } finally {
+                    this.aiLoading = false;
+                }
+            },
+
+            // Resolve a capability name (from an AI suggestion) to its id.
+            // Checks the grid's already-loaded rows first, then falls back
+            // to the same unmapped-capabilities search the "add row" picker
+            // uses, matching the name exactly (case-insensitive).
+            async resolveCapabilityByName(name) {
+                var existing = this.capabilities.find(function (c) { return c.name === name; });
+                if (existing) return existing;
+                try {
+                    var resp = await fetch(
+                        '/value-streams/' + this.valueStreamId + '/api/unmapped-capabilities?q=' + encodeURIComponent(name) + '&limit=10'
+                    );
+                    if (!resp.ok) return null;
+                    var data = await resp.json();
+                    var results = data.capabilities || [];
+                    var lower = name.trim().toLowerCase();
+                    return results.find(function (c) { return (c.name || '').trim().toLowerCase() === lower; }) || null;
+                } catch (err) {
+                    console.error('Failed to resolve suggested capability', err);
+                    return null;
+                }
+            },
+
+            async applySuggestion(index) {
+                var suggestion = this.aiSuggestions[index];
+                if (!suggestion || suggestion.applied) return;
+                var stage = this.stages.find(function (s) { return s.name === suggestion.stage; });
+                if (!stage) {
+                    if (window.Platform && window.Platform.toast) {
+                        window.Platform.toast.error('Stage "' + suggestion.stage + '" is no longer on this value stream.');
+                    }
+                    return;
+                }
+                this.aiApplyingIndex = index;
+                try {
+                    var cap = await this.resolveCapabilityByName(suggestion.capability);
+                    if (!cap) {
+                        if (window.Platform && window.Platform.toast) {
+                            window.Platform.toast.error('Could not find capability "' + suggestion.capability + '".');
+                        }
+                        return;
+                    }
+                    if (!this.capabilities.some(function (c) { return c.id === cap.id; })) {
+                        this.capabilities.push(cap);
+                    }
+                    // Reuse the exact same write path as a manual cell edit
+                    // (saveCell above) — the AI suggestion never writes on
+                    // its own, only this click does.
+                    var resp = await fetch('/value-streams/api/mapping', {
+                        method: 'POST',
+                        headers: jsonHeaders(),
+                        body: JSON.stringify({
+                            capability_id: cap.id,
+                            value_stream_id: this.valueStreamId,
+                            value_stream_stage_id: stage.id,
+                            support_type: 'primary',
+                            support_level: 3,
+                            capability_contribution: 50,
+                            impact_level: 'medium',
+                            stage_criticality: 'medium'
+                        })
+                    });
+                    var data = await resp.json();
+                    if (!resp.ok || !data.success) {
+                        throw new Error(data.error || 'Apply failed');
+                    }
+                    this.cells[this.cellKey(cap.id, stage.id)] = {
+                        mapping_id: data.mapping.id,
+                        support_type: data.mapping.support_type,
+                        support_level: data.mapping.support_level,
+                        capability_contribution: data.mapping.capability_contribution,
+                        impact_level: data.mapping.impact_level,
+                        stage_criticality: data.mapping.stage_criticality
+                    };
+                    suggestion.applied = true;
+                    if (window.Platform && window.Platform.toast) {
+                        window.Platform.toast.success('Mapping applied.');
+                    }
+                } catch (err) {
+                    console.error('Failed to apply suggested mapping', err);
+                    if (window.Platform && window.Platform.toast) {
+                        window.Platform.toast.error('Failed to apply mapping: ' + err.message);
+                    }
+                } finally {
+                    this.aiApplyingIndex = null;
                 }
             }
         };

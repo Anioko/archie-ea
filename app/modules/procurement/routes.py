@@ -24,6 +24,7 @@ from .services import (
     get_days_until_renewal,
     get_renewal_summary,
     get_renewal_urgency,
+    get_spend_by_category,
     get_spend_summary,
 )
 
@@ -286,13 +287,10 @@ def spend_analytics():
     # Sort by spend
     spend_by_vendor = dict(sorted(spend_by_vendor.items(), key=lambda x: -x[1]))
 
-    # Spend by category
-    spend_by_category = {}
-    for c in contracts:
-        cat = c.contract_category or "Uncategorized"
-        if cat not in spend_by_category:
-            spend_by_category[cat] = 0
-        spend_by_category[cat] += c.contract_value or 0
+    # Spend by category - shared with the AI recommendations endpoint
+    # (procurement_ai_service.py) via get_spend_by_category() rather than a
+    # second parallel loop over the same rows.
+    spend_by_category = get_spend_by_category(org_id)
 
     return render_template(
         "procurement/spend_analytics.html",
