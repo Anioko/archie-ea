@@ -1,0 +1,37 @@
+{
+ "_comment": "Accepted console errors / failed requests per page. Every entry is a real defect not fixed yet, not a statement the page is healthy. Regenerate with SMOKE_HYGIENE_UPDATE_BASELINE=1.",
+ "accepted": {
+  "/procurement/contracts": {
+   "console_errors": [],
+   "failed_requests": []
+  },
+  "/procurement/compliance": {
+   "console_errors": [],
+   "failed_requests": []
+  },
+  "/my-applications/": {
+   "console_errors": [],
+   "failed_requests": []
+  },
+  "/applications/": {
+   "console_errors": [],
+   "failed_requests": []
+  },
+  "/capability-map/": {
+   "console_errors": [],
+   "failed_requests": []
+  },
+  "/dashboard/overview": {
+   "console_errors": [],
+   "failed_requests": []
+  },
+  "/ai-chat": {
+   "console_errors": [
+    "Failed to load resource: the server responded with a status of N (SERVICE UNAVAILABLE)"
+   ],
+   "failed_requests": [
+    "503 /ai-chat/api/health/llm"
+   ]
+  }
+ }
+}

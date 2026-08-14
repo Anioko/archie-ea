@@ -169,7 +169,10 @@
        with a platform_admin default, so it is never empty.) #}
     {% if current_user.is_authenticated and not current_user.onboarding_completed_at %}
     <div x-data="{
-            showOnboarding: true,
+            {# The localStorage read is load-bearing: the server persist in
+               completeOnboarding() is best-effort, so without this check a
+               failed POST meant the modal reopened on every page forever. #}
+            showOnboarding: !localStorage.getItem('archie_onboarding_ts'),
             step: 1,
             selectedRole: '{{ current_user.enterprise_role or 'solution_architect' }}',
             roleCards: {

@@ -9,7 +9,7 @@ ADR Reference: docs/adr/0010-procurement-persona.md
 
 from datetime import date, timedelta
 
-from flask import render_template
+from flask import render_template, request
 from flask_login import current_user, login_required
 
 from app.decorators import requires_procurement
@@ -20,7 +20,12 @@ from . import procurement_bp
 
 # As in my_applications, services.py held the summary shapes these templates
 # read and was never imported, so every dashboard raised jinja2.UndefinedError.
-from .services import get_renewal_summary, get_spend_summary
+from .services import (
+    get_days_until_renewal,
+    get_renewal_summary,
+    get_renewal_urgency,
+    get_spend_summary,
+)
 
 
 def _compliance_summary(licenses):
@@ -132,20 +137,34 @@ def renewals_dashboard():
     org_id = current_user.organization_id
     today = date.today()
 
-    # Contracts expiring in different windows
-    contracts = VendorContract.query.filter_by(organization_id=org_id).all()
+    # The template renders `contracts` as [{contract, urgency, days_until_renewal}]
+    # filtered to the ?days= window. This route used to pass neither `contracts`
+    # nor `days_filter`, so the list below the summary tiles NEVER rendered — the
+    # page always claimed "No expiring contracts" while the tiles showed real
+    # counts, and the days dropdown submitted a parameter nothing read.
+    if request.args.get("days") in ("30", "60", "90", "180", "365"):
+        days_filter = int(request.args["days"])
+    else:
+        days_filter = 30
 
-    expiring_30 = [c for c in contracts if c.end_date and today <= c.end_date <= today + timedelta(days=30)]
-    expiring_60 = [c for c in contracts if c.end_date and today + timedelta(days=30) < c.end_date <= today + timedelta(days=60)]
-    expiring_90 = [c for c in contracts if c.end_date and today + timedelta(days=60) < c.end_date <= today + timedelta(days=90)]
-    expired = [c for c in contracts if c.end_date and c.end_date < today]
+    all_contracts = VendorContract.query.filter_by(organization_id=org_id).all()
+    items = []
+    for c in all_contracts:
+        days = get_days_until_renewal(c)
+        if days is None:
+            continue
+        if days <= days_filter:  # includes expired (negative days)
+            items.append({
+                "contract": c,
+                "urgency": get_renewal_urgency(c),
+                "days_until_renewal": days,
+            })
+    items.sort(key=lambda i: i["days_until_renewal"])
 
     return render_template(
         "procurement/renewals_dashboard.html",
-        expiring_30=expiring_30,
-        expiring_60=expiring_60,
-        expiring_90=expiring_90,
-        expired=expired,
+        contracts=items,
+        days_filter=days_filter,
         today=today,
         # Template reads summary.{critical,warning,ok,unknown,upcoming,total} -
         # precisely get_renewal_summary()'s return shape.
