@@ -365,6 +365,108 @@ class StakeholderService:
             }
 
     # ========================================================================
+    # Stakeholder Map (SolutionStakeholder) Methods
+    #
+    # The two methods above (identify_stakeholders, recommend_engagement_strategy)
+    # operate on ArchiMateElement rows scoped to an ArchitectureModel. The
+    # Stakeholder Map page (app/templates/stakeholders/map.html) is built on a
+    # different table — SolutionStakeholder, scoped to a Solution via
+    # SolutionStakeholderMapping — so those methods don't apply there directly.
+    # These two reuse the same prompts/LLM call pattern for that page instead of
+    # duplicating the AI-calling logic in the route layer.
+    # ========================================================================
+
+    def identify_stakeholders_from_context(self, business_context: str) -> List[Dict]:
+        """
+        AI-suggest stakeholders from free-text business context for the
+        Stakeholder Map page. Returns raw suggestion dicts and does NOT persist —
+        the map page lets the user review suggestions and add the ones they want
+        via the existing POST /api/stakeholders/ endpoint, which creates
+        SolutionStakeholder rows.
+
+        Args:
+            business_context: Free text describing the initiative
+
+        Returns:
+            List of suggestion dicts: {name, description, type, role, department, interest}
+
+        Raises:
+            ValueError: business_context is blank
+            Exception: LLM call failed or returned unparseable JSON
+        """
+        if not business_context or not business_context.strip():
+            raise ValueError("business_context is required")
+
+        prompt = self._build_stakeholder_identification_prompt(business_context, None)
+        response = self.llm_service.generate_from_prompt(prompt)
+        data = json.loads(response)
+        return data.get("stakeholders", [])
+
+    def recommend_engagement_strategy_for_solution_stakeholder(self, stakeholder) -> Dict:
+        """
+        AI-generated engagement strategy for a SolutionStakeholder.
+
+        Unlike recommend_engagement_strategy() above — which returns one of four
+        canned, quadrant-keyed responses — this asks the LLM to tailor
+        communication channels/actions/escalation path to this stakeholder's
+        actual description, attitude and recorded concerns, using the quadrant
+        already known deterministically from their Power/Interest grid position
+        (SolutionStakeholder.quadrant, set by the user dragging the node).
+
+        Args:
+            stakeholder: A SolutionStakeholder instance
+
+        Returns:
+            Dict: {strategy, communication_frequency, communication_channels,
+                   engagement_actions, escalation_path}
+
+        Raises:
+            Exception: LLM call failed or returned unparseable JSON
+        """
+        prompt = self._build_solution_stakeholder_engagement_prompt(stakeholder)
+        response = self.llm_service.generate_from_prompt(prompt)
+        return json.loads(response)
+
+    def _build_solution_stakeholder_engagement_prompt(self, stakeholder) -> str:
+        """Build engagement-strategy prompt for a SolutionStakeholder."""
+        concerns = stakeholder.concerns or []
+        concerns_str = "\n".join(f"- {c}" for c in concerns) if concerns else "(none recorded)"
+        stype = stakeholder.stakeholder_type.value if stakeholder.stakeholder_type else "individual"
+        attitude = stakeholder.attitude.value if stakeholder.attitude else "neutral"
+
+        return f"""You are a stakeholder engagement expert.
+
+Recommend an engagement strategy for this stakeholder based on their Power/Interest
+position, attitude and known concerns.
+
+Stakeholder: {stakeholder.name}
+Type: {stype}
+Description: {stakeholder.description or "(none provided)"}
+Power/Interest Quadrant: {stakeholder.quadrant} (Influence {stakeholder.influence_level}/5, Interest {stakeholder.interest_level}/5)
+Current Attitude: {attitude}
+Known Concerns:
+{concerns_str}
+
+Power/Interest Matrix:
+- manage_closely: High power, high interest (key players)
+- keep_satisfied: High power, low interest (keep happy but don't over-communicate)
+- keep_informed: Low power, high interest (supportive allies)
+- monitor: Low power, low interest (minimal effort)
+
+Tailor the recommendation to this stakeholder specifically — reference their
+concerns and attitude where relevant, don't just restate the generic quadrant advice.
+
+Return JSON:
+{{
+  "strategy": "{stakeholder.quadrant}",
+  "communication_frequency": "weekly",
+  "communication_channels": ["...", "..."],
+  "engagement_actions": ["...", "..."],
+  "escalation_path": "..."
+}}
+"""
+
+    # ========================================================================
     # Helper Methods
     # ========================================================================
 

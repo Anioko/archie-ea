@@ -27,6 +27,23 @@ function appPortfolio() {
       process_level: '',
     },
 
+    // AI Map — reuses the existing comprehensive-auto-map + accept endpoints
+    // (app/modules/applications/routes/auto_mapping_routes.py). Their only
+    // caller used to be the import modal, so applications already in the
+    // estate could never be AI-enriched from this page.
+    aiMap: {
+      loading: false,
+      accepting: false,
+      error: '',
+      result: null,
+      previewApplications: null,
+      confidenceThreshold: 0.7,
+      maxApplications: 50,
+      mapCapabilities: true,
+      mapProcesses: true,
+      acceptResult: '',
+    },
+
     // ── Lifecycle ──────────────────────────────────────────────────────────
     init() {
       // Sync filter state from current URL params
@@ -326,6 +343,88 @@ function appPortfolio() {
       } catch (err) {
         console.error('[appPortfolio] bulk update error:', err);
         Platform.toast.error(errorMsg + '. Please try again.');
+      }
+    },
+
+    // ── AI Map (existing comprehensive-auto-map / accept endpoints) ────────
+    openAiMapModal() {
+      this.aiMap.loading = false;
+      this.aiMap.accepting = false;
+      this.aiMap.error = '';
+      this.aiMap.result = null;
+      this.aiMap.previewApplications = null;
+      this.aiMap.acceptResult = '';
+      Platform.modal.open('ai-map-modal');
+    },
+
+    closeAiMapModal() {
+      Platform.modal.close('ai-map-modal');
+    },
+
+    async runAiMap() {
+      this.aiMap.loading = true;
+      this.aiMap.error = '';
+      this.aiMap.result = null;
+      this.aiMap.previewApplications = null;
+      try {
+        const data = await Platform.fetch('/applications/api/comprehensive-auto-map', {
+          method: 'POST',
+          silent: true,
+          body: {
+            max_applications: this.aiMap.maxApplications || 50,
+            map_capabilities: this.aiMap.mapCapabilities,
+            map_processes: this.aiMap.mapProcesses,
+            confidence_threshold: this.aiMap.confidenceThreshold,
+            // auto_create stays false here: this call is analysis-only. The
+            // preview is written to the database only if the user clicks
+            // "Accept & Save", which goes through the dedicated accept
+            // endpoint below.
+            auto_create: false,
+          },
+        });
+        if (!data || data.success === false) {
+          this.aiMap.error = (data && (data.message || data.error)) || 'AI mapping analysis failed.';
+          return;
+        }
+        this.aiMap.result = data;
+        this.aiMap.previewApplications = Array.isArray(data.applications) ? data.applications : [];
+      } catch (err) {
+        console.error('[appPortfolio] AI map analysis error:', err);
+        this.aiMap.error = (err && err.message) || 'AI mapping analysis failed.';
+      } finally {
+        this.aiMap.loading = false;
+      }
+    },
+
+    async acceptAiMap() {
+      if (!this.aiMap.previewApplications || this.aiMap.previewApplications.length === 0) {
+        this.aiMap.error = 'Nothing to accept — run the analysis first.';
+        return;
+      }
+      this.aiMap.accepting = true;
+      this.aiMap.error = '';
+      try {
+        const data = await Platform.fetch('/applications/api/comprehensive-auto-map/accept', {
+          method: 'POST',
+          silent: true,
+          body: {
+            applications: this.aiMap.previewApplications,
+            confidence_threshold: this.aiMap.confidenceThreshold,
+          },
+        });
+        if (!data || data.success === false) {
+          this.aiMap.error = (data && (data.message || data.error)) || 'Saving the AI mappings failed.';
+          return;
+        }
+        const created = typeof data.mappings_created === 'number' ? data.mappings_created : 0;
+        this.aiMap.acceptResult = `Saved ${created} mapping${created !== 1 ? 's' : ''} across ${data.applications_processed || 0} application${data.applications_processed !== 1 ? 's' : ''}.`;
+        this.notify(this.aiMap.acceptResult, 'success');
+        setTimeout(() => window.location.reload(), 1200);
+      } catch (err) {
+        console.error('[appPortfolio] AI map accept error:', err);
+        this.aiMap.error = (err && err.message) || 'Saving the AI mappings failed.';
+      } finally {
+        this.aiMap.accepting = false;
       }
     },
 

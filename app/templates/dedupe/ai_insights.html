@@ -5,7 +5,7 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex items-center gap-4 mb-8">
-        <a href="{{ url_for('ai.ai_dashboard') }}" class="text-muted-foreground hover:text-foreground">
+        <a href="{% if 'unified_duplicate.ai_dashboard' in flask.current_app.view_functions %}{{ url_for('unified_duplicate.ai_dashboard') }}{% else %}#{% endif %}" class="text-muted-foreground hover:text-foreground">
             <i data-lucide="arrow-left" class="w-5 h-5" aria-hidden="true"></i>
         </a>
         <div>
