@@ -654,19 +654,19 @@
                 <dl class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                         <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Critical Gaps</dt>
-                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.critical_gaps_count)"></dd>
+                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.critical_gaps)"></dd>
                     </div>
                     <div>
                         <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Uncovered Capabilities</dt>
-                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.uncovered_count)"></dd>
+                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.no_coverage_count)"></dd>
                     </div>
                     <div>
                         <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rationalization Ops</dt>
-                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.rationalization_opportunities_count)"></dd>
+                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.rationalization_opportunities)"></dd>
                     </div>
                     <div>
                         <dt class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vendor Risks</dt>
-                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.vendor_lifecycle_risks_count)"></dd>
+                        <dd class="text-xl font-bold text-foreground" x-text="fmt(sections.summary.data.vendor_lifecycle_risks)"></dd>
                     </div>
                 </dl>
             </template>
@@ -694,7 +694,7 @@
                 <template x-for="(item, idx) in sections.criticalGaps.data" :key="idx">
                     <li class="flex items-center justify-between border border-border rounded-lg px-3 py-2">
                         <span class="text-sm text-foreground" x-text="item.capability_name || item.name || '—'"></span>
-                        <span class="text-xs text-muted-foreground" x-text="item.priority || item.severity || '—'"></span>
+                        <span class="text-xs text-muted-foreground" x-text="item.gap_severity || item.urgency_level || '—'"></span>
                     </li>
                 </template>
             </ul>
@@ -722,7 +722,7 @@
                 <template x-for="(item, idx) in sections.rationalization.data" :key="idx">
                     <li class="flex items-center justify-between border border-border rounded-lg px-3 py-2">
                         <span class="text-sm text-foreground" x-text="item.capability_name || item.name || '—'"></span>
-                        <span class="text-xs text-muted-foreground" x-text="item.estimated_annual_savings != null ? currencySymbol + item.estimated_annual_savings : '—'"></span>
+                        <span class="text-xs text-muted-foreground" x-text="item.estimated_annual_savings != null ? formatCurrency(item.estimated_annual_savings) : '—'"></span>
                     </li>
                 </template>
             </ul>
@@ -749,8 +749,8 @@
             <ul class="space-y-2" x-show="!sections.vendorLifecycle.error && sections.vendorLifecycle.loaded && sections.vendorLifecycle.data.length > 0">
                 <template x-for="(item, idx) in sections.vendorLifecycle.data" :key="idx">
                     <li class="flex items-center justify-between border border-border rounded-lg px-3 py-2">
-                        <span class="text-sm text-foreground" x-text="item.vendor_name || item.name || '—'"></span>
-                        <span class="text-xs text-muted-foreground" x-text="item.lifecycle_status || item.status || '—'"></span>
+                        <span class="text-sm text-foreground" x-text="item.product_name || '—'"></span>
+                        <span class="text-xs text-muted-foreground" x-text="item.risk_level || item.status || '—'"></span>
                     </li>
                 </template>
             </ul>

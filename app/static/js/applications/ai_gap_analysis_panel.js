@@ -19,7 +19,6 @@ function aiGapAnalysisPanel() {
             { key: 'vendor-lifecycle', label: 'Vendor Lifecycle Risks' }
         ],
         activeTab: 'summary',
-        currencySymbol: '£',
 
         /* ── Per-section load state ───────────────────────────── */
         sections: {
@@ -40,10 +39,6 @@ function aiGapAnalysisPanel() {
                 rationalization: root.dataset.rationalizationUrl,
                 vendorLifecycle: root.dataset.vendorLifecycleUrl
             };
-            const symbolEl = document.querySelector('[data-currency-symbol]');
-            if (symbolEl && symbolEl.dataset.currencySymbol) {
-                this.currencySymbol = symbolEl.dataset.currencySymbol;
-            }
             this.loadSection('summary');
         },
 
@@ -84,6 +79,13 @@ function aiGapAnalysisPanel() {
 
         fmt: function(value) {
             return (value === null || value === undefined) ? '—' : value;
+        },
+
+        /* Currency formatting — window.currencyManager per CLAUDE.md, with the
+         * same fallback precedent as app/static/js/applications/rationalization.js */
+        formatCurrency: function(amount) {
+            if (window.currencyManager) return window.currencyManager.format(amount);
+            return '£' + Number(amount || 0).toLocaleString();
         }
     };
 }

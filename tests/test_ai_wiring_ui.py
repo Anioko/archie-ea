@@ -223,3 +223,57 @@ def test_rationalization_dashboard_has_ai_gap_panel(client, logged_in_org):
     assert "/api/ai-gap-detection/critical-gaps" in body
     assert "/api/ai-gap-detection/rationalization" in body
     assert "/api/ai-gap-detection/vendor-lifecycle" in body
+
+
+def test_ai_gap_panel_reads_the_keys_the_service_actually_returns():
+    """Regression guard for a review finding: the panel's summary tab was
+    reading made-up keys (critical_gaps_count, uncovered_count,
+    rationalization_opportunities_count, vendor_lifecycle_risks_count) that
+    AIGapDetectionService.get_comprehensive_gap_summary() (app/modules/ai_chat/
+    services/ai_gap_detection_service.py) never returns, so all four stat
+    tiles permanently rendered '-'. Cross-check the template/JS source
+    against the service's real return keys directly, statically -- no
+    browser or live data needed.
+    """
+    import pathlib
+
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    template_src = (
+        repo_root
+        / "app/templates/applications/rationalization/dashboard.html"
+    ).read_text(encoding="utf-8")
+    js_src = (
+        repo_root / "app/static/js/applications/ai_gap_analysis_panel.js"
+    ).read_text(encoding="utf-8")
+    combined = template_src + "\n" + js_src
+
+    # get_comprehensive_gap_summary() keys (ai_gap_detection_service.py:697-705)
+    assert "sections.summary.data.critical_gaps" in template_src
+    assert "sections.summary.data.no_coverage_count" in template_src
+    assert "sections.summary.data.rationalization_opportunities" in template_src
+    assert "sections.summary.data.vendor_lifecycle_risks" in template_src
+    # the old, wrong keys must not reappear
+    for wrong_key in (
+        "critical_gaps_count",
+        "uncovered_count",
+        "rationalization_opportunities_count",
+        "vendor_lifecycle_risks_count",
+    ):
+        assert wrong_key not in combined, f"stale fabricated key: {wrong_key}"
+
+    # find_vendor_lifecycle_risks() returns product_name, not vendor_name
+    # (ai_gap_detection_service.py:611-629)
+    assert "item.product_name" in template_src
+    assert "item.vendor_name" not in template_src
+
+    # find_critical_gaps() returns gap_severity / priority_score / urgency_level,
+    # not priority / severity (ai_gap_detection_service.py:502-519)
+    assert "item.gap_severity" in template_src
+    assert "item.priority ||" not in template_src
+    assert "item.severity ||" not in template_src
+
+    # currency must go through window.currencyManager.format(), not a
+    # hand-rolled symbol lookup
+    assert "window.currencyManager" in js_src
+    assert "data-currency-symbol" not in template_src
+    assert "currencySymbol" not in js_src
