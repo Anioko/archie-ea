@@ -10,6 +10,16 @@ with Tailwind/shadcn tokens and Alpine.js on the front end.
 **Read `DESIGN.md` before editing any template, CSS, or front-end JS file.** It is the authoritative
 UI contract (color tokens, base templates, component macros, Alpine rules) and is not repeated here.
 
+## Done means deployed — standing instruction from the owner (14 Aug 2026)
+
+The owner is non-technical and has delegated technical judgement entirely. **A wave of work is
+not complete until it is verified green AND running in production** — merge, push, deploy, and
+confirm the live site serves, in the same session. Do not end a session by offering deployment
+as a menu option or asking "shall I deploy?"; that is the failure mode this rule exists to stop
+(one-strike rule, per the owner). The only legitimate reasons to stop short: verification is
+red, or the next action is destructive/irreversible (`recreate-db --force`, data deletion,
+history rewrites) — those still require explicit approval. Everything else: execute end-to-end.
+
 ## Verification — run this before claiming anything works
 
 ```bash
