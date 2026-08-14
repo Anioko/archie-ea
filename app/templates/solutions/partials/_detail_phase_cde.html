@@ -19,7 +19,7 @@
                         </button>
                         <button @click="generatePhase('C')"
                                 :disabled="generateLoading === 'C'"
-                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-500/30 text-amber-600 rounded-md hover:bg-amber-500/10 disabled:opacity-50"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-warning/30 text-warning-emphasis rounded-md hover:bg-warning/10 disabled:opacity-50"
                                 aria-label="Generate missing Phase C elements">
                             <i data-lucide="sparkles" class="h-3.5 w-3.5" :class="generateLoading === 'C' && 'animate-spin'" aria-hidden="true"></i>
                             <span x-text="generateLoading === 'C' ? 'Generating...' : 'Generate Missing'"></span>
@@ -30,9 +30,9 @@
 
                 {# Generate Missing Preview Panel (BPP-014) #}
                 <template x-if="generatePreview && generatePreview.phase === 'C'">
-                    <div class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <div class="mt-3 rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-3">
                         <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-medium text-amber-700">
+                            <h4 class="text-sm font-medium text-warning-emphasis">
                                 Would create <span x-text="generatePreview.count"></span> elements
                             </h4>
                             <span class="text-xs text-muted-foreground"
@@ -42,7 +42,7 @@
                             <template x-for="item in (generatePreview.would_create || [])" :key="item.type + item.name">
                                 <div class="flex items-center gap-2 text-xs">
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
-                                          :class="item.direction === 'upstream' ? 'bg-info/10 text-info' : 'bg-emerald-500/10 text-emerald-600'"
+                                          :class="item.direction === 'upstream' ? 'bg-info/10 text-info' : 'bg-success/10 text-success-emphasis'"
                                           x-text="item.direction === 'upstream' ? 'up' : 'down'"></span>
                                     <span class="font-medium" x-text="item.type"></span>
                                     <span class="text-muted-foreground truncate" x-text="item.name"></span>
@@ -52,7 +52,7 @@
                         <template x-if="generatePreview.count === 0">
                             <p class="text-xs text-muted-foreground">All required elements already exist. Phase is complete.</p>
                         </template>
-                        <div class="flex gap-2 pt-2 border-t border-amber-500/20" x-show="generatePreview.count > 0">
+                        <div class="flex gap-2 pt-2 border-t border-warning/20" x-show="generatePreview.count > 0">
                             <button @click="confirmGenerate()" :disabled="generateLoading"
                                     class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
                                 <span x-text="generateLoading ? 'Creating...' : 'Confirm'"></span>
@@ -97,15 +97,15 @@
                                         </td>
                                         <td class="px-3 py-2 text-muted-foreground" x-text="vp.vendor_name || 'Unknown'"></td>
                                         <td class="px-3 py-2">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30"
                                                   x-text="vp.product_family_name || 'General'"
                                                   x-show="vp.product_family_name" x-cloak></span>
                                             <span class="text-xs text-muted-foreground" x-show="!vp.product_family_name" x-cloak>&mdash;</span>
                                         </td>
                                         <td class="px-3 py-2">
                                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                                  :class="vp.implementation_type === 'licensed' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
-                                                           vp.implementation_type === 'customized' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                                                  :class="vp.implementation_type === 'licensed' ? 'bg-success/10 text-success-emphasis border border-success/30' :
+                                                           vp.implementation_type === 'customized' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' :
                                                            vp.implementation_type === 'integrated' ? 'bg-primary/10 text-primary border border-primary/30' :
                                                            'bg-muted text-muted-foreground border border-border'"
                                                   x-text="vp.implementation_type || 'not set'"></span>
@@ -165,8 +165,8 @@
                          const v = this.accessMap[this.accessKey(appId, dataId)];
                          if (!v) return 'bg-muted/30 text-muted-foreground hover:bg-muted/50';
                          if (v.access_type === 'read') return 'bg-info/10 text-primary border-info/30';
-                         if (v.access_type === 'write') return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
-                         if (v.access_type === 'readwrite') return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
+                         if (v.access_type === 'write') return 'bg-warning/10 text-warning-emphasis border-warning/30';
+                         if (v.access_type === 'readwrite') return 'bg-success/10 text-success-emphasis border-success/30';
                          return 'bg-muted/30 text-muted-foreground hover:bg-muted/50';
                      },
 
@@ -330,11 +330,11 @@
                 </div>
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-3">
-                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('E')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0" x-show="isSectionCompleted('E')" x-cloak aria-hidden="true"></i>
                         <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('E')" x-cloak aria-hidden="true"></i>
                         <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('E')" x-cloak aria-hidden="true"></i>
                         <h3 class="text-lg font-semibold text-foreground">Solution Options</h3>
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">ArchiMate CourseOfAction</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">ArchiMate CourseOfAction</span>
                     </div>
                     <div class="flex items-center gap-2">
                         {% if llm_available %}
@@ -349,7 +349,7 @@
                             <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             <span x-show="commentCount('phase_e') > 0" x-text="commentCount('phase_e')" class="text-[10px] bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
                         </button>
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Phase E</span>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Phase E</span>
                         <div class="flex items-center gap-1.5">
                             <div class="h-1.5 w-16 bg-muted rounded-full overflow-hidden"><div class="h-full bg-primary rounded-full transition-all" :style="{width: phaseCompleteness('E').percent + '%'}"></div></div>
                             <span class="text-[10px] text-muted-foreground" x-text="phaseCompleteness('E').label"></span>
@@ -479,7 +479,7 @@
                                     <div class="flex-1 min-w-0 mr-3">
                                         <div class="flex items-center gap-2">
                                             <span class="text-sm font-medium text-foreground" x-text="s.name"></span>
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" x-text="s.layer"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20" x-text="s.layer"></span>
                                         </div>
                                         <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
                                     </div>
@@ -538,11 +538,11 @@
                                 {# Pros #}
                                 <template x-if="rec.pros && rec.pros.length > 0">
                                     <div class="mb-2">
-                                        <span class="text-[10px] font-medium text-emerald-600 uppercase">Pros</span>
+                                        <span class="text-[10px] font-medium text-success-emphasis uppercase">Pros</span>
                                         <ul class="mt-1 space-y-0.5">
                                             <template x-for="pro in rec.pros.slice(0, 3)" :key="pro">
                                                 <li class="flex items-start gap-1 text-xs text-muted-foreground">
-                                                    <i data-lucide="plus" class="w-3 h-3 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                                                    <i data-lucide="plus" class="w-3 h-3 text-success flex-shrink-0 mt-0.5" aria-hidden="true"></i>
                                                     <span x-text="pro"></span>
                                                 </li>
                                             </template>
@@ -601,7 +601,7 @@
                               <template x-if="v.costScore !== null">
                                 <div class="flex items-center gap-2">
                                   <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden max-w-20">
-                                    <div class="h-full bg-emerald-500 rounded-full" :style="`width:${v.costScore}%`"></div>
+                                    <div class="h-full bg-success rounded-full" :style="`width:${v.costScore}%`"></div>
                                   </div>
                                   <span class="text-xs text-muted-foreground" x-text="v.costScore + '%'"></span>
                                 </div>
@@ -610,13 +610,13 @@
                             </td>
                             <td class="px-3 py-2">
                               <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                                    :class="v.riskLevel==='low'?'bg-emerald-500/10 text-emerald-700':v.riskLevel==='medium'?'bg-amber-100 text-amber-700':v.riskLevel?'bg-destructive/10 text-destructive-emphasis':'bg-muted text-muted-foreground'"
+                                    :class="v.riskLevel==='low'?'bg-success/10 text-success-emphasis':v.riskLevel==='medium'?'bg-warning/10 text-warning-emphasis':v.riskLevel?'bg-destructive/10 text-destructive-emphasis':'bg-muted text-muted-foreground'"
                                     x-text="v.riskLevel || 'N/A'"></span>
                             </td>
                             <td class="px-3 py-2 text-muted-foreground text-xs" x-text="v.maturityNote || 'N/A'"></td>
                             <td class="px-3 py-2 text-center">
                               <template x-if="v.recommended">
-                                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 inline"></i>
+                                <i data-lucide="check-circle-2" class="w-4 h-4 text-success inline"></i>
                               </template>
                             </td>
                           </tr>

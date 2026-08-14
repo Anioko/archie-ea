@@ -49,18 +49,18 @@
 
     <!-- Workflow Status Counts -->
     <div class="grid grid-cols-3 gap-4 mb-8" role="region" aria-label="Workflow status counts">
-        {{ stat_card(label='Running', value=(status_counts.running if status_counts else None), icon='play', icon_bg='bg-emerald-500') }}
-        {{ stat_card(label='Waiting Approval', value=(status_counts.waiting_approval if status_counts else None), hint=('Review the queue' if status_counts and status_counts.waiting_approval else None), icon='clock', icon_bg='bg-amber-500', href=url_for('main.ea_workflows_approvals'), active=(status_counts.waiting_approval > 0 if status_counts else False), variant='warning') }}
-        {{ stat_card(label='Completed', value=(status_counts.completed if status_counts else None), icon='check-circle', icon_bg='bg-violet-500') }}
+        {{ stat_card(label='Running', value=(status_counts.running if status_counts else None), icon='play', icon_bg='bg-success') }}
+        {{ stat_card(label='Waiting Approval', value=(status_counts.waiting_approval if status_counts else None), hint=('Review the queue' if status_counts and status_counts.waiting_approval else None), icon='clock', icon_bg='bg-warning', href=url_for('main.ea_workflows_approvals'), active=(status_counts.waiting_approval > 0 if status_counts else False), variant='warning') }}
+        {{ stat_card(label='Completed', value=(status_counts.completed if status_counts else None), icon='check-circle', icon_bg='bg-info') }}
     </div>
 
 
     {% set COVERAGE_MATRIX = [
-            ('APP_DISPOSITION',      'arrow-left-right', 'bg-emerald-600', 'Application Disposition',
+            ('APP_DISPOSITION',      'arrow-left-right', 'bg-success', 'Application Disposition',
              'What should happen to each application in scope?',
              ['B','E','F'],
              'Retire / Retain / Replace / Re-engineer across scoped portfolio'),
-            ('PLATFORM_MIGRATION_SCOPING', 'server', 'bg-amber-600', 'Platform Migration Scoping',
+            ('PLATFORM_MIGRATION_SCOPING', 'server', 'bg-warning', 'Platform Migration Scoping',
              'What integrations break when this platform is cut over?',
              ['C','D','E','F','G'],
              'Integration inventory with BREAKING / AT_RISK / MONITOR classification'),
@@ -68,11 +68,11 @@
              'What does the ARB need to approve this change?',
              ['A','B','C','D','E','F','G','H'],
              'Current-state baseline + impact assessment + ARB decision template'),
-            ('CAPABILITY_INVESTMENT_PLANNING', 'trending-up', 'bg-violet-600', 'Capability Investment Planning',
+            ('CAPABILITY_INVESTMENT_PLANNING', 'trending-up', 'bg-info', 'Capability Investment Planning',
              'Where are the gaps and what investment closes them?',
              ['A','B','E'],
              'Capability heat map + Build/Buy/Partner options ranked by ROI'),
-            ('INTEGRATION_IMPACT_ASSESSMENT', 'git-branch', 'bg-rose-600', 'Integration Impact Assessment',
+            ('INTEGRATION_IMPACT_ASSESSMENT', 'git-branch', 'bg-destructive', 'Integration Impact Assessment',
              'What is the blast radius of retiring or changing this application?',
              ['C','F','G'],
              'Direct + transitive impact chain at depth-2 via ArchiMate graph'),
@@ -121,8 +121,8 @@
                             </td>
                             <td class="px-4 py-3 text-right">
                                 {% if defn %}
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-700">
-                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-success/10 text-success-emphasis">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-success"></span>
                                     Active
                                 </span>
                                 {% else %}
@@ -198,7 +198,7 @@
             <!-- TD-004: Phase D Technology Architecture -->
             <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
                 <div class="flex items-start gap-4">
-                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-sky-600">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-info">
                         <i data-lucide="cpu" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                     </div>
                     <div class="flex-1 min-w-0">
@@ -224,7 +224,7 @@
                     </li>
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-700">Phase D</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-info/10 text-info-emphasis">Phase D</span>
                     <a href="{{ '/ea-workflows/phase-d' if (phase_available|default({})).get('phase_d') else '#' }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -235,7 +235,7 @@
             <!-- AG-004: Phase G Implementation Governance -->
             <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
                 <div class="flex items-start gap-4">
-                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-600">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-warning">
                         <i data-lucide="shield-check" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                     </div>
                     <div class="flex-1 min-w-0">
@@ -261,7 +261,7 @@
                     </li>
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700">Phase G</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-warning/10 text-warning-emphasis">Phase G</span>
                     <a href="{{ '/ea-workflows/phase-g' if (phase_available|default({})).get('phase_g') else '#' }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -272,7 +272,7 @@
             <!-- OA-004: Phase E Opportunities & Solutions -->
             <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
                 <div class="flex items-start gap-4">
-                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-600">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-success">
                         <i data-lucide="lightbulb" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                     </div>
                     <div class="flex-1 min-w-0">
@@ -298,7 +298,7 @@
                     </li>
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700">Phase E</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-success/10 text-success-emphasis">Phase E</span>
                     <a href="{{ '/ea-workflows/phase-e' if (phase_available|default({})).get('phase_e') else '#' }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -309,7 +309,7 @@
             <!-- MP-004: Phase F Migration Planning -->
             <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
                 <div class="flex items-start gap-4">
-                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-violet-600">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-violet-600">{# design-tokens-ok: ADM phase card legend, info is already Phase D so Phase F keeps a distinct hue #}
                         <i data-lucide="git-branch" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                     </div>
                     <div class="flex-1 min-w-0">
@@ -335,7 +335,7 @@
                     </li>
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">Phase F</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">{# design-tokens-ok #}Phase F</span>
                     <a href="{{ '/ea-workflows/phase-f' if (phase_available|default({})).get('phase_f') else '#' }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -346,7 +346,7 @@
             <!-- CM-004: Phase H Architecture Change Management -->
             <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
                 <div class="flex items-start gap-4">
-                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-rose-600">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-destructive">
                         <i data-lucide="git-merge" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                     </div>
                     <div class="flex-1 min-w-0">
@@ -372,7 +372,7 @@
                     </li>
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-100 text-rose-700">Phase H</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-destructive/10 text-destructive-emphasis">Phase H</span>
                     <a href="{{ '/ea-workflows/phase-h' if (phase_available|default({})).get('phase_h') else '#' }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -408,9 +408,9 @@
                class="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-muted/50 transition-colors group"
                aria-label="Run #{{ instance.id }}: {{ instance.definition.workflow_name if instance.definition else 'Unknown' }}, {{ instance.status|replace('_', ' ')|title }}">
                 <div class="h-2 w-2 rounded-full shrink-0
-                    {% if instance.status == 'completed' %}bg-emerald-500
+                    {% if instance.status == 'completed' %}bg-success
                     {% elif instance.status == 'running' %}bg-primary animate-pulse
-                    {% elif instance.status == 'waiting_approval' %}bg-amber-500
+                    {% elif instance.status == 'waiting_approval' %}bg-warning
                     {% elif instance.status == 'failed' %}bg-destructive
                     {% else %}bg-muted-foreground{% endif %}"
                     aria-hidden="true"></div>
@@ -418,16 +418,16 @@
                     {{ instance.definition.workflow_name if instance.definition else 'Unknown' }}
                 </span>
                 <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0
-                    {% if instance.status == 'completed' %}bg-emerald-500/10 text-emerald-700
+                    {% if instance.status == 'completed' %}bg-success/10 text-success-emphasis
                     {% elif instance.status == 'running' %}bg-primary/10 text-primary
-                    {% elif instance.status == 'waiting_approval' %}bg-amber-500/10 text-amber-700
+                    {% elif instance.status == 'waiting_approval' %}bg-warning/10 text-warning-emphasis
                     {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive-emphasis
                     {% else %}bg-muted text-muted-foreground{% endif %}"
                     role="status">
                     {{ instance.status|replace('_', ' ')|title }}
                 </span>
                 {% if instance.status == 'waiting_approval' %}
-                <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 shrink-0">
+                <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-warning-emphasis shrink-0">
                     <i data-lucide="hand" class="h-3 w-3" aria-hidden="true"></i>
                     Review
                 </span>
@@ -469,9 +469,9 @@
             },
             phaseColor(status) {
                 const map = {
-                    'completed': 'bg-emerald-500',
+                    'completed': 'bg-success',
                     'running': 'bg-primary animate-pulse',
-                    'waiting_approval': 'bg-amber-500',
+                    'waiting_approval': 'bg-warning',
                     'failed': 'bg-destructive',
                     'pending': 'bg-muted-foreground/40'
                 };
@@ -479,10 +479,10 @@
             },
             phaseBadgeClass(status) {
                 const map = {
-                    'completed': 'bg-emerald-500/10 text-emerald-700',
+                    'completed': 'bg-success/10 text-success-emphasis',
                     'running': 'bg-primary/10 text-primary',
-                    'waiting_approval': 'bg-amber-500/10 text-amber-700',
-                    'failed': 'bg-destructive/10 text-destructive',
+                    'waiting_approval': 'bg-warning/10 text-warning-emphasis',
+                    'failed': 'bg-destructive/10 text-destructive-emphasis',
                     'pending': 'bg-muted text-muted-foreground'
                 };
                 return map[status] || 'bg-muted text-muted-foreground';
