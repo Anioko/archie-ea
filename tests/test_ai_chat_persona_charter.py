@@ -78,10 +78,10 @@ def test_an_ungoverned_persona_still_gets_its_label(app):
 
     with app.app_context():
         prompt = AgentRunner(user_id=1)._build_system_prompt(
-            domain="general", context=None, persona="cio"
+            domain="general", context=None, persona="product_analyst"
         )
 
-    assert "Cio" in prompt or "CIO" in prompt, "an ungoverned persona lost its label entirely"
+    assert "Product" in prompt or "product" in prompt, "an ungoverned persona lost its label entirely"
 
 
 def test_no_persona_is_unchanged_from_the_old_eight_word_note(app):
@@ -97,8 +97,10 @@ def test_no_persona_is_unchanged_from_the_old_eight_word_note(app):
         runner = AgentRunner(user_id=1)
         governed = runner._build_system_prompt(domain="general", context=None,
                                                persona="enterprise_architect")
+        # cio became a governed alias of the cto charter in the AI-enablement
+        # wave (PERSONA_ALIASES), so the ungoverned baseline is product_analyst.
         ungoverned = runner._build_system_prompt(domain="general", context=None,
-                                                 persona="cio")
+                                                 persona="product_analyst")
 
     assert len(governed) > len(ungoverned) + 1000, (
         "the governed persona's prompt is barely longer than the ungoverned one, "
