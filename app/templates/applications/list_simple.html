@@ -591,6 +591,89 @@
       </div>
     </div>
   </div>{# end table card #}
+
+  {# AI Map modal — inside the appPortfolio() x-data scope, which owns aiMap state #}
+  <div id="ai-map-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ai-map-modal-title"
+    class="modal-root fixed inset-0 z-[1000] bg-black/50 items-center justify-center p-4" data-modal-backdrop="ai-map-modal" aria-hidden="true"
+    data-testid="ai-map-modal">
+    <div class="bg-card rounded-xl shadow-xl w-full max-w-lg border flex flex-col max-h-[90vh]">
+      <div class="flex items-center justify-between p-6 border-b shrink-0">
+        <div>
+          <h2 id="ai-map-modal-title" class="text-lg font-semibold">AI Map Applications</h2>
+          <p class="text-sm text-muted-foreground mt-0.5">Analyze existing applications with AI and propose capability, process and ArchiMate mappings.</p>
+        </div>
+        <!-- inline-event-ok --><button type="button" @click="closeAiMapModal()" aria-label="Close"
+          class="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center">
+          <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="p-6 overflow-y-auto flex-1 space-y-4">
+        <div x-show="!aiMap.result" x-cloak class="space-y-3">
+          <div>
+            <label for="ai-map-max" class="block text-sm font-medium mb-1">Applications to analyze</label>
+            <input id="ai-map-max" type="number" min="1" max="200" x-model.number="aiMap.maxApplications"
+              class="flex h-10 w-32 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <p class="text-xs text-muted-foreground mt-1">Most recently added applications are analyzed first.</p>
+          </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" x-model="aiMap.mapCapabilities" class="rounded border-input h-4 w-4">
+            Map to business capabilities
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" x-model="aiMap.mapProcesses" class="rounded border-input h-4 w-4">
+            Map to APQC processes
+          </label>
+        </div>
+  
+        <div x-show="aiMap.loading" x-cloak class="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center" data-testid="ai-map-loading">
+          <i data-lucide="loader-2" class="h-4 w-4 animate-spin" aria-hidden="true"></i>
+          Analyzing applications with AI&hellip;
+        </div>
+  
+        <div x-show="aiMap.error" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="aiMap.error" role="alert" data-testid="ai-map-error"></div>
+  
+        <div x-show="aiMap.result && !aiMap.loading" x-cloak class="space-y-3" data-testid="ai-map-results">
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="rounded-md border p-3">
+              <p class="text-xs text-muted-foreground">Applications analyzed</p>
+              <p class="text-lg font-semibold" x-text="aiMap.result?.statistics?.applications_processed ?? '—'"></p>
+            </div>
+            <div class="rounded-md border p-3">
+              <p class="text-xs text-muted-foreground">Capability mappings found</p>
+              <p class="text-lg font-semibold" x-text="aiMap.result?.statistics?.capabilities_mapped ?? '—'"></p>
+            </div>
+            <div class="rounded-md border p-3">
+              <p class="text-xs text-muted-foreground">ArchiMate elements proposed</p>
+              <p class="text-lg font-semibold" x-text="aiMap.result?.statistics?.archimate_elements ?? '—'"></p>
+            </div>
+            <div class="rounded-md border p-3">
+              <p class="text-xs text-muted-foreground">High-confidence mappings</p>
+              <p class="text-lg font-semibold" x-text="aiMap.result?.high_confidence_mappings ?? '—'"></p>
+            </div>
+          </div>
+          <p class="text-xs text-muted-foreground">Nothing has been saved yet. Accept to write the high-confidence mappings above to the portfolio.</p>
+        </div>
+  
+        <div x-show="aiMap.acceptResult" x-cloak class="rounded-md bg-success/10 border border-success/30 px-3 py-2 text-sm" data-testid="ai-map-accept-result">
+          <span x-text="aiMap.acceptResult"></span>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 p-6 border-t shrink-0">
+        <button type="button" @click="closeAiMapModal()"
+          class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Close">Close</button>
+        <button type="button" x-show="!aiMap.result" x-cloak @click="runAiMap()" :disabled="aiMap.loading"
+          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          data-testid="btn-ai-map-run" aria-label="Run AI analysis">
+          <span x-text="aiMap.loading ? 'Analyzing...' : 'Run AI Analysis'">Run AI Analysis</span>
+        </button>
+        <button type="button" x-show="aiMap.result && !aiMap.acceptResult" x-cloak @click="acceptAiMap()" :disabled="aiMap.accepting"
+          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          data-testid="btn-ai-map-accept" aria-label="Accept and save mappings">
+          <span x-text="aiMap.accepting ? 'Saving...' : 'Accept & Save'">Accept &amp; Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
 </div>{# end app-portfolio-root #}
 
 {# ─ Include existing unified mapping modal ─ #}
@@ -704,87 +787,6 @@
      in the estate, then only writes when the user explicitly accepts the
      preview via the /accept endpoint — the same two-step contract the
      endpoint was built for, just never wired to a client until now. #}
-<div id="ai-map-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ai-map-modal-title"
-  class="modal-root fixed inset-0 z-[1000] bg-black/50 items-center justify-center p-4" data-modal-backdrop="ai-map-modal" aria-hidden="true"
-  data-testid="ai-map-modal">
-  <div class="bg-card rounded-xl shadow-xl w-full max-w-lg border flex flex-col max-h-[90vh]">
-    <div class="flex items-center justify-between p-6 border-b shrink-0">
-      <div>
-        <h2 id="ai-map-modal-title" class="text-lg font-semibold">AI Map Applications</h2>
-        <p class="text-sm text-muted-foreground mt-0.5">Analyze existing applications with AI and propose capability, process and ArchiMate mappings.</p>
-      </div>
-      <!-- inline-event-ok --><button type="button" @click="closeAiMapModal()" aria-label="Close"
-        class="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center">
-        <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
-      </button>
-    </div>
-    <div class="p-6 overflow-y-auto flex-1 space-y-4">
-      <div x-show="!aiMap.result" x-cloak class="space-y-3">
-        <div>
-          <label for="ai-map-max" class="block text-sm font-medium mb-1">Applications to analyze</label>
-          <input id="ai-map-max" type="number" min="1" max="200" x-model.number="aiMap.maxApplications"
-            class="flex h-10 w-32 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <p class="text-xs text-muted-foreground mt-1">Most recently added applications are analyzed first.</p>
-        </div>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" x-model="aiMap.mapCapabilities" class="rounded border-input h-4 w-4">
-          Map to business capabilities
-        </label>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" x-model="aiMap.mapProcesses" class="rounded border-input h-4 w-4">
-          Map to APQC processes
-        </label>
-      </div>
-
-      <div x-show="aiMap.loading" x-cloak class="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center" data-testid="ai-map-loading">
-        <i data-lucide="loader-2" class="h-4 w-4 animate-spin" aria-hidden="true"></i>
-        Analyzing applications with AI&hellip;
-      </div>
-
-      <div x-show="aiMap.error" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="aiMap.error" role="alert" data-testid="ai-map-error"></div>
-
-      <div x-show="aiMap.result && !aiMap.loading" x-cloak class="space-y-3" data-testid="ai-map-results">
-        <div class="grid grid-cols-2 gap-3 text-sm">
-          <div class="rounded-md border p-3">
-            <p class="text-xs text-muted-foreground">Applications analyzed</p>
-            <p class="text-lg font-semibold" x-text="aiMap.result?.statistics?.applications_processed ?? '—'"></p>
-          </div>
-          <div class="rounded-md border p-3">
-            <p class="text-xs text-muted-foreground">Capability mappings found</p>
-            <p class="text-lg font-semibold" x-text="aiMap.result?.statistics?.capabilities_mapped ?? '—'"></p>
-          </div>
-          <div class="rounded-md border p-3">
-            <p class="text-xs text-muted-foreground">ArchiMate elements proposed</p>
-            <p class="text-lg font-semibold" x-text="aiMap.result?.statistics?.archimate_elements ?? '—'"></p>
-          </div>
-          <div class="rounded-md border p-3">
-            <p class="text-xs text-muted-foreground">High-confidence mappings</p>
-            <p class="text-lg font-semibold" x-text="aiMap.result?.high_confidence_mappings ?? '—'"></p>
-          </div>
-        </div>
-        <p class="text-xs text-muted-foreground">Nothing has been saved yet. Accept to write the high-confidence mappings above to the portfolio.</p>
-      </div>
-
-      <div x-show="aiMap.acceptResult" x-cloak class="rounded-md bg-success/10 border border-success/30 px-3 py-2 text-sm" data-testid="ai-map-accept-result">
-        <span x-text="aiMap.acceptResult"></span>
-      </div>
-    </div>
-    <div class="flex justify-end gap-3 p-6 border-t shrink-0">
-      <button type="button" @click="closeAiMapModal()"
-        class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Close">Close</button>
-      <button type="button" x-show="!aiMap.result" x-cloak @click="runAiMap()" :disabled="aiMap.loading"
-        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        data-testid="btn-ai-map-run" aria-label="Run AI analysis">
-        <span x-text="aiMap.loading ? 'Analyzing...' : 'Run AI Analysis'">Run AI Analysis</span>
-      </button>
-      <button type="button" x-show="aiMap.result && !aiMap.acceptResult" x-cloak @click="acceptAiMap()" :disabled="aiMap.accepting"
-        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        data-testid="btn-ai-map-accept" aria-label="Accept and save mappings">
-        <span x-text="aiMap.accepting ? 'Saving...' : 'Accept & Save'">Accept &amp; Save</span>
-      </button>
-    </div>
-  </div>
-</div>
 
 {# ─ Notification toast ─ #}
 <div aria-live="polite" aria-atomic="true"

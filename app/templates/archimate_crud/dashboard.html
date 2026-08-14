@@ -853,11 +853,11 @@
             <div x-show="aiGenerate.result && !aiGenerate.loading" x-cloak class="space-y-3" data-testid="ai-generate-result">
                 <div class="rounded-md border p-3">
                     <p class="text-xs text-muted-foreground mb-1">Name</p>
-                    <p class="text-sm font-medium" x-text="aiGenerate.result.name"></p>
+                    <p class="text-sm font-medium" x-text="aiGenerate.result?.name ?? ''"></p>
                 </div>
                 <div class="rounded-md border p-3">
                     <p class="text-xs text-muted-foreground mb-1">Description</p>
-                    <p class="text-sm whitespace-pre-wrap" x-text="aiGenerate.result.description"></p>
+                    <p class="text-sm whitespace-pre-wrap" x-text="aiGenerate.result?.description ?? ''"></p>
                 </div>
                 <p class="text-xs text-muted-foreground">Nothing has been saved yet. Use this draft to open the Create Element form, review it, and save.</p>
             </div>
