@@ -197,6 +197,7 @@ scripts/check_*.py
 # Permanent gates — must stay tracked despite the check_*.py glob above.
 # Note: gitignore has no inline comments, so each negation gets its own line.
 !scripts/check_design_tokens.py
+!scripts/check_shell_conformance.py
 !scripts/check_external_origins.py
 !scripts/check_sri.py
 !scripts/check_deployed_deps.py
