@@ -129,8 +129,8 @@
                         {% if entity.entity_type %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
                             {% if entity.entity_type == 'master' %}bg-primary/10 text-primary border border-primary/30
-                            {% elif entity.entity_type == 'transactional' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-                            {% elif entity.entity_type == 'reference' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                            {% elif entity.entity_type == 'transactional' %}bg-success/10 text-success-emphasis border border-success/30
+                            {% elif entity.entity_type == 'reference' %}bg-warning/10 text-warning-emphasis border border-warning/30
                             {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                             {{ entity.entity_type }}
                         </span>
@@ -142,9 +142,9 @@
                         {% if entity.data_classification %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
                             {% if entity.data_classification == 'restricted' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
-                            {% elif entity.data_classification == 'confidential' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                            {% elif entity.data_classification == 'confidential' %}bg-warning/10 text-warning-emphasis border border-warning/30
                             {% elif entity.data_classification == 'internal' %}bg-primary/10 text-primary border border-primary/30
-                            {% else %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30{% endif %}">
+                            {% else %}bg-success/10 text-success-emphasis border border-success/30{% endif %}">
                             {{ entity.data_classification }}
                         </span>
                         {% else %}
@@ -165,8 +165,8 @@
                         <div class="flex items-center gap-2">
                             <div class="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
                                 <div class="h-full rounded-full
-                                    {% if entity.data_quality_score >= 70 %}bg-emerald-500
-                                    {% elif entity.data_quality_score >= 40 %}bg-amber-500
+                                    {% if entity.data_quality_score >= 70 %}bg-success
+                                    {% elif entity.data_quality_score >= 40 %}bg-warning
                                     {% else %}bg-destructive{% endif %}"
                                     style="width: {{ entity.data_quality_score }}%"><!-- inline-style-ok --></div>
                             </div>

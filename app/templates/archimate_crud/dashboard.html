@@ -317,17 +317,17 @@
     <!-- ARC-005: Data quality banner -->
     {% if no_desc_count is defined %}
     <div data-testid="data-quality-banner"
-         class="flex flex-wrap items-center gap-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-700">
+         class="flex flex-wrap items-center gap-4 p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm text-warning-emphasis">
         <i data-lucide="alert-triangle" class="h-4 w-4 flex-shrink-0" aria-hidden="true"></i>
         <span class="font-medium">Data Quality:</span>
         <span data-testid="dq-no-description">
             <strong>{{ no_desc_count }}</strong> elements have no description
         </span>
-        <span class="text-amber-500/60">·</span>
+        <span class="text-warning-emphasis/60">·</span>
         <span data-testid="dq-no-relationships">
             <strong>{{ no_rels_count }}</strong> elements have no relationships
         </span>
-        <span class="text-amber-500/60">·</span>
+        <span class="text-warning-emphasis/60">·</span>
         <span data-testid="dq-no-solutions">
             <strong>{{ no_solutions_count }}</strong> elements not linked to any solution
         </span>
@@ -463,7 +463,7 @@
                                     </a>
                                     <template x-if="el.element_type === 'ApplicationComponent'">
                                         <a :href="'/applications?search=' + encodeURIComponent(el.name)"
-                                           class="text-emerald-600 hover:text-emerald-500" title="Find Source Application">
+                                           class="text-success hover:text-success/80" title="Find Source Application">
                                             <i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i>
                                         </a>
                                     </template>
@@ -565,7 +565,7 @@
             <!-- View mode -->
             <div x-cloak x-show="!detailLoading && !detailEditing" class="space-y-4">
                 <div x-cloak x-show="detailSaved"
-                     class="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 text-emerald-700 rounded-md text-sm">
+                     class="flex items-center gap-2 px-3 py-2 bg-success/10 text-success-emphasis rounded-md text-sm">
                     <i data-lucide="check-circle" class="h-4 w-4" aria-hidden="true"></i>
                     Saved successfully
                 </div>
@@ -838,7 +838,7 @@
                         <div class="text-xs text-muted-foreground mt-1">Element Errors</div>
                     </div>
                     <div class="rounded-lg border p-3 text-center">
-                        <div class="text-2xl font-bold text-amber-600" x-text="validationResults?.element_warnings ?? 0"></div>
+                        <div class="text-2xl font-bold text-warning" x-text="validationResults?.element_warnings ?? 0"></div>
                         <div class="text-xs text-muted-foreground mt-1">Element Warnings</div>
                     </div>
                     <div class="rounded-lg border p-3 text-center">
@@ -846,7 +846,7 @@
                         <div class="text-xs text-muted-foreground mt-1">Rel. Errors</div>
                     </div>
                     <div class="rounded-lg border p-3 text-center">
-                        <div class="text-2xl font-bold text-amber-600" x-text="validationResults?.relationship_warnings ?? 0"></div>
+                        <div class="text-2xl font-bold text-warning" x-text="validationResults?.relationship_warnings ?? 0"></div>
                         <div class="text-xs text-muted-foreground mt-1">Rel. Warnings</div>
                     </div>
                 </div>
@@ -859,7 +859,7 @@
                                 <div class="border rounded-md p-3 text-sm">
                                     <div class="font-medium" x-text="`${entry.element.name} (${entry.element.layer})`"></div>
                                     <template x-for="issue in entry.issues" :key="issue.message">
-                                        <div :class="issue.severity === 'error' ? 'text-destructive' : 'text-amber-600'"
+                                        <div :class="issue.severity === 'error' ? 'text-destructive' : 'text-warning-emphasis'"
                                              class="flex items-center gap-1 mt-1">
                                             <i :data-lucide="issue.severity === 'error' ? 'alert-circle' : 'alert-triangle'" class="h-3 w-3 flex-shrink-0" aria-hidden="true"></i>
                                             <span x-text="issue.message"></span>
@@ -879,7 +879,7 @@
                                 <div class="border rounded-md p-3 text-sm">
                                     <div class="font-medium" x-text="`Relationship #${entry.relationship.id} (${entry.relationship.type})`"></div>
                                     <template x-for="issue in entry.issues" :key="issue.message">
-                                        <div :class="issue.severity === 'error' ? 'text-destructive' : 'text-amber-600'"
+                                        <div :class="issue.severity === 'error' ? 'text-destructive' : 'text-warning-emphasis'"
                                              class="flex items-center gap-1 mt-1">
                                             <i :data-lucide="issue.severity === 'error' ? 'alert-circle' : 'alert-triangle'" class="h-3 w-3 flex-shrink-0" aria-hidden="true"></i>
                                             <span x-text="issue.message"></span>
@@ -892,7 +892,7 @@
                 </template>
                 <!-- All clear -->
                 <template x-if="validationResults && !validationResults.element_issues?.length && !validationResults.relationship_issues?.length">
-                    <div class="flex items-center gap-2 text-emerald-700 bg-emerald-500/10 px-3 py-3 rounded-md">
+                    <div class="flex items-center gap-2 text-success-emphasis bg-success/10 px-3 py-3 rounded-md">
                         <i data-lucide="check-circle" class="h-5 w-5" aria-hidden="true"></i>
                         <span>No ArchiMate 3.2 violations found.</span>
                     </div>

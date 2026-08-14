@@ -57,11 +57,11 @@
                         {% if score >= 15 %}
                             {% set cell_class = "bg-destructive/10 border-destructive/30" %}
                         {% elif score >= 9 %}
-                            {% set cell_class = "bg-orange-100 border-orange-300" %}
+                            {% set cell_class = "bg-orange-100 border-orange-300" %}{# design-tokens-ok: risk heat-map probability x impact scale, 4-tier RAG beyond the 3 severity tokens; kept raw to match legend #}
                         {% elif score >= 5 %}
-                            {% set cell_class = "bg-amber-500/10 border-yellow-300" %}
+                            {% set cell_class = "bg-amber-500/10 border-yellow-300" %}{# design-tokens-ok: risk heat-map scale, see above #}
                         {% else %}
-                            {% set cell_class = "bg-emerald-500/10 border-green-300" %}
+                            {% set cell_class = "bg-emerald-500/10 border-green-300" %}{# design-tokens-ok: risk heat-map scale, see above #}
                         {% endif %}
                         <div
                             class="min-h-[80px] rounded border p-1 {{ cell_class }}"
@@ -97,15 +97,15 @@
     {# Legend #}
     <div class="mt-4 flex flex-wrap gap-3" aria-label="Risk level legend">
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-green-300 bg-emerald-500/10"></span>
+            <span class="inline-block h-4 w-4 rounded border border-green-300 bg-emerald-500/10"></span> {# design-tokens-ok: matches the raw heat-map cell scale above #}
             <span class="text-xs text-muted-foreground">Low (score 1–4)</span>
         </div>
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-yellow-300 bg-amber-500/10"></span>
+            <span class="inline-block h-4 w-4 rounded border border-yellow-300 bg-amber-500/10"></span> {# design-tokens-ok: matches the raw heat-map cell scale above #}
             <span class="text-xs text-muted-foreground">Medium (score 5–8)</span>
         </div>
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-orange-300 bg-orange-100"></span>
+            <span class="inline-block h-4 w-4 rounded border border-orange-300 bg-orange-100"></span> {# design-tokens-ok: matches the raw heat-map cell scale above #}
             <span class="text-xs text-muted-foreground">High (score 9–14)</span>
         </div>
         <div class="flex items-center gap-1.5">
@@ -150,9 +150,9 @@
                                     class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                                     :class="{
  'bg-destructive/10 text-destructive-emphasis': activeRisk.status === 'open',
- 'bg-amber-500/10 text-yellow-800': activeRisk.status === 'mitigated',
+ 'bg-warning/10 text-warning-emphasis': activeRisk.status === 'mitigated',
  'bg-primary/10 text-primary/90': activeRisk.status === 'accepted',
- 'bg-emerald-500/10 text-green-800': activeRisk.status === 'closed',
+ 'bg-success/10 text-success-emphasis': activeRisk.status === 'closed',
  }"
                                     x-text="activeRisk.status"
                                 ></span>

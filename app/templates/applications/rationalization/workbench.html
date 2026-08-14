@@ -96,11 +96,11 @@
         <span class="text-sm font-medium" x-text="selectedCount + ' selected'"></span>
         <div class="flex gap-2">
             <button type="button" @click="bulkAction('approve')"
-                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-primary-foreground hover:bg-emerald-700">
+                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-success text-success-foreground hover:bg-success/90">
                 Approve Selected
             </button>
             <button type="button" @click="bulkAction('defer')"
-                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-amber-600 text-primary-foreground hover:bg-amber-700">
+                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-warning text-warning-foreground hover:bg-warning/90">
                 Defer Selected
             </button>
             <button type="button" @click="bulkAction('request_data')"
@@ -192,7 +192,7 @@
                                 <td class="px-4 py-3 font-medium text-foreground" x-text="app.name"></td>
                                 <td class="px-4 py-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold"
-                                          :class="app.health >= 70 ? 'bg-emerald-500/10 text-emerald-600' : app.health >= 40 ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive-emphasis'"
+                                          :class="app.health >= 70 ? 'bg-success/10 text-success-emphasis' : app.health >= 40 ? 'bg-warning/10 text-warning-emphasis' : 'bg-destructive/10 text-destructive-emphasis'"
                                           x-text="app.health"></span>
                                 </td>
                                 <td class="px-4 py-3">
@@ -202,7 +202,7 @@
                                 </td>
                                 <td class="px-4 py-3">
                                     <i :data-lucide="app.is_ready ? 'check-circle-2' : 'circle'"
-                                       :class="app.is_ready ? 'text-emerald-600' : 'text-muted-foreground'"
+                                       :class="app.is_ready ? 'text-success-emphasis' : 'text-muted-foreground'"
                                        class="h-4 w-4"></i>
                                 </td>
                                 <td class="px-4 py-3">
@@ -216,7 +216,7 @@
                                             class="text-xs text-primary hover:underline">View</button>
                                     <button type="button" @click.stop="toggleCompare(app)"
                                             class="text-xs hover:underline"
-                                            :class="compareIds.indexOf(app.id) >= 0 ? 'text-emerald-600 font-semibold' : 'text-muted-foreground'"
+                                            :class="compareIds.indexOf(app.id) >= 0 ? 'text-success-emphasis font-semibold' : 'text-muted-foreground'"
                                             x-text="compareIds.indexOf(app.id) >= 0 ? 'Added' : 'Compare'"></button>
                                 </td>
                             </tr>
@@ -275,7 +275,7 @@
                                     {# null = the server did not report this dimension. An em
                                        dash, never 0 — a 0 here reads as a measured worst score. #}
                                     <span class="font-bold"
-                                          :class="ca.dims[dimName] == null ? 'text-muted-foreground' : (ca.dims[dimName] >= 70 ? 'text-emerald-600' : ca.dims[dimName] >= 40 ? 'text-amber-600' : 'text-destructive')"
+                                          :class="ca.dims[dimName] == null ? 'text-muted-foreground' : (ca.dims[dimName] >= 70 ? 'text-success-emphasis' : ca.dims[dimName] >= 40 ? 'text-warning-emphasis' : 'text-destructive')"
                                           x-text="ca.dims[dimName] == null ? '—' : ca.dims[dimName]"></span>
                                 </td>
                             </template>
@@ -359,11 +359,11 @@
                                     <span class="text-xs font-medium text-muted-foreground w-28" x-text="dim.label"></span>
                                     <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                                         <div class="h-full rounded-full"
-                                             :class="dim.score === null ? 'bg-muted' : (dim.score >= 70 ? 'bg-emerald-500' : dim.score >= 40 ? 'bg-amber-500' : 'bg-destructive')"
+                                             :class="dim.score === null ? 'bg-muted' : (dim.score >= 70 ? 'bg-success' : dim.score >= 40 ? 'bg-warning' : 'bg-destructive')"
                                              :style="'width:' + (dim.score === null ? 0 : dim.score) + '%'"></div>
                                     </div>
                                     <span class="text-xs font-bold w-8 text-right"
-                                          :class="dim.score === null ? 'text-muted-foreground' : (dim.score >= 70 ? 'text-emerald-600' : dim.score >= 40 ? 'text-amber-600' : 'text-destructive')"
+                                          :class="dim.score === null ? 'text-muted-foreground' : (dim.score >= 70 ? 'text-success-emphasis' : dim.score >= 40 ? 'text-warning-emphasis' : 'text-destructive')"
                                           x-text="dim.score === null ? '—' : dim.score"></span>
                                 </div>
                             </template>

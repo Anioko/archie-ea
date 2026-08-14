@@ -33,7 +33,7 @@
             </div>
             {% if unassigned_count > 0 %}
             <div class="text-center">
-                <div class="text-2xl font-bold text-amber-600">{{ unassigned_count }}</div>
+                <div class="text-2xl font-bold text-warning-emphasis">{{ unassigned_count }}</div>
                 <div class="text-xs text-muted-foreground">Unassigned</div>
             </div>
             {% endif %}
@@ -68,9 +68,9 @@
             <div class="flex items-center justify-between px-4 py-3 bg-muted/50 border-b border-border">
                 <div class="flex items-center gap-3">
                     <div class="w-2 h-2 rounded-full
-                        {% if plateau.column == 'done' %}bg-emerald-500
+                        {% if plateau.column == 'done' %}bg-success
                         {% elif plateau.column in ['review', 'approved'] %}bg-primary
-                        {% elif plateau.column in ['under_development', 'implementing'] %}bg-amber-500
+                        {% elif plateau.column in ['under_development', 'implementing'] %}bg-warning
                         {% else %}bg-muted-foreground{% endif %}">
                     </div>
                     <div>
@@ -88,7 +88,7 @@
                             <span class="text-xs text-muted-foreground">· {{ plateau.arch_domain }}</span>
                             {% endif %}
                             {% if plateau.requires_arb_signoff %}
-                            <span class="text-xs text-amber-600 font-medium">· ARB required</span>
+                            <span class="text-xs text-warning-emphasis font-medium">· ARB required</span>
                             {% endif %}
                         </div>
                     </div>
@@ -98,9 +98,9 @@
                         {{ cards|length }} work item{% if cards|length != 1 %}s{% endif %}
                     </span>
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-                        {% if plateau.column == 'done' %}bg-emerald-500/10 text-emerald-700
+                        {% if plateau.column == 'done' %}bg-success/10 text-success-emphasis
                         {% elif plateau.column in ['review', 'approved'] %}bg-primary/10 text-primary
-                        {% elif plateau.column in ['under_development', 'implementing'] %}bg-amber-100 text-amber-700
+                        {% elif plateau.column in ['under_development', 'implementing'] %}bg-warning/10 text-warning-emphasis
                         {% else %}bg-muted text-muted-foreground{% endif %}">
                         {{ (plateau.column or 'proposed')|replace('_', ' ')|title }}
                     </span>
@@ -115,7 +115,7 @@
                     <div class="flex items-start justify-between gap-1">
                         <span class="text-xs font-medium text-foreground line-clamp-2">{{ card.title }}</span>
                         {% if card.requires_arb_signoff %}
-                        <svg class="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <svg class="w-3 h-3 text-warning flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                         </svg>
                         {% endif %}
@@ -132,9 +132,9 @@
                         </span>
                         {% endif %}
                         <span class="text-[10px] px-1.5 py-0.5 rounded-full
-                            {% if card.column == 'done' %}bg-emerald-500/10 text-emerald-700
+                            {% if card.column == 'done' %}bg-success/10 text-success-emphasis
                             {% elif card.column in ['review', 'approved'] %}bg-primary/10 text-primary
-                            {% elif card.column in ['under_development', 'implementing'] %}bg-amber-100 text-amber-700
+                            {% elif card.column in ['under_development', 'implementing'] %}bg-warning/10 text-warning-emphasis
                             {% else %}bg-muted text-muted-foreground{% endif %}">
                             {{ (card.column or 'proposed')|replace('_', ' ')|title }}
                         </span>
@@ -157,11 +157,11 @@
 
     {# -- Unassigned warning --------------------------------------------- #}
     {% if unassigned_count > 0 %}
-    <div class="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
-        <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+    <div class="flex items-center gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm">
+        <svg class="w-4 h-4 text-warning flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
         </svg>
-        <span class="text-amber-800">
+        <span class="text-warning-emphasis">
             <strong>{{ unassigned_count }}</strong> card{% if unassigned_count != 1 %}s{% endif %}
             not assigned to any Plateau. Set <strong>Target Plateau</strong> when creating cards on the board.
         </span>

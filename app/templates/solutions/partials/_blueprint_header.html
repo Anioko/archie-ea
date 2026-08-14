@@ -70,7 +70,7 @@
 })();
 </script>
             <a href="{{ url_for('codegen.workbench_page', solution_id=solution.id) }}"
-               class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-emerald-500/40 text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors"
+               class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-success/40 text-success-emphasis bg-success/10 hover:bg-success/20 transition-colors"
                title="Open the Code Workbench to view and edit generated code for this solution">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
                 Code Workbench
@@ -159,12 +159,10 @@ function archieShowBanner(msg, type) {
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                 Export PDF
             </a>
-            {# AI Copilot button — opens slide-out panel #}
+            {# AI Copilot button — opens slide-out panel. token-migration-ok: violet is the AI-generated/AI-assistant indicator colour used across the app, kept distinct from info #}
             <button type="button"
                     @click="$dispatch('blueprint-chat-toggle')"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium
-                           bg-violet-500/10 text-violet-600 border border-violet-500/30
-                           hover:bg-violet-500/20 transition-colors"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30 hover:bg-violet-500/20 transition-colors {# token-migration-ok #}"
                     title="Open AI Architecture Copilot">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -275,8 +273,8 @@ function archieShowBanner(msg, type) {
             {# Progress bar #}
             <div class="mt-1 w-full h-1 bg-muted rounded-full overflow-hidden">
                 <div class="h-full rounded-full transition-all duration-300
-                    {% if pct >= 80 %}bg-emerald-500
-                    {% elif pct >= 40 %}bg-amber-500
+                    {% if pct >= 80 %}bg-success
+                    {% elif pct >= 40 %}bg-warning
                     {% elif pct >= 1 %}bg-destructive
                     {% else %}bg-muted-foreground/20
                     {% endif %}"
@@ -284,8 +282,8 @@ function archieShowBanner(msg, type) {
             </div>
             {# Percentage #}
             <span class="text-[11px] font-medium mt-0.5
-                {% if pct >= 80 %}text-emerald-600
-                {% elif pct >= 40 %}text-amber-600
+                {% if pct >= 80 %}text-success
+                {% elif pct >= 40 %}text-warning
                 {% elif pct >= 1 %}text-destructive
                 {% else %}text-muted-foreground
                 {% endif %}">{{ pct }}%</span>

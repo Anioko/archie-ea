@@ -126,7 +126,7 @@
                         <td class="px-6 py-3">
                             {% set ls = component.lifecycle_status %}
                             {% if ls in ('production', 'operational') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-green-500/10 text-emerald-700 border-emerald-200">
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-success/10 text-success-emphasis border-success/30">
                                 {{ ls | title }}
                             </span>
                             {% elif ls in ('development', 'testing', 'planning') %}
@@ -134,7 +134,7 @@
                                 {{ ls | title }}
                             </span>
                             {% elif ls in ('deprecated', 'retirement', 'retired') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-warning/10 text-warning-emphasis border-warning/30">
                                 {{ ls | title }}
                             </span>
                             {% elif ls %}
@@ -172,10 +172,11 @@
                             {% set crit = component.criticality %}
                             {% if crit == 'mission_critical' %}
                             <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-destructive/10 text-destructive-emphasis border-destructive/20">Mission Critical</span>
+                            {# 4-tier criticality RAG (mission_critical/high/medium/low) — high and medium kept as distinct raw shades since both would otherwise collapse onto the single warning token #}
                             {% elif crit == 'high' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">High</span>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">High</span> {# token-migration-ok #}
                             {% elif crit == 'medium' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-yellow-500/10 text-amber-700 border-amber-200">Medium</span>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-yellow-500/10 text-amber-700 border-amber-200">Medium</span> {# token-migration-ok #}
                             {% elif crit == 'low' %}
                             <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">Low</span>
                             {% elif crit %}

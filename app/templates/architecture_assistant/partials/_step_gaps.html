@@ -26,7 +26,7 @@
       <span class="text-sm font-medium text-foreground">Gap Analysis Results</span>
       {# ENH-006: AI Generated badge with sparkles icon #}
       <span x-show="gapAnalysisAiGenerated" x-cloak
-        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30"> {# design-tokens-ok: AI-generated indicator colour #}
         <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
       </span>
       <span x-show="!gapAnalysisAiGenerated && gaps.length > 0" x-cloak
@@ -63,13 +63,13 @@
               </td>
               <td class="px-4 py-3 text-center">
                 <span x-text="gap.maturity_target - gap.maturity_current" class="font-bold"
-                  :class="(gap.maturity_target - gap.maturity_current) >= 3 ? 'text-destructive' : (gap.maturity_target - gap.maturity_current) >= 2 ? 'text-amber-600' : 'text-emerald-600'">
+                  :class="(gap.maturity_target - gap.maturity_current) >= 3 ? 'text-destructive' : (gap.maturity_target - gap.maturity_current) >= 2 ? 'text-warning-emphasis' : 'text-success-emphasis'">
                 </span>
               </td>
               <td class="px-4 py-3 text-center">
                 <span :class="{
                   'bg-destructive/10 text-destructive-emphasis border-destructive/30': gap.severity === 'critical',
-                  'bg-amber-500/10 text-amber-600 border-amber-500/30': gap.severity === 'high',
+                  'bg-warning/10 text-warning-emphasis border-warning/30': gap.severity === 'high',
                   'bg-info/10 text-primary border-info/30': gap.severity === 'medium',
                   'bg-muted text-muted-foreground border-border': gap.severity === 'low'
                 }" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
@@ -107,10 +107,10 @@
       <template x-for="layer in affectedLayers" :key="layer">
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
           :class="{
-            'bg-info/10 text-primary border-info/30': layer === 'Business',
-            'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': layer === 'Application',
-            'bg-amber-500/10 text-amber-600 border-amber-500/30': layer === 'Technology',
-            'bg-purple-500/10 text-primary border-purple-500/30': layer === 'Motivation'
+            'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': layer === 'Business', {# design-tokens-ok: ArchiMate business-layer colour, DESIGN.md layer table #}
+            'bg-info/10 text-primary border-info/30': layer === 'Application',
+            'bg-green-500/10 text-green-600 border-green-500/30': layer === 'Technology', {# design-tokens-ok: ArchiMate technology-layer colour, DESIGN.md layer table #}
+            'bg-purple-500/10 text-primary border-purple-500/30': layer === 'Motivation' {# design-tokens-ok: ArchiMate motivation-layer colour, DESIGN.md layer table #}
           }" x-text="layer"></span>
       </template>
     </div>

@@ -24,7 +24,7 @@
     {# ── Summary ───────────────────────────────────────────────────── #}
     <div class="border border-border rounded-xl bg-card p-6 mb-6 flex items-start gap-3">
         <span class="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-lg
-            {% if review.flagged %}bg-amber-500/10 text-amber-600{% else %}bg-emerald-500/10 text-emerald-600{% endif %}">
+            {% if review.flagged %}bg-warning/10 text-warning-emphasis{% else %}bg-success/10 text-success-emphasis{% endif %}">
             <i data-lucide="{{ 'alert-triangle' if review.flagged else 'check-circle' }}" class="h-5 w-5"></i>
         </span>
         <div class="min-w-0">
@@ -34,7 +34,7 @@
             <p class="text-sm text-muted-foreground mt-1">{{ review.summary }}</p>
             <div class="flex items-center gap-4 mt-3 text-xs">
                 <span class="text-foreground"><strong>{{ review.finding_count }}</strong> finding{{ '' if review.finding_count == 1 else 's' }}</span>
-                <span class="{% if review.flagged %}text-amber-600{% else %}text-muted-foreground{% endif %}"><strong>{{ review.flagged }}</strong> need attention</span>
+                <span class="{% if review.flagged %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}"><strong>{{ review.flagged }}</strong> need attention</span>
             </div>
         </div>
     </div>
@@ -46,7 +46,7 @@
         <div class="border border-border rounded-xl bg-card p-4 flex items-start gap-3">
             <span class="shrink-0 mt-0.5 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide
                 {% if f.severity == 'critical' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
-                {% elif f.severity == 'high' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                {% elif f.severity == 'high' %}bg-warning/10 text-warning-emphasis border border-warning/30
                 {% else %}bg-muted text-muted-foreground border border-border{% endif %}">{{ f.severity }}</span>
             <div class="min-w-0 flex-1">
                 <span class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{{ f.category }}</span>
@@ -68,7 +68,7 @@
                                 <i data-lucide="wand-2" class="h-3 w-3"></i>
                                 <span x-text="busy ? 'Classifying…' : 'Auto-classify (PII→Confidential)'"></span>
                             </button>
-                            <span x-show="done" x-cloak class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                            <span x-show="done" x-cloak class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-success/10 text-success-emphasis border border-success/30">
                                 <i data-lucide="check" class="h-3 w-3"></i> <span x-text="msg"></span>
                             </span>
                         </span>
@@ -84,8 +84,8 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="border border-emerald-500/30 bg-emerald-500/5 rounded-xl p-8 text-center">
-        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 mb-3"><i data-lucide="database" class="h-6 w-6"></i></span>
+    <div class="border border-success/30 bg-success/5 rounded-xl p-8 text-center">
+        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-success/10 text-success-emphasis mb-3"><i data-lucide="database" class="h-6 w-6"></i></span>
         <p class="text-sm font-medium text-foreground">Data layer is coherent</p>
         <p class="text-xs text-muted-foreground mt-1">No canonical, classification or lineage gaps found.</p>
     </div>
