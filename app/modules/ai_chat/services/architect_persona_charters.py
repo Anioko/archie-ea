@@ -724,9 +724,10 @@ def _portfolio_manager_context() -> str:
         return f"- Rationalization (TIME): {mix}"
 
     def duplicates():
-        from app.models.simple_duplicate_detection import SimpleDuplicateGroup
-        n = db.session.query(func.count(SimpleDuplicateGroup.id)).scalar() or 0
-        return f"- Duplicate groups awaiting consolidation: {n}"
+        # SimpleDuplicateGroup carries no organization_id (plain db.Model, no
+        # TenantMixin) — a count here would be platform-wide, not this org's,
+        # so no number is safe to state. Point at the page instead.
+        return "- Duplicate groups: see /applications/rationalization"
 
     def vendor_concentration():
         from app.models.application_portfolio import VendorContract
