@@ -55,16 +55,22 @@
 
 {% set arb_pct = maturity_score | default(0) %}
 
-{# Status badge color mapping #}
+{# Status badge color mapping — full semantic class strings so the
+   design-token gate sees literal bg-success/text-success-emphasis/etc.
+   rather than a Jinja-assembled bg-{{ color }}-500 fragment. #}
 {% set _status = (solution.governance_status or 'draft') | lower %}
 {% if _status == 'approved' %}
-  {% set status_color = 'emerald' %}
+  {% set status_badge_class = 'bg-success/10 text-success-emphasis border border-success/20' %}
+  {% set status_dot_class = 'bg-success' %}
 {% elif _status in ('arb_review', 'in_review', 'under_review') %}
-  {% set status_color = 'amber' %}
+  {% set status_badge_class = 'bg-warning/10 text-warning-emphasis border border-warning/20' %}
+  {% set status_dot_class = 'bg-warning' %}
 {% elif _status == 'rejected' %}
-  {% set status_color = 'red' %}
+  {% set status_badge_class = 'bg-destructive/10 text-destructive-emphasis border border-destructive/20' %}
+  {% set status_dot_class = 'bg-destructive' %}
 {% else %}
-  {% set status_color = 'slate' %}
+  {% set status_badge_class = 'bg-muted text-muted-foreground border border-border' %}
+  {% set status_dot_class = 'bg-muted-foreground' %}
 {% endif %}
 
 {% block content %}
@@ -79,10 +85,10 @@
 {% endif %}
 
 {% if show_created_banner %}
-<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
+<div class="bg-success/10 border-b border-success/30 text-success-emphasis px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
   <span><strong>Programme created.</strong> Your architecture blueprint is ready &mdash; fill in sections below to build it out.</span>
-  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800" aria-label="Dismiss">
+  <button @click="show = false" class="ml-auto text-success-emphasis hover:text-success-emphasis" aria-label="Dismiss">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
   </button>
 </div>
@@ -122,15 +128,15 @@
         <div class="min-w-0">
           <div class="flex items-center gap-3 mb-1">
             <h2 class="text-xl font-bold text-foreground">{{ solution.name }}</h2>
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-{{ status_color }}-500/10 text-{{ status_color }}-400 border border-{{ status_color }}-500/20">
-              <span class="w-1.5 h-1.5 rounded-full bg-{{ status_color }}-400"></span>{{ (solution.governance_status or 'Draft') | replace('_', ' ') | title }}
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold {{ status_badge_class }}">
+              <span class="w-1.5 h-1.5 rounded-full {{ status_dot_class }}"></span>{{ (solution.governance_status or 'Draft') | replace('_', ' ') | title }}
             </span>
             {# Submit to ARB (moved from sidebar) #}
             <button @click="submitToArb()"
                     :disabled="!canSubmitArb || submittingArb || governanceStatus === 'arb_review' || governanceStatus === 'approved'"
                     x-show="canSubmitArb && governanceStatus !== 'approved'" x-cloak
                     class="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    :class="canSubmitArb ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20' : 'bg-muted text-muted-foreground'">
+                    :class="canSubmitArb ? 'bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20' : 'bg-muted text-muted-foreground'">
                 <i data-lucide="send" class="w-3.5 h-3.5" aria-hidden="true"></i>
                 <span class="hidden sm:inline" x-text="governanceStatus === 'arb_review' ? 'Under Review' : 'Submit to ARB'"></span>
             </button>
@@ -138,7 +144,7 @@
             <div x-data="productGenFlow()" class="shrink-0 relative hidden">
                 <button type="button" @click="generate()"
                         :disabled="loading || !canGenerate"
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-emerald-500/30 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10 transition-colors"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-success/30 bg-success/5 text-success-emphasis hover:bg-success/10 transition-colors"
                         :class="(loading || !canGenerate) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'"
                         :title="!canGenerate ? disabledReason : 'Generate a runnable FastAPI project from this blueprint'"
                         aria-label="Generate Product">
@@ -186,14 +192,14 @@
                     <template x-if="testResult">
                         <div class="border-t border-border pt-2 space-y-1">
                             <p class="text-xs font-medium">
-                                Sandbox: <span x-text="testResult.test_summary.passed + ' passed'" class="text-emerald-600"></span>,
+                                Sandbox: <span x-text="testResult.test_summary.passed + ' passed'" class="text-success-emphasis"></span>,
                                 <span x-text="testResult.test_summary.failed + ' failed'" class="text-destructive"></span>
                             </p>
                             <template x-for="f in (testResult.failures || []).slice(0, 5)" :key="f.test_name">
                                 <p class="text-[11px] text-muted-foreground">
                                     <span class="font-mono" x-text="f.test_name"></span>:
                                     <span x-text="f.error.substring(0, 60)"></span>
-                                    <span x-show="f.expected_in_wave1" class="text-amber-600">(expected in Wave 1)</span>
+                                    <span x-show="f.expected_in_wave1" class="text-warning-emphasis">(expected in Wave 1)</span>
                                 </p>
                             </template>
                         </div>
@@ -259,7 +265,7 @@
                                             <span class="font-medium text-sm" x-text="elem.element_name"></span>
                                             <span class="text-xs text-muted-foreground" x-text="elem.fields.length + ' fields'"></span>
                                             <template x-if="elem.status === 'confirmed'">
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600">Confirmed</span>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis">Confirmed</span>
                                             </template>
                                             <template x-if="elem.confidence">
                                                 <span class="text-[10px] text-muted-foreground" x-text="Math.round(elem.confidence * 100) + '% confidence'"></span>
@@ -294,7 +300,7 @@
                                                             <template x-if="field.enum"><span class="text-muted-foreground" x-text="'[' + field.enum.join(', ') + ']'"></span></template>
                                                         </td>
                                                         <td class="py-1.5">
-                                                            <span x-show="field.required" class="text-emerald-600 text-xs">Yes</span>
+                                                            <span x-show="field.required" class="text-success-emphasis text-xs">Yes</span>
                                                             <span x-show="field.readonly" class="text-muted-foreground text-xs ml-1">(readonly)</span>
                                                         </td>
                                                         <td class="py-1.5 text-xs text-muted-foreground" x-text="field.description"></td>
@@ -575,13 +581,14 @@
         <div class="flex items-center gap-3 shrink-0">
           <div class="text-right">
             <p class="text-xs text-muted-foreground">ARB Readiness</p>
-            {% set arb_color = 'emerald' if arb_pct >= 80 else ('amber' if arb_pct >= 40 else 'red') %}
-            <p class="text-sm font-bold text-{{ arb_color }}-400">{{ arb_pct }}%</p>
+            {% set arb_text_class = 'text-success' if arb_pct >= 80 else ('text-warning' if arb_pct >= 40 else 'text-destructive') %}
+            {% set arb_stroke_class = 'stroke-success' if arb_pct >= 80 else ('stroke-warning' if arb_pct >= 40 else 'stroke-destructive') %}
+            <p class="text-sm font-bold {{ arb_text_class }}">{{ arb_pct }}%</p>
           </div>
           <div class="relative w-12 h-12">
             <svg viewBox="0 0 36 36" class="w-12 h-12 -rotate-90">
               <circle cx="18" cy="18" r="15.9" fill="none" stroke="hsl(var(--border))" stroke-width="3"></circle>
-              <circle cx="18" cy="18" r="15.9" fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="{{ arb_pct }} {{ 100 - arb_pct }}" class="stroke-{{ arb_color }}-400"></circle>
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="{{ arb_pct }} {{ 100 - arb_pct }}" class="{{ arb_stroke_class }}"></circle>
             </svg>
           </div>
         </div>
@@ -640,19 +647,19 @@
     {#  NEXT BEST ACTION — uses maturity_gaps with projected scores  #}
     {# ══════════════════════════════════════════════════════════════ #}
     {% if maturity_gaps and arb_pct < 100 %}
-    <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+    <div class="rounded-xl border border-warning/20 bg-warning/5 p-4">
       <div class="flex items-center gap-2 mb-3">
-        <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+        <svg class="w-4 h-4 text-warning shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
         <p class="text-sm font-semibold text-foreground">Next actions to improve ARB readiness ({{ arb_pct }}%)</p>
       </div>
       <div class="space-y-2">
         {% for gap in maturity_gaps[:3] %}
         <div class="flex items-center justify-between gap-3 text-sm">
           <div class="flex items-center gap-2 min-w-0">
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-warning shrink-0"></span>
             <span class="text-foreground/80 truncate">{{ gap.get('phase', '') }}</span>
           </div>
-          <span class="text-xs text-amber-400 font-medium whitespace-nowrap shrink-0">&rarr; {{ gap.get('projected_score', arb_pct) }}%</span>
+          <span class="text-xs text-warning-emphasis font-medium whitespace-nowrap shrink-0">&rarr; {{ gap.get('projected_score', arb_pct) }}%</span>
         </div>
         {% endfor %}
         {% if maturity_gaps | length > 3 %}
@@ -685,11 +692,11 @@
             <button @click="aiDismissed = true" class="text-xs text-muted-foreground hover:text-foreground">I'll add manually</button>
           </div>
           <template x-if="aiResult">
-            <div class="mt-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <p class="text-xs text-emerald-400 font-medium" x-text="'Created ' + aiResult.total + ' entities across all phases'"></p>
+            <div class="mt-3 p-3 rounded-lg bg-success/10 border border-success/20">
+              <p class="text-xs text-success-emphasis font-medium" x-text="'Created ' + aiResult.total + ' entities across all phases'"></p>
               <div class="flex flex-wrap gap-2 mt-1.5">
                 <template x-for="(count, type) in aiResult.created" :key="type">
-                  <span x-show="count > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400" x-text="count + ' ' + type"></span>
+                  <span x-show="count > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success-emphasis" x-text="count + ' ' + type"></span>
                 </template>
               </div>
             </div>
@@ -721,7 +728,7 @@
             <span x-text="tab.label"></span>
             <span class="ml-1 text-[10px] text-muted-foreground" x-text="'(' + tab.phase + ')'"></span>
             <span class="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 rounded-full text-[10px] font-bold px-1"
-                  :class="tab.pct === 100 ? 'bg-emerald-500/15 text-emerald-400' : tab.pct >= 40 ? 'bg-amber-500/15 text-amber-400' : tab.pct > 0 ? 'bg-destructive/15 text-destructive-emphasis' : 'bg-muted text-muted-foreground'"
+                  :class="tab.pct === 100 ? 'bg-success/15 text-success-emphasis' : tab.pct >= 40 ? 'bg-warning/15 text-warning-emphasis' : tab.pct > 0 ? 'bg-destructive/15 text-destructive-emphasis' : 'bg-muted text-muted-foreground'"
                   x-html="tab.pct === 100 ? '&#10003;' : tab.pct + '%'"></span>
           </button>
         </template>
@@ -752,10 +759,10 @@
       {% if analysis_origin and analysis_origin.get('problem_statement') %}
       <div class="rounded-xl border border-border bg-card p-5">
         <div class="flex items-center gap-2 mb-3">
-          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Problem Statement</p>
           {% if analysis_origin.get('recommendation_type') %}
-          <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400">{{ analysis_origin.get('recommendation_type') }}{% if analysis_origin.get('recommendation_score') %} &middot; Score: {{ analysis_origin.get('recommendation_score') }}{% endif %}</span>
+          <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-info/10 text-info-emphasis">{{ analysis_origin.get('recommendation_type') }}{% if analysis_origin.get('recommendation_score') %} &middot; Score: {{ analysis_origin.get('recommendation_score') }}{% endif %}</span>
           {% endif %}
         </div>
         <p class="text-sm text-foreground/80 leading-relaxed">{{ analysis_origin.get('problem_statement') }}</p>
@@ -767,11 +774,11 @@
 
       {# Executive Summary callout #}
       {% if solution.description %}
-      <div class="border-l-4 border-l-violet-500 rounded-r-lg bg-card/50 px-5 py-4">
+      <div class="border-l-4 border-l-info rounded-r-lg bg-card/50 px-5 py-4">
         <p class="text-sm text-foreground/90 leading-relaxed">{{ solution.description }}</p>
       </div>
       {% else %}
-      <div class="border-l-4 border-l-violet-500/30 rounded-r-lg bg-card/30 px-5 py-4">
+      <div class="border-l-4 border-l-info/30 rounded-r-lg bg-card/30 px-5 py-4">
         <p class="text-sm text-muted-foreground italic">No executive summary yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">add one</a></p>
       </div>
       {% endif %}
@@ -779,12 +786,12 @@
       {# Strategic Context: stat cards + inline list #}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Strategic Context</p>
           <div class="ml-auto flex gap-1 items-center">
             {% if llm_available %}
             <button @click="generateDraft()" :disabled="aiGenerating"
-                    class="text-[11px] text-violet-400/70 hover:text-violet-400 font-medium disabled:opacity-50 inline-flex items-center gap-1">
+                    class="text-[11px] text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
               <svg x-show="!aiGenerating" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
               <svg x-show="aiGenerating" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <span x-text="aiGenerating ? 'Generating...' : 'Generate'"></span>
@@ -802,8 +809,8 @@
         <div class="grid grid-cols-3 gap-3 mb-4">
           <div class="rounded-xl border border-border bg-card p-4">
             <div class="flex items-center gap-3">
-              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-violet-500/10 border border-violet-500/20 shrink-0">
-                <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-info/10 border border-info/20 shrink-0">
+                <svg class="w-5 h-5 text-info" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
               </span>
               <div>
                 <p class="text-2xl font-bold text-foreground">{{ drivers | length }}</p>
@@ -813,8 +820,8 @@
           </div>
           <div class="rounded-xl border border-border bg-card p-4">
             <div class="flex items-center gap-3">
-              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0">
-                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10 border border-success/20 shrink-0">
+                <svg class="w-5 h-5 text-success" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               </span>
               <div>
                 <p class="text-2xl font-bold text-foreground">{{ goals | length }}</p>
@@ -844,20 +851,20 @@
               Architecture Completeness
             </h4>
             <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold
- {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' if _ac.score >= 80
- else ('bg-amber-500/10 text-amber-600 border border-amber-500/20' if _ac.score >= 40
+ {{ 'bg-success/10 text-success-emphasis border border-success/20' if _ac.score >= 80
+ else ('bg-warning/10 text-warning-emphasis border border-warning/20' if _ac.score >= 40
  else 'bg-destructive/10 text-destructive-emphasis border border-destructive/20') }}">
               {{ _ac.score }}% &mdash; {{ _ac.filled_count }}/{{ _ac.total }} sections
             </span>
           </div>
           <div class="h-2 w-full rounded-full bg-muted/50 overflow-hidden mb-3">
             <div class="h-full rounded-full transition-all duration-500
- {{ 'bg-emerald-500' if _ac.score >= 80 else ('bg-amber-500' if _ac.score >= 40 else 'bg-destructive') }}"
+ {{ 'bg-success' if _ac.score >= 80 else ('bg-warning' if _ac.score >= 40 else 'bg-destructive') }}"
                  style="width: {{ _ac.score }}%"></div>
           </div>
           <div class="flex flex-wrap gap-1.5">
             {% for cat in _ac.filled %}
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-success/10 text-success-emphasis border border-success/20">
               <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
               {{ cat|replace('_',' ')|title }}
             </span>
@@ -873,13 +880,13 @@
 
         {# Cross-phase insight: detect broken chain starts #}
         {% if drivers and not goals %}
-        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+        <div class="rounded-lg border border-warning/20 bg-warning/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
           <p class="text-xs text-foreground/80">{{ drivers | length }} driver{{ 's' if drivers | length != 1 }} defined but no goals yet. Drivers need goals to trace through to requirements &mdash; the first traceability chain is broken.</p>
         </div>
         {% elif goals and not drivers %}
-        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+        <div class="rounded-lg border border-warning/20 bg-warning/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
           <p class="text-xs text-foreground/80">{{ goals | length }} goal{{ 's' if goals | length != 1 }} defined but no drivers. Goals without drivers have no business justification &mdash; ARB will ask "why?"</p>
         </div>
         {% elif drivers and goals and not requirements_list %}
@@ -894,14 +901,14 @@
         <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-sm">
           {% for d in drivers %}
           <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
-            <span class="w-2 h-2 rounded-full bg-violet-400 shrink-0"></span>
+            <span class="w-2 h-2 rounded-full bg-info shrink-0"></span>
             <span class="flex-1">{{ d.get('name') or d.get('title') or d.get('description', 'Untitled') }}</span>
             <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Driver</span>
           </div>
           {% endfor %}
           {% for g in goals %}
           <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+            <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
             <span class="flex-1">{{ g.get('name') or g.get('title') or g.get('description', 'Untitled') }}</span>
             <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Goal</span>
           </div>
@@ -917,7 +924,7 @@
         {% else %}
         <p class="text-sm text-muted-foreground">No drivers, goals, or constraints yet &mdash;
           {% if llm_available %}
-          <button @click="generateDraft()" :disabled="aiGenerating" class="text-violet-400 hover:underline font-medium">generate from problem statement</button> or
+          <button @click="generateDraft()" :disabled="aiGenerating" class="text-info-emphasis hover:underline font-medium">generate from problem statement</button> or
           {% endif %}
           <button @click="openAdd('driver')" class="text-primary hover:underline">add manually</button>
         </p>
@@ -927,7 +934,7 @@
       {# Stakeholders: Mendelow grid via D3 #}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Stakeholders</p>
           <span class="text-xs text-muted-foreground">({{ stakeholder_mappings | length }})</span>
         </div>
@@ -943,7 +950,7 @@
       {# Requirements table #}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Requirements</p>
           <span class="text-xs text-muted-foreground">({{ requirements_list | length }})</span>
           <button @click="openAdd('requirement')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
@@ -964,10 +971,10 @@
               <tr class="hover:bg-muted/20">
                 <td class="px-5 py-2.5">{{ r.get('name') or r.get('title') or r.get('description', 'Untitled') }}</td>
                 <td class="px-3 py-2.5"><span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{{ (r.get('requirement_type') or r.get('type') or 'Functional') | title }}</span></td>
-                <td class="px-3 py-2.5"><span class="text-[10px] {% if r_priority == 'critical' %}text-destructive{% elif r_priority == 'high' %}text-amber-400{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
+                <td class="px-3 py-2.5"><span class="text-[10px] {% if r_priority == 'critical' %}text-destructive{% elif r_priority == 'high' %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
                 <td class="px-3 py-2.5">
                   <span class="flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full {% if r_status == 'met' or r_status == 'closed' %}bg-emerald-400{% elif r_status == 'in_progress' or r_status == 'in progress' %}bg-amber-400{% else %}bg-muted-foreground{% endif %}"></span>
+                    <span class="w-1.5 h-1.5 rounded-full {% if r_status == 'met' or r_status == 'closed' %}bg-success{% elif r_status == 'in_progress' or r_status == 'in progress' %}bg-warning{% else %}bg-muted-foreground{% endif %}"></span>
                     <span class="text-xs">{{ r_status | replace('_', ' ') | title }}</span>
                   </span>
                 </td>
@@ -985,7 +992,7 @@
       {% if quality_attributes %}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Quality Attributes</p>
           <span class="text-xs text-muted-foreground">({{ quality_attributes | length }})</span>
         </div>
@@ -1028,8 +1035,8 @@
 
       {# Cross-phase insight: requirements → capability coverage #}
       {% if requirements_list and not capabilities_json %}
-      <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 flex items-start gap-2">
-        <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+      <div class="rounded-lg border border-warning/20 bg-warning/5 px-4 py-2.5 flex items-start gap-2">
+        <svg class="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
         <p class="text-xs text-foreground/80">{{ requirements_list | length }} requirement{{ 's' if requirements_list | length != 1 }} defined in Phase A but no capabilities mapped. Requirements can't trace to applications without capabilities &mdash; the Requirement &rarr; Capability &rarr; Application chain is broken.</p>
       </div>
       {% elif capabilities_json and not applications %}
@@ -1042,22 +1049,22 @@
       {# Capabilities domain cards #}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+          <div class="w-1 h-5 rounded-full bg-success"></div>
           <p class="text-sm font-semibold text-foreground">Capabilities</p>
           <span class="text-xs text-muted-foreground">({{ capabilities_json | length }})</span>
         </div>
         {% if capabilities_json %}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {% for cap in capabilities_json %}
-          <div class="group rounded-xl border border-border bg-card p-4 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all">
+          <div class="group rounded-xl border border-border bg-card p-4 hover:border-success/40 hover:bg-success/5 transition-all">
             <div class="flex items-start gap-3">
-              <span class="flex items-center justify-center w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-bold shrink-0">{{ (cap.get('domain') or 'N/A')[:3] | upper }}</span>
+              <span class="flex items-center justify-center w-9 h-9 rounded-lg bg-success/10 text-success-emphasis text-xs font-bold shrink-0">{{ (cap.get('domain') or 'N/A')[:3] | upper }}</span>
               <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-foreground group-hover:text-emerald-400 transition-colors">{{ cap.get('name') or 'Unnamed' }}</p>
+                <p class="text-sm font-medium text-foreground group-hover:text-success-emphasis transition-colors">{{ cap.get('name') or 'Unnamed' }}</p>
                 <div class="flex items-center gap-2 mt-2">
                   {% set mat = cap.get('maturity_level') or cap.get('level') %}
                   {% if mat %}
-                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-emerald-500/10 text-emerald-400{% elif mat >= 3 %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">L{{ mat }}</span>
+                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-success/10 text-success-emphasis{% elif mat >= 3 %}bg-warning/10 text-warning-emphasis{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">L{{ mat }}</span>
                   {% endif %}
                 </div>
               </div>
@@ -1073,7 +1080,7 @@
       {# Applications table #}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+          <div class="w-1 h-5 rounded-full bg-success"></div>
           <p class="text-sm font-semibold text-foreground">Applications</p>
           <span class="text-xs text-muted-foreground">({{ applications | length }})</span>
         </div>
@@ -1092,7 +1099,7 @@
                 <td class="px-5 py-2.5 font-medium">{{ app.name }}</td>
                 <td class="px-3 py-2.5">
                   <span class="inline-flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full {% if 'strategic' in lc %}bg-emerald-400{% elif 'transition' in lc or 'tolerate' in lc %}bg-amber-400{% elif 'decommission' in lc or 'retire' in lc %}bg-destructive{% else %}bg-muted-foreground{% endif %}"></span>
+                    <span class="w-1.5 h-1.5 rounded-full {% if 'strategic' in lc %}bg-success{% elif 'transition' in lc or 'tolerate' in lc %}bg-warning{% elif 'decommission' in lc or 'retire' in lc %}bg-destructive{% else %}bg-muted-foreground{% endif %}"></span>
                     <span class="text-xs">{{ app.lifecycle_status or '&mdash;' }}</span>
                   </span>
                 </td>
@@ -1111,7 +1118,7 @@
       {% if vendor_products_json %}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+          <div class="w-1 h-5 rounded-full bg-success"></div>
           <p class="text-sm font-semibold text-foreground">Vendor Products</p>
           <span class="text-xs text-muted-foreground">({{ vendor_products_json | length }})</span>
         </div>
@@ -1151,7 +1158,7 @@
       {# Business Processes #}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+          <div class="w-1 h-5 rounded-full bg-success"></div>
           <p class="text-sm font-semibold text-foreground">Processes</p>
           <span class="text-xs text-muted-foreground">({{ processes | length }})</span>
         </div>
@@ -1159,7 +1166,7 @@
         <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-sm">
           {% for proc in processes %}
           <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+            <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
             <span class="flex-1">{{ proc.process_code }} {{ proc.process_name }}</span>
           </div>
           {% endfor %}
@@ -1201,19 +1208,19 @@
             <div class="text-sm text-muted-foreground space-y-1">
               <p x-show="strategicDependency.total_dependencies !== undefined" class="flex justify-between"><span>Total Dependencies</span><span class="font-medium text-foreground" x-text="strategicDependency.total_dependencies"></span></p>
               <p x-show="strategicDependency.critical_path_length !== undefined" class="flex justify-between"><span>Critical Path</span><span class="font-medium text-foreground" x-text="strategicDependency.critical_path_length"></span></p>
-              <p x-show="strategicDependency.circular_dependencies !== undefined" class="flex justify-between"><span>Circular Deps</span><span class="font-medium" :class="strategicDependency.circular_dependencies > 0 ? 'text-destructive' : 'text-emerald-500'" x-text="strategicDependency.circular_dependencies"></span></p>
+              <p x-show="strategicDependency.circular_dependencies !== undefined" class="flex justify-between"><span>Circular Deps</span><span class="font-medium" :class="strategicDependency.circular_dependencies > 0 ? 'text-destructive' : 'text-success-emphasis'" x-text="strategicDependency.circular_dependencies"></span></p>
             </div>
           </template>
         </div>
         <div x-show="strategicTechnologyLoaded" x-cloak class="rounded-xl border border-border bg-card p-5">
           <div class="flex items-center gap-2 mb-3">
-            <i data-lucide="cpu" class="w-4 h-4 text-violet-500" aria-hidden="true"></i>
+            <i data-lucide="cpu" class="w-4 h-4 text-info" aria-hidden="true"></i>
             <p class="text-sm font-semibold text-foreground">Technology Analysis</p>
           </div>
           <template x-if="strategicTechnology">
             <div class="text-sm text-muted-foreground space-y-1">
               <p x-show="strategicTechnology.total_technologies !== undefined" class="flex justify-between"><span>Technologies</span><span class="font-medium text-foreground" x-text="strategicTechnology.total_technologies"></span></p>
-              <p x-show="strategicTechnology.deprecated_count !== undefined" class="flex justify-between"><span>Deprecated</span><span class="font-medium" :class="strategicTechnology.deprecated_count > 0 ? 'text-amber-500' : 'text-emerald-500'" x-text="strategicTechnology.deprecated_count"></span></p>
+              <p x-show="strategicTechnology.deprecated_count !== undefined" class="flex justify-between"><span>Deprecated</span><span class="font-medium" :class="strategicTechnology.deprecated_count > 0 ? 'text-warning-emphasis' : 'text-success-emphasis'" x-text="strategicTechnology.deprecated_count"></span></p>
               <p x-show="strategicTechnology.stack_diversity !== undefined" class="flex justify-between"><span>Stack Diversity</span><span class="font-medium text-foreground" x-text="strategicTechnology.stack_diversity"></span></p>
             </div>
           </template>
@@ -1236,7 +1243,7 @@
           </button>
           {% if llm_available %}
           <button @click="generateSection('architecture')" :disabled="sectionGenerating.architecture"
-                  class="ml-auto text-[11px] text-violet-400/70 hover:text-violet-400 font-medium disabled:opacity-50 inline-flex items-center gap-1">
+                  class="ml-auto text-[11px] text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
             <svg x-show="!sectionGenerating.architecture" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
             <svg x-show="sectionGenerating.architecture" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             <span x-text="sectionGenerating.architecture ? 'Generating...' : 'Generate'"></span>
@@ -1258,8 +1265,8 @@
         {% if not ns_layers.has_app %}{% set _ = missing_layers.append('Application') %}{% endif %}
         {% if not ns_layers.has_tech %}{% set _ = missing_layers.append('Technology') %}{% endif %}
         {% if missing_layers %}
-        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+        <div class="rounded-lg border border-warning/20 bg-warning/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
           <p class="text-xs text-foreground/80">Missing ArchiMate layer{{ 's' if missing_layers | length != 1 }}: <strong>{{ missing_layers | join(', ') }}</strong>. A complete SAD needs all three layers for cross-layer traceability. ARB readiness requires &ge;5 cross-layer relationships.</p>
         </div>
         {% elif ns_layers.has_rel == 0 %}
@@ -1268,8 +1275,8 @@
           <p class="text-xs text-foreground/80">All three ArchiMate layers present &mdash; but no cross-layer relationships defined yet. Link elements across layers to show how business processes are realized by applications and supported by technology.</p>
         </div>
         {% else %}
-        <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div class="rounded-lg border border-success/20 bg-success/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-success shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           <p class="text-xs text-foreground/80">All three ArchiMate layers covered with {{ ns_layers.has_rel }} relationship{{ 's' if ns_layers.has_rel != 1 }}. Architecture model is traceable.</p>
         </div>
         {% endif %}
@@ -1283,9 +1290,9 @@
         {% endfor %}
         <div class="flex flex-wrap gap-2 mb-4">
           <button @click="activeLayer = 'all'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">All ({{ archimate_elements | length }})</button>
-          {% if ns.biz %}<button @click="activeLayer = 'business'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'business' ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Business ({{ ns.biz }})</button>{% endif %}
+          {% if ns.biz %}<button @click="activeLayer = 'business'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'business' ? 'bg-success text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Business ({{ ns.biz }})</button>{% endif %}
           {% if ns.app %}<button @click="activeLayer = 'application'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'application' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Application ({{ ns.app }})</button>{% endif %}
-          {% if ns.tech %}<button @click="activeLayer = 'technology'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'technology' ? 'bg-sky-500 text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Technology ({{ ns.tech }})</button>{% endif %}
+          {% if ns.tech %}<button @click="activeLayer = 'technology'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'technology' ? 'bg-info text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Technology ({{ ns.tech }})</button>{% endif %}
         </div>
 
         {# Elements list #}
@@ -1297,7 +1304,7 @@
             <span class="w-3 h-3 rounded bg-{{ lcolor }}-500/30 border border-{{ lcolor }}-500/50 shrink-0"></span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium">{{ elem.get('name', 'Unnamed') }}</p>
-              <p class="text-[10px] text-muted-foreground">{{ elem.get('type', '') }}{% if elem.get('relationship') %} &middot; <span class="text-primary/70">{{ elem.get('relationship') }}</span>{% endif %}{% if elem.get('is_new') %} &middot; <span class="text-amber-400">new</span>{% endif %}</p>
+              <p class="text-[10px] text-muted-foreground">{{ elem.get('type', '') }}{% if elem.get('relationship') %} &middot; <span class="text-primary/70">{{ elem.get('relationship') }}</span>{% endif %}{% if elem.get('is_new') %} &middot; <span class="text-warning-emphasis">new</span>{% endif %}</p>
             </div>
             <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-{{ lcolor }}-500/10 text-{{ lcolor }}-400">{{ layer | title }}</span>
           </div>
@@ -1348,12 +1355,12 @@
 
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+          <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Solution Options</p>
           <div class="ml-auto flex gap-1 items-center">
             {% if llm_available %}
             <button @click="generateSection('variants')" :disabled="sectionGenerating.variants"
-                    class="text-[11px] text-violet-400/70 hover:text-violet-400 font-medium disabled:opacity-50 inline-flex items-center gap-1">
+                    class="text-[11px] text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
               <svg x-show="!sectionGenerating.variants" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
               <svg x-show="sectionGenerating.variants" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <span x-text="sectionGenerating.variants ? 'Generating...' : 'Generate Options'"></span>
@@ -1371,23 +1378,23 @@
           {% if rec.get('selected') or rec.get('is_recommended') %}{% set ns_opts.has_selected = true %}{% endif %}
         {% endfor %}
         {% if not ns_opts.has_selected %}
-        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+        <div class="rounded-lg border border-warning/20 bg-warning/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
           <p class="text-xs text-foreground/80">{{ recommendations | length }} option{{ 's' if recommendations | length != 1 }} evaluated but none selected as the recommended approach. ARB requires a selected option with justification before approval.</p>
         </div>
         {% endif %}
         {% for rec in recommendations %}
         {% set is_selected = rec.get('selected') or rec.get('is_recommended') %}
         {% if is_selected %}
-        <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 mb-3">
+        <div class="rounded-xl border border-success/30 bg-success/5 p-4 mb-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/15 text-emerald-400">
+              <span class="flex items-center justify-center w-8 h-8 rounded-full bg-success/15 text-success-emphasis">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
               </span>
               <div>
                 <p class="text-sm font-semibold text-foreground">{{ rec.get('name') or rec.get('title') or rec.get('option_type', 'Option') }}</p>
-                <p class="text-xs text-emerald-400 font-medium mt-0.5">Selected{% if rec.get('score') %} &middot; Score: {{ rec.get('score') }}{% endif %}</p>
+                <p class="text-xs text-success-emphasis font-medium mt-0.5">Selected{% if rec.get('score') %} &middot; Score: {{ rec.get('score') }}{% endif %}</p>
               </div>
             </div>
           </div>
@@ -1409,7 +1416,7 @@
         {% else %}
         <p class="text-sm text-muted-foreground">No solution options evaluated yet &mdash;
           {% if llm_available %}
-          <button @click="generateSection('variants')" :disabled="sectionGenerating.variants" class="text-violet-400 hover:underline font-medium">generate options with AI</button> or
+          <button @click="generateSection('variants')" :disabled="sectionGenerating.variants" class="text-info-emphasis hover:underline font-medium">generate options with AI</button> or
           {% endif %}
           <button @click="openAdd('option')" class="text-primary hover:underline">add manually</button>
         </p>
@@ -1420,7 +1427,7 @@
       {% if tco_list %}
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+          <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Total Cost of Ownership</p>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1452,7 +1459,7 @@
 
       <div>
         <div class="flex items-center gap-3 mb-4">
-          <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+          <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Implementation Roadmap</p>
           {% if plateaus_list %}
           <span class="text-xs text-muted-foreground">({{ plateaus_list | length }} plateaus)</span>
@@ -1460,7 +1467,7 @@
           <div class="ml-auto flex gap-1 items-center">
             {% if llm_available %}
             <button @click="generateSection('implementation')" :disabled="sectionGenerating.implementation"
-                    class="text-[11px] text-violet-400/70 hover:text-violet-400 font-medium disabled:opacity-50 inline-flex items-center gap-1">
+                    class="text-[11px] text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
               <svg x-show="!sectionGenerating.implementation" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
               <svg x-show="sectionGenerating.implementation" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <span x-text="sectionGenerating.implementation ? 'Generating...' : 'Generate'"></span>
@@ -1501,7 +1508,7 @@
         {% else %}
         <p class="text-sm text-muted-foreground">No migration roadmap defined yet &mdash;
           {% if llm_available %}
-          <button @click="generateSection('implementation')" :disabled="sectionGenerating.implementation" class="text-violet-400 hover:underline font-medium">generate with AI</button> or
+          <button @click="generateSection('implementation')" :disabled="sectionGenerating.implementation" class="text-info-emphasis hover:underline font-medium">generate with AI</button> or
           {% endif %}
           <button @click="openAdd('plateau')" class="text-primary hover:underline">add manually</button>
         </p>
@@ -1528,7 +1535,7 @@
       <div x-show="strategicRiskLoaded || strategicInvestmentLoaded" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div x-show="strategicRiskLoaded" x-cloak class="rounded-xl border border-border bg-card p-5">
           <div class="flex items-center gap-2 mb-3">
-            <i data-lucide="shield-alert" class="w-4 h-4 text-orange-500" aria-hidden="true"></i>
+            <i data-lucide="shield-alert" class="w-4 h-4 text-warning" aria-hidden="true"></i>
             <p class="text-sm font-semibold text-foreground">Risk Analysis</p>
             <span x-show="strategicRiskAnalysis && strategicRiskAnalysis.overall_risk_level"
                   class="ml-auto inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold border"
@@ -1538,15 +1545,15 @@
           <template x-if="strategicRiskAnalysis">
             <div class="grid grid-cols-4 gap-2 text-center">
               <div><p class="text-lg font-bold text-destructive" x-text="strategicRiskAnalysis.critical_risks || 0"></p><p class="text-[10px] text-muted-foreground">Critical</p></div>
-              <div><p class="text-lg font-bold text-orange-500" x-text="strategicRiskAnalysis.high_risks || 0"></p><p class="text-[10px] text-muted-foreground">High</p></div>
-              <div><p class="text-lg font-bold text-amber-500" x-text="strategicRiskAnalysis.medium_risks || 0"></p><p class="text-[10px] text-muted-foreground">Medium</p></div>
-              <div><p class="text-lg font-bold text-emerald-500" x-text="strategicRiskAnalysis.low_risks || 0"></p><p class="text-[10px] text-muted-foreground">Low</p></div>
+              <div><p class="text-lg font-bold text-destructive" x-text="strategicRiskAnalysis.high_risks || 0"></p><p class="text-[10px] text-muted-foreground">High</p></div>
+              <div><p class="text-lg font-bold text-warning" x-text="strategicRiskAnalysis.medium_risks || 0"></p><p class="text-[10px] text-muted-foreground">Medium</p></div>
+              <div><p class="text-lg font-bold text-success" x-text="strategicRiskAnalysis.low_risks || 0"></p><p class="text-[10px] text-muted-foreground">Low</p></div>
             </div>
           </template>
         </div>
         <div x-show="strategicInvestmentLoaded" x-cloak class="rounded-xl border border-border bg-card p-5">
           <div class="flex items-center gap-2 mb-3">
-            <i data-lucide="trending-up" class="w-4 h-4 text-emerald-500" aria-hidden="true"></i>
+            <i data-lucide="trending-up" class="w-4 h-4 text-success" aria-hidden="true"></i>
             <p class="text-sm font-semibold text-foreground">Investment Analysis</p>
           </div>
           <template x-if="strategicInvestment">
@@ -1572,9 +1579,9 @@
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               {% set gov_status = (solution.governance_status or 'draft') | lower %}
-              <span class="flex items-center justify-center w-10 h-10 rounded-lg {% if gov_status == 'approved' %}bg-emerald-500/10 border-emerald-500/20{% elif gov_status in ('arb_review', 'in_review') %}bg-amber-500/10 border-amber-500/20{% elif gov_status == 'rejected' %}bg-destructive/10 border-destructive/20{% else %}bg-muted border-border{% endif %} border">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg {% if gov_status == 'approved' %}bg-success/10 border-success/20{% elif gov_status in ('arb_review', 'in_review') %}bg-warning/10 border-warning/20{% elif gov_status == 'rejected' %}bg-destructive/10 border-destructive/20{% else %}bg-muted border-border{% endif %} border">
                 {% if gov_status == 'approved' %}
-                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+                <svg class="w-5 h-5 text-success" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
                 {% else %}
                 <svg class="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
                 {% endif %}
@@ -1599,8 +1606,8 @@
           <button @click="openAdd('risk')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
         </div>
         {% if risks_list and not adr_list %}
-        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
-          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+        <div class="rounded-lg border border-warning/20 bg-warning/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
           <p class="text-xs text-foreground/80">{{ risks_list | length }} risk{{ 's' if risks_list | length != 1 }} identified but no Architecture Decision Records (ADRs) linked. Each high/critical risk should have a documented decision on how it's being addressed.</p>
         </div>
         {% endif %}
@@ -1636,13 +1643,13 @@
                 <td class="px-5 py-2.5">{{ risk.get('name') or risk.get('title') or risk.get('description', 'Untitled') }}</td>
                 <td class="px-3 py-2.5">
                   <span class="inline-flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full {% if sev == 'high' or sev == 'critical' %}bg-destructive{% elif sev == 'medium' %}bg-amber-400{% else %}bg-muted-foreground{% endif %}"></span>
-                    <span class="text-xs {% if sev == 'high' or sev == 'critical' %}text-destructive{% elif sev == 'medium' %}text-amber-400{% endif %}">{{ sev | title }}</span>
+                    <span class="w-1.5 h-1.5 rounded-full {% if sev == 'high' or sev == 'critical' %}bg-destructive{% elif sev == 'medium' %}bg-warning{% else %}bg-muted-foreground{% endif %}"></span>
+                    <span class="text-xs {% if sev == 'high' or sev == 'critical' %}text-destructive{% elif sev == 'medium' %}text-warning-emphasis{% endif %}">{{ sev | title }}</span>
                   </span>
                 </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (risk.get('likelihood') or risk.get('probability') or '&mdash;') | title }}</td>
                 <td class="px-3 py-2.5">
-                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if 'mitigat' in r_status %}bg-emerald-500/10 text-emerald-400{% elif 'accept' in r_status %}bg-muted text-muted-foreground{% else %}bg-amber-500/10 text-amber-400{% endif %}">{{ r_status | replace('_', ' ') | title }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if 'mitigat' in r_status %}bg-success/10 text-success-emphasis{% elif 'accept' in r_status %}bg-muted text-muted-foreground{% else %}bg-warning/10 text-warning-emphasis{% endif %}">{{ r_status | replace('_', ' ') | title }}</span>
                 </td>
               </tr>
               {% endfor %}
@@ -1677,7 +1684,7 @@
                 <td class="px-3 py-2.5 font-medium">{{ adr.title or 'Untitled' }}</td>
                 <td class="px-3 py-2.5">
                   {% set adr_status = (adr.status or 'draft') | lower %}
-                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-emerald-500/10 text-emerald-400{% elif adr_status == 'proposed' %}bg-amber-500/10 text-amber-400{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-info/10 text-info{% endif %}">{{ adr_status | title }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-success/10 text-success-emphasis{% elif adr_status == 'proposed' %}bg-warning/10 text-warning-emphasis{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-info/10 text-info{% endif %}">{{ adr_status | title }}</span>
                 </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (adr.decision or '')[:80] }}{% if (adr.decision or '') | length > 80 %}&hellip;{% endif %}</td>
               </tr>
@@ -1736,7 +1743,7 @@
           <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
             <span class="flex-1">{{ cm.get('framework') or cm.get('regulation') or cm.get('name') or 'Unnamed' }}{% if cm.get('control_id') %} &middot; {{ cm.get('control_id') }}{% endif %}</span>
             {% set cm_status = (cm.get('status') or cm.get('compliance_status') or 'pending') | lower %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-emerald-500/10 text-emerald-400{% elif cm_status in ('partial', 'in_progress') %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-success/10 text-success-emphasis{% elif cm_status in ('partial', 'in_progress') %}bg-warning/10 text-warning-emphasis{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
           </div>
           {% endfor %}
         </div>
@@ -1782,10 +1789,10 @@
           <div class="px-5 py-3 {% if chain.pct < 100 %}bg-destructive/5{% endif %}">
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-sm">{{ chain.label }}</span>
-              <span class="text-xs font-medium {% if chain.pct == 100 %}text-emerald-400{% elif chain.pct >= 50 %}text-amber-400{% else %}text-destructive{% endif %}">{{ chain.pct }}%</span>
+              <span class="text-xs font-medium {% if chain.pct == 100 %}text-success-emphasis{% elif chain.pct >= 50 %}text-warning-emphasis{% else %}text-destructive{% endif %}">{{ chain.pct }}%</span>
             </div>
             <div class="w-full bg-muted rounded-full h-1.5">
-              <div class="h-1.5 rounded-full {% if chain.pct == 100 %}bg-emerald-400{% elif chain.pct >= 50 %}bg-amber-400{% else %}bg-destructive{% endif %}" style="width:{{ chain.pct }}%"></div>
+              <div class="h-1.5 rounded-full {% if chain.pct == 100 %}bg-success{% elif chain.pct >= 50 %}bg-warning{% else %}bg-destructive{% endif %}" style="width:{{ chain.pct }}%"></div>
             </div>
             {% if chain.gap %}
             <p class="text-[10px] text-muted-foreground mt-1.5">

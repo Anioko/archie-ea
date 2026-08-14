@@ -113,7 +113,7 @@
       <div class="flex flex-wrap gap-2">
         <template x-for="(done, step) in steps" :key="step">
           <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                :class="done ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' : 'bg-muted text-muted-foreground border border-border'"
+                :class="done ? 'bg-success/10 text-success-emphasis border border-success/30' : 'bg-muted text-muted-foreground border border-border'"
                 x-text="stepLabel(step)"><!-- token-migration-ok --></span>
         </template>
       </div>
@@ -187,7 +187,7 @@
             <div class="pt-1 border-t border-border">
               <p class="text-xs text-muted-foreground mb-0.5">Net Benefit</p>
               <p class="text-base font-semibold tabular-nums"
-                 :class="netBenefit() >= 0 ? 'text-emerald-600' : 'text-destructive'"
+                 :class="netBenefit() >= 0 ? 'text-success' : 'text-destructive'"
                  x-text="fmtCurrency(netBenefit())"><!-- token-migration-ok --></p>
             </div>
           </div>
@@ -200,7 +200,7 @@
           <div class="mb-3">
             <p class="text-xs text-muted-foreground mb-1">Decision Readiness</p>
             <div class="flex gap-1 h-2 rounded-full overflow-hidden">
-              <div class="bg-emerald-500 transition-all duration-500"
+              <div class="bg-success transition-all duration-500"
                    :style="'width: ' + pct(data.readiness && data.readiness.ready, totalReadiness()) + '%'"
                    :title="'Ready: ' + (data.readiness && data.readiness.ready || 0)"></div>
               <div class="bg-muted-foreground/30 transition-all duration-500"
@@ -572,14 +572,14 @@
                     aria-label="Bulk action notes"></textarea>
           <button @click="executeBulkAction('approve')"
                   :disabled="bulkProcessing"
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Bulk approve selected applications"><!-- token-migration-ok -->
             <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i>
             Approve Selected
           </button>
           <button @click="executeBulkAction('defer')"
                   :disabled="bulkProcessing"
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30 hover:bg-warning/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Bulk defer selected applications"><!-- token-migration-ok -->
             <i data-lucide="clock" class="w-3 h-3" aria-hidden="true"></i>
             Defer Selected
@@ -601,7 +601,7 @@
         <!-- Bulk result feedback -->
         <div x-show="bulkResult" x-cloak
              class="w-full text-xs mt-1"
-             :class="bulkResult && bulkResult.success ? 'text-emerald-600' : 'text-destructive'"
+             :class="bulkResult && bulkResult.success ? 'text-success' : 'text-destructive'"
              x-text="bulkResult ? (bulkResult.success ? 'Done — ' + bulkResult.summary.processed + ' processed, ' + bulkResult.summary.skipped + ' skipped.' : (bulkResult.error || 'Action failed.')) : ''"></div><!-- token-migration-ok -->
       </div>
 
@@ -659,12 +659,12 @@
                 </td>
                 <td class="px-4 py-3 text-center">
                   <span class="tabular-nums font-semibold text-sm"
-                        :class="row.overall_health_score <= 33 ? 'text-destructive' : row.overall_health_score <= 66 ? 'text-amber-600' : 'text-emerald-600'"
+                        :class="row.overall_health_score <= 33 ? 'text-destructive' : row.overall_health_score <= 66 ? 'text-warning' : 'text-success'"
                         x-text="row.overall_health_score != null ? row.overall_health_score : '—'"></span><!-- token-migration-ok -->
                 </td>
                 <td class="px-4 py-3">
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
-                        :class="row.is_decision_ready ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-600 border border-amber-500/30'"
+                        :class="row.is_decision_ready ? 'bg-success/10 text-success-emphasis border border-success/30' : 'bg-warning/10 text-warning-emphasis border border-warning/30'"
                         x-text="row.is_decision_ready ? 'Ready' : 'Incomplete'"></span><!-- token-migration-ok -->
                 </td>
                 <td class="px-4 py-3">
@@ -728,7 +728,7 @@
         </div>
         <!-- Rehost -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-sky-500/10 text-sky-600 border border-sky-500/30 w-fit">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-sky-500/10 text-sky-600 border border-sky-500/30 w-fit">  <!-- design-tokens-ok: categorical disposition-taxonomy legend, matches Retain/Consolidate/Retire siblings -->
             Rehost
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Lift and shift to new infrastructure</p>
@@ -736,7 +736,7 @@
         </div>
         <!-- Replatform -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30 w-fit">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30 w-fit">  <!-- design-tokens-ok: categorical disposition-taxonomy legend, matches Retain/Consolidate/Retire siblings -->
             Replatform
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Move to new platform with minor modifications</p>
@@ -744,7 +744,7 @@
         </div>
         <!-- Refactor -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30 w-fit">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30 w-fit">  <!-- design-tokens-ok: categorical disposition-taxonomy legend, matches Retain/Consolidate/Retire siblings -->
             Refactor
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Re-architect for quality or strategic fit</p>
@@ -752,7 +752,7 @@
         </div>
         <!-- Replace -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30 w-fit">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30 w-fit">  <!-- design-tokens-ok: categorical disposition-taxonomy legend, matches Retain/Consolidate/Retire siblings -->
             Replace
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Swap for a different product or build</p>
@@ -1108,8 +1108,8 @@
                     class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
                     :class="{
                       'bg-muted/50 text-muted-foreground border-border': reviewStatus === 'draft',
-                      'bg-amber-500/10 text-amber-600 border-amber-500/30': reviewStatus === 'reviewed',
-                      'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': reviewStatus === 'approved',
+                      'bg-warning/10 text-warning-emphasis border-warning/30': reviewStatus === 'reviewed',
+                      'bg-success/10 text-success-emphasis border-success/30': reviewStatus === 'approved',
                       'bg-red-500/10 text-red-600 border-red-500/30': reviewStatus === 'rejected', <!-- token-migration-ok -->
                       'bg-purple-500/10 text-purple-600 border-purple-500/30': reviewStatus === 'exception_approved', <!-- token-migration-ok -->
                     }"
@@ -1143,10 +1143,10 @@
                     :aria-label="'Transition review to ' + statusLabel(action)"
                     class="h-8 px-3 rounded-md text-xs font-semibold border transition-colors"
                     :class="{
-                      'bg-amber-500/10 text-amber-700 border-amber-500/30 hover:bg-amber-500/20': action === 'reviewed',
-                      'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20': action === 'approved',
+                      'bg-warning/10 text-warning-emphasis border-warning/30 hover:bg-warning/20': action === 'reviewed',
+                      'bg-success/10 text-success-emphasis border-success/30 hover:bg-success/20': action === 'approved',
                       'bg-red-500/10 text-red-700 border-red-500/30 hover:bg-red-500/20': action === 'rejected', <!-- token-migration-ok -->
-                      'bg-purple-500/10 text-purple-700 border-purple-500/30 hover:bg-purple-500/20': action === 'exception_approved',
+                      'bg-purple-500/10 text-purple-700 border-purple-500/30 hover:bg-purple-500/20': action === 'exception_approved',  <!-- design-tokens-ok: matches exception_approved badge sibling (already exempted) -->
                       'bg-muted text-muted-foreground border-border hover:bg-accent': action === 'draft',
                     }">
                     <span x-text="actionLabel(action)"></span>
@@ -1690,8 +1690,8 @@
                 <span class="ml-auto inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
                       :class="{
                         'bg-muted/50 text-muted-foreground border-border': dcPlanStatus === 'draft',
-                        'bg-amber-500/10 text-amber-600 border-amber-500/30': dcPlanStatus === 'reviewed',
-                        'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': dcPlanStatus === 'approved',
+                        'bg-warning/10 text-warning-emphasis border-warning/30': dcPlanStatus === 'reviewed',
+                        'bg-success/10 text-success-emphasis border-success/30': dcPlanStatus === 'approved',
                         'bg-blue-500/10 text-blue-600 border-blue-500/30': dcPlanStatus === 'in_progress', /* token-migration-ok */
                         'bg-green-500/10 text-green-600 border-green-500/30': dcPlanStatus === 'completed', /* token-migration-ok */
                       }"
@@ -2239,7 +2239,7 @@
           <div class="flex items-center gap-2">
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
                   :class="(dossierData && dossierData.readiness && dossierData.readiness.is_decision_ready)
-                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                    ? 'bg-success/10 text-success-emphasis border-success/30'
                     : 'bg-muted/50 text-muted-foreground border-border'" /* token-migration-ok */
                   x-text="(dossierData && dossierData.readiness && dossierData.readiness.is_decision_ready) ? 'Ready' : 'Not Ready'"></span>
             <span x-show="dossierData && dossierData.readiness && dossierData.readiness.readiness_score != null" x-cloak
@@ -2274,7 +2274,7 @@
         <div class="flex flex-wrap gap-2 items-center">
           <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
                 :class="(dossierData && dossierData.arb && dossierData.arb.arb_required)
-                  ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                  ? 'bg-warning/10 text-warning-emphasis border-warning/30'
                   : 'bg-muted/50 text-muted-foreground border-border'" /* token-migration-ok */
                 x-text="(dossierData && dossierData.arb && dossierData.arb.arb_required) ? 'ARB Required' : 'ARB Not Required'"></span>
           <span x-show="dossierData && dossierData.arb && dossierData.arb.arb_submission_status" x-cloak
@@ -2573,14 +2573,14 @@
       <!-- Roadmap item already exists -->
       <div x-show="hasRoadmapItem" x-cloak class="rounded-md bg-emerald-500/10 border border-emerald-500/30 p-4"> <!-- token-migration-ok -->
         <div class="flex items-start gap-3">
-          <svg class="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <svg class="w-5 h-5 text-success flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
           <div>
-            <p class="text-sm font-medium text-emerald-700">Roadmap item already created</p>
+            <p class="text-sm font-medium text-success-emphasis">Roadmap item already created</p>
             <p class="text-xs text-muted-foreground mt-1">A roadmap item has already been generated for this application.</p>
             <a href="{{ url_for('consolidation_list.dashboard') }}"
-               class="mt-2 inline-flex items-center text-xs font-medium text-emerald-700 hover:underline">
+               class="mt-2 inline-flex items-center text-xs font-medium text-success-emphasis hover:underline">
               View in Consolidation List
               <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
@@ -2593,11 +2593,11 @@
       <!-- Not approved: show status message -->
       <div x-show="!hasRoadmapItem && !canCreate" x-cloak class="rounded-md bg-amber-500/10 border border-amber-500/30 p-4"> <!-- token-migration-ok -->
         <div class="flex items-start gap-3">
-          <svg class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <svg class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
           <div>
-            <p class="text-sm font-medium text-amber-700">Recommendation not yet approved</p>
+            <p class="text-sm font-medium text-warning-emphasis">Recommendation not yet approved</p>
             <p class="text-xs text-muted-foreground mt-1">
               Current status:
               <span class="font-medium capitalize" x-text="reviewStatus || 'draft'"></span>.
@@ -3687,8 +3687,8 @@
       _timeActionClass(action) {
         const map = {
           ELIMINATE: 'bg-destructive/10 text-destructive border border-destructive/30',
-          MIGRATE: 'bg-amber-500/10 text-amber-600 border border-amber-500/30',
-          INVEST: 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30',
+          MIGRATE: 'bg-warning/10 text-warning-emphasis border border-warning/30',
+          INVEST: 'bg-success/10 text-success-emphasis border border-success/30',
           TOLERATE: 'bg-muted/50 text-muted-foreground border border-border',
         };
         return map[(action || '').toUpperCase()] || 'bg-muted/50 text-muted-foreground border border-border'; /* token-migration-ok */
@@ -3709,8 +3709,8 @@
 
       _confidenceClass(confidence) {
         const map = {
-          high: 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30',
-          medium: 'bg-amber-500/10 text-amber-600 border border-amber-500/30',
+          high: 'bg-success/10 text-success-emphasis border border-success/30',
+          medium: 'bg-warning/10 text-warning-emphasis border border-warning/30',
           low: 'bg-red-500/10 text-red-600 border border-red-500/30', /* token-migration-ok */
         };
         return map[(confidence || '').toLowerCase()] || 'bg-muted/50 text-muted-foreground border border-border'; /* token-migration-ok */
@@ -3718,7 +3718,7 @@
 
       _reviewStatusClass(status) {
         const map = {
-          reviewed: 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30',
+          reviewed: 'bg-success/10 text-success-emphasis border border-success/30',
           approved: 'bg-blue-500/10 text-blue-600 border border-blue-500/30', /* token-migration-ok */
           draft: 'bg-muted/50 text-muted-foreground border border-border',
           rejected: 'bg-destructive/10 text-destructive border border-destructive/30',
@@ -3800,7 +3800,7 @@
           replace: 'bg-orange-500/10 text-orange-600 border-orange-500/30', /* token-migration-ok */
           replatform: 'bg-violet-500/10 text-violet-600 border-violet-500/30', /* token-migration-ok */
           rehost: 'bg-sky-500/10 text-sky-600 border-sky-500/30', /* token-migration-ok */
-          refactor: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+          refactor: 'bg-amber-500/10 text-amber-600 border-amber-500/30',  /* design-tokens-ok: matches _dispositionClass sibling copy (already exempted) */
           retain: 'bg-blue-500/10 text-blue-600 border-blue-500/30', /* token-migration-ok */
         };
         return map[(disposition || '').toLowerCase()] || 'bg-muted/50 text-muted-foreground border-border';
@@ -3808,8 +3808,8 @@
 
       _confidenceClass(confidence) {
         const map = {
-          high: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-          medium: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+          high: 'bg-success/10 text-success-emphasis border-success/30',
+          medium: 'bg-warning/10 text-warning-emphasis border-warning/30',
           low: 'bg-red-500/10 text-red-600 border-red-500/30', /* token-migration-ok */
         };
         return map[(confidence || '').toLowerCase()] || 'bg-muted/50 text-muted-foreground border-border';
@@ -3817,7 +3817,7 @@
 
       _reviewStatusClass(status) {
         const map = {
-          reviewed: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+          reviewed: 'bg-success/10 text-success-emphasis border-success/30',
           approved: 'bg-blue-500/10 text-blue-600 border-blue-500/30', /* token-migration-ok */
           draft: 'bg-muted/50 text-muted-foreground border-border',
           rejected: 'bg-destructive/10 text-destructive border-destructive/30',

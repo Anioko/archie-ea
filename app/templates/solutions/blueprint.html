@@ -34,10 +34,10 @@
 {# ══════════════════════════════════════════════════════════════════════════ #}
 {% block content %}
 {% if show_created_banner %}
-<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
+<div class="bg-success/10 border-b border-success/30 text-success-emphasis px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
   <span><strong>Programme created.</strong> Your architecture blueprint is ready &mdash; fill in sections below to build it out.</span>
-  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800" aria-label="Dismiss">
+  <button @click="show = false" class="ml-auto text-success-emphasis hover:text-success-emphasis" aria-label="Dismiss">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
   </button>
 </div>
@@ -78,12 +78,12 @@
             {# Pending proposals badge — always visible when proposals exist #}
             <div x-show="!open && pendingCount > 0" x-cloak>
                 <button type="button" @click="open = true"
-                        class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
-                    <span class="flex items-center gap-2 text-sm font-medium text-amber-700">
+                        class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-warning/40 bg-warning/5 hover:bg-warning/10 transition-colors">
+                    <span class="flex items-center gap-2 text-sm font-medium text-warning-emphasis">
                         <i data-lucide="sparkles" class="w-4 h-4"></i>
                         <span x-text="pendingCount"></span> extracted elements waiting for review
                     </span>
-                    <i data-lucide="chevron-down" class="w-4 h-4 text-amber-600"></i>
+                    <i data-lucide="chevron-down" class="w-4 h-4 text-warning"></i>
                 </button>
             </div>
 
@@ -139,7 +139,7 @@
                         <div class="flex items-center gap-2">
                             <button type="button" @click="acceptAll()"
                                     :disabled="accepting"
-                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors">
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 disabled:opacity-50 transition-colors">
                                 <i data-lucide="check-check" class="w-3.5 h-3.5"></i> Accept All
                             </button>
                             <button type="button" @click="rejectAll()"
@@ -161,9 +161,9 @@
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium shrink-0 mt-0.5"
                                       :class="{
  'bg-info/10 text-info border border-info/30': ['Goal','Driver'].includes(p.archimate_type),
- 'bg-violet-500/10 text-violet-700 border border-violet-500/30': p.archimate_type === 'Capability',
- 'bg-amber-500/10 text-amber-700 border border-amber-500/30': p.archimate_type === 'Constraint',
- 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/30': ['ApplicationComponent','BusinessProcess'].includes(p.archimate_type),
+ 'bg-violet-500/10 text-violet-700 border border-violet-500/30': p.archimate_type === 'Capability', // design-tokens-ok: 5-way ArchiMate type legend — info/warning/success/muted are already claimed by sibling types, Capability needs a distinct 5th hue
+ 'bg-warning/10 text-warning-emphasis border border-warning/30': p.archimate_type === 'Constraint',
+ 'bg-success/10 text-success-emphasis border border-success/30': ['ApplicationComponent','BusinessProcess'].includes(p.archimate_type),
  'bg-muted text-muted-foreground border border-border': !['Goal','Driver','Capability','Constraint','ApplicationComponent','BusinessProcess'].includes(p.archimate_type)
  }"
                                       x-text="p.archimate_type"></span>
@@ -175,7 +175,7 @@
                                     <div class="mt-1.5 flex items-center gap-2">
                                         <div class="h-1 w-16 bg-muted rounded-full overflow-hidden">
                                             <div class="h-full rounded-full"
-                                                 :class="p.confidence >= 0.8 ? 'bg-emerald-500' : p.confidence >= 0.5 ? 'bg-amber-500' : 'bg-muted-foreground/40'"
+                                                 :class="p.confidence >= 0.8 ? 'bg-success' : p.confidence >= 0.5 ? 'bg-warning' : 'bg-muted-foreground/40'"
                                                  :style="`width:${Math.round(p.confidence * 100)}%`"></div>
                                         </div>
                                         <span class="text-[10px] text-muted-foreground"
@@ -187,7 +187,7 @@
                                     <button type="button" @click="accept(p.id)"
                                             :disabled="accepting"
                                             title="Accept — create element in blueprint"
-                                            class="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 transition-colors">
+                                            class="p-1.5 rounded-md text-success-emphasis hover:bg-success/10 disabled:opacity-50 transition-colors">
                                         <i data-lucide="check" class="w-4 h-4"></i>
                                     </button>
                                     <button type="button" @click="reject(p.id)"
@@ -203,7 +203,7 @@
                 </div>
 
                 {# All handled — done state #}
-                <div x-show="allDone" x-cloak class="p-5 flex items-center gap-3 text-sm text-emerald-700">
+                <div x-show="allDone" x-cloak class="p-5 flex items-center gap-3 text-sm text-success-emphasis">
                     <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
                     All proposals reviewed. The accepted elements have been added to your blueprint.
                     <button type="button" @click="resetPanel()" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">Upload another</button>
@@ -221,8 +221,8 @@
                     <div class="flex items-center gap-2.5">
                         {% set es_score = scores.get('executive_summary', {}).get('overall', 0) if scores else 0 %}
                         <span class="w-2.5 h-2.5 rounded-full shrink-0
- {% if es_score >= 80 %}bg-emerald-500
- {% elif es_score >= 40 %}bg-amber-500
+ {% if es_score >= 80 %}bg-success
+ {% elif es_score >= 40 %}bg-warning
  {% elif es_score >= 1 %}bg-destructive
  {% else %}bg-muted-foreground/30
  {% endif %}"></span>
@@ -250,7 +250,7 @@
                         <button type="button"
                                 @click="generateNarrative('executive_summary')"
                                 :disabled="generatingNarrative['executive_summary']"
-                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/30 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-info/10 text-info-emphasis border border-info/30 hover:bg-info/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                             <template x-if="!generatingNarrative['executive_summary']">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
                             </template>
@@ -276,7 +276,7 @@
                             Saving…
                         </span>
                         <span x-show="narrativeSaving['executive_summary'] === 'saved'" x-cloak
-                              class="text-[10px] text-emerald-600 flex items-center gap-1">
+                              class="text-[10px] text-success-emphasis flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                             Saved
                         </span>
@@ -313,8 +313,8 @@
                     <div class="flex items-center gap-2.5 min-w-0">
                         {% set sec_score = scores.get(section_id, {}).get('overall', 0) if scores else 0 %}
                         <span class="w-2.5 h-2.5 rounded-full shrink-0
- {% if sec_score >= 80 %}bg-emerald-500
- {% elif sec_score >= 40 %}bg-amber-500
+ {% if sec_score >= 80 %}bg-success
+ {% elif sec_score >= 40 %}bg-warning
  {% elif sec_score >= 1 %}bg-destructive
  {% else %}bg-muted-foreground/30
  {% endif %}"></span>
@@ -349,7 +349,7 @@
                         {% if section_id in ['deployment_view', 'application_cooperation', 'network_communication', 'work_packages', 'security_viewpoint', 'nfr_satisfaction'] %}
                         <button type="button"
                                 @click="$dispatch('bp-codegen-open', {sectionId: '{{ section_id }}'})"
-                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 transition-colors"
                                 title="Generate infrastructure/API code">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
                             Codegen
@@ -443,13 +443,13 @@
                     {# ── Goals ── #}
                     <div x-show="goals.length > 0" x-cloak class="space-y-2">
                         <h4 class="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5">
-                            <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> Goals
+                            <span class="inline-block w-2 h-2 rounded-full bg-success"></span> Goals
                         </h4>
                         <template x-for="item in goals" :key="item.id">
                             <div class="rounded-lg border border-border bg-background px-4 py-3 space-y-1">
                                 <div class="flex items-start justify-between gap-2">
                                     <span class="text-sm font-medium text-foreground" x-text="item.name"></span>
-                                    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/30" x-text="item.priority ? 'P' + item.priority : ''"></span>
+                                    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30" x-text="item.priority ? 'P' + item.priority : ''"></span>
                                 </div>
                                 <p class="text-xs text-muted-foreground leading-relaxed" x-show="item.description" x-text="item.description"></p>
                                 <p class="text-xs text-muted-foreground" x-show="item.measurement_criteria"><em x-text="item.measurement_criteria"></em></p>
@@ -460,13 +460,13 @@
                     {# ── Constraints ── #}
                     <div x-show="constraints.length > 0" x-cloak class="space-y-2">
                         <h4 class="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5">
-                            <span class="inline-block w-2 h-2 rounded-full bg-amber-500"></span> Constraints
+                            <span class="inline-block w-2 h-2 rounded-full bg-warning"></span> Constraints
                         </h4>
                         <template x-for="item in constraints" :key="item.id">
                             <div class="rounded-lg border border-border bg-background px-4 py-3 space-y-1">
                                 <div class="flex items-start justify-between gap-2">
                                     <span class="text-sm font-medium text-foreground" x-text="item.name"></span>
-                                    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-700 border border-amber-500/30" x-text="item.constraint_type || 'technical'"></span>
+                                    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30" x-text="item.constraint_type || 'technical'"></span>
                                 </div>
                                 <p class="text-xs text-muted-foreground leading-relaxed" x-show="item.description" x-text="item.description"></p>
                             </div>
@@ -492,11 +492,11 @@
                                     <span class="text-muted-foreground"><strong class="text-foreground">Goal &rarr; ValueStream (realization)</strong> &mdash; add a Goal in Vision &amp; Motivation first, then draw a realization relationship from it to the ValueStream here. The stream is the mechanism by which the Goal becomes real.</span>
                                 </div>
                                 <div class="flex items-start gap-2">
-                                    <span class="shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-500/10 text-amber-700 border border-amber-500/20 whitespace-nowrap">35 pts</span>
+                                    <span class="shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-warning/10 text-warning-emphasis border border-warning/20 whitespace-nowrap">35 pts</span>
                                     <span class="text-muted-foreground"><strong class="text-foreground">ValueStream &rarr; Capability (association)</strong> &mdash; name the organisational capabilities each stage depends on. These are Strategy-layer Capability elements (&ldquo;Real-time Monitoring&rdquo;, &ldquo;Automated Alerting&rdquo;) — not applications. The Capability is then realized by BusinessProcesses below.</span>
                                 </div>
                                 <div class="flex items-start gap-2">
-                                    <span class="shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-green-500/10 text-emerald-600 border border-green-500/20 whitespace-nowrap">30 pts</span>
+                                    <span class="shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-success/10 text-success-emphasis border border-success/20 whitespace-nowrap">30 pts</span>
                                     <span class="text-muted-foreground"><strong class="text-foreground">ValueStream &rarr; Outcome (realization)</strong> &mdash; the measurable result signalling the stream completed. &ldquo;MTTR &le; 30 min&rdquo; is an Outcome; &ldquo;improve MTTR&rdquo; is a Goal. Distinct ArchiMate elements with different roles in the chain.</span>
                                 </div>
                             </div>
@@ -626,7 +626,7 @@
                             <button type="button"
                                     @click="generateNarrative('{{ section_id }}')"
                                     :disabled="generatingNarrative['{{ section_id }}']"
-                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/30 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-info/10 text-info-emphasis border border-info/30 hover:bg-info/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                                 <template x-if="!generatingNarrative['{{ section_id }}']">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
                                 </template>
@@ -650,7 +650,7 @@
                                 Saving…
                             </span>
                             <span x-show="narrativeSaving['{{ section_id }}'] === 'saved'" x-cloak
-                                  class="text-[10px] text-emerald-600 flex items-center gap-1">
+                                  class="text-[10px] text-success-emphasis flex items-center gap-1">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                 Saved
                             </span>
@@ -707,15 +707,15 @@
                                                           :title="'Lifecycle: ' + elem.lifecycle">&#9888; Decommission risk</span>
                                                 </template>
                                                 <template x-if="elem.context_flag === 'low_score'">
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/20">Low score</span>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/20">Low score</span>
                                                 </template>
                                                 <template x-if="!elem.context_flag && elem.other_solutions > 0">
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-sky-500/10 text-sky-600 border border-sky-500/20"
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20"
                                                           :title="elem.other_solutions + ' other solution(s) reference this element'"
                                                           x-text="'+' + elem.other_solutions + ' sol'"></span>
                                                 </template>
                                                 <template x-if="!elem.context_flag && !elem.other_solutions">
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">linked</span>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/20">linked</span>
                                                 </template>
                                             </td>
                                         </tr>
@@ -794,8 +794,8 @@
                     <div class="flex items-center gap-2.5">
                         {% set trace_score = scores.get('requirements_traceability', {}).get('overall', 0) if scores else 0 %}
                         <span class="w-2.5 h-2.5 rounded-full shrink-0
- {% if trace_score >= 80 %}bg-emerald-500
- {% elif trace_score >= 40 %}bg-amber-500
+ {% if trace_score >= 80 %}bg-success
+ {% elif trace_score >= 40 %}bg-warning
  {% elif trace_score >= 1 %}bg-destructive
  {% else %}bg-muted-foreground/30
  {% endif %}"></span>
@@ -824,7 +824,7 @@
                             <button type="button"
                                     @click="generateNarrative('requirements_traceability')"
                                     :disabled="generatingNarrative['requirements_traceability']"
-                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/30 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-info/10 text-info-emphasis border border-info/30 hover:bg-info/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                                 <template x-if="!generatingNarrative['requirements_traceability']">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                                 </template>
@@ -848,7 +848,7 @@
                                 Saving…
                             </span>
                             <span x-show="narrativeSaving['requirements_traceability'] === 'saved'" x-cloak
-                                  class="text-[10px] text-emerald-600 font-medium">Saved</span>
+                                  class="text-[10px] text-success-emphasis font-medium">Saved</span>
                         </div>
                     </div>
                     {# ── Traceability Sankey flow — lazy-loads on button click ── #}
@@ -857,7 +857,7 @@
                         <span class="text-xs font-medium text-foreground">Capability &#x2192; Architecture &#x2192; Code traceability</span>
                         <button type="button"
                                 @click="window.dispatchEvent(new CustomEvent('load-sankey-{{ solution.id }}'))"
-                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-sky-500/10 text-sky-700 border border-sky-500/30 hover:bg-sky-500/20 transition-colors">
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-info/10 text-info-emphasis border border-info/30 hover:bg-info/20 transition-colors">
                           <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                           </svg>
@@ -939,7 +939,7 @@
                 <button
                     @click="toggleAutoExecute()"
                     :class="autoExecute
- ? 'bg-violet-500/10 text-violet-600 border-violet-500/30'
+ ? 'bg-info/10 text-info-emphasis border-info/30'
  : 'bg-muted text-muted-foreground border-border'"
                     class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors">
                     <span x-text="autoExecute ? 'Auto ON' : 'Approve each'"></span>
@@ -965,7 +965,7 @@
                     {# User message #}
                     <template x-if="msg.role === 'user'">
                         <div class="flex justify-end">
-                            <div class="bg-violet-500 text-primary-foreground rounded-xl rounded-tr-sm px-3 py-2 max-w-[85%] text-xs">
+                            <div class="bg-info text-primary-foreground rounded-xl rounded-tr-sm px-3 py-2 max-w-[85%] text-xs">
                                 <span x-text="msg.text"></span>
                             </div>
                         </div>
@@ -974,8 +974,8 @@
                     {# Assistant message #}
                     <template x-if="msg.role === 'assistant'">
                         <div class="flex gap-2">
-                            <div class="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                <span class="text-violet-600 text-xs font-semibold">AI</span>
+                            <div class="w-6 h-6 rounded-full bg-info flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span class="text-info-emphasis text-xs font-semibold">AI</span>
                             </div>
                             <div class="bg-muted/30 border border-border/50 rounded-xl rounded-tl-sm px-3 py-2 max-w-[85%] text-xs text-foreground">
                                 <span x-text="msg.text"></span>
@@ -991,8 +991,8 @@
                             <template x-for="(action, ai) in msg.actions" :key="ai">
                                 <div
                                     :class="action.undone ? 'opacity-50' : ''"
-                                    class="flex items-center justify-between border-l-2 border-green-400 bg-emerald-500/5 rounded-r px-3 py-1.5">
-                                    <span class="text-xs text-emerald-700 flex items-center gap-1.5">
+                                    class="flex items-center justify-between border-l-2 border-success bg-success/5 rounded-r px-3 py-1.5">
+                                    <span class="text-xs text-success-emphasis flex items-center gap-1.5">
                                         <template x-if="!action.undone"><span>✓</span></template>
                                         <template x-if="action.undone"><span>↩ Undone</span></template>
                                         <span x-text="action.message || action.tool"></span>
@@ -1015,14 +1015,14 @@
                             <template x-for="(approval, api) in msg.approvals" :key="api">
                                 <div
                                     x-show="!approval.dismissed"
-                                    class="border-l-2 border-amber-400 bg-amber-50 rounded-r px-3 py-2">
-                                    <p class="text-xs text-amber-700 mb-1.5">
+                                    class="border-l-2 border-warning bg-warning rounded-r px-3 py-2">
+                                    <p class="text-xs text-warning-emphasis mb-1.5">
                                         ⏳ <span x-text="approval.summary"></span>
                                     </p>
                                     <div class="flex gap-2">
                                         <button
                                             @click="approveAction(approval)"
-                                            class="px-2 py-1 bg-amber-500 text-primary-foreground rounded text-xs hover:bg-amber-600">
+                                            class="px-2 py-1 bg-warning text-primary-foreground rounded text-xs hover:bg-warning">
                                             Approve
                                         </button>
                                         <button
@@ -1046,15 +1046,15 @@
                     {# Tool thinking card — shown while agent executes a tool #}
                     <template x-if="msg.role === 'tool_thinking'">
                         <div class="flex gap-2 items-center">
-                            <div class="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
-                                <span class="text-violet-600 text-xs font-semibold">AI</span>
+                            <div class="w-6 h-6 rounded-full bg-info flex items-center justify-center flex-shrink-0">
+                                <span class="text-info-emphasis text-xs font-semibold">AI</span>
                             </div>
                             <div class="flex items-center gap-1.5 text-xs text-muted-foreground/60 bg-muted/30 border border-border/50 rounded-xl rounded-tl-sm px-3 py-1.5">
-                                <svg class="w-3 h-3 animate-spin text-violet-400" fill="none" viewBox="0 0 24 24">
+                                <svg class="w-3 h-3 animate-spin text-info" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                                 </svg>
-                                <span>Calling <span x-text="msg.tool" class="font-mono text-violet-500"></span>…</span>
+                                <span>Calling <span x-text="msg.tool" class="font-mono text-info-emphasis"></span>…</span>
                             </div>
                         </div>
                     </template>
@@ -1064,8 +1064,8 @@
             {# Loading indicator #}
             <template x-if="loading">
                 <div class="flex gap-2">
-                    <div class="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
-                        <span class="text-violet-600 text-xs font-semibold">AI</span>
+                    <div class="w-6 h-6 rounded-full bg-info flex items-center justify-center flex-shrink-0">
+                        <span class="text-info-emphasis text-xs font-semibold">AI</span>
                     </div>
                     <div class="bg-muted/30 border border-border/50 rounded-xl rounded-tl-sm px-3 py-2 text-xs text-muted-foreground/60">
                         Thinking…
@@ -1084,13 +1084,13 @@
                     placeholder="Add a driver, link an app, run inference…"
                     rows="2"
                     class="flex-1 resize-none rounded-lg border border-border px-3 py-2 text-xs
- focus:outline-none focus:ring-1 focus:ring-violet-400" aria-label="Add a driver, link an app, run inference…">
+ focus:outline-none focus:ring-1 focus:ring-info" aria-label="Add a driver, link an app, run inference…">
                 </textarea>
                 <button
                     @click="sendMessage()"
                     :disabled="loading || !inputText.trim()"
-                    class="px-3 py-2 bg-violet-500 text-primary-foreground rounded-lg text-xs font-medium
- hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    class="px-3 py-2 bg-info text-primary-foreground rounded-lg text-xs font-medium
+ hover:bg-info disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     Send
                 </button>
             </div>
@@ -1113,7 +1113,7 @@
     <template x-for="action in actions()" :key="action.label">
         <button @click="selectAction(action)"
                 class="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-foreground
- hover:bg-violet-50 hover:text-violet-700 transition-colors text-left">
+ hover:bg-info hover:text-info-emphasis transition-colors text-left">
             <span x-text="action.icon" class="text-base leading-none"></span>
             <span x-text="action.label" class="text-xs"></span>
         </button>
@@ -1245,7 +1245,7 @@ function entityAddModal() {
         <div class="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
             <div>
                 <h3 class="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
                     Code Generation
                 </h3>
                 <p class="text-xs text-muted-foreground mt-0.5" x-text="sectionLabel"></p>
@@ -1263,7 +1263,7 @@ function entityAddModal() {
                     <button type="button"
                             @click="selectedTarget = t.value"
                             :class="selectedTarget === t.value
- ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/40'
+ ? 'bg-success/15 text-success-emphasis border-success/40'
  : 'bg-muted text-muted-foreground border-border hover:text-foreground'"
                             class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border transition-colors"
                             x-text="t.label">
@@ -1291,7 +1291,7 @@ function entityAddModal() {
 
             {# Loading state #}
             <div x-show="loading" class="py-12 text-center">
-                <svg class="animate-spin h-8 w-8 mx-auto text-emerald-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                <svg class="animate-spin h-8 w-8 mx-auto text-success mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 <p class="text-sm text-muted-foreground">Generating — this may take 15-30 seconds…</p>
             </div>
 
@@ -1323,7 +1323,7 @@ function entityAddModal() {
                 </button>
                 <button type="button" @click="generate()"
                         :disabled="loading"
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-600 text-primary-foreground hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-success text-primary-foreground hover:bg-success disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     <svg x-show="!loading" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                     <span x-text="loading ? 'Generating…' : 'Generate'"></span>
                 </button>
@@ -1455,7 +1455,7 @@ function codegenModal() {
             <div class="flex flex-wrap gap-1.5">
                 <span class="text-xs text-muted-foreground mr-1 self-center">Filtering by:</span>
                 <template x-for="t in typesForSection" :key="t">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="t"></span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="t"></span>
                 </template>
             </div>
         </div>
@@ -1469,7 +1469,7 @@ function codegenModal() {
                        @input="debouncedSearch()"
                        type="text"
                        placeholder="Search elements by name…"
-                       class="w-full pl-9 pr-4 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500/50 placeholder:text-muted-foreground" aria-label="Search elements by name…">
+                       class="w-full pl-9 pr-4 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-info/50 placeholder:text-muted-foreground" aria-label="Search elements by name…">
                 <div x-show="loading" class="absolute right-3 top-1/2 -translate-y-1/2">
                     <svg class="animate-spin h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 </div>
@@ -1505,11 +1505,11 @@ function codegenModal() {
                     {# Layer indicator dot #}
                     <div class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5"
                          :class="{
- 'bg-amber-500': el.layer === 'business',
+ 'bg-warning': el.layer === 'business',
  'bg-primary': el.layer === 'application',
- 'bg-emerald-500': el.layer === 'technology',
- 'bg-violet-500': el.layer === 'motivation' || el.layer === 'strategy',
- 'bg-orange-500': el.layer === 'implementation',
+ 'bg-success': el.layer === 'technology',
+ 'bg-violet-500': el.layer === 'motivation' || el.layer === 'strategy', // design-tokens-ok: ArchiMate layer legend — primary/success/warning already claimed by sibling layers in this dot
+ 'bg-orange-500': el.layer === 'implementation', // design-tokens-ok: ArchiMate layer legend — distinct hue needed for the Implementation layer alongside its siblings
  'bg-muted-foreground': !el.layer || (el.layer !== 'business' && el.layer !== 'application' && el.layer !== 'technology' && el.layer !== 'motivation' && el.layer !== 'strategy' && el.layer !== 'implementation')
  }"></div>
 
@@ -1525,13 +1525,13 @@ function codegenModal() {
                     {# Link/Unlink button #}
                     <div class="flex-shrink-0">
                         <template x-if="isLinked(el.id)">
-                            <div class="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                            <div class="flex items-center gap-1.5 text-xs font-medium text-success-emphasis">
                                 <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                 <span>Linked</span>
                             </div>
                         </template>
                         <template x-if="!isLinked(el.id)">
-                            <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground group-hover:text-violet-600 transition-colors">
+                            <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground group-hover:text-info-emphasis transition-colors">
                                 <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                                 <span>Link</span>
                             </div>
@@ -1728,7 +1728,7 @@ document.getElementById('save-as-template-form')?.addEventListener('submit', asy
     const data = await resp.json();
     if (data.success) {
       status.textContent = 'Template saved. It is now available in \u201cNew from Template\u201d.';
-      status.className = 'mt-3 text-sm text-emerald-600';
+      status.className = 'mt-3 text-sm text-success-emphasis';
       setTimeout(function() { document.getElementById('save-as-template-modal').classList.add('hidden'); }, 2000);
     } else {
       status.textContent = 'Error: ' + (data.error || 'Unknown error');
