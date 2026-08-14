@@ -92,6 +92,19 @@ def app_edit(app_id):
         flash("Application updated.", "success")
         return redirect(url_for("my_applications.app_detail", app_id=app.id))
 
+    # AI health assessment "Apply suggestion" links in here as
+    # ?suggest_health=...&suggest_lifecycle=..., one or both. This only
+    # changes what the <select> shows pre-selected - it never writes to
+    # the database on its own, and an out-of-vocabulary value (a stale
+    # link, a hand-edited URL) is silently ignored rather than applied,
+    # so the owner still has to review and submit the form to save it.
+    suggested_health = request.args.get("suggest_health")
+    if suggested_health in HEALTH_STATUSES:
+        app.health_status = suggested_health
+    suggested_lifecycle = request.args.get("suggest_lifecycle")
+    if suggested_lifecycle in LIFECYCLE_STATUSES:
+        app.lifecycle_status = suggested_lifecycle
+
     return render_template(
         "my_applications/app_form.html",
         app=app,
