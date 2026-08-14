@@ -18,6 +18,7 @@ from flask_login import login_required
 from app.models.unified_capability import ValueStream
 from app.modules.capabilities.routes.value_stream_routes import value_stream
 from app.modules.capabilities.services.value_stream_ai_service import (
+    CapabilityCatalogUnavailableError,
     ValueStreamAISuggestError,
     build_context,
     generate_stage_mapping_suggestions_from_context,
@@ -48,7 +49,18 @@ def ai_suggest_mappings(stream_id):
     # belonging to another org 404s exactly like an unknown id.
     stream = ValueStream.query.get_or_404(stream_id)
 
-    context = build_context(stream)
+    try:
+        context = build_context(stream)
+    except CapabilityCatalogUnavailableError as e:
+        # A real query failure, not a genuinely-empty catalog — do not tell
+        # the user "map one manually first" when we actually don't know.
+        logger.error(
+            "Capability catalog unavailable while building AI context for stream %s: %s",
+            stream_id,
+            e,
+        )
+        return jsonify({"error": "Could not read the capability catalog for this organization"}), 502
+
     if not context["capabilities"]:
         # This org has not mapped any capability yet (value-stream grid or
         # application-capability mapping) — short-circuit before calling the

@@ -65,7 +65,7 @@
              });
              const body = await resp.json();
              if (!resp.ok) {
-               this.error = body.error || body.message || ('Extraction failed (' + resp.status + ')');
+               this.error = body.message || body.error || ('Extraction failed (' + resp.status + ')');
                return;
              }
              this.extracted = body.extracted;

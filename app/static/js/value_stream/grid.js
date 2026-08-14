@@ -333,6 +333,20 @@
                     // Reuse the exact same write path as a manual cell edit
                     // (saveCell above) — the AI suggestion never writes on
                     // its own, only this click does.
+                    //
+                    // support_level: 3, capability_contribution: 50,
+                    // impact_level/stage_criticality: 'medium' are not
+                    // invented by this code path: they are the same
+                    // shared "unset" defaults the manual add-capability
+                    // form starts from (openCellModal above) and that
+                    // upsert_mapping_cell() (value_stream_service.py)
+                    // substitutes server-side whenever these fields are
+                    // omitted, mirroring the CapabilityValueStreamMapping
+                    // column defaults in app/models/unified_capability.py.
+                    // The AI only chose the capability + stage; the
+                    // strength/impact fields are left at the system
+                    // default until a human tunes them via the cell
+                    // editor, same as any manually-added row.
                     var resp = await fetch('/value-streams/api/mapping', {
                         method: 'POST',
                         headers: jsonHeaders(),
