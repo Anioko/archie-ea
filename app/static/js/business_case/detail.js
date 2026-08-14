@@ -20,11 +20,15 @@ document.addEventListener('alpine:init', () => {
     fieldApiUrl: config.fieldApiUrl,
     updateApiUrl: config.updateApiUrl,
     pullFinancialsApiUrl: config.pullFinancialsApiUrl,
+    draftSectionApiUrl: config.draftSectionApiUrl,
 
     savingField: null,
     savedField: null,
     savingMeta: false,
     pullingFinancials: false,
+    draftingSection: null,
+    draftError: null,
+    draftErrorMessage: '',
 
     csrfToken() {
       return document.querySelector('meta[name=csrf-token]')?.content || '';
@@ -126,6 +130,37 @@ document.addEventListener('alpine:init', () => {
         }
       } finally {
         this.pullingFinancials = false;
+      }
+    },
+
+    // Advisory only: drafts content into the section's existing textarea
+    // (fields[sectionKey]) but never saves it — the user still saves via
+    // the existing saveField() blur handler above.
+    async draftSection(sectionKey) {
+      this.draftingSection = sectionKey;
+      this.draftError = null;
+      try {
+        const resp = await fetch(this.draftSectionApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': this.csrfToken()
+          },
+          body: JSON.stringify({ section: sectionKey })
+        });
+        const json = await resp.json();
+        if (!resp.ok) {
+          throw new Error(json.error || 'Failed to draft section');
+        }
+        this.fields[sectionKey] = json.draft.content;
+      } catch (e) {
+        this.draftError = sectionKey;
+        this.draftErrorMessage = e.message || 'Failed to draft section';
+        if (window.Platform && Platform.toast) {
+          Platform.toast.error(this.draftErrorMessage);
+        }
+      } finally {
+        this.draftingSection = null;
       }
     }
   }));

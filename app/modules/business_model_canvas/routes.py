@@ -142,3 +142,9 @@ def save_block(canvas_id):
         return error_response(str(exc), code="VALIDATION_ERROR", status_code=400)
 
     return success_response(canvas.to_dict())
+
+
+# Import AI block-draft route — adds POST /api/<id>/ai-draft-block to this
+# blueprint (side-effect import), matching the
+# app/modules/architecture/routes/arb_review_ai_routes.py pattern.
+from app.modules.business_model_canvas import ai_routes  # noqa: F401, E402  # dead-code-ok

@@ -170,3 +170,9 @@ def pull_financials(business_case_id):
 
     report = service.refresh_financials_from_links(business_case)
     return success_response({"business_case": business_case.to_dict(), "aggregation": report})
+
+
+# Import AI section-draft route — adds POST /api/<id>/ai-draft-section to this
+# blueprint (side-effect import), matching the
+# app/modules/architecture/routes/arb_review_ai_routes.py pattern.
+from app.modules.business_case import ai_routes  # noqa: F401, E402  # dead-code-ok
