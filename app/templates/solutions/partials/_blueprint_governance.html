@@ -33,16 +33,16 @@
         </template>
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium" :class="{
-                'text-emerald-600': completionPct >= 80,
-                'text-amber-600': completionPct >= 40 && completionPct < 80,
+                'text-success-emphasis': completionPct >= 80,
+                'text-warning-emphasis': completionPct >= 40 && completionPct < 80,
                 'text-destructive': completionPct < 40
             }" x-text="configuredCount + '/' + totalCount + ' configured'"></span>
             <span class="text-[10px] text-muted-foreground" x-text="completionPct + '%'"></span>
         </div>
         <div class="w-full h-1.5 rounded-full bg-muted/60 mb-3">
             <div class="h-1.5 rounded-full transition-all duration-500" :class="{
-                'bg-emerald-500': completionPct >= 80,
-                'bg-amber-500': completionPct >= 40 && completionPct < 80,
+                'bg-success': completionPct >= 80,
+                'bg-warning': completionPct >= 40 && completionPct < 80,
                 'bg-destructive': completionPct < 40
             }" :style="'width:' + completionPct + '%'"></div>
         </div>
@@ -53,9 +53,9 @@
                 <a :href="'#setup-' + item.anchor" @click.prevent="scrollToSection(item.anchor)"
                    class="flex items-center gap-2 group cursor-pointer">
                     <span class="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
-                          :class="item.done ? 'bg-emerald-500/20' : 'border border-border'">
+                          :class="item.done ? 'bg-success/20' : 'border border-border'">
                         <span class="text-[10px] leading-none"
-                              :class="item.done ? 'text-emerald-600' : 'text-muted-foreground/50'"
+                              :class="item.done ? 'text-success-emphasis' : 'text-muted-foreground/50'"
                               x-text="item.done ? '\u2713' : '\u25CB'"></span>
                     </span>
                     <span class="text-xs group-hover:underline"
@@ -130,14 +130,14 @@
                             stroke-width="4" stroke-linecap="round"
                             stroke-dasharray="175.93"
                             stroke-dashoffset="{{ 175.93 - (175.93 * overall_pct / 100) }}"
-                            class="{% if overall_pct >= 80 %}text-emerald-500
-                                   {% elif overall_pct >= 40 %}text-amber-500
+                            class="{% if overall_pct >= 80 %}text-success
+                                   {% elif overall_pct >= 40 %}text-warning
                                    {% else %}text-destructive
                                    {% endif %}" />
                 </svg>
                 <div class="absolute inset-0 flex items-center justify-center">
-                    <span class="text-sm font-bold {% if overall_pct >= 80 %}text-emerald-600
-                        {% elif overall_pct >= 40 %}text-amber-600
+                    <span class="text-sm font-bold {% if overall_pct >= 80 %}text-success-emphasis
+                        {% elif overall_pct >= 40 %}text-warning-emphasis
                         {% else %}text-destructive
                         {% endif %}">{{ overall_pct }}%</span>
                 </div>
@@ -164,8 +164,8 @@
             {% for phase in phase_checklist %}
             <div class="flex items-center gap-2">
                 {% if phase.passed %}
-                <span class="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                    <span class="text-emerald-600 text-[10px] leading-none">&#10003;</span>
+                <span class="w-4 h-4 rounded-full bg-success/20 flex items-center justify-center shrink-0">
+                    <span class="text-success-emphasis text-[10px] leading-none">&#10003;</span>
                 </span>
                 <span class="text-xs text-muted-foreground line-through">{{ phase.name }}</span>
                 {% else %}
@@ -195,11 +195,11 @@
                 <div class="flex items-center gap-1.5 mb-0.5">
                     <span class="w-1.5 h-1.5 rounded-full shrink-0
                         {% if action.score is defined and action.score == 0 %}bg-destructive
-                        {% else %}bg-amber-500
+                        {% else %}bg-warning
                         {% endif %}"></span>
                     <span class="text-xs font-medium
                         {% if action.score is defined and action.score == 0 %}text-destructive
-                        {% else %}text-amber-600
+                        {% else %}text-warning-emphasis
                         {% endif %} group-hover:underline">{{ action.title }}</span>
                 </div>
                 {% if action.description %}
@@ -209,8 +209,8 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="rounded-lg border border-dashed border-emerald-500/30 bg-emerald-500/5 p-3 text-center">
-            <span class="text-[10px] text-emerald-600 font-medium">All sections at 80%+ — ready for governance review.</span>
+        <div class="rounded-lg border border-dashed border-success/30 bg-success/5 p-3 text-center">
+            <span class="text-[10px] text-success-emphasis font-medium">All sections at 80%+ — ready for governance review.</span>
         </div>
         {% endif %}
     </div>
@@ -225,7 +225,7 @@
         <div class="mb-3">
             {% set gov_status = solution.governance_status if solution.governance_status is defined and solution.governance_status else 'draft' %}
             {% if gov_status == 'approved' %}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Approved</span>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Approved</span>
             {% elif gov_status == 'arb_review' or gov_status == 'in_review' %}
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">In ARB Review</span>
             {% elif gov_status == 'rejected' %}
@@ -239,8 +239,8 @@
         <div class="flex items-center justify-between mb-3">
             <span class="text-xs text-muted-foreground">Compliance</span>
             <span class="text-xs font-semibold
-                {% if overall_pct >= 80 %}text-emerald-600
-                {% elif overall_pct >= 40 %}text-amber-600
+                {% if overall_pct >= 80 %}text-success-emphasis
+                {% elif overall_pct >= 40 %}text-warning-emphasis
                 {% else %}text-destructive
                 {% endif %}">{{ overall_pct }}%</span>
         </div>
@@ -252,21 +252,21 @@
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">ARB Readiness</span>
                         <span class="text-[10px] font-semibold"
-                              :class="{'text-emerald-600': pct >= 80, 'text-amber-600': pct >= 50 && pct < 80, 'text-destructive': pct < 50}"
+                              :class="{'text-success-emphasis': pct >= 80, 'text-warning-emphasis': pct >= 50 && pct < 80, 'text-destructive': pct < 50}"
                               x-text="pct + '%'"></span>
                     </div>
                     <div class="w-full h-1 rounded-full bg-muted/60 mb-2">
                         <div class="h-1 rounded-full transition-all duration-500"
-                             :class="{'bg-emerald-500': pct >= 80, 'bg-amber-500': pct >= 50 && pct < 80, 'bg-destructive': pct < 50}"
+                             :class="{'bg-success': pct >= 80, 'bg-warning': pct >= 50 && pct < 80, 'bg-destructive': pct < 50}"
                              :style="'width:' + pct + '%'"></div>
                     </div>
                     <div class="space-y-1">
                         <template x-for="c in checks" :key="c.label">
                             <div class="flex items-start gap-1.5">
                                 <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                                      :class="c.passed ? 'bg-emerald-500/20' : (c.required ? 'border border-destructive/50' : 'border border-border')">
+                                      :class="c.passed ? 'bg-success/20' : (c.required ? 'border border-destructive/50' : 'border border-border')">
                                     <span class="text-[11px] leading-none"
-                                          :class="c.passed ? 'text-emerald-600' : (c.required ? 'text-destructive/60' : 'text-muted-foreground/50')"
+                                          :class="c.passed ? 'text-success-emphasis' : (c.required ? 'text-destructive/60' : 'text-muted-foreground/50')"
                                           x-text="c.passed ? '\u2713' : '\u25CB'"></span>
                                 </span>
                                 <div class="leading-tight">
@@ -365,7 +365,7 @@
             {# Approve #}
             <button type="button" @click="approve()"
                     :disabled="deciding"
-                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors disabled:opacity-50">
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 transition-colors disabled:opacity-50">
                 <svg x-show="!deciding" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <svg x-show="deciding" x-cloak class="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 <span x-text="deciding ? 'Recording...' : 'Approve'"></span>
@@ -394,7 +394,7 @@
                 </div>
             </template>
             <p x-show="arbMsg" x-cloak class="text-xs font-medium mt-1"
-               :class="arbSuccess ? 'text-emerald-600' : 'text-destructive'"
+               :class="arbSuccess ? 'text-success-emphasis' : 'text-destructive'"
                x-text="arbMsg"></p>
         </div>
     </div>
@@ -445,9 +445,9 @@
     {# ════════════════════════════════════════════════════════════════════ #}
     {# 4c. AI Generation panel                                             #}
     {# ════════════════════════════════════════════════════════════════════ #}
-    <div class="rounded-xl border border-violet-500/20 bg-violet-500/5 shadow-sm p-4"
+    <div class="rounded-xl border border-info/20 bg-info/5 shadow-sm p-4"
          x-data="{ aiGenerating: false, aiMsg: '', aiSuccess: false }">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-violet-500/80 mb-3">AI Generation</h3>
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-info-emphasis/80 mb-3">AI Generation</h3>
         <p class="text-[10px] text-muted-foreground mb-3 leading-relaxed">Generate a complete architecture draft across all TOGAF phases from the problem statement.</p>
         <button type="button"
                 @click="
@@ -470,13 +470,13 @@
                     .finally(() => { aiGenerating = false; })
                 "
                 :disabled="aiGenerating"
-                class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30 hover:bg-violet-500/20 transition-colors disabled:opacity-50">
+                class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30 hover:bg-info/20 transition-colors disabled:opacity-50">
             <svg x-show="!aiGenerating" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
             <svg x-show="aiGenerating" x-cloak class="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             <span x-text="aiGenerating ? 'Generating...' : 'Generate All Phases'"></span>
         </button>
         <p x-show="aiMsg" x-cloak class="mt-2 text-[10px] font-medium leading-snug"
-           :class="aiSuccess ? 'text-emerald-600' : 'text-destructive'"
+           :class="aiSuccess ? 'text-success-emphasis' : 'text-destructive'"
            x-text="aiMsg"></p>
     </div>
 
@@ -551,37 +551,37 @@
             </button>
 
             {# Synthesize Business Logic (hidden until generation completes) #}
-            <button id="bp-synthesize-logic-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-indigo-500/30 text-primary hover:bg-indigo-500/5 transition-colors">
+            <button id="bp-synthesize-logic-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-info/30 text-primary hover:bg-info/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                 Synthesize Business Logic
             </button>
 
             {# Download generated code (hidden until generation completes) #}
-            <a id="bp-download-product-btn" href="#" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/5 transition-colors">
+            <a id="bp-download-product-btn" href="#" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-success/30 text-success-emphasis hover:bg-success/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                 Download Code ZIP
             </a>
 
             {# Push to GitHub (hidden until generation completes) #}
-            <button id="bp-push-github-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-sky-500/30 text-sky-600 hover:bg-sky-500/5 transition-colors">
+            <button id="bp-push-github-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-info/30 text-info-emphasis hover:bg-info/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                 Push to GitHub
             </button>
 
             {# GitHub repo link (hidden until push completes) #}
-            <div class="bp-github-repo-info hidden rounded-lg border border-sky-500/20 bg-sky-500/5 p-2">
+            <div class="bp-github-repo-info hidden rounded-lg border border-info/20 bg-info/5 p-2">
                 <span class="text-[10px] text-muted-foreground block mb-0.5">Repository:</span>
-                <a id="bp-github-repo-link" href="#" target="_blank" class="text-[11px] text-sky-600 hover:underline truncate block"></a>
+                <a id="bp-github-repo-link" href="#" target="_blank" class="text-[11px] text-info-emphasis hover:underline truncate block"></a>
             </div>
 
             {# Run Tests (hidden until generation completes) #}
-            <button id="bp-run-tests-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-amber-500/30 text-amber-600 hover:bg-amber-500/5 transition-colors">
+            <button id="bp-run-tests-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-warning/30 text-warning-emphasis hover:bg-warning/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Run Tests
             </button>
 
             {# Live Preview (hidden until generation completes) #}
-            <button id="bp-preview-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-violet-500/30 text-violet-600 hover:bg-violet-500/5 transition-colors">
+            <button id="bp-preview-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-info/30 text-info-emphasis hover:bg-info/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Live Preview
             </button>
@@ -620,7 +620,7 @@
                             </div>
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-primary border border-info/30" x-text="(c.protocol || 'rest').toUpperCase()"></span>
-                                <span x-show="c.auth_method" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="c.auth_method"></span>
+                                <span x-show="c.auth_method" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="c.auth_method"></span>
                                 <span x-show="c.base_url" class="text-[10px] text-muted-foreground truncate max-w-[140px]" x-text="c.base_url" :title="c.base_url"></span>
                             </div>
                         </div>
@@ -955,8 +955,8 @@
 
             {# Current status #}
             <template x-if="currentProvider">
-                <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2">
-                    <span class="text-[10px] text-emerald-600 font-medium" x-text="'Configured: ' + currentProvider"></span>
+                <div class="rounded-lg border border-success/20 bg-success/5 p-2">
+                    <span class="text-[10px] text-success-emphasis font-medium" x-text="'Configured: ' + currentProvider"></span>
                 </div>
             </template>
         </div>
@@ -1437,8 +1437,8 @@
                 <div class="flex items-center justify-between">
                     <span class="text-xs text-muted-foreground">Monthly</span>
                     <span class="text-lg font-bold" :class="{
-                        'text-emerald-600': result.total_monthly_usd < 200,
-                        'text-amber-600': result.total_monthly_usd >= 200 && result.total_monthly_usd < 500,
+                        'text-success-emphasis': result.total_monthly_usd < 200,
+                        'text-warning-emphasis': result.total_monthly_usd >= 200 && result.total_monthly_usd < 500,
                         'text-destructive': result.total_monthly_usd >= 500
                     }" x-text="'$' + result.total_monthly_usd.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
                 </div>
@@ -1556,8 +1556,8 @@
                     <span class="text-xs text-muted-foreground">Score</span>
                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
                           :class="{
-                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': result.compliance_score >= 0.8,
-                              'bg-amber-500/10 text-amber-600 border border-amber-500/30': result.compliance_score >= 0.5 && result.compliance_score < 0.8,
+                              'bg-success/10 text-success-emphasis border border-success/30': result.compliance_score >= 0.8,
+                              'bg-warning/10 text-warning-emphasis border border-warning/30': result.compliance_score >= 0.5 && result.compliance_score < 0.8,
                               'bg-destructive/10 text-destructive-emphasis border border-destructive/30': result.compliance_score < 0.5
                           }"
                           x-text="Math.round(result.compliance_score * 100) + '%'"></span>
@@ -1568,8 +1568,8 @@
                     <span class="text-xs text-muted-foreground">Status</span>
                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
                           :class="{
-                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': result.status === 'passed',
-                              'bg-amber-500/10 text-amber-600 border border-amber-500/30': result.status === 'drifted',
+                              'bg-success/10 text-success-emphasis border border-success/30': result.status === 'passed',
+                              'bg-warning/10 text-warning-emphasis border border-warning/30': result.status === 'drifted',
                               'bg-destructive/10 text-destructive-emphasis border border-destructive/30': result.status === 'unreachable' || result.status === 'error'
                           }"
                           x-text="result.status"></span>
@@ -1595,13 +1595,13 @@
                 {# Schema mismatches #}
                 <template x-if="result.schema_mismatches && result.schema_mismatches.length > 0">
                     <div>
-                        <button @click="showSchema = !showSchema" class="text-[10px] text-amber-600 hover:underline cursor-pointer">
+                        <button @click="showSchema = !showSchema" class="text-[10px] text-warning-emphasis hover:underline cursor-pointer">
                             <span x-text="result.schema_mismatches.length + ' schema mismatch(es)'"></span>
                             <span x-text="showSchema ? '[-]' : '[+]'"></span>
                         </button>
                         <div x-show="showSchema" class="mt-1 space-y-0.5">
                             <template x-for="sm in result.schema_mismatches" :key="sm.method + sm.path">
-                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-amber-500/30">
+                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-warning/30">
                                     <span x-text="sm.method + ' ' + sm.path"></span>
                                     <span class="block text-[11px] text-muted-foreground/70" x-text="sm.details"></span>
                                 </div>
@@ -1613,13 +1613,13 @@
                 {# SLA violations #}
                 <template x-if="result.sla_violations && result.sla_violations.length > 0">
                     <div>
-                        <button @click="showSla = !showSla" class="text-[10px] text-amber-600 hover:underline cursor-pointer">
+                        <button @click="showSla = !showSla" class="text-[10px] text-warning-emphasis hover:underline cursor-pointer">
                             <span x-text="result.sla_violations.length + ' SLA violation(s)'"></span>
                             <span x-text="showSla ? '[-]' : '[+]'"></span>
                         </button>
                         <div x-show="showSla" class="mt-1 space-y-0.5">
                             <template x-for="sv in result.sla_violations" :key="sv.method + sv.path">
-                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-amber-500/30">
+                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-warning/30">
                                     <span x-text="sv.method + ' ' + sv.path + ' (' + sv.latency_ms + 'ms > ' + sv.threshold_ms + 'ms)'"></span>
                                 </div>
                             </template>

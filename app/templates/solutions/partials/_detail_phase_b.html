@@ -7,11 +7,11 @@
                 </div>
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-3">
-                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
                         <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('B')" x-cloak aria-hidden="true"></i>
                         <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('B')" x-cloak aria-hidden="true"></i>
                         <h3 class="text-lg font-semibold text-foreground">Architecture Requirements</h3>
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">ArchiMate Requirement</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30">ArchiMate Requirement</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-muted-foreground" x-text="requirements.length + ' total, ' + mandatoryReqCount + ' mandatory'"></span>
@@ -30,7 +30,7 @@
                         </button>
                         <button @click="generatePhase('B')"
                                 :disabled="generateLoading === 'B'"
-                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-500/30 text-amber-600 rounded-md hover:bg-amber-500/10 disabled:opacity-50"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-warning/30 text-warning-emphasis rounded-md hover:bg-warning/10 disabled:opacity-50"
                                 aria-label="Generate missing Phase B elements">
                             <i data-lucide="sparkles" class="h-3.5 w-3.5" :class="generateLoading === 'B' && 'animate-spin'" aria-hidden="true"></i>
                             <span x-text="generateLoading === 'B' ? 'Generating...' : 'Generate Missing'"></span>
@@ -54,9 +54,9 @@
 
                 {# Generate Missing Preview Panel (BPP-014) #}
                 <template x-if="generatePreview && generatePreview.phase === 'B'">
-                    <div class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <div class="mt-3 rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-3">
                         <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-medium text-amber-700">
+                            <h4 class="text-sm font-medium text-warning-emphasis">
                                 Would create <span x-text="generatePreview.count"></span> elements
                             </h4>
                             <span class="text-xs text-muted-foreground"
@@ -66,7 +66,7 @@
                             <template x-for="item in (generatePreview.would_create || [])" :key="item.type + item.name">
                                 <div class="flex items-center gap-2 text-xs">
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
-                                          :class="item.direction === 'upstream' ? 'bg-info/10 text-info' : 'bg-emerald-500/10 text-emerald-600'"
+                                          :class="item.direction === 'upstream' ? 'bg-info/10 text-info' : 'bg-success/10 text-success-emphasis'"
                                           x-text="item.direction === 'upstream' ? 'up' : 'down'"></span>
                                     <span class="font-medium" x-text="item.type"></span>
                                     <span class="text-muted-foreground truncate" x-text="item.name"></span>
@@ -76,7 +76,7 @@
                         <template x-if="generatePreview.count === 0">
                             <p class="text-xs text-muted-foreground">All required elements already exist. Phase is complete.</p>
                         </template>
-                        <div class="flex gap-2 pt-2 border-t border-amber-500/20" x-show="generatePreview.count > 0">
+                        <div class="flex gap-2 pt-2 border-t border-warning/20" x-show="generatePreview.count > 0">
                             <button @click="confirmGenerate()" :disabled="generateLoading"
                                     class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
                                 <span x-text="generateLoading ? 'Creating...' : 'Confirm'"></span>
@@ -116,7 +116,7 @@
                                     <div class="flex-1 min-w-0 mr-3">
                                         <div class="flex items-center gap-2">
                                             <span class="text-sm font-medium text-foreground" x-text="s.name"></span>
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" x-text="s.layer"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20" x-text="s.layer"></span>
                                         </div>
                                         <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
                                     </div>
@@ -136,8 +136,8 @@
 
                 {# AI Requirement Suggestion Cards (SDX-006) #}
                 <template x-if="aiRequirementSuggestions.length > 0">
-                    <div class="mb-4 p-3 rounded-md border border-violet-500/20 bg-violet-500/5">
-                        <p class="text-xs font-medium text-violet-600 mb-2">AI Suggested Requirements</p>
+                    <div class="mb-4 p-3 rounded-md border border-info/20 bg-info/5">
+                        <p class="text-xs font-medium text-info-emphasis mb-2">AI Suggested Requirements</p>
                         <div class="space-y-2">
                             <template x-for="(s, idx) in aiRequirementSuggestions" :key="idx">
                                 <div class="flex items-center justify-between p-2 rounded-md bg-background border border-border ai-requirement-card">
@@ -145,7 +145,7 @@
                                         <div class="flex items-center gap-2">
                                             <span class="text-sm font-medium text-foreground" x-text="s.name || s.title"></span>
                                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                                  :class="(s.type || s.requirement_type) === 'functional' ? 'bg-primary/10 text-primary border border-primary/20' : (s.type || s.requirement_type) === 'non_functional' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' : 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/20'"
+                                                  :class="(s.type || s.requirement_type) === 'functional' ? 'bg-primary/10 text-primary border border-primary/20' : (s.type || s.requirement_type) === 'non_functional' ? 'bg-warning/10 text-warning-emphasis border border-warning/20' : 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/20'"
                                                   x-text="(s.type || s.requirement_type || 'functional').replace('_', ' ')"></span>
                                         </div>
                                         <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
@@ -184,7 +184,7 @@
                                         <td class="px-3 py-2">
                                             <div>
                                                 <span class="font-medium text-foreground" x-text="req.name"></span>
-                                                <span x-show="req.ai_generated" x-cloak class="ml-1 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
+                                                <span x-show="req.ai_generated" x-cloak class="ml-1 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20" title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
                                                 <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="req.description" x-show="req.description" x-cloak></p>
                                             </div>
                                         </td>
@@ -195,11 +195,11 @@
                                         </td>
                                         <td class="px-3 py-2">
                                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                                  :class="req.priority <= 2 ? 'bg-destructive/10 text-destructive-emphasis' : req.priority === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
+                                                  :class="req.priority <= 2 ? 'bg-destructive/10 text-destructive-emphasis' : req.priority === 3 ? 'bg-warning/10 text-warning-emphasis' : 'bg-primary/10 text-primary'"
                                                   x-text="req.priority <= 2 ? 'Critical' : req.priority === 3 ? 'High' : 'Medium'"></span>
                                         </td>
                                         <td class="px-3 py-2">
-                                            <i x-show="req.is_mandatory" x-cloak data-lucide="check-circle" class="w-4 h-4 text-emerald-500" aria-hidden="true"></i>
+                                            <i x-show="req.is_mandatory" x-cloak data-lucide="check-circle" class="w-4 h-4 text-success" aria-hidden="true"></i>
                                             <i x-show="!req.is_mandatory" x-cloak data-lucide="circle" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
                                         </td>
                                         <td class="px-3 py-2">
@@ -255,7 +255,7 @@
                                 <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
                             </template>
                             <template x-if="archiDone">
-                                <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-500"></i>
+                                <i data-lucide="check" class="w-3.5 h-3.5 text-success"></i>
                             </template>
                             <span x-text="archiDone ? 'Generated!' : archiLoading ? 'Generating…' : 'Auto-Generate'"></span>
                         </button>
@@ -320,7 +320,7 @@
                         </span>
                       </template>
                       <template x-if="aiSugExplainability.uncertaintyFactors?.length > 0">
-                        <span class="flex items-center gap-1 text-amber-600">
+                        <span class="flex items-center gap-1 text-warning-emphasis">
                           <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
                           <span x-text="aiSugExplainability.uncertaintyFactors.length + ' uncertainty factors'"></span>
                         </span>
@@ -372,13 +372,13 @@
                                 <p x-cloak x-show="v.rationale || v.reason" class="text-xs text-muted-foreground mb-2" x-text="v.rationale || v.reason"></p>
                                 <div x-cloak x-show="v.strengths?.length > 0" class="flex flex-wrap gap-1 mb-1">
                                   <template x-for="s in (v.strengths||[]).slice(0,3)" :key="s">
-                                    <span class="inline-block px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/5 text-emerald-700 border border-green-100" x-text="s"></span>
+                                    <span class="inline-block px-1.5 py-0.5 rounded-full text-[10px] bg-success/5 text-success-emphasis border border-success/20" x-text="s"></span>
                                   </template>
                                 </div>
                               </div>
                               <div class="flex gap-1.5 flex-shrink-0">
                                 <button type="button" @click="submitAiSugFeedback('vendors',idx,'accepted')"
-                                  :class="aiSugFeedback['vendors_'+idx]==='accepted' ? 'bg-emerald-500 text-primary-foreground' : 'bg-background border border-border text-muted-foreground hover:text-emerald-600 hover:border-green-300'"
+                                  :class="aiSugFeedback['vendors_'+idx]==='accepted' ? 'bg-success text-primary-foreground' : 'bg-background border border-border text-muted-foreground hover:text-success-emphasis hover:border-success/30'"
                                   class="p-1.5 rounded-md transition-colors" title="Accept">
                                   <i data-lucide="check" class="w-3.5 h-3.5"></i>
                                 </button>
@@ -401,7 +401,7 @@
                         <template x-for="(el, idx) in aiSuggestions.archimate" :key="idx">
                           <div class="flex items-center justify-between px-4 py-2.5 rounded-md border border-border bg-background hover:bg-muted/30 transition-colors">
                             <div class="flex items-center gap-2 min-w-0 flex-1">
-                              <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-yellow-800"
+                              <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis"
                                     x-text="el.layer || el.element_layer || ''"></span>
                               <span class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground"
                                     x-text="el.type || el.element_type || ''"></span>
@@ -412,7 +412,7 @@
                             </div>
                             <div class="flex gap-1 flex-shrink-0">
                               <button type="button" @click="submitAiSugFeedback('archimate',idx,'accepted', el)"
-                                :class="aiSugFeedback['archimate_'+idx]==='accepted' ? 'bg-emerald-500 text-primary-foreground' : 'border border-border text-muted-foreground hover:text-emerald-600'"
+                                :class="aiSugFeedback['archimate_'+idx]==='accepted' ? 'bg-success text-primary-foreground' : 'border border-border text-muted-foreground hover:text-success-emphasis'"
                                 class="p-1.5 rounded transition-colors" title="Accept — adds to ArchiMate elements"><i data-lucide="check" class="w-3 h-3"></i></button>
                               <button type="button" @click="submitAiSugFeedback('archimate',idx,'rejected', el)"
                                 :class="aiSugFeedback['archimate_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive'"
@@ -467,7 +467,7 @@
                               <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-1">
                                   <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                    :class="(r.impact||r.severity)==='critical'||'high' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-amber-500/10 text-amber-700'"
+                                    :class="(r.impact||r.severity)==='critical'||'high' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-warning/10 text-warning-emphasis'"
                                     x-text="r.impact || r.severity || r.risk_level || 'medium'"></span>
                                   <span class="text-sm font-medium truncate" x-text="r.risk || r.description || r.risk_description"></span>
                                 </div>
@@ -475,7 +475,7 @@
                               </div>
                               <div class="flex gap-1 flex-shrink-0">
                                 <button type="button" @click="submitAiSugFeedback('risks',idx,'accepted')"
-                                  :class="aiSugFeedback['risks_'+idx]==='accepted' ? 'bg-emerald-500 text-primary-foreground' : 'border border-border text-muted-foreground hover:text-emerald-600'"
+                                  :class="aiSugFeedback['risks_'+idx]==='accepted' ? 'bg-success text-primary-foreground' : 'border border-border text-muted-foreground hover:text-success-emphasis'"
                                   class="p-1.5 rounded transition-colors"><i data-lucide="check" class="w-3 h-3"></i></button>
                                 <button type="button" @click="submitAiSugFeedback('risks',idx,'rejected')"
                                   :class="aiSugFeedback['risks_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive'"
@@ -498,7 +498,7 @@
                               <p class="text-sm font-medium" x-text="a.action || a.title || a.description || a"></p>
                               <p x-cloak x-show="a.rationale || a.reason" class="text-xs text-muted-foreground mt-0.5" x-text="a.rationale || a.reason"></p>
                               <template x-if="a.adm_phase">
-                                <span class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-700 mt-1" x-text="'Phase ' + a.adm_phase"></span>
+                                <span class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-info/10 text-info-emphasis mt-1" x-text="'Phase ' + a.adm_phase"></span>
                               </template>
                             </div>
                             <template x-if="a.priority">
@@ -562,8 +562,8 @@
                                             {# Support level badge #}
                                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
                                                   :class="{
-                                                      'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': cap.support_level === 'full',
-                                                      'bg-amber-500/10 text-amber-600 border border-amber-500/30': cap.support_level === 'partial',
+                                                      'bg-success/10 text-success-emphasis border border-success/30': cap.support_level === 'full',
+                                                      'bg-warning/10 text-warning-emphasis border border-warning/30': cap.support_level === 'partial',
                                                       'bg-destructive/10 text-destructive-emphasis border border-destructive/30': cap.support_level === 'minimal' || cap.support_level === 'none',
                                                       'bg-muted text-muted-foreground border border-border': !cap.support_level || (cap.support_level !== 'full' && cap.support_level !== 'partial' && cap.support_level !== 'minimal' && cap.support_level !== 'none')
                                                   }"
@@ -574,8 +574,8 @@
                                                     <div class="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
                                                         <div class="h-full rounded-full transition-all"
                                                              :class="{
-                                                                 'bg-emerald-500': cap.coverage_percentage >= 75,
-                                                                 'bg-amber-500': cap.coverage_percentage >= 40 && cap.coverage_percentage < 75,
+                                                                 'bg-success': cap.coverage_percentage >= 75,
+                                                                 'bg-warning': cap.coverage_percentage >= 40 && cap.coverage_percentage < 75,
                                                                  'bg-destructive': cap.coverage_percentage < 40
                                                              }"
                                                              :style="'width:' + Math.min(100, cap.coverage_percentage) + '%'"></div>
@@ -626,8 +626,8 @@
                                         <div class="h-full rounded-full transition-all"
                                              :style="'width:' + Math.min(100, Math.round((cap.health_score || cap.score || 0)*100)) + '%'"
                                              :class="{
-                                                 'bg-emerald-500': (cap.health_score || cap.score || 0) >= 0.75,
-                                                 'bg-amber-500': (cap.health_score || cap.score || 0) >= 0.4 && (cap.health_score || cap.score || 0) < 0.75,
+                                                 'bg-success': (cap.health_score || cap.score || 0) >= 0.75,
+                                                 'bg-warning': (cap.health_score || cap.score || 0) >= 0.4 && (cap.health_score || cap.score || 0) < 0.75,
                                                  'bg-destructive': (cap.health_score || cap.score || 0) < 0.4
                                              }"></div>
                                     </div>
@@ -665,7 +665,7 @@
                                     <div class="text-xs text-muted-foreground">Critical Tasks</div>
                                 </div>
                                 <div class="bg-background rounded-md border border-border p-2 text-center">
-                                    <div class="text-lg font-bold text-amber-600" x-text="(criticalPath.bottlenecks || []).length || '0'"></div>
+                                    <div class="text-lg font-bold text-warning" x-text="(criticalPath.bottlenecks || []).length || '0'"></div>
                                     <div class="text-xs text-muted-foreground">Bottlenecks</div>
                                 </div>
                             </div>
@@ -674,7 +674,7 @@
                                     <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Bottlenecks</h4>
                                     <template x-for="(b, i) in (criticalPath.bottlenecks || []).slice(0,3)" :key="i">
                                         <div class="flex items-start gap-2 text-xs text-muted-foreground mb-1">
-                                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-500"></i>
+                                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-warning"></i>
                                             <span><strong class="text-foreground" x-text="b.task_name"></strong>
                                                 <span x-text="' — ' + (b.impact || b.reason || '')"></span></span>
                                         </div>
@@ -719,7 +719,7 @@
                                 <template x-for="el in els" :key="el.mapping_id">
                                     <div class="flex items-center justify-between px-3 py-2 hover:bg-muted/20 group">
                                         <div class="flex items-center gap-3 min-w-0">
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0"
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-info/10 text-info-emphasis border border-info/30 shrink-0"
                                                   x-text="el.relationship_type || el.type || '—'"></span>
                                             <span class="text-sm text-foreground font-medium truncate" x-text="el.name || el.element_name || ('Element #' + el.element_id)"></span>
                                             <span class="text-xs text-muted-foreground truncate hidden sm:block" x-cloak x-show="el.notes" x-text="el.notes"></span>
