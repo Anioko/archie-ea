@@ -26,23 +26,23 @@
             </div>
             <div class="text-3xl font-bold">{{ health_summary.total }}</div>
         </div>
-        <div class="bg-card border border-green-500/50 rounded-lg p-4">
+        <div class="bg-card border border-success/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                <div class="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-success"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Healthy</div>
             </div>
-            <div class="text-3xl font-bold text-green-600">{{ health_summary.healthy }}</div>
+            <div class="text-3xl font-bold text-success">{{ health_summary.healthy }}</div>
         </div>
-        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
+        <div class="bg-card border border-warning/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+                <div class="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-warning-emphasis"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">At Risk</div>
             </div>
-            <div class="text-3xl font-bold text-amber-600">{{ health_summary.at_risk }}</div>
+            <div class="text-3xl font-bold text-warning-emphasis">{{ health_summary.at_risk }}</div>
         </div>
         <div class="bg-card border border-destructive/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
@@ -96,21 +96,21 @@
 
         <!-- At Risk Applications -->
         {% if at_risk %}
-        <div class="bg-card border border-amber-500/50 rounded-lg overflow-hidden">
-            <div class="bg-amber-500/10 px-6 py-4 border-b border-amber-500/30">
+        <div class="bg-card border border-warning/50 rounded-lg overflow-hidden">
+            <div class="bg-warning/10 px-6 py-4 border-b border-warning/30">
                 <div class="flex items-center gap-3">
-                    <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
-                    <h2 class="text-lg font-semibold text-amber-700">At Risk ({{ at_risk|length }})</h2>
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-warning-emphasis"></i>
+                    <h2 class="text-lg font-semibold text-warning-emphasis">At Risk ({{ at_risk|length }})</h2>
                 </div>
-                <p class="text-sm text-amber-600 mt-1">Applications in sunset or retiring phase</p>
+                <p class="text-sm text-warning-emphasis mt-1">Applications in sunset or retiring phase</p>
             </div>
             <div class="divide-y divide-border">
                 {% for item in at_risk %}
                 <div class="p-4 hover:bg-muted/30 transition-colors">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-                                <i data-lucide="package" class="w-5 h-5 text-amber-600"></i>
+                            <div class="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center">
+                                <i data-lucide="package" class="w-5 h-5 text-warning-emphasis"></i>
                             </div>
                             <div>
                                 <div class="font-medium">{{ item.application.name }}</div>
@@ -118,7 +118,7 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
-                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-amber-100 text-amber-700">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-warning/10 text-warning-emphasis">
                                 {{ item.application.lifecycle_status or 'unknown' }}
                             </span>
                             <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"
@@ -133,21 +133,21 @@
 
         <!-- Healthy Applications -->
         {% if healthy %}
-        <div class="bg-card border border-green-500/50 rounded-lg overflow-hidden">
-            <div class="bg-green-500/10 px-6 py-4 border-b border-green-500/30">
+        <div class="bg-card border border-success/50 rounded-lg overflow-hidden">
+            <div class="bg-success/10 px-6 py-4 border-b border-success/30">
                 <div class="flex items-center gap-3">
-                    <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
-                    <h2 class="text-lg font-semibold text-green-700">Healthy ({{ healthy|length }})</h2>
+                    <i data-lucide="check-circle" class="w-5 h-5 text-success"></i>
+                    <h2 class="text-lg font-semibold text-success-emphasis">Healthy ({{ healthy|length }})</h2>
                 </div>
-                <p class="text-sm text-green-600 mt-1">Applications in active or production status</p>
+                <p class="text-sm text-success-emphasis mt-1">Applications in active or production status</p>
             </div>
             <div class="divide-y divide-border">
                 {% for item in healthy %}
                 <div class="p-4 hover:bg-muted/30 transition-colors">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                                <i data-lucide="package" class="w-5 h-5 text-green-600"></i>
+                            <div class="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
+                                <i data-lucide="package" class="w-5 h-5 text-success"></i>
                             </div>
                             <div>
                                 <div class="font-medium">{{ item.application.name }}</div>
@@ -155,7 +155,7 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
-                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-700">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-success/10 text-success-emphasis">
                                 {{ item.application.lifecycle_status or 'active' }}
                             </span>
                             <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"

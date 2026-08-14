@@ -21,7 +21,7 @@
         <div class="border border-border rounded-xl bg-card p-4">
             <p class="text-xs text-muted-foreground uppercase tracking-wider">Type</p>
             <p class="text-lg font-bold mt-1
-                {% if rollup.programme.initiative_type == 'brownfield' %}text-amber-600{% else %}text-emerald-600{% endif %}">
+                {% if rollup.programme.initiative_type == 'brownfield' %}text-warning-emphasis{% else %}text-success{% endif %}">
                 {{ rollup.programme.initiative_type | title }}</p>
             <p class="text-xs text-muted-foreground mt-0.5">{{ rollup.programme.target_platform or '—' }}</p>
         </div>
@@ -35,7 +35,7 @@
             <p class="text-xs text-muted-foreground uppercase tracking-wider">Clean-Core Score</p>
             {% if rollup.fit_gap.clean_core_score is not none %}
             <p class="text-2xl font-bold mt-1
-                {% if rollup.fit_gap.clean_core_score >= 70 %}text-emerald-600{% elif rollup.fit_gap.clean_core_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}">
+                {% if rollup.fit_gap.clean_core_score >= 70 %}text-success{% elif rollup.fit_gap.clean_core_score >= 40 %}text-warning-emphasis{% else %}text-destructive{% endif %}">
                 {{ rollup.fit_gap.clean_core_score }}%{% if rollup.fit_gap.clean_core_target %}<span class="text-sm font-medium text-muted-foreground"> / {{ rollup.fit_gap.clean_core_target }}% target</span>{% endif %}</p>
             <p class="text-xs text-primary mt-0.5">{{ rollup.fit_gap.total }} entries → Fit-Gap Workbench</p>
             {% else %}
@@ -72,11 +72,11 @@
                 </div>
             </div>
             {% if import_review.flagged_total %}
-            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
                 <i data-lucide="alert-triangle" class="h-3 w-3"></i> {{ import_review.flagged_total }} flagged
             </span>
             {% else %}
-            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
                 <i data-lucide="check" class="h-3 w-3"></i> No high/critical issues
             </span>
             {% endif %}
@@ -92,7 +92,7 @@
                     {% endif %}
                 </div>
                 {% if import_review.conformance %}
-                <p class="text-3xl font-bold mt-1 {% if import_review.conformance.score >= 80 %}text-emerald-600{% elif import_review.conformance.score >= 50 %}text-amber-600{% else %}text-destructive{% endif %}">
+                <p class="text-3xl font-bold mt-1 {% if import_review.conformance.score >= 80 %}text-success{% elif import_review.conformance.score >= 50 %}text-warning-emphasis{% else %}text-destructive{% endif %}">
                     {{ import_review.conformance.score }}<span class="text-sm text-muted-foreground">/100</span></p>
                 <p class="text-xs text-muted-foreground">{{ import_review.conformance.flagged }} flagged finding{{ '' if import_review.conformance.flagged == 1 else 's' }}</p>
                 <ul class="mt-3 space-y-1.5">
@@ -171,8 +171,8 @@
                         <td class="px-3 py-2.5">
                             {% if snap.clean_core_score is not none %}
                             <span class="font-semibold
-                                {% if snap.clean_core_score >= 70 %}text-emerald-600
-                                {% elif snap.clean_core_score >= 40 %}text-amber-600
+                                {% if snap.clean_core_score >= 70 %}text-success
+                                {% elif snap.clean_core_score >= 40 %}text-warning-emphasis
                                 {% else %}text-destructive{% endif %}">
                                 {{ snap.clean_core_score }}%
                             </span>
@@ -183,7 +183,7 @@
                             {% if snap.drift and snap.drift.flagged %}
                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Drifted</span>
                             {% else %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Clean</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Clean</span>
                             {% endif %}
                         </td>
                         <td class="px-3 py-2.5 text-muted-foreground text-xs">
@@ -267,8 +267,8 @@
                         <td class="px-3 py-2.5 text-muted-foreground">{{ m.adm_phase or '—' }}</td>
                         <td class="px-3 py-2.5">
                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
-                                {% if m.governance_status == 'approved' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-                                {% elif m.governance_status in ('arb_review', 'under_review') %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                                {% if m.governance_status == 'approved' %}bg-success/10 text-success-emphasis border border-success/30
+                                {% elif m.governance_status in ('arb_review', 'under_review') %}bg-warning/10 text-warning-emphasis border border-warning/30
                                 {% elif m.governance_status == 'rejected' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                                 {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                                 {{ m.governance_status | replace('_', ' ') | title }}
@@ -310,7 +310,7 @@
                         <span class="text-muted-foreground">{{ ft | replace('_', ' ') | title }}</span>
                         <div class="flex items-center gap-2">
                             <div class="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
-                                <div class="h-full {% if ft in ('standard', 'configuration') %}bg-emerald-500{% elif ft in ('extension', 'isv_solution') %}bg-amber-500{% else %}bg-destructive{% endif %}"
+                                <div class="h-full {% if ft in ('standard', 'configuration') %}bg-success{% elif ft in ('extension', 'isv_solution') %}bg-warning{% else %}bg-destructive{% endif %}"
                                      style="width: {{ (n / rollup.fit_gap.total * 100) | round }}%"></div>
                             </div>
                             <span class="font-medium text-foreground w-6 text-right">{{ n }}</span>
@@ -367,7 +367,7 @@
                         <template x-for="s in snapshots.slice(0, 6)" :key="s.id">
                             <li class="flex items-start gap-2 text-xs">
                                 <span class="shrink-0 mt-0.5 w-2 h-2 rounded-full"
-                                      :class="s.drift && s.drift.flagged ? 'bg-destructive' : 'bg-emerald-500'"></span>
+                                      :class="s.drift && s.drift.flagged ? 'bg-destructive' : 'bg-success'"></span>
                                 <div class="min-w-0">
                                     <p class="text-foreground">
                                         <span class="font-semibold" x-text="(s.clean_core_score ?? '—') + (s.clean_core_score != null ? '%' : '')"></span>
