@@ -18,7 +18,7 @@
       <div class="flex items-center gap-2">
         <span class="text-sm font-medium text-foreground">Baseline Completeness</span>
         <span x-show="qbMandatoryComplete" x-cloak
-          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">
           <i data-lucide="check-circle-2" class="h-3 w-3 mr-0.5"></i> Mandatory Complete
         </span>
       </div>
@@ -26,10 +26,10 @@
     </div>
     <div class="h-2 w-full rounded-full bg-muted overflow-hidden">
       <div class="h-full rounded-full transition-all duration-300"
-        :class="qbCompleteness >= 50 ? 'bg-emerald-500' : 'bg-amber-500'"
+        :class="qbCompleteness >= 50 ? 'bg-success' : 'bg-warning'"
         :style="'width: ' + qbCompleteness + '%'"></div>
     </div>
-    <div x-show="!qbMandatoryComplete" x-cloak class="mt-2 text-xs text-amber-600 flex items-center gap-1">
+    <div x-show="!qbMandatoryComplete" x-cloak class="mt-2 text-xs text-warning-emphasis flex items-center gap-1">
       <i data-lucide="alert-triangle" class="h-3 w-3 shrink-0"></i>
       Complete mandatory domains 1–6 before ARB submission. You may proceed to the next step now.
     </div>
@@ -39,7 +39,7 @@
   <div x-show="qualityBaselineWarnings.length > 0" x-cloak class="space-y-2">
     <template x-for="w in qualityBaselineWarnings" :key="w.message">
       <div class="flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
-        :class="w.severity === 'error' ? 'border-destructive/40 bg-destructive/5 text-destructive-emphasis' : 'border-amber-500/30 bg-amber-500/5 text-amber-700'">
+        :class="w.severity === 'error' ? 'border-destructive/40 bg-destructive/5 text-destructive-emphasis' : 'border-warning/30 bg-warning/5 text-warning-emphasis'">
         <i :data-lucide="w.severity === 'error' ? 'x-circle' : 'alert-triangle'" class="h-4 w-4 shrink-0 mt-0.5"></i>
         <span x-text="w.message"></span>
       </div>
@@ -58,7 +58,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('identity_access') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">1</span>
+            :class="qbDomainComplete('identity_access') ? 'bg-success text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">1</span>
           <span>Identity &amp; Access</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
@@ -104,7 +104,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('data_management') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">2</span>
+            :class="qbDomainComplete('data_management') ? 'bg-success text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">2</span>
           <span>Data Management</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
@@ -156,7 +156,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('security_controls') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">3</span>
+            :class="qbDomainComplete('security_controls') ? 'bg-success text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">3</span>
           <span>Security Controls</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
@@ -209,7 +209,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('integration') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">4</span>
+            :class="qbDomainComplete('integration') ? 'bg-success text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">4</span>
           <span>Integration</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
@@ -255,7 +255,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('observability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">5</span>
+            :class="qbDomainComplete('observability') ? 'bg-success text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">5</span>
           <span>Observability</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
@@ -294,7 +294,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('reliability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">6</span>
+            :class="qbDomainComplete('reliability') ? 'bg-success text-primary-foreground' : 'bg-destructive/20 text-destructive-emphasis'">6</span>
           <span>Reliability</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
         </div>
@@ -359,7 +359,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('performance') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">7</span>
+            :class="qbDomainComplete('performance') ? 'bg-success text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">7</span>
           <span>Performance</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
@@ -400,7 +400,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('deployment_release') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">8</span>
+            :class="qbDomainComplete('deployment_release') ? 'bg-success text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">8</span>
           <span>Deployment &amp; Release</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
@@ -453,7 +453,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('compliance_audit') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">9</span>
+            :class="qbDomainComplete('compliance_audit') ? 'bg-success text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">9</span>
           <span>Compliance &amp; Audit</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
@@ -493,7 +493,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('operational_support') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">10</span>
+            :class="qbDomainComplete('operational_support') ? 'bg-success text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">10</span>
           <span>Operational Support</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
@@ -533,7 +533,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('testing_quality') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">11</span>
+            :class="qbDomainComplete('testing_quality') ? 'bg-success text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">11</span>
           <span>Testing &amp; Quality</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>
@@ -572,7 +572,7 @@
         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-            :class="qbDomainComplete('cost_sustainability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">12</span>
+            :class="qbDomainComplete('cost_sustainability') ? 'bg-success text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">12</span>
           <span>Cost &amp; Sustainability</span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/20">Recommended</span>
         </div>

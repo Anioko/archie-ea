@@ -23,7 +23,7 @@
             <p class="text-xs text-muted-foreground uppercase tracking-wider">Clean-Core Actual</p>
             {% if rollup.fit_gap.clean_core_score is not none %}
             <p class="text-2xl font-bold mt-1
-                {% if rollup.fit_gap.clean_core_score >= 70 %}text-emerald-600{% elif rollup.fit_gap.clean_core_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}">
+                {% if rollup.fit_gap.clean_core_score >= 70 %}text-success{% elif rollup.fit_gap.clean_core_score >= 40 %}text-warning{% else %}text-destructive{% endif %}">
                 {{ rollup.fit_gap.clean_core_score }}%</p>
             {% else %}<p class="text-lg text-muted-foreground mt-1">No data</p>{% endif %}
         </div>
@@ -40,7 +40,7 @@
             <p class="text-xs text-muted-foreground uppercase tracking-wider">Delta to Target</p>
             {% if rollup.fit_gap.clean_core_score is not none and rollup.fit_gap.clean_core_target %}
             {% set delta = rollup.fit_gap.clean_core_score - rollup.fit_gap.clean_core_target %}
-            <p class="text-2xl font-bold mt-1 {% if delta >= 0 %}text-emerald-600{% else %}text-destructive{% endif %}">
+            <p class="text-2xl font-bold mt-1 {% if delta >= 0 %}text-success{% else %}text-destructive{% endif %}">
                 {{ '%+d' % delta }}pp</p>
             {% else %}<p class="text-lg text-muted-foreground mt-1">Set a target</p>{% endif %}
         </div>
@@ -59,7 +59,7 @@
             <span class="text-xs text-muted-foreground">{{ m.total }} entr{{ 'y' if m.total == 1 else 'ies' }}</span>
             {% if m.clean_core_score is not none %}
             <span class="text-sm font-bold
-                {% if m.clean_core_score >= 70 %}text-emerald-600{% elif m.clean_core_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}">
+                {% if m.clean_core_score >= 70 %}text-success{% elif m.clean_core_score >= 40 %}text-warning{% else %}text-destructive{% endif %}">
                 {{ m.clean_core_score }}%</span>
             {% endif %}
         </div>
@@ -90,7 +90,7 @@
             </div>
         </div>
         <div x-cloak x-show="message" class="px-5 py-2 text-xs border-b border-border"
-             :class="messageKind === 'error' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-emerald-500/10 text-emerald-700'"
+             :class="messageKind === 'error' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-success/10 text-success-emphasis'"
              x-text="message"></div>
 
         {% if entries %}
@@ -113,16 +113,16 @@
                     <td class="px-4 py-2 text-muted-foreground">{{ e.erp_module or '—' }}</td>
                     <td class="px-4 py-2">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border
-                            {% if e.fit_type in ('standard', 'configuration') %}bg-emerald-500/10 text-emerald-600 border-emerald-500/30
-                            {% elif e.fit_type in ('extension', 'isv_solution') %}bg-amber-500/10 text-amber-600 border-amber-500/30
+                            {% if e.fit_type in ('standard', 'configuration') %}bg-success/10 text-success-emphasis border-success/30
+                            {% elif e.fit_type in ('extension', 'isv_solution') %}bg-warning/10 text-warning-emphasis border-warning/30
                             {% else %}bg-destructive/10 text-destructive-emphasis border-destructive/30{% endif %}">
                             {{ (e.fit_type or 'unclassified') | replace('_', ' ') | title }}
                         </span>
                     </td>
                     <td class="px-4 py-2">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border
-                            {% if e.status == 'approved' %}bg-emerald-500/10 text-emerald-600 border-emerald-500/30
-                            {% elif e.status == 'reviewed' %}bg-amber-500/10 text-amber-600 border-amber-500/30
+                            {% if e.status == 'approved' %}bg-success/10 text-success-emphasis border-success/30
+                            {% elif e.status == 'reviewed' %}bg-warning/10 text-warning-emphasis border-warning/30
                             {% else %}bg-muted text-muted-foreground border-border{% endif %}">
                             {{ (e.status or 'draft') | title }}
                         </span>

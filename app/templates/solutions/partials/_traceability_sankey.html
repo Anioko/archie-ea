@@ -114,27 +114,27 @@
             </div>
             <div x-show="selectedNode.status || selectedNode.priority || selectedNode.dependency_level" class="flex flex-wrap gap-1.5">
               <template x-if="selectedNode.status">
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-sky-500/10 text-sky-700 border border-sky-500/30 capitalize" x-text="selectedNode.status"></span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30 capitalize" x-text="selectedNode.status"></span>
               </template>
               <template x-if="selectedNode.priority">
-                <span :class="{'bg-destructive/10 text-destructive-emphasis border-destructive/30': selectedNode.priority==='High','bg-amber-500/10 text-amber-700 border-amber-500/30': selectedNode.priority==='Medium','bg-muted text-muted-foreground border-border': selectedNode.priority==='Low'}"
+                <span :class="{'bg-destructive/10 text-destructive-emphasis border-destructive/30': selectedNode.priority==='High','bg-warning/10 text-warning-emphasis border-warning/30': selectedNode.priority==='Medium','bg-muted text-muted-foreground border-border': selectedNode.priority==='Low'}"
                       class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border" x-text="selectedNode.priority + ' priority'"></span>
               </template>
               <template x-if="selectedNode.dependency_level">
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-orange-500/10 text-orange-700 border border-orange-500/30 capitalize" x-text="selectedNode.dependency_level + ' dep'"></span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30 capitalize" x-text="selectedNode.dependency_level + ' dep'"></span>
               </template>
             </div>
             <div class="flex flex-wrap gap-1.5">
-              <span :class="selectedNode.has_spec ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-muted text-muted-foreground border-border'"
+              <span :class="selectedNode.has_spec ? 'bg-success/10 text-success-emphasis border-success/30' : 'bg-muted text-muted-foreground border-border'"
                     class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border">
                 <span x-text="selectedNode.has_spec ? ('&#x2713; Spec (' + selectedNode.spec_fields + ' fields)') : '&#x25cb; No spec'"></span>
               </span>
-              <span :class="selectedNode.has_code ? 'bg-violet-500/10 text-violet-700 border-violet-500/30' : 'bg-muted text-muted-foreground border-border'"
+              <span :class="selectedNode.has_code ? 'bg-success/10 text-success-emphasis border-success/30' : 'bg-muted text-muted-foreground border-border'"
                     class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border">
                 <span x-text="selectedNode.has_code ? '&#x2713; In code' : '&#x25cb; No code'"></span>
               </span>
               <template x-if="selectedNode.origin === 'ai_derived'">
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-700 border border-purple-500/30">&#x2728; AI derived</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30">&#x2728; AI derived</span>
               </template>
               <template x-if="selectedNode.critical_path">
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">&#x26A0; Critical path</span>
@@ -171,9 +171,9 @@
        class="flex items-center gap-4 mt-3 px-1 text-[10px] text-muted-foreground">
     <span x-text="`${nodes.length} elements`"></span>
     <span x-text="`${links.length} relationships`"></span>
-    <span x-show="hasCode" class="text-violet-600 font-medium">&#x2713; Code generated</span>
+    <span x-show="hasCode" class="text-success-emphasis font-medium">&#x2713; Code generated</span>
     <span x-show="!hasCode" class="text-muted-foreground/60">&#x25cb; No code yet</span>
-    <span x-show="synthesized" class="text-amber-600 font-medium"
+    <span x-show="synthesized" class="text-warning-emphasis font-medium"
           title="No explicit ArchiMate relationships found. Flow derived from layer ordering.">
       &#x26A0;&#xFE0F; Synthesized
     </span>

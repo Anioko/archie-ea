@@ -22,7 +22,7 @@
           <span class="flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold transition-all border"
                 :class="{
                   'bg-primary text-primary-foreground ring-4 ring-primary/20 border-primary': step.num === currentStep,
-                  'bg-emerald-500/15 text-emerald-400 border-emerald-500/30': completedSteps.includes(step.num) && step.num !== currentStep,
+                  'bg-success/15 text-success-emphasis border-success/30': completedSteps.includes(step.num) && step.num !== currentStep,
                   'border-border text-muted-foreground': !completedSteps.includes(step.num) && step.num !== currentStep
                 }">
             <span x-show="completedSteps.includes(step.num) && step.num !== currentStep" x-cloak>&check;</span>
@@ -33,7 +33,7 @@
                 x-text="step.label"></span>
         </button>
         <div x-show="idx < steps.length - 1" class="flex-1 mx-2 sm:mx-3 mt-[-18px]">
-          <div class="step-line rounded-full" :class="completedSteps.includes(step.num) ? 'bg-emerald-500/40' : 'bg-border'"></div>
+          <div class="step-line rounded-full" :class="completedSteps.includes(step.num) ? 'bg-success/40' : 'bg-border'"></div>
         </div>
       </div>
     </template>
@@ -138,14 +138,14 @@
 
     {# Step 1 validation hint — shown when Continue is blocked #}
     <p x-show="form.mode && (!form.name.trim() || !form.business_domain)" x-cloak
-       class="text-xs text-amber-500/80 flex items-center gap-1.5">
+       class="text-xs text-warning-emphasis flex items-center gap-1.5">
       <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
       </svg>
       Programme name and business domain are required to continue.
     </p>
     <p x-show="form.mode === 'brownfield' && form.name.trim().length >= 3 && form.business_domain && !oefXmlContent" x-cloak
-       class="text-xs text-amber-500/80 flex items-center gap-1.5">
+       class="text-xs text-warning-emphasis flex items-center gap-1.5">
       <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
       </svg>
@@ -159,7 +159,7 @@
         <input type="file" id="oef-upload" accept=".xml" class="sr-only" @change="handleOefUpload($event)">
         <label for="oef-upload" class="cursor-pointer">
           <p class="text-sm text-muted-foreground" x-show="!oefFilename">Click to upload OEF XML export</p>
-          <p class="text-sm text-emerald-400 font-medium" x-show="oefFilename" x-text="'✓ ' + oefFilename"></p>
+          <p class="text-sm text-success-emphasis font-medium" x-show="oefFilename" x-text="'✓ ' + oefFilename"></p>
         </label>
       </div>
     </div>
@@ -299,7 +299,7 @@
     <div x-show="form.capabilities.length > 0" x-cloak class="space-y-2">
       <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">In scope (<span x-text="form.capabilities.length"></span>)</p>
       <template x-for="(cap, idx) in form.capabilities" :key="cap.id">
-        <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.03] px-5 py-3.5 flex items-center justify-between">
+        <div class="rounded-xl border border-success/30 bg-success/[0.03] px-5 py-3.5 flex items-center justify-between">
           <div>
             <p class="text-sm font-semibold text-foreground" x-text="cap.name"></p>
             <p class="text-xs text-muted-foreground" x-text="(cap.domain || '') + (cap.level ? ' · Level ' + cap.level : '')"></p>
@@ -389,9 +389,9 @@
                  class="flex-1 text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                  :placeholder="'Name or role (' + stk.role + ')'" aria-label="Name">
           <span x-show="!stk.name.trim()"
-                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">Required</span>
+                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/20 shrink-0">Required</span>
           <span x-show="stk.name.trim()"
-                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">&#10003;</span>
+                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/20 shrink-0">&#10003;</span>
         </div>
       </template>
     </div>
@@ -475,8 +475,8 @@
         <p class="text-2xl font-bold text-foreground" x-text="form.goals.filter(g => g.name.trim()).length"></p>
         <p class="text-[11px] text-muted-foreground mt-0.5">Programme goals</p>
       </div>
-      <div class="rounded-xl border border-emerald-500/20 bg-emerald-500/5 py-4">
-        <p class="text-2xl font-bold text-emerald-400" x-text="form.capabilities.length"></p>
+      <div class="rounded-xl border border-success/20 bg-success/5 py-4">
+        <p class="text-2xl font-bold text-success" x-text="form.capabilities.length"></p>
         <p class="text-[11px] text-muted-foreground mt-0.5">Capabilities in scope</p>
       </div>
       <div class="rounded-xl border border-border bg-card py-4">

@@ -57,9 +57,9 @@
     {% if solutions %}
     {% set metric_cards = [
         {'icon': 'sparkles', 'icon_gradient': 'bg-primary', 'label': 'Needs Setup', 'value': (workspace_stats or {}).get('needs_setup', 0), 'sublabel': 'Still missing core problem or capability framing', 'status_param': 'needs_setup'},
-        {'icon': 'drafting-compass', 'icon_gradient': 'bg-sky-600', 'label': 'In Design', 'value': (workspace_stats or {}).get('in_design', 0), 'sublabel': 'Ready for architect iteration and modelling', 'status_param': 'in_design'},
-        {'icon': 'triangle-alert', 'icon_gradient': 'bg-amber-500', 'label': 'Needs Attention', 'value': (workspace_stats or {}).get('needs_attention', 0), 'sublabel': 'Risks, ADRs, or governance gaps need action', 'status_param': 'needs_attention'},
-        {'icon': 'badge-check', 'icon_gradient': 'bg-emerald-500', 'label': 'Ready for Review', 'value': (workspace_stats or {}).get('ready_for_review', 0), 'sublabel': 'Strong candidates for ARB or stakeholder review', 'status_param': 'ready_for_review'}
+        {'icon': 'drafting-compass', 'icon_gradient': 'bg-info', 'label': 'In Design', 'value': (workspace_stats or {}).get('in_design', 0), 'sublabel': 'Ready for architect iteration and modelling', 'status_param': 'in_design'},
+        {'icon': 'triangle-alert', 'icon_gradient': 'bg-warning', 'label': 'Needs Attention', 'value': (workspace_stats or {}).get('needs_attention', 0), 'sublabel': 'Risks, ADRs, or governance gaps need action', 'status_param': 'needs_attention'},
+        {'icon': 'badge-check', 'icon_gradient': 'bg-success', 'label': 'Ready for Review', 'value': (workspace_stats or {}).get('ready_for_review', 0), 'sublabel': 'Strong candidates for ARB or stakeholder review', 'status_param': 'ready_for_review'}
     ] %}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
       {% for metric in metric_cards %}
@@ -144,9 +144,9 @@
         {# Worklist filter indicator #}
         {% if selected_workspace %}
         {% set _ws_labels = {'needs_setup': 'Needs Setup', 'in_design': 'In Design', 'needs_attention': 'Needs Attention', 'ready_for_review': 'Ready for Review'} %}
-        <div class="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60" data-testid="worklist-filter-indicator" role="status" aria-live="polite">
-            <i data-lucide="list-filter" class="h-3.5 w-3.5 text-amber-600 shrink-0" aria-hidden="true"></i>
-            <span class="text-xs text-amber-700 font-medium">Filtered by worklist: {{ _ws_labels.get(selected_workspace, selected_workspace) }} ({{ total_count|dash }} solution{{ 's' if total_count != 1 else '' }})</span>
+        <div class="flex items-center gap-2 px-4 py-2 border-b bg-warning/10" data-testid="worklist-filter-indicator" role="status" aria-live="polite">
+            <i data-lucide="list-filter" class="h-3.5 w-3.5 text-warning shrink-0" aria-hidden="true"></i>
+            <span class="text-xs text-warning-emphasis font-medium">Filtered by worklist: {{ _ws_labels.get(selected_workspace, selected_workspace) }} ({{ total_count|dash }} solution{{ 's' if total_count != 1 else '' }})</span>
             <a href="{{ request.path }}" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline underline-offset-2" aria-label="Clear worklist filter">Clear filter</a>
         </div>
         {% endif %}
@@ -227,9 +227,9 @@
                                     {% set _gov = ws.governance_status or 'draft' %}
                                     {% set _gov_label = GOV_LABELS.get(_gov, _gov|replace('_',' ')|title) %}
                                     {% if _gov == 'approved' %}
-                                        {% set _gov_cls = 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' %}
+                                        {% set _gov_cls = 'bg-success/10 text-success-emphasis border border-success/20' %}
                                     {% elif _gov in ('arb_review', 'under_review') %}
-                                        {% set _gov_cls = 'bg-amber-500/10 text-amber-600 border border-amber-500/20' %}
+                                        {% set _gov_cls = 'bg-warning/10 text-warning-emphasis border border-warning/20' %}
                                     {% elif _gov == 'rejected' %}
                                         {% set _gov_cls = 'bg-destructive/10 text-destructive border border-destructive/20' %}
                                     {% else %}
@@ -242,14 +242,14 @@
                                 <div class="space-y-2">
                                     <div class="flex items-baseline gap-2">
                                         <span class="text-2xl font-bold tracking-tight
- {% if (ws.readiness_pct or 0) >= 80 %}text-emerald-600
- {% elif (ws.readiness_pct or 0) >= 40 %}text-amber-500
+ {% if (ws.readiness_pct or 0) >= 80 %}text-success
+ {% elif (ws.readiness_pct or 0) >= 40 %}text-warning
  {% else %}text-foreground{% endif %}">{{ ws.readiness_pct or 0 }}%</span>
                                     </div>
                                     <div class="h-1.5 w-32 rounded-full bg-muted/50 overflow-hidden">
                                         <div class="h-full rounded-full transition-all
- {% if (ws.readiness_pct or 0) >= 80 %}bg-emerald-500
- {% elif (ws.readiness_pct or 0) >= 40 %}bg-amber-500
+ {% if (ws.readiness_pct or 0) >= 80 %}bg-success
+ {% elif (ws.readiness_pct or 0) >= 40 %}bg-warning
  {% else %}bg-primary{% endif %}"
                                              style="width: {{ ws.readiness_pct or 0 }}%"></div>
                                     </div>
@@ -274,7 +274,7 @@
                                     <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-width="3" class="text-muted/40"/>
                                     <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-width="3"
                                             stroke-dasharray="{{ _score }}, 100"
-                                            class="{{ 'text-emerald-500' if _score >= 80 else ('text-amber-500' if _score >= 40 else 'text-destructive') }}"/>
+                                            class="{{ 'text-success' if _score >= 80 else ('text-warning' if _score >= 40 else 'text-destructive') }}"/>
                                   </svg>
                                   <span class="absolute text-[11px] font-bold leading-none">{{ _score }}%</span>
                                 </div>
@@ -284,7 +284,7 @@
                             {% set _disconnected = (ws.capability_count or 0) == 0 and (ws.application_count or 0) == 0 and (ws.archimate_count or 0) == 0 %}
                             <td class="px-5 py-4">
                                 <div class="space-y-1 max-w-[200px]">
-                                    <p class="text-xs font-medium leading-relaxed {{ 'text-amber-600' if _disconnected else 'text-foreground' }}">{{ ws.next_action or 'Continue modelling' }}</p>
+                                    <p class="text-xs font-medium leading-relaxed {{ 'text-warning-emphasis' if _disconnected else 'text-foreground' }}">{{ ws.next_action or 'Continue modelling' }}</p>
                                     <p class="text-[10px] text-muted-foreground">{{ solution.created_at | format_date }}</p>
                                 </div>
                             </td>

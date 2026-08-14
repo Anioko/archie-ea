@@ -74,12 +74,12 @@
         <div class="p-3 bg-success/5 rounded-lg">
           <div class="text-sm font-medium text-success">INVEST</div>
           <div class="text-xs text-success">Strategic enhancement</div>
-          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-amber-600">Refactor</span></div>
+          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-amber-600">Refactor</span></div><!-- design-tokens-ok: 7R disposition legend, 7 distinct hues > available semantic tokens -->
         </div>
         <div class="p-3 bg-warning/5 rounded-lg">
           <div class="text-sm font-medium text-warning">MIGRATE</div>
           <div class="text-xs text-warning">Platform transition</div>
-          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-sky-600">Rehost</span> / <span class="text-violet-600">Replatform</span> / <span class="text-orange-600">Replace</span></div>
+          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-sky-600">Rehost</span> / <span class="text-violet-600">Replatform</span> / <span class="text-orange-600">Replace</span></div><!-- design-tokens-ok: 7R disposition legend, 7 distinct hues > available semantic tokens -->
         </div>
         <div class="p-3 bg-destructive/5 rounded-lg">
           <div class="text-sm font-medium text-destructive">ELIMINATE</div>
@@ -288,12 +288,14 @@ function renderCandidates(candidates) {
   };
 
   // Canonical disposition → badge colour classes (7R action vocabulary)
+  // 7 distinct hues needed; more tiers than the semantic token set covers, so
+  // kept raw with markers rather than collapsing two dispositions onto one token.
   const dispositionColors = {
     'retain':      'bg-blue-500/10 text-blue-600 border border-blue-500/30', // token-migration-ok
-    'rehost':      'bg-sky-500/10 text-sky-600 border border-sky-500/30',
-    'replatform':  'bg-violet-500/10 text-violet-600 border border-violet-500/30',
-    'refactor':    'bg-amber-500/10 text-amber-600 border border-amber-500/30',
-    'replace':     'bg-orange-500/10 text-orange-600 border border-orange-500/30',
+    'rehost':      'bg-sky-500/10 text-sky-600 border border-sky-500/30', // design-tokens-ok: 7R legend
+    'replatform':  'bg-violet-500/10 text-violet-600 border border-violet-500/30', // design-tokens-ok: 7R legend
+    'refactor':    'bg-amber-500/10 text-amber-600 border border-amber-500/30', // design-tokens-ok: 7R legend
+    'replace':     'bg-orange-500/10 text-orange-600 border border-orange-500/30', // design-tokens-ok: 7R legend
     'consolidate': 'bg-purple-500/10 text-purple-600 border border-purple-500/30', // token-migration-ok
     'retire':      'bg-red-500/10 text-red-600 border border-red-500/30' // token-migration-ok
   };
@@ -301,7 +303,7 @@ function renderCandidates(candidates) {
   // Confidence level → badge colour classes and labels (RAT-105)
   const confidenceConfig = {
     'high':   { cls: 'bg-success/10 text-success border-success/30',              label: 'High Confidence' },
-    'medium': { cls: 'bg-amber-500/10 text-amber-700 border-amber-500/30',        label: 'Medium Confidence' },
+    'medium': { cls: 'bg-warning/10 text-warning-emphasis border-warning/30',     label: 'Medium Confidence' },
     'low':    { cls: 'bg-destructive/10 text-destructive border-destructive/30',   label: 'Low \u2014 Tentative' },
     'none':   { cls: 'bg-muted text-muted-foreground border-border',               label: 'Insufficient Evidence' },
   };

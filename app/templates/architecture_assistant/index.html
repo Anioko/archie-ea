@@ -22,7 +22,7 @@
 
   {# -- LLM Banner -- #}
   <div x-show="!llmAvailable" x-cloak
-    class="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-600 mb-6">
+    class="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-warning-emphasis mb-6">
     <i data-lucide="alert-triangle" class="h-4 w-4 inline mr-1"></i>
     AI features limited -- manual entry available for all sections.
   </div>
@@ -42,7 +42,7 @@
           :disabled="!canNavigateTo(s.num)"
           :class="{
             'bg-primary text-primary-foreground': currentStep === s.num,
-            'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': s.complete && currentStep !== s.num,
+            'bg-success/10 text-success-emphasis border-success/30': s.complete && currentStep !== s.num,
             'bg-muted text-muted-foreground': !s.complete && currentStep !== s.num,
             'opacity-50 cursor-not-allowed': !canNavigateTo(s.num)
           }"
@@ -148,7 +148,7 @@
             <div class="flex items-center gap-2 mb-1">
               <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30" x-text="entry.phase"></span>
               <span x-show="entry.approval_status" x-cloak
-                    :class="entry.approval_status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : entry.approval_status === 'rejected' ? 'bg-destructive/10 text-destructive-emphasis border-destructive/30' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'"
+                    :class="entry.approval_status === 'approved' ? 'bg-success/10 text-success-emphasis border-success/30' : entry.approval_status === 'rejected' ? 'bg-destructive/10 text-destructive-emphasis border-destructive/30' : 'bg-warning/10 text-warning-emphasis border-warning/30'"
                     class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
                     x-text="entry.approval_status"></span>
             </div>
@@ -171,9 +171,9 @@
         x-transition:leave-start="opacity-100 translate-x-0"
         x-transition:leave-end="opacity-0 translate-x-4"
         :class="{
-          'border-emerald-500/30 bg-emerald-500/10 text-emerald-700': toast.type === 'success',
+          'border-success/30 bg-success/10 text-success-emphasis': toast.type === 'success',
           'border-destructive/30 bg-destructive/10 text-destructive-emphasis': toast.type === 'error',
-          'border-amber-500/30 bg-amber-500/10 text-amber-700': toast.type === 'warning',
+          'border-warning/30 bg-warning/10 text-warning-emphasis': toast.type === 'warning',
           'border-border bg-background text-foreground': toast.type === 'info',
         }"
         class="flex items-center gap-2 rounded-md border px-4 py-3 text-sm shadow-lg max-w-sm">

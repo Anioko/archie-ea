@@ -14,8 +14,8 @@
             <div class="flex items-center gap-2.5">
                 <span class="w-2.5 h-2.5 rounded-full shrink-0"
                       :class="{
-                          'bg-emerald-500': decisions.filter(d => d.status === 'approved').length > 0 && decisions.filter(d => d.status === 'proposed').length === 0,
-                          'bg-amber-500':  decisions.filter(d => d.status === 'proposed').length > 0,
+                          'bg-success': decisions.filter(d => d.status === 'approved').length > 0 && decisions.filter(d => d.status === 'proposed').length === 0,
+                          'bg-warning':  decisions.filter(d => d.status === 'proposed').length > 0,
                           'bg-muted-foreground/30': decisions.length === 0
                       }"></span>
                 <h2 class="text-sm font-semibold text-foreground">15. Architecture Decisions</h2>
@@ -43,7 +43,7 @@
                     <button type="button"
                             @click="generateNarrative()"
                             :disabled="generatingNarrative"
-                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/30 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-info/10 text-info-emphasis border border-info/30 hover:bg-info/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                         <template x-if="!generatingNarrative">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                         </template>
@@ -67,7 +67,7 @@
                         Saving…
                     </span>
                     <span x-show="narrativeSaving === 'saved'" x-cloak
-                          class="text-[10px] text-emerald-600 font-medium">Saved</span>
+                          class="text-[10px] text-success-emphasis font-medium">Saved</span>
                 </div>
             </div>
 
@@ -123,8 +123,8 @@
                                         {# Status badge #}
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
                                               :class="{
-                                                  'bg-amber-500/10 text-amber-600 border-amber-500/30':  d.status === 'proposed',
-                                                  'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': d.status === 'approved',
+                                                  'bg-warning/10 text-warning-emphasis border-warning/30':  d.status === 'proposed',
+                                                  'bg-success/10 text-success-emphasis border-success/30': d.status === 'approved',
                                                   'bg-destructive/10 text-destructive-emphasis border-destructive/30': d.status === 'rejected',
                                                   'bg-muted text-muted-foreground border-border': !['proposed','approved','rejected'].includes(d.status)
                                               }"
@@ -154,7 +154,7 @@
                                             type="button"
                                             @click="approveDecision(d.id)"
                                             :disabled="actionLoading[d.id]"
-                                            class="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                            class="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 transition-colors disabled:opacity-50"
                                             title="Approve decision">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                         Approve
@@ -232,7 +232,7 @@
                                                         <p class="text-xs font-semibold text-foreground mb-1" x-text="alt.name || ('Option ' + (idx + 1))"></p>
                                                         <div class="grid grid-cols-2 gap-2">
                                                             <div x-show="alt.pros" x-cloak>
-                                                                <p class="text-[10px] font-medium text-emerald-600 mb-0.5">Pros</p>
+                                                                <p class="text-[10px] font-medium text-success-emphasis mb-0.5">Pros</p>
                                                                 <p class="text-xs text-muted-foreground" x-text="alt.pros"></p>
                                                             </div>
                                                             <div x-show="alt.cons" x-cloak>
@@ -256,7 +256,7 @@
                                     <span x-show="d.adm_phase" x-cloak x-text="'Phase ' + d.adm_phase"></span>
                                     <span x-show="d.horizon" x-cloak x-text="(d.horizon || '').replace(/_/g, ' ')"></span>
                                     <span x-show="d.created_at" x-cloak x-text="formatDate(d.created_at)"></span>
-                                    <span x-show="d.approved_at" x-cloak class="text-emerald-600"
+                                    <span x-show="d.approved_at" x-cloak class="text-success-emphasis"
                                           x-text="'Approved ' + formatDate(d.approved_at)"></span>
                                 </div>
                             </div>

@@ -29,12 +29,12 @@
             </div>
             <div class="text-2xl font-bold text-destructive-emphasis">{{ summary.critical }}</div>
         </div>
-        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
-            <div class="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 mb-1">
+        <div class="bg-card border border-warning/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-warning-emphasis mb-1">
                 <i data-lucide="alert-triangle" class="w-4 h-4"></i>
                 Warning (&lt;90d)
             </div>
-            <div class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ summary.warning }}</div>
+            <div class="text-2xl font-bold text-warning-emphasis">{{ summary.warning }}</div>
         </div>
         <div class="bg-card border border-info/50 rounded-lg p-4">
             <div class="flex items-center gap-2 text-sm text-info-emphasis mb-1">
@@ -43,12 +43,12 @@
             </div>
             <div class="text-2xl font-bold text-info-emphasis">{{ summary.upcoming }}</div>
         </div>
-        <div class="bg-card border border-green-500/50 rounded-lg p-4">
-            <div class="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mb-1">
+        <div class="bg-card border border-success/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-success-emphasis mb-1">
                 <i data-lucide="check-circle" class="w-4 h-4"></i>
                 OK (&gt;180d)
             </div>
-            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ summary.ok }}</div>
+            <div class="text-2xl font-bold text-success-emphasis">{{ summary.ok }}</div>
         </div>
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="flex items-center gap-2 text-sm text-muted-foreground mb-1">
@@ -80,7 +80,7 @@
         {% for item in contracts %}
         <div class="bg-card border rounded-lg p-4 hover:border-primary/50 transition-colors
             {% if item.urgency == 'critical' %}border-destructive/50
-            {% elif item.urgency == 'warning' %}border-amber-500/50
+            {% elif item.urgency == 'warning' %}border-warning/50
             {% elif item.urgency == 'expired' %}border-destructive
             {% else %}border-border{% endif %}">
             <div class="flex items-start justify-between">
@@ -89,7 +89,7 @@
                         <h3 class="font-medium">{{ item.contract.contract_name }}</h3>
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
                             {% if item.urgency == 'critical' %}bg-destructive/10 text-destructive-emphasis
-                            {% elif item.urgency == 'warning' %}bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400
+                            {% elif item.urgency == 'warning' %}bg-warning/10 text-warning-emphasis
                             {% elif item.urgency == 'expired' %}bg-destructive/10 text-destructive-emphasis
                             {% else %}bg-info/10 text-info-emphasis{% endif %}">
                             {% if item.urgency == 'expired' %}EXPIRED
@@ -120,7 +120,7 @@
                 <div class="flex flex-col items-end gap-2 ml-4">
                     <div class="text-2xl font-bold
                         {% if item.urgency == 'critical' or item.urgency == 'expired' %}text-destructive-emphasis
-                        {% elif item.urgency == 'warning' %}text-amber-600 dark:text-amber-400
+                        {% elif item.urgency == 'warning' %}text-warning-emphasis
                         {% else %}text-info-emphasis{% endif %}">
                         {% if item.urgency == 'expired' %}Expired
                         {% else %}{{ item.days_until_renewal }}d{% endif %}
@@ -135,8 +135,8 @@
     {% else %}
     <!-- Empty State -->
     <div class="bg-card border border-border rounded-lg p-12 text-center">
-        <div class="w-16 h-16 mx-auto mb-4 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-            <i data-lucide="check-circle" class="w-8 h-8 text-green-600 dark:text-green-400"></i>
+        <div class="w-16 h-16 mx-auto mb-4 bg-success/10 rounded-full flex items-center justify-center">
+            <i data-lucide="check-circle" class="w-8 h-8 text-success-emphasis"></i>
         </div>
         <h3 class="text-lg font-medium mb-2">No expiring contracts</h3>
         <p class="text-muted-foreground">

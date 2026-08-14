@@ -49,7 +49,7 @@
                 <span class="w-28 text-xs font-medium text-muted-foreground shrink-0">{{ label }}</span>
                 <div class="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                     <div
-                        class="h-full rounded-full transition-all duration-300 {% if matrix.coverage[key] == 100 %}bg-primary{% elif matrix.coverage[key] > 0 %}bg-amber-500{% else %}bg-destructive{% endif %}"
+                        class="h-full rounded-full transition-all duration-300 {% if matrix.coverage[key] == 100 %}bg-primary{% elif matrix.coverage[key] > 0 %}bg-warning{% else %}bg-destructive{% endif %}"
                         :style="'width: {{ matrix.coverage[key] }}%'"
                     ></div>
                 </div>
@@ -123,7 +123,7 @@
                         </td>
                         <td class="px-4 py-3 text-sm">
                             {% if row.requirement %}
-                            <svg class="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <svg class="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                             {% else %}
@@ -132,7 +132,7 @@
                         </td>
                         <td class="px-4 py-3 text-sm">
                             {% if row.application %}
-                            <svg class="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <svg class="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                             {% else %}
@@ -141,7 +141,7 @@
                         </td>
                         <td class="px-4 py-3 text-sm">
                             {% if row.technology %}
-                            <svg class="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <svg class="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                             {% else %}
@@ -197,7 +197,7 @@
                     {# Goal #}
                     <td class="px-4 py-3 align-top">
                         {% if row.goal %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"> {# design-tokens-ok: categorical column legend (Driver/Goal/Capability/Requirement/Application/Vendor/Technology), 7 distinct hues needed — no 7-way semantic token set exists #}
                             {{ row.goal.name }}
                         </span>
                         {% else %}
@@ -209,7 +209,7 @@
                     {# Capability #}
                     <td class="px-4 py-3 align-top">
                         {% if row.capability %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-purple-500/30">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-purple-500/10 text-purple-600 border border-purple-500/30"> {# design-tokens-ok: categorical column legend, see Goal cell above #}
                             {{ row.capability.name }}
                         </span>
                         {% else %}
@@ -221,7 +221,7 @@
                     {# Requirement #}
                     <td class="px-4 py-3 align-top">
                         {% if row.requirement %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"> {# design-tokens-ok: categorical column legend, see Goal cell above #}
                             {{ row.requirement.name }}
                         </span>
                         {% else %}
@@ -233,7 +233,7 @@
                     {# Application #}
                     <td class="px-4 py-3 align-top">
                         {% if row.application %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-cyan-500/10 text-cyan-600 border border-cyan-500/30">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-cyan-500/10 text-cyan-600 border border-cyan-500/30"> {# design-tokens-ok: categorical column legend, see Goal cell above #}
                             {{ row.application.name }}
                         </span>
                         {% else %}
@@ -245,7 +245,7 @@
                     {# Vendor Product #}
                     <td class="px-4 py-3 align-top">
                         {% if row.vendor_product %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30"> {# design-tokens-ok: categorical column legend, see Goal cell above #}
                             {{ row.vendor_product.name }}
                         </span>
                         {% else %}
@@ -257,7 +257,7 @@
                     {# Technology #}
                     <td class="px-4 py-3 align-top">
                         {% if row.technology %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-rose-500/10 text-rose-600 border border-rose-500/30">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-rose-500/10 text-rose-600 border border-rose-500/30"> {# design-tokens-ok: categorical column legend, see Goal cell above #}
                             {{ row.technology.name }}
                         </span>
                         {% else %}

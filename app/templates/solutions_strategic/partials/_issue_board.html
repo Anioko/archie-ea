@@ -4,13 +4,13 @@
 {% set status_colors = {
   'NEW': 'bg-muted text-foreground',
   'IN_PROGRESS': 'bg-primary/10 text-primary/90',
-  'RESOLVED': 'bg-emerald-100 text-emerald-800',
+  'RESOLVED': 'bg-success/10 text-success-emphasis',
   'ESCALATED': 'bg-destructive/10 text-destructive-emphasis'
 } %}
 
 {% set priority_colors = {
   'P0': 'bg-destructive/10 text-destructive border border-destructive/30',
-  'P1': 'bg-amber-500/10 text-amber-600 border border-amber-500/30',
+  'P1': 'bg-warning/10 text-warning-emphasis border border-warning/30',
   'P2': 'bg-info/10 text-primary border border-info/30'
 } %}
 
@@ -37,7 +37,7 @@
         P0 Only
       </button>
       <button @click="toggleFilter('priority', 'P1')" 
-              :class="filters.priority.includes('P1') ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground'"
+              :class="filters.priority.includes('P1') ? 'bg-warning/10 text-warning-emphasis' : 'bg-muted text-muted-foreground'"
               class="px-3 py-1 rounded-full text-xs font-medium hover:opacity-80">
         P1 Only
       </button>
@@ -96,7 +96,7 @@
               <span class="text-xs text-muted-foreground" x-show="issue.comment_count" x-cloak>
                 💬 <span x-text="issue.comment_count"></span>
               </span>
-              <span x-show="issue.auto_escalate_if_not_resolved_by" x-cloak class="text-xs font-medium text-amber-600">
+              <span x-show="issue.auto_escalate_if_not_resolved_by" x-cloak class="text-xs font-medium text-warning-emphasis">
                 ⏰ Auto-escalates
               </span>
             </div>
@@ -148,7 +148,7 @@
               <span class="text-xs text-muted-foreground" x-show="issue.comment_count" x-cloak>
                 💬 <span x-text="issue.comment_count"></span>
               </span>
-              <span x-show="issue.auto_escalate_if_not_resolved_by" x-cloak class="text-xs font-medium text-amber-600">
+              <span x-show="issue.auto_escalate_if_not_resolved_by" x-cloak class="text-xs font-medium text-warning-emphasis">
                 ⏰ Auto-escalates
               </span>
             </div>
@@ -162,11 +162,11 @@
     </div>
 
     {# RESOLVED Column #}
-    <div class="bg-emerald-50 rounded-lg p-4 border border-emerald-200">
-      <h3 class="font-bold text-sm mb-4 text-emerald-700">RESOLVED</h3>
+    <div class="bg-success/10 rounded-lg p-4 border border-success/30">
+      <h3 class="font-bold text-sm mb-4 text-success-emphasis">RESOLVED</h3>
       <div class="space-y-3 min-h-[300px]">
         <template x-for="issue in getFilteredIssues('RESOLVED')" :key="issue.id">
-          <div @click="openIssueDetail(issue)" class="bg-background rounded-lg p-4 shadow-sm hover:shadow-md cursor-pointer border border-emerald-200 hover:border-emerald-300 transition-all opacity-75 hover:opacity-100">
+          <div @click="openIssueDetail(issue)" class="bg-background rounded-lg p-4 shadow-sm hover:shadow-md cursor-pointer border border-success/30 hover:border-success/50 transition-all opacity-75 hover:opacity-100">
             <div class="flex items-start justify-between gap-2 mb-2">
               <h4 class="font-semibold text-sm text-foreground flex-1 line-through" x-text="issue.title"></h4>
               <span :class="priority_colors[issue.priority]" class="px-2 py-1 rounded text-xs font-medium whitespace-nowrap" x-text="issue.priority"></span>
@@ -183,7 +183,7 @@
               </div>
             </div>
 
-            <div class="mt-3 pt-3 border-t border-emerald-100 flex items-center justify-between">
+            <div class="mt-3 pt-3 border-t border-success/20 flex items-center justify-between">
               <span class="text-xs text-muted-foreground" x-show="issue.comment_count" x-cloak>
                 💬 <span x-text="issue.comment_count"></span>
               </span>
@@ -327,7 +327,7 @@
         </button>
         <button @click="transitionIssue(selectedIssue, 'RESOLVED')" 
                 x-show="selectedIssue?.status === 'IN_PROGRESS'" x-cloak
-                class="flex-1 inline-flex items-center justify-center rounded-md text-sm font-medium bg-emerald-600 text-primary-foreground hover:bg-emerald-700 h-9">
+                class="flex-1 inline-flex items-center justify-center rounded-md text-sm font-medium bg-success text-success-foreground hover:bg-success/90 h-9">
           Mark Resolved
         </button>
         <button @click="manuallyEscalate(selectedIssue)" 
