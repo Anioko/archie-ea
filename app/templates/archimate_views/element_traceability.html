@@ -73,27 +73,27 @@
 
         <!-- Motivation Layer -->
         {% set motivation_els = (chain.upward + chain.downward) | selectattr('layer', 'equalto', 'Motivation') | list %}
-        <div class="rounded-lg border border-fuchsia-200 bg-fuchsia-50/50 p-4">
+        <div class="rounded-lg border border-fuchsia-200 bg-fuchsia-50/50 p-4">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
             <div class="flex items-center gap-2 mb-3">
-                <span class="h-3 w-3 rounded-full bg-fuchsia-500"></span>
-                <span class="text-sm font-semibold text-fuchsia-700">Motivation Layer</span>
+                <span class="h-3 w-3 rounded-full bg-fuchsia-500"></span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
+                <span class="text-sm font-semibold text-fuchsia-700">Motivation Layer</span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                 <span class="text-xs text-muted-foreground">({{ motivation_els | length }} linked)</span>
             </div>
             {% if motivation_els %}
             <div class="flex flex-wrap gap-2">
                 {% for el in motivation_els %}
-                <div class="rounded-md border border-fuchsia-200 bg-background px-3 py-2">
+                <div class="rounded-md border border-fuchsia-200 bg-background px-3 py-2">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                     <p class="text-sm font-medium">{{ el.name }}</p>
                     <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {% if el.type %}
-                        <span class="inline-flex items-center rounded-full bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-700">
+                        <span class="inline-flex items-center rounded-full bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                             {{ el.type }}
                         </span>
                         {% endif %}
                         <span>hop {{ el.hop }}</span>
                     </div>
                     {% if el.relationship_type %}
-                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-fuchsia-500/10 px-2 py-0.5 text-[11px] font-medium text-fuchsia-700">
+                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-fuchsia-500/10 px-2 py-0.5 text-[11px] font-medium text-fuchsia-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                         <span aria-hidden="true">→</span>
                         <span>via {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}</span>
                     </div>
@@ -113,27 +113,27 @@
 
         <!-- Strategy Layer -->
         {% set strategy_els = (chain.upward + chain.downward) | selectattr('layer', 'equalto', 'Strategy') | list %}
-        <div class="rounded-lg border border-violet-200 bg-violet-50/50 p-4">
+        <div class="rounded-lg border border-violet-200 bg-violet-50/50 p-4">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
             <div class="flex items-center gap-2 mb-3">
-                <span class="h-3 w-3 rounded-full bg-violet-500"></span>
-                <span class="text-sm font-semibold text-violet-700">Strategy Layer</span>
+                <span class="h-3 w-3 rounded-full bg-violet-500"></span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
+                <span class="text-sm font-semibold text-violet-700">Strategy Layer</span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                 <span class="text-xs text-muted-foreground">({{ strategy_els | length }} linked)</span>
             </div>
             {% if strategy_els %}
             <div class="flex flex-wrap gap-2">
                 {% for el in strategy_els %}
-                <div class="rounded-md border border-violet-200 bg-background px-3 py-2">
+                <div class="rounded-md border border-violet-200 bg-background px-3 py-2">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                     <p class="text-sm font-medium">{{ el.name }}</p>
                     <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {% if el.type %}
-                        <span class="inline-flex items-center rounded-full bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                        <span class="inline-flex items-center rounded-full bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                             {{ el.type }}
                         </span>
                         {% endif %}
                         <span>hop {{ el.hop }}</span>
                     </div>
                     {% if el.relationship_type %}
-                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                         <span aria-hidden="true">→</span>
                         <span>via {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}</span>
                     </div>
@@ -153,27 +153,27 @@
 
         <!-- Business Layer -->
         {% set business_els = (chain.upward + chain.downward) | selectattr('layer', 'equalto', 'Business') | list %}
-        <div class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
             <div class="flex items-center gap-2 mb-3">
-                <span class="h-3 w-3 rounded-full bg-emerald-500"></span>
-                <span class="text-sm font-semibold text-emerald-700">Business Layer</span>
+                <span class="h-3 w-3 rounded-full bg-emerald-500"></span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
+                <span class="text-sm font-semibold text-emerald-700">Business Layer</span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                 <span class="text-xs text-muted-foreground">({{ business_els | length }} linked)</span>
             </div>
             {% if business_els %}
             <div class="flex flex-wrap gap-2">
                 {% for el in business_els %}
-                <div class="rounded-md border border-emerald-200 bg-background px-3 py-2">
+                <div class="rounded-md border border-emerald-200 bg-background px-3 py-2">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                     <p class="text-sm font-medium">{{ el.name }}</p>
                     <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {% if el.type %}
-                        <span class="inline-flex items-center rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        <span class="inline-flex items-center rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                             {{ el.type }}
                         </span>
                         {% endif %}
                         <span>hop {{ el.hop }}</span>
                     </div>
                     {% if el.relationship_type %}
-                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                         <span aria-hidden="true">→</span>
                         <span>via {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}</span>
                     </div>
@@ -218,27 +218,27 @@
 
         <!-- Technology Layer -->
         {% set tech_els = (chain.upward + chain.downward) | selectattr('layer', 'equalto', 'Technology') | list %}
-        <div class="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+        <div class="rounded-lg border border-amber-200 bg-amber-50/50 p-4">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
             <div class="flex items-center gap-2 mb-3">
-                <span class="h-3 w-3 rounded-full bg-amber-500"></span>
-                <span class="text-sm font-semibold text-amber-700">Technology Layer</span>
+                <span class="h-3 w-3 rounded-full bg-amber-500"></span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
+                <span class="text-sm font-semibold text-amber-700">Technology Layer</span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                 <span class="text-xs text-muted-foreground">({{ tech_els | length }} linked)</span>
             </div>
             {% if tech_els %}
             <div class="flex flex-wrap gap-2">
                 {% for el in tech_els %}
-                <div class="rounded-md border border-amber-200 bg-background px-3 py-2">
+                <div class="rounded-md border border-amber-200 bg-background px-3 py-2">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                     <p class="text-sm font-medium">{{ el.name }}</p>
                     <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {% if el.type %}
-                        <span class="inline-flex items-center rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                        <span class="inline-flex items-center rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                             {{ el.type }}
                         </span>
                         {% endif %}
                         <span>hop {{ el.hop }}</span>
                     </div>
                     {% if el.relationship_type %}
-                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                         <span aria-hidden="true">→</span>
                         <span>via {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}</span>
                     </div>
@@ -258,27 +258,27 @@
 
         <!-- Data Layer -->
         {% set data_els = (chain.upward + chain.downward) | selectattr('layer', 'equalto', 'Data') | list %}
-        <div class="rounded-lg border border-sky-200 bg-sky-50/50 p-4">
+        <div class="rounded-lg border border-sky-200 bg-sky-50/50 p-4">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
             <div class="flex items-center gap-2 mb-3">
-                <span class="h-3 w-3 rounded-full bg-sky-500"></span>
-                <span class="text-sm font-semibold text-sky-700">Data Layer</span>
+                <span class="h-3 w-3 rounded-full bg-sky-500"></span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
+                <span class="text-sm font-semibold text-sky-700">Data Layer</span>  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                 <span class="text-xs text-muted-foreground">({{ data_els | length }} linked)</span>
             </div>
             {% if data_els %}
             <div class="flex flex-wrap gap-2">
                 {% for el in data_els %}
-                <div class="rounded-md border border-sky-200 bg-background px-3 py-2">
+                <div class="rounded-md border border-sky-200 bg-background px-3 py-2">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                     <p class="text-sm font-medium">{{ el.name }}</p>
                     <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {% if el.type %}
-                        <span class="inline-flex items-center rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+                        <span class="inline-flex items-center rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                             {{ el.type }}
                         </span>
                         {% endif %}
                         <span>hop {{ el.hop }}</span>
                     </div>
                     {% if el.relationship_type %}
-                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                    <div class="mt-2 inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-700">  <!-- design-tokens-ok: ArchiMate layer chain, distinct hue per layer -->
                         <span aria-hidden="true">→</span>
                         <span>via {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}</span>
                     </div>

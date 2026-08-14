@@ -27,13 +27,13 @@
 
             {# Database #}
             <div class="rounded-xl border bg-card p-5 flex items-center gap-4
-                {% if health.db == 'ok' %}border-emerald-500/30{% else %}border-destructive/30{% endif %}">
-                <div class="p-2.5 rounded-lg {% if health.db == 'ok' %}bg-emerald-500/10{% else %}bg-destructive/10{% endif %}">
-                    <i data-lucide="database" class="w-5 h-5 {% if health.db == 'ok' %}text-emerald-500{% else %}text-destructive{% endif %}" aria-hidden="true"></i>
+                {% if health.db == 'ok' %}border-success/30{% else %}border-destructive/30{% endif %}">
+                <div class="p-2.5 rounded-lg {% if health.db == 'ok' %}bg-success/10{% else %}bg-destructive/10{% endif %}">
+                    <i data-lucide="database" class="w-5 h-5 {% if health.db == 'ok' %}text-success{% else %}text-destructive{% endif %}" aria-hidden="true"></i>
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground">Database</p>
-                    <p class="text-sm font-bold {% if health.db == 'ok' %}text-emerald-600{% else %}text-destructive{% endif %}">
+                    <p class="text-sm font-bold {% if health.db == 'ok' %}text-success{% else %}text-destructive{% endif %}">
                         {{ 'Connected' if health.db == 'ok' else 'Error' }}
                     </p>
                 </div>
@@ -41,13 +41,13 @@
 
             {# Redis #}
             <div class="rounded-xl border bg-card p-5 flex items-center gap-4
-                {% if health.redis == 'ok' %}border-emerald-500/30{% else %}border-amber-500/30{% endif %}">
-                <div class="p-2.5 rounded-lg {% if health.redis == 'ok' %}bg-emerald-500/10{% else %}bg-amber-500/10{% endif %}">
-                    <i data-lucide="zap" class="w-5 h-5 {% if health.redis == 'ok' %}text-emerald-500{% else %}text-amber-500{% endif %}" aria-hidden="true"></i>
+                {% if health.redis == 'ok' %}border-success/30{% else %}border-warning/30{% endif %}">
+                <div class="p-2.5 rounded-lg {% if health.redis == 'ok' %}bg-success/10{% else %}bg-warning/10{% endif %}">
+                    <i data-lucide="zap" class="w-5 h-5 {% if health.redis == 'ok' %}text-success{% else %}text-warning{% endif %}" aria-hidden="true"></i>
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground">Cache (Redis)</p>
-                    <p class="text-sm font-bold {% if health.redis == 'ok' %}text-emerald-600{% else %}text-amber-500{% endif %}">
+                    <p class="text-sm font-bold {% if health.redis == 'ok' %}text-success{% else %}text-warning{% endif %}">
                         {{ 'Connected' if health.redis == 'ok' else 'Unavailable' }}
                     </p>
                 </div>
@@ -62,7 +62,7 @@
                     <p class="text-xs font-medium text-muted-foreground">Total Users</p>
                     <p class="text-sm font-bold text-foreground">{{ total_users }}
                         {% if unconfirmed_users > 0 %}
-                            <span class="text-[10px] font-semibold text-amber-500 ml-1">{{ unconfirmed_users }} unconfirmed</span>
+                            <span class="text-[10px] font-semibold text-warning ml-1">{{ unconfirmed_users }} unconfirmed</span>
                         {% endif %}
                     </p>
                 </div>
@@ -70,13 +70,13 @@
 
             {# Feature Flags #}
             <div class="rounded-xl border border-border/50 bg-card p-5 flex items-center gap-4">
-                <div class="p-2.5 rounded-lg bg-violet-500/10">
-                    <i data-lucide="toggle-left" class="w-5 h-5 text-violet-500" aria-hidden="true"></i>
+                <div class="p-2.5 rounded-lg bg-info/10">
+                    <i data-lucide="toggle-left" class="w-5 h-5 text-info" aria-hidden="true"></i>
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground">Feature Flags</p>
                     <p class="text-sm font-bold text-foreground">
-                        <span class="text-emerald-600">{{ flags.enabled }} on</span>
+                        <span class="text-success">{{ flags.enabled }} on</span>
                         <span class="text-muted-foreground mx-1">/</span>
                         <span class="text-muted-foreground">{{ flags.disabled }} off</span>
                     </p>
@@ -146,8 +146,8 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <a href="{{ url_for('admin.feature_flags') }}" class="block group">
                         <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
-                            <div class="p-2.5 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/15 transition-colors">
-                                <i data-lucide="toggle-left" class="w-5 h-5 text-violet-500" aria-hidden="true"></i>
+                            <div class="p-2.5 rounded-lg bg-info/10 group-hover:bg-info/15 transition-colors">
+                                <i data-lucide="toggle-left" class="w-5 h-5 text-info" aria-hidden="true"></i>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Feature Flags</p>
@@ -157,8 +157,8 @@
                     </a>
                     <a href="{{ url_for('admin.api_settings') }}" class="block group">
                         <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
-                            <div class="p-2.5 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/15 transition-colors">
-                                <i data-lucide="key" class="w-5 h-5 text-amber-500" aria-hidden="true"></i>
+                            <div class="p-2.5 rounded-lg bg-warning/10 group-hover:bg-warning/15 transition-colors">
+                                <i data-lucide="key" class="w-5 h-5 text-warning" aria-hidden="true"></i>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">API Settings</p>
@@ -168,8 +168,8 @@
                     </a>
                     <a href="{{ url_for('admin.abacus_settings') }}" class="block group">
                         <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
-                            <div class="p-2.5 rounded-lg bg-sky-500/10 group-hover:bg-sky-500/15 transition-colors">
-                                <i data-lucide="database" class="w-5 h-5 text-sky-500" aria-hidden="true"></i>
+                            <div class="p-2.5 rounded-lg bg-info/10 group-hover:bg-info/15 transition-colors">
+                                <i data-lucide="database" class="w-5 h-5 text-info" aria-hidden="true"></i>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Abacus Settings</p>
@@ -190,8 +190,8 @@
                     </a>
                     <a href="{{ url_for('admin.slack_integration') }}" class="block group">
                         <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
-                            <div class="p-2.5 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/15 transition-colors">
-                                <i data-lucide="message-square" class="w-5 h-5 text-violet-500" aria-hidden="true"></i>
+                            <div class="p-2.5 rounded-lg bg-info/10 group-hover:bg-info/15 transition-colors">
+                                <i data-lucide="message-square" class="w-5 h-5 text-info" aria-hidden="true"></i>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Slack AI Architect</p>
@@ -212,8 +212,8 @@
                     </a>
                     <a href="{{ url_for('admin.seed_management') }}" class="block group">
                         <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
-                            <div class="p-2.5 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-500/15 transition-colors">
-                                <i data-lucide="sprout" class="w-5 h-5 text-emerald-500" aria-hidden="true"></i>
+                            <div class="p-2.5 rounded-lg bg-success/10 group-hover:bg-success/15 transition-colors">
+                                <i data-lucide="sprout" class="w-5 h-5 text-success" aria-hidden="true"></i>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Seed Management</p>
@@ -251,9 +251,9 @@
                             </div>
                             <div class="flex items-center gap-2 shrink-0 ml-3">
                                 {% if not user.confirmed %}
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20">Unconfirmed</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-warning/10 text-warning-emphasis border border-warning/20">Unconfirmed</span>
                                 {% else %}
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Active</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-success/10 text-success-emphasis border border-success/20">Active</span>
                                 {% endif %}
                             </div>
                         </div>
@@ -271,8 +271,8 @@
                 <div class="px-5 py-4 border-b border-border/50">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <div class="p-2 rounded-lg bg-amber-500/10">
-                                <i data-lucide="key" class="w-5 h-5 text-amber-500" aria-hidden="true"></i>
+                            <div class="p-2 rounded-lg bg-warning/10">
+                                <i data-lucide="key" class="w-5 h-5 text-warning" aria-hidden="true"></i>
                             </div>
                             <div>
                                 <h3 class="text-sm font-semibold text-foreground">API Keys</h3>
@@ -287,9 +287,9 @@
                     <div class="flex items-center justify-between px-5 py-3">
                         <div class="flex items-center gap-3">
                             <div class="w-2 h-2 rounded-full shrink-0
-                                {% if key.enabled and key.test_status == 'success' %}bg-emerald-500
+                                {% if key.enabled and key.test_status == 'success' %}bg-success
                                 {% elif key.enabled and key.test_status == 'failed' %}bg-destructive
-                                {% elif key.enabled %}bg-amber-500
+                                {% elif key.enabled %}bg-warning
                                 {% else %}bg-muted-foreground/30{% endif %}">
                             </div>
                             <span class="text-sm font-medium text-foreground capitalize">{{ key.provider }}</span>
@@ -301,11 +301,11 @@
                             {% if not key.enabled %}
                                 <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-muted/50 text-muted-foreground">Disabled</span>
                             {% elif key.test_status == 'success' %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">OK</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-success/10 text-success-emphasis border border-success/20">OK</span>
                             {% elif key.test_status == 'failed' %}
                                 <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-destructive/10 text-destructive-emphasis border border-destructive/20">Failed</span>
                             {% else %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20">Untested</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-warning/10 text-warning-emphasis border border-warning/20">Untested</span>
                             {% endif %}
                         </div>
                     </div>

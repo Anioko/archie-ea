@@ -8,7 +8,7 @@
         </div>
         <div class="flex items-center gap-1 sad-actions">
             <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'B', elementType: 'BusinessProcess', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
-                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-amber-600 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-warning hover:bg-warning/10 border border-warning/30 transition-colors"
                 title="Link an existing ArchiMate Business element">
                 <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
             </button>
@@ -48,13 +48,13 @@
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/30" x-text="item.element_type?.replace('_', ' ')"></span>
                             </td>
                             <td class="px-3 py-2">
-                                <span x-show="item.apqc_process_name" x-cloak class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30" x-text="item.apqc_process_name"></span>
+                                <span x-show="item.apqc_process_name" x-cloak class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30" x-text="item.apqc_process_name"></span>
                                 <span x-show="!item.apqc_process_name" x-cloak class="text-muted-foreground">&mdash;</span>
                             </td>
                             <td class="px-3 py-2 text-muted-foreground" x-text="item.owner || '\u2014'"></td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.status === 'current' ? 'bg-emerald-500/10 text-emerald-600' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-600'"
+                                      :class="item.status === 'current' ? 'bg-success/10 text-success-emphasis' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-warning/10 text-warning-emphasis'"
                                       x-text="item.status"></span>
                             </td>
                             <td class="px-3 py-2 sad-actions">
@@ -114,11 +114,11 @@
                         {# Gap type badge #}
                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
                             :class="{
-                                'bg-indigo-500/10 text-primary border border-indigo-500/30': gap.gap_type === 'capability',
+                                'bg-indigo-500/10 text-primary border border-indigo-500/30': gap.gap_type === 'capability',  <!-- design-tokens-ok: gap-type categorical taxonomy legend, distinct hue per type -->
                                 'bg-info/10 text-primary border border-info/30': gap.gap_type === 'process',
-                                'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.gap_type === 'data',
-                                'bg-teal-500/10 text-teal-600 border border-teal-500/30': gap.gap_type === 'technology',
-                                'bg-purple-500/10 text-primary border border-purple-500/30': gap.gap_type === 'integration',
+                                'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.gap_type === 'data',  <!-- design-tokens-ok: gap-type categorical taxonomy legend, distinct hue per type -->
+                                'bg-teal-500/10 text-teal-600 border border-teal-500/30': gap.gap_type === 'technology',  <!-- design-tokens-ok: gap-type categorical taxonomy legend, distinct hue per type -->
+                                'bg-purple-500/10 text-primary border border-purple-500/30': gap.gap_type === 'integration',  <!-- design-tokens-ok: gap-type categorical taxonomy legend, distinct hue per type -->
                                 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30': !['capability','process','data','technology','integration'].includes(gap.gap_type)
                             }"
                             x-text="gap.gap_type?.replace(/_/g, ' ')"></span>
@@ -128,8 +128,8 @@
                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
                             :class="{
                                 'bg-destructive/10 text-destructive-emphasis border border-destructive/30': gap.impact_level === 'critical' || gap.impact_level === 'high',
-                                'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.impact_level === 'medium',
-                                'bg-green-500/10 text-emerald-600 border border-green-500/30': gap.impact_level === 'low'
+                                'bg-warning/10 text-warning-emphasis border border-warning/30': gap.impact_level === 'medium',
+                                'bg-success/10 text-success-emphasis border border-success/30': gap.impact_level === 'low'
                             }"
                             x-text="gap.impact_level"></span>
                         {# Priority badge #}
@@ -205,13 +205,13 @@
         </button>
         <button type="button"
             @click="activeArchLayer = 'application'"
-            :class="activeArchLayer === 'application' ? 'bg-purple-500/10 text-primary border border-purple-500/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
+            :class="activeArchLayer === 'application' ? 'bg-purple-500/10 text-primary border border-purple-500/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"  <!-- design-tokens-ok: layer-tab legend, application kept distinct from business (info) -->
             class="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium transition-colors">
             Application Layer
         </button>
         <button type="button"
             @click="activeArchLayer = 'data'"
-            :class="activeArchLayer === 'data' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
+            :class="activeArchLayer === 'data' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
             class="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium transition-colors">
             Data Layer
         </button>
@@ -250,7 +250,7 @@
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Gap</span>
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
-                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">Aligned</span>
                                         <span x-show="!el.baseline_state || !el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">TBD</span>
                                     </td>
@@ -290,7 +290,7 @@
                                 <tr class="group hover:bg-muted/30 transition-colors" x-show="archModelExpanded || idx < 5" x-cloak>
                                     <td class="px-3 py-2">
                                         <span class="font-semibold text-foreground" x-text="el.name"></span>
-                                        <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30" x-text="el.element_type?.replace(/_/g, ' ')"></span>
+                                        <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30" x-text="el.element_type?.replace(/_/g, ' ')"></span>  <!-- design-tokens-ok: layer-tab legend, application kept distinct from business (info) -->
                                     </td>
                                     <td class="px-3 py-2">
                                         <span x-show="el.baseline_state" x-cloak x-text="el.baseline_state" class="text-foreground"></span>
@@ -304,7 +304,7 @@
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Gap</span>
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
-                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">Aligned</span>
                                         <span x-show="!el.baseline_state || !el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">TBD</span>
                                     </td>
@@ -344,7 +344,7 @@
                                 <tr class="group hover:bg-muted/30 transition-colors" x-show="archModelExpanded || idx < 5" x-cloak>
                                     <td class="px-3 py-2">
                                         <span class="font-semibold text-foreground" x-text="el.name"></span>
-                                        <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" x-text="el.element_type?.replace(/_/g, ' ')"></span>
+                                        <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30" x-text="el.element_type?.replace(/_/g, ' ')"></span>
                                     </td>
                                     <td class="px-3 py-2">
                                         <span x-show="el.baseline_state" x-cloak x-text="el.baseline_state" class="text-foreground"></span>
@@ -358,7 +358,7 @@
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Gap</span>
                                         <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
-                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">Aligned</span>
                                         <span x-show="!el.baseline_state || !el.target_state" x-cloak
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">TBD</span>
                                     </td>
