@@ -19,7 +19,8 @@ from app.models.unified_capability import ValueStream
 from app.modules.capabilities.routes.value_stream_routes import value_stream
 from app.modules.capabilities.services.value_stream_ai_service import (
     ValueStreamAISuggestError,
-    generate_stage_mapping_suggestions,
+    build_context,
+    generate_stage_mapping_suggestions_from_context,
 )
 from app.services.feature_flag_service import FeatureFlagService
 
@@ -47,8 +48,21 @@ def ai_suggest_mappings(stream_id):
     # belonging to another org 404s exactly like an unknown id.
     stream = ValueStream.query.get_or_404(stream_id)
 
+    context = build_context(stream)
+    if not context["capabilities"]:
+        # This org has not mapped any capability yet (value-stream grid or
+        # application-capability mapping) — short-circuit before calling the
+        # LLM at all, matching the ARB empty-queue pattern
+        # (arb_queue_ai_routes.py::ai_queue_triage).
+        return jsonify(
+            {
+                "suggestions": None,
+                "message": "No capabilities mapped in this organization yet — map one manually first",
+            }
+        )
+
     try:
-        result = generate_stage_mapping_suggestions(stream)
+        result = generate_stage_mapping_suggestions_from_context(context)
     except ValueStreamAISuggestError as e:
         logger.warning(
             "Value stream mapping suggestions unparseable for stream %s: %s", stream_id, e

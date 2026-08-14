@@ -115,6 +115,25 @@ def _make_capability(db_session, name=None):
     return cap
 
 
+def _map_capability_to_value_stream(db_session, org, capability, value_stream, stage):
+    """A tenant-scoped CapabilityValueStreamMapping row — this is what
+    makes a capability show up in this org's AI-suggestion context (see
+    value_stream_ai_service._org_scoped_capability_names). organization_id
+    is set explicitly since these rows are built outside a live request
+    (TenantMixin's auto-set-on-flush needs g.current_org_id)."""
+    from app.models.unified_capability import CapabilityValueStreamMapping
+
+    mapping = CapabilityValueStreamMapping(
+        capability_id=capability.id,
+        value_stream_id=value_stream.id,
+        value_stream_stage_id=stage.id,
+        organization_id=org.id,
+    )
+    db_session.add(mapping)
+    db_session.flush()
+    return mapping
+
+
 def _make_canvas(db_session, org, **overrides):
     from app.models.business_model import BusinessModelCanvas
 
@@ -170,6 +189,7 @@ def test_ai_suggest_mappings_happy_path(db_session, make_org, logged_in_org, cli
 
     vs, stages = _make_value_stream(db_session, org)
     cap = _make_capability(db_session, name="Order Management")
+    _map_capability_to_value_stream(db_session, org, cap, vs, stages[0])
 
     import app.modules.capabilities.services.value_stream_ai_service as svc_module
 
@@ -203,6 +223,8 @@ def test_ai_suggest_mappings_llm_failure_is_502(db_session, make_org, logged_in_
     monkeypatch.setattr(FeatureFlagService, "is_ai_enabled", lambda feature: True)
 
     vs, stages = _make_value_stream(db_session, org)
+    cap = _make_capability(db_session, name="Order Management")
+    _map_capability_to_value_stream(db_session, org, cap, vs, stages[0])
 
     import app.modules.capabilities.services.value_stream_ai_service as svc_module
 
@@ -224,6 +246,8 @@ def test_ai_suggest_mappings_unparseable_is_502(db_session, make_org, logged_in_
     monkeypatch.setattr(FeatureFlagService, "is_ai_enabled", lambda feature: True)
 
     vs, stages = _make_value_stream(db_session, org)
+    cap = _make_capability(db_session, name="Order Management")
+    _map_capability_to_value_stream(db_session, org, cap, vs, stages[0])
 
     import app.modules.capabilities.services.value_stream_ai_service as svc_module
 
@@ -239,6 +263,40 @@ def test_ai_suggest_mappings_unparseable_is_502(db_session, make_org, logged_in_
     assert "error" in resp.get_json()
 
 
+def test_ai_suggest_mappings_no_org_capabilities_is_200_without_llm(
+    db_session, make_org, logged_in_org, client, monkeypatch
+):
+    """No tenant-scoped capability mapping in this org yet — the route must
+    short-circuit to 200-with-null and never call the LLM at all (nothing to
+    suggest against, and no reason to touch an external model)."""
+    org, user = logged_in_org
+    from app.services.feature_flag_service import FeatureFlagService
+
+    monkeypatch.setattr(FeatureFlagService, "is_ai_enabled", lambda feature: True)
+
+    vs, stages = _make_value_stream(db_session, org)
+    # A UnifiedCapability exists in the shared catalog, but this org has
+    # never mapped it anywhere — so it must not appear in the context.
+    _make_capability(db_session, name="Order Management")
+
+    import app.modules.capabilities.services.value_stream_ai_service as svc_module
+
+    calls = []
+    monkeypatch.setattr(
+        svc_module.LLMService,
+        "generate_from_prompt",
+        staticmethod(lambda *a, **k: calls.append(1)),
+    )
+
+    _clear_auth_caches()
+    resp = client.post(f"/value-streams/api/{vs.id}/ai-suggest-mappings")
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    data = resp.get_json()
+    assert data["suggestions"] is None
+    assert "message" in data
+    assert calls == []
+
+
 def test_ai_suggest_mappings_drops_invented_pairs(db_session, make_org, logged_in_org, client, monkeypatch):
     """The LLM naming a stage/capability outside the real context is dropped;
     if every suggestion is invented, that's a 502 (never a fabricated fallback)."""
@@ -248,7 +306,8 @@ def test_ai_suggest_mappings_drops_invented_pairs(db_session, make_org, logged_i
     monkeypatch.setattr(FeatureFlagService, "is_ai_enabled", lambda feature: True)
 
     vs, stages = _make_value_stream(db_session, org)
-    _make_capability(db_session, name="Order Management")
+    cap = _make_capability(db_session, name="Order Management")
+    _map_capability_to_value_stream(db_session, org, cap, vs, stages[0])
 
     import app.modules.capabilities.services.value_stream_ai_service as svc_module
 

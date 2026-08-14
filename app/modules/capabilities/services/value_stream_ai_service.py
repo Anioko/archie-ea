@@ -17,7 +17,16 @@ import json
 import logging
 from typing import Any, Dict, List, Set
 
-from app.models.unified_capability import UnifiedCapability, ValueStreamStage
+from app import db
+from app.models.application_portfolio import ApplicationComponent
+from app.models.unified_application_capability_mapping import (
+    UnifiedApplicationCapabilityMapping,
+)
+from app.models.unified_capability import (
+    CapabilityValueStreamMapping,
+    UnifiedCapability,
+    ValueStreamStage,
+)
 from app.modules.ai_chat.services.llm_service_impl import LLMService
 
 logger = logging.getLogger(__name__)
@@ -34,10 +43,72 @@ class ValueStreamAISuggestError(Exception):
     """
 
 
-def _build_context(value_stream) -> Dict[str, Any]:
+def _org_scoped_capability_names(limit: int = MAX_CAPABILITIES) -> List[str]:
+    """This org's real *mapped* capability names — never the global catalog.
+
+    UnifiedCapability has no organization_id column at all (it's a shared,
+    cross-org catalog), so querying it directly would egress every other
+    org's capability names into this org's LLM prompt. Instead this derives
+    names from the union of two things this org has actually mapped:
+
+    - CapabilityValueStreamMapping (TenantMixin) — capabilities this org has
+      mapped onto a value-stream stage anywhere. do_orm_execute injects the
+      organization_id filter directly onto this entity.
+    - UnifiedApplicationCapabilityMapping, joined to ApplicationComponent
+      (TenantMixin). The mapping table itself carries no organization_id,
+      but the join target does, and do_orm_execute's with_loader_criteria
+      applies to any TenantMixin entity present in the query — including a
+      join target — so this is scoped to this org's applications.
+    """
+    names: Set[str] = set()
+
+    try:
+        vs_rows = (
+            db.session.query(UnifiedCapability.name)
+            .join(
+                CapabilityValueStreamMapping,
+                CapabilityValueStreamMapping.capability_id == UnifiedCapability.id,
+            )
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+        names.update(name for (name,) in vs_rows if name)
+    except Exception:
+        logger.exception(
+            "Failed to derive org-scoped capability names from value-stream mappings"
+        )
+
+    try:
+        app_rows = (
+            db.session.query(UnifiedCapability.name)
+            .join(
+                UnifiedApplicationCapabilityMapping,
+                UnifiedApplicationCapabilityMapping.unified_capability_id == UnifiedCapability.id,
+            )
+            .join(
+                ApplicationComponent,
+                UnifiedApplicationCapabilityMapping.application_component_id
+                == ApplicationComponent.id,
+            )
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+        names.update(name for (name,) in app_rows if name)
+    except Exception:
+        logger.exception(
+            "Failed to derive org-scoped capability names from application mappings"
+        )
+
+    return sorted(names)[:limit]
+
+
+def build_context(value_stream) -> Dict[str, Any]:
     """Assemble only the context this function actually queries: the
-    stream's real stages, and this organization's real capability catalog
-    (capped so the prompt stays small). Nothing is inferred or invented.
+    stream's real stages, and this organization's real *mapped* capability
+    names (capped so the prompt stays small). Nothing is inferred, invented,
+    or pulled from another org's data.
     """
     stages = (
         ValueStreamStage.query.filter(
@@ -48,19 +119,7 @@ def _build_context(value_stream) -> Dict[str, Any]:
     )
     stage_names = [s.name for s in stages if s.name]
 
-    try:
-        capabilities = (
-            UnifiedCapability.query.order_by(UnifiedCapability.name)
-            .limit(MAX_CAPABILITIES)
-            .all()
-        )
-        capability_names = [c.name for c in capabilities if c.name]
-    except Exception:
-        logger.exception(
-            "Failed to load capability catalog for value stream %s AI context",
-            value_stream.id,
-        )
-        capability_names = []
+    capability_names = _org_scoped_capability_names()
 
     return {
         "value_stream_name": value_stream.name,
@@ -152,17 +211,24 @@ def _parse_suggestions(
     return {"suggestions": kept, "summary": data["summary"]}
 
 
-def generate_stage_mapping_suggestions(value_stream) -> Dict[str, Any]:
-    """Generate AI-suggested (stage, capability) mapping candidates.
+def generate_stage_mapping_suggestions_from_context(context: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate AI-suggested (stage, capability) mapping candidates from an
+    already-built context (see build_context()). Split out so the route can
+    inspect the context — and short-circuit without calling the LLM at all
+    when this org has no mapped capabilities yet — before generating.
 
     Advisory only — the caller must not persist any suggestion directly; the
     UI's "Apply" action goes through the grid's existing write endpoint.
     Raises ValueStreamAISuggestError (or lets an LLMService exception
     propagate) rather than fabricating a fallback suggestion list.
     """
-    context = _build_context(value_stream)
     valid_stages = set(context["stages"])
     valid_capabilities = set(context["capabilities"])
     prompt = _build_prompt(context)
     raw = LLMService.generate_from_prompt(prompt, use_cache=False)
     return _parse_suggestions(raw, valid_stages, valid_capabilities)
+
+
+def generate_stage_mapping_suggestions(value_stream) -> Dict[str, Any]:
+    """build_context() + generate_stage_mapping_suggestions_from_context()."""
+    return generate_stage_mapping_suggestions_from_context(build_context(value_stream))

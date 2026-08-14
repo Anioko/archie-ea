@@ -61,16 +61,18 @@ def _build_context(canvas, block_key: str) -> Dict[str, Any]:
     try:
         from app.models.application_portfolio import ApplicationComponent
 
+        # ApplicationComponent is TenantMixin, so this count is already
+        # scoped to the current org by do_orm_execute.
         context["application_count"] = ApplicationComponent.query.count()
     except Exception:
         logger.exception("Failed to count applications for BMC draft context")
 
-    try:
-        from app.models.unified_capability import UnifiedCapability
-
-        context["capability_count"] = UnifiedCapability.query.count()
-    except Exception:
-        logger.exception("Failed to count capabilities for BMC draft context")
+    # No capability count here: UnifiedCapability has no organization_id
+    # column at all, so a bare .count() would be the *global* cross-org
+    # catalog size, not this org's — and there's no cheap org-scoped
+    # derivation for a plain count the way there is for named capabilities
+    # (see value_stream_ai_service._org_scoped_capability_names). Omitted
+    # rather than sent mislabelled as the org's own count.
 
     return context
 
