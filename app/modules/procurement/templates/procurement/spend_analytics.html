@@ -1,17 +1,21 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
 {% block title %}Spend Analytics{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold">Spend Analytics</h1>
-            <p class="text-muted-foreground">Vendor spend analysis and cost breakdown</p>
-        </div>
-    </div>
+<div class="p-6 space-y-6">
+    {{ page_header(
+        title='Spend Analytics',
+        description='Vendor spend analysis and cost breakdown',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Spend Analytics'}
+        ]
+    ) }}
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center gap-3 mb-2">
                 <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -23,8 +27,8 @@
         </div>
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="dollar-sign" class="w-5 h-5 text-green-600"></i>
+                <div class="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="dollar-sign" class="w-5 h-5 text-success-emphasis"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Total Contract Value</div>
             </div>
@@ -91,21 +95,14 @@
     </div>
 
     {% if summary.total_contracts == 0 %}
-    <!-- Empty State -->
-    <div class="bg-card border border-border rounded-lg p-12 text-center mt-6">
-        <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-            <i data-lucide="pie-chart" class="w-8 h-8 text-muted-foreground"></i>
-        </div>
-        <h3 class="text-lg font-medium mb-2">No spend data available</h3>
-        <p class="text-muted-foreground">
-            Spend analytics will appear once vendor contracts are added to the system.
-        </p>
-        <a href="{{ url_for('procurement.contracts_list') }}"
-           class="inline-flex items-center gap-2 mt-4 text-primary hover:underline">
-            <i data-lucide="arrow-right" class="w-4 h-4"></i>
-            View Contracts
-        </a>
-    </div>
+    {{ empty_state(
+        icon='pie-chart',
+        title='No spend data available',
+        description='Spend analytics will appear once vendor contracts are added to the system.',
+        cta_text='View Contracts',
+        cta_href=url_for('procurement.contracts_list'),
+        cta_icon='arrow-right'
+    ) }}
     {% endif %}
 </div>
 

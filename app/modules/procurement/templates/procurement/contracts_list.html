@@ -1,30 +1,25 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
 {% block title %}Vendor Contracts{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold">Vendor Contracts</h1>
-            <p class="text-muted-foreground">Manage vendor contracts and agreements</p>
-        </div>
-        <div class="flex items-center gap-2">
-            <a href="{{ url_for('procurement.contract_create') }}"
-               class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-                <i data-lucide="plus" class="w-4 h-4"></i>
-                New Contract
-            </a>
-            <a href="{{ url_for('procurement.renewals_dashboard') }}"
-               class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
-                <i data-lucide="calendar-clock" class="w-4 h-4"></i>
-                Renewal Alerts
-            </a>
-        </div>
-    </div>
+<div class="p-6 space-y-6">
+    {{ page_header(
+        title='Vendor Contracts',
+        description='Manage vendor contracts and agreements',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Vendor Contracts'}
+        ],
+        actions=[
+            {'text': 'New Contract', 'icon': 'plus', 'href': url_for('procurement.contract_create'), 'variant': 'default'},
+            {'text': 'Renewal Alerts', 'icon': 'calendar-clock', 'href': url_for('procurement.renewals_dashboard'), 'variant': 'outline'}
+        ]
+    ) }}
 
     <!-- Filters -->
-    <div class="bg-card border border-border rounded-lg p-4 mb-6">
+    <div class="bg-card border border-border rounded-lg p-4">
         <form method="get" class="flex flex-wrap items-center gap-4">
             <div class="flex-1 min-w-[200px]">
                 <input type="text" name="search" value="{{ search or '' }}"
@@ -47,40 +42,41 @@
     <!-- Contracts Table -->
     {% if contracts %}
     <div class="bg-card border border-border rounded-lg overflow-hidden">
-        <table class="w-full">
-            <thead class="bg-muted/50">
-                <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Contract</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Vendor</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Annual Cost</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Renewal</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+        <div class="overflow-x-auto">
+        <table class="w-full border-collapse">
+            <thead>
+                <tr class="bg-muted/40 border-b">
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contract</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Vendor</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Annual Cost</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Renewal</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-border">
+            <tbody class="divide-y">
                 {% for item in contracts %}
                 <tr class="hover:bg-muted/30 transition-colors">
                     <td class="px-4 py-3">
                         <div class="font-medium">{{ item.contract.contract_name }}</div>
-                        <div class="text-sm text-muted-foreground">{{ item.contract.contract_number or 'No number' }}</div>
+                        <div class="text-sm text-muted-foreground">{{ item.contract.contract_number or '—' }}</div>
                     </td>
                     <td class="px-4 py-3 text-sm">
-                        {{ item.contract.vendor.name if item.contract.vendor else 'N/A' }}
+                        {{ item.contract.vendor.name if item.contract.vendor else '—' }}
                     </td>
                     <td class="px-4 py-3 text-sm">
                         {% if item.contract.annual_cost %}
                             {{ "${:,.0f}".format(item.contract.annual_cost) }}
                         {% else %}
-                            <span class="text-muted-foreground">-</span>
+                            <span class="text-muted-foreground">—</span>
                         {% endif %}
                     </td>
                     <td class="px-4 py-3">
                         <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                            {% if item.contract.status == 'active' %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400
+                            {% if item.contract.status == 'active' %}bg-success/10 text-success-emphasis
                             {% elif item.contract.status == 'expired' %}bg-destructive/10 text-destructive-emphasis
                             {% elif item.contract.status == 'draft' %}bg-muted text-muted-foreground
-                            {% else %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400{% endif %}">
+                            {% else %}bg-warning/10 text-warning-emphasis{% endif %}">
                             {# Stored values are snake_case; render them as words.
                                "under_negotiation" was shown to the user verbatim. #}
                             {{ (item.contract.status or 'unknown') | replace('_', ' ') | title }}
@@ -91,16 +87,16 @@
                             <div class="flex items-center gap-2">
                                 <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
                                     {% if item.urgency == 'critical' %}bg-destructive/10 text-destructive-emphasis
-                                    {% elif item.urgency == 'warning' %}bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400
+                                    {% elif item.urgency == 'warning' %}bg-warning/10 text-warning-emphasis
                                     {% elif item.urgency == 'upcoming' %}bg-info/10 text-info-emphasis
                                     {% elif item.urgency == 'expired' %}bg-destructive/10 text-destructive-emphasis
-                                    {% else %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400{% endif %}">
+                                    {% else %}bg-success/10 text-success-emphasis{% endif %}">
                                     {% if item.urgency == 'expired' %}Expired
                                     {% else %}{{ item.days_until_renewal }} days{% endif %}
                                 </span>
                             </div>
                         {% else %}
-                            <span class="text-muted-foreground text-sm">No date</span>
+                            <span class="text-muted-foreground text-sm">—</span>
                         {% endif %}
                     </td>
                     <td class="px-4 py-3 text-right">
@@ -111,11 +107,12 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 
     <!-- Pagination -->
     {% if total > 20 %}
-    <div class="flex items-center justify-between mt-4">
+    <div class="flex items-center justify-between">
         <div class="text-sm text-muted-foreground">
             Showing {{ (page - 1) * 20 + 1 }} - {{ [page * 20, total]|min }} of {{ total }} contracts
         </div>
@@ -133,20 +130,13 @@
     {% endif %}
 
     {% else %}
-    <!-- Empty State -->
-    <div class="bg-card border border-border rounded-lg p-12 text-center">
-        <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-            <i data-lucide="file-text" class="w-8 h-8 text-muted-foreground"></i>
-        </div>
-        <h3 class="text-lg font-medium mb-2">No contracts found</h3>
-        <p class="text-muted-foreground mb-4">
-            {% if search %}No contracts match your search criteria.
-            {% else %}There are no vendor contracts in the system yet.{% endif %}
-        </p>
-        {% if search %}
-        <a href="{{ url_for('procurement.contracts_list') }}" class="text-primary hover:underline">Clear filters</a>
-        {% endif %}
-    </div>
+    {{ empty_state(
+        icon='file-text',
+        title='No contracts found',
+        description=('No contracts match your search criteria.' if search else 'There are no vendor contracts in the system yet.'),
+        cta_text=('Clear filters' if search else None),
+        cta_href=(url_for('procurement.contracts_list') if search else None)
+    ) }}
     {% endif %}
 </div>
 

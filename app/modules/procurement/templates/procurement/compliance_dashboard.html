@@ -1,22 +1,25 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
 {% block title %}License Compliance{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold">License Compliance</h1>
-            <p class="text-muted-foreground">Monitor license compliance across the organization</p>
-        </div>
-        <a href="{{ url_for('procurement.licenses_list') }}"
-           class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
-            <i data-lucide="list" class="w-4 h-4"></i>
-            All Licenses
-        </a>
-    </div>
+<div class="p-6 space-y-6">
+    {{ page_header(
+        title='License Compliance',
+        description='Monitor license compliance across the organization',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'License Entitlements', 'href': url_for('procurement.licenses_list')},
+            {'label': 'License Compliance'}
+        ],
+        actions=[
+            {'text': 'All Licenses', 'icon': 'list', 'href': url_for('procurement.licenses_list'), 'variant': 'outline'}
+        ]
+    ) }}
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="text-sm text-muted-foreground mb-1">Total Licenses</div>
             <div class="text-2xl font-bold">{{ summary.total }}</div>
@@ -49,7 +52,7 @@
     </div>
 
     <!-- Utilization Overview -->
-    <div class="bg-card border border-border rounded-lg p-6 mb-6">
+    <div class="bg-card border border-border rounded-lg p-6">
         <h2 class="text-lg font-semibold mb-4">License Utilization Overview</h2>
         <div class="flex items-center gap-4 mb-4">
             <div class="flex-1">
@@ -99,7 +102,7 @@
     {% set warnings = licenses | selectattr('compliance_status', 'equalto', 'under_utilized') | list %}
 
     {% if violations %}
-    <div class="bg-card border border-destructive/50 rounded-lg p-6 mb-6">
+    <div class="bg-card border border-destructive/50 rounded-lg p-6">
         <h2 class="text-lg font-semibold text-destructive-emphasis mb-4 flex items-center gap-2">
             <i data-lucide="alert-circle" class="w-5 h-5"></i>
             License Violations ({{ violations | length }})
@@ -146,13 +149,11 @@
     {% endif %}
 
     {% if summary.total == 0 %}
-    <div class="bg-card border border-border rounded-lg p-12 text-center">
-        <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-            <i data-lucide="shield-check" class="w-8 h-8 text-muted-foreground"></i>
-        </div>
-        <h3 class="text-lg font-medium mb-2">No license data</h3>
-        <p class="text-muted-foreground">License compliance data will appear once licenses are imported.</p>
-    </div>
+    {{ empty_state(
+        icon='shield-check',
+        title='No license data',
+        description='License compliance data will appear once licenses are imported.'
+    ) }}
     {% endif %}
 </div>
 <script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>

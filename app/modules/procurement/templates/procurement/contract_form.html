@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
 {% block title %}{{ 'Edit Contract' if contract else 'New Contract' }}{% endblock %}
 
 {#
@@ -13,22 +14,23 @@
 {%- endmacro %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6 max-w-3xl">
+<div class="p-6 space-y-6 max-w-3xl mx-auto">
 
-  <div class="mb-6">
-    <a href="{{ url_for('procurement.contracts_list') }}"
-       class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
-      <i data-lucide="arrow-left" class="w-4 h-4"></i> All Contracts
-    </a>
-    <h1 class="text-2xl font-bold mt-2">{{ 'Edit Contract' if contract else 'New Contract' }}</h1>
-    <p class="text-muted-foreground">
-      {{ 'Amend the terms recorded for this vendor agreement.' if contract else 'Record a vendor agreement so it appears in renewals, spend and compliance.' }}
-    </p>
-  </div>
+  {{ page_header(
+      title=('Edit Contract' if contract else 'New Contract'),
+      description=('Amend the terms recorded for this vendor agreement.' if contract else 'Record a vendor agreement so it appears in renewals, spend and compliance.'),
+      breadcrumbs=[
+          {'label': 'Home', 'href': url_for('main.index')},
+          {'label': 'Vendor Contracts', 'href': url_for('procurement.contracts_list')},
+          {'label': ('Edit Contract' if contract else 'New Contract')}
+      ]
+  ) }}
 
   <form method="POST"
         action="{{ url_for('procurement.contract_edit', contract_id=contract.id) if contract else url_for('procurement.contract_create') }}"
-        class="space-y-6">
+        class="space-y-6"
+        x-data="{ submitting: false }"
+        @submit="submitting = true">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="bg-card border border-border rounded-lg p-6 space-y-4">
@@ -168,19 +170,68 @@
                class="rounded border-input">
         <label for="auto_renewal" class="text-sm">Renews automatically</label>
       </div>
-      <div>
+      {# Live-search picker against /api/users (DESIGN.md entity picker rule) — the
+         "contract owner" field previously took free text, so any name (typo,
+         former employee) could be typed. The field still stores a plain string
+         (there is no owner_id FK on Contract), but the value is now populated
+         only from a real user match rather than typed blind. #}
+      <div x-data="{
+          query: '{{ current('contract_owner', contract.contract_owner if contract else '') | trim | e }}',
+          results: [],
+          showDropdown: false,
+          searching: false,
+          _searchErrorShown: false,
+          async search() {
+              if (this.query.length < 2) { this.results = []; this.showDropdown = false; return; }
+              this.searching = true;
+              try {
+                  const resp = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
+                  if (!resp.ok) throw new Error('users request failed: ' + resp.status);
+                  const data = await resp.json();
+                  if (data.success) {
+                      const q = this.query.toLowerCase();
+                      this.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
+                      this.showDropdown = this.results.length > 0;
+                      this._searchErrorShown = false;
+                  }
+              } catch (e) {
+                  if (!this._searchErrorShown) {
+                      this._searchErrorShown = true;
+                      if (window.Platform && Platform.toast) Platform.toast.error('User search failed');
+                  }
+              }
+              this.searching = false;
+          },
+          select(user) {
+              this.query = user.name;
+              this.showDropdown = false;
+              this.results = [];
+          }
+      }" @click.outside="showDropdown = false" class="relative">
         <label for="contract_owner" class="block text-sm font-medium mb-1.5">Contract owner</label>
         <input type="text" id="contract_owner" name="contract_owner" maxlength="100"
-               value="{{ current('contract_owner', contract.contract_owner if contract else '') | trim }}"
+               x-model="query"
+               @input.debounce.300ms="search()"
+               @focus="if (query.length >= 2) search()"
+               placeholder="Search by name or email…" autocomplete="off"
                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        <div x-show="showDropdown" x-cloak class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+          <template x-for="u in results" :key="u.id">
+            <button type="button" @click="select(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
+              <span x-text="u.name" class="font-medium"></span>
+              <span x-text="u.email" class="text-xs text-muted-foreground"></span>
+            </button>
+          </template>
+        </div>
       </div>
     </div>
 
     <div class="flex items-center justify-between">
-      <button type="submit"
-              class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
-        <i data-lucide="save" class="w-4 h-4"></i>
-        {{ 'Save changes' if contract else 'Create contract' }}
+      <button type="submit" :disabled="submitting"
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60">
+        <span x-show="submitting" class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+        <i data-lucide="save" class="w-4 h-4" x-show="!submitting"></i>
+        <span x-text="submitting ? 'Saving…' : '{{ 'Save changes' if contract else 'Create contract' }}'"></span>
       </button>
       <a href="{{ url_for('procurement.contracts_list') }}"
          class="text-sm text-muted-foreground hover:text-foreground">Cancel</a>
@@ -191,7 +242,7 @@
   {# Separate form: nesting it inside the edit form would submit both. #}
   <form method="POST" action="{{ url_for('procurement.contract_delete', contract_id=contract.id) }}"
         class="mt-8 pt-6 border-t border-border"
-        onsubmit="return confirm('Delete this contract and every licence recorded under it? This cannot be undone.');">
+        @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete this contract and every licence recorded under it? This cannot be undone.')">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit"
             class="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-destructive/40 text-destructive-emphasis text-sm hover:bg-destructive/10 transition-colors">
