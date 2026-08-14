@@ -109,15 +109,75 @@
         </h2>
         <div class="space-y-3">
             {% for license in violations %}
-            <div class="flex items-center justify-between p-3 bg-destructive/10 rounded-lg">
-                <div>
-                    <div class="font-medium">{{ license.product_name }}</div>
-                    <div class="text-sm text-muted-foreground">
-                        Consumed: {{ license.quantity_deployed }} / Entitled: {{ license.quantity_entitled }}
+            <div class="p-3 bg-destructive/10 rounded-lg"
+                 x-data="{
+                    open: false,
+                    loading: false,
+                    error: null,
+                    remediation: null,
+                    async generate() {
+                        this.loading = true;
+                        this.error = null;
+                        try {
+                            const resp = await fetch('{{ url_for('procurement.compliance_ai_remediation', license_id=license.id) }}', {
+                                method: 'POST',
+                                headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
+                            });
+                            const body = await resp.json();
+                            if (!resp.ok) throw new Error(body.error || body.message || ('Request failed (' + resp.status + ')'));
+                            this.remediation = body.remediation;
+                        } catch (e) {
+                            this.error = e.message || 'AI remediation failed - check your connection and try again.';
+                        } finally {
+                            this.loading = false;
+                        }
+                    }
+                 }">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="font-medium">{{ license.product_name }}</div>
+                        <div class="text-sm text-muted-foreground">
+                            Consumed: {{ license.quantity_deployed }} / Entitled: {{ license.quantity_entitled }}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button type="button" @click="open = !open; if (open && !remediation && !loading) generate()"
+                                class="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i>
+                            <span x-text="open ? 'Hide AI remediation' : 'AI remediation'"></span>
+                        </button>
+                        <a href="{{ url_for('procurement.license_detail', license_id=license.id) }}"
+                           class="text-primary hover:underline text-sm">View</a>
                     </div>
                 </div>
-                <a href="{{ url_for('procurement.license_detail', license_id=license.id) }}"
-                   class="text-primary hover:underline text-sm">View</a>
+
+                <div x-show="open" x-cloak class="mt-3 pt-3 border-t border-destructive/30 space-y-2">
+                    <div x-show="loading" class="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+                        Generating remediation plan…
+                    </div>
+                    <div x-show="error" x-cloak class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive-emphasis" x-text="error"></div>
+                    <template x-if="remediation">
+                        <div class="bg-card border border-border rounded-md p-3 space-y-2 text-sm">
+                            <p x-text="remediation.summary"></p>
+                            <div class="space-y-1">
+                                <template x-for="opt in remediation.options" :key="opt.option">
+                                    <div class="flex items-start gap-2 px-2 py-1 rounded"
+                                         :class="opt.option === remediation.recommended_option ? 'bg-success/10' : ''">
+                                        <div>
+                                            <div class="font-medium">
+                                                <span x-text="opt.option"></span>
+                                                <span x-show="opt.option === remediation.recommended_option" class="ml-1 text-xs text-success-emphasis">(recommended)</span>
+                                            </div>
+                                            <div class="text-muted-foreground text-xs" x-text="opt.tradeoff"></div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                            <p class="text-muted-foreground italic" x-text="remediation.rationale"></p>
+                        </div>
+                    </template>
+                </div>
             </div>
             {% endfor %}
         </div>

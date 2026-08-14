@@ -84,7 +84,30 @@
             {% if item.urgency == 'critical' %}border-destructive/50
             {% elif item.urgency == 'warning' %}border-warning/50
             {% elif item.urgency == 'expired' %}border-destructive
-            {% else %}border-border{% endif %}">
+            {% else %}border-border{% endif %}"
+            x-data="{
+                open: false,
+                loading: false,
+                error: null,
+                brief: null,
+                async generate() {
+                    this.loading = true;
+                    this.error = null;
+                    try {
+                        const resp = await fetch('{{ url_for('procurement.contract_ai_renewal_brief', contract_id=item.contract.id) }}', {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
+                        });
+                        const body = await resp.json();
+                        if (!resp.ok) throw new Error(body.error || body.message || ('Request failed (' + resp.status + ')'));
+                        this.brief = body.brief;
+                    } catch (e) {
+                        this.error = e.message || 'AI renewal brief failed - check your connection and try again.';
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            }">
             <div class="flex items-start justify-between">
                 <div class="flex-1">
                     <div class="flex items-center gap-3 mb-2">
@@ -129,6 +152,50 @@
                     </div>
                     <a href="{{ url_for('procurement.contract_detail', contract_id=item.contract.id) }}"
                        class="text-sm text-primary hover:underline">View Details</a>
+                </div>
+            </div>
+
+            <div class="mt-3 pt-3 border-t border-border">
+                <button type="button" @click="open = !open; if (open && !brief && !loading) generate()"
+                        class="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    <span x-text="open ? 'Hide AI brief' : 'AI brief'"></span>
+                </button>
+
+                <div x-show="open" x-cloak class="mt-3 space-y-3">
+                    <div x-show="loading" class="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+                        Generating renewal brief…
+                    </div>
+                    <div x-show="error" x-cloak class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive-emphasis" x-text="error"></div>
+                    <template x-if="brief">
+                        <div class="bg-muted/40 border border-border rounded-md p-3 space-y-2 text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stance</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary" x-text="brief.stance"></span>
+                            </div>
+                            <p x-text="brief.summary"></p>
+                            <div x-show="brief.leverage_points && brief.leverage_points.length">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Leverage points</div>
+                                <ul class="list-disc list-inside space-y-0.5">
+                                    <template x-for="point in brief.leverage_points" :key="point"><li x-text="point"></li></template>
+                                </ul>
+                            </div>
+                            <div x-show="brief.risks && brief.risks.length">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Risks</div>
+                                <ul class="list-disc list-inside space-y-0.5">
+                                    <template x-for="risk in brief.risks" :key="risk"><li x-text="risk"></li></template>
+                                </ul>
+                            </div>
+                            <div x-show="brief.questions_for_vendor && brief.questions_for_vendor.length">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Questions for vendor</div>
+                                <ul class="list-disc list-inside space-y-0.5">
+                                    <template x-for="q in brief.questions_for_vendor" :key="q"><li x-text="q"></li></template>
+                                </ul>
+                            </div>
+                            <p class="text-muted-foreground italic" x-text="brief.rationale"></p>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
