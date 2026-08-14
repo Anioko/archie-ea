@@ -19,14 +19,14 @@
 
         <!-- Success banner -->
         <div x-show="successMsg" x-cloak x-transition
-             class="mb-4 flex items-start gap-3 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-emerald-700">
+             class="mb-4 flex items-start gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success-emphasis">
             <i data-lucide="check-circle-2" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <span x-text="successMsg"></span>
         </div>
 
         <!-- Blueprint staleness warning -->
         {% if blueprint_stale %}
-        <div class="mb-4 flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-700">
+        <div class="mb-4 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-emphasis">
             <i data-lucide="refresh-cw" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <span>
                 <strong>Blueprint updated after last enrichment.</strong>
@@ -38,7 +38,7 @@
 
         <!-- Pending spec-data warning -->
         {% if pending_specs_count > 0 %}
-        <div class="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">
+        <div class="mb-4 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-emphasis">
             <i data-lucide="alert-triangle" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <span>
                 <strong>{{ pending_specs_count }} element{{ 's' if pending_specs_count != 1 else '' }}</strong>
@@ -110,8 +110,8 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <span x-show="phase > 1" x-cloak class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/30">Complete</span>
-                    <span x-show="phase === 1" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Pending</span>
+                    <span x-show="phase > 1" x-cloak class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Complete</span>
+                    <span x-show="phase === 1" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Pending</span>
                 </div>
             </div>
             <div x-show="phase === 1" x-collapse class="border-t border-border px-5 pb-5 pt-4">
@@ -161,9 +161,9 @@
                                 <i data-lucide="layers" class="h-3.5 w-3.5 text-primary"></i>
                                 <span class="text-xs font-medium text-foreground"
                                       x-text="docProposals.length + ' element' + (docProposals.length !== 1 ? 's' : '') + ' extracted'"></span>
-                                <span x-show="pendingProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+                                <span x-show="pendingProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
                                       x-text="pendingProposalCount + ' pending review'"></span>
-                                <span x-show="acceptedProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                                <span x-show="acceptedProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30"
                                       x-text="acceptedProposalCount + ' accepted'"></span>
                             </div>
                             <div class="flex items-center gap-2">
@@ -308,14 +308,14 @@
                     </div>
                     <div x-show="nlResult" x-cloak class="mt-3">
                         <div class="flex items-center gap-2 mb-2">
-                            <i data-lucide="check-circle-2" class="h-3.5 w-3.5 text-emerald-600"></i>
-                            <span class="text-xs font-medium text-emerald-700" x-text="'Created ' + (nlResult && nlResult.created) + ' elements — ready for Phase 1 enrichment'"></span>
+                            <i data-lucide="check-circle-2" class="h-3.5 w-3.5 text-success"></i>
+                            <span class="text-xs font-medium text-success-emphasis" x-text="'Created ' + (nlResult && nlResult.created) + ' elements — ready for Phase 1 enrichment'"></span>
                         </div>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-32 overflow-y-auto">
                             <template x-for="(el, i) in (nlResult && nlResult.elements || [])" :key="i">
                                 <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-background border border-border text-xs">
                                     <span class="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                                          :class="{'bg-info':el.layer==='Business','bg-violet-500':el.layer==='Application','bg-orange-500':el.layer==='Technology','bg-muted-foreground':el.layer==='Implementation'}"></span>
+                                          :class="{'bg-info':el.layer==='Business','bg-info/60':el.layer==='Application','bg-warning':el.layer==='Technology','bg-muted-foreground':el.layer==='Implementation'}"></span>
                                     <span class="truncate font-mono text-foreground" x-text="el.name" :title="el.name + ' (' + el.type + ')'"></span>
                                 </div>
                             </template>
@@ -357,8 +357,8 @@
                     <div class="rounded-lg border border-border bg-muted/30 p-3 text-center"><div class="text-2xl font-bold text-foreground" x-text="flowCount"></div><div class="text-xs text-muted-foreground mt-0.5">API Flows</div></div>
                     <div class="rounded-lg border border-border bg-muted/30 p-3 text-center"><div class="text-2xl font-bold text-foreground" x-text="componentCount"></div><div class="text-xs text-muted-foreground mt-0.5">Components</div></div>
                     <div class="rounded-lg border border-border bg-muted/30 p-3 text-center"><div class="text-2xl font-bold text-foreground" x-text="nodeCount"></div><div class="text-xs text-muted-foreground mt-0.5">Deploy Nodes</div></div>
-                    <div class="rounded-lg border p-3 text-center" :class="chainCompleteness === null ? 'border-border bg-muted/30' : chainCompleteness >= 0.7 ? 'border-green-500/30 bg-green-500/10' : 'border-amber-500/30 bg-amber-500/10'">
-                        <div class="text-2xl font-bold" :class="chainCompleteness === null ? 'text-muted-foreground' : chainCompleteness >= 0.7 ? 'text-emerald-600' : 'text-amber-600'" x-text="chainCompleteness !== null ? Math.round(chainCompleteness * 100) + '%' : '—'"></div>
+                    <div class="rounded-lg border p-3 text-center" :class="chainCompleteness === null ? 'border-border bg-muted/30' : chainCompleteness >= 0.7 ? 'border-success/30 bg-success/10' : 'border-warning/30 bg-warning/10'">
+                        <div class="text-2xl font-bold" :class="chainCompleteness === null ? 'text-muted-foreground' : chainCompleteness >= 0.7 ? 'text-success' : 'text-warning'" x-text="chainCompleteness !== null ? Math.round(chainCompleteness * 100) + '%' : '—'"></div>
                         <div class="text-xs text-muted-foreground mt-0.5">Chain Health</div>
                     </div>
                 </div>
@@ -380,7 +380,7 @@
                 </div>
                 <span x-show="umlClasses.length > 0" x-cloak
                       class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
-                      :class="confirmedCount === umlClasses.length ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'"
+                      :class="confirmedCount === umlClasses.length ? 'bg-success/10 text-success-emphasis border-success/30' : 'bg-warning/10 text-warning-emphasis border-warning/30'"
                       x-text="confirmedCount + '/' + umlClasses.length + ' confirmed'"></span>
             </div>
             <div x-show="phase === 2" x-collapse class="border-t border-border px-5 pb-5 pt-4">
@@ -390,12 +390,12 @@
                             <span><strong x-text="unconfirmedCount"></strong> entities unconfirmed — LLM will invent their field schemas.</span>
                         </template>
                         <template x-if="unconfirmedCount === 0 && umlClasses.length > 0">
-                            <span class="text-emerald-600 font-medium">All entity schemas confirmed. Ready to configure.</span>
+                            <span class="text-success font-medium">All entity schemas confirmed. Ready to configure.</span>
                         </template>
                         <template x-if="umlClasses.length === 0">
                             <span>No entities detected yet.
                                 <button @click="enrichFields()" :disabled="enrichingFields"
-                                        class="ml-2 inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 text-xs font-medium underline">
+                                        class="ml-2 inline-flex items-center gap-1 text-info-emphasis hover:text-info text-xs font-medium underline">
                                     <i data-lucide="sparkles" class="h-3 w-3"></i>
                                     <span x-text="enrichingFields ? 'Enriching…' : 'Enrich from ArchiMate'"></span>
                                 </button>
@@ -417,7 +417,7 @@
                     <div x-show="!diagramView">
                         <div class="flex items-center justify-end gap-2 mb-2">
                             <button @click="enrichFields()" :disabled="enrichingFields"
-                                    class="inline-flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-700 px-3 py-1.5 text-xs font-medium hover:bg-violet-500/20 disabled:opacity-50 transition-colors"
+                                    class="inline-flex items-center gap-1.5 rounded-md border border-info/40 bg-info/10 text-info-emphasis px-3 py-1.5 text-xs font-medium hover:bg-info/20 disabled:opacity-50 transition-colors"
                                     title="Use LLM to infer domain-specific fields for all entities (populates spec_data)">
                                 <i data-lucide="sparkles" class="h-3.5 w-3.5"></i>
                                 <span x-text="enrichingFields ? 'Enriching…' : 'Enrich Fields (AI)'"></span>
@@ -440,8 +440,8 @@
                                         </div>
                                         <div class="flex items-center gap-2 shrink-0 ml-4">
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border" x-text="(cls.fields || []).length + ' fields'"></span>
-                                            <span x-show="(cls.relationships||[]).length>0" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="(cls.relationships||[]).length + ' relations'"></span>
-                                            <span x-show="confirmedClasses[cls.name]" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/30"><i data-lucide="check" class="h-3 w-3 mr-0.5"></i> Confirmed</span>
+                                            <span x-show="(cls.relationships||[]).length>0" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="(cls.relationships||[]).length + ' relations'"></span>
+                                            <span x-show="confirmedClasses[cls.name]" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30"><i data-lucide="check" class="h-3 w-3 mr-0.5"></i> Confirmed</span>
                                             <i :data-lucide="fieldEditorOpen[cls.name] ? 'chevron-up' : 'chevron-down'" class="h-3.5 w-3.5 text-muted-foreground"></i>
                                         </div>
                                     </div>
@@ -464,7 +464,7 @@
                                             </table>
                                             <div class="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
                                                 <button @click="addField(cls.name)" class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><i data-lucide="plus" class="h-3 w-3"></i> Add Field</button>
-                                                <button @click="confirmClass(cls)" :disabled="confirmingClass === cls.name" class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"><i data-lucide="check" class="h-3 w-3"></i><span x-text="confirmingClass === cls.name ? 'Saving…' : 'Confirm Fields'"></span></button>
+                                                <button @click="confirmClass(cls)" :disabled="confirmingClass === cls.name" class="inline-flex items-center gap-1.5 rounded-md bg-success text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-success disabled:opacity-50 transition-colors"><i data-lucide="check" class="h-3 w-3"></i><span x-text="confirmingClass === cls.name ? 'Saving…' : 'Confirm Fields'"></span></button>
                                             </div>
                                         </div>
                                     </div>
@@ -502,7 +502,7 @@
                         <p class="text-xs text-muted-foreground">Set language stack, auth strategy, and GitHub settings</p>
                     </div>
                 </div>
-                <span x-show="phase > 3" x-cloak class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/30">Saved</span>
+                <span x-show="phase > 3" x-cloak class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Saved</span>
             </div>
             <div x-show="phase === 3" x-collapse class="border-t border-border px-5 pb-5 pt-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -535,21 +535,21 @@
                                 </optgroup>
                             </select>
                             <div class="mt-1.5 flex items-center gap-2">
-                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Full'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-emerald-600 border border-green-500/30">Full — <span x-text="currentLanguageMeta.templates"></span> templates</span>
-                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Basic'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Basic — <span x-text="currentLanguageMeta && currentLanguageMeta.templates"></span> templates</span>
+                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Full'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">Full — <span x-text="currentLanguageMeta.templates"></span> templates</span>
+                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Basic'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Basic — <span x-text="currentLanguageMeta && currentLanguageMeta.templates"></span> templates</span>
                             </div>
                             <p class="text-xs text-muted-foreground mt-1.5">For mobile apps, select your backend stack above and enable <span class="font-medium">Expo + React Native</span> in the Mobile section below.</p>
                         </div>
 
                         <!-- SAP System Import panel — only visible for SAP stacks -->
                         <template x-if="['sap-cap','sap-btp-integration'].includes(config.language)">
-                            <div class="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
+                            <div class="rounded-lg border border-warning/40 bg-warning/5 p-4 space-y-3">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-2">
-                                        <i data-lucide="database-zap" class="h-4 w-4 text-amber-600"></i>
+                                        <i data-lucide="database-zap" class="h-4 w-4 text-warning"></i>
                                         <h3 class="text-sm font-semibold text-foreground">SAP System Import <span class="text-xs font-normal text-muted-foreground">(optional)</span></h3>
                                     </div>
-                                    <button type="button" @click="sapImport.open = !sapImport.open" class="text-xs text-amber-600 hover:text-amber-500 underline underline-offset-2">
+                                    <button type="button" @click="sapImport.open = !sapImport.open" class="text-xs text-warning-emphasis hover:text-warning underline underline-offset-2">
                                         <span x-text="sapImport.open ? 'Hide' : 'Configure'"></span>
                                     </button>
                                 </div>
@@ -559,7 +559,7 @@
                                         <input type="checkbox" x-model="sapImport.mock" class="h-4 w-4 accent-amber-600 rounded">
                                         <span class="text-sm text-foreground">Use mock SAP data <span class="text-xs text-muted-foreground">(no live system required)</span></span>
                                     </label>
-                                    <div x-show="!sapImport.mock" x-collapse class="space-y-3 pl-1 border-l-2 border-amber-500/30 ml-2">
+                                    <div x-show="!sapImport.mock" x-collapse class="space-y-3 pl-1 border-l-2 border-warning/30 ml-2">
                                         <div class="grid grid-cols-2 gap-2">
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">Application Server Host</label>
@@ -607,7 +607,7 @@
                                     <div class="flex items-center gap-3">
                                         <button type="button" @click="runSapImport()"
                                                 :disabled="sapImport.running || (!sapImport.mock && (!sapImport.ashost || !sapImport.user))"
-                                                class="inline-flex items-center gap-1.5 rounded-md bg-amber-600 text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-amber-500 disabled:opacity-50 transition-colors">
+                                                class="inline-flex items-center gap-1.5 rounded-md bg-warning text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-warning disabled:opacity-50 transition-colors">
                                             <i data-lucide="download-cloud" class="h-3.5 w-3.5"></i>
                                             <span x-text="sapImport.running ? 'Importing…' : (sapImport.mock ? 'Run Mock Import' : 'Import from SAP')"></span>
                                         </button>
@@ -617,8 +617,8 @@
                                     </div>
                                     <!-- Results -->
                                     <template x-if="sapImport.result && sapImport.result.ok">
-                                        <div class="rounded-md bg-green-500/10 border border-green-500/30 p-3 text-xs space-y-1">
-                                            <p class="font-semibold text-emerald-600">✓ Import successful</p>
+                                        <div class="rounded-md bg-success/10 border border-success/30 p-3 text-xs space-y-1">
+                                            <p class="font-semibold text-success">✓ Import successful</p>
                                             <p class="text-muted-foreground">
                                                 <span class="font-medium text-foreground" x-text="sapImport.result.stats && (sapImport.result.stats.tables + sapImport.result.stats.transactions + sapImport.result.stats.roles + sapImport.result.stats.components)"></span> ArchiMate elements ·
                                                 <span class="font-medium text-foreground" x-text="sapImport.result.stats && sapImport.result.stats.relationships_created"></span> relationships ·
@@ -757,14 +757,14 @@
                         <span x-text="generating ? 'Generating…' : (config.generation_mode === 'genome' ? 'Generate with Genome' : 'Generate Code')"></span>
                     </button>
                     <template x-if="blueprintStale">
-                        <span class="inline-flex items-center gap-1.5 text-xs text-orange-600">
+                        <span class="inline-flex items-center gap-1.5 text-xs text-warning-emphasis">
                             <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
                             Blueprint changed —
                             <button @click="phase = 1; $nextTick(() => enrich())" class="underline font-medium">Re-enrich now</button>
                         </span>
                     </template>
                     <template x-if="!blueprintStale && unconfirmedCount > 0">
-                        <span class="inline-flex items-center gap-1.5 text-xs text-amber-600">
+                        <span class="inline-flex items-center gap-1.5 text-xs text-warning-emphasis">
                             <i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>
                             <span x-text="unconfirmedCount + ' unconfirmed schemas'"></span> —
                             <button @click="phase = 2" class="underline font-medium">review in Phase 2</button>
@@ -783,12 +783,12 @@
                             <div class="flex items-center gap-3">
                                 <div class="w-5 h-5 shrink-0 flex items-center justify-center">
                                     <svg x-show="promptGroupStatus[key]==='running'" x-cloak class="h-4 w-4 animate-spin text-primary" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                                    <i x-show="promptGroupStatus[key]==='done'" x-cloak data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
+                                    <i x-show="promptGroupStatus[key]==='done'" x-cloak data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
                                     <i x-show="promptGroupStatus[key]==='error'" x-cloak data-lucide="x-circle" class="h-4 w-4 text-destructive"></i>
                                     <i x-show="!promptGroupStatus[key] || promptGroupStatus[key]==='pending'" x-cloak data-lucide="circle" class="h-4 w-4 text-muted-foreground/30"></i>
                                 </div>
                                 <span class="text-sm capitalize"
-                                      :class="promptGroupStatus[key]==='running'?'text-foreground font-medium':promptGroupStatus[key]==='done'?'text-emerald-700':promptGroupStatus[key]==='error'?'text-destructive':'text-muted-foreground/50'"
+                                      :class="promptGroupStatus[key]==='running'?'text-foreground font-medium':promptGroupStatus[key]==='done'?'text-success':promptGroupStatus[key]==='error'?'text-destructive':'text-muted-foreground/50'"
                                       x-text="key"></span>
                             </div>
                         </template>

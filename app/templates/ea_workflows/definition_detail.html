@@ -164,7 +164,7 @@
                     <div class="flex items-center gap-1 min-w-max">
                         <!-- Start node -->
                         <div class="flex flex-col items-center">
-                            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-primary-foreground">
+                            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-success text-success-foreground">
                                 <i data-lucide="play" class="h-3.5 w-3.5" aria-hidden="true"></i>
                             </div>
                             <span class="text-[10px] text-muted-foreground mt-1">Start</span>
@@ -179,12 +179,12 @@
                         <!-- Step node -->
                         <div class="flex flex-col items-center max-w-[140px]">
                             {% if is_approval %}
-                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-50 text-center px-2 py-1">
-                                <span class="text-[10px] font-semibold text-amber-700 line-clamp-2 leading-tight">{{ step.step_name }}</span>
+                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-warning/40 bg-warning/10 text-center px-2 py-1">
+                                <span class="text-[10px] font-semibold text-warning-emphasis line-clamp-2 leading-tight">{{ step.step_name }}</span>
                             </div>
                             <div class="flex items-center gap-0.5 mt-1">
-                                <i data-lucide="hand" class="h-2.5 w-2.5 text-amber-500" aria-hidden="true"></i>
-                                <span class="text-[9px] text-amber-600 font-medium">Review</span>
+                                <i data-lucide="hand" class="h-2.5 w-2.5 text-warning" aria-hidden="true"></i>
+                                <span class="text-[9px] text-warning-emphasis font-medium">Review</span>
                             </div>
                             {% elif step.step_type == 'notification' %}
                             <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-primary/30 bg-primary/5 text-center px-2 py-1">
@@ -199,8 +199,8 @@
                                 <span class="text-[10px] font-semibold line-clamp-2 leading-tight">{{ step.step_name }}</span>
                             </div>
                             <div class="flex items-center gap-0.5 mt-1">
-                                <i data-lucide="bot" class="h-2.5 w-2.5 text-emerald-500" aria-hidden="true"></i>
-                                <span class="text-[9px] text-emerald-600 font-medium">Auto</span>
+                                <i data-lucide="bot" class="h-2.5 w-2.5 text-success" aria-hidden="true"></i>
+                                <span class="text-[9px] text-success-emphasis font-medium">Auto</span>
                             </div>
                             {% endif %}
                         </div>
@@ -257,7 +257,7 @@
                                         Notification
                                     </span>
                                     {% else %}
-                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700 shrink-0">
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success-emphasis shrink-0">
                                         <i data-lucide="bot" class="h-3 w-3" aria-hidden="true"></i>
                                         Automated
                                     </span>

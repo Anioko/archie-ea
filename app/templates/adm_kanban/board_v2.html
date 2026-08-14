@@ -170,7 +170,7 @@
                                   :title="colSlaStatus(col.id).overdue_count + ' card(s) past ' + colSlaStatus(col.id).sla_days + '-day SLA'"
                                   x-text="'⚠ ' + colSlaStatus(col.id).overdue_count + ' SLA'"></span>
                         </template>
-                        <span :class="wipAtLimit(col.id) ? 'text-destructive font-semibold' : wipNearLimit(col.id) ? 'text-amber-600 font-medium' : 'text-muted-foreground'"
+                        <span :class="wipAtLimit(col.id) ? 'text-destructive font-semibold' : wipNearLimit(col.id) ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
                               class="flex items-center gap-0.5">
                             <span x-text="wipCount(col.id)"></span>
                             <template x-if="wipLimit(col.id) > 0">
@@ -220,7 +220,7 @@
 
                             {# ARB governance badge #}
                             <template x-if="card.requires_arb_signoff">
-                              <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 border border-amber-300"
+                              <span class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-emphasis border border-warning/30"
                                     title="Requires ARB Sign-off">
                                 <i data-lucide="shield-alert" class="w-3 h-3" aria-hidden="true"></i>
                                 ARB
@@ -263,7 +263,7 @@
                                 <div class="flex items-center gap-2 text-[10px] text-muted-foreground mb-2">
                                     <span x-show="card.meta.readiness_total > 0" x-cloak
                                           :class="card.meta.readiness_score === card.meta.readiness_total
- ? 'text-emerald-600' : ''"
+ ? 'text-success-emphasis' : ''"
                                           x-text="'Readiness: ' + card.meta.readiness_score + '/' + card.meta.readiness_total"></span>
                                     <span x-show="card.meta.budget_range" x-cloak
                                           x-text="card.meta.budget_range"></span>
@@ -272,7 +272,7 @@
 
                             {# Entity coverage alert — amber when linked entities are sparse #}
                             <template x-if="card.card_type === 'solution' && card.meta && (card.meta.app_count || 0) + (card.meta.artifact_total || 0) < 5">
-                                <div class="flex items-center gap-1 text-[10px] text-amber-600 mb-1">
+                                <div class="flex items-center gap-1 text-[10px] text-warning-emphasis mb-1">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
                                     <span>Low coverage</span>
                                 </div>
@@ -283,11 +283,11 @@
                                     <span x-show="card.meta.app_count > 0" x-cloak
                                           x-text="card.meta.app_count + ' apps'"></span>
                                     <span x-show="card.meta.artifact_total > 0" x-cloak
-                                          class="inline-flex items-center px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 border border-violet-500/30 font-medium"
+                                          class="inline-flex items-center px-1.5 py-0.5 rounded bg-info/10 text-info-emphasis border border-info/30 font-medium"
                                           x-text="card.meta.artifact_total + ' artifacts'"></span>
                                     <template x-if="card.meta.phase_gate">
                                         <span :class="card.meta.phase_gate.valid
- ? 'text-emerald-600' : 'text-destructive'"
+ ? 'text-success-emphasis' : 'text-destructive'"
                                               :title="card.meta.phase_gate.valid
                                                   ? 'Phase gate passed'
                                                   : (card.meta.phase_gate.errors || []).join('; ')">
@@ -302,20 +302,20 @@
                             <template x-if="card.card_type === 'deliverable' && card.meta">
                                 <div class="mb-2 space-y-1.5">
                                     <div class="flex items-center gap-1 flex-wrap">
-                                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-indigo-500/10 text-primary border border-indigo-500/30">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-info/10 text-primary border border-info/30">
                                             <svg class="w-2.5 h-2.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                             <span x-text="card.meta.deliverable_type_label"></span>
                                         </span>
-                                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-info/10 text-info-emphasis border border-info/30"
                                               x-text="card.meta.archimate_viewpoint"></span>
                                     </div>
                                     <div class="flex items-center gap-2 text-[10px] text-muted-foreground">
                                         <span :class="{
- 'text-amber-600': card.meta.document_status === 'draft',
- 'text-sky-600': card.meta.document_status === 'in_progress',
+ 'text-warning-emphasis': card.meta.document_status === 'draft',
+ 'text-info-emphasis': card.meta.document_status === 'in_progress',
  'text-primary': card.meta.document_status === 'review',
- 'text-emerald-600': card.meta.document_status === 'approved',
- 'text-orange-600': card.meta.document_status === 'implementing',
+ 'text-success-emphasis': card.meta.document_status === 'approved',
+ 'text-warning-emphasis': card.meta.document_status === 'implementing',
  'text-primary': card.meta.document_status === 'published'
  }" x-text="card.meta.document_status"></span>
                                         <span x-text="card.meta.element_count + ' elements'"></span>
@@ -368,7 +368,7 @@
                                               :class="(card.meta?.days_in_column || 0) > 14
  ? 'text-destructive'
  : (card.meta?.days_in_column || 0) > 7
- ? 'text-amber-600'
+ ? 'text-warning-emphasis'
  : 'text-muted-foreground'"
                                               :title="(card.meta?.days_in_column || 0) + ' days in this column'">
                                             <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -412,7 +412,7 @@
                                       :title="colSlaStatus(col.id).overdue_count + ' card(s) past SLA'"
                                       x-text="'⚠ ' + colSlaStatus(col.id).overdue_count"></span>
                             </template>
-                            <span :class="wipAtLimit(col.id) ? 'text-destructive font-semibold' : wipNearLimit(col.id) ? 'text-amber-600 font-medium' : 'text-muted-foreground'"
+                            <span :class="wipAtLimit(col.id) ? 'text-destructive font-semibold' : wipNearLimit(col.id) ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
                                   class="flex items-center gap-0.5">
                                 <span x-text="wipCount(col.id)"></span>
                                 <template x-if="wipLimit(col.id) > 0">
@@ -462,7 +462,7 @@
                     </button>
                     {# SA-003: ArchiMate element count badge #}
                     <span @mouseenter="loadPhaseElements(phase.code)"
-                          class="ml-1 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20"
+                          class="ml-1 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20"
                           :title="'Suggested ArchiMate elements for Phase ' + phase.code"
                           x-text="phaseElementBadgeText(phase.code)"
                           x-show="phaseElementBadgeText(phase.code)" x-cloak
@@ -538,7 +538,7 @@
                                         </div>
                                         {# ARB governance badge #}
                                         <template x-if="card.requires_arb_signoff">
-                                          <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 border border-amber-300"
+                                          <span class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-emphasis border border-warning/30"
                                                 title="Requires ARB Sign-off">
                                             <i data-lucide="shield-alert" class="w-3 h-3" aria-hidden="true"></i>
                                             ARB
@@ -687,10 +687,10 @@
                                 <option value="Cross-cutting">Cross-cutting</option>
                             </select>
                             <p class="text-[10px] mt-0.5 text-muted-foreground inline-flex items-center gap-1" x-show="!domainOverridden" x-cloak>
-                                <i data-lucide="check" class="h-3 w-3 text-emerald-600"></i><span class="text-emerald-600">Recommended</span>
+                                <i data-lucide="check" class="h-3 w-3 text-success"></i><span class="text-success-emphasis">Recommended</span>
                                 for <span x-text="'Phase ' + form.phase"></span>
                             </p>
-                            <p class="text-[10px] mt-0.5 text-amber-600 inline-flex items-center gap-1" x-show="domainOverridden" x-cloak>
+                            <p class="text-[10px] mt-0.5 text-warning-emphasis inline-flex items-center gap-1" x-show="domainOverridden" x-cloak>
                                 <i data-lucide="alert-triangle" class="h-3 w-3"></i> Override — default for <span x-text="'Phase ' + form.phase"></span> is
                                 <span x-text="form.phase === 'C' ? 'Application' : form.phase === 'D' || form.phase === 'G' ? 'Technology' : 'Business'"></span>
                             </p>
@@ -884,7 +884,7 @@
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.goal_ids" :key="item.id">
-                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-success/10 text-success-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
                                         <button type="button" @click="removeGoal(item)" class="hover:text-destructive">×</button>
                                     </span>
@@ -910,7 +910,7 @@
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.driver_ids" :key="item.id">
-                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-warning/10 text-warning-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
                                         <button type="button" @click="removeDriver(item)" class="hover:text-destructive">×</button>
                                     </span>
@@ -936,7 +936,7 @@
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.principle_ids" :key="item.id">
-                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-800 rounded text-xs">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-info/10 text-info-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
                                         <button type="button" @click="removePrinciple(item)" class="hover:text-destructive">×</button>
                                     </span>
@@ -1160,9 +1160,9 @@
                                     <template x-for="ph in ['A','B','C','D','E','F','G','H']" :key="ph">
                                         <div class="flex-1 text-center">
                                             <div class="h-1.5 rounded-sm"
-                                                 :class="card.meta.adm_completed.includes(ph) ? 'bg-emerald-500' : (card.meta.adm_current === ph ? 'bg-primary' : 'bg-muted')"></div>
+                                                 :class="card.meta.adm_completed.includes(ph) ? 'bg-success' : (card.meta.adm_current === ph ? 'bg-primary' : 'bg-muted')"></div>
                                             <span class="text-[10px] mt-1 block"
-                                                  :class="card.meta.adm_completed.includes(ph) ? 'text-emerald-600 font-medium' : (card.meta.adm_current === ph ? 'text-primary font-medium' : 'text-muted-foreground')"
+                                                  :class="card.meta.adm_completed.includes(ph) ? 'text-success-emphasis font-medium' : (card.meta.adm_current === ph ? 'text-primary font-medium' : 'text-muted-foreground')"
                                                   x-text="ph"></span>
                                         </div>
                                     </template>
@@ -1214,7 +1214,7 @@
                                 <p class="text-xs text-muted-foreground mb-2">ArchiMate Artifacts</p>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="layer in Object.keys(card.meta.artifacts)" :key="layer">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-700"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-info/10 text-info-emphasis"
                                               x-text="layer + ' ' + card.meta.artifacts[layer]"></span>
                                     </template>
                                     <span class="text-xs text-muted-foreground py-0.5" x-text="card.meta.artifact_total + ' total'"></span>
@@ -1310,15 +1310,15 @@
                                               x-text="'REQ-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                     <template x-for="id in (card ? card.goal_ids || [] : [])" :key="'g'+id">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-700"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-success/10 text-success-emphasis"
                                               x-text="'GOAL-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                     <template x-for="id in (card ? card.driver_ids || [] : [])" :key="'d'+id">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-amber-500/10 text-amber-700"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-warning/10 text-warning-emphasis"
                                               x-text="'DRV-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                     <template x-for="id in (card ? card.principle_ids || [] : [])" :key="'p'+id">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-purple-500/10 text-purple-700"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-info/10 text-info-emphasis"
                                               x-text="'PRIN-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                 </div>
@@ -1503,7 +1503,7 @@
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-semibold text-foreground">Governance</span>
                             <span x-show="card && card.requires_arb_signoff" x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/30">ARB</span>
+                                  class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-warning/10 text-warning-emphasis border border-warning/30">ARB</span>
                         </div>
                         <svg class="w-4 h-4 text-muted-foreground transition-transform duration-200"
                              :class="section5Open ? 'rotate-180' : ''"
@@ -1522,11 +1522,11 @@
 
                             {# ARB Sign-off #}
                             <div x-show="card && card.requires_arb_signoff" x-cloak
-                                 class="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-500/5 border border-amber-500/20">
-                                <svg class="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                 class="flex items-center gap-2 px-3 py-2 rounded-md bg-warning/5 border border-warning/20">
+                                <svg class="w-4 h-4 text-warning shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                 </svg>
-                                <span class="text-xs text-amber-700 font-medium">Architecture Review Board sign-off required</span>
+                                <span class="text-xs text-warning-emphasis font-medium">Architecture Review Board sign-off required</span>
                             </div>
 
                             {# Acceptance Criteria #}
@@ -1539,7 +1539,7 @@
                             <template x-if="card && card.card_type === 'solution' && card.meta && card.meta.phase_gate">
                                 <div>
                                     <div class="rounded-lg px-3 py-2.5 text-sm"
-                                         :class="card.meta.phase_gate.valid ? 'bg-emerald-500/5 text-emerald-700' : 'bg-destructive/5 text-destructive-emphasis'">
+                                         :class="card.meta.phase_gate.valid ? 'bg-success/5 text-success-emphasis' : 'bg-destructive/5 text-destructive-emphasis'">
                                         <div class="font-medium" x-text="card.meta.phase_gate.valid ? 'Phase gate passed' : 'Phase gate not met'"></div>
                                         <template x-if="card.meta.phase_gate.errors && card.meta.phase_gate.errors.length > 0">
                                             <ul class="mt-1.5 space-y-0.5 text-xs">
@@ -1549,7 +1549,7 @@
                                             </ul>
                                         </template>
                                         <template x-if="card.meta.phase_gate.warnings && card.meta.phase_gate.warnings.length > 0">
-                                            <ul class="mt-1.5 space-y-0.5 text-xs text-amber-600">
+                                            <ul class="mt-1.5 space-y-0.5 text-xs text-warning-emphasis">
                                                 <template x-for="warn in card.meta.phase_gate.warnings" :key="warn">
                                                     <li x-text="warn"></li>
                                                 </template>
@@ -1950,11 +1950,12 @@
                 });
             },
             phaseClass: function(phase) {
-                let map = { 'PRELIM':'bg-muted-foreground/10 text-muted-foreground', 'A':'bg-info/10 text-primary', 'B':'bg-emerald-500/10 text-emerald-600', 'C':'bg-violet-500/10 text-violet-600', 'D':'bg-orange-500/10 text-orange-600', 'E':'bg-amber-500/10 text-amber-600', 'F':'bg-cyan-500/10 text-cyan-600', 'G':'bg-rose-500/10 text-rose-600', 'H':'bg-indigo-500/10 text-primary', 'REQ':'bg-muted-foreground/10 text-muted-foreground' };
+                let map = { 'PRELIM':'bg-muted-foreground/10 text-muted-foreground', 'A':'bg-info/10 text-primary', 'B':'bg-emerald-500/10 text-emerald-600', 'C':'bg-violet-500/10 text-violet-600', 'D':'bg-orange-500/10 text-orange-600', 'E':'bg-amber-500/10 text-amber-600', 'F':'bg-cyan-500/10 text-cyan-600', 'G':'bg-rose-500/10 text-rose-600', 'H':'bg-indigo-500/10 text-primary', 'REQ':'bg-muted-foreground/10 text-muted-foreground' }; // design-tokens-ok: TOGAF ADM phase legend A-H, categorical hues like ArchiMate layers
+
                 return map[phase] || 'bg-muted text-muted-foreground';
             },
             priorityClass: function(priority) {
-                let map = { 'critical':'bg-destructive/10 text-destructive', 'high':'bg-orange-500/10 text-orange-600', 'medium':'bg-amber-500/10 text-amber-600', 'low':'bg-muted text-muted-foreground' };
+                let map = { 'critical':'bg-destructive/10 text-destructive', 'high':'bg-warning/10 text-warning-emphasis', 'medium':'bg-warning/5 text-warning-emphasis', 'low':'bg-muted text-muted-foreground' }; // high/medium both warning family; distinguished by tint strength since orange/amber collapse to one token
                 return map[priority] || 'bg-muted text-muted-foreground';
             },
             phaseLabel: function(code) {

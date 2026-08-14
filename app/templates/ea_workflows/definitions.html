@@ -98,11 +98,11 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
- {% if defn.is_active %}bg-emerald-500/10 text-emerald-700 else %}bg-muted text-foreground/80{% endif %}">
+ {% if defn.is_active %}bg-success/10 text-success-emphasis else %}bg-muted text-foreground/80{% endif %}">
                         {{ 'Active' if defn.is_active else 'Inactive' }}
                     </span>
                     <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
- {% if defn.automation_level == 'automated' %}bg-emerald-500/10 text-emerald-700
+ {% if defn.automation_level == 'automated' %}bg-success/10 text-success-emphasis
  {% elif defn.automation_level == 'assisted' %}bg-primary/10 text-primary
  {% else %}bg-muted text-foreground/80{% endif %}">
                         {{ defn.automation_level|title }}

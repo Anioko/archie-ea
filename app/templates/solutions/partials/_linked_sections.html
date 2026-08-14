@@ -10,7 +10,7 @@
      :class="isSectionActive('B') ? 'ring-1 ring-primary/10' : ''">
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
-            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('B')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('B')" x-cloak aria-hidden="true"></i>
             <h3 class="text-lg font-semibold text-foreground">Associated Applications</h3>
@@ -52,7 +52,7 @@
      :class="isSectionActive('E') ? 'ring-1 ring-primary/10' : ''">
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
-            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('E')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0" x-show="isSectionCompleted('E')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('E')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('E')" x-cloak aria-hidden="true"></i>
             <div>
@@ -65,7 +65,7 @@
                 class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                 <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
             </button>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Phase E</span>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Phase E</span>
         </div>
     </div>
     <template x-if="linkedVendorProducts.length > 0">
@@ -89,7 +89,7 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <template x-if="vp.licensing_model">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="vp.licensing_model"></span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="vp.licensing_model"></span>
                         </template>
                         <button type="button" @click="unlinkEntity('vendor_product', vp.id)"
                             class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove">
@@ -110,7 +110,7 @@
      :class="isSectionActive('G') ? 'ring-1 ring-primary/10' : ''">
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
-            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('G')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0" x-show="isSectionCompleted('G')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('G')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('G')" x-cloak aria-hidden="true"></i>
             <div>
@@ -123,7 +123,7 @@
                 class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                 <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
             </button>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-sky-500/10 text-sky-600 border border-sky-500/30">Phase G</span>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">Phase G</span>
         </div>
     </div>
     <template x-if="linkedADRs.length > 0">
@@ -134,9 +134,9 @@
                         <span class="text-sm font-medium text-foreground" x-text="'ADR-' + String(adr.adr_number || 0).padStart(3, '0') + ': ' + (adr.title || 'Untitled')"></span>
                         <div class="flex items-center gap-2">
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                  :class="adr.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                  :class="adr.status === 'accepted' ? 'bg-success/10 text-success-emphasis border border-success/30' :
  (adr.status === 'deprecated' || adr.status === 'superseded') ? 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30' :
- adr.status === 'proposed' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+ adr.status === 'proposed' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' :
  'bg-primary/10 text-primary border border-primary/30'"
                                   x-text="adr.status || 'draft'"></span>
                             <button type="button" @click="unlinkEntity('adr', adr.id)"
@@ -154,8 +154,8 @@
     </template>
     <template x-if="linkedADRs.length === 0">
         {% if solution.complexity_level in ('High', 'Complex', 'Enterprise') %}
-        <div class="flex items-start gap-2 p-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm">
-            <i data-lucide="triangle-alert" class="w-4 h-4 shrink-0 mt-0.5 text-amber-500" aria-hidden="true"></i>
+        <div class="flex items-start gap-2 p-3 rounded-md bg-warning/10 border border-warning/30 text-warning-emphasis text-sm">
+            <i data-lucide="triangle-alert" class="w-4 h-4 shrink-0 mt-0.5 text-warning" aria-hidden="true"></i>
             <span><strong>No ADRs linked.</strong> High-complexity solutions should document key technical decisions as Architecture Decision Records. Click <strong>Manage</strong> to add.</span>
         </div>
         {% else %}
@@ -169,7 +169,7 @@
      :class="isSectionActive('A') ? 'ring-1 ring-primary/10' : ''">
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
-            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('A')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0" x-show="isSectionCompleted('A')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('A')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('A')" x-cloak aria-hidden="true"></i>
             <h3 class="text-lg font-semibold text-foreground">Associated APQC Processes</h3>
@@ -179,7 +179,7 @@
                 class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                 <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
             </button>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">Phase A</span>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">Phase A</span>
         </div>
     </div>
     <template x-if="linkedAPQCProcesses.length > 0">
@@ -208,7 +208,7 @@
      :class="isSectionActive('B') ? 'ring-1 ring-primary/10' : ''">
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
-            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('B')" x-cloak aria-hidden="true"></i>
             <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('B')" x-cloak aria-hidden="true"></i>
             <h3 class="text-lg font-semibold text-foreground">Business Capabilities</h3>
@@ -245,7 +245,7 @@
         <div class="mt-3 pt-3 border-t border-border">
             <button type="button" @click="generateArchitectureFromCapabilities()"
                 :disabled="stagingGenerating"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-violet-600 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-info-emphasis bg-info/10 hover:bg-info/20 border border-info/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 data-testid="btn-generate-architecture-from-capabilities"
                 aria-label="Generate ArchiMate architecture from linked capabilities">
                 <template x-if="stagingGenerating">
@@ -260,11 +260,11 @@
 
 {# ── ArchiMate Staging Panel (CAP-009) ── #}
 <div x-show="stagedElements && stagedElements.length > 0" x-cloak
-     class="bg-card rounded-xl border border-violet-500/30 shadow-sm p-6 transition-all ring-1 ring-violet-500/10"
+     class="bg-card rounded-xl border border-info/30 shadow-sm p-6 transition-all ring-1 ring-primary/10"
      data-testid="archimate-staging-panel">
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
-            <i data-lucide="layers" class="w-4 h-4 text-violet-500 flex-shrink-0" aria-hidden="true"></i>
+            <i data-lucide="layers" class="w-4 h-4 text-info flex-shrink-0" aria-hidden="true"></i>
             <div>
                 <h3 class="text-lg font-semibold text-foreground">Generated Elements — Review &amp; Accept</h3>
                 <p class="text-sm text-muted-foreground" x-text="stagedElements.length + ' element' + (stagedElements.length !== 1 ? 's' : '') + ' awaiting review'"></p>
@@ -290,10 +290,10 @@
                 <div class="flex items-center gap-3 min-w-0 flex-1">
                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
                           :class="{
- 'bg-amber-500/10 text-amber-600 border-amber-500/30': el.layer === 'business',
- 'bg-sky-500/10 text-sky-600 border-sky-500/30': el.layer === 'application',
- 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': el.layer === 'technology',
- 'bg-violet-500/10 text-violet-600 border-violet-500/30': el.layer === 'strategy' || el.layer === 'motivation',
+ 'bg-warning/10 text-warning-emphasis border-warning/30': el.layer === 'business',
+ 'bg-info/10 text-info-emphasis border-info/30': el.layer === 'application',
+ 'bg-success/10 text-success-emphasis border-success/30': el.layer === 'technology',
+ 'bg-info/10 text-info-emphasis border-info/30': el.layer === 'strategy' || el.layer === 'motivation',
  'bg-muted text-muted-foreground border-border': !['business','application','technology','strategy','motivation'].includes(el.layer)
  }"
                           x-text="el.layer"></span>
@@ -306,7 +306,7 @@
                 </div>
                 <div class="flex items-center gap-1.5 flex-shrink-0 ml-2">
                     <button type="button" @click="acceptStagedElement(index)"
-                        class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 transition-colors"
+                        class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-success-emphasis hover:bg-success/10 transition-colors"
                         :data-testid="'btn-accept-staged-' + index" :aria-label="'Accept ' + el.name">
                         <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i> Accept
                     </button>
@@ -346,7 +346,7 @@
                     <span x-text="req.name || ('Requirement #' + req.id)"></span>
                     <span x-show="req.moscow_priority" x-cloak
                           class="px-1 py-0 rounded text-[10px] font-bold"
-                          :class="{'bg-destructive text-destructive-emphasis': req.moscow_priority === 'MUST', 'bg-yellow-200 text-yellow-800': req.moscow_priority === 'SHOULD', 'bg-muted text-foreground': req.moscow_priority === 'WONT'}"
+                          :class="{'bg-destructive text-destructive-emphasis': req.moscow_priority === 'MUST', 'bg-warning/10 text-warning-emphasis': req.moscow_priority === 'SHOULD', 'bg-muted text-foreground': req.moscow_priority === 'WONT'}"
                           x-text="req.moscow_priority"></span>
                     <button type="button" @click="unlinkEntity('requirement', req.id)"
                         class="text-primary/60 hover:text-destructive ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Remove" aria-label="Remove requirement link">
@@ -471,7 +471,7 @@
                                 <div class="flex items-center gap-2">
                                     <p class="text-sm font-medium text-foreground truncate" x-text="item.name"></p>
                                     <template x-if="manageModalType === 'application' && item.name && (item.name.startsWith('(Duplicate)') || item.is_duplicate)">
-                                        <span class="flex-shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-300">
+                                        <span class="flex-shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
                                             Duplicate
                                         </span>
                                     </template>
