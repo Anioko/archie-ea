@@ -155,7 +155,21 @@
                     const response = await fetch('/capability-map/api/capabilities');
                     if (!response.ok) throw new Error('Could not load capability network data (HTTP ' + response.status + ')');
                     const data = await response.json();
-                    this.capabilities = data;
+                    // The API returns {capabilities, statistics}; the renderer needs
+                    // {nodes, edges}. Without this transform the graph never drew.
+                    const caps = data.capabilities || [];
+                    const ids = new Set(caps.map(c => c.id));
+                    this.capabilities = {
+                        nodes: caps.map(c => ({
+                            id: c.id,
+                            name: c.name,
+                            category: (c.level || 1) >= 3 ? 'function' : 'capability',
+                            group: c.category || 'Other'
+                        })),
+                        edges: caps
+                            .filter(c => c.parent_id && ids.has(c.parent_id))
+                            .map(c => ({ source: c.parent_id, target: c.id }))
+                    };
                     this.domains = data.statistics.domains;
                     this.renderNetwork();
                     this.loadError = null;
@@ -184,23 +198,27 @@
                     .attr('width', width)
                     .attr('height', height);
 
-                // Filter nodes based on showFunctions
+                // Filter nodes based on showFunctions — and edges with them, or
+                // d3.forceLink throws on an edge whose endpoint was filtered out.
                 const nodes = this.showFunctions ?
                     this.capabilities.nodes :
                     this.capabilities.nodes.filter(n => n.category !== 'function');
+                const visible = new Set(nodes.map(n => n.id));
+                const edges = this.capabilities.edges.filter(
+                    e => visible.has(e.source.id ?? e.source) && visible.has(e.target.id ?? e.target));
 
                 this.nodeCount = nodes.length;
-                this.linkCount = this.capabilities.edges.length;
+                this.linkCount = edges.length;
 
                 const simulation = d3.forceSimulation(nodes)
-                    .force('link', d3.forceLink(this.capabilities.edges).id(d => d.id).distance(100))
+                    .force('link', d3.forceLink(edges).id(d => d.id).distance(100))
                     .force('charge', d3.forceManyBody().strength(-300))
                     .force('center', d3.forceCenter(width / 2, height / 2))
                     .force('collision', d3.forceCollide().radius(30));
 
                 const link = svg.append('g')
                     .selectAll('line')
-                    .data(this.capabilities.edges)
+                    .data(edges)
                     .enter().append('line')
                     .attr('class', 'link')
                     .style('stroke', '#e5e7eb')

@@ -138,9 +138,11 @@ def hierarchy():
                 "name": cap.name,
                 "description": cap.description or "",
                 "level": cap.level,
-                "domain": cap.business_domain or "Unknown",
+                # Falsy values hide the badge in the template; "Unknown" and a
+                # hardcoded "core" pill were fabricated labels on every row.
+                "domain": cap.business_domain or "",
                 "category": cap.category or "",
-                "capability_type": "core",
+                "capability_type": getattr(cap, "capability_type", None) or "",
                 "functions": [],
                 "mapping_count": mapping_count,
                 "children": [cap_to_dict(k) for k in kids],
@@ -183,9 +185,82 @@ def network():
 
 @capability_map.route("/simple")
 @login_required
+@cached(
+    ttl=300,
+    key_prefix="capability_map:simple",
+    key_func=lambda: getattr(g, "current_org_id", None),
+)
 def simple_view():
-    """Simple static view of capabilities (no API dependencies)"""
-    return render_template("capability_map/simple.html")
+    """Simple flat view of capabilities — real BusinessCapability data.
+
+    Was previously a 612-line static template with no context at all: a
+    hardcoded "38 capabilities / 124 functions / 11 domains" and a fictional
+    "Digital Application Platform" taxonomy, shown identically to every
+    tenant. Rebuilt on the same query pattern as ``hierarchy()`` above —
+    level-1 roots with their direct children — but flattened for a page
+    that is meant to be simple, not a recursive tree.
+    """
+    try:
+        from app.models.business_capabilities import BusinessCapability
+
+        capabilities = BusinessCapability.query.order_by(
+            BusinessCapability.level, BusinessCapability.name
+        ).all()
+
+        children_by_parent = {}
+        for c in capabilities:
+            if c.parent_capability_id:
+                children_by_parent.setdefault(c.parent_capability_id, []).append(c)
+
+        def child_to_dict(cap):
+            return {
+                "name": cap.name,
+                "description": cap.description or "",
+                "level": cap.level,
+                "domain": cap.business_domain or "",
+            }
+
+        roots = [c for c in capabilities if c.level == 1]
+        capability_groups = [
+            {
+                "name": root.name,
+                "description": root.description or "",
+                "level": root.level,
+                "domain": root.business_domain or "",
+                "children": [
+                    child_to_dict(child) for child in children_by_parent.get(root.id, [])
+                ],
+            }
+            for root in roots
+        ]
+
+        levels = [c.level for c in capabilities if c.level is not None]
+        domains = {c.business_domain for c in capabilities if c.business_domain}
+
+        stats = {
+            "total": len(capabilities),
+            "l1_count": len(roots),
+            "max_depth": max(levels) if levels else None,
+            "domain_count": len(domains),
+        }
+
+        return render_template(
+            "capability_map/simple.html",
+            capability_groups=capability_groups,
+            stats=stats,
+        )
+    except Exception:
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception("Could not load the simple capability view")
+        flash("Error loading the capability view. Please try again.", "error")
+        return render_template(
+            "capability_map/simple.html",
+            capability_groups=[],
+            stats={"total": None, "l1_count": None, "max_depth": None, "domain_count": None},
+            load_error="The capability list could not be read.",
+        )
 
 
 @capability_map.route("/dashboard")
