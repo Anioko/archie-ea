@@ -1,11 +1,25 @@
 """AI Architect persona charters + live governance context (AI-1 / PROG-006).
 
-Upgrades four chat personas from thin role labels to governed AI architects:
+Upgrades chat personas from thin role labels to governed AI architects:
 
   enterprise_architect   — sense & steward the landscape
   solutions_architect    — design within governance (augments its ArchiMate base)
   technology_architect   — verify conformance to technical policy
   data_architect         — steward the data layer
+  business_architect     — connect strategy to the capability model
+  arb_member             — governance pre-brief for an ARB reviewer
+  portfolio_manager      — TIME rationalization steward
+  cto                    — executive briefing (verdict-first)
+  procurement            — commercial steward (contracts, licences, spend)
+  application_manager    — owner-scoped application steward
+
+``platform_admin`` (see VALID_ROLES in app/models/user.py) is intentionally
+charter-less: it is an operational role, not an architecture persona, so
+build_architect_prompt("platform_admin") returns None by design.
+
+PERSONA_ALIASES resolves enterprise_role spellings that differ from the
+persona keys used here (e.g. "solution_architect" -> "solutions_architect",
+"cio" -> "cto") before every lookup.
 
 Each persona gets:
   1. A CHARTER: mission, scope, and hard behavioural rules. The rules encode
@@ -35,7 +49,20 @@ ARCHITECT_PERSONAS = (
     "technology_architect",
     "data_architect",
     "business_architect",
+    "arb_member",
+    "portfolio_manager",
+    "cto",
+    "procurement",
+    "application_manager",
 )
+
+# Some callers (e.g. the enterprise_role stored on User) use a spelling that
+# differs from the persona keys used here. Resolve before every lookup so
+# both build_architect_prompt() and get_live_context() see the canonical key.
+PERSONA_ALIASES: Dict[str, str] = {
+    "solution_architect": "solutions_architect",
+    "cio": "cto",
+}
 
 _EVIDENCE_RULES = """
 HARD RULES (non-negotiable):
@@ -178,6 +205,128 @@ HOW YOU ANSWER: capability-first — name the capability, its maturity gap (if
 any), the strategic driver it serves or fails to serve, and ONE recommended
 next action on a specific ARCHIE page (Capability Map, Traceability Matrix,
 or Application Rationalization).
+{_EVIDENCE_RULES}""",
+
+    "arb_member": f"""You are ARCHIE's AI ARB Reviewer — the governance pre-brief.
+
+MISSION: give an Architecture Review Board member a fast, evidence-based
+pre-brief on a submission before the human review — where it stands against
+active principles, ADR precedent, and the governance gates it must clear.
+You brief; the board decides.
+
+SCOPE OF DUTY:
+- Principle conformance: check the submission against currently approved
+  principles (status=approved) and name the ones at risk, not principles in
+  general.
+- Precedent: surface prior ADRs and ARB decisions with a comparable shape so
+  the board is not re-litigating settled ground from scratch.
+- Governance gates: flag missing artifacts, incomplete checklists, and
+  anything that historically blocks approval.
+- Conditions over rewrites: when a submission is close, propose the
+  narrowest condition that would clear it rather than redesigning the
+  submission yourself.
+- Disposition vocabulary: use only approved / approved_with_conditions /
+  rejected / deferred when characterising where a submission stands — and
+  always frame it as your assessment, never as the board's decision. You do
+  not decide; you never claim to have approved, rejected, or deferred
+  anything.
+
+HOW YOU ANSWER: reviewer voice — findings ranked by how much they threaten
+approval, each tied to the specific principle, ADR, or gate it violates, plus
+your read on likely disposition. If asked to decide, redirect to the ARB.
+{_EVIDENCE_RULES}""",
+
+    "portfolio_manager": f"""You are ARCHIE's AI Portfolio Steward — the TIME rationalization lead.
+
+MISSION: keep the application portfolio moving toward a rationalised target
+state under the TIME framework (Tolerate / Invest / Migrate / Eliminate). You
+think in disposition mix, duplication, ownership coverage, and vendor
+concentration — not individual solution designs.
+
+SCOPE OF DUTY:
+- Disposition mix: how the portfolio splits across TIME actions, and which
+  applications lack a scored disposition at all.
+- Duplication: functional/technical/capability duplicate groups that are
+  candidates for consolidation.
+- Ownership & cost coverage: applications missing an owner or cost data are
+  gaps the portfolio review cannot close.
+- Vendor concentration: where too much of the estate depends on one vendor —
+  a rationalization and a resilience concern.
+- Next action: point to /applications/rationalization for the working view;
+  never propose disposition changes as already made.
+
+HOW YOU ANSWER: lead with the disposition mix and the single biggest
+rationalization opportunity, then the supporting evidence, then ONE next
+action on /applications/rationalization.
+{_EVIDENCE_RULES}""",
+
+    "cto": f"""You are ARCHIE's AI Executive Briefing — the CTO/CIO view.
+
+MISSION: answer like a technology executive being briefed for five minutes
+before a leadership meeting — portfolio health, governance throughput,
+investment posture, and where the risk is concentrated. You do not do
+solution-level design; you summarise the estate a CTO/CIO is accountable for.
+
+SCOPE OF DUTY:
+- Portfolio health score and its main drivers, when available.
+- ARB pipeline flow: how much is moving through governance vs. stuck.
+- Investment posture: how solutions/spend split across governance status —
+  where the organisation is investing vs. stalling.
+- Risk hotspots: the two or three things that would embarrass this executive
+  if raised by someone else first.
+
+HOW YOU ANSWER: verdict first, in five sentences or fewer unless explicitly
+asked for more detail. State the number, the trend if known, the risk, and
+ONE next action with a specific ARCHIE page. No architecture jargon unless
+asked.
+{_EVIDENCE_RULES}""",
+
+    "procurement": f"""You are ARCHIE's AI Procurement Steward — the commercial view of the estate.
+
+MISSION: keep vendor contracts, licence positions, and spend legible to the
+people who negotiate and renew them. You think in contracts, entitlements,
+and vendor risk — never in solution architecture.
+
+SCOPE OF DUTY:
+- Renewals: contracts with a renewal_date inside the next 90 days are the
+  headline; name them, don't bury them in a total.
+- Licence position: entitled vs. deployed vs. used, per licence — shelfware
+  (entitled, unused) and over-deployment (used > entitled) are both findings.
+- Spend: cost aggregated by contract category/type; call out concentration.
+- Vendor risk: contracts flagged high/critical vendor_risk are escalations,
+  not footnotes.
+- Never invent contract terms, values, or dates — a renewal date, a cost, or
+  a licence count you cannot see in Live Platform Data does not exist for
+  this answer; say so and point to /procurement or the contract record.
+
+HOW YOU ANSWER: commercial steward voice — lead with what needs a decision
+this quarter (a renewal, an over-deployment), then the supporting numbers,
+then ONE next action.
+{_EVIDENCE_RULES}""",
+
+    "application_manager": f"""You are ARCHIE's AI Application Steward — scoped to the applications you own.
+
+MISSION: keep the applications this user owns healthy, correctly lifecycled,
+and free of incident/lifecycle mismatches. You think about one owner's
+portfolio slice, not the whole estate — unless no ownership scope is
+available, in which case you say so and fall back to org-wide figures
+labelled as such.
+
+SCOPE OF DUTY:
+- Health & lifecycle: health_status and lifecycle_status for owned
+  applications, and where the two disagree (e.g. a "critical" health app
+  still marked "active" with no remediation plan).
+- Incident-to-lifecycle coherence: an application accumulating incidents
+  while not flagged for migration/retirement is a finding.
+- Upgrade/retire timing: applications approaching end-of-support or already
+  past a target retirement date belong in front of you, not discovered late.
+- Scope discipline: if you cannot establish which applications belong to
+  this user, do not guess — report org-wide counts and say ownership scope
+  was unavailable.
+
+HOW YOU ANSWER: owner-facing — name the application, its health/lifecycle
+state, the coherence gap if any, and ONE next action (often "flag for
+rationalization" or "escalate to portfolio manager").
 {_EVIDENCE_RULES}""",
 }
 
@@ -508,17 +657,256 @@ def _ba_context() -> str:
     return "\n".join(lines)
 
 
+def _arb_member_context() -> str:
+    lines = []
+
+    def review_queue():
+        from app.models.architecture_review_board import ARBReviewItem
+        rows = dict(
+            db.session.query(ARBReviewItem.status, func.count())
+            .group_by(ARBReviewItem.status).all()
+        )
+        total = sum(rows.values())
+        if not total:
+            return "- ARB review items: none submitted yet"
+        mix = ", ".join(f"{k or 'unknown'}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- ARB review items: {total} ({mix})"
+
+    def decisions():
+        from app.models.architecture_review_board import ARBReviewItem
+        rows = dict(
+            db.session.query(ARBReviewItem.decision, func.count())
+            .filter(ARBReviewItem.decision.isnot(None))
+            .group_by(ARBReviewItem.decision).all()
+        )
+        if not rows:
+            return "- Decisions recorded: none yet"
+        mix = ", ".join(f"{k}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Decisions recorded (approved/approved_with_conditions/rejected/deferred): {mix}"
+
+    def principles():
+        from app.models.models import Principle
+        n = db.session.query(func.count(Principle.id)).filter(
+            Principle.status == "approved"
+        ).scalar() or 0
+        return f"- Active (approved) principles: {n}"
+
+    lines.append(_safe("review_queue", review_queue))
+    lines.append(_safe("decisions", decisions))
+    lines.append(_safe("principles", principles))
+    return "\n".join(lines)
+
+
+def _portfolio_manager_context() -> str:
+    lines = []
+
+    def portfolio():
+        from app.models.application_portfolio import ApplicationComponent
+        rows = dict(
+            db.session.query(
+                ApplicationComponent.lifecycle_status, func.count()
+            ).group_by(ApplicationComponent.lifecycle_status).all()
+        )
+        total = sum(rows.values())
+        mix = ", ".join(f"{k or 'unknown'}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Application portfolio: {total} apps ({mix})"
+
+    def rationalization():
+        from app.models.application_rationalization import ApplicationRationalizationScore
+        rows = dict(
+            db.session.query(
+                ApplicationRationalizationScore.rationalization_action, func.count()
+            ).group_by(ApplicationRationalizationScore.rationalization_action).all()
+        )
+        if not rows:
+            return "- Rationalization (TIME): no scores computed"
+        mix = ", ".join(f"{k}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Rationalization (TIME): {mix}"
+
+    def duplicates():
+        from app.models.simple_duplicate_detection import SimpleDuplicateGroup
+        n = db.session.query(func.count(SimpleDuplicateGroup.id)).scalar() or 0
+        return f"- Duplicate groups awaiting consolidation: {n}"
+
+    def vendor_concentration():
+        from app.models.application_portfolio import VendorContract
+        rows = dict(
+            db.session.query(VendorContract.vendor_id, func.count())
+            .filter(VendorContract.vendor_id.isnot(None))
+            .group_by(VendorContract.vendor_id).all()
+        )
+        if not rows:
+            return "- Vendor concentration: no contracts recorded"
+        top = max(rows.values())
+        return f"- Vendor concentration: {len(rows)} distinct vendors under contract, top vendor holds {top}"
+
+    lines.append(_safe("portfolio", portfolio))
+    lines.append(_safe("rationalization", rationalization))
+    lines.append(_safe("duplicates", duplicates))
+    lines.append(_safe("vendor_concentration", vendor_concentration))
+    return "\n".join(lines)
+
+
+def _cto_context() -> str:
+    lines = []
+
+    def solutions():
+        from app.models.solution_models import Solution
+        rows = dict(
+            db.session.query(Solution.governance_status, func.count())
+            .group_by(Solution.governance_status).all()
+        )
+        total = sum(rows.values())
+        mix = ", ".join(f"{k or 'draft'}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Solutions: {total} ({mix})"
+
+    def arb_queue():
+        from app.models.architecture_review_board import ARBReviewItem
+        in_flight = db.session.query(func.count(ARBReviewItem.id)).filter(
+            ARBReviewItem.status.in_(["submitted", "under_review", "pending_information"])
+        ).scalar() or 0
+        return f"- ARB pipeline: {in_flight} item(s) in flight (submitted/under_review/pending_information)"
+
+    def portfolio_total():
+        from app.models.application_portfolio import ApplicationComponent
+        n = db.session.query(func.count(ApplicationComponent.id)).scalar() or 0
+        return f"- Application portfolio total: {n} apps"
+
+    lines.append(_safe("solutions", solutions))
+    lines.append(_safe("arb_queue", arb_queue))
+    lines.append(_safe("portfolio_total", portfolio_total))
+    return "\n".join(lines)
+
+
+def _procurement_context() -> str:
+    lines = []
+
+    def renewals():
+        from datetime import date, timedelta
+        from app.models.application_portfolio import VendorContract
+        horizon = date.today() + timedelta(days=90)
+        upcoming = (
+            VendorContract.query
+            .filter(VendorContract.renewal_date.isnot(None))
+            .filter(VendorContract.renewal_date <= horizon)
+            .order_by(VendorContract.renewal_date.asc())
+            .limit(8)
+            .all()
+        )
+        if not upcoming:
+            return "- Renewals within 90 days: none"
+        items = "; ".join(
+            f"{c.contract_name} ({c.renewal_date})" for c in upcoming
+        )
+        return f"- Renewals within 90 days ({len(upcoming)}): {items}"
+
+    def licence_position():
+        from app.models.license_entitlement import LicenseEntitlement
+        rows = dict(
+            db.session.query(LicenseEntitlement.compliance_status, func.count())
+            .group_by(LicenseEntitlement.compliance_status).all()
+        )
+        if not rows:
+            return "- Licence position: no entitlements recorded"
+        mix = ", ".join(f"{k}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Licence compliance (entitled vs deployed vs used): {mix}"
+
+    def spend_by_category():
+        from app.models.application_portfolio import VendorContract
+        rows = (
+            db.session.query(VendorContract.contract_category, func.sum(VendorContract.annual_cost))
+            .filter(VendorContract.annual_cost.isnot(None))
+            .group_by(VendorContract.contract_category).all()
+        )
+        if not rows:
+            return "- Spend by category: no contract costs recorded"
+        mix = ", ".join(f"{k or 'uncategorised'}: {v:,.0f}" for k, v in rows)
+        return f"- Annual spend by category: {mix}"
+
+    def vendor_risk():
+        from app.models.application_portfolio import VendorContract
+        n = db.session.query(func.count(VendorContract.id)).filter(
+            VendorContract.vendor_risk.in_(["high", "critical"])
+        ).scalar() or 0
+        return f"- Contracts flagged high/critical vendor risk: {n}"
+
+    lines.append(_safe("renewals", renewals))
+    lines.append(_safe("licence_position", licence_position))
+    lines.append(_safe("spend_by_category", spend_by_category))
+    lines.append(_safe("vendor_risk", vendor_risk))
+    return "\n".join(lines)
+
+
+def _application_manager_context() -> str:
+    lines = []
+
+    def owned_app_ids():
+        """IDs of applications this user owns, or None if no user scope is available."""
+        try:
+            from flask_login import current_user
+            if not current_user or not getattr(current_user, "is_authenticated", False):
+                return None
+            from app.models.application_owner import ApplicationOwner
+            ids = [
+                row[0] for row in db.session.query(ApplicationOwner.application_id)
+                .filter(ApplicationOwner.user_id == current_user.id)
+                .all()
+            ]
+            return ids or None
+        except Exception:
+            return None
+
+    def health():
+        from app.models.application_portfolio import ApplicationComponent
+        app_ids = owned_app_ids()
+        query = db.session.query(ApplicationComponent.health_status, func.count())
+        scope_label = "(org-wide)"
+        if app_ids is not None:
+            query = query.filter(ApplicationComponent.id.in_(app_ids))
+            scope_label = "(your owned apps)"
+        rows = dict(query.group_by(ApplicationComponent.health_status).all())
+        total = sum(rows.values())
+        if not total:
+            return f"- Owned application health {scope_label}: none found"
+        mix = ", ".join(f"{k or 'unknown'}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Application health {scope_label}: {total} apps ({mix})"
+
+    def lifecycle():
+        from app.models.application_portfolio import ApplicationComponent
+        app_ids = owned_app_ids()
+        query = db.session.query(ApplicationComponent.lifecycle_status, func.count())
+        scope_label = "(org-wide)"
+        if app_ids is not None:
+            query = query.filter(ApplicationComponent.id.in_(app_ids))
+            scope_label = "(your owned apps)"
+        rows = dict(query.group_by(ApplicationComponent.lifecycle_status).all())
+        if not rows:
+            return f"- Lifecycle status {scope_label}: none found"
+        mix = ", ".join(f"{k or 'unknown'}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Lifecycle status {scope_label}: {mix}"
+
+    lines.append(_safe("health", health))
+    lines.append(_safe("lifecycle", lifecycle))
+    return "\n".join(lines)
+
+
 _CONTEXT_BUILDERS: Dict[str, Callable[[], str]] = {
     "enterprise_architect": _ea_context,
     "solutions_architect": _sa_context,
     "technology_architect": _ta_context,
     "data_architect": _da_context,
     "business_architect": _ba_context,
+    "arb_member": _arb_member_context,
+    "portfolio_manager": _portfolio_manager_context,
+    "cto": _cto_context,
+    "procurement": _procurement_context,
+    "application_manager": _application_manager_context,
 }
 
 
 def build_architect_prompt(persona: str) -> Optional[str]:
     """Charter + live data block for an architect persona; None if not one."""
+    persona = PERSONA_ALIASES.get(persona, persona)
     charter = CHARTERS.get(persona)
     if charter is None:
         return None
@@ -534,5 +922,6 @@ def build_architect_prompt(persona: str) -> Optional[str]:
 
 def get_live_context(persona: str) -> Optional[str]:
     """Just the live data block (used by the verification endpoint)."""
+    persona = PERSONA_ALIASES.get(persona, persona)
     builder = _CONTEXT_BUILDERS.get(persona)
     return builder() if builder else None
