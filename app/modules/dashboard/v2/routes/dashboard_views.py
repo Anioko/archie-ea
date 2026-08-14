@@ -881,12 +881,12 @@ def api_table_get(table_name):
     return jsonify({"success": True, "edits": {}, "rows": []})
 
 
-@dashboard_bp_v2.route("/health")
-@timed_route
-@login_required
-def health_scorecard():
-    """Architecture Health Scorecard — real metrics from SolutionRisk, ARBReviewItem,
-    ArchiMateElement and Solution ADM phase distribution."""
+def _assemble_health_scorecard_metrics():
+    """Assemble the Architecture Health Scorecard's real metrics: solution
+    risk summary, ARB pipeline, ArchiMate coverage by layer, and ADM phase
+    distribution. Factored out of health_scorecard() so the AI executive
+    briefing endpoint can be handed the exact same, already-computed
+    metrics dict rather than re-querying (or worse, inventing numbers)."""
     # 1. Solution risk summary by impact level
     risk_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     try:
@@ -970,13 +970,60 @@ def health_scorecard():
     except Exception as exc:
         logger.warning("health_scorecard: Solution unavailable: %s", exc)
 
-    return render_template(
-        "dashboards/health.html",
-        risk_counts=risk_counts,
-        arb_pipeline=arb_pipeline,
-        archimate_by_layer=archimate_by_layer,
-        total_archimate=total_archimate,
-        adm_distribution=adm_distribution,
-        avg_maturity=avg_maturity,
-        total_solutions=total_solutions,
+    return {
+        "risk_counts": risk_counts,
+        "arb_pipeline": arb_pipeline,
+        "archimate_by_layer": archimate_by_layer,
+        "total_archimate": total_archimate,
+        "adm_distribution": adm_distribution,
+        "avg_maturity": avg_maturity,
+        "total_solutions": total_solutions,
+    }
+
+
+@dashboard_bp_v2.route("/health")
+@timed_route
+@login_required
+def health_scorecard():
+    """Architecture Health Scorecard — real metrics from SolutionRisk, ARBReviewItem,
+    ArchiMateElement and Solution ADM phase distribution."""
+    metrics = _assemble_health_scorecard_metrics()
+    return render_template("dashboards/health.html", **metrics)
+
+
+@dashboard_bp_v2.route("/api/ai-executive-briefing", methods=["POST"])
+@timed_route
+@login_required
+def ai_executive_briefing():
+    """POST /dashboard/api/ai-executive-briefing
+
+    Generates an AI executive briefing for the CTO from the Architecture
+    Health Scorecard's own metrics: a headline, what changed, risks, and
+    recommended focus areas. Advisory only — nothing here is persisted.
+    """
+    from app.services.feature_flag_service import FeatureFlagService
+
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS,
+        endpoint_name="dashboard.ai_executive_briefing",
     )
+    if feature_guard:
+        return feature_guard
+
+    from app.modules.dashboard.v2.services.executive_briefing_service import (
+        ExecutiveBriefingAIError,
+        generate_executive_briefing,
+    )
+
+    metrics = _assemble_health_scorecard_metrics()
+
+    try:
+        briefing = generate_executive_briefing(metrics)
+    except ExecutiveBriefingAIError as e:
+        logger.warning("Executive briefing unparseable: %s", e)
+        return jsonify({"error": f"AI executive briefing failed: {e}"}), 502
+    except Exception as e:
+        logger.exception("Executive briefing generation failed")
+        return jsonify({"error": f"AI executive briefing failed: {e}"}), 502
+
+    return jsonify({"briefing": briefing})
