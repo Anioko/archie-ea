@@ -20,28 +20,28 @@
   <div class="grid grid-cols-4 gap-4">
 
     {# Column headers #}
-    <div class="text-center font-semibold text-sm text-emerald-700 bg-emerald-500/5 rounded-t px-2 py-1">Invest</div>
+    <div class="text-center font-semibold text-sm text-success-emphasis bg-success/5 rounded-t px-2 py-1">Invest</div>
     <div class="text-center font-semibold text-sm text-primary bg-primary/5 rounded-t px-2 py-1">Maintain</div>
-    <div class="text-center font-semibold text-sm text-amber-700 bg-amber-50 rounded-t px-2 py-1">Divest</div>
+    <div class="text-center font-semibold text-sm text-warning-emphasis bg-warning/10 rounded-t px-2 py-1">Divest</div>
     <div class="text-center font-semibold text-sm text-muted-foreground bg-muted rounded-t px-2 py-1">Absent</div>
 
     {# Invest column #}
     <div class="flex flex-col gap-2">
       {% for cap in invest %}
       <div
-        class="rounded border border-emerald-200 bg-emerald-500/5 p-3 cursor-pointer hover:bg-emerald-500/10 transition-colors"
+        class="rounded border border-success/20 bg-success/5 p-3 cursor-pointer hover:bg-success/10 transition-colors"
         @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
         data-capability-id="{{ cap.capability_id }}"
       >
-        <p class="text-xs font-medium text-green-900 truncate">{{ cap.capability_name }}</p>
-        <p class="text-xs text-emerald-700 mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
+        <p class="text-xs font-medium text-success-emphasis truncate">{{ cap.capability_name }}</p>
+        <p class="text-xs text-success-emphasis mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
         {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
         {% if conf >= 0.8 %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-200 text-green-800">High</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-success text-success-foreground">High</span>
         {% elif conf >= 0.5 %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-warning text-warning-foreground">Medium</span>
         {% else %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-emphasis">Low</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">Low</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -59,11 +59,11 @@
         <p class="text-xs text-primary mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
         {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
         {% if conf >= 0.8 %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-200 text-green-800">High</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-success text-success-foreground">High</span>
         {% elif conf >= 0.5 %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-warning text-warning-foreground">Medium</span>
         {% else %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-emphasis">Low</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">Low</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -73,19 +73,19 @@
     <div class="flex flex-col gap-2">
       {% for cap in divest %}
       <div
-        class="rounded border border-amber-200 bg-amber-50 p-3 cursor-pointer hover:bg-amber-100 transition-colors"
+        class="rounded border border-warning/30 bg-warning/10 p-3 cursor-pointer hover:bg-warning/20 transition-colors"
         @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
         data-capability-id="{{ cap.capability_id }}"
       >
-        <p class="text-xs font-medium text-amber-900 truncate">{{ cap.capability_name }}</p>
-        <p class="text-xs text-amber-700 mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
+        <p class="text-xs font-medium text-warning-emphasis truncate">{{ cap.capability_name }}</p>
+        <p class="text-xs text-warning-emphasis mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
         {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
         {% if conf >= 0.8 %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-200 text-green-800">High</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-success text-success-foreground">High</span>
         {% elif conf >= 0.5 %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-warning text-warning-foreground">Medium</span>
         {% else %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-emphasis">Low</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">Low</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -103,11 +103,11 @@
         <p class="text-xs text-muted-foreground mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
         {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
         {% if conf >= 0.8 %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-200 text-green-800">High</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-success text-success-foreground">High</span>
         {% elif conf >= 0.5 %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-warning text-warning-foreground">Medium</span>
         {% else %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-emphasis">Low</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">Low</span>
         {% endif %}
       </div>
       {% endfor %}

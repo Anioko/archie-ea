@@ -6,7 +6,7 @@
 
     <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-foreground">Vendor Comparison</h3>
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">Phase E</span>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Phase E</span>
     </div>
 
     {# Loading state #}
@@ -49,15 +49,15 @@
                                x-model.number="weights[criterion.key]"
                                @input="recalculate()"
                                :aria-label="'Weight for ' + criterion.label"
-                               class="w-full h-1.5 rounded-full appearance-none bg-border cursor-pointer accent-violet-600">
+                               class="w-full h-1.5 rounded-full appearance-none bg-border cursor-pointer accent-info">
                         <p class="text-[10px] text-muted-foreground mt-0.5" x-text="criterion.description"></p>
                     </div>
                 </template>
             </div>
             <p class="text-xs text-muted-foreground mt-2">
                 Total weight: <span class="font-semibold" x-text="totalWeight + '%'"
-                                    :class="totalWeight === 100 ? 'text-emerald-600' : 'text-amber-600'"></span>
-                <span x-show="totalWeight !== 100" x-cloak class="text-amber-600"> (should equal 100%)</span>
+                                    :class="totalWeight === 100 ? 'text-success' : 'text-warning-emphasis'"></span>
+                <span x-show="totalWeight !== 100" x-cloak class="text-warning-emphasis"> (should equal 100%)</span>
             </p>
         </div>
 
@@ -72,7 +72,7 @@
                                 <div class="text-sm font-semibold text-foreground" x-text="product.name"></div>
                                 <div class="text-xs text-muted-foreground" x-text="product.vendor_name"></div>
                                 <div x-show="product.is_selected" x-cloak
-                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">
                                     Selected Winner
                                 </div>
                             </th>
@@ -92,7 +92,7 @@
                                     <div>
                                         <div class="text-sm font-semibold text-foreground" x-text="formatCurrency(product.tco.total_3yr)"></div>
                                         <div class="mt-1 mx-auto w-24 h-1.5 rounded-full bg-border overflow-hidden">
-                                            <div class="h-full rounded-full bg-violet-500 transition-all"
+                                            <div class="h-full rounded-full bg-info transition-all"
                                                  :style="'width:' + (product.tco_score || 0) + '%'"></div>
                                         </div>
                                         <div class="text-[10px] text-muted-foreground mt-0.5" x-text="(product.tco_score != null ? product.tco_score + '/100' : 'N/A')"></div>
@@ -138,8 +138,8 @@
                                 <div>
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
                                           :class="{
-                                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': product.risk.overall === 'low',
-                                              'bg-amber-500/10 text-amber-600 border border-amber-500/30': product.risk.overall === 'medium',
+                                              'bg-success/10 text-success-emphasis border border-success/30': product.risk.overall === 'low',
+                                              'bg-warning/10 text-warning-emphasis border border-warning/30': product.risk.overall === 'medium',
                                               'bg-destructive/10 text-destructive-emphasis border border-destructive/30': product.risk.overall === 'high'
                                           }"
                                           x-text="product.risk.overall.charAt(0).toUpperCase() + product.risk.overall.slice(1)">
@@ -173,10 +173,10 @@
                         <template x-for="product in products" :key="'total-' + product.id">
                             <td class="text-center py-4 px-3">
                                 <div class="text-lg font-bold"
-                                     :class="product.id === winnerId ? 'text-emerald-600' : 'text-foreground'"
+                                     :class="product.id === winnerId ? 'text-success' : 'text-foreground'"
                                      x-text="getWeightedScore(product).toFixed(1)"></div>
                                 <div x-show="product.id === winnerId" x-cloak
-                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-success/10 text-success-emphasis border border-success/30">
                                     Highest Score
                                 </div>
                             </td>
@@ -192,7 +192,7 @@
                 <button @click="openDecisionModal(product)"
                         class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg border transition-colors"
                         :class="product.is_selected
-                            ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20'
+                            ? 'bg-success/10 text-success-emphasis border-success/30 hover:bg-success/20'
                             : 'bg-card text-foreground border-border hover:bg-muted/50'">
                     <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -226,7 +226,7 @@
                 <textarea id="decision-rationale"
                           x-model="decisionRationale"
                           rows="4"
-                          class="w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500"
+                          class="w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary"
                           placeholder="Explain why this vendor was selected..."></textarea>
                 <p x-show="rationaleError" x-cloak class="text-xs text-destructive mt-1" x-text="rationaleError"></p>
             </div>
@@ -238,7 +238,7 @@
                 </button>
                 <button @click="submitDecision()"
                         :disabled="submitting"
-                        class="px-4 py-2 text-sm font-medium text-primary-foreground bg-violet-600 hover:bg-violet-700 rounded-lg transition-colors disabled:opacity-50">
+                        class="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50">
                     <span x-show="!submitting" x-cloak>Confirm Selection</span>
                     <span x-show="submitting" x-cloak>Saving...</span>
                 </button>
