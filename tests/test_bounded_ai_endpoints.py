@@ -164,19 +164,25 @@ def test_application_patterns_endpoint_responds_and_reports_split(
 # ------------------------------------------------------------------- merging
 
 
-def test_merge_candidates_bounded_and_flagged(client, logged_in_org, db_session):
+def test_merge_candidates_bounded_and_flagged(
+    client, logged_in_org, db_session, monkeypatch
+):
+    """A portfolio larger than the comparison window must come back truncated
+    with a next_offset, never as a silently partial scan."""
+    import app.api.application_merging_routes as merging_routes
+
     _make_apps(db_session, logged_in_org, 5)
+    monkeypatch.setattr(merging_routes, "MAX_MERGE_CANDIDATE_APPLICATIONS", 2)
 
     _clear_auth_caches()
-    response = client.get(
-        "/dashboard/api/applications/merging/candidates?max_apps=2"
-    )
+    response = client.get("/dashboard/api/applications/merging/candidates")
     assert response.status_code != 401, "login did not take"
     assert response.status_code == 200, response.get_data(as_text=True)[:500]
     data = response.get_json()
     assert data["truncated"] is True
     assert data["total_analyzed"] == 2
-    assert data["total_applications"] >= 5
+    assert data["total_active_applications"] >= 5
+    assert data["next_offset"] == 2
 
 
 def test_merge_candidates_unbounded_small_portfolio_not_flagged(
@@ -189,7 +195,7 @@ def test_merge_candidates_unbounded_small_portfolio_not_flagged(
     assert response.status_code == 200, response.get_data(as_text=True)[:500]
     data = response.get_json()
     assert data["truncated"] is False
-    assert data["total_analyzed"] == data["total_applications"]
+    assert data["total_analyzed"] == data["total_active_applications"]
 
 
 def test_pair_scan_time_budget_sets_truncated():

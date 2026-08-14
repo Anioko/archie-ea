@@ -121,9 +121,11 @@ def test_get_phase_elements_matches_plateau_column(db_session, tenant_ctx, make_
 
 
 def test_compliance_matrix_uses_real_linkage(db_session, tenant_ctx, make_org):
-    """ARB status reaches an application via solution_applications; the
-    violation count matches on affected_system. Neither query may reference
-    the nonexistent application_id column."""
+    """ARB status reaches an application via its solutions (the
+    solution_applications junction); the violation count is None because
+    compliance_violations has no application linkage — affected_system is
+    free text, and a fabricated 0 would read as "no violations". Neither
+    query may reference the nonexistent application_id column."""
     from app.models.application_portfolio import ApplicationComponent
     from app.models.architecture_review_board import ARBReviewItem
     from app.models.compliance_models import CompliancePolicy, ComplianceViolation
@@ -166,6 +168,10 @@ def test_compliance_matrix_uses_real_linkage(db_session, tenant_ctx, make_org):
         status="approved",
         solution_id=solution.id,
         submitter_id=submitter.id,
+        # ARBReviewItem is TenantMixin as of the wave6 tenancy fixes; outside
+        # a request context the org is not auto-assigned, and a NULL org row
+        # is invisible to the tenant-filtered query under test.
+        organization_id=org.id,
     )
     policy = CompliancePolicy(
         name=f"Matrix Policy {suffix}",
@@ -189,4 +195,7 @@ def test_compliance_matrix_uses_real_linkage(db_session, tenant_ctx, make_org):
     assert rows, "seeded application missing from compliance matrix"
     assert rows[0]["arb_review_status"] == "approved"
     assert rows[0]["compliance_score"] == 100
-    assert rows[0]["violation_count"] == 1
+    # Even with a violation row whose affected_system matches the app's name,
+    # the count is None: free text is not a foreign key, and the null-vs-zero
+    # rule forbids publishing an unattributable count as a number.
+    assert rows[0]["violation_count"] is None
