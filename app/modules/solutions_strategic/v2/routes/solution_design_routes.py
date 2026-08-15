@@ -2698,6 +2698,50 @@ def _build_blueprint_context(solution):
         for section_id in merged_defs:
             merged_defs[section_id].setdefault("elements", [])
 
+    # DR-BP-01: per-section has-content flag, used by the template to collapse
+    # sections that carry zero real data instead of rendering a 1,200-1,650px
+    # empty shell (sparse solutions were producing ~21,000px of blank scroll).
+    # Derived from the same signals already computed above — never guessed:
+    #   - a saved narrative (merged_defs[...]["narrative"])
+    #   - linked ArchiMate elements for the section's required_types (merged_defs[...]["elements"])
+    #   - the SAD sub-records a few sections render via included partials
+    _sad_supplement = {
+        "application_cooperation": ("composition",),
+        "data_information": ("integration_flows",),
+        "deployment_view": ("tech_elements",),
+        "work_packages": ("investment_phases", "benefit_realizations", "lessons_learned"),
+        "security_viewpoint": ("risk_snapshots",),
+        "nfr_satisfaction": ("quality_attributes", "slas"),
+    }
+    section_has_content: dict = {}
+    for section_id, section_def in merged_defs.items():
+        has = bool(section_def.get("narrative")) or bool(section_def.get("elements"))
+        if not has:
+            for sad_key in _sad_supplement.get(section_id, ()):
+                if sad_data.get(sad_key):
+                    has = True
+                    break
+        if not has and section_id == "erp_fit_gap":
+            has = bool(scores.get("erp_fit_gap", {}).get("element_count"))
+        if not has and section_id == "integration_architecture":
+            has = bool(scores.get("integration_architecture", {}).get("total_flows"))
+        section_has_content[section_id] = has
+
+    # transition_roadmap's gantt is fed by legacy WorkPackage rows joined via
+    # solution_work_packages (see api_get_roadmap_tasks) — a separate model
+    # from the ArchiMate WorkPackage elements merged_defs["elements"] covers,
+    # so it needs its own real-data check rather than being guessed empty.
+    if not section_has_content.get("transition_roadmap"):
+        try:
+            from app.models.solution_models import solution_work_packages as _swp
+            has_wp = db.session.query(_swp.c.work_package_id).filter(
+                _swp.c.solution_id == solution.id
+            ).limit(1).count() > 0
+            if has_wp:
+                section_has_content["transition_roadmap"] = True
+        except Exception as exc:
+            logger.debug("suppressed error checking transition_roadmap work packages for solution %s: %s", solution.id, exc)
+
     # Motivation layer entities for blueprint.js lifecycleData (vision_motivation section)
     lifecycle_json = {
         "drivers": type_elements.get("Driver", []),
@@ -2731,6 +2775,7 @@ def _build_blueprint_context(solution):
         "solution": solution,
         "scores": scores,
         "section_definitions": merged_defs,
+        "section_has_content": section_has_content,
         "next_actions": svc.get_next_actions(solution.id, precomputed_scores=scores),
         "arb_ready": svc.check_arb_ready(solution.id, precomputed_scores=scores),
         "phase_checklist": phase_checklist,
