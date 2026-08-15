@@ -459,12 +459,21 @@ class TestApprovalExpiry:
 
 class TestRequireAIApprovalDefaultsOn:
     """REQUIRE_AI_APPROVAL (config.py, A95-008) now defaults to true — the
-    @require_ai_approval-decorated /ai-chat/data/* endpoints in
-    workflow_routes.py queue for human approval unless the operator opts
-    back out with REQUIRE_AI_APPROVAL=false. Pins the flipped default and
-    both directions of the decorator's behaviour, since nothing in the
-    suite exercised these endpoints before (grepped: no test referenced
-    workflow_routes, /ai-chat/data/*, or REQUIRE_AI_APPROVAL)."""
+    queue_ai_write()-gated /ai-chat/data/* endpoints in workflow_routes.py
+    queue a REAL, executable approval for human review unless the operator
+    opts back out with REQUIRE_AI_APPROVAL=false.
+
+    Fix (review round 2): the gate previously returned the 202/pending_
+    approval shape without persisting anything — no approval_id, nothing in
+    GET /ai-chat/approvals/pending, the write silently dropped forever. These
+    tests now pin that a queued write is REAL: it shows up in the pending
+    list, approving it performs the exact write the route would have made,
+    and rejecting it performs no write at all. Two gated routes are covered
+    (create-capability, update-capability) plus one exempted route
+    (add-compliance-requirement, which has no representable entry in
+    AIChatApprovalService.approve_and_execute's vocabulary and so executes
+    immediately with a code comment instead of queuing — see
+    workflow_routes.py)."""
 
     def test_config_default_is_true_when_env_unset(self, monkeypatch):
         import importlib
@@ -478,7 +487,54 @@ class TestRequireAIApprovalDefaultsOn:
         finally:
             importlib.reload(config_module)  # restore for later tests in this process
 
-    def test_create_capability_returns_202_pending_approval_by_default(
+    def test_create_capability_queues_a_real_pending_approval(
+        self, app, client, db_session, make_org, monkeypatch
+    ):
+        import uuid
+
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        monkeypatch.setitem(app.config, "REQUIRE_AI_APPROVAL", True)
+
+        from app.models.business_capabilities import BusinessCapability
+        from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+
+        cap_name = f"Regulatory Reporting {uuid.uuid4().hex[:8]}"
+
+        resp = client.post(
+            "/ai-chat/data/create-capability",
+            json={"name": cap_name},
+        )
+        assert resp.status_code == 202, resp.get_data(as_text=True)
+        body = resp.get_json()
+        assert body["status"] == "pending_approval"
+        assert body["ai_originated"] is True
+        approval_id = body["approval_id"]
+        assert isinstance(approval_id, int)
+
+        # Nothing was written yet.
+        assert BusinessCapability.query.filter_by(name=cap_name).first() is None
+
+        # ... but a real, executable approval record exists.
+        record = db_session.get(AIChatCRUDApproval, approval_id)
+        assert record is not None
+        assert record.user_id == user.id
+        assert record.operation_type == "create"
+        assert record.entity_type == "capability"
+        import json as _json
+
+        assert _json.loads(record.operation_payload)["name"] == cap_name
+
+        # ... and it is listed by the endpoint the approval dashboard polls.
+        _login(client, user.id)  # re-clear g caches before the next request
+        pending_resp = client.get("/ai-chat/approvals/pending")
+        assert pending_resp.status_code == 200
+        pending_ids = [a["id"] for a in pending_resp.get_json()["approvals"]]
+        assert approval_id in pending_ids
+
+    def test_approving_create_capability_performs_the_real_write(
         self, app, client, db_session, make_org, monkeypatch
     ):
         import uuid
@@ -491,19 +547,97 @@ class TestRequireAIApprovalDefaultsOn:
 
         from app.models.business_capabilities import BusinessCapability
 
-        cap_name = f"Regulatory Reporting {uuid.uuid4().hex[:8]}"
+        cap_name = f"Vendor Risk Management {uuid.uuid4().hex[:8]}"
+        resp = client.post("/ai-chat/data/create-capability", json={"name": cap_name})
+        approval_id = resp.get_json()["approval_id"]
 
-        resp = client.post(
-            "/ai-chat/data/create-capability",
-            json={"name": cap_name},
+        approve_resp = client.post(f"/ai-chat/approvals/{approval_id}/approve")
+        assert approve_resp.status_code == 200, approve_resp.get_data(as_text=True)
+        approve_body = approve_resp.get_json()
+        assert approve_body["success"] is True
+
+        created = BusinessCapability.query.filter_by(name=cap_name).first()
+        assert created is not None, "approving the queued write must actually create the capability"
+
+    def test_rejecting_create_capability_creates_nothing(
+        self, app, client, db_session, make_org, monkeypatch
+    ):
+        import uuid
+
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        monkeypatch.setitem(app.config, "REQUIRE_AI_APPROVAL", True)
+
+        from app.models.business_capabilities import BusinessCapability
+
+        cap_name = f"Should Never Exist {uuid.uuid4().hex[:8]}"
+        resp = client.post("/ai-chat/data/create-capability", json={"name": cap_name})
+        approval_id = resp.get_json()["approval_id"]
+
+        reject_resp = client.post(f"/ai-chat/approvals/{approval_id}/reject")
+        assert reject_resp.status_code == 200, reject_resp.get_data(as_text=True)
+
+        assert BusinessCapability.query.filter_by(name=cap_name).first() is None
+
+        from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+        record = db_session.get(AIChatCRUDApproval, approval_id)
+        assert record.status == ApprovalStatus.REJECTED
+
+    def test_update_capability_queues_with_the_capability_id_as_entity_id(
+        self, app, client, db_session, make_org, monkeypatch
+    ):
+        """Second gated endpoint: proves entity_id_kwarg-style wiring (the URL's
+        capability_id) reaches the approval record, and that approving it
+        performs the real update via AIDataInteractionService.update_capability
+        — the same method the route calls directly when the gate is off."""
+        import uuid
+
+        from app.models.archimate_core import ArchiMateElement
+        from app.models.business_capabilities import BusinessCapability
+
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        suffix = uuid.uuid4().hex[:8]
+        # See tests/test_tenant_scoping_leaks.py's _make_capability: pre-create
+        # the ArchiMateElement to sidestep BusinessCapability's before_insert
+        # hook, which does not set organization_id on its raw insert.
+        element = ArchiMateElement(
+            name=f"Cap {suffix}", type="Capability", layer="Strategy", organization_id=org.id
+        )
+        db_session.add(element)
+        db_session.flush()
+        cap = BusinessCapability(
+            name=f"Cap {suffix}", organization_id=org.id, archimate_element_id=element.id
+        )
+        db_session.add(cap)
+        db_session.flush()
+
+        monkeypatch.setitem(app.config, "REQUIRE_AI_APPROVAL", True)
+
+        new_name = f"Renamed {suffix}"
+        resp = client.put(
+            f"/ai-chat/data/update-capability/{cap.id}", json={"name": new_name}
         )
         assert resp.status_code == 202, resp.get_data(as_text=True)
-        body = resp.get_json()
-        assert body["status"] == "pending_approval"
-        assert body["ai_originated"] is True
+        approval_id = resp.get_json()["approval_id"]
 
-        # Gate short-circuited before the view body ran: nothing was written.
-        assert BusinessCapability.query.filter_by(name=cap_name).first() is None
+        from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+
+        record = db_session.get(AIChatCRUDApproval, approval_id)
+        assert record.entity_type == "capability"
+        assert record.operation_type == "update"
+        assert record.entity_id == cap.id
+
+        approve_resp = client.post(f"/ai-chat/approvals/{approval_id}/approve")
+        assert approve_resp.status_code == 200, approve_resp.get_data(as_text=True)
+
+        db_session.refresh(cap)
+        assert cap.name == new_name
 
     def test_create_capability_writes_directly_when_flag_off(
         self, app, client, db_session, make_org, monkeypatch
@@ -525,6 +659,51 @@ class TestRequireAIApprovalDefaultsOn:
         body = resp.get_json()
         assert body.get("status") != "pending_approval"
         assert body.get("success") is True
+
+    def test_add_compliance_requirement_is_exempt_and_never_queues(
+        self, app, client, db_session, make_org, monkeypatch
+    ):
+        """add-compliance-requirement has no representable entry in
+        AIChatApprovalService.approve_and_execute's vocabulary, so it is
+        exempted from the gate (see the comment at its write site in
+        workflow_routes.py) and always executes immediately — even with
+        REQUIRE_AI_APPROVAL on — rather than queuing a fake approval nothing
+        could ever execute."""
+        import uuid
+
+        from app.models.archimate_core import ArchiMateElement
+        from app.models.business_capabilities import BusinessCapability
+
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        suffix = uuid.uuid4().hex[:8]
+        element = ArchiMateElement(
+            name=f"Cap {suffix}", type="Capability", layer="Strategy", organization_id=org.id
+        )
+        db_session.add(element)
+        db_session.flush()
+        cap = BusinessCapability(
+            name=f"Cap {suffix}", organization_id=org.id, archimate_element_id=element.id
+        )
+        db_session.add(cap)
+        db_session.flush()
+
+        monkeypatch.setitem(app.config, "REQUIRE_AI_APPROVAL", True)
+
+        resp = client.post(
+            "/ai-chat/data/add-compliance-requirement",
+            json={
+                "capability_id": cap.id,
+                "requirement_type": "SOX",
+                "description": "Quarterly control review",
+                "priority": "High",
+            },
+        )
+        body = resp.get_json()
+        assert body.get("status") != "pending_approval"
+        assert "approval_id" not in (body or {})
 
 
 class TestSlashCommandsExemptFromApprovalGate:
