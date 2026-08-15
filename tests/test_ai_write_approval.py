@@ -455,3 +455,138 @@ class TestApprovalExpiry:
         resp = client.post(f"/ai-chat/approvals/{record.id}/approve")
         assert resp.status_code == 400
         assert "expired" in resp.get_json()["error"].lower()
+
+
+class TestRequireAIApprovalDefaultsOn:
+    """REQUIRE_AI_APPROVAL (config.py, A95-008) now defaults to true — the
+    @require_ai_approval-decorated /ai-chat/data/* endpoints in
+    workflow_routes.py queue for human approval unless the operator opts
+    back out with REQUIRE_AI_APPROVAL=false. Pins the flipped default and
+    both directions of the decorator's behaviour, since nothing in the
+    suite exercised these endpoints before (grepped: no test referenced
+    workflow_routes, /ai-chat/data/*, or REQUIRE_AI_APPROVAL)."""
+
+    def test_config_default_is_true_when_env_unset(self, monkeypatch):
+        import importlib
+
+        monkeypatch.delenv("REQUIRE_AI_APPROVAL", raising=False)
+        import config as config_module
+
+        importlib.reload(config_module)
+        try:
+            assert config_module.Config.REQUIRE_AI_APPROVAL is True
+        finally:
+            importlib.reload(config_module)  # restore for later tests in this process
+
+    def test_create_capability_returns_202_pending_approval_by_default(
+        self, app, client, db_session, make_org, monkeypatch
+    ):
+        import uuid
+
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        monkeypatch.setitem(app.config, "REQUIRE_AI_APPROVAL", True)
+
+        from app.models.business_capabilities import BusinessCapability
+
+        cap_name = f"Regulatory Reporting {uuid.uuid4().hex[:8]}"
+
+        resp = client.post(
+            "/ai-chat/data/create-capability",
+            json={"name": cap_name},
+        )
+        assert resp.status_code == 202, resp.get_data(as_text=True)
+        body = resp.get_json()
+        assert body["status"] == "pending_approval"
+        assert body["ai_originated"] is True
+
+        # Gate short-circuited before the view body ran: nothing was written.
+        assert BusinessCapability.query.filter_by(name=cap_name).first() is None
+
+    def test_create_capability_writes_directly_when_flag_off(
+        self, app, client, db_session, make_org, monkeypatch
+    ):
+        """Explicitly setting the flag off (the pre-Aug-2026 default) restores
+        direct-write behaviour for the LLM-agent data endpoints — proving the
+        new default is a config choice, not a hardcoded gate."""
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        monkeypatch.setitem(app.config, "REQUIRE_AI_APPROVAL", False)
+
+        resp = client.post(
+            "/ai-chat/data/create-capability",
+            json={"name": "Regulatory Reporting Direct"},
+        )
+        assert resp.status_code in (200, 201), resp.get_data(as_text=True)
+        body = resp.get_json()
+        assert body.get("status") != "pending_approval"
+        assert body.get("success") is True
+
+
+class TestSlashCommandsExemptFromApprovalGate:
+    """/link-capability and /generate-from-capabilities (command_parser_service.py)
+    are parsed verbatim from the user's own typed chat message — deterministic,
+    not LLM-initiated — so they execute directly and are exempt from the
+    approval queue regardless of REQUIRE_AI_APPROVAL. See the governance-note
+    comments at both write sites. Pinned here so a future re-introduction of a
+    REQUIRE_AI_APPROVAL check on these handlers (as link-capability used to
+    have, before it was removed for being unwired — it returned a
+    "submitted for review" message without ever creating anything to review)
+    is a visible test failure, not a silent regression."""
+
+    def test_link_capability_writes_directly_with_approval_flag_on(
+        self, app, db_session, make_org, monkeypatch
+    ):
+        import uuid
+
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+
+        from app.models.archimate_core import ArchiMateElement
+        from app.models.business_capabilities import BusinessCapability
+        from app.models.solution_models import Solution
+
+        suffix = uuid.uuid4().hex[:8]
+
+        # BusinessCapability's before_insert hook auto-creates an ArchiMateElement
+        # via a raw connection.execute() that does not set organization_id (a
+        # pre-existing, unrelated gap - see tests/test_tenant_scoping_leaks.py's
+        # _make_capability). Pre-create the element through the ORM to sidestep it.
+        cap_name = f"Order Management {suffix}"
+        element = ArchiMateElement(
+            name=cap_name, type="Capability", layer="Strategy", organization_id=org.id
+        )
+        db_session.add(element)
+        db_session.flush()
+
+        cap = BusinessCapability(
+            name=cap_name, organization_id=org.id, archimate_element_id=element.id
+        )
+        sol = Solution(name=f"CRM Consolidation {suffix}", organization_id=org.id, created_by_id=user.id)
+        db_session.add_all([cap, sol])
+        db_session.flush()
+
+        monkeypatch.setitem(app.config, "REQUIRE_AI_APPROVAL", True)
+
+        from app.modules.ai_chat.services.command_parser_service import CommandParserService
+
+        with app.test_request_context("/"):
+            parser = CommandParserService()
+            result = parser._handle_link_capability(
+                [cap.name, "to", sol.name], user.id, "business"
+            )
+
+        assert "pending_approval" not in result
+        assert "requires approval" not in result["response"]
+        assert "Linked" in result["response"]
+
+        from app.models.solution_models import SolutionCapabilityMapping
+
+        mapping = SolutionCapabilityMapping.query.filter_by(
+            solution_id=sol.id, capability_id=cap.id
+        ).first()
+        assert mapping is not None

@@ -338,6 +338,83 @@ def test_ai_suggest_mappings_catalog_query_failure_is_honest_error(
     assert calls == []
 
 
+def test_ai_suggest_mappings_one_source_failed_other_has_names_is_200(
+    db_session, make_org, logged_in_org, client, monkeypatch
+):
+    """Partial failure, real names recovered: one of the two capability-name
+    queries fails but the other returns real names, so the route proceeds
+    with the partial-but-real set instead of erroring out on a query that
+    was not actually needed to answer the request."""
+    org, user = logged_in_org
+    from app.services.feature_flag_service import FeatureFlagService
+
+    monkeypatch.setattr(FeatureFlagService, "is_ai_enabled", lambda feature: True)
+
+    vs, stages = _make_value_stream(db_session, org)
+    cap = _make_capability(db_session, name="Order Management")
+    _map_capability_to_value_stream(db_session, org, cap, vs, stages[0])
+
+    import app.modules.capabilities.services.value_stream_ai_service as svc_module
+
+    def _boom(limit):
+        raise RuntimeError("application-mapping query failed")
+
+    monkeypatch.setattr(svc_module, "_app_mapped_capability_names", _boom)
+
+    raw = _VS_VALID_LLM_JSON_TEMPLATE.format(stage=stages[0].name, capability=cap.name)
+    monkeypatch.setattr(
+        svc_module.LLMService, "generate_from_prompt", staticmethod(lambda *a, **k: raw)
+    )
+
+    _clear_auth_caches()
+    resp = client.post(f"/value-streams/api/{vs.id}/ai-suggest-mappings")
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    data = resp.get_json()
+    assert data["suggestions"] == [
+        {"stage": stages[0].name, "capability": cap.name, "rationale": "Directly supports this stage."}
+    ]
+
+
+def test_ai_suggest_mappings_one_source_failed_other_empty_is_honest_error(
+    db_session, make_org, logged_in_org, client, monkeypatch
+):
+    """Partial failure, nothing recovered: one query fails and the other
+    (working) query genuinely has no rows for this org. The combined name
+    set is empty, but for a reason that cannot be trusted as "genuinely
+    empty" — so this must surface as an honest error, not the "map one
+    manually first" 200 that a real empty catalog gets."""
+    org, user = logged_in_org
+    from app.services.feature_flag_service import FeatureFlagService
+
+    monkeypatch.setattr(FeatureFlagService, "is_ai_enabled", lambda feature: True)
+
+    vs, stages = _make_value_stream(db_session, org)
+    # No capability mapped via either source for this org.
+
+    import app.modules.capabilities.services.value_stream_ai_service as svc_module
+
+    def _boom(limit):
+        raise RuntimeError("value-stream-mapping query failed")
+
+    monkeypatch.setattr(svc_module, "_vs_mapped_capability_names", _boom)
+
+    calls = []
+    monkeypatch.setattr(
+        svc_module.LLMService,
+        "generate_from_prompt",
+        staticmethod(lambda *a, **k: calls.append(1)),
+    )
+
+    _clear_auth_caches()
+    resp = client.post(f"/value-streams/api/{vs.id}/ai-suggest-mappings")
+    assert resp.status_code != 200
+    assert resp.status_code in (500, 502)
+    data = resp.get_json()
+    assert "error" in data
+    assert "map one manually first" not in data.get("error", "")
+    assert calls == []
+
+
 def test_ai_suggest_mappings_drops_invented_pairs(db_session, make_org, logged_in_org, client, monkeypatch):
     """The LLM naming a stage/capability outside the real context is dropped;
     if every suggestion is invented, that's a 502 (never a fabricated fallback)."""

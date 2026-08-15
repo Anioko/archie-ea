@@ -790,18 +790,47 @@ class ToolExecutor:
         solution_id = args["solution_id"]
         section_id = args["section_id"]
         try:
-            from app.modules.solutions_strategic.v2.routes.solution_blueprint_routes import (
+            from app.modules.solutions_strategic.v2.routes.solution_design_routes import (
+                NarrativeGenerationError,
                 generate_section_narrative,
             )
-            generate_section_narrative(solution_id, section_id)
+        except ImportError:
+            logger.exception("generate_blueprint_narrative: narrative generator unavailable")
             return {
-                "success": True,
-                "result": {"solution_id": solution_id, "section_id": section_id},
-                "message": f"Generated narrative for section '{section_id}' of solution {solution_id}.",
+                "success": False,
+                "error": "Narrative generation is not available in this build.",
+                "error_code": "UNAVAILABLE",
             }
-        except Exception as e:
-            logger.exception("generate_blueprint_narrative failed")
-            return {"success": False, "error": str(e)}
+
+        try:
+            result = generate_section_narrative(solution_id, section_id, self.user_id)
+        except NarrativeGenerationError as e:
+            logger.warning(
+                "generate_blueprint_narrative failed for solution %s section %s: %s",
+                solution_id, section_id, e,
+            )
+            return {"success": False, "error": str(e), "error_code": e.error_code}
+        except Exception:
+            logger.exception(
+                "generate_blueprint_narrative: unexpected failure for solution %s section %s",
+                solution_id, section_id,
+            )
+            return {
+                "success": False,
+                "error": "Narrative generation failed unexpectedly.",
+                "error_code": "INTERNAL_ERROR",
+            }
+
+        return {
+            "success": True,
+            "result": {
+                "solution_id": solution_id,
+                "section_id": section_id,
+                "narrative": result["narrative"],
+                "word_count": result["word_count"],
+            },
+            "message": f"Generated narrative for section '{section_id}' of solution {solution_id}.",
+        }
 
     # ------------------------------------------------------------------ #
     # Tool: create_archimate_relationship                                 #
