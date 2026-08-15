@@ -29,8 +29,10 @@
 
 {# ── Document title bar ── #}
 <div class="mb-4">
-    <div class="flex items-center justify-between">
-        <div class="min-w-0 flex-1">
+    <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        {# min-w keeps the title readable: with six actions in this row the old
+           min-w-0 flex-1 + truncate crushed the solution name to two letters. #}
+        <div class="min-w-[16rem] flex-1">
             <h1 class="text-2xl font-bold text-foreground truncate">{{ solution.name }}</h1>
             <p class="mt-1 text-sm text-muted-foreground">
                 Solution Architecture Blueprint
@@ -44,7 +46,7 @@
                 {% endif %}
             </p>
         </div>
-        <div class="flex items-center gap-2 shrink-0 ml-4">
+        <div class="flex flex-wrap items-center justify-end gap-2">
             <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}?edit=1"
                class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                title="Add or edit drivers, goals, options, risks, and other entities">
@@ -294,7 +296,7 @@ function archieShowBanner(msg, type) {
     {# ── Not-started quick-add row ── #}
     {% if _qa_ns.zero %}
     <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-border/40 overflow-x-auto scrollbar-thin">
-        <span class="text-[11px] font-semibold text-destructive-emphasis/60 uppercase tracking-wide shrink-0 leading-none">Empty:</span>
+        <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0 leading-none">Quick add:</span>
         {% for _qs_id, _qs_lbl in _qa_ns.zero %}
         <button type="button"
                 @click="
@@ -307,8 +309,8 @@ function archieShowBanner(msg, type) {
                     {% endif %}
                 "
                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium
-                       border border-destructive/30 text-destructive-emphasis/80 bg-destructive/5
-                       hover:bg-destructive/15 hover:text-destructive-emphasis transition-colors shrink-0">
+                       border border-input text-muted-foreground bg-background
+                       hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-colors shrink-0">
             <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
             </svg>
