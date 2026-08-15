@@ -45,9 +45,6 @@ def register(app: Flask) -> None:
     from app.modules.solutions_strategic.v2.routes.solution_composer_routes import (
         solution_composer_bp,
     )
-    from app.modules.solutions_strategic.v2.routes.suggestion_api_routes import (
-        api_bp as suggestion_api_bp,
-    )
     from app.modules.solutions_strategic.v2.routes.solution_generate_routes import (
         solution_generate_bp,
     )
@@ -62,7 +59,7 @@ def register(app: Flask) -> None:
         roadmap_bp, strategic_bp, strategic_risks_bp, solution_design_bp,
         roadmap_builder_bp, solution_architect_bp, solution_sad_bp,
         solution_archimate_bp, solutions_bp, solution_composer_bp,
-        suggestion_api_bp, solution_generate_bp, architecture_journey_bp,
+        solution_generate_bp, architecture_journey_bp,
         integration_contract_bp, governance_api_bp, wizard_ai_bp,
         solution_export_bp,
     ]
@@ -81,7 +78,6 @@ def register(app: Flask) -> None:
     app.register_blueprint(solution_archimate_bp)
     app.register_blueprint(solutions_bp)
     app.register_blueprint(solution_composer_bp)
-    app.register_blueprint(suggestion_api_bp)
     app.register_blueprint(solution_generate_bp)
     app.register_blueprint(architecture_journey_bp)
     app.register_blueprint(integration_contract_bp)
