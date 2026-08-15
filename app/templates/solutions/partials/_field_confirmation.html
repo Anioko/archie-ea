@@ -131,7 +131,7 @@
           {# design-tokens-ok: matches the vendor-seeded legend colour used throughout this panel #}
           <textarea x-model="importContent"
                     rows="12"
-                    :placeholder="importFormats.find(f = aria-label="Schema Content"> f.value === importFormat)?.placeholder || ''"
+                    :placeholder="importFormats.find(f => f.value === importFormat)?.placeholder || ''" aria-label="Schema Content"
                     class="mt-1.5 w-full font-mono text-[11px] bg-muted/40 border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none text-foreground placeholder:text-muted-foreground/40"{# design-tokens-ok #}
           </textarea>
         </div>

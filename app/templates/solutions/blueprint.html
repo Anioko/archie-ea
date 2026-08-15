@@ -29,6 +29,15 @@
 <script src="/static/vendor/d3-sankey.min.js" defer></script>
 {% endblock %}
 
+{% block extra_head_js %}
+{# The transition-roadmap section renders the gantt_timeline component. These
+   must load AFTER the Platform core scripts (extra_head renders before them,
+   which made both files throw and left every gantt binding undefined - ~90
+   console errors per page view). #}
+<script src="{{ url_for('static', filename='js/ui/gantt.js') }}"></script>
+<script src="{{ url_for('static', filename='js/components/gantt_timeline.js') }}"></script>
+{% endblock %}
+
 {# ══════════════════════════════════════════════════════════════════════════ #}
 {# MAIN CONTENT                                                              #}
 {# ══════════════════════════════════════════════════════════════════════════ #}

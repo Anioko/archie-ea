@@ -591,7 +591,7 @@
     {# ════════════════════════════════════════════════════════════════════ #}
     {# 5a. Integration Contracts (RUNTIME-02)                              #}
     {# ════════════════════════════════════════════════════════════════════ #}
-    <div id="setup-integration-contracts" class="rounded-xl border border-border bg-card shadow-sm" x-data="integrationContracts({{ solution.id }})">
+    <div id="setup-integration-contracts" class="rounded-xl border border-border bg-card shadow-sm" x-data="integrationContractsPanel({{ solution.id }})">
         <button type="button" @click="expanded = !expanded"
                 class="w-full flex items-center justify-between p-4 text-left">
             <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Integration Contracts</h3>
@@ -750,7 +750,11 @@
     </div>
 
     <script>
-    function integrationContracts(solutionId) {
+    {# Named -Panel deliberately: the blueprint root component's mixin data
+       contains a property "integrationContracts" (an object), and Alpine's
+       scope chain shadows same-named globals for every descendant - calling
+       this under its old name invoked that object and killed the panel. #}
+    function integrationContractsPanel(solutionId) {
         return {
             expanded: false,
             contracts: [],
@@ -776,10 +780,11 @@
             },
             loadConnectedApps: function() {
                 let self = this;
-                fetch('/solutions/' + solutionId + '/api/archimate-elements?layer=application', {headers: {'Accept': 'application/json'}})
+                fetch('/api/solutions/' + solutionId + '/archimate-elements', {headers: {'Accept': 'application/json'}})
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
-                    const elems = data.elements || data.items || [];
+                    const payload = data.data || data;
+                    const elems = (payload.elements_by_layer && payload.elements_by_layer.application) || [];
                     self.connectedApps = elems.filter(function(e) { return e.application_id; }).map(function(e) {
                         return {id: e.application_id, name: e.name || e.element_name || ('App #' + e.application_id)};
                     });

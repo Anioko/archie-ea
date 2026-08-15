@@ -408,11 +408,11 @@
                               @keydown.tab.prevent="
                                   var s = $el.selectionStart, e = $el.selectionEnd;
                                   selectedContent = selectedContent.substring(0,s) + '    ' + selectedContent.substring(e);
-                                  $nextTick(() = aria-label="Selected Content"> { $el.selectionStart = $el.selectionEnd = s + 4; });
+                                  $nextTick(() => { $el.selectionStart = $el.selectionEnd = s + 4; });
                               "
                               class="absolute inset-0 w-full h-full font-mono text-xs bg-background text-foreground p-4 resize-none focus:outline-none border-0"
                               style="tab-size:4; z-index:1"
-                              spellcheck="false"></textarea>
+                              spellcheck="false" aria-label="Selected Content"></textarea>
                     <!-- AI selection toolbar — floats above CM6 editor on text selection -->
                     <div x-show="aiSelectionMenu && cmEditor" x-cloak
                          class="absolute z-50 flex items-center gap-0.5 p-1 rounded-lg bg-popover border border-border shadow-lg text-xs"

@@ -1994,9 +1994,10 @@ document.addEventListener('alpine:init', () => {
             if (!this.newComment.trim()) return;
             this.submitting = true;
             try {
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
                 const r = await fetch(`/solutions/${solutionId}/comments`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfMeta ? csrfMeta.content : ''},
                     body: JSON.stringify({ section: this.section, content: this.newComment.trim() }),
                 });
                 if (!r.ok) throw new Error('Failed to post comment: ' + r.status);
@@ -2017,9 +2018,10 @@ document.addEventListener('alpine:init', () => {
             if (!this.replyText.trim()) return;
             this.submitting = true;
             try {
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
                 const r = await fetch(`/solutions/${solutionId}/comments`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfMeta ? csrfMeta.content : ''},
                     body: JSON.stringify({ section: this.section, content: this.replyText.trim(), parent_comment_id: parentId }),
                 });
                 if (!r.ok) throw new Error('Failed to post reply: ' + r.status);
@@ -2142,6 +2144,11 @@ function openSectionComments(section, label) {
 {% endblock %}
 
 {% block extra_head_js %}
+{# The delivery editor renders the gantt_timeline component; without these two
+   scripts (previously loaded only by adm_kanban/roadmap.html) every gantt
+   binding threw ReferenceError - ~90 console errors per page view. #}
+<script src="{{ url_for('static', filename='js/ui/gantt.js') }}"></script>
+<script src="{{ url_for('static', filename='js/components/gantt_timeline.js') }}"></script>
 <script>
   window.__SOLUTION_CONFIG__ = {
     solutionId: {{ solution.id }},

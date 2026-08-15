@@ -796,7 +796,7 @@
                        placeholder="e.g., Application Layer – Salesforce Replacement"
                        @keydown.enter.prevent="confirmSaveName()"
                        @keydown.escape.prevent="cancelSaveName()"
-                       x-init="$nextTick(() = aria-label="Viewpoint name"> { if (saveNameOpen && $el) $el.focus(); })">
+                       x-init="$nextTick(() => { if (saveNameOpen && $el) $el.focus(); })" aria-label="Viewpoint name">
                 <div class="flex gap-2 justify-end mt-1">
                     <button @click="cancelSaveName()"
                             class="px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
@@ -1271,7 +1271,7 @@
                       class="w-full text-sm bg-muted/30 border border-border rounded-lg px-3 py-2 resize-none focus:border-primary outline-none transition-colors text-foreground"
                       rows="4"
                       x-ref="annotTextarea"
-                      x-effect="if (annotEditOpen) $nextTick(() = aria-label="Enter annotation text…"> { $refs.annotTextarea && $refs.annotTextarea.focus(); })"></textarea>
+                      x-effect="if (annotEditOpen) $nextTick(() => { $refs.annotTextarea && $refs.annotTextarea.focus(); })" aria-label="Enter annotation text…"></textarea>
             <p class="text-[10px] text-muted-foreground">Press Ctrl+Enter or click Save</p>
         </div>
         <div class="flex gap-2 px-4 py-3 border-t border-border justify-end">
@@ -1380,7 +1380,7 @@
                    class="w-full px-3 py-2 text-sm bg-background border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                    placeholder="Search elements by name..."
                    @input.debounce.300ms="searchBulkImport()"
-                   x-effect="if (bulkImportOpen) $nextTick(() = aria-label="Search elements by name..."> $refs.bulkImportSearch && $refs.bulkImportSearch.focus())">
+                   x-effect="if (bulkImportOpen) $nextTick(() => $refs.bulkImportSearch && $refs.bulkImportSearch.focus())" aria-label="Search elements by name...">
             <div class="flex items-center gap-2">
                 <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Layer:</span>
                 <select x-model="bulkImportLayerFilter" @change="searchBulkImport()"

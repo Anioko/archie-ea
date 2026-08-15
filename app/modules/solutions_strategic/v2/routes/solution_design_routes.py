@@ -663,6 +663,19 @@ _EDITABLE_FIELDS = frozenset({
 })
 _DATE_FIELDS = frozenset({'planned_start_date', 'planned_end_date', 'target_completion_date'})
 _DECIMAL_FIELDS = frozenset({'estimated_cost', 'roi_percentage'})
+# String column max lengths, mirroring app/models/solution_models.py — validated up
+# front so an oversized value is a 400 instead of a DB DataError caught as a 500.
+_STRING_FIELD_MAX_LENGTHS = {
+    'name': 255,
+    'business_domain': 100,
+    'solution_type': 50,
+    'complexity_level': 20,
+    'solution_owner': 255,
+    'business_sponsor': 255,
+    'technical_lead': 255,
+    'security_lead': 255,
+    'data_protection_officer': 255,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -6170,26 +6183,51 @@ def api_update_solution(solution_id: int):
     if unknown_keys:
         return jsonify({"success": False, "error": f"Unknown fields: {sorted(unknown_keys)}"}), 422
 
+    # Validate every submitted field *before* touching the model, so a bad value
+    # anywhere in the payload is a single 400 rather than a partial write followed
+    # by a DB-level failure on commit (which the broad except below turned into an
+    # opaque 500 — see api_update_solution history).
+    updates: dict = {}
+    for field in _EDITABLE_FIELDS:
+        if field not in data:
+            continue
+        value = data[field]
+
+        if field == "name" and not (value and str(value).strip()):
+            return jsonify({"success": False, "error": "name cannot be empty"}), 400
+
+        if field in _STRING_FIELD_MAX_LENGTHS and value is not None:
+            if not isinstance(value, str):
+                return jsonify({"success": False, "error": f"{field} must be a string"}), 400
+            max_len = _STRING_FIELD_MAX_LENGTHS[field]
+            if len(value) > max_len:
+                return jsonify(
+                    {"success": False, "error": f"{field} must be {max_len} characters or fewer"}
+                ), 400
+
+        if field in _DATE_FIELDS and value is not None:
+            try:
+                value = datetime.strptime(value, "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                return jsonify(
+                    {"success": False, "error": f"{field} must be a date in YYYY-MM-DD format"}
+                ), 400
+
+        if field in _DECIMAL_FIELDS and value is not None:
+            try:
+                value = Decimal(str(value)) if field == "estimated_cost" else float(value)
+            except (InvalidOperation, TypeError, ValueError):
+                return jsonify({"success": False, "error": f"{field} must be a number"}), 400
+
+        updates[field] = value
+
     # PLT-014: Capture old values for change detection
     old_status = solution.status
     old_owner = solution.solution_owner
 
     try:
-        # Update fields
-        if "name" in data:
-            solution.name = data["name"]
-        if "description" in data:
-            solution.description = data["description"]
-        if "status" in data:
-            solution.status = data["status"]
-        if "business_domain" in data:
-            solution.business_domain = data["business_domain"]
-
-        # Stakeholder fields (SDX-021)
-        for field in ["solution_owner", "business_sponsor", "technical_lead",
-                      "security_lead", "data_protection_officer"]:
-            if field in data:
-                setattr(solution, field, data[field])
+        for field, value in updates.items():
+            setattr(solution, field, value)
 
         # PLT-014: Notify on status change
         if old_status and solution.status and old_status != solution.status and solution.created_by_id:
@@ -9573,6 +9611,42 @@ def api_accept_suggestions(solution_id):
 # =============================================================================
 
 
+@solution_design_bp.route("/<int:solution_id>/api/roadmap-tasks", methods=["GET"])
+@login_required
+def api_get_roadmap_tasks(solution_id):
+    """Work packages linked to the solution, shaped for the gantt component.
+
+    blueprint.html's Transition Roadmap gantt has pointed at this URL since it
+    was added, but the route never existed - every page view logged a 404 and
+    the gantt showed a permanent error state.
+    """
+    solution = Solution.query.get_or_404(solution_id)
+    if not _check_solution_access(solution):
+        return jsonify({"success": False, "error": "Forbidden", "error_code": "FORBIDDEN"}), 403
+
+    from app.models.implementation_migration import WorkPackage
+    from app.models.solution_models import solution_work_packages
+
+    wps = (
+        WorkPackage.query
+        .join(solution_work_packages, solution_work_packages.c.work_package_id == WorkPackage.id)
+        .filter(solution_work_packages.c.solution_id == solution_id)
+        .order_by(WorkPackage.start_date.asc().nulls_last(), WorkPackage.name)
+        .all()
+    )
+    tasks = [
+        {
+            "id": wp.id,
+            "name": wp.name,
+            "status": wp.status,
+            "start_date": wp.start_date.isoformat() if wp.start_date else None,
+            "end_date": wp.target_date.isoformat() if wp.target_date else None,
+        }
+        for wp in wps
+    ]
+    return jsonify({"success": True, "tasks": tasks})
+
+
 @solution_design_bp.route("/<int:solution_id>/api/section-narratives", methods=["GET"])
 @login_required
 def api_get_section_narratives(solution_id):
@@ -9582,6 +9656,23 @@ def api_get_section_narratives(solution_id):
         return jsonify({"success": False, "error": "Forbidden", "error_code": "FORBIDDEN"}), 403
     narratives = solution.section_narratives or {}
     return jsonify({"success": True, "data": {"narratives": narratives}})
+
+
+@solution_design_bp.route("/<int:solution_id>/api/section-narratives/<section_id>", methods=["GET"])
+@login_required
+def api_get_section_narrative(solution_id, section_id):
+    """Return one section's narrative.
+
+    The decisions modal loads its narrative from this URL on every open;
+    without a GET here it received 405 on each page view and warned the
+    user the saved narrative could not be loaded.
+    """
+    solution = Solution.query.get_or_404(solution_id)
+    if not _check_solution_access(solution):
+        return jsonify({"success": False, "error": "Forbidden", "error_code": "FORBIDDEN"}), 403
+    narratives = solution.section_narratives or {}
+    text = narratives.get(section_id, "")
+    return jsonify({"success": True, "data": {"section_id": section_id, "narrative": text}})
 
 
 @solution_design_bp.route("/<int:solution_id>/api/section-narratives/<section_id>", methods=["PUT"])

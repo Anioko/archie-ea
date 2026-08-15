@@ -319,7 +319,7 @@
                     );
                     if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     const json = await resp.json();
-                    this.narrative = json.narrative || '';
+                    this.narrative = (json.data ?? json).narrative || '';
                 } catch (e) {
                     console.error('[decisions] loadNarrative error:', e);
                     // The textarea below is empty either way — without this,
