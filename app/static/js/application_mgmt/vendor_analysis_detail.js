@@ -405,11 +405,7 @@ function vendorAnalysisDetail(analysisId) {
 
     async loadDomains() {
       try {
-        const resp = await fetch('/dashboard/api/business-domains', {
-          credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!resp.ok) throw new Error('loadDomains: ' + resp.status);
-        this.domains = await resp.json();
+        this.domains = await Platform.fetch.get('/dashboard/api/business-domains', null, { silent: true });
       } catch (e) {
         console.error('loadDomains:', e);
         this.domains = [];
@@ -422,11 +418,7 @@ function vendorAnalysisDetail(analysisId) {
       try {
         let url = '/dashboard/api/unified-capabilities?level=1';
         if (this.capabilityType) url += '&specialization_type=' + encodeURIComponent(this.capabilityType);
-        const resp = await fetch(url, {
-          credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!resp.ok) throw new Error('loadL1Capabilities: ' + resp.status);
-        this.capOptionsL1 = await resp.json();
+        this.capOptionsL1 = await Platform.fetch.get(url, null, { silent: true });
       } catch (e) {
         console.error('loadL1Capabilities:', e);
         this.capOptionsL1 = [];
@@ -443,13 +435,9 @@ function vendorAnalysisDetail(analysisId) {
     async loadChildCaps(parents, targetLevel, optionsKey, loadingKey) {
       this[loadingKey] = true;
       try {
-        const resp = await fetch('/dashboard/api/related-capabilities', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify({ capability_ids: parents.map(function(c) { return c.id; }), target_level: targetLevel })
-        });
-        if (!resp.ok) throw new Error('loadChildCaps: ' + resp.status);
-        this[optionsKey] = await resp.json();
+        this[optionsKey] = await Platform.fetch.post('/dashboard/api/related-capabilities', {
+          capability_ids: parents.map(function(c) { return c.id; }), target_level: targetLevel
+        }, { silent: true });
       } catch (e) {
         console.error('loadChildCaps:', e);
         this[optionsKey] = [];
@@ -461,11 +449,7 @@ function vendorAnalysisDetail(analysisId) {
     async loadAPQCL1() {
       this.loadingProcL1 = true;
       try {
-        const resp = await fetch('/dashboard/api/apqc-processes?level=1', {
-          credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!resp.ok) throw new Error('loadAPQCL1: ' + resp.status);
-        this.procOptionsL1 = await resp.json();
+        this.procOptionsL1 = await Platform.fetch.get('/dashboard/api/apqc-processes', { level: 1 }, { silent: true });
       } catch (e) {
         console.error('loadAPQCL1:', e);
         this.procOptionsL1 = [];
@@ -477,13 +461,9 @@ function vendorAnalysisDetail(analysisId) {
     async loadProcChildren(parents, targetLevel, optionsKey, loadingKey) {
       this[loadingKey] = true;
       try {
-        const resp = await fetch('/dashboard/api/apqc-processes/children', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify({ parent_ids: parents.map(function(p) { return p.id; }), target_level: targetLevel })
-        });
-        if (!resp.ok) throw new Error('loadProcChildren: ' + resp.status);
-        this[optionsKey] = await resp.json();
+        this[optionsKey] = await Platform.fetch.post('/dashboard/api/apqc-processes/children', {
+          parent_ids: parents.map(function(p) { return p.id; }), target_level: targetLevel
+        }, { silent: true });
       } catch (e) {
         console.error('loadProcChildren:', e);
         this[optionsKey] = [];
@@ -496,11 +476,7 @@ function vendorAnalysisDetail(analysisId) {
       try {
         let url = '/dashboard/api/value-streams';
         if (this.vsFilterDomain) url += '?domain_id=' + this.vsFilterDomain;
-        const resp = await fetch(url, {
-          credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!resp.ok) throw new Error('loadValueStreamOptions: ' + resp.status);
-        this.vsOptions = await resp.json();
+        this.vsOptions = await Platform.fetch.get(url, null, { silent: true });
       } catch (e) {
         console.error('loadValueStreamOptions:', e);
         this.vsOptions = [];
@@ -514,16 +490,9 @@ function vendorAnalysisDetail(analysisId) {
 
     async loadExistingAnalysis() {
       try {
-        const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId, {
-          credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!resp.ok) {
-          // Otherwise the panel just stays empty and reads as "no analysis yet"
-          // instead of "the load failed".
-          this.showToast('Could not load this analysis', 'error');
-          return;
-        }
-        this.analysis = await resp.json();
+        // Otherwise the panel just stays empty and reads as "no analysis yet"
+        // instead of "the load failed".
+        this.analysis = await Platform.fetch.get('/dashboard/api/vendor-analysis/' + this.analysisId, null, { silent: true });
         this.form.name = (this.analysis.name != null) ? String(this.analysis.name) : '';
         this.form.orgSize = this.analysis.organization_size || 'enterprise';
         this.form.industry = this.analysis.industry_vertical || '';
@@ -557,20 +526,16 @@ function vendorAnalysisDetail(analysisId) {
       if (this.allCapabilities.length === 0) return;
       this.loadingVendors = true;
       try {
-        const resp = await fetch('/dashboard/api/vendors/by-capabilities', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify({ capability_ids: this.allCapabilities.map(function(c) { return parseInt(c.id); }) })
-        });
-        if (resp.ok) {
-          this.discoveredVendors = await resp.json();
-          this.vendorSearchDone = true;
-          this.selectedVendorIds = new Set();
-          this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
-        } else {
-          this.showToast('Vendor discovery failed', 'error');
-        }
-      } catch (e) { console.error('discoverVendorsByCaps:', e); this.showToast('Vendor discovery error', 'error'); }
+        this.discoveredVendors = await Platform.fetch.post('/dashboard/api/vendors/by-capabilities', {
+          capability_ids: this.allCapabilities.map(function(c) { return parseInt(c.id); })
+        }, { silent: true });
+        this.vendorSearchDone = true;
+        this.selectedVendorIds = new Set();
+        this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
+      } catch (e) {
+        console.error('discoverVendorsByCaps:', e);
+        this.showToast(e && e.type === 'NetworkError' ? 'Vendor discovery error' : 'Vendor discovery failed', 'error');
+      }
       finally { this.loadingVendors = false; }
     },
 
@@ -579,29 +544,25 @@ function vendorAnalysisDetail(analysisId) {
       if (this.allProcesses.length === 0) return;
       this.loadingVendors = true;
       try {
-        const resp = await fetch('/dashboard/api/vendors/by-processes', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify({ process_ids: this.allProcesses.map(function(p) { return parseInt(p.id); }) })
+        const data = await Platform.fetch.post('/dashboard/api/vendors/by-processes', {
+          process_ids: this.allProcesses.map(function(p) { return parseInt(p.id); })
+        }, { silent: true });
+        this.discoveredVendors = data.map(function(v) {
+          return {
+            id: v.id,
+            name: v.name,
+            supported_capabilities: v.supported_capabilities || v.supported_process_count || 0,
+            total_capabilities: v.total_capabilities || self.allProcesses.length,
+            total_products: v.total_products || v.product_count || 0
+          };
         });
-        if (resp.ok) {
-          const data = await resp.json();
-          this.discoveredVendors = data.map(function(v) {
-            return {
-              id: v.id,
-              name: v.name,
-              supported_capabilities: v.supported_capabilities || v.supported_process_count || 0,
-              total_capabilities: v.total_capabilities || self.allProcesses.length,
-              total_products: v.total_products || v.product_count || 0
-            };
-          });
-          this.vendorSearchDone = true;
-          this.selectedVendorIds = new Set();
-          this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
-        } else {
-          this.showToast('Vendor discovery failed', 'error');
-        }
-      } catch (e) { console.error('discoverVendorsByProcs:', e); this.showToast('Vendor discovery error', 'error'); }
+        this.vendorSearchDone = true;
+        this.selectedVendorIds = new Set();
+        this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
+      } catch (e) {
+        console.error('discoverVendorsByProcs:', e);
+        this.showToast(e && e.type === 'NetworkError' ? 'Vendor discovery error' : 'Vendor discovery failed', 'error');
+      }
       finally { this.loadingVendors = false; }
     },
 
@@ -657,13 +618,9 @@ function vendorAnalysisDetail(analysisId) {
     async resolveProcessCapabilityIds() {
       if (this.selectionMode !== 'processes' || this.allProcesses.length === 0) return [];
       try {
-        const resp = await fetch('/dashboard/api/process-capabilities', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify({ process_ids: this.allProcesses.map(function(p) { return parseInt(p.id); }) })
-        });
-        if (!resp.ok) throw new Error('resolveProcessCapabilityIds: ' + resp.status);
-        const caps = await resp.json();
+        const caps = await Platform.fetch.post('/dashboard/api/process-capabilities', {
+          process_ids: this.allProcesses.map(function(p) { return parseInt(p.id); })
+        }, { silent: true });
         return caps.map(function(c) { return c.id; });
       } catch (e) {
         // Falls through to an empty return; getCapabilityIdsForPayload() already
@@ -715,39 +672,29 @@ function vendorAnalysisDetail(analysisId) {
           vendor_org_ids: selectedVids
         };
         try {
-          const resp = await fetch('/dashboard/api/vendor-analysis/create', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
-            body: JSON.stringify(payload)
-          });
-          const result = await resp.json();
-          if (resp.ok && result.analysis_id) {
+          const result = await Platform.fetch.post('/dashboard/api/vendor-analysis/create', payload, { silent: true });
+          if (result && result.analysis_id) {
             this.analysisId = result.analysis_id;
             this.analysis.id = result.analysis_id;
             window.history.replaceState({}, '', '/dashboard/vendor-analysis/' + result.analysis_id);
             this.showToast('Draft saved successfully', 'success');
           } else {
-            this.showToast(result.error || 'Failed to save draft', 'error');
+            this.showToast((result && result.error) || 'Failed to save draft', 'error');
           }
-        } catch (e) { this.showToast('Error saving draft', 'error'); }
+        } catch (e) { this.showToast((e && e.data && e.data.error) || 'Error saving draft', 'error'); }
       }
     },
 
     async updateAnalysis() {
       try {
-        const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId, {
-          method: 'PATCH', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
-          body: JSON.stringify({
-            name: this.form.name,
-            organization_size: this.form.orgSize,
-            industry_vertical: this.form.industry,
-            criteria_weights: this.getWeightsDecimal()
-          })
-        });
-        if (resp.ok) { this.showToast('Analysis updated', 'success'); }
-        else { this.showToast('Failed to update', 'error'); }
-      } catch (e) { this.showToast('Error updating analysis', 'error'); }
+        await Platform.fetch.patch('/dashboard/api/vendor-analysis/' + this.analysisId, {
+          name: this.form.name,
+          organization_size: this.form.orgSize,
+          industry_vertical: this.form.industry,
+          criteria_weights: this.getWeightsDecimal()
+        }, { silent: true });
+        this.showToast('Analysis updated', 'success');
+      } catch (e) { this.showToast('Failed to update', 'error'); }
     },
 
     async runAnalysis() {
@@ -757,20 +704,17 @@ function vendorAnalysisDetail(analysisId) {
       this.runningAnalysis = true;
       try {
         if (this.analysisId) {
-          const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/run-scoring', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
-            body: JSON.stringify({ criteria_weights: this.getWeightsDecimal() })
-          });
-          if (resp.ok) {
+          try {
+            await Platform.fetch.post('/dashboard/api/vendor-analysis/' + this.analysisId + '/run-scoring', {
+              criteria_weights: this.getWeightsDecimal()
+            }, { silent: true });
             this.completedSteps.add('setup');
             this.completedSteps.add('scoring');
             this.completedSteps = new Set(this.completedSteps);
             this.showToast('Scoring complete', 'success');
             this.switchTab('comparison');
-          } else {
-            const err = await resp.json();
-            this.showToast(err.error || 'Scoring failed', 'error');
+          } catch (e) {
+            this.showToast((e && e.data && e.data.error) || 'Scoring failed', 'error');
           }
         } else {
           const capIds = await this.getCapabilityIdsForPayload();
@@ -786,24 +730,23 @@ function vendorAnalysisDetail(analysisId) {
             vendor_org_ids: selectedVids
           };
 
-          const resp2 = await fetch('/dashboard/api/vendor-analysis/create', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
-            body: JSON.stringify(payload)
-          });
-          const result = await resp2.json();
-          if (resp2.ok && result.analysis_id) {
-            this.analysisId = result.analysis_id;
-            this.analysis.id = result.analysis_id;
-            window.history.replaceState({}, '', '/dashboard/vendor-analysis/' + result.analysis_id);
-            this.completedSteps.add('setup');
-            this.completedSteps.add('scoring');
-            this.completedSteps = new Set(this.completedSteps);
-            this.showToast('Analysis created and scored', 'success');
-            await this.loadExistingAnalysis();
-            this.switchTab('comparison');
-          } else {
-            this.showToast(result.error || 'Analysis failed', 'error');
+          try {
+            const result = await Platform.fetch.post('/dashboard/api/vendor-analysis/create', payload, { silent: true });
+            if (result && result.analysis_id) {
+              this.analysisId = result.analysis_id;
+              this.analysis.id = result.analysis_id;
+              window.history.replaceState({}, '', '/dashboard/vendor-analysis/' + result.analysis_id);
+              this.completedSteps.add('setup');
+              this.completedSteps.add('scoring');
+              this.completedSteps = new Set(this.completedSteps);
+              this.showToast('Analysis created and scored', 'success');
+              await this.loadExistingAnalysis();
+              this.switchTab('comparison');
+            } else {
+              this.showToast((result && result.error) || 'Analysis failed', 'error');
+            }
+          } catch (e) {
+            this.showToast((e && e.data && e.data.error) || 'Analysis failed', 'error');
           }
         }
       } catch (e) {
@@ -822,14 +765,7 @@ function vendorAnalysisDetail(analysisId) {
       if (!this.analysisId) return;
       this.loadingComparison = true;
       try {
-        const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/comparison', {
-          credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
-        });
-        if (!resp.ok) {
-          this.showToast('Could not load the comparison data', 'error');
-          return;
-        }
-        const data = await resp.json();
+        const data = await Platform.fetch.get('/dashboard/api/vendor-analysis/' + this.analysisId + '/comparison', null, { silent: true });
         this.comparisonVendors = data.vendors || [];
         const self = this;
         this.$nextTick(function() { self.renderCharts(); });
@@ -845,14 +781,7 @@ function vendorAnalysisDetail(analysisId) {
       if (!this.analysisId) return;
       this.loadingDecision = true;
       try {
-        const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/results', {
-          credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
-        });
-        if (!resp.ok) {
-          this.showToast('Could not load the ranked results', 'error');
-          return;
-        }
-        const data = await resp.json();
+        const data = await Platform.fetch.get('/dashboard/api/vendor-analysis/' + this.analysisId + '/results', null, { silent: true });
         this.rankedVendors = data.vendors || [];
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       } catch (e) {
@@ -930,23 +859,7 @@ function vendorAnalysisDetail(analysisId) {
       try {
         let payload = {};
         payload[field] = value;
-        let resp = await fetch('/dashboard/api/vendor-analyses/' + this.analysisId + '/options/' + vendorId + '/scores', {
-          method: 'PATCH',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.getCsrfToken(),
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          let err = await resp.json().catch(function() { return {}; });
-          self.showToast(err.error || 'Failed to save score', 'error');
-          self.manualScoreSaving[saveKey] = 'error';
-          return;
-        }
-        let data = await resp.json();
+        let data = await Platform.fetch.patch('/dashboard/api/vendor-analyses/' + this.analysisId + '/options/' + vendorId + '/scores', payload, { silent: true });
         // Update recalculated aggregate scores on the vendor
         if (vendor && data.recalculated) {
           if (data.recalculated.risk_score != null) vendor.risk_score = data.recalculated.risk_score;
@@ -959,9 +872,13 @@ function vendorAnalysisDetail(analysisId) {
         setTimeout(function() { self.manualScoreSaving[saveKey] = ''; }, 1500);
       } catch (e) {
         console.error('setManualScore:', e);
-        self.showToast('Error saving score', 'error');
+        self.showToast((e && e.data && e.data.error) || 'Failed to save score', 'error');
         self.manualScoreSaving[saveKey] = 'error';
-        setTimeout(function() { self.manualScoreSaving[saveKey] = ''; }, 3000);
+        // Only a network failure resets the pill back to idle; an HTTP error from the
+        // server leaves it on 'error' until the user retries, matching prior behavior.
+        if (e && e.type === 'NetworkError') {
+          setTimeout(function() { self.manualScoreSaving[saveKey] = ''; }, 3000);
+        }
       }
     },
 
@@ -975,36 +892,23 @@ function vendorAnalysisDetail(analysisId) {
       this.manualScoreSaving[saveKey] = 'saving';
       let payload = {};
       payload[field] = null;
-      fetch('/dashboard/api/vendor-analyses/' + this.analysisId + '/options/' + vendorId + '/scores', {
-        method: 'PATCH',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': this.getCsrfToken(),
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify(payload)
-      }).then(function(resp) {
-        if (!resp.ok) {
+      Platform.fetch.patch('/dashboard/api/vendor-analyses/' + this.analysisId + '/options/' + vendorId + '/scores', payload, { silent: true })
+        .then(function(data) {
+          self.manualScoreSaving[saveKey] = 'saved';
+          setTimeout(function() { self.manualScoreSaving[saveKey] = ''; }, 1500);
+          if (data && data.recalculated && vendor) {
+            if (data.recalculated.risk_score != null) vendor.risk_score = data.recalculated.risk_score;
+            if (data.recalculated.strategic_fit_score != null) vendor.strategic_fit_score = data.recalculated.strategic_fit_score;
+            if (data.recalculated.implementation_score != null) vendor.implementation_score = data.recalculated.implementation_score;
+            if (data.recalculated.total_score != null) vendor.total_score = data.recalculated.total_score;
+          }
+          self.$nextTick(function() { self.renderCharts(); });
+        })
+        .catch(function(e) {
+          console.error('clearManualScore:', e);
           self.manualScoreSaving[saveKey] = 'error';
-          self.showToast('Failed to clear score', 'error');
-          return null;
-        }
-        self.manualScoreSaving[saveKey] = 'saved';
-        setTimeout(function() { self.manualScoreSaving[saveKey] = ''; }, 1500);
-        return resp.json();
-      }).then(function(data) {
-        if (data && data.recalculated && vendor) {
-          if (data.recalculated.risk_score != null) vendor.risk_score = data.recalculated.risk_score;
-          if (data.recalculated.strategic_fit_score != null) vendor.strategic_fit_score = data.recalculated.strategic_fit_score;
-          if (data.recalculated.implementation_score != null) vendor.implementation_score = data.recalculated.implementation_score;
-          if (data.recalculated.total_score != null) vendor.total_score = data.recalculated.total_score;
-        }
-        self.$nextTick(function() { self.renderCharts(); });
-      }).catch(function(e) {
-        console.error('clearManualScore:', e);
-        self.manualScoreSaving[saveKey] = 'error';
-      });
+          self.showToast((e && e.data && e.data.error) || 'Failed to clear score', 'error');
+        });
     },
 
     /* ============================================================ */
@@ -1014,15 +918,7 @@ function vendorAnalysisDetail(analysisId) {
     async loadRequirements() {
       if (!this.analysisId) return;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements', {
-          credentials: 'same-origin',
-          headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
-        });
-        if (!resp.ok) {
-          this.showToast('Could not load requirements', 'error');
-          return;
-        }
-        let data = await resp.json();
+        let data = await Platform.fetch.get('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements', null, { silent: true });
         this.requirements = data.requirements || [];
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       } catch (e) {
@@ -1036,22 +932,12 @@ function vendorAnalysisDetail(analysisId) {
       if (!name) return;
       let self = this;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.getCsrfToken(),
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          body: JSON.stringify({
-            capability_name: name,
-            importance: this.newReqImportance || 'medium',
-            must_have: this.newReqMustHave || false
-          })
-        });
-        let data = await resp.json();
-        if (resp.ok && data.success) {
+        let data = await Platform.fetch.post('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements', {
+          capability_name: name,
+          importance: this.newReqImportance || 'medium',
+          must_have: this.newReqMustHave || false
+        }, { silent: true });
+        if (data.success) {
           self.requirements.push(data.requirement);
           self.newReqName = '';
           self.newReqMustHave = false;
@@ -1062,7 +948,7 @@ function vendorAnalysisDetail(analysisId) {
         }
       } catch (e) {
         console.error('addRequirement:', e);
-        self.showToast('Error adding requirement', 'error');
+        self.showToast((e && e.data && e.data.error) || 'Error adding requirement', 'error');
       }
     },
 
@@ -1081,18 +967,10 @@ function vendorAnalysisDetail(analysisId) {
       if (!name) { this.cancelEditReq(); return; }
       let self = this;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements/' + reqId, {
-          method: 'PATCH',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.getCsrfToken(),
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          body: JSON.stringify({ capability_name: name })
-        });
-        let data = await resp.json();
-        if (resp.ok && data.success) {
+        let data = await Platform.fetch.patch('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements/' + reqId, {
+          capability_name: name
+        }, { silent: true });
+        if (data.success) {
           let idx = self.requirements.findIndex(function(r) { return r.id === reqId; });
           if (idx >= 0) self.requirements[idx] = data.requirement;
         } else {
@@ -1100,7 +978,7 @@ function vendorAnalysisDetail(analysisId) {
         }
       } catch (e) {
         console.error('saveEditReq:', e);
-        self.showToast('Error updating requirement', 'error');
+        self.showToast((e && e.data && e.data.error) || 'Error updating requirement', 'error');
       }
       this.editingReqId = null;
       this.editingReqName = '';
@@ -1110,24 +988,12 @@ function vendorAnalysisDetail(analysisId) {
       if (!(await Platform.modal.confirm('Delete this requirement?'))) return;
       let self = this;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements/' + reqId, {
-          method: 'DELETE',
-          credentials: 'same-origin',
-          headers: {
-            'X-CSRFToken': this.getCsrfToken(),
-            'X-Requested-With': 'XMLHttpRequest'
-          }
-        });
-        if (resp.ok) {
-          self.requirements = self.requirements.filter(function(r) { return r.id !== reqId; });
-          self.showToast('Requirement deleted', 'success');
-        } else {
-          let data = await resp.json().catch(function() { return {}; });
-          self.showToast(data.error || 'Failed to delete', 'error');
-        }
+        await Platform.fetch.delete('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements/' + reqId, { silent: true });
+        self.requirements = self.requirements.filter(function(r) { return r.id !== reqId; });
+        self.showToast('Requirement deleted', 'success');
       } catch (e) {
         console.error('deleteRequirement:', e);
-        self.showToast('Error deleting requirement', 'error');
+        self.showToast((e && e.data && e.data.error) || 'Failed to delete', 'error');
       }
     },
 
@@ -1158,27 +1024,15 @@ function vendorAnalysisDetail(analysisId) {
 
       let self = this;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements/' + reqId + '/fulfillment', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.getCsrfToken(),
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          body: JSON.stringify({ vendor_option_id: vendorId, status: next })
-        });
-        if (!resp.ok) {
-          let data = await resp.json().catch(function() { return {}; });
-          self.showToast(data.error || 'Failed to save', 'error');
-          // Revert
-          req.fulfillment[String(vendorId)] = current;
-        }
+        await Platform.fetch.post('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements/' + reqId + '/fulfillment', {
+          vendor_option_id: vendorId, status: next
+        }, { silent: true });
         self.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       } catch (e) {
         console.error('cycleFulfillment:', e);
         req.fulfillment[String(vendorId)] = current;
-        self.showToast('Error saving fulfillment', 'error');
+        self.showToast((e && e.data && e.data.error) || 'Error saving fulfillment', 'error');
+        self.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       }
     },
 
@@ -1211,8 +1065,7 @@ function vendorAnalysisDetail(analysisId) {
       if (!this.analysisId) return;
       this.loadingScenarios = true;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/scenarios', { credentials: 'same-origin' });
-        let data = await resp.json();
+        let data = await Platform.fetch.get('/dashboard/api/vendor-analysis/' + this.analysisId + '/scenarios', null, { silent: true });
         if (data.success) {
           this.scenarios = data.scenarios || [];
         }
@@ -1227,12 +1080,9 @@ function vendorAnalysisDetail(analysisId) {
       let name = (this.saveScenarioName || '').trim();
       if (!name) { this.showToast('Enter a scenario name', 'error'); return; }
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/scenarios/save-current', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
-          body: JSON.stringify({ scenario_name: name })
-        });
-        let data = await resp.json();
+        let data = await Platform.fetch.post('/dashboard/api/vendor-analysis/' + this.analysisId + '/scenarios/save-current', {
+          scenario_name: name
+        }, { silent: true });
         if (data.success) {
           this.scenarios.push(data.scenario);
           this.saveScenarioName = '';
@@ -1240,7 +1090,7 @@ function vendorAnalysisDetail(analysisId) {
         } else {
           this.showToast(data.error || 'Failed to save scenario', 'error');
         }
-      } catch (e) { this.showToast('Error saving scenario', 'error'); }
+      } catch (e) { this.showToast((e && e.data && e.data.error) || 'Error saving scenario', 'error'); }
     },
 
     async createScenario() {
@@ -1256,12 +1106,9 @@ function vendorAnalysisDetail(analysisId) {
         implementation: parseInt(w.implementation) / 100
       };
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/scenarios', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
-          body: JSON.stringify({ scenario_name: name, criteria_weights: weights })
-        });
-        let data = await resp.json();
+        let data = await Platform.fetch.post('/dashboard/api/vendor-analysis/' + this.analysisId + '/scenarios', {
+          scenario_name: name, criteria_weights: weights
+        }, { silent: true });
         if (data.success) {
           this.scenarios.push(data.scenario);
           this.newScenarioName = '';
@@ -1271,23 +1118,19 @@ function vendorAnalysisDetail(analysisId) {
         } else {
           this.showToast(data.error || 'Failed to create scenario', 'error');
         }
-      } catch (e) { this.showToast('Error creating scenario', 'error'); }
+      } catch (e) { this.showToast((e && e.data && e.data.error) || 'Error creating scenario', 'error'); }
     },
 
     async deleteScenario(scenarioId) {
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/scenarios/' + scenarioId, {
-          method: 'DELETE', credentials: 'same-origin',
-          headers: { 'X-CSRFToken': this.getCsrfToken() }
-        });
-        let data = await resp.json();
+        let data = await Platform.fetch.delete('/dashboard/api/vendor-analysis/' + this.analysisId + '/scenarios/' + scenarioId, { silent: true });
         if (data.success) {
           this.scenarios = this.scenarios.filter(function(s) { return s.id !== scenarioId; });
           this.showToast('Scenario deleted', 'success');
         } else {
           this.showToast(data.error || 'Failed to delete', 'error');
         }
-      } catch (e) { this.showToast('Error deleting scenario', 'error'); }
+      } catch (e) { this.showToast((e && e.data && e.data.error) || 'Error deleting scenario', 'error'); }
     },
 
     scenarioVendorNames() {
@@ -1411,23 +1254,14 @@ function vendorAnalysisDetail(analysisId) {
     async submitDecision() {
       if (!this.decision.status || !this.decision.rationale.trim()) return;
       try {
-        const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/decision', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
-          body: JSON.stringify({
-            decision: this.decision.status,
-            rationale: this.decision.rationale,
-            selected_vendor_option_id: this.decision.vendorId ? parseInt(this.decision.vendorId) : null
-          })
-        });
-        const result = await resp.json();
-        if (resp.ok) {
-          this.analysis.approval_status = result.approval_status;
-          this.showToast('Decision recorded successfully', 'success');
-        } else {
-          this.showToast(result.error || 'Failed to record decision', 'error');
-        }
-      } catch (e) { this.showToast('Error recording decision', 'error'); }
+        const result = await Platform.fetch.post('/dashboard/api/vendor-analysis/' + this.analysisId + '/decision', {
+          decision: this.decision.status,
+          rationale: this.decision.rationale,
+          selected_vendor_option_id: this.decision.vendorId ? parseInt(this.decision.vendorId) : null
+        }, { silent: true });
+        this.analysis.approval_status = result.approval_status;
+        this.showToast('Decision recorded successfully', 'success');
+      } catch (e) { this.showToast((e && e.data && e.data.error) || 'Error recording decision', 'error'); }
     },
 
     /* ============================================================ */
@@ -1437,7 +1271,8 @@ function vendorAnalysisDetail(analysisId) {
     async exportCSV() {
       if (!this.analysisId) return;
       try {
-        const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/export?format=csv');
+        // Platform.fetch returns a parsed body (json/text), which would discard the blob.
+        const resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/export?format=csv'); // raw-fetch-ok: downloads a blob (resp.blob()) and needs the raw Response object
         if (!resp.ok) throw new Error('exportCSV: ' + resp.status);
         const blob = await resp.blob();
         let url = window.URL.createObjectURL(blob);
@@ -1484,12 +1319,10 @@ function vendorAnalysisDetail(analysisId) {
       if (!this.analysisId) return;
       this.loadingStakeholders = true;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders');
-        let data = await resp.json();
+        let data = await Platform.fetch.get('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders', null, { silent: true });
         if (data.success) this.stakeholders = data.stakeholders || [];
         // Also load consensus
-        let cResp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders/consensus');
-        let cData = await cResp.json();
+        let cData = await Platform.fetch.get('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders/consensus', null, { silent: true });
         if (cData.success) this.stakeholderConsensus = cData;
       } catch (e) {
         console.error('Failed to load stakeholders:', e);
@@ -1501,15 +1334,10 @@ function vendorAnalysisDetail(analysisId) {
     async inviteStakeholder() {
       if (!this.inviteUserId || !this.inviteRole) return;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
-          body: JSON.stringify({
-            stakeholder_id: parseInt(this.inviteUserId),
-            stakeholder_role: this.inviteRole,
-          }),
-        });
-        let data = await resp.json();
+        let data = await Platform.fetch.post('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders', {
+          stakeholder_id: parseInt(this.inviteUserId),
+          stakeholder_role: this.inviteRole
+        }, { silent: true });
         if (data.success) {
           this.stakeholders.push(data.stakeholder);
           this.inviteUserId = '';
@@ -1519,23 +1347,19 @@ function vendorAnalysisDetail(analysisId) {
           this.showToast(data.error || 'Failed to invite', 'error');
         }
       } catch (e) {
-        this.showToast('Error inviting stakeholder', 'error');
+        this.showToast((e && e.data && e.data.error) || 'Error inviting stakeholder', 'error');
       }
     },
 
     async removeStakeholder(inputId) {
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders/' + inputId, {
-          method: 'DELETE',
-          headers: { 'X-CSRFToken': this.getCsrfToken() },
-        });
-        let data = await resp.json();
+        let data = await Platform.fetch.delete('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders/' + inputId, { silent: true });
         if (data.success) {
           this.stakeholders = this.stakeholders.filter(function(s) { return s.id !== inputId; });
           this.showToast('Stakeholder removed', 'success');
         }
       } catch (e) {
-        this.showToast('Error removing stakeholder', 'error');
+        this.showToast((e && e.data && e.data.error) || 'Error removing stakeholder', 'error');
       }
     },
 

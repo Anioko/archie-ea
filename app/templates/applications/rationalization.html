@@ -50,15 +50,8 @@
 
 {% block content %}
 <div class="space-y-6 overflow-x-hidden">
-  <!-- Breadcrumbs -->
-  <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-    <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-    <a href="{{ url_for('unified_applications.application_list') }}" class="hover:text-foreground transition-colors">Applications</a>
-    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-    <span class="text-foreground font-medium" aria-current="page">Rationalization</span>
-  </nav>
-
+  {# The layout's breadcrumb block already renders this trail - a second
+     manual copy stacked two breadcrumb rows on the page. #}
   <!-- Page Header -->
   <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-6 mb-10">
     <div class="space-y-2">

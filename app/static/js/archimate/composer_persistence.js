@@ -216,15 +216,7 @@ let ComposerPersistence = (function() {
 
             self._saving = true;
             self._saveFailed = false;
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId, {
-                method: 'PUT', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(payload),
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('Server returned ' + r.status);
-                return r.json();
-            })
+            Platform.fetch.put('/archimate/api/saved-viewpoints/' + self.currentSavedVpId, payload, { silent: true })
             .then(function(data) {
                 self._saving = false;
                 if (data.id) {
@@ -324,15 +316,8 @@ let ComposerPersistence = (function() {
 
                 self.statusText = 'Saving...';
 
-                fetch(url, {
-                    method: method, credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify(payload),
-                })
-                .then(function(r) {
-                    if (!r.ok) { throw new Error('save viewpoint request failed: ' + r.status); }
-                    return r.json();
-                })
+                let saveCall = method === 'PUT' ? Platform.fetch.put : Platform.fetch.post;
+                saveCall(url, payload, { silent: true })
                 .then(function(data) {
                     if (data.id) {
                         // Server materialized imported items into real model rows —
@@ -395,8 +380,7 @@ let ComposerPersistence = (function() {
             let url = '/archimate/api/saved-viewpoints';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
 
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.get(url, null, { silent: true })
             .then(function(data) {
                 self.savedViewpoints = data.viewpoints || [];
             })
@@ -411,11 +395,7 @@ let ComposerPersistence = (function() {
             let self = this;
             let url = '/archimate/api/saved-viewpoints';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) {
-                if (!r.ok) throw new Error('Server returned ' + r.status);
-                return r.json();
-            })
+            Platform.fetch.get(url, null, { silent: true })
             .then(function(data) {
                 /* Limit to 5 most recent viewpoints to avoid tab overflow */
                 let all = (data.viewpoints || []).map(function(v) {
@@ -434,11 +414,7 @@ let ComposerPersistence = (function() {
             self.selectedEdge = null;
             self._clearNeighborFocus();
 
-            fetch('/archimate/api/saved-viewpoints/' + vpId, { credentials: 'same-origin' })
-            .then(function(r) {
-                if (!r.ok) throw new Error('Server returned ' + r.status + ' — click the tab to retry');
-                return r.json();
-            })
+            Platform.fetch.get('/archimate/api/saved-viewpoints/' + vpId, null, { silent: true })
             .then(function(data) {
                 UndoStack.pause();
                 self.graph.clear();
@@ -622,11 +598,9 @@ let ComposerPersistence = (function() {
 
         linkElementToSolution: function(elementId) {
             if (!this.solutionId) return;
-            fetch('/solutions/' + this.solutionId + '/archimate-elements', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ element_id: elementId, element_role: 'primary' }),
-            }).catch(function() { _toast('error', 'Failed to link element to solution'); });
+            Platform.fetch.post('/solutions/' + this.solutionId + '/archimate-elements', {
+                element_id: elementId, element_role: 'primary'
+            }, { silent: true }).catch(function() { _toast('error', 'Failed to link element to solution'); });
         },
 
         restoreAutosave: function() {
@@ -1476,20 +1450,8 @@ let ComposerPersistence = (function() {
                 formData.append('file', file);
                 formData.append('strategy', 'skip_duplicates');
 
-                fetch('/archimate/api/import/csv', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
-                    body: formData,
-                })
-                .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-                .then(function(resp) {
-                    if (!resp.ok) {
-                        _toast('error', resp.data.error || 'Import failed');
-                        self.statusText = 'Import failed';
-                        return;
-                    }
-                    let d = resp.data;
+                Platform.fetch.post('/archimate/api/import/csv', formData, { silent: true })
+                .then(function(d) {
                     let msg = d.elements_imported + ' imported, ' + d.elements_skipped + ' skipped';
                     if (d.elements_updated > 0) msg += ', ' + d.elements_updated + ' updated';
                     _toast('success', 'CSV import: ' + msg);
@@ -1501,8 +1463,13 @@ let ComposerPersistence = (function() {
                     }
                 })
                 .catch(function(err) {
-                    _toast('error', 'Import error: ' + err.message);
-                    self.statusText = 'Import error';
+                    if (err && err.type === 'HttpError') {
+                        _toast('error', (err.data && err.data.error) || 'Import failed');
+                        self.statusText = 'Import failed';
+                    } else {
+                        _toast('error', 'Import error: ' + (err.message || ''));
+                        self.statusText = 'Import error';
+                    }
                 });
             });
 
@@ -1532,24 +1499,18 @@ let ComposerPersistence = (function() {
                 let formData = new FormData();
                 formData.append('file', file);
 
-                fetch('/archimate/api/import/oef', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
-                    body: formData,
-                })
-                .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-                .then(function(resp) {
-                    if (!resp.ok) {
-                        _toast('error', resp.data.error || 'OEF import failed');
-                        self.statusText = 'Import failed';
-                        return;
-                    }
-                    self.applyImportedDiagramPayload(resp.data, 'OEF import');
+                Platform.fetch.post('/archimate/api/import/oef', formData, { silent: true })
+                .then(function(d) {
+                    self.applyImportedDiagramPayload(d, 'OEF import');
                 })
                 .catch(function(err) {
-                    _toast('error', 'Import error: ' + err.message);
-                    self.statusText = 'Import error';
+                    if (err && err.type === 'HttpError') {
+                        _toast('error', (err.data && err.data.error) || 'OEF import failed');
+                        self.statusText = 'Import failed';
+                    } else {
+                        _toast('error', 'Import error: ' + (err.message || ''));
+                        self.statusText = 'Import error';
+                    }
                 });
             });
 
@@ -1926,28 +1887,20 @@ let ComposerPersistence = (function() {
             refs.authHint && refs.authHint.classList.add('hidden');
             refs.list.innerHTML = '<div class="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">Loading workspace documents…</div>';
 
-            fetch('/archimate/api/lucidchart/documents', {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-            .then(function(resp) {
-                if (!resp.ok) {
-                    _toast('error', resp.data.error || 'Failed to load Lucidchart documents');
-                    self._setLucidchartStatus('error', 'Workspace load failed', 'ARCHIE could not load Lucidchart documents right now.');
-                    return;
-                }
-                if (resp.data.needs_auth) {
+            Platform.fetch.get('/archimate/api/lucidchart/documents', null, { silent: true })
+            .then(function(data) {
+                if (data.needs_auth) {
                     self._setLucidchartStatus('warning', 'Workspace not connected', 'Upload a Lucid export now, or connect Lucidchart to browse workspace documents later.');
                     if (refs.authHint) refs.authHint.classList.remove('hidden');
                     refs.list.innerHTML = '<div class="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">No workspace documents available until Lucidchart is connected for this organization.</div>';
                     return;
                 }
                 self._setLucidchartStatus('info', 'Workspace ready', 'Choose a workspace document to import directly, or continue with file upload.');
-                self._renderLucidchartDocuments(resp.data.documents || []);
+                self._renderLucidchartDocuments(data.documents || []);
             })
             .catch(function(err) {
-                self._setLucidchartStatus('error', 'Workspace load failed', 'Lucidchart returned an error while ARCHIE was loading workspace documents.');
-                _toast('error', 'Lucidchart load error: ' + err.message);
+                self._setLucidchartStatus('error', 'Workspace load failed', 'ARCHIE could not load Lucidchart documents right now.');
+                _toast('error', (err && err.data && err.data.error) || ('Lucidchart load error: ' + (err.message || '')));
             });
         },
 
@@ -1955,22 +1908,14 @@ let ComposerPersistence = (function() {
             let self = this;
             let refs = self._lucidchartModalRefs();
             self._setLucidchartStatus('loading', 'Starting workspace connection', 'Lucidchart authorization will open in a new browser tab.');
-            fetch('/archimate/api/lucidchart/auth/start', {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-            .then(function(resp) {
-                if (!resp.ok) {
-                    _toast('error', resp.data.error || 'Failed to start Lucidchart authorization');
-                    self._setLucidchartStatus('error', 'Workspace connection unavailable', 'ARCHIE could not start Lucidchart authorization for this organization.');
-                    return;
-                }
+            Platform.fetch.get('/archimate/api/lucidchart/auth/start', null, { silent: true })
+            .then(function(data) {
                 self._setLucidchartStatus('info', 'Finish sign-in in the new tab', 'After Lucidchart sign-in completes, return here and load workspace documents.');
-                window.open(resp.data.authorization_url, '_blank', 'noopener');
+                window.open(data.authorization_url, '_blank', 'noopener');
             })
             .catch(function(err) {
                 self._setLucidchartStatus('error', 'Workspace connection failed', 'Lucidchart authorization did not complete successfully.');
-                _toast('error', 'Lucidchart authorization error: ' + err.message);
+                _toast('error', (err && err.data && err.data.error) || ('Lucidchart authorization error: ' + (err.message || '')));
             });
         },
 
@@ -1980,34 +1925,23 @@ let ComposerPersistence = (function() {
             self._setLucidchartBusy(true);
             self._resetLucidchartImportSummary();
             self._setLucidchartStatus('loading', 'Importing workspace document', 'ARCHIE is converting the selected Lucidchart document into the composer canvas.');
-            fetch('/archimate/api/lucidchart/import/' + encodeURIComponent(documentId), {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'X-CSRFToken': csrfToken() },
-            })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-            .then(function(resp) {
-                if (!resp.ok) {
-                    _toast('error', resp.data.error || 'Lucidchart import failed');
-                    self._setLucidchartStatus('error', 'Workspace import failed', 'ARCHIE could not import the selected Lucidchart document.');
-                    self._setLucidchartBusy(false);
-                    return;
-                }
-                if (resp.data.needs_auth) {
+            Platform.fetch.post('/archimate/api/lucidchart/import/' + encodeURIComponent(documentId), null, { silent: true })
+            .then(function(data) {
+                if (data.needs_auth) {
                     self._setLucidchartStatus('warning', 'Workspace not connected', 'Connect Lucidchart before importing a live workspace document.');
                     if (refs.authHint) refs.authHint.classList.remove('hidden');
                     _toast('warning', 'Connect Lucidchart before importing a live document.');
                     self._setLucidchartBusy(false);
                     return;
                 }
-                self.applyImportedDiagramPayload(resp.data, 'Lucidchart import');
-                self._renderLucidchartImportSummary(resp.data, documentTitle || 'Workspace document');
+                self.applyImportedDiagramPayload(data, 'Lucidchart import');
+                self._renderLucidchartImportSummary(data, documentTitle || 'Workspace document');
                 self._setLucidchartStatus('success', 'Workspace document imported', 'Review the imported counts and warnings below, then close this window to inspect the diagram.');
                 self._setLucidchartBusy(false);
             })
             .catch(function(err) {
-                self._setLucidchartStatus('error', 'Workspace import failed', 'Lucidchart returned an error while ARCHIE was importing the workspace document.');
-                _toast('error', 'Lucidchart import error: ' + err.message);
+                self._setLucidchartStatus('error', 'Workspace import failed', 'ARCHIE could not import the selected Lucidchart document.');
+                _toast('error', (err && err.data && err.data.error) || ('Lucidchart import error: ' + (err.message || '')));
                 self._setLucidchartBusy(false);
             });
         },
@@ -2028,22 +1962,10 @@ let ComposerPersistence = (function() {
 
             let formData = new FormData();
             formData.append('file', file);
-            fetch('/archimate/api/lucidchart/import/upload', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'X-CSRFToken': csrfToken() },
-                body: formData,
-            })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
-            .then(function(resp) {
-                if (!resp.ok) {
-                    _toast('error', resp.data.error || 'Lucidchart upload import failed');
-                    self._setLucidchartStatus('error', 'Upload import failed', 'ARCHIE could not import the selected Lucid export.');
-                    self._setLucidchartBusy(false);
-                    return;
-                }
-                self.applyImportedDiagramPayload(resp.data, 'Lucidchart upload');
-                self._renderLucidchartImportSummary(resp.data, file.name || 'Lucid export');
+            Platform.fetch.post('/archimate/api/lucidchart/import/upload', formData, { silent: true })
+            .then(function(data) {
+                self.applyImportedDiagramPayload(data, 'Lucidchart upload');
+                self._renderLucidchartImportSummary(data, file.name || 'Lucid export');
                 self._lucidchartSelectedFile = null;
                 if (refs.uploadInput) refs.uploadInput.value = '';
                 self._renderLucidchartSelectedFile();
@@ -2051,8 +1973,8 @@ let ComposerPersistence = (function() {
                 self._setLucidchartBusy(false);
             })
             .catch(function(err) {
-                self._setLucidchartStatus('error', 'Upload import failed', 'Lucidchart returned an error while ARCHIE was importing the selected export.');
-                _toast('error', 'Lucidchart upload error: ' + err.message);
+                self._setLucidchartStatus('error', 'Upload import failed', 'ARCHIE could not import the selected Lucid export.');
+                _toast('error', (err && err.data && err.data.error) || ('Lucidchart upload error: ' + (err.message || '')));
                 self._setLucidchartBusy(false);
             });
         },
@@ -2067,12 +1989,7 @@ let ComposerPersistence = (function() {
             if (!name || !name.trim()) return;
 
             self.statusText = 'Creating snapshot...';
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: name.trim() }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots', { name: name.trim() }, { silent: true })
             .then(function(data) {
                 if (data.id) {
                     self.statusText = 'Snapshot created: ' + data.name;
@@ -2081,7 +1998,7 @@ let ComposerPersistence = (function() {
                     self.statusText = 'Snapshot failed: ' + (data.error || 'unknown');
                 }
             })
-            .catch(function(err) { self.statusText = 'Snapshot error: ' + err.message; _toast('error', 'Snapshot failed'); });
+            .catch(function(err) { self.statusText = 'Snapshot error: ' + (err.message || ''); _toast('error', 'Snapshot failed'); });
         },
 
         loadSnapshots: function() {
@@ -2093,10 +2010,7 @@ let ComposerPersistence = (function() {
                 return;
             }
 
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots', {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.get('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots', null, { silent: true })
             .then(function(data) {
                 self.snapshots = data.snapshots || [];
             })
@@ -2109,10 +2023,7 @@ let ComposerPersistence = (function() {
             self.snapshotListOpen = false;
             self.statusText = 'Loading snapshot...';
 
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots/' + sid, {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.get('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots/' + sid, null, { silent: true })
             .then(function(data) {
                 if (!data.data) {
                     self.statusText = 'Snapshot load failed';
@@ -2214,11 +2125,7 @@ let ComposerPersistence = (function() {
             self.snapshotListOpen = false;
             self.statusText = 'Restoring snapshot...';
 
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots/' + sid + '/restore', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots/' + sid + '/restore', null, { silent: true })
             .then(function(data) {
                 if (data.restored) {
                     self.statusText = 'Restored: ' + data.snapshot_name;
@@ -2227,7 +2134,7 @@ let ComposerPersistence = (function() {
                     self.statusText = 'Restore failed: ' + (data.error || 'unknown');
                 }
             })
-            .catch(function(err) { self.statusText = 'Restore error: ' + err.message; _toast('error', 'Restore failed'); });
+            .catch(function(err) { self.statusText = 'Restore error: ' + (err.message || ''); _toast('error', 'Restore failed'); });
         },
 
         saveAsTemplate: function() {
@@ -2264,16 +2171,11 @@ let ComposerPersistence = (function() {
             };
 
             self.statusText = 'Saving template...';
-            fetch('/archimate/api/templates', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    name: name.trim(),
-                    viewpoint_type: self.activeViewpoint || null,
-                    template_json: templateData,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/templates', {
+                name: name.trim(),
+                viewpoint_type: self.activeViewpoint || null,
+                template_json: templateData,
+            }, { silent: true })
             .then(function(data) {
                 if (data.id) {
                     self.statusText = 'Template saved: ' + data.name;
@@ -2282,7 +2184,7 @@ let ComposerPersistence = (function() {
                     self.statusText = 'Template save failed: ' + (data.error || 'unknown');
                 }
             })
-            .catch(function(err) { self.statusText = 'Template error: ' + err.message; _toast('error', 'Template operation failed'); });
+            .catch(function(err) { self.statusText = 'Template error: ' + (err.message || ''); _toast('error', 'Template operation failed'); });
         },
 
         loadTemplates: function() {
@@ -2290,8 +2192,7 @@ let ComposerPersistence = (function() {
             self.templateListOpen = !self.templateListOpen;
             if (!self.templateListOpen) return;
 
-            fetch('/archimate/api/templates', { credentials: 'same-origin' })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.get('/archimate/api/templates', null, { silent: true })
             .then(function(data) {
                 self.templates = BUILT_IN_TEMPLATES.concat(data.templates || []);
             })
@@ -2354,15 +2255,10 @@ let ComposerPersistence = (function() {
             self.templateListOpen = false;
             self.statusText = 'Creating from template...';
 
-            fetch('/archimate/api/templates/' + tid + '/instantiate', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    name: name.trim(),
-                    solution_id: self.solutionId || null,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/templates/' + tid + '/instantiate', {
+                name: name.trim(),
+                solution_id: self.solutionId || null,
+            }, { silent: true })
             .then(function(data) {
                 if (data.id) {
                     self.statusText = 'Created viewpoint: ' + data.name;
@@ -2371,7 +2267,7 @@ let ComposerPersistence = (function() {
                     self.statusText = 'Instantiate failed: ' + (data.error || 'unknown');
                 }
             })
-            .catch(function(err) { self.statusText = 'Instantiate error: ' + err.message; _toast('error', 'Failed to instantiate template'); });
+            .catch(function(err) { self.statusText = 'Instantiate error: ' + (err.message || ''); _toast('error', 'Failed to instantiate template'); });
         },
 
         /* ── BUG-2 FIX: open templates modal pre-focused on portfolio section ── */
@@ -2387,8 +2283,7 @@ let ComposerPersistence = (function() {
             self.portfolioTemplatesLoading = true;
             self.portfolioTemplates = [];
 
-            fetch('/archimate/api/composer/portfolio-templates', { credentials: 'same-origin' })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.get('/archimate/api/composer/portfolio-templates', null, { silent: true })
             .then(function(data) {
                 self.portfolioTemplates = data.portfolio_templates || [];
                 self.portfolioTemplatesLoading = false;
@@ -2457,8 +2352,8 @@ let ComposerPersistence = (function() {
             let baseUrl = '/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/snapshots/';
 
             Promise.all([
-                fetch(baseUrl + snapshotIdA, { credentials: 'same-origin' }).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
-                fetch(baseUrl + snapshotIdB, { credentials: 'same-origin' }).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
+                Platform.fetch.get(baseUrl + snapshotIdA, null, { silent: true }),
+                Platform.fetch.get(baseUrl + snapshotIdB, null, { silent: true }),
             ])
             .then(function(results) {
                 let snapA = results[0];
@@ -2467,7 +2362,7 @@ let ComposerPersistence = (function() {
             })
             .catch(function(e) {
                 _toast('error', 'Compare failed');
-                self.statusText = 'Compare failed: ' + e.message;
+                self.statusText = 'Compare failed: ' + (e.message || '');
             });
         },
 
@@ -2911,13 +2806,9 @@ let ComposerPersistence = (function() {
             let self = this;
             let diagramId = self.savedViewpointId;
             if (!diagramId) return;
-            let csrfToken = helpers.csrfToken;
-            // fetch-guard-ok: presence ping the user never asked for; a failure leaves the other-editors indicator dark and there is nothing to act on
-            fetch('/archimate/api/diagrams/' + diagramId + '/editors/join', {
-                method: 'POST',
-                headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
-            })
-            .then(function(r) { return r.json(); })
+            /* Presence ping the user never asked for; a failure leaves the other-editors
+               indicator dark and there is nothing to act on, so it stays silent. */
+            Platform.fetch.post('/archimate/api/diagrams/' + diagramId + '/editors/join', null, { silent: true })
             .then(function(data) {
                 self.collaborationOtherEditors = data.other_editors || 0;
                 if (self.collaborationOtherEditors > 0) {
@@ -2934,21 +2825,17 @@ let ComposerPersistence = (function() {
             let self = this;
             let diagramId = self.savedViewpointId;
             if (!diagramId) return;
-            let csrfToken = helpers.csrfToken;
             /* Fire-and-forget cleanup as the user navigates away — nothing actionable. */
-            fetch('/archimate/api/diagrams/' + diagramId + '/editors/leave', {
-                method: 'POST',
-                headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
-            }).catch(function() { /* swallow-ok: fire-and-forget presence cleanup as the user navigates away; there is no session left to report into */ });
+            Platform.fetch.post('/archimate/api/diagrams/' + diagramId + '/editors/leave', null, { silent: true })
+            .catch(function() { /* swallow-ok: fire-and-forget presence cleanup as the user navigates away; there is no session left to report into */ });
         },
 
         collaborationRefresh: function() {
             let self = this;
             let diagramId = self.savedViewpointId;
             if (!diagramId) return;
-            // fetch-guard-ok: presence refresh the user never asked for; see collaborationJoin above
-            fetch('/archimate/api/diagrams/' + diagramId + '/active-editors')
-            .then(function(r) { return r.json(); })
+            /* Presence refresh the user never asked for; see collaborationJoin above. */
+            Platform.fetch.get('/archimate/api/diagrams/' + diagramId + '/active-editors', null, { silent: true })
             .then(function(data) {
                 self.collaborationOtherEditors = data.count || 0;
             })

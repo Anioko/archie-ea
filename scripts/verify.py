@@ -207,6 +207,18 @@ def gate_lint_core(baseline: int) -> Result:
     return Result("lint-core", PASS if count == 0 else FAIL, sample, count, 0)
 
 
+def gate_raw_fetch_sites(baseline: int) -> Result:
+    """Raw fetch() call sites that bypass Platform.fetch - ratchet."""
+    proc = _run([sys.executable, "scripts/check_raw_fetch.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("raw-fetch-sites", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("raw-fetch-sites", PASS if count <= baseline else FAIL,
+                  "", count, baseline)
+
+
 def gate_design_tokens_extended(baseline: int) -> Result:
     """Non-banned colour families (emerald/orange/teal/...) - their own ratchet."""
     proc = _run([sys.executable, "scripts/check_design_tokens.py", "--extended", "--count"])
@@ -957,6 +969,12 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("design-tokens", "No new raw Tailwind colours (DESIGN.md)", "ratchet",
              lambda: gate_design_tokens(baseline["design_tokens"]),
              remediation="use semantic tokens; see the table in DESIGN.md",
+             tags=["static", "ui"]),
+        Gate("raw-fetch-sites",
+             "No new raw fetch() sites bypassing Platform.fetch",
+             "ratchet",
+             lambda: gate_raw_fetch_sites(baseline["raw_fetch_sites"]),
+             remediation="use Platform.fetch, or mark 'raw-fetch-ok: <reason>'",
              tags=["static", "ui"]),
         Gate("design-tokens-extended",
              "No new raw colours in the remaining families (emerald/orange/...)",
