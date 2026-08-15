@@ -61,17 +61,22 @@ logger = logging.getLogger(__name__)
 solution_design_bp = Blueprint("solution_design", __name__, url_prefix="/solutions")
 
 
-def _check_solution_access(solution) -> bool:
-    """Return True if current_user may access this solution.
+def _check_solution_access(solution, user=None) -> bool:
+    """Return True if `user` (default: current_user) may access this solution.
 
     Access is granted to:
     - The creator (solution.created_by_id)
-    - Admins (current_user.is_admin)
+    - Admins (user.is_admin)
     - Named stakeholders (owner, sponsor, tech lead) matched by email
+
+    `user` is accepted explicitly so this check can run outside an HTTP
+    request (e.g. from the AI-chat tool executor), where flask_login's
+    `current_user` proxy has nothing to resolve against.
     """
-    if solution.created_by_id == current_user.id:
+    user = user if user is not None else current_user
+    if solution.created_by_id == user.id:
         return True
-    if current_user.is_admin:
+    if user.is_admin:
         return True
     _stakeholder_emails = [
         solution.solution_owner,
@@ -79,7 +84,7 @@ def _check_solution_access(solution) -> bool:
         solution.technical_lead,
     ]
     return any(
-        f and current_user.email and f.strip().lower() == current_user.email.strip().lower()
+        f and user.email and f.strip().lower() == user.email.strip().lower()
         for f in _stakeholder_emails
     )
 
@@ -9999,25 +10004,50 @@ def _build_section_narrative_prompt(
     return "\n".join(prompt_parts)
 
 
-@solution_design_bp.route("/<int:solution_id>/api/blueprint/<section_id>/generate", methods=["POST"])
-@login_required
-def api_generate_section_narrative(solution_id, section_id):
-    """Generate narrative text for one blueprint section using LLM.
+class NarrativeGenerationError(Exception):
+    """Raised by `generate_section_narrative` on any handled failure.
+
+    Carries `error_code` so callers (the HTTP route, the AI-chat tool
+    executor) can map it to their own response shape without re-deriving it.
+    """
+
+    def __init__(self, message: str, error_code: str):
+        super().__init__(message)
+        self.error_code = error_code
+
+
+def generate_section_narrative(solution_id, section_id, user_id):
+    """Generate and persist AI narrative text for one blueprint section.
 
     Uses the section's linked ArchiMate elements + spec_data context as prompt.
-    Saves the result to section_narratives[section_id] and returns it.
+    Saves the result to section_narratives[section_id] and returns a result dict.
+
+    Takes `user_id` rather than relying on flask_login's `current_user`, so it
+    is callable from contexts with no HTTP request — notably
+    `app.modules.ai_chat.tools.executor.ToolExecutor._tool_generate_blueprint_narrative`,
+    which runs in-process against the AI-chat conversation's own user_id.
+    Raises `NarrativeGenerationError` on any handled failure.
     """
+    from app.models.user import User
     from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import (
         BlueprintCompletenessService,
         SECTION_TITLES,
     )
 
     if section_id not in BlueprintCompletenessService.SECTION_DEFINITIONS:
-        return jsonify({"success": False, "error": "Invalid section ID", "error_code": "INVALID_SECTION"}), 400
+        raise NarrativeGenerationError("Invalid section ID", "INVALID_SECTION")
 
-    solution = Solution.query.get_or_404(solution_id)
-    if not _check_solution_access(solution):
-        return jsonify({"success": False, "error": "Forbidden", "error_code": "FORBIDDEN"}), 403
+    solution = Solution.query.get(solution_id)
+    if solution is None:
+        raise NarrativeGenerationError("Solution not found", "NOT_FOUND")
+
+    # Looked up by primary key with no org filter because cross-org access is
+    # closed by _check_solution_access() immediately below, which checks this
+    # user against the *solution's* organization (creator/admin/stakeholder-
+    # email match) — an org filter here would only duplicate that check.
+    user = User.query.get(user_id)  # tenant-scoping-ok: access closed by _check_solution_access() below
+    if user is None or not _check_solution_access(solution, user=user):
+        raise NarrativeGenerationError("Forbidden", "FORBIDDEN")
 
     # Gather context
     svc = BlueprintCompletenessService()
@@ -10073,29 +10103,48 @@ def api_generate_section_narrative(solution_id, section_id):
         from app.services.llm_service import LLMService
         narrative = LLMService.generate_from_prompt(prompt, use_cache=False)
     except ValueError:
-        return jsonify({
-            "success": False,
-            "error": "No LLM provider configured. Add an API key in Admin → API Settings.",
-            "error_code": "NO_LLM",
-        }), 503
+        raise NarrativeGenerationError(
+            "No LLM provider configured. Add an API key in Admin → API Settings.", "NO_LLM"
+        )
     except Exception as e:
         logger.error("Blueprint narrative generation failed for solution %s section %s: %s", solution_id, section_id, e)
-        return jsonify({"success": False, "error": "LLM generation failed. Try again.", "error_code": "LLM_ERROR"}), 500
+        raise NarrativeGenerationError("LLM generation failed. Try again.", "LLM_ERROR")
 
     # Save to section_narratives
     narratives = dict(solution.section_narratives or {})
     narratives[section_id] = narrative
     solution.section_narratives = narratives
     solution.blueprint_updated_at = datetime.utcnow()
-    solution.blueprint_updated_by_id = current_user.id
+    solution.blueprint_updated_by_id = user_id
     db.session.commit()
 
-    return jsonify({
-        "success": True,
+    return {
         "narrative": narrative,
         "section_id": section_id,
         "word_count": len(narrative.split()),
-    })
+    }
+
+
+_NARRATIVE_ERROR_STATUS = {
+    "INVALID_SECTION": 400,
+    "NOT_FOUND": 404,
+    "FORBIDDEN": 403,
+    "NO_LLM": 503,
+    "LLM_ERROR": 500,
+}
+
+
+@solution_design_bp.route("/<int:solution_id>/api/blueprint/<section_id>/generate", methods=["POST"])
+@login_required
+def api_generate_section_narrative(solution_id, section_id):
+    """HTTP wrapper around `generate_section_narrative` for the blueprint editor UI."""
+    try:
+        result = generate_section_narrative(solution_id, section_id, current_user.id)
+    except NarrativeGenerationError as e:
+        status = _NARRATIVE_ERROR_STATUS.get(e.error_code, 500)
+        return jsonify({"success": False, "error": str(e), "error_code": e.error_code}), status
+
+    return jsonify({"success": True, **result})
 
 
 @solution_design_bp.route("/<int:solution_id>/api/blueprint/<section_id>/codegen", methods=["POST"])

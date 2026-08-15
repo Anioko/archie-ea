@@ -59,6 +59,41 @@ class CapabilityCatalogUnavailableError(Exception):
     """
 
 
+def _vs_mapped_capability_names(limit: int) -> List[str]:
+    """Capability names this org has mapped onto a value-stream stage."""
+    rows = (
+        db.session.query(UnifiedCapability.name)
+        .join(
+            CapabilityValueStreamMapping,
+            CapabilityValueStreamMapping.capability_id == UnifiedCapability.id,
+        )
+        .distinct()
+        .limit(limit)
+        .all()
+    )
+    return [name for (name,) in rows if name]
+
+
+def _app_mapped_capability_names(limit: int) -> List[str]:
+    """Capability names mapped to an application component this org owns."""
+    rows = (
+        db.session.query(UnifiedCapability.name)
+        .join(
+            UnifiedApplicationCapabilityMapping,
+            UnifiedApplicationCapabilityMapping.unified_capability_id == UnifiedCapability.id,
+        )
+        .join(
+            ApplicationComponent,
+            UnifiedApplicationCapabilityMapping.application_component_id
+            == ApplicationComponent.id,
+        )
+        .distinct()
+        .limit(limit)
+        .all()
+    )
+    return [name for (name,) in rows if name]
+
+
 def _org_scoped_capability_names(limit: int = MAX_CAPABILITIES) -> List[str]:
     """This org's real *mapped* capability names — never the global catalog.
 
@@ -76,60 +111,49 @@ def _org_scoped_capability_names(limit: int = MAX_CAPABILITIES) -> List[str]:
       applies to any TenantMixin entity present in the query — including a
       join target — so this is scoped to this org's applications.
 
-    A failure in one query still lets the other contribute real names. Only
-    when *both* queries fail — so nothing real could be recovered — is a
-    CapabilityCatalogUnavailableError raised, rather than quietly returning
-    an empty list that reads as "genuinely nothing mapped".
+    A failure in one query still lets the other contribute real names, and
+    when it does the partial-but-real result set is used — with a warning
+    naming which source failed, so the gap is visible in logs even though
+    the caller gets a 200. It is only when a query failed *and* the combined
+    name set is empty that a CapabilityCatalogUnavailableError is raised:
+    with nothing recovered, an empty list is indistinguishable from "this
+    org genuinely has no mappings", and that ambiguity is exactly what the
+    route's honest-502 path exists to resolve. Two clean queries that both
+    return nothing is the one case that is trusted as genuinely empty.
     """
     names: Set[str] = set()
-    failures = 0
+    failed_sources: List[str] = []
 
     try:
-        vs_rows = (
-            db.session.query(UnifiedCapability.name)
-            .join(
-                CapabilityValueStreamMapping,
-                CapabilityValueStreamMapping.capability_id == UnifiedCapability.id,
-            )
-            .distinct()
-            .limit(limit)
-            .all()
-        )
-        names.update(name for (name,) in vs_rows if name)
+        names.update(_vs_mapped_capability_names(limit))
     except Exception:
-        failures += 1
+        failed_sources.append("value-stream mappings")
         logger.exception(
             "Failed to derive org-scoped capability names from value-stream mappings"
         )
 
     try:
-        app_rows = (
-            db.session.query(UnifiedCapability.name)
-            .join(
-                UnifiedApplicationCapabilityMapping,
-                UnifiedApplicationCapabilityMapping.unified_capability_id == UnifiedCapability.id,
-            )
-            .join(
-                ApplicationComponent,
-                UnifiedApplicationCapabilityMapping.application_component_id
-                == ApplicationComponent.id,
-            )
-            .distinct()
-            .limit(limit)
-            .all()
-        )
-        names.update(name for (name,) in app_rows if name)
+        names.update(_app_mapped_capability_names(limit))
     except Exception:
-        failures += 1
+        failed_sources.append("application mappings")
         logger.exception(
             "Failed to derive org-scoped capability names from application mappings"
         )
 
-    if failures == 2 and not names:
+    if failed_sources and not names:
         raise CapabilityCatalogUnavailableError(
-            "Both capability-catalog queries (value-stream mappings and "
-            "application mappings) failed; the empty result cannot be "
-            "trusted as a genuine empty state."
+            "Capability-catalog quer" + ("y" if len(failed_sources) == 1 else "ies")
+            + f" ({', '.join(failed_sources)}) failed and no real capability "
+            "names could be recovered from the other source; the empty "
+            "result cannot be trusted as a genuine empty state."
+        )
+
+    if failed_sources:
+        logger.warning(
+            "Proceeding with partial capability-catalog results: %s failed, "
+            "but %d real name(s) were recovered from the other source",
+            " and ".join(failed_sources),
+            len(names),
         )
 
     return sorted(names)[:limit]

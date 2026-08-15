@@ -236,7 +236,16 @@ class Config:
 
     # AI-originated CRUD approval gate (A95-008)
     # When true, AI CRUD endpoints return 202 pending_approval instead of writing directly.
-    REQUIRE_AI_APPROVAL = os.environ.get("REQUIRE_AI_APPROVAL", "false").lower() == "true"
+    # Defaults ON (governance wave, Aug 2026): the @require_ai_approval-decorated
+    # /ai-chat/data/* endpoints (app/modules/ai_chat/routes/workflow_routes.py) and the
+    # LLM-agent mutating-tool queue are AI-*initiated* writes — an LLM decided to make
+    # them, so they go through a human approval queue by default. This does NOT gate
+    # the ai_chat slash commands (/link-capability, /generate-from-capabilities in
+    # command_parser_service.py): those are parsed verbatim from the user's own typed
+    # message, not proposed by the LLM, so they execute directly regardless of this
+    # flag — see the comments at their write sites. Set REQUIRE_AI_APPROVAL=false to
+    # restore the pre-Aug-2026 direct-write behaviour for the LLM-agent paths.
+    REQUIRE_AI_APPROVAL = os.environ.get("REQUIRE_AI_APPROVAL", "true").lower() == "true"
 
     # North Star Navigation (NORTH-STAR-001)
     # Enterprise-grade navigation for Fortune 500 TOGAF/ArchiMate practitioners.
