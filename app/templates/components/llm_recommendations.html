@@ -210,7 +210,7 @@ function llmRecommendationsComponent(dashboard) {
                                         <template x-for="star in 5" :key="star">
                                             <i data-lucide="star" 
                                                class="h-4 w-4"
-                                               :class="star <= rec.user_rating ? 'fill-yellow-400 text-warning/80' : 'text-muted-foreground/50'"></i>
+                                               :class="star <= rec.user_rating ? 'fill-yellow-400 text-warning-emphasis/80' : 'text-muted-foreground/50'"></i>
                                         </template>
                                     </div>
                                 </template>
@@ -277,7 +277,7 @@ function llmRecommendationsComponent(dashboard) {
                                 type="button">
                             <i data-lucide="star" 
                                class="h-8 w-8 cursor-pointer transition-colors"
-                               :class="star <= ratingData.rating ? 'fill-yellow-400 text-warning/80' : 'text-muted-foreground/50 hover:text-warning/50'"></i>
+                               :class="star <= ratingData.rating ? 'fill-yellow-400 text-warning-emphasis/80' : 'text-muted-foreground/50 hover:text-warning-emphasis/50'"></i>
                         </button>
                     </template>
                     <span class="ml-2 text-sm text-muted-foreground" x-text="ratingData.rating + ' / 5'"></span>

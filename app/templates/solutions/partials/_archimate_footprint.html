@@ -163,7 +163,7 @@
     </div>
 
     {# Error state #}
-    <div x-show="!amLoading && amError" x-cloak class="text-sm text-destructive py-2" x-text="'Error: ' + amError"></div>
+    <div x-show="!amLoading && amError" x-cloak class="text-sm text-destructive-emphasis py-2" x-text="'Error: ' + amError"></div>
 
     {# Empty state #}
     <div x-show="!amLoading && !amError && amLoaded && amTotal === 0" x-cloak

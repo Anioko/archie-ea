@@ -15,7 +15,7 @@
                         </template>
                     </div>
                 </div>
-                <button type="button" @click="stepWarningsDismissed[5] = true" class="text-warning hover:text-warning-emphasis shrink-0" aria-label="Dismiss">
+                <button type="button" @click="stepWarningsDismissed[5] = true" class="text-warning-emphasis hover:text-warning-emphasis shrink-0" aria-label="Dismiss">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
@@ -142,9 +142,9 @@
                         </template>
                         <template x-if="opt.risk_level">
                             <span :class="{
-                                'text-destructive': opt.risk_level === 'high',
-                                'text-warning': opt.risk_level === 'medium',
-                                'text-success': opt.risk_level === 'low'
+                                'text-destructive-emphasis': opt.risk_level === 'high',
+                                'text-warning-emphasis': opt.risk_level === 'medium',
+                                'text-success-emphasis': opt.risk_level === 'low'
                             }" x-text="'Risk: ' + opt.risk_level"></span>
                         </template>
                     </div>
@@ -249,7 +249,7 @@
                                         </template>
                                     </select>
                                     <template x-if="!el.plateau_phase">
-                                        <span class="text-[9px] text-warning font-medium">No plateau</span>
+                                        <span class="text-[9px] text-warning-emphasis font-medium">No plateau</span>
                                     </template>
                                     {# Implementation status inline select #}
                                     <select x-model="el.implementation_status"
@@ -269,7 +269,7 @@
                                         <option value="blocked">Blocked</option>
                                     </select>
                                     <template x-if="el.dependencies">
-                                        <span class="text-[10px] text-warning" title="Has dependencies">
+                                        <span class="text-[10px] text-warning-emphasis" title="Has dependencies">
                                             <i data-lucide="link" class="w-3 h-3 inline" aria-hidden="true"></i>
                                         </span>
                                     </template>

@@ -160,7 +160,7 @@
   {% call modal(id='edit-vendor-modal', title='Edit Vendor', size='lg') %}
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-medium mb-1">Vendor Name <span class="text-destructive">*</span></label>
+        <label class="block text-sm font-medium mb-1">Vendor Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" x-model="editForm.name" required maxlength="200"
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="Vendor name" aria-label="Vendor Name">
@@ -249,7 +249,7 @@
       <form @submit.prevent="submitCreateVendor()" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
-          <label for="cv-name" class="block text-sm font-medium mb-1">Vendor Name <span class="text-destructive">*</span></label>
+          <label for="cv-name" class="block text-sm font-medium mb-1">Vendor Name <span class="text-destructive-emphasis">*</span></label>
           <input type="text" id="cv-name" name="name" x-model="formData.name" required maxlength="200"
                  class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                  placeholder="Enter vendor name">

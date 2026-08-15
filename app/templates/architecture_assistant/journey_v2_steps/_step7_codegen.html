@@ -341,7 +341,7 @@
             <div x-show="codegenError" x-cloak
                  class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
                 <i data-lucide="alert-triangle" class="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
-                <p class="text-sm text-destructive" x-text="codegenError"></p>
+                <p class="text-sm text-destructive-emphasis" x-text="codegenError"></p>
             </div>
 
             {# Generate button — all languages including full-stack #}
@@ -391,7 +391,7 @@
                               :class="{
                                   'text-success-emphasis': (codegenResult?.quality_score || 0) >= 85,
                                   'text-warning-emphasis': (codegenResult?.quality_score || 0) >= 65 && (codegenResult?.quality_score || 0) < 85,
-                                  'text-destructive': (codegenResult?.quality_score || 0) < 65
+                                  'text-destructive-emphasis': (codegenResult?.quality_score || 0) < 65
                               }"
                               x-text="(codegenResult?.quality_score || 0) + '/100'"></span>
                     </div>
@@ -446,7 +446,7 @@
                             </span>
                         </template>
                     </button>
-                    <p x-show="dockerPreviewError" x-cloak class="text-xs text-destructive px-1" x-text="dockerPreviewError"></p>
+                    <p x-show="dockerPreviewError" x-cloak class="text-xs text-destructive-emphasis px-1" x-text="dockerPreviewError"></p>
 
                     {# StackBlitz — live frontend (full-stack only) #}
                     <button x-show="codegenResult && codegenResult._fullstack" x-cloak
@@ -572,7 +572,7 @@
                     <div class="flex items-center justify-between pt-2 border-t border-border">
                         <span class="text-xs text-muted-foreground" x-text="'Version ' + (deployVersion || 1)"></span>
                         <button @click="destroyDeployment()"
-                                class="text-xs text-destructive underline hover:text-destructive/80">Stop deployment</button>
+                                class="text-xs text-destructive-emphasis underline hover:text-destructive-emphasis/80">Stop deployment</button>
                     </div>
                 </div>
             </template>

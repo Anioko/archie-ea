@@ -59,9 +59,9 @@
             return '✗';
         },
         validationClass(status) {
-            if (status === 'valid') return 'text-success';
+            if (status === 'valid') return 'text-success-emphasis';
             if (status === 'advisory') return 'text-warning-emphasis';
-            return 'text-destructive';
+            return 'text-destructive-emphasis';
         },
 
         get solutionId() {
@@ -615,7 +615,7 @@
                             <td class="py-2 px-3 text-right">
                                 <button
                                     @click="deleteRelationship(row.id)"
-                                    class="text-muted-foreground hover:text-destructive transition-colors p-1"
+                                    class="text-muted-foreground hover:text-destructive-emphasis transition-colors p-1"
                                     title="Delete relationship"
                                 >
                                     <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>

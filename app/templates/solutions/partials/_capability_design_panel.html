@@ -81,7 +81,7 @@
                 <template x-for="cap in selectedCapabilities" :key="cap.capability_id">
                     <span class="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
                         <span x-text="cap.capability_name"></span>
-                        <button @click="removeCapability(cap.mapping_id)" type="button" class="hover:text-destructive">&times;</button>
+                        <button @click="removeCapability(cap.mapping_id)" type="button" class="hover:text-destructive-emphasis">&times;</button>
                     </span>
                 </template>
             </div>
@@ -122,7 +122,7 @@
                                     </div>
                                 </template>
                                 <template x-if="row.applications.length === 0">
-                                    <p class="text-xs text-destructive italic">No applications currently support this capability -- gap identified</p>
+                                    <p class="text-xs text-destructive-emphasis italic">No applications currently support this capability -- gap identified</p>
                                 </template>
                             </div>
                         </template>

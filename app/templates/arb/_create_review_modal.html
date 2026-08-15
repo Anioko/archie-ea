@@ -7,13 +7,13 @@
 <form @submit.prevent="submitCreateReview()" class="space-y-4" x-data="arbReviewCreateModal()">
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <div class="sm:col-span-2">
-      <label for="car-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive">*</span></label>
+      <label for="car-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive-emphasis">*</span></label>
       <input type="text" id="car-title" x-model="formData.title" required maxlength="255"
              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              placeholder="e.g. Cloud Migration Architecture Proposal">
     </div>
     <div>
-      <label for="car-type" class="block text-sm font-medium mb-1">Review Type <span class="text-destructive">*</span></label>
+      <label for="car-type" class="block text-sm font-medium mb-1">Review Type <span class="text-destructive-emphasis">*</span></label>
       <select id="car-type" x-model="formData.review_type"
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <option value="">Select type...</option>
@@ -23,7 +23,7 @@
       </select>
     </div>
     <div>
-      <label for="car-decision-sought" class="block text-sm font-medium mb-1">Decision Sought <span class="text-destructive">*</span></label>
+      <label for="car-decision-sought" class="block text-sm font-medium mb-1">Decision Sought <span class="text-destructive-emphasis">*</span></label>
       <select id="car-decision-sought" x-model="formData.decision_sought" required
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <option value="">What is the board being asked to approve?</option>
@@ -156,7 +156,7 @@
           </select>
         </div>
         <div class="sm:col-span-2">
-          <label for="car-capabilities" class="block text-sm font-medium mb-1">Capabilities <span class="text-destructive" x-cloak x-show="isCapabilityRequired()">*</span></label>
+          <label for="car-capabilities" class="block text-sm font-medium mb-1">Capabilities <span class="text-destructive-emphasis" x-cloak x-show="isCapabilityRequired()">*</span></label>
           <select id="car-capabilities" x-model="formData.capability_ids" multiple
                   class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <template x-for="c in formOptions.capabilities" :key="c.id">

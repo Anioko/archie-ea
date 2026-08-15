@@ -25,7 +25,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {{ metrics_card(title='Total Processes', value=total_processes, icon='workflow') }}
         {{ metrics_card(title='Avg Automation %', value=(avg_automation|string) ~ '%', icon='zap') }}
-        {{ metrics_card(title='Low Automation (<30%)', value=low_automation_count, icon='alert-triangle', icon_class='!text-destructive') }}
+        {{ metrics_card(title='Low Automation (<30%)', value=low_automation_count, icon='alert-triangle', icon_class='!text-destructive-emphasis') }}
         {{ metrics_card(title='Open Recommendations', value=open_recommendations_count, icon='lightbulb') }}
     </div>
 

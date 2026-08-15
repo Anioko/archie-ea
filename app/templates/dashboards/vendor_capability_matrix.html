@@ -248,7 +248,7 @@ document.addEventListener('alpine:init', () => {
                 </select>
             </div>
             <div class="space-y-1.5">
-                <label for="f-category" class="text-xs font-medium text-muted-foreground">Category <span class="text-destructive">*</span></label>
+                <label for="f-category" class="text-xs font-medium text-muted-foreground">Category <span class="text-destructive-emphasis">*</span></label>
                 <select id="f-category" x-model="filters.category" @change="loadData()"
                         class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
                     <option value="">— Select a category —</option>

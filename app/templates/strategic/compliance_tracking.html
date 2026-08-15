@@ -74,9 +74,9 @@
                             <td class="p-4 font-medium">{{ item.capability_name|default('N/A') }}</td>
                             <td class="p-4">
                                 <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold
-                                    {% if item.status == 'Critical' %}border-destructive/30 text-destructive
-                                    {% elif item.status == 'Non-Compliant' %}border-warning/30 text-warning
-                                    {% else %}border-success/30 text-success{% endif %}">
+                                    {% if item.status == 'Critical' %}border-destructive/30 text-destructive-emphasis
+                                    {% elif item.status == 'Non-Compliant' %}border-warning/30 text-warning-emphasis
+                                    {% else %}border-success/30 text-success-emphasis{% endif %}">
                                     {{ item.status|default('Unknown') }}
                                 </span>
                             </td>

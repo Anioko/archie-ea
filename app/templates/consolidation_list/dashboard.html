@@ -64,7 +64,7 @@
                 <i data-lucide="bar-chart-3" class="h-4 w-4" aria-hidden="true"></i>
                 <span x-text="scoringInProgress ? 'Scoring...' : 'Score All (TIME)'"></span>
             </button>
-            <button type="button" @click="recalculateSavings()" :disabled="recalcInProgress" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-success bg-success/10 hover:bg-success/20 text-success text-sm font-medium transition-colors disabled:opacity-50" aria-label="Recalculate savings for all entries">
+            <button type="button" @click="recalculateSavings()" :disabled="recalcInProgress" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-success bg-success/10 hover:bg-success/20 text-success-emphasis text-sm font-medium transition-colors disabled:opacity-50" aria-label="Recalculate savings for all entries">
                 <i data-lucide="calculator" class="h-4 w-4" aria-hidden="true"></i>
                 <span x-text="recalcInProgress ? 'Recalculating...' : 'Recalculate Savings'"></span>
             </button>
@@ -155,7 +155,7 @@
              x-transition:leave-end="opacity-0">
             <span class="text-sm font-medium" x-text="selectedCount + ' selected'" aria-live="polite"></span>
             <div class="h-4 w-px bg-border"></div>
-            <button type="button" class="text-sm font-medium text-destructive hover:text-destructive/80 transition-colors" @click="bulkAction('decommission')">Decommission</button>
+            <button type="button" class="text-sm font-medium text-destructive-emphasis hover:text-destructive-emphasis/80 transition-colors" @click="bulkAction('decommission')">Decommission</button>
             <button type="button" class="text-sm font-medium text-foreground hover:text-primary transition-colors" @click="bulkAction('set_wave')">Set Wave</button>
             <button type="button" class="text-sm font-medium text-foreground hover:text-primary transition-colors" @click="bulkAction('assign_owner')">Assign Owner</button>
             <div class="h-4 w-px bg-border"></div>
@@ -224,7 +224,7 @@
                             <td colspan="12" class="text-center py-12">
                                 <div class="flex flex-col items-center gap-2">
                                     <i data-lucide="alert-circle" class="h-10 w-10 text-destructive/50" aria-hidden="true"></i>
-                                    <p class="text-sm text-destructive" x-text="errorMsg"></p>
+                                    <p class="text-sm text-destructive-emphasis" x-text="errorMsg"></p>
                                     <button type="button" class="mt-1 text-sm text-primary hover:underline" @click="refresh()">Try again</button>
                                 </div>
                             </td>
@@ -356,8 +356,8 @@
                             <td class="px-4 py-3 text-right" @click.stop>
                                 <div class="flex items-center justify-end gap-1.5">
                                     <button type="button" class="text-primary hover:text-primary/90 text-xs" @click="openEditEntry(entry.id)" title="Edit">Edit</button>
-                                    <button type="button" x-show="entry.recommended_action !== 'add_to_roadmap'" x-cloak class="text-success hover:text-success/80 text-xs" @click="openRoadmapConfig(entry.id)" title="Add to roadmap">Roadmap</button>
-                                    <button type="button" class="text-destructive hover:text-destructive/90 text-xs" @click="removeEntry(entry.id)" title="Remove">Remove</button>
+                                    <button type="button" x-show="entry.recommended_action !== 'add_to_roadmap'" x-cloak class="text-success-emphasis hover:text-success-emphasis/80 text-xs" @click="openRoadmapConfig(entry.id)" title="Add to roadmap">Roadmap</button>
+                                    <button type="button" class="text-destructive-emphasis hover:text-destructive-emphasis/90 text-xs" @click="removeEntry(entry.id)" title="Remove">Remove</button>
                                 </div>
                             </td>
                         </tr>
@@ -384,7 +384,7 @@
                 </div>
 
                 {# Error loading detail #}
-                <div x-show="detailHasError(entry.id)" x-cloak class="text-sm text-destructive">
+                <div x-show="detailHasError(entry.id)" x-cloak class="text-sm text-destructive-emphasis">
                     Failed to load details.
                     <button type="button" class="text-primary hover:underline ml-1" @click="loadDetail(entry.id)">Retry</button>
                 </div>

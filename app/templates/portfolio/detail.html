@@ -96,7 +96,7 @@
             <td class="px-4 py-3 font-medium">
               {{ b.name }}
               {% if b.is_overdue %}
-              <span class="ml-1 text-xs text-destructive" title="Past target date with no measured actual">overdue</span>
+              <span class="ml-1 text-xs text-destructive-emphasis" title="Past target date with no measured actual">overdue</span>
               {% endif %}
             </td>
             <td class="px-4 py-3 text-muted-foreground">{{ b.measure or '—' }}{% if b.unit %} <span class="text-xs">({{ b.unit }})</span>{% endif %}</td>
@@ -237,7 +237,7 @@
             <td class="px-4 py-3 text-right tabular-nums">{{ a.exposure if a.exposure is not none else '—' }}</td>
             <td class="px-4 py-3">
               {{ a.validate_by_date.strftime('%Y-%m-%d') if a.validate_by_date else '—' }}
-              {% if a.is_overdue_for_validation %}<span class="ml-1 text-xs text-warning">overdue</span>{% endif %}
+              {% if a.is_overdue_for_validation %}<span class="ml-1 text-xs text-warning-emphasis">overdue</span>{% endif %}
             </td>
             <td class="px-4 py-3">{{ a.owner.email if a.owner else '—' }}</td>
             <td class="px-4 py-3">{{ a.status|title }}</td>

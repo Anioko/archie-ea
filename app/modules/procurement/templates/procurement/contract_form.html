@@ -178,7 +178,7 @@
 
       <div>
         <label for="contract_name" class="block text-sm font-medium mb-1.5">
-          Contract name <span class="text-destructive" aria-hidden="true">*</span>
+          Contract name <span class="text-destructive-emphasis" aria-hidden="true">*</span>
         </label>
         <input type="text" id="contract_name" name="contract_name" required maxlength="256"
                value="{{ current('contract_name', contract.contract_name if contract else '') | trim }}"

@@ -208,9 +208,9 @@
                     <div class="p-3 space-y-1 font-mono text-xs">
                         <template x-for="msg in streamMessages" :key="msg.timestamp + msg.message">
                             <div class="flex gap-2" :class="{
- 'text-success': msg.type === 'success',
- 'text-destructive': msg.type === 'error',
- 'text-warning': msg.type === 'warning',
+ 'text-success-emphasis': msg.type === 'success',
+ 'text-destructive-emphasis': msg.type === 'error',
+ 'text-warning-emphasis': msg.type === 'warning',
  'text-muted-foreground': msg.type === 'info'
  }">
                                 <span class="text-muted-foreground/60" x-text="msg.timestamp"></span>
@@ -408,7 +408,7 @@
                                     </span>
                                     <span
                                         x-show="batch.status === 'Committed'"
-                                        class="inline-flex items-center gap-1 text-sm text-success"
+                                        class="inline-flex items-center gap-1 text-sm text-success-emphasis"
                                     >
                                         <i data-lucide="check-circle" class="h-4 w-4" aria-hidden="true"></i>
                                         Committed
@@ -428,13 +428,13 @@
             <div class="p-6">
                 <div class="flex items-center gap-2 mb-4">
                     <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive" aria-hidden="true"></i>
-                    <h3 class="text-lg font-semibold text-destructive">Error Log</h3>
+                    <h3 class="text-lg font-semibold text-destructive-emphasis">Error Log</h3>
                 </div>
                 <div class="rounded-lg bg-destructive/10 p-4 max-h-64 overflow-y-auto">
                     <template x-for="(error, index) in job.error_log" :key="index">
                         <div class="flex items-start gap-2 py-2 border-b border-destructive/20 last:border-0">
                             <span class="text-xs text-muted-foreground" x-text="error.timestamp"></span>
-                            <span class="text-sm text-destructive" x-text="error.message"></span>
+                            <span class="text-sm text-destructive-emphasis" x-text="error.message"></span>
                         </div>
                     </template>
                 </div>
@@ -545,8 +545,8 @@ function jobDetail(jobId) {
         },
 
         get costVarianceClass() {
-            if (this.costVariance > 0) return 'text-destructive';
-            if (this.costVariance < 0) return 'text-success';
+            if (this.costVariance > 0) return 'text-destructive-emphasis';
+            if (this.costVariance < 0) return 'text-success-emphasis';
             return '';
         },
 
@@ -593,9 +593,9 @@ function jobDetail(jobId) {
             const classes = {
                 'pending': 'border-transparent bg-muted text-muted-foreground',
                 'processing': 'border-transparent bg-primary/10 text-primary',
-                'paused': 'border-transparent bg-warning/10 text-warning',
-                'completed': 'border-transparent bg-success/10 text-success',
-                'failed': 'border-transparent bg-destructive/10 text-destructive',
+                'paused': 'border-transparent bg-warning/10 text-warning-emphasis',
+                'completed': 'border-transparent bg-success/10 text-success-emphasis',
+                'failed': 'border-transparent bg-destructive/10 text-destructive-emphasis',
                 'cancelled': 'border-transparent bg-muted text-muted-foreground'
             };
             return classes[status] || classes['pending'];
@@ -607,10 +607,10 @@ function jobDetail(jobId) {
                 'queued': 'border-transparent bg-muted text-muted-foreground',
                 'processing': 'border-transparent bg-primary/10 text-primary',
                 'ready_for_review': 'border-transparent bg-accent text-primary',
-                'approved': 'border-transparent bg-warning/10 text-warning',
-                'committed': 'border-transparent bg-success/10 text-success',
-                'failed': 'border-transparent bg-destructive/10 text-destructive',
-                'rejected': 'border-transparent bg-destructive/10 text-destructive',
+                'approved': 'border-transparent bg-warning/10 text-warning-emphasis',
+                'committed': 'border-transparent bg-success/10 text-success-emphasis',
+                'failed': 'border-transparent bg-destructive/10 text-destructive-emphasis',
+                'rejected': 'border-transparent bg-destructive/10 text-destructive-emphasis',
                 'skipped': 'border-transparent bg-muted text-muted-foreground'
             };
             return classes[status] || classes['queued'];

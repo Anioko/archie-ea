@@ -63,7 +63,7 @@
                     </div>
                 </template>
                 <template x-if="generateError && !generateLoading">
-                    <div class="mt-2 text-xs text-destructive flex items-center gap-1">
+                    <div class="mt-2 text-xs text-destructive-emphasis flex items-center gap-1">
                         <i data-lucide="alert-circle" class="h-3 w-3" aria-hidden="true"></i>
                         <span x-text="generateError"></span>
                         <button @click="generateError = null" class="ml-1 underline">dismiss</button>
@@ -112,7 +112,7 @@
                                         </td>
                                         <td class="px-3 py-2">
                                             <button type="button" @click="unlinkEntity('vendor_product', vp.id)"
-                                                class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove product link">
+                                                class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove product link">
                                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                             </button>
                                         </td>
@@ -507,7 +507,7 @@
                                     <button type="button" @click="openEntityModal('option', rec)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
                                         <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" @click="confirmDeleteEntity('option', rec)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                    <button type="button" @click="confirmDeleteEntity('option', rec)" class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md" title="Delete">
                                         <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -553,7 +553,7 @@
                                 {# Cons #}
                                 <template x-if="rec.cons && rec.cons.length > 0">
                                     <div>
-                                        <span class="text-[10px] font-medium text-destructive uppercase">Cons</span>
+                                        <span class="text-[10px] font-medium text-destructive-emphasis uppercase">Cons</span>
                                         <ul class="mt-1 space-y-0.5">
                                             <template x-for="con in rec.cons.slice(0, 3)" :key="con">
                                                 <li class="flex items-start gap-1 text-xs text-muted-foreground">

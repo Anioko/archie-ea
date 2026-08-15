@@ -76,7 +76,7 @@
                                             <input type="hidden" name="action" value="delete"/>
                                             <input type="hidden" name="subscription_id" value="{{ sub.id }}"/>
                                             <button type="submit"
-                                                    class="p-1.5 rounded-md hover:bg-background transition-colors text-destructive"
+                                                    class="p-1.5 rounded-md hover:bg-background transition-colors text-destructive-emphasis"
                                                     title="Delete"
                                                     aria-label="Delete webhook subscription">
                                                 <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
@@ -108,7 +108,7 @@
                         <!-- Webhook Type -->
                         <div>
                             <label for="webhook_type" class="block text-sm font-medium mb-2">
-                                Webhook Type <span class="text-destructive">*</span>
+                                Webhook Type <span class="text-destructive-emphasis">*</span>
                             </label>
                             <select id="webhook_type"
                                     name="webhook_type"
@@ -127,7 +127,7 @@
                         <!-- Webhook URL -->
                         <div>
                             <label for="url" class="block text-sm font-medium mb-2">
-                                Webhook URL <span class="text-destructive">*</span>
+                                Webhook URL <span class="text-destructive-emphasis">*</span>
                             </label>
                             <input type="url"
                                    id="url"

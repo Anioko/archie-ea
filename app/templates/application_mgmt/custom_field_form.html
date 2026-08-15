@@ -30,7 +30,7 @@
                     {{ form.field_name.label(class="block text-sm font-medium text-foreground mb-2") }}
                     {{ form.field_name(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring") }}
                     {% if form.field_name.errors %}
-                        <div class="mt-1 text-sm text-destructive">
+                        <div class="mt-1 text-sm text-destructive-emphasis">
                             {% for error in form.field_name.errors %}
                                 {{ error }}
                             {% endfor %}
@@ -43,7 +43,7 @@
                     {{ form.field_type.label(class="block text-sm font-medium text-foreground mb-2") }}
                     {{ form.field_type(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring") }}
                     {% if form.field_type.errors %}
-                        <div class="mt-1 text-sm text-destructive">
+                        <div class="mt-1 text-sm text-destructive-emphasis">
                             {% for error in form.field_type.errors %}
                                 {{ error }}
                             {% endfor %}
@@ -56,7 +56,7 @@
                     {{ form.description.label(class="block text-sm font-medium text-foreground mb-2") }}
                     {{ form.description(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring", rows="3") }}
                     {% if form.description.errors %}
-                        <div class="mt-1 text-sm text-destructive">
+                        <div class="mt-1 text-sm text-destructive-emphasis">
                             {% for error in form.description.errors %}
                                 {{ error }}
                             {% endfor %}
@@ -71,7 +71,7 @@
                         {{ form.required.label(class="ml-2 block text-sm text-foreground") }}
                     </div>
                     {% if form.required.errors %}
-                        <div class="mt-1 text-sm text-destructive">
+                        <div class="mt-1 text-sm text-destructive-emphasis">
                             {% for error in form.required.errors %}
                                 {{ error }}
                             {% endfor %}

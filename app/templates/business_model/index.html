@@ -67,7 +67,7 @@
 <form method="POST" action="{{ url_for('business_model.create') }}" class="space-y-4" data-testid="bmc-create-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
-    <label for="bmc-name" class="block text-sm font-medium mb-1">Name <span class="text-destructive" aria-hidden="true">*</span></label>
+    <label for="bmc-name" class="block text-sm font-medium mb-1">Name <span class="text-destructive-emphasis" aria-hidden="true">*</span></label>
     <input id="bmc-name" name="name" type="text" required maxlength="256" placeholder="e.g. Core Retail Business"
       class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
   </div>

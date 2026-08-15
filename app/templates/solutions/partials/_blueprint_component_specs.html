@@ -90,7 +90,7 @@
                                             <td class="py-2 px-3 text-foreground font-mono text-xs" x-text="field.name"></td>
                                             <td class="py-2 px-3 text-muted-foreground" x-text="field.type + (field.format ? '(' + field.format + ')' : '')"></td>
                                             <td class="py-2 px-3">
-                                                <span :class="field.required ? 'text-success' : 'text-muted-foreground'" x-text="field.required ? 'Yes' : 'No'"></span>
+                                                <span :class="field.required ? 'text-success-emphasis' : 'text-muted-foreground'" x-text="field.required ? 'Yes' : 'No'"></span>
                                             </td>
                                             <td class="py-2 px-3 text-muted-foreground" x-text="field.description || ''"></td>
                                         </tr>

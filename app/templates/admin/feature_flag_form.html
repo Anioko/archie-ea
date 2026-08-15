@@ -20,14 +20,14 @@
                 <div>
                     <label for="{{ form.key.id }}" class="block text-sm font-medium mb-2">
                         {{ form.key.label }}
-                        <span class="text-destructive">*</span>
+                        <span class="text-destructive-emphasis">*</span>
                     </label>
                     {{ form.key(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50") }}
                     {% if form.key.description %}
                     <p class="text-xs text-muted-foreground mt-1">{{ form.key.description }}</p>
                     {% endif %}
                     {% if form.key.errors %}
-                    <p class="text-xs text-destructive mt-1">{{ form.key.errors[0] }}</p>
+                    <p class="text-xs text-destructive-emphasis mt-1">{{ form.key.errors[0] }}</p>
                     {% endif %}
                 </div>
 
@@ -35,11 +35,11 @@
                 <div>
                     <label for="{{ form.name.id }}" class="block text-sm font-medium mb-2">
                         {{ form.name.label }}
-                        <span class="text-destructive">*</span>
+                        <span class="text-destructive-emphasis">*</span>
                     </label>
                     {{ form.name(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50") }}
                     {% if form.name.errors %}
-                    <p class="text-xs text-destructive mt-1">{{ form.name.errors[0] }}</p>
+                    <p class="text-xs text-destructive-emphasis mt-1">{{ form.name.errors[0] }}</p>
                     {% endif %}
                 </div>
 
@@ -56,7 +56,7 @@
                     <div>
                         <label for="{{ form.feature_type.id }}" class="block text-sm font-medium mb-2">
                             {{ form.feature_type.label }}
-                            <span class="text-destructive">*</span>
+                            <span class="text-destructive-emphasis">*</span>
                         </label>
                         {{ form.feature_type(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                     </div>
@@ -65,7 +65,7 @@
                     <div>
                         <label for="{{ form.state.id }}" class="block text-sm font-medium mb-2">
                             {{ form.state.label }}
-                            <span class="text-destructive">*</span>
+                            <span class="text-destructive-emphasis">*</span>
                         </label>
                         {{ form.state(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                     </div>

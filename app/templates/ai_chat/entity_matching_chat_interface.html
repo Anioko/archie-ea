@@ -693,13 +693,13 @@
             <!-- Entity Status -->
             <div class="mt-2 flex items-center gap-2">
               <template x-if="entity.status === 'matched'">
-                <span class="text-xs text-success">✓ Matched</span>
+                <span class="text-xs text-success-emphasis">✓ Matched</span>
               </template>
               <template x-if="entity.status === 'new'">
                 <span class="text-xs text-primary">+ New</span>
               </template>
               <template x-if="entity.status === 'duplicate'">
-                <span class="text-xs text-warning">⚠ Duplicate</span>
+                <span class="text-xs text-warning-emphasis">⚠ Duplicate</span>
               </template>
               <template x-if="entity.status === 'pending'">
                 <span class="text-xs text-muted-foreground">⏳ Pending</span>

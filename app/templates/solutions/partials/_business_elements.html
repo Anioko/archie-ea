@@ -10,7 +10,7 @@
         </div>
         <div class="flex items-center gap-1 sad-actions">
             <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'B', elementType: 'BusinessProcess', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
-                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-warning hover:bg-warning/10 border border-warning/30 transition-colors"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-warning-emphasis hover:bg-warning/10 border border-warning/30 transition-colors"
                 title="Link an existing ArchiMate Business element">
                 <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
             </button>
@@ -64,7 +64,7 @@
                                     <button type="button" @click="openEntityModal('business_element', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
                                         <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" @click="confirmDeleteEntity('business_element', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                    <button type="button" @click="confirmDeleteEntity('business_element', item)" class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md" title="Delete">
                                         <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
                                 </div>

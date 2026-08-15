@@ -66,7 +66,7 @@
                     </div>
                 </template>
                 <template x-if="generateError && !generateLoading">
-                    <div class="mt-2 text-xs text-destructive flex items-center gap-1">
+                    <div class="mt-2 text-xs text-destructive-emphasis flex items-center gap-1">
                         <i data-lucide="alert-circle" class="h-3 w-3" aria-hidden="true"></i>
                         <span x-text="generateError"></span>
                         <button @click="generateError = null" class="ml-1 underline">dismiss</button>
@@ -140,7 +140,7 @@
                                         </td>
                                         <td class="px-3 py-2">
                                             <button type="button" @click="unlinkTechnologyElement(el.id)"
-                                                class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove technology element link">
+                                                class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove technology element link">
                                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                             </button>
                                         </td>

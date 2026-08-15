@@ -28,7 +28,7 @@
       <button @click="createEpic()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90">Create</button>
       <button @click="showEpicForm = false; newEpicTitle = ''" class="px-4 py-2 bg-muted text-foreground rounded-md text-sm hover:bg-muted">Cancel</button>
     </div>
-    <p x-show="epicError" x-cloak x-text="epicError" class="mt-2 text-destructive text-xs"></p>
+    <p x-show="epicError" x-cloak x-text="epicError" class="mt-2 text-destructive-emphasis text-xs"></p>
   </div>
 
   <!-- Epic Tree -->
@@ -79,7 +79,7 @@
               <button @click="createStory(epic)" class="px-3 py-1.5 bg-success text-primary-foreground rounded text-xs hover:bg-success/90">Add</button>
               <button @click="storyForm.epicId = null" class="px-3 py-1.5 bg-muted text-foreground rounded text-xs">Cancel</button>
             </div>
-            <p x-show="storyForm.error" x-cloak x-text="storyForm.error" class="mt-1 text-destructive text-xs"></p>
+            <p x-show="storyForm.error" x-cloak x-text="storyForm.error" class="mt-1 text-destructive-emphasis text-xs"></p>
           </div>
 
           <template x-for="story in epic.stories" :key="story.id">
@@ -115,7 +115,7 @@
                     <button @click="createSubtask(story)" class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90">Add</button>
                     <button @click="subtaskForm.storyId = null" class="px-3 py-1 bg-muted text-foreground rounded text-xs">Cancel</button>
                   </div>
-                  <p x-show="subtaskForm.error" x-cloak x-text="subtaskForm.error" class="mt-1 text-destructive text-xs"></p>
+                  <p x-show="subtaskForm.error" x-cloak x-text="subtaskForm.error" class="mt-1 text-destructive-emphasis text-xs"></p>
                 </div>
 
                 <template x-for="st in story.subtasks" :key="st.id">

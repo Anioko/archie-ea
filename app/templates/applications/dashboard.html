@@ -46,7 +46,7 @@
 {% if app and (app.deployment_status == 'retired' or app.lifecycle_status == 'retired') %}
 <div class="mb-4 flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
   <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive shrink-0" aria-hidden="true"></i>
-  <span class="text-sm font-semibold text-destructive">RETIRED — This application has been decommissioned and is no longer active.</span>
+  <span class="text-sm font-semibold text-destructive-emphasis">RETIRED — This application has been decommissioned and is no longer active.</span>
 </div>
 {% endif %}
 
@@ -1720,9 +1720,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Change Failure Rate</p>
             <p class="font-medium
- {% if health_metrics.change_failure_rate < 5 %}text-success
- {% elif health_metrics.change_failure_rate < 15 %}text-warning
- {% else %}text-destructive{% endif %}">
+ {% if health_metrics.change_failure_rate < 5 %}text-success-emphasis
+ {% elif health_metrics.change_failure_rate < 15 %}text-warning-emphasis
+ {% else %}text-destructive-emphasis{% endif %}">
               {{ '%.1f' | format(health_metrics.change_failure_rate) }}%
             </p>
           </div>
@@ -1749,15 +1749,15 @@
 
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Technical Debt</p>
-            <p class="font-medium text-warning">{{ quality_metrics.technical_debt_hours }} hrs</p>
+            <p class="font-medium text-warning-emphasis">{{ quality_metrics.technical_debt_hours }} hrs</p>
           </div>
 
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Open Bugs</p>
             <p class="font-medium
- {% if quality_metrics.bugs_count == 0 %}text-success
- {% elif quality_metrics.bugs_count < 10 %}text-warning
- {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.bugs_count == 0 %}text-success-emphasis
+ {% elif quality_metrics.bugs_count < 10 %}text-warning-emphasis
+ {% else %}text-destructive-emphasis{% endif %}">
               {{ quality_metrics.bugs_count }}
             </p>
           </div>
@@ -1765,8 +1765,8 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Vulnerabilities</p>
             <p class="font-medium
- {% if quality_metrics.vulnerabilities_count == 0 %}text-success
- {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.vulnerabilities_count == 0 %}text-success-emphasis
+ {% else %}text-destructive-emphasis{% endif %}">
               {{ quality_metrics.vulnerabilities_count }}
             </p>
           </div>

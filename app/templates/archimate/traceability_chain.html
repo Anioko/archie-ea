@@ -391,7 +391,7 @@
                         <textarea id="edit-desc" x-model="editElement.description" rows="3"
                                   class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
                     </div>
-                    <div x-show="editError" x-cloak class="text-destructive text-xs mb-3" x-text="editError"></div>
+                    <div x-show="editError" x-cloak class="text-destructive-emphasis text-xs mb-3" x-text="editError"></div>
                     <div class="flex items-center justify-between">
                         <a :href="'/archimate/composer?element_id=' + editElement.id"
                            class="text-xs text-muted-foreground hover:text-foreground underline">Edit in Composer</a>
@@ -436,7 +436,7 @@
                     </template>
                 </select>
             </div>
-            <div x-show="linkError" x-cloak class="text-destructive text-xs mb-3" x-text="linkError"></div>
+            <div x-show="linkError" x-cloak class="text-destructive-emphasis text-xs mb-3" x-text="linkError"></div>
             <div class="flex justify-end gap-2">
                 <button type="button" @click="closeLinkModal()" class="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium border border-input bg-background hover:bg-accent">Cancel</button>
                 <button type="button" @click="submitLink()" :disabled="!linkTargetId || linkSaving" class="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">

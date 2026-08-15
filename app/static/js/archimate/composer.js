@@ -1573,13 +1573,7 @@ function composerApp() {
                     return;
                 }
 
-                fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
-                    credentials: 'same-origin',
-                })
-                .then(function(r) {
-                    if (!r.ok) { throw new Error('valid-relationship-types request failed: ' + r.status); }
-                    return r.json();
-                })
+                Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true })
                 .then(function(data) {
                     let validDetailed = data.valid_types_detailed || [];
                     self.relPickerTypes = validDetailed.length > 0
@@ -1679,10 +1673,7 @@ function composerApp() {
                     self.statusText = 'Pick relationship type…';
 
                     let ALL_REL = ['composition','aggregation','assignment','realization','serving','access','influence','triggering','flow','specialization','association'];
-                    fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
-                        credentials: 'same-origin',
-                    })
-                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                    Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true })
                     .then(function(data) {
                         let validDetailed = data.valid_types_detailed || [];
                         self.relPickerTypes = validDetailed.length > 0 ? validDetailed
@@ -1744,8 +1735,7 @@ function composerApp() {
 
                 /* Fetch rich detail from API (skip __builtin__ template elements) */
                 if (elId && parseInt(elId, 10) > 0) {
-                    fetch('/archimate/api/elements/' + elId + '/detail', { credentials: 'same-origin' })
-                    .then(function(r) { if (!r.ok) throw new Error('not found'); return r.json(); })
+                    Platform.fetch('/archimate/api/elements/' + elId + '/detail', { silent: true })
                     .then(function(data) {
                         if (self.selectedNode && self.selectedNode.elementId === elId) {
                             self.selectedNode.description = data.description || '';
@@ -2385,10 +2375,9 @@ function composerApp() {
 
             /* ── Wave 10: Load quality score for solution ── */
             if (self.solutionId) {
-                fetch('/api/solutions/' + self.solutionId + '/quality-score', { credentials: 'same-origin' })
-                    .then(function(r) { return r.ok ? r.json() : null; /* swallow-ok: unrequested enrichment fetched on canvas open; qualityScore stays null so the toolbar badge (x-if="qualityScore") is simply absent — it never shows a made-up percentage — and the user has no action to take */ })
+                Platform.fetch('/api/solutions/' + self.solutionId + '/quality-score', { silent: true })
                     .then(function(data) { if (data) self.qualityScore = data; })
-                    .catch(function() { /* swallow-ok: same unrequested enrichment; a network failure while opening the canvas must not interrupt the modelling task with a toast about a badge */ });
+                    .catch(function() { /* swallow-ok: unrequested enrichment fetched on canvas open; qualityScore stays null so the toolbar badge (x-if="qualityScore") is simply absent — it never shows a made-up percentage — and a network failure or non-ok response while opening the canvas must not interrupt the modelling task with a toast about a badge */ });
             }
 
             /* ── Check for saved viewpoint_id in URL ── */
@@ -2968,10 +2957,7 @@ function composerApp() {
             let self = this;
             self.statusText = 'Loading...';
 
-            fetch('/archimate/viewpoints-api/basic/data?solution_id=' + this.solutionId, {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch('/archimate/viewpoints-api/basic/data?solution_id=' + this.solutionId, { silent: true })
             .then(function(data) {
                 let elements = data.elements || [];
                 let relationships = data.relationships || [];
@@ -3031,7 +3017,7 @@ function composerApp() {
             })
             .catch(function(err) {
                 console.error('[Composer] load error:', err);
-                _toast('error', 'Failed to load diagram: ' + (err.message || err));
+                _toast('error', 'Failed to load diagram: ' + ((err && err.message) || err));
                 self.statusText = 'Error loading data';
             });
         },
@@ -3162,13 +3148,7 @@ function composerApp() {
             let targetName = overlappingCell.get('elName') || '';
 
             /* Fetch valid relationship types for this pair */
-            fetch('/api/archimate/valid-relationships/' + encodeURIComponent(newType) + '/' + encodeURIComponent(targetType), {
-                credentials: 'same-origin'
-            })
-            .then(function(r) {
-                if (!r.ok) { throw new Error('valid-relationships request failed: ' + r.status); }
-                return r.json();
-            })
+            Platform.fetch('/api/archimate/valid-relationships/' + encodeURIComponent(newType) + '/' + encodeURIComponent(targetType), { silent: true })
             .then(function(data) {
                 let validTypes = (data.data || {}).valid_relationship_types || [];
                 if (validTypes.length === 0) {
@@ -3209,11 +3189,10 @@ function composerApp() {
             }
             self.capabilitiesLoading = true;
             self.capabilitiesError = '';
-            fetch('/solutions/' + self.solutionId + '/all-capabilities', {
-                credentials: 'same-origin',
+            Platform.fetch('/solutions/' + self.solutionId + '/all-capabilities', {
                 headers: { 'Accept': 'application/json' },
+                silent: true,
             })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function(data) {
                 let caps = data.capabilities || data.data || [];
                 self.sidebarCapabilities = caps;
@@ -3225,7 +3204,7 @@ function composerApp() {
             .catch(function(err) {
                 self.capabilitiesLoading = false;
                 self.capabilitiesError = 'Failed to load capabilities';
-                _toast('error', 'Failed to load capabilities: ' + (err.message || 'Unknown error'));
+                _toast('error', 'Failed to load capabilities: ' + ((err && err.message) || 'Unknown error'));
             });
         },
 
@@ -3235,16 +3214,7 @@ function composerApp() {
             if (!self.solutionId) return;
             self.statusText = 'Generating elements from capability...';
 
-            fetch('/solutions/' + self.solutionId + '/generate-from-capabilities', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken(),
-                },
-                body: JSON.stringify({ capability_ids: [capId] }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/solutions/' + self.solutionId + '/generate-from-capabilities', { capability_ids: [capId] }, { silent: true })
             .then(function(data) {
                 if (!data.success) {
                     self.statusText = 'Generation failed: ' + (data.error || 'unknown');
@@ -3281,7 +3251,7 @@ function composerApp() {
             })
             .catch(function(err) {
                 self.statusText = 'Generation failed';
-                _toast('error', 'Generation failed: ' + (err.message || 'Unknown error'));
+                _toast('error', 'Generation failed: ' + ((err && err.message) || 'Unknown error'));
             });
         },
 
@@ -3298,8 +3268,7 @@ function composerApp() {
             self._reuseDebounceTimer = setTimeout(function() {
                 self.checkingReuse = true;
                 let url = '/archimate/api/elements/search?q=' + encodeURIComponent(name) + '&limit=5';
-                fetch(url, { credentials: 'same-origin' })
-                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch(url, { silent: true })
                     .then(function(resp) {
                         let data = resp.data || resp || [];
                         self.similarElements = Array.isArray(data) ? data.filter(function(el) {
@@ -3332,12 +3301,7 @@ function composerApp() {
             });
             if (ids.length === 0) return;
 
-            fetch('/archimate/api/element-maturity', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ element_ids: ids }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/element-maturity', { element_ids: ids }, { silent: true })
             .then(function(data) {
                 let maturity = data.maturity || {};
                 elements.forEach(function(cell) {
@@ -3556,10 +3520,7 @@ function composerApp() {
         checkRelationshipHealth: function() {
             let self = this;
             if (!self.currentSavedVpId) return;
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/relationship-health', {
-                headers: { 'X-CSRFToken': (document.cookie.match(/csrf_token=([^;]+)/) || [])[1] || '' },
-            })
-            .then(function(r) { return r.ok ? r.json() : null; /* swallow-ok: unsolicited background staleness advisory; on failure the review panel just does not open, the viewpoint itself is unaffected, and the user was never told the check would run */ })
+            Platform.fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/relationship-health', { silent: true })
             .then(function(data) {
                 if (!data || !data.stale_relationships || !data.stale_relationships.length) return;
                 let dismissed = sessionStorage.getItem('ent111_dismissed_vp' + self.currentSavedVpId);
@@ -3567,7 +3528,7 @@ function composerApp() {
                 self.staleRelationships = data.stale_relationships;
                 self.showStalenessReview = true;
             })
-            .catch(function() { /* swallow-ok: unsolicited background staleness advisory; on failure the review panel just does not open, and the user was never told it would */ });
+            .catch(function() { /* swallow-ok: unsolicited background staleness advisory; on failure the review panel just does not open, the viewpoint itself is unaffected, and the user was never told the check would run */ });
         },
 
         keepAsIntent: function(relId) {
@@ -3578,21 +3539,15 @@ function composerApp() {
                "marked as architectural intent"; the flag was never persisted and
                the relationship reappeared as stale on the next check. Only remove
                the row once the server has confirmed the write. */
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': (document.cookie.match(/csrf_token=([^;]+)/) || [])[1] || '',
-                },
-                body: JSON.stringify({ relationship_intent: { rel_id: relId, is_architectural_intent: true } }),
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('Server returned ' + r.status);
+            Platform.fetch.patch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId, {
+                relationship_intent: { rel_id: relId, is_architectural_intent: true },
+            }, { silent: true })
+            .then(function() {
                 self.staleRelationships = self.staleRelationships.filter(function(x) { return x.rel_id !== relId; });
                 if (!self.staleRelationships.length) { self.showStalenessReview = false; }
             })
             .catch(function(err) {
-                _toast('error', 'Could not mark the relationship as architectural intent — ' + (err.message || 'the change was not saved'));
+                _toast('error', 'Could not mark the relationship as architectural intent — ' + ((err && err.message) || 'the change was not saved'));
             });
         },
 
@@ -3916,10 +3871,7 @@ function composerApp() {
             self.statusText = 'Pick relationship type\u2026';
 
             let ALL_REL = ['composition','aggregation','assignment','realization','serving','access','influence','triggering','flow','specialization','association'];
-            fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true })
             .then(function(data) {
                 let validDetailed = data.valid_types_detailed || [];
                 self.relPickerTypes = validDetailed.length > 0 ? validDetailed
@@ -4144,13 +4096,7 @@ function composerApp() {
             /* GAP-CMP-005: Sync name to catalog so other diagrams see the change */
             let elId = cell.get('elementId');
             if (elId && parseInt(elId, 10) > 0) {
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ name: newName }),
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.patch('/archimate/api/elements/' + elId, { name: newName }, { silent: true })
                 .then(function(data) {
                     if (data.error) _toast('error', data.error);
                 })
@@ -4165,13 +4111,7 @@ function composerApp() {
             let elId = this._currentSelectedCell.get('elementId');
             if (elId && parseInt(elId, 10) > 0) {
                 let desc = this.selectedNode.description || '';
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ description: desc }),
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.patch('/archimate/api/elements/' + elId, { description: desc }, { silent: true })
                 .then(function(data) {
                     if (data.error) _toast('error', data.error);
                 })
@@ -4193,17 +4133,12 @@ function composerApp() {
             const pii = this.selectedNode._containsPII || false;
 
             /* Update custom_properties on the server via PATCH */
-            fetch('/archimate/api/elements/' + elId, {
-                method: 'PATCH', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    custom_properties: {
-                        data_classification: classification,
-                        contains_pii: pii,
-                    }
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.patch('/archimate/api/elements/' + elId, {
+                custom_properties: {
+                    data_classification: classification,
+                    contains_pii: pii,
+                }
+            }, { silent: true })
             .catch(function() { _toast('error', 'Failed to save classification'); });
 
             /* Update visual badge on the JointJS node */
@@ -4219,12 +4154,7 @@ function composerApp() {
             /* Persist via custom_properties */
             let elId = this.selectedNode.elementId;
             if (elId && parseInt(elId, 10) > 0) {
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ custom_properties: { zone_type: zoneType } }),
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.patch('/archimate/api/elements/' + elId, { custom_properties: { zone_type: zoneType } }, { silent: true })
                 .catch(function() { _toast('error', 'Failed to save zone type'); });
             }
             this.statusText = 'Zone type: ' + zoneType;
@@ -4314,17 +4244,12 @@ function composerApp() {
                 let srcId = parent.get('elementId');
                 let tgtId = child.get('elementId');
                 if (srcId && tgtId) {
-                    fetch('/archimate/api/relationships', {
-                        method: 'POST', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                        body: JSON.stringify({
-                            source_element_id: srcId,
-                            target_element_id: tgtId,
-                            relationship_type: relType,
-                            solution_id: self.solutionId || null,
-                        }),
-                    })
-                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                    Platform.fetch.post('/archimate/api/relationships', {
+                        source_element_id: srcId,
+                        target_element_id: tgtId,
+                        relationship_type: relType,
+                        solution_id: self.solutionId || null,
+                    }, { silent: true })
                     .then(function(data) {
                         if (data.id) {
                             self.relCount++;
@@ -4563,7 +4488,7 @@ function composerApp() {
             }
             let self = this;
             self.statusText = 'Exporting ArchiMate XML...';
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/export?format=archimate_exchange')
+            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/export?format=archimate_exchange') // raw-fetch-ok: blob download, Platform.fetch always parses JSON/text
                 .then(function(resp) {
                     if (!resp.ok) throw new Error('Export failed: ' + resp.status);
                     return resp.blob();
@@ -4638,7 +4563,7 @@ function composerApp() {
             }
             vp.format = fmt;
             self.statusText = 'Exporting ' + label + '…';
-            fetch('/archimate/api/composer/export', {
+            fetch('/archimate/api/composer/export', { // raw-fetch-ok: blob download, Platform.fetch always parses JSON/text
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify(vp),
@@ -4679,12 +4604,7 @@ function composerApp() {
                 const formData = new FormData();
                 formData.append('file', file);
                 self.statusText = 'Importing ' + file.name + '...';
-                fetch('/archimate/api/import/oef', {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
-                    body: formData,
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.post('/archimate/api/import/oef', formData, { silent: true })
                 .then(function(data) {
                     if (data.error) { _toast('error', data.error); self.statusText = 'Import failed'; return; }
                     let elements = data.elements || [];
@@ -4725,7 +4645,7 @@ function composerApp() {
                     });
                 })
                 .catch(function(err) {
-                    _toast('error', 'Import failed: ' + (err.message || err));
+                    _toast('error', 'Import failed: ' + ((err && err.message) || err));
                     self.statusText = 'Import failed';
                 });
             };
@@ -4832,12 +4752,7 @@ function composerApp() {
 
             /* Create element in the repository, then place on canvas */
             self.statusText = 'Creating ' + name + '...';
-            fetch('/api/architecture-assistant/create-element', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: name, type: type, layer: layer }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/create-element', { name: name, type: type, layer: layer }, { silent: true })
             .then(function(data) {
                 let elem = data.element || data;
                 if (elem.id) {
@@ -4881,16 +4796,11 @@ function composerApp() {
 
             self.statusText = 'Creating sub-diagram for ' + elementName + '...';
 
-            fetch('/api/architecture-assistant/viewpoints', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    name: elementName + ' \u2014 Detail',
-                    description: 'Sub-diagram for ' + elementName + ' (auto-created from composer)',
-                    parent_element_id: elementId,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/viewpoints', {
+                name: elementName + ' \u2014 Detail',
+                description: 'Sub-diagram for ' + elementName + ' (auto-created from composer)',
+                parent_element_id: elementId,
+            }, { silent: true })
             .then(function(data) {
                 let vpId = data.id || (data.data && data.data.id);
                 if (vpId) {
@@ -4911,7 +4821,7 @@ function composerApp() {
             })
             .catch(function(err) {
                 self.statusText = 'Error creating sub-diagram';
-                _toast('error', err.message || 'Failed');
+                _toast('error', (err && err.message) || 'Failed');
             });
         },
 
@@ -4928,8 +4838,7 @@ function composerApp() {
 
             let self = this;
             /* Fetch usage count before confirming */
-            fetch('/archimate/api/elements/' + elId + '/detail', { credentials: 'same-origin' })
-            .then(function(r) { return r.ok ? r.json() : { viewpoint_count: 0, solution_count: 0 }; })
+            Platform.fetch('/archimate/api/elements/' + elId + '/detail', { silent: true })
             .then(async function(data) {
                 let vpCount = data.viewpoint_count || 0;
                 let solCount = data.solution_count || 0;
@@ -4940,42 +4849,27 @@ function composerApp() {
                     + 'This action CANNOT be undone.';
                 if (!(await Platform.modal.confirm(msg))) return;
 
-                fetch('/architecture/elements/' + elId, {
-                    method: 'DELETE', credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
+                Platform.fetch.delete('/architecture/elements/' + elId, { silent: true })
+                .then(function() {
+                    cell.remove();
+                    delete self.canvasElements[elId];
+                    self.elementCount = Math.max(0, self.elementCount - 1);
+                    self.statusText = 'Deleted from repository: ' + name;
                 })
-                .then(function(r) {
-                    if (r.ok) {
-                        cell.remove();
-                        delete self.canvasElements[elId];
-                        self.elementCount = Math.max(0, self.elementCount - 1);
-                        self.statusText = 'Deleted from repository: ' + name;
-                    } else {
-                        self.statusText = 'Delete failed';
-                    }
-                })
-                .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', err.message || 'Operation failed'); });
+                .catch(function(err) { self.statusText = 'Error: ' + (err && err.message); _toast('error', (err && err.message) || 'Operation failed'); });
             })
             .catch(async function() {
                 /* Fallback — no usage data available, still allow delete */
                 _toast('warning', 'Could not check element usage — proceeding without usage info');
                 if (!(await Platform.modal.confirm('DELETE "' + name + '" from the ArchiMate repository?\n\nThis action CANNOT be undone.'))) return;
-                fetch('/architecture/elements/' + elId, {
-                    method: 'DELETE', credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
+                Platform.fetch.delete('/architecture/elements/' + elId, { silent: true })
+                .then(function() {
+                    cell.remove();
+                    delete self.canvasElements[elId];
+                    self.elementCount = Math.max(0, self.elementCount - 1);
+                    self.statusText = 'Deleted from repository: ' + name;
                 })
-                .then(function(r) {
-                    if (r.ok) {
-                        cell.remove();
-                        delete self.canvasElements[elId];
-                        self.elementCount = Math.max(0, self.elementCount - 1);
-                        self.statusText = 'Deleted from repository: ' + name;
-                    } else {
-                        self.statusText = 'Delete failed';
-                        _toast('error', 'Delete failed: server returned an error');
-                    }
-                })
-                .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', 'Delete failed: ' + (err.message || 'Unknown error')); });
+                .catch(function(err) { self.statusText = 'Error: ' + (err && err.message); _toast('error', 'Delete failed: ' + ((err && err.message) || 'Unknown error')); });
             });
         },
 
@@ -5005,11 +4899,8 @@ function composerApp() {
                 let m = { level: level, label: 'M' + level, pct: pct, source: 'manual' };
                 self._applyMaturityToCell(cell, m);
                 self.statusText = name + ' → ' + m.label + ' (' + pct + '%)';
-                fetch('/archimate/api/elements/' + elId + '/alignment-score', {
-                    method: 'PUT', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ score: pct }),
-                }).catch(function() { _toast('error', 'Failed to save maturity score'); });
+                Platform.fetch.put('/archimate/api/elements/' + elId + '/alignment-score', { score: pct }, { silent: true })
+                    .catch(function() { _toast('error', 'Failed to save maturity score'); });
             };
         },
 
@@ -5030,11 +4921,8 @@ function composerApp() {
                 cell.attr('intelligenceBadge/fontWeight', 600);
                 let elId = cell.get('elementId');
                 if (elId && parseInt(elId, 10) > 0) {
-                    fetch('/archimate/api/elements/' + elId, {
-                        method: 'PATCH', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                        body: JSON.stringify({ custom_properties: { event_schedule: schedule.trim() } }),
-                    }).catch(function() {
+                    Platform.fetch.patch('/archimate/api/elements/' + elId, { custom_properties: { event_schedule: schedule.trim() } }, { silent: true })
+                    .catch(function() {
                         _toast('error', 'Failed to save event schedule — it will be lost on reload');
                     });
                 }
@@ -5050,11 +4938,8 @@ function composerApp() {
             cell.attr('intelligenceBadge/display', 'none');
             let elId = cell.get('elementId');
             if (elId && parseInt(elId, 10) > 0) {
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ custom_properties: { event_schedule: '' } }),
-                }).catch(function() {
+                Platform.fetch.patch('/archimate/api/elements/' + elId, { custom_properties: { event_schedule: '' } }, { silent: true })
+                .catch(function() {
                     _toast('error', 'Failed to clear event schedule on the server — it may reappear on reload');
                 });
             }
@@ -5110,18 +4995,12 @@ function composerApp() {
                     changed_at: new Date().toISOString(),
                     reason: reason,
                 };
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({
-                        custom_properties: {
-                            lifecycle_current: lifecycle,
-                            _lifecycle_history_append: historyEntry,
-                        },
-                    }),
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.patch('/archimate/api/elements/' + elId, {
+                    custom_properties: {
+                        lifecycle_current: lifecycle,
+                        _lifecycle_history_append: historyEntry,
+                    },
+                }, { silent: true })
                 .then(function(data) {
                     if (data.error) { _toast('error', data.error); return; }
                     /* Update selectedNode if this element is currently selected */
@@ -5141,11 +5020,7 @@ function composerApp() {
             let self = this;
             if (!(await Platform.modal.confirm('Submit this diagram to the Architecture Review Board for review?'))) return;
 
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/submit-review', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/submit-review', undefined, { silent: true })
             .then(function(data) {
                 if (data.error) { _toast('error', data.error); return; }
                 self.viewpointReviewStatus = 'submitted';
@@ -5168,8 +5043,7 @@ function composerApp() {
             if (self.currentSavedVpId) {
                 url += '?viewpoint_id=' + self.currentSavedVpId;
             }
-            fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch(url, { silent: true })
                 .then(function(data) {
                     self.comments = data.comments || [];
                     self.commentsLoading = false;
@@ -5185,16 +5059,10 @@ function composerApp() {
             let text = (self.newCommentText || '').trim();
             if (!text || !self.commentElementId) return;
 
-            fetch('/archimate/api/elements/' + self.commentElementId + '/comments', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    comment_text: text,
-                    viewpoint_id: self.currentSavedVpId || null,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/elements/' + self.commentElementId + '/comments', {
+                comment_text: text,
+                viewpoint_id: self.currentSavedVpId || null,
+            }, { silent: true })
             .then(function(data) {
                 if (data.id) {
                     self.comments.push(data);
@@ -5222,8 +5090,7 @@ function composerApp() {
             if (self.currentSavedVpId) {
                 url += '?viewpoint_id=' + self.currentSavedVpId;
             }
-            fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch(url, { silent: true })
                 .then(function(data) {
                     self.auditLog = data.entries || [];
                     self.auditLoading = false;
@@ -5246,12 +5113,8 @@ function composerApp() {
                 new_value: newVal || null,
             };
             /* Fire-and-forget — do not block the UI */
-            fetch('/archimate/api/audit-log', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(payload),
-            }).catch(function() { /* silently ignore audit failures */ _toast('error', 'Failed to log audit event'); });
+            Platform.fetch.post('/archimate/api/audit-log', payload, { silent: true })
+                .catch(function() { /* silently ignore audit failures */ _toast('error', 'Failed to log audit event'); });
         },
 
         /* ── CMP-059: Validation API ─────────────────────────────── */
@@ -5288,21 +5151,12 @@ function composerApp() {
                 });
             });
 
-            fetch('/archimate/api/composer/validate', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    elements: elements,
-                    relationships: relationships,
-                    phase: self.validationPhase || '',
-                    viewpoint_type: '',
-                }),
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+            Platform.fetch.post('/archimate/api/composer/validate', {
+                elements: elements,
+                relationships: relationships,
+                phase: self.validationPhase || '',
+                viewpoint_type: '',
+            }, { silent: true })
             .then(function(data) {
                 self.validationReport = {
                     passed: data.passed || [],
@@ -5316,7 +5170,7 @@ function composerApp() {
                 self.validationReport = {
                     passed: [],
                     warnings: [],
-                    errors: [{ check: 'fetch_error', message: 'Validation request failed: ' + err.message, element_ids: [] }],
+                    errors: [{ check: 'fetch_error', message: 'Validation request failed: ' + ((err && err.message) || err), element_ids: [] }],
                 };
                 _toast('error', 'Validation request failed');
             });
@@ -5638,14 +5492,7 @@ function composerApp() {
             /* Convert [{key,value}] array to {key: value} dict for the API */
             let payload = {};
             props.forEach(function(p) { payload[p.key] = p.value; });
-            fetch('/archimate/api/elements/' + id + '/properties', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            /* A non-ok PUT never rejected, so a 403 or 500 left the properties
-               looking saved when only the local cache had them. */
-            .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } })
+            Platform.fetch.put('/archimate/api/elements/' + id + '/properties', payload, { silent: true })
             .catch(function() { _toast('error', 'Failed to save custom properties to the server — they are only in this browser.'); });
         },
 
@@ -5654,11 +5501,9 @@ function composerApp() {
             let self = this;
             let id = parseInt(elementId, 10);
             if (!id || id <= 0) return;
-            fetch('/archimate/api/elements/' + id + '/properties')
-                /* `r.ok ? r.json() : null` fell through to `if (!data) return`, so a
-                   failed load left the stale localStorage copy on screen as though
-                   it were what the server holds. The catch below already toasts. */
-                .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+            Platform.fetch('/archimate/api/elements/' + id + '/properties', { silent: true })
+                /* A failed load must not leave the stale localStorage copy on screen
+                   as though it were what the server holds — the catch below toasts. */
                 .then(function(data) {
                     if (!data) return;
                     /* Convert {key: value} dict to [{key, value}] array */
@@ -5718,8 +5563,7 @@ function composerApp() {
             self.linkViewpointTargetCell = self._currentSelectedCell;
             self.linkViewpointModalOpen = true;
             /* Fetch saved viewpoints for picker */
-            fetch('/archimate/api/saved-viewpoints', { credentials: 'same-origin' })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch('/archimate/api/saved-viewpoints', { silent: true })
                 .then(function(data) {
                     self.linkViewpointList = (data.viewpoints || data || []).map(function(v) {
                         return { id: v.id, name: v.name || v.viewpoint_name || 'Unnamed' };
@@ -5940,17 +5784,14 @@ function composerApp() {
         loadLandscapeData: function() {
             let self = this;
             self.landscapeLoading = true;
-            fetch('/archimate/api/landscape?row_type=' + encodeURIComponent(self.landscapeRowType) + '&col_type=' + encodeURIComponent(self.landscapeColType), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch('/archimate/api/landscape?row_type=' + encodeURIComponent(self.landscapeRowType) + '&col_type=' + encodeURIComponent(self.landscapeColType), { silent: true })
             .then(function(data) {
                 self.landscapeData = data;
                 self.landscapeLoading = false;
             })
             .catch(function(e) {
                 self.landscapeLoading = false;
-                self.statusText = 'Landscape load failed: ' + e.message;
+                self.statusText = 'Landscape load failed: ' + ((e && e.message) || e);
                 _toast('error', self.statusText);
             });
         },
@@ -5992,8 +5833,7 @@ function composerApp() {
             let url = '/archimate/api/matrix?row_type=' + encodeURIComponent(self.matrixRowType) +
                       '&col_type=' + encodeURIComponent(self.matrixColType);
 
-            fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch(url, { silent: true })
                 .then(function(data) {
                     self.matrixRows = data.rows || [];
                     self.matrixCols = data.columns || [];
@@ -6002,7 +5842,7 @@ function composerApp() {
                 })
                 .catch(function(e) {
                     self.matrixLoading = false;
-                    self.statusText = 'Matrix load failed: ' + e.message;
+                    self.statusText = 'Matrix load failed: ' + ((e && e.message) || e);
                     _toast('error', self.statusText);
                 });
         },
@@ -6422,15 +6262,7 @@ function composerApp() {
             self.statusText = 'Loading intelligence data…';
 
             let url = '/archimate/api/composer/intelligence?element_ids=' + elementIds.join(',');
-            fetch(url, {
-                method: 'GET',
-                credentials: 'same-origin',
-                headers: { 'X-CSRFToken': csrfToken() },
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+            Platform.fetch(url, { silent: true })
             .then(function(data) {
                 self.intelligenceData = data.enrichment || data || {};
                 self.intelligenceEnabled = true;
@@ -6442,7 +6274,7 @@ function composerApp() {
             .catch(function(err) {
                 self.intelligenceLoading = false;
                 self.statusText = 'Intelligence failed';
-                _toast('error', 'Enterprise Intelligence failed: ' + (err.message || 'Unknown error'));
+                _toast('error', 'Enterprise Intelligence failed: ' + ((err && err.message) || 'Unknown error'));
             });
         },
 
@@ -6604,10 +6436,7 @@ function composerApp() {
             self.graph.getElements().forEach(function(c) { let e = c.get('elementId'); if (e) ids.push(e); });
             if (!ids.length) { self.heatmapLoading = false; _toast('warning', 'No elements on canvas'); return; }
 
-            fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), {
-                credentials: 'same-origin', headers: { 'X-CSRFToken': csrfToken() },
-            })
-            .then(function(r) { return r.ok ? r.json() : Promise.reject('HTTP ' + r.status); })
+            Platform.fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), { silent: true })
             .then(function(data) {
                 let enrichment = data.enrichment || {};
                 let HEAT = { maturity: ['#ef4444','#f97316','#eab308','#84cc16','#22c55e'],
@@ -6632,7 +6461,7 @@ function composerApp() {
             .catch(function(e) {
                 self.heatmapLoading = false;
                 self.heatmapEnabled = false;
-                _toast('error', 'Heatmap failed: ' + e);
+                _toast('error', 'Heatmap failed: ' + ((e && e.message) || e));
             });
         },
 
@@ -6678,13 +6507,7 @@ function composerApp() {
             self.explanationLoading = true;
             self.statusText = 'Generating explanation…';
 
-            fetch('/archimate/api/composer/explain', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ element_ids: elementIds }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/explain', { element_ids: elementIds }, { silent: true })
             .then(function(data) {
                 self.explanationLoading = false;
                 let text = data.explanation || data.message || 'No explanation returned';
@@ -6696,7 +6519,7 @@ function composerApp() {
             .catch(function(err) {
                 self.explanationLoading = false;
                 self.statusText = 'Explain failed';
-                _toast('error', 'Diagram explanation failed: ' + (err.message || 'Unknown error'));
+                _toast('error', 'Diagram explanation failed: ' + ((err && err.message) || 'Unknown error'));
             });
         },
 

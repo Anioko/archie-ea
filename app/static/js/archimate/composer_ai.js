@@ -126,16 +126,11 @@ let ComposerAI = (function() {
                 return;
             }
 
-            fetch('/archimate/api/composer/suggestions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    elements: elements,
-                    relationships: relationships,
-                    viewpoint_type: self.activeViewpoint || '',
-                }),
-            })
-            .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+            Platform.fetch.post('/archimate/api/composer/suggestions', {
+                elements: elements,
+                relationships: relationships,
+                viewpoint_type: self.activeViewpoint || '',
+            }, { silent: true })
             .then(function(data) {
                 let items = [];
                 (data.missing_elements || []).forEach(function(s) {
@@ -189,17 +184,12 @@ let ComposerAI = (function() {
 
             if (!sourceId || !targetId || !relType) return;
 
-            fetch('/archimate/api/relationships', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    source_element_id: sourceId,
-                    target_element_id: targetId,
-                    relationship_type: relType,
-                    solution_id: self.solutionId || null,
-                }),
-            })
-            .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+            Platform.fetch.post('/archimate/api/relationships', {
+                source_element_id: sourceId,
+                target_element_id: targetId,
+                relationship_type: relType,
+                solution_id: self.solutionId || null,
+            }, { silent: true })
             .then(function(data) {
                 if (data.id) {
                     let sourceCell = null;
@@ -273,12 +263,7 @@ let ComposerAI = (function() {
                 viewpoint_type: self.activeViewpoint || '',
             };
 
-            fetch('/archimate/api/composer/validate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            })
-            .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
+            Platform.fetch.post('/archimate/api/composer/validate', payload, { silent: true })
             .then(function(data) {
                 self.validationReport = {
                     passed: data.passed || [],
@@ -388,17 +373,11 @@ let ComposerAI = (function() {
             }
 
             self.generateContextLoading = true;
-            fetch('/archimate/api/composer/context-preview', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    description: desc,
-                    phase: self.generatePhase || '',
-                    business_domain: self.generateDomain || '',
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/context-preview', {
+                description: desc,
+                phase: self.generatePhase || '',
+                business_domain: self.generateDomain || '',
+            }, { silent: true })
             .then(function(data) {
                 self.generateContextLoading = false;
                 if (!data.error) {
@@ -461,13 +440,7 @@ let ComposerAI = (function() {
                 ? 'Generating with enterprise context...'
                 : 'Generating...';
 
-            fetch(endpoint, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(body),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post(endpoint, body, { silent: true })
             .then(function(data) {
                 self.generateLoading = false;
                 if (data.error) {
@@ -562,13 +535,7 @@ let ComposerAI = (function() {
             self.statusText = 'Creating: ' + el.name + '...';
             let elName = el.name;
 
-            fetch('/api/architecture-assistant/create-element', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: elName, type: el.type, layer: layer }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/create-element', { name: elName, type: el.type, layer: layer }, { silent: true })
             .then(function(data) {
                 let d = data.element || data;
                 if (d.id) {
@@ -592,7 +559,7 @@ let ComposerAI = (function() {
                     self.statusText = 'Create failed: ' + (data.error || 'unknown');
                 }
             })
-            .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', err.message || 'Operation failed'); });
+            .catch(function(err) { self.statusText = 'Error: ' + (err && err.message); _toast('error', (err && err.message) || 'Operation failed'); });
         },
 
         /* Wire any pending relationship whose source AND target are both accepted. */
@@ -663,13 +630,7 @@ let ComposerAI = (function() {
                     return;
                 }
 
-                fetch('/api/architecture-assistant/create-element', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ name: el.name, type: el.type, layer: layer }),
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.post('/api/architecture-assistant/create-element', { name: el.name, type: el.type, layer: layer }, { silent: true })
                 .then(function(data) {
                     created++;
                     let d = data.element || data;
@@ -726,18 +687,12 @@ let ComposerAI = (function() {
         _wireSingleRelationship: function(rel, sourceId, targetId, onDone, pending) {
             let self = this;
             let relType = rel.type || rel.relationship_type || 'association';
-            fetch('/archimate/api/relationships', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    source_element_id: sourceId,
-                    target_element_id: targetId,
-                    relationship_type: relType,
-                    solution_id: self.solutionId || null,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/relationships', {
+                source_element_id: sourceId,
+                target_element_id: targetId,
+                relationship_type: relType,
+                solution_id: self.solutionId || null,
+            }, { silent: true })
             .then(function(data) {
                 if (data.id) {
                     let sourceCell = null;
@@ -806,17 +761,11 @@ let ComposerAI = (function() {
             self.extractedRelationships = [];
             self.statusText = 'Extracting...';
 
-            fetch('/archimate/api/composer/extract', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    text: txt,
-                    target_phase: self.extractPhase || '',
-                    viewpoint_type: self.activeViewpoint || '',
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/extract', {
+                text: txt,
+                target_phase: self.extractPhase || '',
+                viewpoint_type: self.activeViewpoint || '',
+            }, { silent: true })
             .then(function(data) {
                 self.extractLoading = false;
                 if (data.error) {
@@ -842,13 +791,7 @@ let ComposerAI = (function() {
             let layer = el.layer || guessLayer(el.suggested_type);
             self.statusText = 'Creating: ' + el.name + '...';
 
-            fetch('/api/architecture-assistant/create-element', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: el.name, type: el.suggested_type, layer: layer }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/create-element', { name: el.name, type: el.suggested_type, layer: layer }, { silent: true })
             .then(function(data) {
                 let d = data.element || data;
                 if (d.id) {
@@ -869,7 +812,7 @@ let ComposerAI = (function() {
                     self.statusText = 'Create failed: ' + (data.error || 'unknown');
                 }
             })
-            .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', err.message || 'Operation failed'); });
+            .catch(function(err) { self.statusText = 'Error: ' + (err && err.message); _toast('error', (err && err.message) || 'Operation failed'); });
 
             /* Remove from review list */
             let elName = el.name;
@@ -902,13 +845,7 @@ let ComposerAI = (function() {
 
             pending.forEach(function(el, idx) {
                 let layer = el.layer || guessLayer(el.suggested_type);
-                fetch('/api/architecture-assistant/create-element', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ name: el.name, type: el.suggested_type, layer: layer }),
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.post('/api/architecture-assistant/create-element', { name: el.name, type: el.suggested_type, layer: layer }, { silent: true })
                 .then(function(data) {
                     created++;
                     let d = data.element || data;
@@ -963,10 +900,7 @@ let ComposerAI = (function() {
             if (ids.length === 0) { self.intelligenceData = {}; return; }
 
             self.intelligenceLoading = true;
-            fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), { silent: true })
             .then(function(data) {
                 self.intelligenceData = data.enrichment || {};
                 self.intelligenceLoading = false;
@@ -1050,8 +984,7 @@ let ComposerAI = (function() {
             self.patternInstantiatedRelationships = [];
             self.patternLoading = true;
 
-            fetch('/archimate/api/patterns', { credentials: 'same-origin' })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch('/archimate/api/patterns', { silent: true })
             .then(function(data) {
                 self.patternLoading = false;
                 self.patterns = data.patterns || [];
@@ -1059,7 +992,7 @@ let ComposerAI = (function() {
             .catch(function(err) {
                 self.patternLoading = false;
                 _toast('error', 'Failed to load patterns');
-                self.statusText = 'Failed to load patterns: ' + err.message;
+                self.statusText = 'Failed to load patterns: ' + (err && err.message);
             });
         },
 
@@ -1077,13 +1010,7 @@ let ComposerAI = (function() {
             self.patternInstantiatedElements = [];
             self.patternInstantiatedRelationships = [];
 
-            fetch('/archimate/api/patterns/' + self.selectedPatternId + '/instantiate', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ context: self.patternContext.trim() }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/patterns/' + self.selectedPatternId + '/instantiate', { context: self.patternContext.trim() }, { silent: true })
             .then(function(data) {
                 self.patternLoading = false;
                 if (data.error) {
@@ -1123,13 +1050,7 @@ let ComposerAI = (function() {
                 let el = elements[idx];
                 let layer = guessLayer(el.type);
 
-                fetch('/api/architecture-assistant/create-element', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ name: el.label, type: el.type, layer: layer }),
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.post('/api/architecture-assistant/create-element', { name: el.label, type: el.type, layer: layer }, { silent: true })
                 .then(function(data) {
                     let d = data.element || data;
                     if (d.id) {
@@ -1180,18 +1101,12 @@ let ComposerAI = (function() {
                     return;
                 }
 
-                fetch('/archimate/api/relationships', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({
-                        source_element_id: sourceId,
-                        target_element_id: targetId,
-                        relationship_type: rel.type,
-                        solution_id: self.solutionId || null,
-                    }),
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                Platform.fetch.post('/archimate/api/relationships', {
+                    source_element_id: sourceId,
+                    target_element_id: targetId,
+                    relationship_type: rel.type,
+                    solution_id: self.solutionId || null,
+                }, { silent: true })
                 .then(function(data) {
                     if (data.id) {
                         created++;
@@ -1288,17 +1203,11 @@ let ComposerAI = (function() {
                 }
             });
 
-            fetch('/archimate/api/patterns', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    name: name,
-                    description: (self.savePatternDescription || '').trim() || null,
-                    pattern_json: { elements: elements, relationships: relationships },
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/patterns', {
+                name: name,
+                description: (self.savePatternDescription || '').trim() || null,
+                pattern_json: { elements: elements, relationships: relationships },
+            }, { silent: true })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Save pattern failed: ' + data.error;
@@ -1309,7 +1218,7 @@ let ComposerAI = (function() {
             })
             .catch(function(err) {
                 _toast('error', 'Failed to save pattern');
-                self.statusText = 'Save pattern error: ' + err.message;
+                self.statusText = 'Save pattern error: ' + (err && err.message);
             });
         },
 
@@ -1327,8 +1236,7 @@ let ComposerAI = (function() {
             /* Fetch available diagrams for baseline selection */
             let url = '/archimate/api/saved-viewpoints';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch(url, { silent: true })
             .then(function(data) {
                 let vps = (data.viewpoints || []).filter(function(v) {
                     return v.id !== self.currentSavedVpId;
@@ -1347,20 +1255,10 @@ let ComposerAI = (function() {
             self.deltaLoading = true;
             self.statusText = 'Computing delta...';
 
-            let csrfToken = document.querySelector('meta[name="csrf-token"]');
-            let headers = { 'Content-Type': 'application/json' };
-            if (csrfToken) headers['X-CSRFToken'] = csrfToken.getAttribute('content');
-
-            fetch('/archimate/api/composer/delta', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers,
-                body: JSON.stringify({
-                    baseline_viewpoint_id: parseInt(self.deltaCompareVpId),
-                    target_viewpoint_id: self.currentSavedVpId,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/delta', {
+                baseline_viewpoint_id: parseInt(self.deltaCompareVpId),
+                target_viewpoint_id: self.currentSavedVpId,
+            }, { silent: true })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Delta error: ' + data.error;
@@ -1378,7 +1276,7 @@ let ComposerAI = (function() {
             })
             .catch(function(err) {
                 _toast('error', 'Delta comparison failed');
-                self.statusText = 'Delta error: ' + err.message;
+                self.statusText = 'Delta error: ' + (err && err.message);
                 self.deltaLoading = false;
             });
         },
@@ -1449,17 +1347,7 @@ let ComposerAI = (function() {
             if (!self.deltaData || !self.deltaData.delta) return;
             self.plateauLoading = true;
 
-            let csrfToken = document.querySelector('meta[name="csrf-token"]');
-            let headers = { 'Content-Type': 'application/json' };
-            if (csrfToken) headers['X-CSRFToken'] = csrfToken.getAttribute('content');
-
-            fetch('/archimate/api/composer/plateaus', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers,
-                body: JSON.stringify({ delta: self.deltaData.delta }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/plateaus', { delta: self.deltaData.delta }, { silent: true })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Plateau error: ' + data.error;
@@ -1472,7 +1360,7 @@ let ComposerAI = (function() {
             })
             .catch(function(err) {
                 _toast('error', 'Plateau computation failed');
-                self.statusText = 'Plateau error: ' + err.message;
+                self.statusText = 'Plateau error: ' + (err && err.message);
                 self.plateauLoading = false;
             });
         },
@@ -1526,17 +1414,11 @@ let ComposerAI = (function() {
                 }
             });
 
-            fetch('/archimate/api/composer/explain', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    elements: elements,
-                    relationships: relationships,
-                    audience: self.explanationAudience,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/explain', {
+                elements: elements,
+                relationships: relationships,
+                audience: self.explanationAudience,
+            }, { silent: true })
             .then(function(data) {
                 self.explanationText = data.narration || 'No narration generated.';
                 self.explanationLoading = false;
@@ -1577,17 +1459,11 @@ let ComposerAI = (function() {
                 }
             });
 
-            fetch('/archimate/api/composer/impact', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    element_id: elementId,
-                    elements: elements,
-                    relationships: relationships,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/impact', {
+                element_id: elementId,
+                elements: elements,
+                relationships: relationships,
+            }, { silent: true })
             .then(function(data) {
                 self.impactData = data;
                 self._highlightImpact(data.affected_element_ids || []);
@@ -1600,13 +1476,7 @@ let ComposerAI = (function() {
 
         explainRelationship: function(relData) {
             let self = this;
-            fetch('/archimate/api/composer/explain-relationship', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(relData),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/explain-relationship', relData, { silent: true })
             .then(function(data) {
                 self.statusText = data.explanation || 'No explanation available.';
             })
@@ -1689,10 +1559,7 @@ let ComposerAI = (function() {
                 return;
             }
 
-            fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), { silent: true })
             .then(function(data) {
                 self.heatmapLoading = false;
                 let enrichment = data.enrichment || {};
@@ -1814,14 +1681,7 @@ let ComposerAI = (function() {
                 });
             });
 
-            let csrfTok = (typeof helpers !== 'undefined' && helpers.csrfToken) ? helpers.csrfToken() : '';
-
-            fetch('/archimate/api/composer/derived-relationships', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfTok },
-                body: JSON.stringify({ elements: elements, relationships: relationships }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/derived-relationships', { elements: elements, relationships: relationships }, { silent: true })
             .then(function(data) {
                 self.derivedLoading = false;
                 let derived = data.derived || [];
@@ -2148,10 +2008,7 @@ let ComposerAI = (function() {
             self.metricsLoading = true;
             self.statusText = 'Loading metrics (' + self.metricsOverlayType + ')...';
 
-            fetch('/archimate/api/composer/element-metrics?element_ids=' + ids.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch('/archimate/api/composer/element-metrics?element_ids=' + ids.join(','), { silent: true })
             .then(function(data) {
                 self.metricsLoading = false;
                 self.metricsData = data.metrics || {};

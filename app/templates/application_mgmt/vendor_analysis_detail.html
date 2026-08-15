@@ -44,7 +44,7 @@
           <button @click="attemptSwitchTab(tab.id)" type="button"
             class="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-primary/50"
             :class="{
-              'text-success': stepStatus(tab.id) === 'completed' && activeTab !== tab.id,
+              'text-success-emphasis': stepStatus(tab.id) === 'completed' && activeTab !== tab.id,
               'text-primary bg-primary/5 ring-1 ring-primary/20': stepStatus(tab.id) === 'current',
               'text-muted-foreground hover:text-foreground hover:bg-muted/50': stepStatus(tab.id) === 'available',
               'text-muted-foreground/50 cursor-not-allowed': stepStatus(tab.id) === 'locked'
@@ -94,7 +94,7 @@
         <div class="rounded-lg border bg-card p-6 space-y-4">
           <h3 class="text-lg font-semibold text-foreground">Analysis Identity</h3>
           <div>
-            <label for="analysis-name" class="block text-sm font-medium text-foreground/80 mb-1">Analysis Name <span class="text-destructive">*</span></label>
+            <label for="analysis-name" class="block text-sm font-medium text-foreground/80 mb-1">Analysis Name <span class="text-destructive-emphasis">*</span></label>
             <input type="text" id="analysis-name" x-model="form.name"
               class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="e.g., ERP Platform Selection Q2 2026"
@@ -223,7 +223,7 @@
             <!-- L1 Strategic -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="block text-sm font-medium text-foreground/80">L1 Strategic <span class="text-destructive">*</span></label>
+                <label class="block text-sm font-medium text-foreground/80">L1 Strategic <span class="text-destructive-emphasis">*</span></label>
                 <span class="text-xs text-muted-foreground" x-text="selectedL1.length + ' selected'"></span>
               </div>
               <div class="relative mb-1">
@@ -334,7 +334,7 @@
               <p class="text-sm font-medium text-foreground">
                 <span x-text="allCapabilities.length"></span> capabilities selected
               </p>
-              <button @click="clearCapabilities()" class="text-xs text-destructive hover:text-destructive/80">Clear All</button>
+              <button @click="clearCapabilities()" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">Clear All</button>
             </div>
             <div class="flex flex-wrap gap-1.5">
               <template x-for="cap in allCapabilities" :key="cap.id + '-' + cap._level">
@@ -357,7 +357,7 @@
             <!-- L1 Category -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="block text-sm font-medium text-foreground/80">L1 Category <span class="text-destructive">*</span></label>
+                <label class="block text-sm font-medium text-foreground/80">L1 Category <span class="text-destructive-emphasis">*</span></label>
                 <span class="text-xs text-muted-foreground" x-text="procSelectedL1.length + ' selected'"></span>
               </div>
               <div class="relative mb-1">
@@ -472,7 +472,7 @@
               <p class="text-sm font-medium text-foreground">
                 <span x-text="allProcesses.length"></span> processes selected
               </p>
-              <button @click="clearProcesses()" class="text-xs text-destructive hover:text-destructive/80">Clear All</button>
+              <button @click="clearProcesses()" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">Clear All</button>
             </div>
             <div class="flex flex-wrap gap-1.5">
               <template x-for="proc in allProcesses" :key="proc.id + '-' + proc._level">
@@ -503,7 +503,7 @@
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium text-foreground/80 mb-1">Value Stream <span class="text-destructive">*</span></label>
+              <label class="block text-sm font-medium text-foreground/80 mb-1">Value Stream <span class="text-destructive-emphasis">*</span></label>
               <select x-model="vsSelectedStream" @change="onValueStreamSelected()" multiple size="5"
                 class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Value Stream">
                 <template x-for="vs in vsOptions" :key="vs.id">
@@ -631,17 +631,17 @@
                   :aria-label="weightLabels[key] + ' weight'">
               </div>
               <div class="col-span-2 text-right">
-                <span class="text-sm font-bold tabular-nums" :class="weightTotal === 100 ? 'text-foreground' : 'text-destructive'" x-text="weights[key] + '%'"></span>
+                <span class="text-sm font-bold tabular-nums" :class="weightTotal === 100 ? 'text-foreground' : 'text-destructive-emphasis'" x-text="weights[key] + '%'"></span>
               </div>
             </div>
           </template>
         </div>
         <div class="mt-4 flex items-center gap-2 text-sm" role="status" aria-live="polite">
-          <span :class="weightTotal === 100 ? 'text-success' : 'text-destructive'" class="font-bold">
+          <span :class="weightTotal === 100 ? 'text-success-emphasis' : 'text-destructive-emphasis'" class="font-bold">
             Total: <span x-text="weightTotal + '%'"></span>
           </span>
-          <span x-show="weightTotal !== 100" class="text-destructive" x-cloak>(must equal 100%)</span>
-          <span x-show="weightTotal === 100" class="text-success" x-cloak>
+          <span x-show="weightTotal !== 100" class="text-destructive-emphasis" x-cloak>(must equal 100%)</span>
+          <span x-show="weightTotal === 100" class="text-success-emphasis" x-cloak>
             <i data-lucide="check-circle" class="h-4 w-4 inline"></i>
           </span>
         </div>
@@ -780,9 +780,9 @@
                           <span x-show="manualScoreSaving[v.id + '_' + field.key] === 'saving'"
                             class="text-xs text-muted-foreground animate-pulse">...</span>
                           <span x-show="manualScoreSaving[v.id + '_' + field.key] === 'saved'"
-                            class="text-xs text-success">Saved</span>
+                            class="text-xs text-success-emphasis">Saved</span>
                           <span x-show="manualScoreSaving[v.id + '_' + field.key] === 'error'"
-                            class="text-xs text-destructive">Error</span>
+                            class="text-xs text-destructive-emphasis">Error</span>
                         </div>
                       </template>
                     </div>
@@ -990,7 +990,7 @@
                         </td>
                       </template>
                       <td class="px-3 py-2 text-center">
-                        <button @click="deleteRequirement(req.id)" class="text-muted-foreground hover:text-destructive transition-colors" title="Delete requirement">
+                        <button @click="deleteRequirement(req.id)" class="text-muted-foreground hover:text-destructive-emphasis transition-colors" title="Delete requirement">
                           <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
                         </button>
                       </td>
@@ -1068,7 +1068,7 @@
               <div class="space-y-2">
                 <label class="text-xs font-medium text-muted-foreground block">
                   Criteria Weights
-                  <span class="ml-2" :class="newScenarioWeightTotal === 100 ? 'text-success' : 'text-destructive'" x-text="'(Total: ' + newScenarioWeightTotal + '%)'"></span>
+                  <span class="ml-2" :class="newScenarioWeightTotal === 100 ? 'text-success-emphasis' : 'text-destructive-emphasis'" x-text="'(Total: ' + newScenarioWeightTotal + '%)'"></span>
                 </label>
                 <template x-for="key in ['cost', 'capability_coverage', 'risk', 'strategic_fit', 'implementation']" :key="key">
                   <div class="grid grid-cols-12 gap-3 items-center">
@@ -1109,7 +1109,7 @@
                         <div class="flex items-center justify-center gap-1">
                           <span x-text="s.scenario_name"></span>
                           <span x-show="s.is_baseline" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/30">Base</span>
-                          <button @click="deleteScenario(s.id)" class="ml-1 text-muted-foreground/50 hover:text-destructive transition-colors" title="Delete scenario">
+                          <button @click="deleteScenario(s.id)" class="ml-1 text-muted-foreground/50 hover:text-destructive-emphasis transition-colors" title="Delete scenario">
                             <i data-lucide="x" class="h-3 w-3"></i>
                           </button>
                         </div>
@@ -1125,10 +1125,10 @@
                         <td class="px-3 py-2 text-center">
                           <div class="flex flex-col items-center">
                             <span class="font-semibold tabular-nums"
-                              :class="scenarioRank(s, v.id) === 1 ? 'text-success' : 'text-foreground'"
+                              :class="scenarioRank(s, v.id) === 1 ? 'text-success-emphasis' : 'text-foreground'"
                               x-text="scenarioScore(s, v.id) !== null ? scenarioScore(s, v.id).toFixed(1) : '—'"></span>
                             <span class="text-[10px] text-muted-foreground"
-                              :class="scenarioRank(s, v.id) === 1 ? 'font-semibold text-success' : ''"
+                              :class="scenarioRank(s, v.id) === 1 ? 'font-semibold text-success-emphasis' : ''"
                               x-text="scenarioRank(s, v.id) ? '#' + scenarioRank(s, v.id) : ''"></span>
                           </div>
                         </td>
@@ -1244,7 +1244,7 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium text-foreground/80 mb-1">Decision <span class="text-destructive">*</span></label>
+            <label class="block text-sm font-medium text-foreground/80 mb-1">Decision <span class="text-destructive-emphasis">*</span></label>
             <select x-model="decision.status" aria-required="true" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground" aria-label="Decision">
               <option value="">-- Select Decision --</option>
               <option value="approved">Approve -- proceed with selected vendor</option>
@@ -1253,7 +1253,7 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium text-foreground/80 mb-1">Rationale <span class="text-destructive">*</span></label>
+            <label class="block text-sm font-medium text-foreground/80 mb-1">Rationale <span class="text-destructive-emphasis">*</span></label>
             <textarea x-model="decision.rationale" rows="4" aria-required="true"
               class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
               placeholder="Explain the reasoning behind this decision..." aria-label="Rationale"></textarea>
@@ -1340,7 +1340,7 @@
                     <td class="py-2" x-text="s.preferred_vendor_id ? ('Option #' + s.preferred_vendor_id) : '—'"></td>
                     <td class="py-2">
                       <button aria-label="Delete" @click="removeStakeholder(s.id)" type="button"
-                              class="text-muted-foreground hover:text-destructive">
+                              class="text-muted-foreground hover:text-destructive-emphasis">
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                       </button>
                     </td>

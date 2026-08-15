@@ -228,7 +228,7 @@
                         <div class="flex justify-between">
                             <strong>${r.category || 'Risk'}</strong>
                             <span class="text-xs font-semibold ${
-                                r.severity === 'high' ? 'text-destructive' :
+                                r.severity === 'high' ? 'text-destructive-emphasis' :
                                 r.severity === 'medium' ? 'text-warning-emphasis' : 'text-primary'
                             }">${r.severity || 'medium'}</span>
                         </div>

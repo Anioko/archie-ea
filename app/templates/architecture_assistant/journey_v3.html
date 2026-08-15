@@ -198,7 +198,7 @@
                 </ul>
             </div>
             <div>
-                <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-destructive mb-4">Common Pitfalls</h4>
+                <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-destructive-emphasis mb-4">Common Pitfalls</h4>
                 <ul class="space-y-3">
                     <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="x-circle" class="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i> Don't use generic titles like "New Project." Use intent-based names for better AI context.</li>
                     <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="x-circle" class="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i> Avoid skipping "Map Landscape" — accurate current-state maps are critical for trade-offs.</li>
@@ -304,16 +304,16 @@
 
     {# ── Error Banner ── #}
     <div x-show="error" x-cloak class="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3 flex items-center justify-between">
-        <p class="text-sm text-destructive" x-text="error"></p>
-        <button type="button" @click="error = null" class="text-xs text-destructive/70 hover:text-destructive font-medium ml-4 shrink-0">Dismiss</button>
+        <p class="text-sm text-destructive-emphasis" x-text="error"></p>
+        <button type="button" @click="error = null" class="text-xs text-destructive-emphasis/70 hover:text-destructive-emphasis font-medium ml-4 shrink-0">Dismiss</button>
     </div>
 
     {# ── Blocker warnings — only shown on Step 2 where user can action them ── #}
     <template x-if="currentStep === 2 && domainBlockers.filter(b => b.type === 'domain_not_confirmed').length > 0">
         <div class="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3 space-y-1">
-            <p class="text-xs font-medium text-destructive">Cannot proceed:</p>
+            <p class="text-xs font-medium text-destructive-emphasis">Cannot proceed:</p>
             <template x-for="b in domainBlockers.filter(b => b.type === 'domain_not_confirmed').slice(0, 4)" :key="b.domain + b.type">
-                <p class="text-xs text-destructive/70 pl-2" x-text="'— ' + b.reason"></p>
+                <p class="text-xs text-destructive-emphasis/70 pl-2" x-text="'— ' + b.reason"></p>
             </template>
         </div>
     </template>
@@ -488,7 +488,7 @@
                                         <span x-text="action.undone ? 'Undone' : action.message"></span>
                                     </div>
                                     <button type="button" x-show="!action.undone && !action.undoExpired" @click="undoAction(action)"
-                                            class="text-muted-foreground hover:text-destructive text-[10px] shrink-0 transition-colors">
+                                            class="text-muted-foreground hover:text-destructive-emphasis text-[10px] shrink-0 transition-colors">
                                         Undo
                                     </button>
                                 </div>

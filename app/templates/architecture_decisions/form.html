@@ -24,7 +24,7 @@
         <!-- Title -->
         <div class="bg-card border border-border rounded-lg p-6 space-y-5">
             <div>
-                <label class="block text-sm font-medium text-foreground mb-1.5" for="title">Title <span class="text-destructive">*</span></label>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="title">Title <span class="text-destructive-emphasis">*</span></label>
                 <input type="text" id="title" name="title" required
                        value="{{ decision.title if decision else '' }}"
                        placeholder="e.g. Adopt microservices for order management domain"
@@ -77,7 +77,7 @@
             </div>
 
             <div>
-                <label class="block text-sm font-medium text-foreground mb-1.5" for="decision">Decision <span class="text-destructive">*</span></label>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="decision">Decision <span class="text-destructive-emphasis">*</span></label>
                 <p class="text-xs text-muted-foreground mb-2">What was decided? Be specific and unambiguous.</p>
                 <textarea id="decision" name="decision" rows="4"
                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono"
@@ -116,7 +116,7 @@
                 <template x-for="el in selectedElements" :key="el.id">
                     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
                         <span x-text="el.name"></span>
-                        <button aria-label="Remove" type="button" @click="removeElement(el.id)" class="hover:text-destructive ml-0.5">
+                        <button aria-label="Remove" type="button" @click="removeElement(el.id)" class="hover:text-destructive-emphasis ml-0.5">
                             <i data-lucide="x" class="h-3 w-3"></i>
                         </button>
                     </span>
@@ -132,7 +132,7 @@
             </div>
 
             <!-- Search results dropdown -->
-            <div x-show="searchError" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md px-3 py-2 text-sm text-destructive" x-text="searchError"></div>
+            <div x-show="searchError" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md px-3 py-2 text-sm text-destructive-emphasis" x-text="searchError"></div>
             <div x-show="!searchError && searchResults.length > 0" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md divide-y divide-border max-h-48 overflow-y-auto">
                 <template x-for="el in searchResults" :key="el.id">
                     <button type="button" @click="addElement(el)"

@@ -259,7 +259,7 @@
                 </span>
             </template>
             <template x-if="_saveState === 'saved'">
-                <span class="flex items-center gap-1 text-success">
+                <span class="flex items-center gap-1 text-success-emphasis">
                     <i data-lucide="check-circle" class="w-3 h-3"></i>
                     <span x-text="_autosaveLabel || 'Saved'"></span>
                 </span>
@@ -271,7 +271,7 @@
                 </span>
             </template>
             <template x-if="_saveState === 'failed'">
-                <button type="button" @click="_autoSave()" class="flex items-center gap-1 text-destructive hover:underline">
+                <button type="button" @click="_autoSave()" class="flex items-center gap-1 text-destructive-emphasis hover:underline">
                     <i data-lucide="alert-circle" class="w-3 h-3"></i>
                     Retry
                 </button>
@@ -486,7 +486,7 @@
                                 <span class="w-3 h-3 rounded-sm border" :style="'background:' + tmpl.fill + '; border-color:' + tmpl.stroke"></span>
                                 <span x-text="tmpl.name"></span>
                             </button>
-                            <button aria-label="Remove" type="button" @click.stop="deleteCustomStyleTemplate(tmpl.name)" class="text-destructive hover:text-destructive/80 p-0.5 ml-1">
+                            <button aria-label="Remove" type="button" @click.stop="deleteCustomStyleTemplate(tmpl.name)" class="text-destructive-emphasis hover:text-destructive-emphasis/80 p-0.5 ml-1">
                                 <i data-lucide="x" class="w-3 h-3"></i>
                             </button>
                         </div>

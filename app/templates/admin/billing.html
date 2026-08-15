@@ -54,9 +54,9 @@
                 <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Status</p>
                 {% set status_val = subscription.status.value %}
                 <p class="text-sm font-semibold
-                    {% if status_val == 'active' %}text-success
-                    {% elif status_val == 'past_due' %}text-warning
-                    {% elif status_val == 'cancelled' %}text-destructive
+                    {% if status_val == 'active' %}text-success-emphasis
+                    {% elif status_val == 'past_due' %}text-warning-emphasis
+                    {% elif status_val == 'cancelled' %}text-destructive-emphasis
                     {% else %}text-foreground{% endif %}">
                     {{ status_val | replace('_', ' ') | title }}
                 </p>
@@ -70,7 +70,7 @@
                     <span class="text-muted-foreground font-normal">used</span>
                 </p>
                 {% if seats_used >= subscription.seats_purchased %}
-                    <p class="text-xs text-destructive mt-1">Seat limit reached — upgrade to add users</p>
+                    <p class="text-xs text-destructive-emphasis mt-1">Seat limit reached — upgrade to add users</p>
                 {% endif %}
             </div>
 

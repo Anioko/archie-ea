@@ -60,7 +60,7 @@
     <div x-show="error && !loading" x-cloak class="absolute inset-0 flex items-center justify-center bg-destructive/5 z-50">
         <div class="text-center max-w-sm px-4">
             <i data-lucide="alert-circle" class="w-8 h-8 text-destructive mx-auto mb-2" aria-hidden="true"></i>
-            <p class="text-sm font-medium text-destructive mb-2">Failed to load Gantt chart</p>
+            <p class="text-sm font-medium text-destructive-emphasis mb-2">Failed to load Gantt chart</p>
             <p class="text-xs text-muted-foreground mb-3" x-text="error"></p>
             <button @click="loadGanttData()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" aria-hidden="true"></i> Retry
@@ -367,7 +367,7 @@
                     </div>
                     <div class="flex items-center justify-between" x-show="selectedTask.meta && selectedTask.meta.risk_level" x-cloak>
                         <span class="text-muted-foreground">Risk Level:</span>
-                        <span class="font-medium text-warning" x-text="selectedTask.meta.risk_level"></span>
+                        <span class="font-medium text-warning-emphasis" x-text="selectedTask.meta.risk_level"></span>
                     </div>
                 </div>
 
@@ -439,7 +439,7 @@
                     </p>
                 </template>
                 <template x-if="hoverTask.meta && hoverTask.meta.risk_level">
-                    <p class="text-warning">
+                    <p class="text-warning-emphasis">
                         <strong x-text="hoverTask.meta.risk_level"></strong> risk
                     </p>
                 </template>

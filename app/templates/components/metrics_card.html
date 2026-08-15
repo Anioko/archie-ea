@@ -71,8 +71,8 @@
         {% if change %}
         <div data-slot="card-action" class="absolute top-4 right-4">
             <span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors
-                {% if change_type == 'positive' %}text-success border-success/30
-                {% elif change_type == 'negative' %}text-destructive border-destructive/30
+                {% if change_type == 'positive' %}text-success-emphasis border-success/30
+                {% elif change_type == 'negative' %}text-destructive-emphasis border-destructive/30
                 {% else %}text-muted-foreground{% endif %}">
                 {% if change_type == 'positive' %}
                 <i data-lucide="trending-up" class="h-3 w-3" aria-hidden="true"></i>

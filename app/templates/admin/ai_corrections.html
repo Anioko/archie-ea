@@ -212,7 +212,7 @@ function markCorrect(elementId) {
                 row.classList.add('opacity-50');
                 const actionsEl = document.getElementById(`actions-${elementId}`);
                 if (actionsEl) {
-                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-success font-medium"><i data-lucide="check-circle" class="h-3 w-3"></i>Confirmed</span>';
+                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-success-emphasis font-medium"><i data-lucide="check-circle" class="h-3 w-3"></i>Confirmed</span>';
                     if (window.lucide) { lucide.createIcons(); }
                 }
             }
@@ -264,7 +264,7 @@ function submitFix(elementId) {
                 row.classList.add('bg-warning/5');
                 const actionsEl = document.getElementById(`actions-${elementId}`);
                 if (actionsEl) {
-                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-warning font-medium"><i data-lucide="edit-2" class="h-3 w-3"></i>Corrected</span>';
+                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-warning-emphasis font-medium"><i data-lucide="edit-2" class="h-3 w-3"></i>Corrected</span>';
                     if (window.lucide) { lucide.createIcons(); }
                 }
                 const fixForm = document.getElementById(`fix-form-${elementId}`);

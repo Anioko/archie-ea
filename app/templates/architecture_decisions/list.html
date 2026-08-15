@@ -35,7 +35,7 @@
         {% if phase_filter %}
         <span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium bg-secondary text-secondary-foreground">
             Phase {{ phase_filter }}
-            <a href="{{ url_for('arch_decisions.list_decisions', status=status_filter) }}" class="ml-1 hover:text-destructive">
+            <a href="{{ url_for('arch_decisions.list_decisions', status=status_filter) }}" class="ml-1 hover:text-destructive-emphasis">
                 <i data-lucide="x" class="h-3 w-3"></i>
             </a>
         </span>

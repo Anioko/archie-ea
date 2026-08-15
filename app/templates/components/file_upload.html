@@ -122,7 +122,7 @@
 >
     {% if label %}
     <label class="block text-sm font-medium mb-2">
-        {{ label }}{% if required %}<span class="text-destructive ml-1">*</span>{% endif %}
+        {{ label }}{% if required %}<span class="text-destructive-emphasis ml-1">*</span>{% endif %}
     </label>
     {% endif %}
     
@@ -174,7 +174,7 @@
     </div>
     
     <!-- Error Message -->
-    <div x-show="error" x-cloak class="mt-2 text-sm text-destructive" role="alert">
+    <div x-show="error" x-cloak class="mt-2 text-sm text-destructive-emphasis" role="alert">
         <i data-lucide="alert-circle" class="inline h-4 w-4 mr-1"></i>
         <span x-text="error"></span>
     </div>

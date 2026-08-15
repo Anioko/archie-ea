@@ -44,7 +44,7 @@
         </template>
         <template x-if="!ruleSuggestionsLoading && ruleSuggestionsError">
             <div class="py-4 text-center space-y-2" role="alert">
-                <p class="text-sm text-destructive">Rule suggestions could not be loaded.</p>
+                <p class="text-sm text-destructive-emphasis">Rule suggestions could not be loaded.</p>
                 <p class="text-xs text-muted-foreground" x-text="ruleSuggestionsError"></p>
                 <button type="button" @click="loadRuleSuggestions()"
                         class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-input rounded-md text-xs font-medium hover:bg-accent hover:text-accent-foreground">

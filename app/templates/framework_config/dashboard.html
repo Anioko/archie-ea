@@ -263,13 +263,13 @@
 {% call modal(id='create-framework-config', title='New Framework Configuration', description='Create a new capability framework configuration', size='default') %}
 <form @submit.prevent="submitCreateConfig()" class="space-y-4">
     <div>
-        <label for="cfc-name" class="block text-sm font-medium mb-1">Configuration Name <span class="text-destructive">*</span></label>
+        <label for="cfc-name" class="block text-sm font-medium mb-1">Configuration Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" id="cfc-name" x-model="formData.configuration_name" required
                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="e.g. Enterprise Framework 2026">
     </div>
     <div>
-        <label for="cfc-code" class="block text-sm font-medium mb-1">Configuration Code <span class="text-destructive">*</span></label>
+        <label for="cfc-code" class="block text-sm font-medium mb-1">Configuration Code <span class="text-destructive-emphasis">*</span></label>
         <input type="text" id="cfc-code" x-model="formData.configuration_code" required
                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="e.g. ENT-FW-2026">

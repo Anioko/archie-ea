@@ -72,7 +72,7 @@
                                 <span class="mr-2">{{ domain.name }}</span>
                                 <span class="text-xs text-muted-foreground font-normal">({{ domain.count }} caps)</span>
                             </div>
-                            <span class="{% if domain.score < 60 %}text-destructive{% elif domain.score < 80 %}text-warning{% else %}text-success{% endif %}">
+                            <span class="{% if domain.score < 60 %}text-destructive-emphasis{% elif domain.score < 80 %}text-warning-emphasis{% else %}text-success-emphasis{% endif %}">
                                 {{ domain.score }}%
                             </span>
                         </div>
@@ -99,15 +99,15 @@
                 <div class="grid grid-cols-3 gap-8 mt-8 text-center w-full">
                     <div>
                         <div class="text-xs text-muted-foreground mb-1">Healthy</div>
-                        <div class="text-sm font-bold text-success" id="healthy-count">0</div>
+                        <div class="text-sm font-bold text-success-emphasis" id="healthy-count">0</div>
                     </div>
                     <div>
                         <div class="text-xs text-muted-foreground mb-1">Warning</div>
-                        <div class="text-sm font-bold text-warning" id="warning-count">0</div>
+                        <div class="text-sm font-bold text-warning-emphasis" id="warning-count">0</div>
                     </div>
                     <div>
                         <div class="text-xs text-muted-foreground mb-1">Critical</div>
-                        <div class="text-sm font-bold text-destructive" id="critical-count">0</div>
+                        <div class="text-sm font-bold text-destructive-emphasis" id="critical-count">0</div>
                     </div>
                 </div>
             </div>

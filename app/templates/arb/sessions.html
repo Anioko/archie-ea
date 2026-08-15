@@ -231,7 +231,7 @@
 {% call modal(id='create-arb-session', title='Schedule ARB Session', description='Create a new Architecture Review Board meeting', size='lg') %}
 <form @submit.prevent="submitCreateSession()" class="space-y-4" x-data="arbSessionModal()">
     <div>
-        <label for="cas-name" class="block text-sm font-medium mb-1">Session Name <span class="text-destructive">*</span></label>
+        <label for="cas-name" class="block text-sm font-medium mb-1">Session Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" id="cas-name" x-model="formData.name" required
                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="e.g. ARB Session Q1 2026">
@@ -244,7 +244,7 @@
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-            <label for="cas-date" class="block text-sm font-medium mb-1">Scheduled Date &amp; Time <span class="text-destructive">*</span></label>
+            <label for="cas-date" class="block text-sm font-medium mb-1">Scheduled Date &amp; Time <span class="text-destructive-emphasis">*</span></label>
             <input type="datetime-local" id="cas-date" x-model="formData.scheduled_date" required
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         </div>
@@ -256,7 +256,7 @@
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-            <label for="cas-chair" class="block text-sm font-medium mb-1">Chair <span class="text-destructive">*</span></label>
+            <label for="cas-chair" class="block text-sm font-medium mb-1">Chair <span class="text-destructive-emphasis">*</span></label>
             <select id="cas-chair" x-model="formData.chair_id" required
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">Select chair...</option>

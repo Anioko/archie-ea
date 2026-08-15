@@ -167,7 +167,7 @@
                         <dt class="text-sm text-muted-foreground">Primary Owner</dt>
                         <dd class="font-medium">
                             {% if ownership.is_primary %}
-                            <span class="text-success">Yes</span>
+                            <span class="text-success-emphasis">Yes</span>
                             {% else %}
                             <span class="text-muted-foreground">No</span>
                             {% endif %}
@@ -196,7 +196,7 @@
                     {% if app.sunset_date %}
                     <div class="flex justify-between">
                         <dt class="text-sm text-muted-foreground">Sunset Date</dt>
-                        <dd class="font-medium text-warning">{{ app.sunset_date.strftime('%d %b %Y') }}</dd>
+                        <dd class="font-medium text-warning-emphasis">{{ app.sunset_date.strftime('%d %b %Y') }}</dd>
                     </div>
                     {% endif %}
                     {% if app.last_review_date %}

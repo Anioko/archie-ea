@@ -375,7 +375,7 @@ window.submitAddApplications = function () {
 // ── Helpers ─────────────────────────────────────────────────────────────
 function showError(msg) {
     Platform.sanitize.html(listContainer,
-        '<div class="p-6 text-center text-sm text-destructive">' + Platform.sanitize.escape(msg) + '</div>');
+        '<div class="p-6 text-center text-sm text-destructive-emphasis">' + Platform.sanitize.escape(msg) + '</div>');
 }
 
 function getStatusClasses(status) {

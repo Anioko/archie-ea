@@ -274,7 +274,7 @@
                                     <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-width="3" class="text-muted/40"/>
                                     <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-width="3"
                                             stroke-dasharray="{{ _score }}, 100"
-                                            class="{{ 'text-success' if _score >= 80 else ('text-warning' if _score >= 40 else 'text-destructive') }}"/>
+                                            class="{{ 'text-success-emphasis' if _score >= 80 else ('text-warning' if _score >= 40 else 'text-destructive') }}"/>
                                   </svg>
                                   <span class="absolute text-[11px] font-bold leading-none">{{ _score }}%</span>
                                 </div>
@@ -420,7 +420,7 @@
         <template x-for="cid in ($data.compareIds || [])" :key="cid">
           <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-xs font-medium">
             <span x-text="cid"></span>
-            <button type="button" @click="toggleCompare(cid)" class="hover:text-destructive transition-colors">×</button>
+            <button type="button" @click="toggleCompare(cid)" class="hover:text-destructive-emphasis transition-colors">×</button>
           </span>
         </template>
       </div>

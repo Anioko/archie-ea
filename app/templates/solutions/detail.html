@@ -193,7 +193,7 @@
                         <div class="border-t border-border pt-2 space-y-1">
                             <p class="text-xs font-medium">
                                 Sandbox: <span x-text="testResult.test_summary.passed + ' passed'" class="text-success-emphasis"></span>,
-                                <span x-text="testResult.test_summary.failed + ' failed'" class="text-destructive"></span>
+                                <span x-text="testResult.test_summary.failed + ' failed'" class="text-destructive-emphasis"></span>
                             </p>
                             <template x-for="f in (testResult.failures || []).slice(0, 5)" :key="f.test_name">
                                 <p class="text-[11px] text-muted-foreground">
@@ -206,7 +206,7 @@
                     </template>
                     {# Error display #}
                     <template x-if="error">
-                        <p class="text-xs text-destructive" x-text="error"></p>
+                        <p class="text-xs text-destructive-emphasis" x-text="error"></p>
                     </template>
                 </div>
             </div>
@@ -289,7 +289,7 @@
                                                 <template x-for="(field, fi) in elem.fields" :key="fi">
                                                     <tr class="border-b border-border/50 hover:bg-muted/20">
                                                         <td class="py-1.5">
-                                                            <button @click="elem.fields.splice(fi, 1)" class="text-muted-foreground hover:text-destructive" aria-label="Remove field">
+                                                            <button @click="elem.fields.splice(fi, 1)" class="text-muted-foreground hover:text-destructive-emphasis" aria-label="Remove field">
                                                                 <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
                                                             </button>
                                                         </td>
@@ -701,7 +701,7 @@
               </div>
             </div>
           </template>
-          <p x-show="aiError" x-cloak class="mt-2 text-xs text-destructive" x-text="aiError"></p>
+          <p x-show="aiError" x-cloak class="mt-2 text-xs text-destructive-emphasis" x-text="aiError"></p>
         </div>
       </div>
     </div>
@@ -971,7 +971,7 @@
               <tr class="hover:bg-muted/20">
                 <td class="px-5 py-2.5">{{ r.get('name') or r.get('title') or r.get('description', 'Untitled') }}</td>
                 <td class="px-3 py-2.5"><span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{{ (r.get('requirement_type') or r.get('type') or 'Functional') | title }}</span></td>
-                <td class="px-3 py-2.5"><span class="text-[10px] {% if r_priority == 'critical' %}text-destructive{% elif r_priority == 'high' %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
+                <td class="px-3 py-2.5"><span class="text-[10px] {% if r_priority == 'critical' %}text-destructive-emphasis{% elif r_priority == 'high' %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
                 <td class="px-3 py-2.5">
                   <span class="flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full {% if r_status == 'met' or r_status == 'closed' %}bg-success{% elif r_status == 'in_progress' or r_status == 'in progress' %}bg-warning{% else %}bg-muted-foreground{% endif %}"></span>
@@ -1644,7 +1644,7 @@
                 <td class="px-3 py-2.5">
                   <span class="inline-flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full {% if sev == 'high' or sev == 'critical' %}bg-destructive{% elif sev == 'medium' %}bg-warning{% else %}bg-muted-foreground{% endif %}"></span>
-                    <span class="text-xs {% if sev == 'high' or sev == 'critical' %}text-destructive{% elif sev == 'medium' %}text-warning-emphasis{% endif %}">{{ sev | title }}</span>
+                    <span class="text-xs {% if sev == 'high' or sev == 'critical' %}text-destructive-emphasis{% elif sev == 'medium' %}text-warning-emphasis{% endif %}">{{ sev | title }}</span>
                   </span>
                 </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (risk.get('likelihood') or risk.get('probability') or '&mdash;') | title }}</td>
@@ -1854,7 +1854,7 @@
             </template>
           </div>
         </template>
-        <p x-show="modal.error" x-cloak class="text-xs text-destructive" x-text="modal.error"></p>
+        <p x-show="modal.error" x-cloak class="text-xs text-destructive-emphasis" x-text="modal.error"></p>
       </div>
       <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
         <button @click="modal.open = false"
@@ -2121,7 +2121,7 @@ function openSectionComments(section, label) {
         <div class="p-4 space-y-3">
             <input type="search" x-model="query" @input="search()" placeholder="Search elements…"
                    class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label="Search elements…"/>
-            <div x-show="error" x-text="error" class="text-xs text-destructive" x-cloak></div>
+            <div x-show="error" x-text="error" class="text-xs text-destructive-emphasis" x-cloak></div>
             <div x-show="loading" x-cloak class="text-xs text-muted-foreground flex items-center gap-2">
                 <span class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block"></span> Searching…
             </div>
@@ -2339,7 +2339,7 @@ function sadPage() {
       } catch (e) {
         console.warn('[detail] viewpoint diagram load failed:', e);
         container.innerHTML = '<div class="flex items-center justify-center py-8 text-center">' +
-          '<div><p class="text-sm text-destructive">Diagram failed to load.</p>' +
+          '<div><p class="text-sm text-destructive-emphasis">Diagram failed to load.</p>' +
           '<p class="text-xs text-muted-foreground mt-1">Reload the page to try again.</p></div></div>';
       }
     }

@@ -197,8 +197,8 @@
                                 {# Rejection reason #}
                                 <div x-show="d.status === 'rejected' && d.rejection_reason" x-cloak
                                      class="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2">
-                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-destructive mb-1">Rejection Reason</p>
-                                    <p class="text-sm text-destructive/80" x-text="d.rejection_reason"></p>
+                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-destructive-emphasis mb-1">Rejection Reason</p>
+                                    <p class="text-sm text-destructive-emphasis/80" x-text="d.rejection_reason"></p>
                                 </div>
 
                                 {# Consequences #}
@@ -236,7 +236,7 @@
                                                                 <p class="text-xs text-muted-foreground" x-text="alt.pros"></p>
                                                             </div>
                                                             <div x-show="alt.cons" x-cloak>
-                                                                <p class="text-[10px] font-medium text-destructive mb-0.5">Cons</p>
+                                                                <p class="text-[10px] font-medium text-destructive-emphasis mb-0.5">Cons</p>
                                                                 <p class="text-xs text-muted-foreground" x-text="alt.cons"></p>
                                                             </div>
                                                         </div>

@@ -35,7 +35,7 @@
 
     <template x-if="error">
       <div class="mt-4 rounded-md bg-destructive/10 border border-destructive/30 p-3">
-        <p class="text-sm text-destructive" x-text="error"></p>
+        <p class="text-sm text-destructive-emphasis" x-text="error"></p>
       </div>
     </template>
 
@@ -166,8 +166,8 @@
       </div>
       <template x-if="importResult.errors && importResult.errors.length > 0">
         <div class="mt-4 rounded-md bg-destructive/10 border border-destructive/30 p-3">
-          <p class="text-xs font-medium text-destructive mb-1">Errors during import:</p>
-          <ul class="list-disc list-inside text-xs text-destructive space-y-1">
+          <p class="text-xs font-medium text-destructive-emphasis mb-1">Errors during import:</p>
+          <ul class="list-disc list-inside text-xs text-destructive-emphasis space-y-1">
             <template x-for="err in importResult.errors" :key="err">
               <li x-text="err"></li>
             </template>

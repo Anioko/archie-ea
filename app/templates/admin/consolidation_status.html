@@ -77,9 +77,9 @@
                             </td>
                             <td class="p-4">
                                 {% if target.priority == 'HIGH' %}
-                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-destructive/30 text-destructive">{{ target.priority }}</span>
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-destructive/30 text-destructive-emphasis">{{ target.priority }}</span>
                                 {% elif target.priority == 'MEDIUM' %}
-                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-warning/30 text-warning">{{ target.priority }}</span>
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-warning/30 text-warning-emphasis">{{ target.priority }}</span>
                                 {% else %}
                                 <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-primary/30 text-primary">{{ target.priority }}</span>
                                 {% endif %}
@@ -95,9 +95,9 @@
                             </td>
                             <td class="p-4">
                                 {% if target.is_complete %}
-                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-success/30 text-success">Complete</span>
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-success/30 text-success-emphasis">Complete</span>
                                 {% else %}
-                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-warning/30 text-warning">In Progress</span>
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-warning/30 text-warning-emphasis">In Progress</span>
                                 {% endif %}
                             </td>
                             <td class="p-4 text-muted-foreground">{{ target.estimated_effort }}</td>
@@ -133,9 +133,9 @@
                             <td class="p-4 font-medium">{{ bp.name }}</td>
                             <td class="p-4">
                                 {% if bp.is_active %}
-                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-success/30 text-success">{{ bp.status }}</span>
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-success/30 text-success-emphasis">{{ bp.status }}</span>
                                 {% elif bp.is_deprecated %}
-                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-warning/30 text-warning">{{ bp.status }}</span>
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-warning/30 text-warning-emphasis">{{ bp.status }}</span>
                                 {% elif bp.is_consolidated %}
                                 <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">{{ bp.status }}</span>
                                 {% else %}

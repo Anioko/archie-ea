@@ -225,7 +225,7 @@
       </div>
     </div>
     <div x-show="!loaded && !loadError" x-cloak class="text-sm text-muted-foreground">Loading executive summary…</div>
-    <div x-show="!loaded && loadError" x-cloak class="text-sm text-destructive">Could not load the executive summary.</div>
+    <div x-show="!loaded && loadError" x-cloak class="text-sm text-destructive-emphasis">Could not load the executive summary.</div>
   </div>
 
   <!-- Statistics Cards -->
@@ -267,7 +267,7 @@
             <p class="text-3xl font-bold tabular-nums text-warning leading-none">{{ stats.duplicate_groups|dash }}</p>
           </div>
         </div>
-        <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="text-xs text-warning hover:text-warning font-medium inline-flex items-center gap-1">
+        <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="text-xs text-warning-emphasis hover:text-warning-emphasis font-medium inline-flex items-center gap-1">
           Review groups
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -313,7 +313,7 @@
             <p class="text-3xl font-bold tabular-nums text-success leading-none">{{ stats.resolved_groups|dash }}</p>
           </div>
         </div>
-        <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="text-xs text-success hover:text-success font-medium inline-flex items-center gap-1">
+        <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="text-xs text-success-emphasis hover:text-success-emphasis font-medium inline-flex items-center gap-1">
           View resolved
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -355,7 +355,7 @@
           </div>
         </div>
         <p class="text-xs text-muted-foreground font-medium">
-          <span id="readiness-incomplete-count" class="text-destructive font-semibold">—</span> incomplete of
+          <span id="readiness-incomplete-count" class="text-destructive-emphasis font-semibold">—</span> incomplete of
           <span id="readiness-total-scored">—</span> scored
         </p>
       </div>
@@ -526,7 +526,7 @@
 
     <!-- Error state -->
     <div x-show="error" x-cloak class="m-5 rounded-lg border border-destructive/30 bg-destructive/5 p-5 text-center">
-      <p class="text-sm font-semibold text-destructive" x-text="error"></p>
+      <p class="text-sm font-semibold text-destructive-emphasis" x-text="error"></p>
     </div>
 
     <!-- Results table -->
@@ -594,7 +594,7 @@
         <!-- Bulk result feedback -->
         <div x-show="bulkResult" x-cloak
              class="w-full text-xs mt-1"
-             :class="bulkResult && bulkResult.success ? 'text-success' : 'text-destructive'"
+             :class="bulkResult && bulkResult.success ? 'text-success-emphasis' : 'text-destructive-emphasis'"
              x-text="bulkResult ? (bulkResult.success ? 'Done — ' + bulkResult.summary.processed + ' processed, ' + bulkResult.summary.skipped + ' skipped.' : (bulkResult.error || 'Action failed.')) : ''"></div><!-- token-migration-ok -->
       </div>
 
@@ -652,7 +652,7 @@
                 </td>
                 <td class="px-4 py-3 text-center">
                   <span class="tabular-nums font-semibold text-sm"
-                        :class="row.overall_health_score <= 33 ? 'text-destructive' : row.overall_health_score <= 66 ? 'text-warning' : 'text-success'"
+                        :class="row.overall_health_score <= 33 ? 'text-destructive-emphasis' : row.overall_health_score <= 66 ? 'text-warning-emphasis' : 'text-success-emphasis'"
                         x-text="row.overall_health_score != null ? row.overall_health_score : '—'"></span><!-- token-migration-ok -->
                 </td>
                 <td class="px-4 py-3">
@@ -900,7 +900,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
               </div>
-              <h3 class="text-lg font-semibold text-success">
+              <h3 class="text-lg font-semibold text-success-emphasis">
                 <span id="detection-strategy-name">Detection</span> Complete
               </h3>
               <span class="ml-auto text-xs px-2 py-1 rounded-full bg-success/20 text-success-emphasis font-medium" id="detection-timestamp"></span>
@@ -1193,7 +1193,7 @@
                     Cancel
                   </button>
                 </div>
-                <p x-show="transitionError" x-cloak class="text-xs text-destructive" x-text="transitionError" role="alert"></p>
+                <p x-show="transitionError" x-cloak class="text-xs text-destructive-emphasis" x-text="transitionError" role="alert"></p>
               </div>
             </div>
 
@@ -1371,7 +1371,7 @@
         <svg class="w-10 h-10 mx-auto mb-3 text-success/60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
         </svg>
-        <p class="text-sm font-medium text-success">No dependency risk found for the selected filter.</p>
+        <p class="text-sm font-medium text-success-emphasis">No dependency risk found for the selected filter.</p>
         <p class="text-xs mt-1">Either no application dependencies are recorded or none match the selected risk level.</p>
       </div>
     </div>
@@ -1410,7 +1410,7 @@
 
         <!-- Step 1 — pick the source application -->
         <div class="space-y-2">
-          <label for="rp-source-search" class="block text-sm font-semibold">Source Application <span class="text-destructive">*</span></label>
+          <label for="rp-source-search" class="block text-sm font-semibold">Source Application <span class="text-destructive-emphasis">*</span></label>
           <p class="text-xs text-muted-foreground">Select the application being replaced or consolidated. Only applications with a Replace or Consolidate disposition are relevant.</p>
           <div class="relative max-w-lg">
             <input type="text" id="rp-source-search"
@@ -1502,7 +1502,7 @@
                 <button type="button"
                         @click="clearTarget()"
                         aria-label="Clear target application"
-                        class="hover:text-destructive transition-colors">
+                        class="hover:text-destructive-emphasis transition-colors">
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                   </svg>
@@ -1512,7 +1512,7 @@
 
             <!-- Migration phase -->
             <div class="space-y-2">
-              <label for="rp-migration-phase" class="block text-sm font-semibold">Migration Phase <span class="text-destructive">*</span></label>
+              <label for="rp-migration-phase" class="block text-sm font-semibold">Migration Phase <span class="text-destructive-emphasis">*</span></label>
               <select id="rp-migration-phase"
                       x-model="form.migration_phase"
                       class="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
@@ -1548,7 +1548,7 @@
 
             <!-- Risk level -->
             <div class="space-y-2">
-              <label for="rp-risk" class="block text-sm font-semibold">Risk Level <span class="text-destructive">*</span></label>
+              <label for="rp-risk" class="block text-sm font-semibold">Risk Level <span class="text-destructive-emphasis">*</span></label>
               <select id="rp-risk"
                       x-model="form.risk_level"
                       class="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
@@ -1561,7 +1561,7 @@
 
             <!-- Rollout strategy -->
             <div class="space-y-2">
-              <label for="rp-rollout" class="block text-sm font-semibold">Rollout Strategy <span class="text-destructive">*</span></label>
+              <label for="rp-rollout" class="block text-sm font-semibold">Rollout Strategy <span class="text-destructive-emphasis">*</span></label>
               <select id="rp-rollout"
                       x-model="form.rollout_strategy"
                       class="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
@@ -1596,14 +1596,14 @@
               <span x-text="saving ? 'Saving…' : 'Save Replacement Plan'"></span>
             </button>
             <span x-show="saveSuccess" x-cloak
-                  class="text-sm text-success font-medium inline-flex items-center gap-1">
+                  class="text-sm text-success-emphasis font-medium inline-flex items-center gap-1">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
               </svg>
               Saved successfully
             </span>
             <span x-show="saveError" x-cloak
-                  class="text-sm text-destructive font-medium"
+                  class="text-sm text-destructive-emphasis font-medium"
                   x-text="saveError"></span>
           </div>
 
@@ -1628,7 +1628,7 @@
 
         <!-- Application picker -->
         <div class="space-y-2">
-          <label for="dc-app-search" class="block text-sm font-semibold">Application <span class="text-destructive">*</span></label>
+          <label for="dc-app-search" class="block text-sm font-semibold">Application <span class="text-destructive-emphasis">*</span></label>
           <p class="text-xs text-muted-foreground">Select a Retire or Replace application to create or update its decommission plan.</p>
           <div class="relative max-w-lg">
             <input type="text" id="dc-app-search"
@@ -1841,14 +1841,14 @@
                 </div>
 
                 <span x-show="saveSuccess" x-cloak
-                      class="text-sm text-success font-medium inline-flex items-center gap-1">
+                      class="text-sm text-success-emphasis font-medium inline-flex items-center gap-1">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                   </svg>
                   Saved successfully
                 </span>
                 <span x-show="saveError" x-cloak
-                      class="text-sm text-destructive font-medium"
+                      class="text-sm text-destructive-emphasis font-medium"
                       x-text="saveError"
                       role="alert"></span>
               </div>
@@ -2006,8 +2006,8 @@
             <div class="h-12 w-12 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-3">
               <i data-lucide="check-circle" class="w-6 h-6 text-success" aria-hidden="true"></i>
             </div>
-            <h3 id="no-blockers-title" class="font-semibold text-success mb-1">Safe to Retire</h3>
-            <p id="no-blockers-detail" class="text-sm text-success">No blocking dependencies found. This application can be safely retired.</p>
+            <h3 id="no-blockers-title" class="font-semibold text-success-emphasis mb-1">Safe to Retire</h3>
+            <p id="no-blockers-detail" class="text-sm text-success-emphasis">No blocking dependencies found. This application can be safely retired.</p>
           </div>
         </div>
       </div>
@@ -2068,7 +2068,7 @@
             <span x-show="!submitting" x-cloak>Create Override</span>
             <span x-show="submitting" x-cloak>Creating…</span>
           </button>
-          <p x-show="error" x-cloak class="text-sm text-destructive" x-text="error"></p>
+          <p x-show="error" x-cloak class="text-sm text-destructive-emphasis" x-text="error"></p>
         </div>
       </div>
     </div>
@@ -2145,7 +2145,7 @@
 
     <!-- Error state -->
     <div x-show="error" x-cloak class="p-6">
-      <p class="text-sm text-destructive" x-text="error"></p>
+      <p class="text-sm text-destructive-emphasis" x-text="error"></p>
     </div>
 
     <!-- No score state -->
@@ -2357,7 +2357,7 @@
 
       <!-- Application picker -->
       <div class="space-y-2">
-        <label for="bt-app-search" class="block text-sm font-semibold">Application <span class="text-destructive">*</span></label>
+        <label for="bt-app-search" class="block text-sm font-semibold">Application <span class="text-destructive-emphasis">*</span></label>
         <p class="text-xs text-muted-foreground">Select a scored application to create or update its benefits record.</p>
         <div class="relative max-w-lg">
           <input type="text" id="bt-app-search"
@@ -2606,7 +2606,7 @@
         <div class="space-y-4">
           <div>
             <label for="roadmap-owner" class="block text-sm font-medium text-foreground mb-1">
-              Owner <span class="text-destructive" aria-hidden="true">*</span>
+              Owner <span class="text-destructive-emphasis" aria-hidden="true">*</span>
             </label>
             <input id="roadmap-owner"
                    type="text"
@@ -2648,7 +2648,7 @@
               </span>
             </button>
           </div>
-          <p x-show="error" x-cloak class="text-sm text-destructive" x-text="error"></p>
+          <p x-show="error" x-cloak class="text-sm text-destructive-emphasis" x-text="error"></p>
           <p x-show="successMsg" x-cloak class="text-sm text-emerald-600 font-medium" x-text="successMsg"></p> <!-- token-migration-ok -->
         </div>
       </div>
@@ -2683,8 +2683,7 @@
         const q = getVal();
         if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
         try {
-          const r = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
-          const d = await r.json();
+          const d = await Platform.fetch('/api/users', { silent: true });
           if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
           this.uErrorShown = false;
         } catch (e) {
@@ -2779,14 +2778,12 @@
 
       async loadReviewState(appId) {
         try {
-          const res = await fetch(
-            `/applications/rationalization/api/review-queue?status=&page=1&per_page=1&_app_id=${encodeURIComponent(appId)}`,
-            { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
-          );
           // The queue endpoint doesn't filter by app_id directly; fetch via review-queue
           // and find the matching entry.  If not found (e.g. no score yet), show draft.
-          if (!res.ok) { this.reset(); return; }
-          const queueData = await res.json();
+          const queueData = await Platform.fetch(
+            `/applications/rationalization/api/review-queue?status=&page=1&per_page=1&_app_id=${encodeURIComponent(appId)}`,
+            { silent: true }
+          );
           if (!queueData.success) { this.reset(); return; }
 
           // We need per-app data — call the queue without status filter and find our app
@@ -2810,12 +2807,10 @@
         // Fetch the full queue (up to 200 per page) and find the app row.
         // In practice portfolios are <200 scored apps in most deployments.
         try {
-          const res = await fetch(
+          const data = await Platform.fetch(
             `/applications/rationalization/api/review-queue?page=1&per_page=200`,
-            { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+            { silent: true }
           );
-          if (!res.ok) return;
-          const data = await res.json();
           if (!data.success) return;
           const entry = (data.results || []).find(r => r.app_id === appId);
           if (entry) this.applyEntry(entry);
@@ -2893,26 +2888,16 @@
         this.transitionLoading = true;
         this.transitionError = '';
 
-        const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-
         try {
-          const res = await fetch(
+          const data = await Platform.fetch.post(
             `/applications/rationalization/api/review/${this._appId}`,
             {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken,
-              },
-              body: JSON.stringify({
-                action: this.pendingAction,
-                notes: this.transitionNotes.trim() || null,
-                reviewer: this.reviewerName.trim(),
-              }),
-            }
+              action: this.pendingAction,
+              notes: this.transitionNotes.trim() || null,
+              reviewer: this.reviewerName.trim(),
+            },
+            { silent: true }
           );
-          const data = await res.json();
           if (data.success) {
             this.reviewStatus = data.review_status;
             this.reviewedBy = data.reviewed_by;
@@ -2975,9 +2960,7 @@
         if (q.length < 2) { this.sourceResults = []; return; }
         try {
           const url = `${(window.__APP_CONFIG__ || {}).appSearchUrl || '/api/enterprise/applications'}?search=${encodeURIComponent(q)}&limit=10`;
-          const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-          if (!res.ok) return;
-          const data = await res.json();
+          const data = await Platform.fetch(url, { silent: true });
           this.sourceResults = data.applications || data || [];
         } catch (_) {
           this.sourceResults = [];
@@ -3000,9 +2983,7 @@
         if (q.length < 2) { this.targetResults = []; return; }
         try {
           const url = `${(window.__APP_CONFIG__ || {}).appSearchUrl || '/api/enterprise/applications'}?search=${encodeURIComponent(q)}&limit=10`;
-          const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-          if (!res.ok) return;
-          const data = await res.json();
+          const data = await Platform.fetch(url, { silent: true });
           this.targetResults = (data.applications || data || []).filter(a => a.id !== this.sourceAppId);
         } catch (_) {
           this.targetResults = [];
@@ -3043,18 +3024,7 @@
         };
         try {
           const baseUrl = (window.__APP_CONFIG__ || {}).replacementPlanBaseUrl || '/applications/rationalization/api/replacement-plan/';
-          const res = await fetch(`${baseUrl}${appId}`, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          });
-          if (res.status === 404) {
-            this.planStatus = 'new';
-            return;
-          }
-          if (!res.ok) {
-            this.planStatus = 'new';
-            return;
-          }
-          const data = await res.json();
+          const data = await Platform.fetch(`${baseUrl}${appId}`, { silent: true });
           if (data.success && data.plan) {
             const p = data.plan;
             this.form.target_app_id = p.target_app_id;
@@ -3081,27 +3051,16 @@
         this.saveError = '';
         try {
           const baseUrl = (window.__APP_CONFIG__ || {}).replacementPlanBaseUrl || '/applications/rationalization/api/replacement-plan/';
-          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] ||
-                            document.querySelector('meta[name="csrf-token"]')?.content || '';
-          const res = await fetch(`${baseUrl}${this.sourceAppId}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-              'X-CSRFToken': csrfToken,
-            },
-            body: JSON.stringify({
-              target_app_id: this.form.target_app_id || null,
-              target_app_name: this.form.target_app_name || null,
-              migration_phase: this.form.migration_phase,
-              estimated_cost: this.form.estimated_cost || null,
-              estimated_duration_months: this.form.estimated_duration_months || null,
-              risk_level: this.form.risk_level,
-              rollout_strategy: this.form.rollout_strategy,
-              notes: this.form.notes || null,
-            }),
-          });
-          const data = await res.json();
+          const data = await Platform.fetch.post(`${baseUrl}${this.sourceAppId}`, {
+            target_app_id: this.form.target_app_id || null,
+            target_app_name: this.form.target_app_name || null,
+            migration_phase: this.form.migration_phase,
+            estimated_cost: this.form.estimated_cost || null,
+            estimated_duration_months: this.form.estimated_duration_months || null,
+            risk_level: this.form.risk_level,
+            rollout_strategy: this.form.rollout_strategy,
+            notes: this.form.notes || null,
+          }, { silent: true });
           if (data.success) {
             this.saveSuccess = true;
             this.planStatus = 'loaded';
@@ -3159,9 +3118,7 @@
         if (q.length < 2) { this.appResults = []; return; }
         try {
           const url = `${(window.__APP_CONFIG__ || {}).appSearchUrl || '/api/enterprise/applications'}?search=${encodeURIComponent(q)}&limit=10`;
-          const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-          if (!res.ok) return;
-          const data = await res.json();
+          const data = await Platform.fetch(url, { silent: true });
           this.appResults = data.applications || data || [];
         } catch (_) {
           this.appResults = [];
@@ -3186,12 +3143,10 @@
         this.saveError = '';
         this._resetForm();
         try {
-          const res = await fetch(
+          const data = await Platform.fetch(
             `/applications/rationalization/api/decommission-plan/${appId}`,
-            { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+            { silent: true }
           );
-          if (!res.ok) { this.planStatus = 'new'; this.loaded = true; return; }
-          const data = await res.json();
           if (!data.success) { this.planStatus = 'new'; this.loaded = true; return; }
 
           this.requiresPlan = data.requires_plan || false;
@@ -3247,33 +3202,23 @@
         this.saveSuccess = false;
         this.saveError = '';
         try {
-          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] ||
-                            document.querySelector('meta[name="csrf-token"]')?.content || '';
-          const res = await fetch(
+          const data = await Platform.fetch.post(
             `/applications/rationalization/api/decommission-plan/${this.appId}`,
             {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken,
-              },
-              body: JSON.stringify({
-                plan_owner: this.form.plan_owner || null,
-                migration_approach: this.form.migration_approach || null,
-                cutover_date: this.form.cutover_date || null,
-                downtime_window: this.form.downtime_window || null,
-                rollback_window: this.form.rollback_window || null,
-                data_retention_period: this.form.data_retention_period || null,
-                data_migration_plan: this.form.data_migration_plan || null,
-                rollback_trigger: this.form.rollback_trigger || null,
-                smoke_test_plan: this.form.smoke_test_plan || null,
-                communication_plan: this.form.communication_plan || null,
-                plan_status: this.form.plan_status,
-              }),
-            }
+              plan_owner: this.form.plan_owner || null,
+              migration_approach: this.form.migration_approach || null,
+              cutover_date: this.form.cutover_date || null,
+              downtime_window: this.form.downtime_window || null,
+              rollback_window: this.form.rollback_window || null,
+              data_retention_period: this.form.data_retention_period || null,
+              data_migration_plan: this.form.data_migration_plan || null,
+              rollback_trigger: this.form.rollback_trigger || null,
+              smoke_test_plan: this.form.smoke_test_plan || null,
+              communication_plan: this.form.communication_plan || null,
+              plan_status: this.form.plan_status,
+            },
+            { silent: true }
           );
-          const data = await res.json();
           if (data.success) {
             this.saveSuccess = true;
             this.planStatus = 'loaded';
@@ -3353,10 +3298,7 @@
         if (!appId) { this.loaded = false; return; }
         this.currentAppId = appId;
         try {
-          const res = await fetch(`/applications/rationalization/api/override/${appId}`, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          });
-          const data = await res.json();
+          const data = await Platform.fetch(`/applications/rationalization/api/override/${appId}`, { silent: true });
           if (data.success) {
             this.overrideActive = data.override_active;
             this.overrideDisposition = data.override_disposition;
@@ -3377,18 +3319,7 @@
         this.submitting = true;
         this.error = '';
         try {
-          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] ||
-                            document.querySelector('meta[name="csrf-token"]')?.content || '';
-          const res = await fetch(`/applications/rationalization/api/override/${this.currentAppId}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-              'X-CSRFToken': csrfToken,
-            },
-            body: JSON.stringify(this.form),
-          });
-          const data = await res.json();
+          const data = await Platform.fetch.post(`/applications/rationalization/api/override/${this.currentAppId}`, this.form, { silent: true });
           if (data.success) {
             await this.loadOverride(this.currentAppId);
           } else {
@@ -3404,15 +3335,7 @@
       async removeOverride() {
         if (!this.currentAppId) return;
         try {
-          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] ||
-                            document.querySelector('meta[name="csrf-token"]')?.content || '';
-          await fetch(`/applications/rationalization/api/override/${this.currentAppId}`, {
-            method: 'DELETE',
-            headers: {
-              'X-Requested-With': 'XMLHttpRequest',
-              'X-CSRFToken': csrfToken,
-            },
-          });
+          await Platform.fetch.delete(`/applications/rationalization/api/override/${this.currentAppId}`, { silent: true });
           await this.loadOverride(this.currentAppId);
         } catch (_) {
           // network error — silently degrade
@@ -3487,11 +3410,10 @@
       async loadStatus(appId) {
         if (!appId) { this.loaded = false; return; }
         try {
-          const res = await fetch(
+          const data = await Platform.fetch(
             `/applications/rationalization/api/arb-status/${appId}`,
-            { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+            { silent: true }
           );
-          const data = await res.json();
           if (data.success) {
             this.arbRequired = data.arb_required;
             this.submissionStatus = data.arb_submission_status;
@@ -3509,21 +3431,11 @@
         if (!this.currentAppId) return;
         this.submitting = true;
         try {
-          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] ||
-                            document.querySelector('meta[name="csrf-token"]')?.content || '';
-          const res = await fetch(
+          const data = await Platform.fetch.post(
             `/applications/rationalization/api/arb-submit/${this.currentAppId}`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken,
-              },
-              body: JSON.stringify({}),
-            }
+            {},
+            { silent: true }
           );
-          const data = await res.json();
           if (data.success) {
             this.submissionStatus = 'submitted';
           }
@@ -3632,14 +3544,7 @@
 
           const baseUrl = (window.__APP_CONFIG__ || {}).portfolioWorkbenchUrl
             || '/applications/rationalization/api/portfolio-workbench';
-          const res = await fetch(baseUrl + '?' + params.toString(), {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          });
-          if (!res.ok) {
-            this.error = 'Failed to load workbench data (HTTP ' + res.status + ')';
-            return;
-          }
-          const data = await res.json();
+          const data = await Platform.fetch(baseUrl + '?' + params.toString(), { silent: true });
           if (!data.success) {
             this.error = data.error || 'An error occurred loading the workbench.';
             return;
@@ -3651,7 +3556,9 @@
             this.facets = data.facets;
           }
         } catch (err) {
-          this.error = 'Network error — please try again.';
+          this.error = (err && err.status)
+            ? 'Failed to load workbench data (HTTP ' + err.status + ')'
+            : 'Network error — please try again.';
           console.error('decisionWorkbench.load error:', err);
         } finally {
           this.loading = false;
@@ -3679,7 +3586,7 @@
 
       _timeActionClass(action) {
         const map = {
-          ELIMINATE: 'bg-destructive/10 text-destructive border border-destructive/30',
+          ELIMINATE: 'bg-destructive/10 text-destructive-emphasis border border-destructive/30',
           MIGRATE: 'bg-warning/10 text-warning-emphasis border border-warning/30',
           INVEST: 'bg-success/10 text-success-emphasis border border-success/30',
           TOLERATE: 'bg-muted/50 text-muted-foreground border border-border',
@@ -3714,7 +3621,7 @@
           reviewed: 'bg-success/10 text-success-emphasis border border-success/30',
           approved: 'bg-blue-500/10 text-blue-600 border border-blue-500/30', /* token-migration-ok */
           draft: 'bg-muted/50 text-muted-foreground border border-border',
-          rejected: 'bg-destructive/10 text-destructive border border-destructive/30',
+          rejected: 'bg-destructive/10 text-destructive-emphasis border border-destructive/30',
         };
         return map[(status || '').toLowerCase()] || 'bg-muted/50 text-muted-foreground border border-border'; /* token-migration-ok */
       },
@@ -3743,10 +3650,7 @@
           return;
         }
         this._searchTimer = setTimeout(() => {
-          fetch('/api/enterprise/applications?search=' + encodeURIComponent(value) + '&limit=10', {
-            headers: { 'X-CSRFToken': getCSRFToken() }
-          })
-            .then(r => r.json())
+          Platform.fetch('/api/enterprise/applications?search=' + encodeURIComponent(value) + '&limit=10', { silent: true })
             .then(data => {
               this.results = Array.isArray(data) ? data : (data.results || data.applications || []);
               this.showDropdown = this.results.length > 0;
@@ -3768,10 +3672,7 @@
         this.dossierData = null;
         this.error = null;
         try {
-          let resp = await fetch('/applications/rationalization/api/decision-dossier/' + this.selectedAppId, {
-            headers: { 'X-CSRFToken': getCSRFToken() }
-          });
-          let data = await resp.json();
+          let data = await Platform.fetch('/applications/rationalization/api/decision-dossier/' + this.selectedAppId, { silent: true });
           if (!data.success) {
             this.error = data.error || 'Failed to load dossier.';
             return;
@@ -3889,11 +3790,10 @@
       async loadStatus(appId) {
         if (!appId) { this.loaded = false; return; }
         try {
-          const res = await fetch(
+          const data = await Platform.fetch(
             `/applications/rationalization/api/roadmap-status/${appId}`,
-            { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+            { silent: true }
           );
-          const data = await res.json();
           if (data.success) {
             this.hasRoadmapItem = data.has_roadmap_item;
             this.roadmapItemId = data.roadmap_item_id;
@@ -3915,25 +3815,15 @@
         this.error = '';
         this.successMsg = '';
         try {
-          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] ||
-                            document.querySelector('meta[name="csrf-token"]')?.content || '';
-          const res = await fetch(
+          const data = await Platform.fetch.post(
             `/applications/rationalization/api/create-roadmap-item/${this.currentAppId}`,
             {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken,
-              },
-              body: JSON.stringify({
-                owner: this.form.owner.trim(),
-                target_date: this.form.target_date || null,
-                notes: this.form.notes.trim() || null,
-              }),
-            }
+              owner: this.form.owner.trim(),
+              target_date: this.form.target_date || null,
+              notes: this.form.notes.trim() || null,
+            },
+            { silent: true }
           );
-          const data = await res.json();
           if (data.success) {
             this.hasRoadmapItem = true;
             this.roadmapItemId = data.roadmap_item_id;
@@ -4026,11 +3916,7 @@
           if (q.length < 2) { results.classList.add('hidden'); results.innerHTML = ''; return; }
           debounceTimer = setTimeout(async () => {
             try {
-              const res = await fetch(`/api/enterprise/applications?search=${encodeURIComponent(q)}&limit=10`, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-              });
-              if (!res.ok) throw new Error('Application search failed (HTTP ' + res.status + ')');
-              const data = await res.json();
+              const data = await Platform.fetch(`/api/enterprise/applications?search=${encodeURIComponent(q)}&limit=10`, { silent: true });
               const apps = data.applications || data.results || data || [];
               results.innerHTML = '';
               if (!apps.length) {
@@ -4056,7 +3942,7 @@
               // A search that failed must not read as "No results".
               const li = document.createElement('li');
               li.className = 'px-3 py-2 text-sm text-destructive';
-              li.textContent = err.message || 'Application search failed';
+              li.textContent = (err && err.message) || 'Application search failed';
               results.innerHTML = '';
               results.appendChild(li);
               results.classList.remove('hidden');
@@ -4096,11 +3982,10 @@
       async loadBenefits(appId) {
         if (!appId) { this.loaded = false; return; }
         try {
-          const res = await fetch(
+          const data = await Platform.fetch(
             `/applications/rationalization/api/benefits/${appId}`,
-            { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+            { silent: true }
           );
-          const data = await res.json();
           if (!data.success) { this.loaded = false; return; }
           if (data.has_tracking && data.benefits) {
             const b = data.benefits;
@@ -4137,8 +4022,6 @@
         this.error = '';
         this.successMsg = '';
         try {
-          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] ||
-                            document.querySelector('meta[name="csrf-token"]')?.content || '';
           const payload = {
             tracking_status: this.form.tracking_status,
             projected_annual_savings: this.form.projected_annual_savings !== '' ? parseFloat(this.form.projected_annual_savings) : null,
@@ -4153,19 +4036,11 @@
             measured_by: this.form.measured_by.trim() || null,
             measurement_notes: this.form.measurement_notes.trim() || null,
           };
-          const res = await fetch(
+          const data = await Platform.fetch.post(
             `/applications/rationalization/api/benefits/${this.currentAppId}`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken,
-              },
-              body: JSON.stringify(payload),
-            }
+            payload,
+            { silent: true }
           );
-          const data = await res.json();
           if (data.success) {
             this.trackingStatus = data.tracking_status || this.form.tracking_status;
             this.variancePct = data.savings_variance_pct != null ? data.savings_variance_pct : null;

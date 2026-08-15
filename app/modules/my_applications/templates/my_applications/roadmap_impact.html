@@ -67,7 +67,7 @@
                 <div class="flex items-start gap-4">
                     <!-- Impact Icon -->
                     <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0
-                        {% if impact.impact_type == 'sunset' %}bg-warning/10 text-warning
+                        {% if impact.impact_type == 'sunset' %}bg-warning/10 text-warning-emphasis
                         {% elif impact.impact_type == 'lifecycle_change' %}bg-info/10 text-info-emphasis
                         {% else %}bg-muted text-muted-foreground{% endif %}">
                         <i data-lucide="{% if impact.impact_type == 'sunset' %}sunset{% elif impact.impact_type == 'lifecycle_change' %}refresh-cw{% else %}calendar{% endif %}" class="w-6 h-6"></i>

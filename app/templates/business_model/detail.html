@@ -134,7 +134,7 @@
           <span x-show="savingBlock === '{{ b.key }}'" x-cloak class="text-[10px] text-muted-foreground inline-flex items-center gap-1">
             <i data-lucide="loader-2" class="h-2.5 w-2.5 animate-spin" aria-hidden="true"></i> Saving…
           </span>
-          <span x-show="savedBlock === '{{ b.key }}'" x-cloak class="text-[10px] text-success">Saved</span>
+          <span x-show="savedBlock === '{{ b.key }}'" x-cloak class="text-[10px] text-success-emphasis">Saved</span>
         </div>
       </div>
       {% endfor %}

@@ -127,7 +127,7 @@
         <p class="mt-2 text-sm text-muted-foreground">Loading board...</p>
     </div>
     <div x-show="error && !loading" x-cloak class="p-8 text-center">
-        <p class="text-sm text-destructive" x-text="error"></p>
+        <p class="text-sm text-destructive-emphasis" x-text="error"></p>
         <button @click="reload()" class="mt-2 text-xs text-primary hover:underline">Retry</button>
     </div>
 
@@ -170,7 +170,7 @@
                                   :title="colSlaStatus(col.id).overdue_count + ' card(s) past ' + colSlaStatus(col.id).sla_days + '-day SLA'"
                                   x-text="'⚠ ' + colSlaStatus(col.id).overdue_count + ' SLA'"></span>
                         </template>
-                        <span :class="wipAtLimit(col.id) ? 'text-destructive font-semibold' : wipNearLimit(col.id) ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
+                        <span :class="wipAtLimit(col.id) ? 'text-destructive-emphasis font-semibold' : wipNearLimit(col.id) ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
                               class="flex items-center gap-0.5">
                             <span x-text="wipCount(col.id)"></span>
                             <template x-if="wipLimit(col.id) > 0">
@@ -287,7 +287,7 @@
                                           x-text="card.meta.artifact_total + ' artifacts'"></span>
                                     <template x-if="card.meta.phase_gate">
                                         <span :class="card.meta.phase_gate.valid
- ? 'text-success-emphasis' : 'text-destructive'"
+ ? 'text-success-emphasis' : 'text-destructive-emphasis'"
                                               :title="card.meta.phase_gate.valid
                                                   ? 'Phase gate passed'
                                                   : (card.meta.phase_gate.errors || []).join('; ')">
@@ -358,7 +358,7 @@
                                         <span x-show="card.due_date" x-cloak
                                               class="inline-flex items-center gap-0.5 text-[9px]"
                                               :class="isOverdue(card.due_date)
- ? 'text-destructive font-semibold'
+ ? 'text-destructive-emphasis font-semibold'
  : 'text-muted-foreground'">
                                             <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                             <span x-text="formatDate(card.due_date)"></span>
@@ -412,7 +412,7 @@
                                       :title="colSlaStatus(col.id).overdue_count + ' card(s) past SLA'"
                                       x-text="'⚠ ' + colSlaStatus(col.id).overdue_count"></span>
                             </template>
-                            <span :class="wipAtLimit(col.id) ? 'text-destructive font-semibold' : wipNearLimit(col.id) ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
+                            <span :class="wipAtLimit(col.id) ? 'text-destructive-emphasis font-semibold' : wipNearLimit(col.id) ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
                                   class="flex items-center gap-0.5">
                                 <span x-text="wipCount(col.id)"></span>
                                 <template x-if="wipLimit(col.id) > 0">
@@ -648,7 +648,7 @@
                     </button>
                     <div x-show="expanded" x-cloak class="space-y-3 mb-2">
                         <div class="space-y-1">
-                            <label class="text-xs font-medium text-foreground" for="ct-title">Title <span class="text-destructive">*</span></label>
+                            <label class="text-xs font-medium text-foreground" for="ct-title">Title <span class="text-destructive-emphasis">*</span></label>
                             <input id="ct-title" type="text" x-model="form.title" required
                                    placeholder="Task title..."
                                    class="w-full h-8 px-3 text-sm bg-background border border-border rounded text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary">
@@ -847,7 +847,7 @@
                             </div>
                             <p x-show="form.assignee_label" x-cloak class="text-xs text-muted-foreground mt-0.5">
                                 Assigned to: <span class="font-medium text-foreground" x-text="form.assignee_label"></span>
-                                <button type="button" @click="form.assignee=null; form.assignee_label=''; assigneeSearch=''" class="ml-1 text-muted-foreground hover:text-destructive">×</button>
+                                <button type="button" @click="form.assignee=null; form.assignee_label=''; assigneeSearch=''" class="ml-1 text-muted-foreground hover:text-destructive-emphasis">×</button>
                             </p>
                         </div>
                         <div class="space-y-1">
@@ -893,7 +893,7 @@
                                 <template x-for="item in form.requirement_ids" :key="item.id">
                                     <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary/90 rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
-                                        <button type="button" @click="removeRequirement(item)" class="hover:text-destructive">×</button>
+                                        <button type="button" @click="removeRequirement(item)" class="hover:text-destructive-emphasis">×</button>
                                     </span>
                                 </template>
                             </div>
@@ -919,7 +919,7 @@
                                 <template x-for="item in form.goal_ids" :key="item.id">
                                     <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-success/10 text-success-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
-                                        <button type="button" @click="removeGoal(item)" class="hover:text-destructive">×</button>
+                                        <button type="button" @click="removeGoal(item)" class="hover:text-destructive-emphasis">×</button>
                                     </span>
                                 </template>
                             </div>
@@ -945,7 +945,7 @@
                                 <template x-for="item in form.driver_ids" :key="item.id">
                                     <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-warning/10 text-warning-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
-                                        <button type="button" @click="removeDriver(item)" class="hover:text-destructive">×</button>
+                                        <button type="button" @click="removeDriver(item)" class="hover:text-destructive-emphasis">×</button>
                                     </span>
                                 </template>
                             </div>
@@ -971,7 +971,7 @@
                                 <template x-for="item in form.principle_ids" :key="item.id">
                                     <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-info/10 text-info-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
-                                        <button type="button" @click="removePrinciple(item)" class="hover:text-destructive">×</button>
+                                        <button type="button" @click="removePrinciple(item)" class="hover:text-destructive-emphasis">×</button>
                                     </span>
                                 </template>
                             </div>
@@ -1336,7 +1336,7 @@
                                            autocomplete="off"
                                            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search requirements..."/>
                                     <div x-show="typeaheadError.requirements" x-cloak
-                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive"
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive-emphasis"
                                          x-text="typeaheadError.requirements"></div>
                                     <div x-show="!typeaheadError.requirements && detailRequirementResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
@@ -1361,7 +1361,7 @@
                                            autocomplete="off"
                                            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search goals..."/>
                                     <div x-show="typeaheadError.goals" x-cloak
-                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive"
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive-emphasis"
                                          x-text="typeaheadError.goals"></div>
                                     <div x-show="!typeaheadError.goals && detailGoalResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
@@ -1386,7 +1386,7 @@
                                            autocomplete="off"
                                            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search drivers..."/>
                                     <div x-show="typeaheadError.drivers" x-cloak
-                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive"
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive-emphasis"
                                          x-text="typeaheadError.drivers"></div>
                                     <div x-show="!typeaheadError.drivers && detailDriverResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
@@ -1411,7 +1411,7 @@
                                            autocomplete="off"
                                            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search principles..."/>
                                     <div x-show="typeaheadError.principles" x-cloak
-                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive"
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive-emphasis"
                                          x-text="typeaheadError.principles"></div>
                                     <div x-show="!typeaheadError.principles && detailPrincipleResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
@@ -1687,7 +1687,7 @@
                             </div>
                             <p x-show="editFields.assignee_label" x-cloak class="text-xs text-muted-foreground mt-1">
                                 <span x-text="editFields.assignee_label"></span>
-                                <button type="button" @click="editFields.assignee=null; editFields.assignee_label=''; editAssigneeSearch=''" class="ml-1 text-destructive hover:underline text-xs">clear</button>
+                                <button type="button" @click="editFields.assignee=null; editFields.assignee_label=''; editAssigneeSearch=''" class="ml-1 text-destructive-emphasis hover:underline text-xs">clear</button>
                             </p>
                         </div>
                         <div class="grid grid-cols-3 gap-3">
@@ -1736,9 +1736,9 @@
                     <template x-if="card && card.card_type === 'task' && !editMode">
                         <div class="flex items-center gap-2">
                             <button @click="confirmDelete = true" x-show="!confirmDelete" x-cloak
-                                    class="text-sm text-muted-foreground hover:text-destructive transition-colors">Delete</button>
+                                    class="text-sm text-muted-foreground hover:text-destructive-emphasis transition-colors">Delete</button>
                             <div x-show="confirmDelete" x-cloak class="flex items-center gap-2">
-                                <span class="text-xs text-destructive">Delete?</span>
+                                <span class="text-xs text-destructive-emphasis">Delete?</span>
                                 <button @click="deleteCard()"
                                         class="px-2 py-1 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90">Yes</button>
                                 <button @click="confirmDelete = false"
@@ -2160,7 +2160,7 @@
                         <div class="flex items-center justify-between mb-1">
                             <span class="text-[10px] text-muted-foreground">Capacity</span>
                             <span class="text-[10px] font-medium"
-                                  :class="overCapacity ? 'text-destructive' : 'text-foreground'"
+                                  :class="overCapacity ? 'text-destructive-emphasis' : 'text-foreground'"
                                   x-text="totalPoints + ' / ' + (activeSprint.capacity_points || 0) + ' pts'"></span>
                         </div>
                         <div class="h-1.5 w-full rounded-full bg-muted overflow-hidden">

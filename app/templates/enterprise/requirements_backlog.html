@@ -161,7 +161,7 @@
                     </template>
                     <template x-if="!loading && loadError">
                         <tr>
-                            <td colspan="6" class="px-4 py-12 text-center text-destructive">
+                            <td colspan="6" class="px-4 py-12 text-center text-destructive-emphasis">
                                 <i data-lucide="alert-triangle" class="h-10 w-10 mx-auto mb-3" aria-hidden="true"></i>
                                 <p x-text="loadError"></p>
                                 <p class="mt-1 text-muted-foreground">The backlog could not be read — this is not an empty backlog.</p>
@@ -329,7 +329,7 @@
                 <input type="hidden" x-model="newReq.template_id" name="template_id">
 
                 <div>
-                    <label class="block text-sm font-medium mb-1.5" for="new-req-name">Requirement Name <span class="text-destructive">*</span></label>
+                    <label class="block text-sm font-medium mb-1.5" for="new-req-name">Requirement Name <span class="text-destructive-emphasis">*</span></label>
                     <input
                         id="new-req-name"
                         type="text"
@@ -674,7 +674,7 @@
                                     <label class="block text-xs font-medium mb-1" :for="'req-archimate-req-' + activeReq.id">ArchiMate Requirement <span class="text-muted-foreground font-normal">(formal requirement element)</span></label>
                                     <div class="relative">
                                         <input type="text" :id="'req-archimate-req-' + activeReq.id" x-model="archiReqSearch" @input.debounce.300ms="searchArchiReqs()" @focus="archiReqDropdownOpen = true" :placeholder="activeReq.archimate_requirement_name || 'Search ArchiMate requirements…'" class="w-full flex h-8 rounded-md border border-input bg-background px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Search ArchiMate requirements">
-                                        <div x-show="archiReqDropdownOpen && archiReqError" x-cloak class="absolute z-50 w-full mt-1 rounded-md border bg-popover shadow-md px-3 py-1.5 text-xs text-destructive" x-text="archiReqError" @click.outside="archiReqDropdownOpen = false"></div>
+                                        <div x-show="archiReqDropdownOpen && archiReqError" x-cloak class="absolute z-50 w-full mt-1 rounded-md border bg-popover shadow-md px-3 py-1.5 text-xs text-destructive-emphasis" x-text="archiReqError" @click.outside="archiReqDropdownOpen = false"></div>
                                         <div x-show="archiReqDropdownOpen && !archiReqError && archiReqResults.length > 0" x-cloak class="absolute z-50 w-full mt-1 max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md" @click.outside="archiReqDropdownOpen = false">
                                             <template x-for="elem in archiReqResults" :key="elem.id">
                                                 <button type="button" class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors" @click="activeReq.archimate_requirement_id = elem.id; activeReq.archimate_requirement_name = elem.title; archiReqSearch = elem.title; archiReqDropdownOpen = false" x-text="elem.title"></button>
@@ -684,7 +684,7 @@
                                     <template x-if="activeReq.archimate_requirement_id">
                                         <div class="flex items-center gap-2 mt-1">
                                             <span class="text-[11px] text-muted-foreground" x-text="'Linked: ' + (activeReq.archimate_requirement_name || 'ID #' + activeReq.archimate_requirement_id)"></span>
-                                            <button type="button" class="text-[11px] text-destructive hover:underline" @click="activeReq.archimate_requirement_id = null; activeReq.archimate_requirement_name = null; archiReqSearch = ''">Unlink</button>
+                                            <button type="button" class="text-[11px] text-destructive-emphasis hover:underline" @click="activeReq.archimate_requirement_id = null; activeReq.archimate_requirement_name = null; archiReqSearch = ''">Unlink</button>
                                         </div>
                                     </template>
                                 </div>
@@ -773,7 +773,7 @@
                         <div class="mt-3">
                             <div class="flex items-center justify-between mb-1">
                                 <label class="text-sm font-medium">Definition of Done</label>
-                                <span :class="activeReq.dod_complete ? 'text-success' : 'text-muted-foreground'"
+                                <span :class="activeReq.dod_complete ? 'text-success-emphasis' : 'text-muted-foreground'"
                                       class="text-xs font-medium"
                                       x-text="activeReq.dod_complete ? '✓ Complete' : 'Incomplete'"></span>
                             </div>
@@ -914,10 +914,10 @@
                             <p class="text-xs text-muted-foreground" x-text="'Status: ' + activeReq.jira_push_status.replace('synced:', '')"></p>
                         </template>
                         <template x-if="jiraPushError">
-                            <p class="text-xs text-destructive" x-text="jiraPushError"></p>
+                            <p class="text-xs text-destructive-emphasis" x-text="jiraPushError"></p>
                         </template>
                         <template x-if="jiraSyncError">
-                            <p class="text-xs text-destructive" x-text="jiraSyncError"></p>
+                            <p class="text-xs text-destructive-emphasis" x-text="jiraSyncError"></p>
                         </template>
                         <a
                             href="/api/enterprise/requirements/sync-all-jira"

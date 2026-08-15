@@ -135,9 +135,9 @@
                         {% elif sm.overall_health == 'fair' %}text-warning
                         {% else %}text-destructive{% endif %}">{{ sm.overall_score }}</div>
                     <div class="text-xs font-medium mt-1
-                        {% if sm.overall_health == 'good' %}text-success
-                        {% elif sm.overall_health == 'fair' %}text-warning
-                        {% else %}text-destructive{% endif %}">{{ sm.overall_health|upper }} HEALTH</div>
+                        {% if sm.overall_health == 'good' %}text-success-emphasis
+                        {% elif sm.overall_health == 'fair' %}text-warning-emphasis
+                        {% else %}text-destructive-emphasis{% endif %}">{{ sm.overall_health|upper }} HEALTH</div>
                 </div>
                 <div class="rounded-xl border-2 border-input p-4 text-center">
                     <div class="text-2xl font-bold">{{ sm.completeness_pct }}%</div>
@@ -167,7 +167,7 @@
                         <ul class="space-y-1">
                             {% for finding in sm.critical_findings %}
                             <li class="text-sm text-muted-foreground flex items-start gap-1.5">
-                                <span class="text-warning mt-0.5 shrink-0">&bull;</span>
+                                <span class="text-warning-emphasis mt-0.5 shrink-0">&bull;</span>
                                 {{ finding }}
                             </li>
                             {% endfor %}
@@ -186,8 +186,8 @@
         <div class="flex items-start gap-3">
             <i data-lucide="alert-circle" class="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
             <div class="flex-1">
-                <h3 class="font-semibold text-destructive">Error</h3>
-                <div class="text-sm text-destructive mt-1">{{ instance.error_message|humanize_error }}</div>
+                <h3 class="font-semibold text-destructive-emphasis">Error</h3>
+                <div class="text-sm text-destructive-emphasis mt-1">{{ instance.error_message|humanize_error }}</div>
             </div>
         </div>
     </div>
@@ -252,7 +252,7 @@
                 {# Metamodel Violations Table #}
                 {% if rr.relationship_gaps.get('violations') %}
                 <details class="text-xs mb-3">
-                    <summary class="cursor-pointer font-semibold text-destructive hover:text-destructive/80 py-1">
+                    <summary class="cursor-pointer font-semibold text-destructive-emphasis hover:text-destructive-emphasis/80 py-1">
                         {{ rr.relationship_gaps.violations|length }} Metamodel Violation{{ 's' if rr.relationship_gaps.violations|length != 1 else '' }}
                     </summary>
                     <div class="overflow-x-auto mt-2">
@@ -266,7 +266,7 @@
                                 <td class="py-2 pr-3 font-medium">{{ v.source_name }}</td>
                                 <td class="py-2 pr-3"><span class="rounded px-1.5 py-0.5 bg-primary/10 text-primary font-medium">{{ v.relationship_type }}</span></td>
                                 <td class="py-2 pr-3 font-medium">{{ v.target_name }}</td>
-                                <td class="py-2 text-destructive">{{ v.issue }}</td>
+                                <td class="py-2 text-destructive-emphasis">{{ v.issue }}</td>
                             </tr>
                             {% endfor %}
                             </tbody>
@@ -278,7 +278,7 @@
                 {# Naming Violations #}
                 {% if rr.naming_violations %}
                 <details class="text-xs">
-                    <summary class="cursor-pointer font-semibold text-warning hover:text-warning/80 py-1">
+                    <summary class="cursor-pointer font-semibold text-warning-emphasis hover:text-warning-emphasis/80 py-1">
                         {{ rr.naming_violations|length }} Naming Convention Issue{{ 's' if rr.naming_violations|length != 1 else '' }}
                     </summary>
                     <div class="mt-2 space-y-1">
@@ -349,7 +349,7 @@
 
                 {% if orphans %}
                 <details class="text-xs mb-2" open>
-                    <summary class="cursor-pointer font-semibold text-warning py-1">{{ orphans|length }} Orphan Element{{ 's' if orphans|length != 1 else '' }} (no relationships)</summary>
+                    <summary class="cursor-pointer font-semibold text-warning-emphasis py-1">{{ orphans|length }} Orphan Element{{ 's' if orphans|length != 1 else '' }} (no relationships)</summary>
                     <div class="overflow-x-auto mt-2">
                         <table class="w-full text-xs">
                             <thead><tr class="border-b text-left text-muted-foreground">
@@ -372,7 +372,7 @@
 
                 {% if undocumented_els %}
                 <details class="text-xs mb-2">
-                    <summary class="cursor-pointer font-semibold text-warning py-1">{{ undocumented_els|length }} Undocumented Element{{ 's' if undocumented_els|length != 1 else '' }}</summary>
+                    <summary class="cursor-pointer font-semibold text-warning-emphasis py-1">{{ undocumented_els|length }} Undocumented Element{{ 's' if undocumented_els|length != 1 else '' }}</summary>
                     <div class="overflow-x-auto mt-2">
                         <table class="w-full text-xs">
                             <thead><tr class="border-b text-left text-muted-foreground">
@@ -446,12 +446,12 @@
                             <p class="text-xs text-muted-foreground mb-2 leading-relaxed">{{ s.rationale }}</p>
                             <div class="flex items-center gap-2">
                                 <button @click.stop="decisions[{{ loop.index0 }}] = 'accept'" type="button"
-                                        :class="decisions[{{ loop.index0 }}] === 'accept' ? 'bg-success text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:text-success'"
+                                        :class="decisions[{{ loop.index0 }}] === 'accept' ? 'bg-success text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:text-success-emphasis'"
                                         class="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors">
                                     <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i> Accept
                                 </button>
                                 <button @click.stop="decisions[{{ loop.index0 }}] = 'reject'" type="button"
-                                        :class="decisions[{{ loop.index0 }}] === 'reject' ? 'bg-destructive text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:text-destructive'"
+                                        :class="decisions[{{ loop.index0 }}] === 'reject' ? 'bg-destructive text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:text-destructive-emphasis'"
                                         class="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors">
                                     <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i> Reject
                                 </button>
@@ -549,7 +549,7 @@
                                 <td class="py-2 pr-2"><input type="checkbox" x-model="selected" value="{{ el.element_id }}" aria-label="Select {{ el.name }}" class="rounded"></td>
                                 <td class="py-2 pr-3 font-medium">{{ el.name }}</td>
                                 <td class="py-2 pr-3">{{ el.layer }}</td>
-                                <td class="py-2 pr-3 font-bold text-destructive">{{ el.quality_score }}</td>
+                                <td class="py-2 pr-3 font-bold text-destructive-emphasis">{{ el.quality_score }}</td>
                                 {% for crit_key in ['has_description', 'connectivity', 'has_cross_layer_rel', 'naming_convention', 'proper_type', 'metamodel_conformant'] %}
                                 {% set c = el.get('criteria', {}).get(crit_key, {}) %}
                                 <td class="py-2 pr-2 text-center">
@@ -566,7 +566,7 @@
                         </table>
                     </div>
                     {% else %}
-                    <p class="text-sm text-success mb-4">All elements meet the quality threshold. No action needed.</p>
+                    <p class="text-sm text-success-emphasis mb-4">All elements meet the quality threshold. No action needed.</p>
                     {% endif %}
                     <div class="flex items-center justify-between pt-3 border-t border-input">
                         <span class="text-xs text-muted-foreground" x-text="selected.length + ' element(s) selected for improvement'" aria-live="polite" role="status"></span>
@@ -580,7 +580,7 @@
                 {# Read-only scorecard #}
                 {% if attention_elements %}
                 <div class="mb-3">
-                    <h3 class="text-xs font-semibold text-destructive uppercase tracking-wide mb-2">{{ attention_elements|length }} Element{{ 's' if attention_elements|length != 1 else '' }} Below Threshold (score &lt; 50)</h3>
+                    <h3 class="text-xs font-semibold text-destructive-emphasis uppercase tracking-wide mb-2">{{ attention_elements|length }} Element{{ 's' if attention_elements|length != 1 else '' }} Below Threshold (score &lt; 50)</h3>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead><tr class="border-b text-left text-muted-foreground">
@@ -592,7 +592,7 @@
                             <tr class="border-b border-input/30 bg-destructive/[0.03]">
                                 <td class="py-2 pr-3 font-medium">{{ el.name }}</td>
                                 <td class="py-2 pr-3">{{ el.layer }}</td>
-                                <td class="py-2 pr-3 font-bold text-destructive">{{ el.quality_score }}</td>
+                                <td class="py-2 pr-3 font-bold text-destructive-emphasis">{{ el.quality_score }}</td>
                                 {% for crit_key in ['has_description', 'connectivity', 'has_cross_layer_rel', 'naming_convention', 'proper_type', 'metamodel_conformant'] %}
                                 {% set c = el.get('criteria', {}).get(crit_key, {}) %}
                                 <td class="py-2 pr-2 text-center">
@@ -728,9 +728,9 @@
                             </div>
                             <div class="flex items-center gap-2 text-[10px] text-muted-foreground shrink-0">
                                 {% if exec_step and exec_step.duration_seconds %}<span>{{ exec_step.duration_seconds }}s</span>{% endif %}
-                                {% if is_completed %}<span class="text-success font-medium">Done</span>
-                                {% elif is_waiting %}<span class="text-warning font-medium">Awaiting</span>
-                                {% elif is_failed %}<span class="text-destructive font-medium">Failed</span>
+                                {% if is_completed %}<span class="text-success-emphasis font-medium">Done</span>
+                                {% elif is_waiting %}<span class="text-warning-emphasis font-medium">Awaiting</span>
+                                {% elif is_failed %}<span class="text-destructive-emphasis font-medium">Failed</span>
                                 {% else %}<span>Pending</span>{% endif %}
                             </div>
                         </div>
@@ -970,7 +970,7 @@
          class="sticky top-0 z-30 rounded-xl border-2 border-destructive/40 bg-destructive/5 p-4 flex items-center gap-3 no-print">
         <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive shrink-0" aria-hidden="true"></i>
         <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-destructive" x-text="failureSummary"></p>
+            <p class="text-sm font-medium text-destructive-emphasis" x-text="failureSummary"></p>
         </div>
         <button @click="showFailureBanner = false" class="shrink-0 p-1 rounded hover:bg-destructive/10 transition-colors" aria-label="Dismiss">
             <i data-lucide="x" class="h-4 w-4 text-destructive" aria-hidden="true"></i>
@@ -1423,7 +1423,7 @@
             <h4 class="font-medium text-sm mb-2">Proposed Changes</h4>
             <div class="text-sm text-muted-foreground space-y-1">
                 {% if pc.get('proposed_changes') %}{% set inner = pc.proposed_changes %}
-                    {% if inner.get('security_boundary_changes') %}<p class="text-warning font-medium">⚠ Security boundary changes included</p>{% endif %}
+                    {% if inner.get('security_boundary_changes') %}<p class="text-warning-emphasis font-medium">⚠ Security boundary changes included</p>{% endif %}
                     {% if inner.get('rollback_approach') %}<p><span class="font-medium">Rollback:</span> {{ inner.rollback_approach }}</p>{% endif %}
                 {% endif %}
                 {% if pc.get('risk_summary') %}<p><span class="font-medium">Risk summary:</span> {{ pc.risk_summary }}</p>{% endif %}
@@ -1448,7 +1448,7 @@
             </div>
             <div class="border border-border rounded-lg p-3">
                 <div class="text-xs text-muted-foreground mb-1">Gaps Addressed</div>
-                <div class="font-bold text-warning">{{ investment_plan.capabilities_addressed }}</div>
+                <div class="font-bold text-warning-emphasis">{{ investment_plan.capabilities_addressed }}</div>
             </div>
             <div class="border border-border rounded-lg p-3">
                 <div class="text-xs text-muted-foreground mb-1">3-Year Investment</div>
@@ -1515,7 +1515,7 @@
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 text-center">
             <div class="border border-border rounded-lg p-3">
                 <div class="text-xs text-muted-foreground mb-1">Direct Impacts</div>
-                <div class="font-bold text-destructive">{{ (impact_register.direct_impacts or [])|length }}</div>
+                <div class="font-bold text-destructive-emphasis">{{ (impact_register.direct_impacts or [])|length }}</div>
             </div>
             <div class="border border-border rounded-lg p-3">
                 <div class="text-xs text-muted-foreground mb-1">Transitive Impacts</div>
@@ -1592,8 +1592,8 @@
         <div class="flex items-start gap-3">
             <i data-lucide="alert-circle" class="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
             <div class="flex-1">
-                <h3 class="font-semibold text-destructive">Error</h3>
-                <div class="text-sm text-destructive mt-1">{{ instance.error_message|humanize_error }}</div>
+                <h3 class="font-semibold text-destructive-emphasis">Error</h3>
+                <div class="text-sm text-destructive-emphasis mt-1">{{ instance.error_message|humanize_error }}</div>
             </div>
         </div>
     </div>
@@ -1608,7 +1608,7 @@
         <div class="flex items-start gap-3">
             <i data-lucide="hand" class="h-5 w-5 text-warning shrink-0 mt-0.5" aria-hidden="true"></i>
             <div class="flex-1">
-                <h3 class="font-semibold text-warning">Review {{ 'APQC Mappings' if _wft024_apqc else 'Capability Links' }}</h3>
+                <h3 class="font-semibold text-warning-emphasis">Review {{ 'APQC Mappings' if _wft024_apqc else 'Capability Links' }}</h3>
                 <p class="text-sm text-muted-foreground mt-1">Accept or reject each item. Approved items will be applied.</p>
                 <div class="space-y-2 mt-3 max-h-48 overflow-y-auto">
                     <template x-for="(item, idx) in items" :key="idx">
@@ -1642,7 +1642,7 @@
         <div class="flex items-start gap-3">
             <i data-lucide="award" class="h-5 w-5 text-warning shrink-0 mt-0.5" aria-hidden="true"></i>
             <div class="flex-1">
-                <h3 class="font-semibold text-warning">Decision Board Review — Vendor Selection</h3>
+                <h3 class="font-semibold text-warning-emphasis">Decision Board Review — Vendor Selection</h3>
                 <p class="text-sm text-muted-foreground mt-1">Review the vendor analysis below and approve or reject the recommendation.</p>
 
                 {% if _vs_rec or _vs_scored %}
@@ -1704,7 +1704,7 @@
         <div class="flex items-start gap-3">
             <i data-lucide="hand" class="h-5 w-5 text-warning shrink-0 mt-0.5" aria-hidden="true"></i>
             <div class="flex-1">
-                <h3 class="font-semibold text-warning">Architecture Board Review</h3>
+                <h3 class="font-semibold text-warning-emphasis">Architecture Board Review</h3>
                 <p class="text-sm text-muted-foreground mt-1">
                     {% if instance.workflow_code == 'ADM_PRELIMINARY' %}Review the preliminary scope, stakeholders, and governance framework.
                     {% elif instance.workflow_code == 'ADM_PHASE_A_VISION' %}Review the Architecture Vision document, goals, and constraints.
@@ -1754,7 +1754,7 @@
         <div class="flex items-start gap-3">
             <i data-lucide="hand" class="h-5 w-5 text-warning shrink-0 mt-0.5" aria-hidden="true"></i>
             <div class="flex-1">
-                <h3 class="font-semibold text-warning">Your Review Required</h3>
+                <h3 class="font-semibold text-warning-emphasis">Your Review Required</h3>
                 <p class="text-sm text-muted-foreground mt-1">This workflow needs your approval to continue.</p>
                 <div class="flex flex-wrap items-center gap-2 mt-3">
                     {{ approve_btn('Approve & Continue') }}
@@ -1849,13 +1849,13 @@
                             {# Duration / timer / status #}
                             <div class="flex items-center gap-2 shrink-0">
                                 {% if is_completed and exec_step and exec_step.duration_seconds %}
-                                <span class="text-xs text-success font-medium">{{ exec_step.duration_seconds }}s</span>
+                                <span class="text-xs text-success-emphasis font-medium">{{ exec_step.duration_seconds }}s</span>
                                 {% elif is_current %}
                                 <span class="text-xs text-primary font-medium tabular-nums"
                                       x-text="stepTimers['{{ step_id }}'] || ''"></span>
                                 <span class="h-2 w-2 rounded-full bg-primary animate-pulse" aria-hidden="true"></span>
                                 {% elif is_failed %}
-                                <span class="text-xs text-destructive font-medium">Failed</span>
+                                <span class="text-xs text-destructive-emphasis font-medium">Failed</span>
                                 {% endif %}
                                 <i data-lucide="chevron-down" class="h-3.5 w-3.5 text-muted-foreground transition-transform"
                                    :class="expanded ? 'rotate-180' : ''" aria-hidden="true"></i>
@@ -1866,7 +1866,7 @@
                         <div x-show="expanded" x-cloak x-transition.duration.200ms class="ml-11 mt-3 space-y-3">
                             {# Completed summary #}
                             {% if is_completed %}
-                            <div class="flex items-center gap-2 text-xs text-success">
+                            <div class="flex items-center gap-2 text-xs text-success-emphasis">
                                 <i data-lucide="check-circle-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
                                 <span>Completed in {{ exec_step.duration_seconds }}s</span>
                             </div>
@@ -1875,10 +1875,10 @@
                             {# Failed error detail #}
                             {% if is_failed and exec_step %}
                             <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
-                                <p class="text-xs text-destructive font-medium">{{ exec_step.error_message or 'Unknown error' }}</p>
+                                <p class="text-xs text-destructive-emphasis font-medium">{{ exec_step.error_message or 'Unknown error' }}</p>
                                 {% if exec_step.error_traceback %}
                                 <details class="text-xs">
-                                    <summary class="cursor-pointer text-destructive/70 hover:text-destructive">Show traceback</summary>
+                                    <summary class="cursor-pointer text-destructive-emphasis/70 hover:text-destructive-emphasis">Show traceback</summary>
                                     <pre class="mt-1 p-2 rounded bg-background text-[10px] overflow-x-auto max-h-32 overflow-y-auto">{{ exec_step.error_traceback[:2000] }}</pre>
                                 </details>
                                 {% endif %}
@@ -2624,7 +2624,7 @@ function instancePage() {
 {% call modal(id='reject-workflow', title='Reject Workflow', description='Provide a reason for rejecting this workflow step.', size='sm') %}
 <form @submit.prevent="submitReject()">
     <div class="mb-4">
-        <label for="reject-reason-detail" class="block text-sm font-medium mb-2">Rejection Reason <span class="text-destructive">*</span></label>
+        <label for="reject-reason-detail" class="block text-sm font-medium mb-2">Rejection Reason <span class="text-destructive-emphasis">*</span></label>
         <textarea id="reject-reason-detail" x-model="rejectReason" rows="3" required class="w-full rounded-lg border-2 border-input p-3 text-sm bg-background focus:border-primary focus:outline-none" placeholder="Explain why this workflow step is being rejected..."></textarea>
     </div>
     <div class="flex justify-end gap-3">
@@ -2639,7 +2639,7 @@ function instancePage() {
 {% call modal(id='cancel-workflow', title='Cancel Workflow', description='This will stop the workflow execution. This action cannot be undone.', size='sm') %}
 <form @submit.prevent="submitCancel()">
     <div class="mb-4">
-        <label for="cancel-reason" class="block text-sm font-medium mb-2">Cancellation Reason <span class="text-destructive">*</span></label>
+        <label for="cancel-reason" class="block text-sm font-medium mb-2">Cancellation Reason <span class="text-destructive-emphasis">*</span></label>
         <textarea id="cancel-reason" x-model="cancelReason" rows="3" required class="w-full rounded-lg border-2 border-input p-3 text-sm bg-background focus:border-primary focus:outline-none" placeholder="Explain why this workflow is being cancelled..."></textarea>
     </div>
     <div class="flex justify-end gap-3">

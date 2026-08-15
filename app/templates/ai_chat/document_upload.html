@@ -371,11 +371,11 @@
             <div x-show="!uploading && !analysisResults && previewElements.length === 0 && uploadStatus === 'No elements found'" x-cloak class="p-3 bg-warning/5 border border-warning/20 rounded-md mb-3">
                 <div class="flex items-center gap-2">
                     <i data-lucide="alert-circle" class="h-4 w-4 text-warning"></i>
-                    <p class="text-sm text-warning">
+                    <p class="text-sm text-warning-emphasis">
                         No ArchiMate elements were found in the document. The file may not contain architecture information, or the format may not be supported.
                     </p>
                 </div>
-                <p class="text-xs text-warning mt-2">
+                <p class="text-xs text-warning-emphasis mt-2">
                     Try uploading a document that contains application names, system descriptions, or architecture diagrams.
                 </p>
             </div>
@@ -386,24 +386,24 @@
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-2">
                             <i data-lucide="eye" class="h-4 w-4 text-warning"></i>
-                            <h4 class="text-sm font-semibold text-warning">Preview Mode</h4>
+                            <h4 class="text-sm font-semibold text-warning-emphasis">Preview Mode</h4>
                             <span class="text-xs bg-warning/10 text-warning-emphasis px-2 py-0.5 rounded-full"
                                   x-text="previewElements.length + ' elements found'"></span>
                         </div>
-                        <button type="button" @click="clearPreview()" class="text-warning hover:text-warning" aria-label="Close preview mode">
+                        <button type="button" @click="clearPreview()" class="text-warning-emphasis hover:text-warning-emphasis" aria-label="Close preview mode">
                             <i data-lucide="x" class="h-4 w-4"></i>
                         </button>
                     </div>
-                    <p class="text-xs text-warning mb-3">
+                    <p class="text-xs text-warning-emphasis mb-3">
                         Review and select the elements you want to create. Uncheck any incorrect ones.
                     </p>
 
                     {# Select All / None Controls #}
                     <div class="flex items-center gap-2 mb-2 pb-2 border-b border-warning/20">
-                        <button type="button" @click="selectAllElements()" class="text-xs text-warning hover:text-warning-emphasis underline" aria-label="Select all preview elements">Select All</button>
-                        <span class="text-warning">|</span>
-                        <button type="button" @click="selectNoneElements()" class="text-xs text-warning hover:text-warning-emphasis underline" aria-label="Deselect all preview elements">Select None</button>
-                        <span class="text-xs text-warning ml-auto" x-text="getSelectedCount() + ' selected'"></span>
+                        <button type="button" @click="selectAllElements()" class="text-xs text-warning-emphasis hover:text-warning-emphasis underline" aria-label="Select all preview elements">Select All</button>
+                        <span class="text-warning-emphasis">|</span>
+                        <button type="button" @click="selectNoneElements()" class="text-xs text-warning-emphasis hover:text-warning-emphasis underline" aria-label="Deselect all preview elements">Select None</button>
+                        <span class="text-xs text-warning-emphasis ml-auto" x-text="getSelectedCount() + ' selected'"></span>
                     </div>
 
                     {# Element List with Checkboxes #}
@@ -415,15 +415,15 @@
                                 <input type="checkbox"
                                        :checked="selectedElements[index]"
                                        @change="selectedElements[index] = $event.target.checked"
-                                       class="mt-1 h-4 w-4 rounded border-warning/30 text-warning focus:ring-warning" aria-label="Checkbox field">
+                                       class="mt-1 h-4 w-4 rounded border-warning/30 text-warning-emphasis focus:ring-warning" aria-label="Checkbox field">
 
                                 {# Element Info (editable when in edit mode) #}
                                 <div class="flex-1 min-w-0" x-show="editingElement !== index" x-cloak>
                                     <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-xs font-medium text-warning truncate" 
+                                        <span class="text-xs font-medium text-warning-emphasis truncate" 
                                               x-text="elem.resolved_name || elem.name"></span>
                                         <span class="text-xs px-1.5 py-0.5 bg-warning/10 text-warning-emphasis rounded" x-text="elem.type"></span>
-                                        <span class="text-xs text-warning" x-text="elem.layer || ''"></span>
+                                        <span class="text-xs text-warning-emphasis" x-text="elem.layer || ''"></span>
                                         
                                         {# Confidence Score Badge #}
                                         <template x-if="elem.confidence">
@@ -448,12 +448,12 @@
                                             </span>
                                         </template>
                                     </div>
-                                    <p class="text-xs text-warning truncate mt-0.5" x-text="elem.description || 'No description'"></p>
+                                    <p class="text-xs text-warning-emphasis truncate mt-0.5" x-text="elem.description || 'No description'"></p>
                                     
                                     {# Knowledge Graph Related Entities #}
                                     <template x-if="elem.kg_related_entities && elem.kg_related_entities.length > 0">
                                         <div class="mt-1 flex items-center gap-1 flex-wrap">
-                                            <span class="text-xs text-warning">Related:</span>
+                                            <span class="text-xs text-warning-emphasis">Related:</span>
                                             <template x-for="related in elem.kg_related_entities.slice(0, 3)" :key="related.id">
                                                 <span class="text-xs px-1 py-0.5 bg-warning/5 text-warning-emphasis rounded"
                                                       x-text="related.name"></span>
@@ -595,7 +595,7 @@
                          class="p-2 bg-success/5 rounded-md border border-success/20">
                         <div class="flex items-center gap-2 mb-3">
                             <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
-                            <h5 class="text-sm font-semibold text-success">Matched Entities</h5>
+                            <h5 class="text-sm font-semibold text-success-emphasis">Matched Entities</h5>
                             <span class="text-xs bg-success/10 text-success-emphasis px-2 py-0.5 rounded-full"
                                   x-text="(analysisResults?.entity_matching?.matches?.length || 0) + ' found'"></span>
                         </div>
@@ -603,12 +603,12 @@
                             <template x-for="match in (analysisResults?.entity_matching?.matches || [])" :key="match.entity_id">
                                 <div class="flex items-center justify-between bg-background rounded p-2 border border-success/20">
                                     <div class="flex-1 min-w-0">
-                                        <span class="text-sm font-medium text-success" x-text="match.entity_name"></span>
-                                        <span class="text-xs text-success ml-2" x-text="match.entity_type"></span>
+                                        <span class="text-sm font-medium text-success-emphasis" x-text="match.entity_name"></span>
+                                        <span class="text-xs text-success-emphasis ml-2" x-text="match.entity_type"></span>
                                     </div>
                                     <div class="flex items-center gap-2">
                                         <span class="text-xs bg-success/20 text-success-emphasis px-2 py-0.5 rounded" x-text="match.match_confidence + '%'"></span>
-                                        <button type="button" @click="linkToEntity(match)" class="text-success hover:text-success" aria-label="Link to entity">
+                                        <button type="button" @click="linkToEntity(match)" class="text-success-emphasis hover:text-success-emphasis" aria-label="Link to entity">
                                             <i data-lucide="link" class="h-4 w-4"></i>
                                         </button>
                                     </div>
@@ -622,7 +622,7 @@
                          class="p-4 bg-warning/5 rounded-lg border border-warning/20">
                         <div class="flex items-center gap-2 mb-3">
                             <i data-lucide="alert-triangle" class="h-4 w-4 text-warning"></i>
-                            <h5 class="text-sm font-semibold text-warning">Potential Duplicates</h5>
+                            <h5 class="text-sm font-semibold text-warning-emphasis">Potential Duplicates</h5>
                             <span class="text-xs bg-warning/10 text-warning-emphasis px-2 py-0.5 rounded-full"
                                   x-text="(analysisResults?.entity_matching?.potential_duplicates?.length || 0) + ' warnings'"></span>
                         </div>
@@ -630,7 +630,7 @@
                             <template x-for="dup in (analysisResults?.entity_matching?.potential_duplicates || [])" :key="dup.entity_id">
                                 <div class="flex items-center justify-between bg-background rounded p-2 border border-warning/20">
                                     <div class="flex-1 min-w-0">
-                                        <span class="text-sm font-medium text-warning" x-text="dup.warning"></span>
+                                        <span class="text-sm font-medium text-warning-emphasis" x-text="dup.warning"></span>
                                     </div>
                                     <span class="text-xs px-2 py-0.5 rounded"
                                           :class="{'bg-warning/20 text-warning-emphasis': dup.match_level === 'medium', 'bg-warning/20 text-warning-emphasis': dup.match_level === 'low'}"
@@ -646,7 +646,7 @@
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-1.5">
                                 <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
-                                <h5 class="text-sm font-semibold text-success">
+                                <h5 class="text-sm font-semibold text-success-emphasis">
                                     Successfully Created
                                 </h5>
                                 <span class="text-xs bg-success/10 text-success-emphasis px-2 py-0.5 rounded-full font-medium"
@@ -654,7 +654,7 @@
                             </div>
                             <button type="button" @click="creationDetails = null"
                                      x-show="creationDetails" x-cloak
-                                     class="text-success hover:text-success" aria-label="Close creation details">
+                                     class="text-success-emphasis hover:text-success-emphasis" aria-label="Close creation details">
                                 <i data-lucide="x" class="h-3.5 w-3.5"></i>
                             </button>
                         </div>
@@ -663,10 +663,10 @@
                         <div x-show="creationDetails" x-cloak class="space-y-3 mb-3">
                             {# Breakdown by Element Type #}
                             <div x-show="Object.keys(creationDetails?.byType || {}).length > 0" x-cloak>
-                                <h6 class="text-xs font-medium text-success mb-1.5">By Element Type:</h6>
+                                <h6 class="text-xs font-medium text-success-emphasis mb-1.5">By Element Type:</h6>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="[type, count] in Object.entries(creationDetails?.byType || {}).sort((a, b) => b[1] - a[1])" :key="type">
-                                        <span class="text-xs bg-background text-success px-2 py-1 rounded border border-success/20">
+                                        <span class="text-xs bg-background text-success-emphasis px-2 py-1 rounded border border-success/20">
                                             <span x-text="type"></span>
                                             <span class="ml-1 font-semibold" x-text="'(' + count + ')'"></span>
                                         </span>
@@ -676,10 +676,10 @@
                             
                             {# Breakdown by Layer #}
                             <div x-show="Object.keys(creationDetails?.byLayer || {}).length > 0" x-cloak>
-                                <h6 class="text-xs font-medium text-success mb-1.5">By ArchiMate Layer:</h6>
+                                <h6 class="text-xs font-medium text-success-emphasis mb-1.5">By ArchiMate Layer:</h6>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="[layer, count] in Object.entries(creationDetails?.byLayer || {}).sort((a, b) => b[1] - a[1])" :key="layer">
-                                        <span class="text-xs bg-background text-success px-2 py-1 rounded border border-success/20">
+                                        <span class="text-xs bg-background text-success-emphasis px-2 py-1 rounded border border-success/20">
                                             <span x-text="layer"></span>
                                             <span class="ml-1 font-semibold" x-text="'(' + count + ')'"></span>
                                         </span>
@@ -689,13 +689,13 @@
                             
                             {# Element Names List #}
                             <div x-show="(creationDetails?.elementNames || []).length > 0" x-cloak>
-                                <h6 class="text-xs font-medium text-success mb-1.5">
+                                <h6 class="text-xs font-medium text-success-emphasis mb-1.5">
                                     Element Names (<span x-text="(creationDetails?.elementNames || []).length"></span> total):
                                 </h6>
                                 <div class="max-h-40 overflow-y-auto space-y-1 bg-background rounded p-2 border border-success/20">
                                     <template x-for="(name, idx) in (creationDetails?.elementNames || []).slice(0, 50)" :key="idx">
-                                        <div class="text-xs text-success flex items-center gap-2">
-                                            <span class="text-success w-4" x-text="(idx + 1) + '.'"></span>
+                                        <div class="text-xs text-success-emphasis flex items-center gap-2">
+                                            <span class="text-success-emphasis w-4" x-text="(idx + 1) + '.'"></span>
                                             <span class="truncate" x-text="name"></span>
                                         </div>
                                     </template>
@@ -709,12 +709,12 @@
                             {# Errors if any #}
                             <div x-show="(creationDetails?.errors || []).length > 0" x-cloak 
                                  class="p-2 bg-destructive/5 rounded border border-destructive/20">
-                                <h6 class="text-xs font-medium text-destructive mb-1">
+                                <h6 class="text-xs font-medium text-destructive-emphasis mb-1">
                                     Errors (<span x-text="(creationDetails?.errors || []).length"></span>):
                                 </h6>
                                 <div class="space-y-1 max-h-24 overflow-y-auto">
                                     <template x-for="(err, idx) in (creationDetails?.errors || []).slice(0, 5)" :key="idx">
-                                        <div class="text-xs text-destructive" x-text="err"></div>
+                                        <div class="text-xs text-destructive-emphasis" x-text="err"></div>
                                     </template>
                                     <div x-show="(creationDetails?.errors || []).length > 5" x-cloak 
                                          class="text-xs text-destructive text-center">
@@ -730,8 +730,8 @@
                             <template x-for="(elem, index) in (analysisResults?.created_details || []).slice(0, 10)" :key="index">
                                 <div class="flex items-center justify-between bg-background rounded p-1.5 border border-success/20">
                                     <div class="flex-1 min-w-0">
-                                        <span class="text-xs font-medium text-success truncate block" x-text="elem.name"></span>
-                                        <span class="text-xs text-success" x-text="elem.type"></span>
+                                        <span class="text-xs font-medium text-success-emphasis truncate block" x-text="elem.name"></span>
+                                        <span class="text-xs text-success-emphasis" x-text="elem.type"></span>
                                     </div>
                                 </div>
                             </template>
@@ -750,7 +750,7 @@
                                 Show Details
                             </button>
                             <a href="/architecture" target="_blank" 
-                               class="text-xs text-success hover:text-success font-medium flex items-center gap-1">
+                               class="text-xs text-success-emphasis hover:text-success-emphasis font-medium flex items-center gap-1">
                                 <i data-lucide="external-link" class="h-3 w-3"></i>
                                 View in Dashboard
                             </a>
@@ -807,16 +807,16 @@
                      class="p-2 bg-warning/5 rounded-md border border-warning/20">
                     <div class="flex items-center gap-1.5 mb-2">
                         <i data-lucide="pie-chart" class="h-3.5 w-3.5 text-warning"></i>
-                        <h5 class="text-xs font-semibold text-warning">Gap Analysis</h5>
+                        <h5 class="text-xs font-semibold text-warning-emphasis">Gap Analysis</h5>
                     </div>
                     <div class="grid grid-cols-3 gap-1.5 mb-2">
                         <div class="text-center p-1.5 bg-background rounded">
-                            <div class="text-sm font-bold text-warning" x-text="analysisResults?.gap_analysis?.total_extracted || 0"></div>
-                            <div class="text-xs text-warning">Extracted</div>
+                            <div class="text-sm font-bold text-warning-emphasis" x-text="analysisResults?.gap_analysis?.total_extracted || 0"></div>
+                            <div class="text-xs text-warning-emphasis">Extracted</div>
                         </div>
                         <div class="text-center p-1.5 bg-background rounded">
-                            <div class="text-sm font-bold text-success" x-text="analysisResults?.gap_analysis?.existing_matches_count || 0"></div>
-                            <div class="text-xs text-success">Matched</div>
+                            <div class="text-sm font-bold text-success-emphasis" x-text="analysisResults?.gap_analysis?.existing_matches_count || 0"></div>
+                            <div class="text-xs text-success-emphasis">Matched</div>
                         </div>
                         <div class="text-center p-1.5 bg-background rounded">
                             <div class="text-sm font-bold text-primary" x-text="analysisResults?.gap_analysis?.new_elements_count || 0"></div>
@@ -826,10 +826,10 @@
                     <div class="w-full bg-muted rounded-full h-1.5 mb-1">
                         <div class="bg-success h-1.5 rounded-full" :style="'width: ' + (analysisResults?.gap_analysis?.coverage_percentage || 0) + '%'"></div>
                     </div>
-                    <p class="text-xs text-warning" x-text="(analysisResults?.gap_analysis?.coverage_percentage || 0) + '% coverage'"></p>
+                    <p class="text-xs text-warning-emphasis" x-text="(analysisResults?.gap_analysis?.coverage_percentage || 0) + '% coverage'"></p>
                     <div x-show="analysisResults?.gap_analysis?.recommendations && analysisResults.gap_analysis.recommendations.length > 0" x-cloak class="mt-2 space-y-1">
                         <template x-for="rec in (analysisResults?.gap_analysis?.recommendations || [])" :key="rec">
-                            <p class="text-xs text-warning"><i data-lucide="info" class="h-3 w-3 inline mr-1"></i><span x-text="rec"></span></p>
+                            <p class="text-xs text-warning-emphasis"><i data-lucide="info" class="h-3 w-3 inline mr-1"></i><span x-text="rec"></span></p>
                         </template>
                     </div>
                 </div>
@@ -878,17 +878,17 @@
                 <div x-show="analysisResults?.conversational_elements && analysisResults.conversational_elements.length > 0" x-cloak class="p-4 bg-success/5 rounded-lg border border-success/20">
                     <div class="flex items-center gap-2 mb-3">
                         <i data-lucide="message-square" class="h-4 w-4 text-success"></i>
-                        <h5 class="text-sm font-semibold text-success">Discovered Elements</h5>
+                        <h5 class="text-sm font-semibold text-success-emphasis">Discovered Elements</h5>
                         <span class="text-xs bg-success/10 text-success-emphasis px-2 py-1 rounded" x-text="(analysisResults?.conversational_elements?.length || 0) + ' elements'"></span>
                     </div>
                     <div class="space-y-2 max-h-48 overflow-y-auto">
                         <template x-for="element in (analysisResults?.conversational_elements || [])" :key="element.chat_friendly_name || element.name">
                             <div class="bg-background rounded p-2 border border-success/20">
                                 <div class="flex items-center justify-between mb-1">
-                                    <span class="text-sm font-medium text-success" x-text="element.chat_friendly_name"></span>
+                                    <span class="text-sm font-medium text-success-emphasis" x-text="element.chat_friendly_name"></span>
                                     <span class="text-xs bg-success/10 text-success-emphasis px-1 py-0.5 rounded" x-text="element.layer"></span>
                                 </div>
-                                <p class="text-xs text-success" x-text="element.description"></p>
+                                <p class="text-xs text-success-emphasis" x-text="element.description"></p>
                             </div>
                         </template>
                     </div>

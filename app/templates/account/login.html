@@ -111,7 +111,7 @@
                         <div class="space-y-2 mb-4">
                             <label for="{{ form.email.id }}" class="text-sm font-medium leading-none block">
                                 {{ form.email.label.text }}
-                                <span class="text-destructive" aria-label="required">*</span>
+                                <span class="text-destructive-emphasis" aria-label="required">*</span>
                             </label>
                             {% if form.email.errors %}
                                 {{ form.email(
@@ -124,7 +124,7 @@
                                         'aria-describedby': form.email.id ~ '-error',
                                         'aria-required': 'true'
                                     }) }}
-                                <p id="{{ form.email.id }}-error" class="text-sm font-medium text-destructive mt-1" role="alert">
+                                <p id="{{ form.email.id }}-error" class="text-sm font-medium text-destructive-emphasis mt-1" role="alert">
                                     <i data-lucide="alert-circle" class="inline h-4 w-4 mr-1" aria-hidden="true"></i>
                                     {{ form.email.errors[0] }}
                                 </p>

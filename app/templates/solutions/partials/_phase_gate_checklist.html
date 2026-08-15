@@ -29,7 +29,7 @@
   </div>
 
   {# Error state #}
-  <div x-show="error" x-cloak class="py-3 text-sm text-destructive">
+  <div x-show="error" x-cloak class="py-3 text-sm text-destructive-emphasis">
     <span x-text="error"></span>
   </div>
 
@@ -63,7 +63,7 @@
                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
-          <span class="text-destructive">
+          <span class="text-destructive-emphasis">
             <span x-text="item.label"></span>
             <span class="text-xs text-muted-foreground ml-1">
               (<span x-text="item.actual"></span>/<span x-text="item.required"></span>)

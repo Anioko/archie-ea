@@ -87,7 +87,7 @@
                     </div>
                 </template>
                 <template x-if="generateError && !generateLoading">
-                    <div class="mt-2 text-xs text-destructive flex items-center gap-1">
+                    <div class="mt-2 text-xs text-destructive-emphasis flex items-center gap-1">
                         <i data-lucide="alert-circle" class="h-3 w-3" aria-hidden="true"></i>
                         <span x-text="generateError"></span>
                         <button @click="generateError = null" class="ml-1 underline">dismiss</button>
@@ -207,7 +207,7 @@
                                                 <button type="button" @click="openEntityModal('requirement', req)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
                                                     <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                                 </button>
-                                                <button type="button" @click="confirmDeleteEntity('requirement', req)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                                <button type="button" @click="confirmDeleteEntity('requirement', req)" class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md" title="Delete">
                                                     <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                                 </button>
                                             </div>
@@ -383,7 +383,7 @@
                                   <i data-lucide="check" class="w-3.5 h-3.5"></i>
                                 </button>
                                 <button type="button" @click="submitAiSugFeedback('vendors',idx,'rejected')"
-                                  :class="aiSugFeedback['vendors_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'bg-background border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30'"
+                                  :class="aiSugFeedback['vendors_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'bg-background border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30'"
                                   class="p-1.5 rounded-md transition-colors" title="Reject">
                                   <i data-lucide="x" class="w-3.5 h-3.5"></i>
                                 </button>
@@ -415,7 +415,7 @@
                                 :class="aiSugFeedback['archimate_'+idx]==='accepted' ? 'bg-success text-primary-foreground' : 'border border-border text-muted-foreground hover:text-success-emphasis'"
                                 class="p-1.5 rounded transition-colors" title="Accept — adds to ArchiMate elements"><i data-lucide="check" class="w-3 h-3"></i></button>
                               <button type="button" @click="submitAiSugFeedback('archimate',idx,'rejected', el)"
-                                :class="aiSugFeedback['archimate_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive'"
+                                :class="aiSugFeedback['archimate_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive-emphasis'"
                                 class="p-1.5 rounded transition-colors" title="Reject"><i data-lucide="x" class="w-3 h-3"></i></button>
                             </div>
                           </div>
@@ -478,7 +478,7 @@
                                   :class="aiSugFeedback['risks_'+idx]==='accepted' ? 'bg-success text-primary-foreground' : 'border border-border text-muted-foreground hover:text-success-emphasis'"
                                   class="p-1.5 rounded transition-colors"><i data-lucide="check" class="w-3 h-3"></i></button>
                                 <button type="button" @click="submitAiSugFeedback('risks',idx,'rejected')"
-                                  :class="aiSugFeedback['risks_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive'"
+                                  :class="aiSugFeedback['risks_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive-emphasis'"
                                   class="p-1.5 rounded transition-colors"><i data-lucide="x" class="w-3 h-3"></i></button>
                               </div>
                             </div>
@@ -597,7 +597,7 @@
                                     </div>
                                 </div>
                                 <button type="button" @click="deleteCapabilityMapping(cap.id)"
-                                        class="ml-2 shrink-0 text-xs text-destructive/70 hover:text-destructive flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        class="ml-2 shrink-0 text-xs text-destructive-emphasis/70 hover:text-destructive-emphasis flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
                                     Remove
                                 </button>
@@ -725,7 +725,7 @@
                                             <span class="text-xs text-muted-foreground truncate hidden sm:block" x-cloak x-show="el.notes" x-text="el.notes"></span>
                                         </div>
                                         <button @click="removeLinkedArchimateElement(el.mapping_id)"
-                                                class="ml-2 shrink-0 text-xs text-destructive/70 hover:text-destructive flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                class="ml-2 shrink-0 text-xs text-destructive-emphasis/70 hover:text-destructive-emphasis flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <i data-lucide="x" class="w-3 h-3"></i>
                                             Remove
                                         </button>

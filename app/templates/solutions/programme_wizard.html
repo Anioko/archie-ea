@@ -278,7 +278,7 @@
              class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
              placeholder="Search 516 enterprise capabilities..." aria-label="Search 516 enterprise capabilities...">
       <div x-show="capSearchError" x-cloak
-           class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg px-4 py-2.5 text-sm text-destructive"
+           class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg px-4 py-2.5 text-sm text-destructive-emphasis"
            x-text="capSearchError"></div>
       <div x-show="!capSearchError && capResults.length > 0" x-cloak
            class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-48 overflow-y-auto">
@@ -305,7 +305,7 @@
             <p class="text-xs text-muted-foreground" x-text="(cap.domain || '') + (cap.level ? ' · Level ' + cap.level : '')"></p>
           </div>
           <button @click="removeCapability(idx)"
-                  class="text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1">Remove</button>
+                  class="text-xs text-muted-foreground hover:text-destructive-emphasis transition-colors px-2 py-1">Remove</button>
         </div>
       </template>
     </div>
@@ -330,7 +330,7 @@
              class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
              placeholder="Search applications..." aria-label="Search applications">
       <div x-show="appSearchError" x-cloak
-           class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg px-4 py-2.5 text-sm text-destructive"
+           class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg px-4 py-2.5 text-sm text-destructive-emphasis"
            x-text="appSearchError"></div>
       <div x-show="!appSearchError && appResults.length > 0" x-cloak
            class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-48 overflow-y-auto">
@@ -355,7 +355,7 @@
           <div class="px-5 py-3 flex items-center justify-between">
             <p class="text-sm font-medium text-foreground" x-text="app.name"></p>
             <button @click="removeApplication(idx)"
-                    class="text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1">Remove</button>
+                    class="text-xs text-muted-foreground hover:text-destructive-emphasis transition-colors px-2 py-1">Remove</button>
           </div>
         </template>
       </div>
@@ -531,7 +531,7 @@
 
   {# Error message #}
   <div x-show="errorMsg" x-cloak class="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
-    <p class="text-sm text-destructive" x-text="errorMsg"></p>
+    <p class="text-sm text-destructive-emphasis" x-text="errorMsg"></p>
   </div>
 
 </div>

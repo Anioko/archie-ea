@@ -268,8 +268,8 @@
                             class="text-2xl font-bold"
                             :class="{
                                 'text-destructive': roi !== null && roi < 0,
-                                'text-warning': roi !== null && roi >= 0 && roi < 20,
-                                'text-success': roi !== null && roi >= 20
+                                'text-warning-emphasis': roi !== null && roi >= 0 && roi < 20,
+                                'text-success-emphasis': roi !== null && roi >= 20
                             }"
                             x-text="roi !== null ? formatPercentage(roi) : 'N/A'"
                         ></span>

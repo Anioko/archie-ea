@@ -29,7 +29,7 @@
 
     {# Error state #}
     <div x-show="!loading && loadError" x-cloak class="text-center py-12">
-        <p class="text-sm text-destructive">Comparison data failed to load.</p>
+        <p class="text-sm text-destructive-emphasis">Comparison data failed to load.</p>
         <p class="mt-1 text-xs text-muted-foreground">Reload the page to try again.</p>
     </div>
 
@@ -56,7 +56,7 @@
             </div>
             <p class="text-xs text-muted-foreground mt-2">
                 Total weight: <span class="font-semibold" x-text="totalWeight + '%'"
-                                    :class="totalWeight === 100 ? 'text-success' : 'text-warning-emphasis'"></span>
+                                    :class="totalWeight === 100 ? 'text-success-emphasis' : 'text-warning-emphasis'"></span>
                 <span x-show="totalWeight !== 100" x-cloak class="text-warning-emphasis"> (should equal 100%)</span>
             </p>
         </div>
@@ -221,14 +221,14 @@
 
             <div class="mb-4">
                 <label for="decision-rationale" class="block text-sm font-medium text-foreground mb-1">
-                    Decision Rationale <span class="text-destructive">*</span>
+                    Decision Rationale <span class="text-destructive-emphasis">*</span>
                 </label>
                 <textarea id="decision-rationale"
                           x-model="decisionRationale"
                           rows="4"
                           class="w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary"
                           placeholder="Explain why this vendor was selected..."></textarea>
-                <p x-show="rationaleError" x-cloak class="text-xs text-destructive mt-1" x-text="rationaleError"></p>
+                <p x-show="rationaleError" x-cloak class="text-xs text-destructive-emphasis mt-1" x-text="rationaleError"></p>
             </div>
 
             <div class="flex items-center justify-end gap-3">

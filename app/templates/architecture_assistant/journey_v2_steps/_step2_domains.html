@@ -58,9 +58,9 @@
         {# Blocker list — hard blockers prevent progression, soft blockers are warnings #}
         <template x-if="domainBlockers.filter(function(b) { return b.type === 'domain_not_confirmed'; }).length > 0">
             <div class="text-xs space-y-0.5">
-                <p class="font-medium text-destructive">Cannot proceed to Step 3:</p>
+                <p class="font-medium text-destructive-emphasis">Cannot proceed to Step 3:</p>
                 <template x-for="b in domainBlockers.filter(function(b) { return b.type === 'domain_not_confirmed'; }).slice(0, 6)" :key="b.domain + b.type">
-                    <p class="text-destructive/70 pl-2" x-text="'- ' + b.reason"></p>
+                    <p class="text-destructive-emphasis/70 pl-2" x-text="'- ' + b.reason"></p>
                 </template>
             </div>
         </template>
@@ -117,7 +117,7 @@
                             <div class="flex items-center gap-1" @click.stop>
                                 <svg class="w-4 h-4 text-success" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                 <button type="button" @click="unconfirmDomain(code)"
-                                        class="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive transition-colors"
+                                        class="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive-emphasis transition-colors"
                                         title="Revert to pending">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
                                 </button>
@@ -289,7 +289,7 @@
                     <template x-if="domainBlockers.filter(function(b) { return b.domain === code; }).length > 0">
                         <div class="rounded-md bg-destructive/5 border border-destructive/20 px-3 py-2">
                             <template x-for="b in domainBlockers.filter(function(b) { return b.domain === code; })" :key="b.type">
-                                <p class="text-[10px] text-destructive" x-text="b.reason"></p>
+                                <p class="text-[10px] text-destructive-emphasis" x-text="b.reason"></p>
                             </template>
                         </div>
                     </template>
@@ -357,7 +357,7 @@
                                         Confirmed
                                     </span>
                                     <button type="button" @click="unconfirmDomain(code)"
-                                            class="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
+                                            class="text-[10px] text-muted-foreground hover:text-destructive-emphasis transition-colors"
                                             title="Revert to pending">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
                                     </button>

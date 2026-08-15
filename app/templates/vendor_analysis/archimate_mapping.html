@@ -70,7 +70,7 @@
                 {% endif %}
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Not Mapped</span>
-                    <span class="font-medium text-destructive">{{ without_archimate|dash }}</span>
+                    <span class="font-medium text-destructive-emphasis">{{ without_archimate|dash }}</span>
                 </div>
             </div>
         </div>
@@ -97,7 +97,7 @@
                 {% endif %}
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Without Vendor Mapping</span>
-                    <span class="font-medium text-warning">{{ without_source_product|dash }}</span>
+                    <span class="font-medium text-warning-emphasis">{{ without_source_product|dash }}</span>
                 </div>
             </div>
         </div>
@@ -111,8 +111,8 @@
                 <i data-lucide="alert-triangle" class="h-6 w-6 text-destructive" aria-hidden="true"></i>
             </div>
             <div>
-                <h3 class="text-lg font-semibold text-destructive">Critical Mapping Issues Detected</h3>
-                <div class="mt-2 text-destructive">
+                <h3 class="text-lg font-semibold text-destructive-emphasis">Critical Mapping Issues Detected</h3>
+                <div class="mt-2 text-destructive-emphasis">
                     <ul class="list-disc list-inside space-y-1">
                         {% if (orphaned_elements or 0) > 0 %}
                         <li><strong>{{ orphaned_elements }}</strong> ArchiMate elements reference non-existent vendor products</li>
@@ -143,9 +143,9 @@
                     <div class="p-3 border border-destructive/20 rounded-lg bg-destructive/5">
                         <div class="flex items-start justify-between">
                             <div>
-                                <h4 class="font-medium text-destructive">{{ element.name }}</h4>
-                                <p class="text-sm text-destructive">Type: {{ element.type }}</p>
-                                <p class="text-xs text-destructive mt-1">Product ID: {{ element.source_product_id }}</p>
+                                <h4 class="font-medium text-destructive-emphasis">{{ element.name }}</h4>
+                                <p class="text-sm text-destructive-emphasis">Type: {{ element.type }}</p>
+                                <p class="text-xs text-destructive-emphasis mt-1">Product ID: {{ element.source_product_id }}</p>
                             </div>
                             <span class="px-2 py-1 bg-destructive/10 text-destructive-emphasis text-xs rounded-full">Orphaned</span>
                         </div>
@@ -175,10 +175,10 @@
                     <div class="p-3 border border-warning/20 rounded-lg bg-warning/5">
                         <div class="flex items-start justify-between">
                             <div>
-                                <h4 class="font-medium text-warning">{{ product.name }}</h4>
-                                <p class="text-sm text-warning">Vendor: {{ product.vendor_name }}</p>
+                                <h4 class="font-medium text-warning-emphasis">{{ product.name }}</h4>
+                                <p class="text-sm text-warning-emphasis">Vendor: {{ product.vendor_name }}</p>
                                 {% if product.product_type %}
-                                <p class="text-xs text-warning mt-1">Type: {{ product.product_type }}</p>
+                                <p class="text-xs text-warning-emphasis mt-1">Type: {{ product.product_type }}</p>
                                 {% endif %}
                             </div>
                             <span class="px-2 py-1 bg-warning/10 text-warning-emphasis text-xs rounded-full">Unmapped</span>

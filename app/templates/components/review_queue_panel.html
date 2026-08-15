@@ -133,7 +133,7 @@ async function loadReviewQueue(previewData) {
     updateReviewCounts();
   } catch (error) {
     document.getElementById('review-queue-content').innerHTML =
-      `<div class="text-destructive text-center py-8">Failed to load review queue: ${error.message}</div>`;
+      `<div class="text-destructive-emphasis text-center py-8">Failed to load review queue: ${error.message}</div>`;
   }
 }
 

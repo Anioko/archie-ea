@@ -103,7 +103,7 @@
                 <span x-show="!busy || mode !== 'commit'">Import</span>
                 <span x-show="busy && mode === 'commit'" x-cloak>Importing…</span>
             </button>
-            <span x-show="error" x-cloak class="text-sm text-destructive" x-text="error"></span>
+            <span x-show="error" x-cloak class="text-sm text-destructive-emphasis" x-text="error"></span>
             <span x-show="committed" x-cloak class="text-sm text-foreground">
                 Imported. <a href="/archimate/import-review" class="underline">Review what was guessed →</a>
             </span>

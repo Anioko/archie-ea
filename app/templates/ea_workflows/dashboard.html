@@ -40,7 +40,7 @@
 
     {% if error %}
     <div class="rounded-xl border-2 border-destructive/50 bg-destructive/10 p-4 mb-6">
-        <div class="flex items-center gap-2 text-destructive">
+        <div class="flex items-center gap-2 text-destructive-emphasis">
             <i data-lucide="alert-circle" class="h-5 w-5" aria-hidden="true"></i>
             <span class="font-medium">Error: {{ error }}</span>
         </div>
@@ -501,7 +501,7 @@
         </template>
 
         <template x-if="!loading && error">
-            <div class="text-center py-8 text-destructive">
+            <div class="text-center py-8 text-destructive-emphasis">
                 <i data-lucide="alert-circle" class="h-6 w-6 mx-auto mb-2" aria-hidden="true"></i>
                 <p class="text-sm" x-text="error"></p>
             </div>
@@ -897,7 +897,7 @@ const _FC = 'w-full rounded-lg border-2 border-input p-2.5 text-sm bg-background
 
 function _label(field) {
     if (!field.label) return '';
-    const req = field.required ? ' <span class="text-destructive">*</span>' : ' <span class="text-muted-foreground font-normal">(optional)</span>';
+    const req = field.required ? ' <span class="text-destructive-emphasis">*</span>' : ' <span class="text-muted-foreground font-normal">(optional)</span>';
     return '<label for="field_' + field.name + '" class="block text-sm font-medium mb-2">' + field.label + req + '</label>';
 }
 

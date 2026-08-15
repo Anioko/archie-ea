@@ -158,14 +158,14 @@
                         <div>
                             <label for="{{ form.instance_url.id }}" class="block text-sm font-medium mb-2">
                                 {{ form.instance_url.label.text }}
-                                <span class="text-destructive">*</span>
+                                <span class="text-destructive-emphasis">*</span>
                             </label>
                             {{ form.instance_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="https://yourorg.service-now.com") }}
                             {% if form.instance_url.description %}
                                 <p class="mt-1 text-xs text-muted-foreground">{{ form.instance_url.description }}</p>
                             {% endif %}
                             {% if form.instance_url.errors %}
-                                <p class="mt-1 text-xs text-destructive">{{ form.instance_url.errors[0] }}</p>
+                                <p class="mt-1 text-xs text-destructive-emphasis">{{ form.instance_url.errors[0] }}</p>
                             {% endif %}
                         </div>
 
@@ -173,14 +173,14 @@
                         <div>
                             <label for="{{ form.username.id }}" class="block text-sm font-medium mb-2">
                                 {{ form.username.label.text }}
-                                <span class="text-destructive">*</span>
+                                <span class="text-destructive-emphasis">*</span>
                             </label>
                             {{ form.username(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="api.user") }}
                             {% if form.username.description %}
                                 <p class="mt-1 text-xs text-muted-foreground">{{ form.username.description }}</p>
                             {% endif %}
                             {% if form.username.errors %}
-                                <p class="mt-1 text-xs text-destructive">{{ form.username.errors[0] }}</p>
+                                <p class="mt-1 text-xs text-destructive-emphasis">{{ form.username.errors[0] }}</p>
                             {% endif %}
                         </div>
 
@@ -188,14 +188,14 @@
                         <div>
                             <label for="{{ form.password.id }}" class="block text-sm font-medium mb-2">
                                 {{ form.password.label.text }}
-                                {% if snow_config %}<span class="text-muted-foreground text-xs">(optional - leave blank to keep existing)</span>{% else %}<span class="text-destructive">*</span>{% endif %}
+                                {% if snow_config %}<span class="text-muted-foreground text-xs">(optional - leave blank to keep existing)</span>{% else %}<span class="text-destructive-emphasis">*</span>{% endif %}
                             </label>
                             {{ form.password(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="••••••••") }}
                             {% if form.password.description %}
                                 <p class="mt-1 text-xs text-muted-foreground">{{ form.password.description }}</p>
                             {% endif %}
                             {% if form.password.errors %}
-                                <p class="mt-1 text-xs text-destructive">{{ form.password.errors[0] }}</p>
+                                <p class="mt-1 text-xs text-destructive-emphasis">{{ form.password.errors[0] }}</p>
                             {% endif %}
                         </div>
 

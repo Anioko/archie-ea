@@ -294,7 +294,7 @@ function archieShowBanner(msg, type) {
     {# ── Not-started quick-add row ── #}
     {% if _qa_ns.zero %}
     <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-border/40 overflow-x-auto scrollbar-thin">
-        <span class="text-[11px] font-semibold text-destructive/60 uppercase tracking-wide shrink-0 leading-none">Empty:</span>
+        <span class="text-[11px] font-semibold text-destructive-emphasis/60 uppercase tracking-wide shrink-0 leading-none">Empty:</span>
         {% for _qs_id, _qs_lbl in _qa_ns.zero %}
         <button type="button"
                 @click="

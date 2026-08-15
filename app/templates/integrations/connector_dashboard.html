@@ -22,7 +22,7 @@
 
   <!-- Error State -->
   <div x-show="errorMsg && !loading" x-cloak class="bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-4">
-    <p class="text-sm text-destructive" x-text="errorMsg"></p>
+    <p class="text-sm text-destructive-emphasis" x-text="errorMsg"></p>
   </div>
 
   <!-- Connector Cards Grid -->
@@ -93,7 +93,7 @@
                     (<span x-text="sync.duration_seconds"></span>s)
                   </span>
                 </div>
-                <div x-show="sync.error_message" x-cloak class="mt-2 text-xs text-destructive" x-text="sync.error_message"></div>
+                <div x-show="sync.error_message" x-cloak class="mt-2 text-xs text-destructive-emphasis" x-text="sync.error_message"></div>
               </div>
             </template>
           </div>

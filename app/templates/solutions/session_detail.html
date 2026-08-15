@@ -405,7 +405,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {% if rec.pros %}
                 <div>
-                    <h4 class="font-semibold text-sm mb-2 text-success">✓ Pros</h4>
+                    <h4 class="font-semibold text-sm mb-2 text-success-emphasis">✓ Pros</h4>
                     <ul class="space-y-1">
                         {% for pro in rec.pros %}
                         <li class="text-sm">• {{ pro }}</li>
@@ -415,7 +415,7 @@
                 {% endif %}
                 {% if rec.cons %}
                 <div>
-                    <h4 class="font-semibold text-sm mb-2 text-destructive">✗ Cons</h4>
+                    <h4 class="font-semibold text-sm mb-2 text-destructive-emphasis">✗ Cons</h4>
                     <ul class="space-y-1">
                         {% for con in rec.cons %}
                         <li class="text-sm">• {{ con }}</li>
@@ -467,7 +467,7 @@
                     Run Options Analysis
                 </button>
                 <template x-if="!hasProblemDefinition">
-                    <p class="text-sm text-warning mt-3">A problem definition is required before running analysis.</p>
+                    <p class="text-sm text-warning-emphasis mt-3">A problem definition is required before running analysis.</p>
                 </template>
             </div>
         </template>
@@ -578,7 +578,7 @@
                                 <!-- Pros -->
                                 <div x-show="rec.pros && rec.pros.length > 0" x-cloak>
                                     <button @click="rec._showPros = !rec._showPros"
-                                            class="flex items-center gap-1 text-sm font-semibold text-success mb-2 hover:underline" aria-label="Toggle pros list">
+                                            class="flex items-center gap-1 text-sm font-semibold text-success-emphasis mb-2 hover:underline" aria-label="Toggle pros list">
                                         <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform"
                                            :class="rec._showPros ? 'rotate-180' : ''"></i>
                                         Pros (<span x-text="rec.pros.length"></span>)
@@ -586,7 +586,7 @@
                                     <ul x-show="rec._showPros" x-cloak class="space-y-1 pl-1">
                                         <template x-for="pro in rec.pros" :key="pro">
                                             <li class="text-sm flex items-start gap-2">
-                                                <span class="text-success mt-0.5 shrink-0">+</span>
+                                                <span class="text-success-emphasis mt-0.5 shrink-0">+</span>
                                                 <span x-text="pro"></span>
                                             </li>
                                         </template>
@@ -596,7 +596,7 @@
                                 <!-- Cons -->
                                 <div x-show="rec.cons && rec.cons.length > 0" x-cloak>
                                     <button @click="rec._showCons = !rec._showCons"
-                                            class="flex items-center gap-1 text-sm font-semibold text-destructive mb-2 hover:underline" aria-label="Toggle cons list">
+                                            class="flex items-center gap-1 text-sm font-semibold text-destructive-emphasis mb-2 hover:underline" aria-label="Toggle cons list">
                                         <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform"
                                            :class="rec._showCons ? 'rotate-180' : ''"></i>
                                         Cons (<span x-text="rec.cons.length"></span>)
@@ -604,7 +604,7 @@
                                     <ul x-show="rec._showCons" x-cloak class="space-y-1 pl-1">
                                         <template x-for="con in rec.cons" :key="con">
                                             <li class="text-sm flex items-start gap-2">
-                                                <span class="text-destructive mt-0.5 shrink-0">-</span>
+                                                <span class="text-destructive-emphasis mt-0.5 shrink-0">-</span>
                                                 <span x-text="con"></span>
                                             </li>
                                         </template>
@@ -695,7 +695,7 @@
                             <div class="text-sm">
                                 <span class="text-muted-foreground">Total weight: </span>
                                 <span class="font-bold tabular-nums"
-                                      :class="scenarioWeightSum === 100 ? 'text-success' : 'text-destructive'"
+                                      :class="scenarioWeightSum === 100 ? 'text-success-emphasis' : 'text-destructive-emphasis'"
                                       x-text="scenarioWeightSum + '%'"></span>
                             </div>
                             <button @click="recalculateScenario()"
@@ -749,13 +749,13 @@
         <!-- Error State -->
         <template x-if="analysisError">
             <div class="bg-destructive/5 border border-destructive/20 rounded-lg p-4">
-                <div class="flex items-center gap-2 text-destructive">
+                <div class="flex items-center gap-2 text-destructive-emphasis">
                     <i data-lucide="alert-circle" class="h-5 w-5" aria-hidden="true"></i>
                     <span class="font-medium">Analysis Error</span>
                 </div>
-                <p class="text-sm text-destructive mt-1" x-text="analysisError"></p>
+                <p class="text-sm text-destructive-emphasis mt-1" x-text="analysisError"></p>
                 <button @click="analysisError = null"
-                        class="mt-2 text-sm text-destructive hover:underline" aria-label="Dismiss analysis error">Dismiss</button>
+                        class="mt-2 text-sm text-destructive-emphasis hover:underline" aria-label="Dismiss analysis error">Dismiss</button>
             </div>
         </template>
     </div>
@@ -927,7 +927,7 @@
                                 <!-- Pattern elements (collapsed) -->
                                 <template x-if="pattern.is_match">
                                     <div class="mt-3" x-data="{ showElems: false }">
-                                        <button @click="showElems = !showElems" class="text-xs text-success hover:underline flex items-center gap-1" aria-label="Toggle pattern elements">
+                                        <button @click="showElems = !showElems" class="text-xs text-success-emphasis hover:underline flex items-center gap-1" aria-label="Toggle pattern elements">
                                             <svg class="w-3 h-3 transition-transform" :class="showElems ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                                             </svg>
@@ -988,7 +988,7 @@
                     <template x-for="category in ['Functional', 'Non-Functional', 'Constraint']" :key="category">
                         <div x-show="aiRequirements.filter(r => r.category === category).length > 0" x-cloak>
                             <h4 class="font-semibold text-sm mb-2 flex items-center gap-2">
-                                <span :class="category === 'Functional' ? 'text-primary' : category === 'Non-Functional' ? 'text-primary' : 'text-warning'"
+                                <span :class="category === 'Functional' ? 'text-primary' : category === 'Non-Functional' ? 'text-primary' : 'text-warning-emphasis'"
                                       x-text="category"></span>
                                 <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted"
                                       x-text="aiRequirements.filter(r => r.category === category).length"></span>
@@ -1014,7 +1014,7 @@
                                                 <ul class="space-y-0.5">
                                                     <template x-for="ac in req.acceptance_criteria" :key="ac">
                                                         <li class="text-xs text-muted-foreground flex items-start gap-1.5">
-                                                            <span class="text-success mt-0.5 shrink-0">&#10003;</span>
+                                                            <span class="text-success-emphasis mt-0.5 shrink-0">&#10003;</span>
                                                             <span x-text="ac"></span>
                                                         </li>
                                                     </template>

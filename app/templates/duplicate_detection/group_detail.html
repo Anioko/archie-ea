@@ -236,7 +236,7 @@
             <template x-if="confidence.error">
                 <div class="text-center py-8">
                     <i data-lucide="alert-circle" class="w-6 h-6 mx-auto text-destructive mb-3" aria-hidden="true"></i>
-                    <p class="text-sm text-destructive" x-text="confidence.error"></p>
+                    <p class="text-sm text-destructive-emphasis" x-text="confidence.error"></p>
                 </div>
             </template>
             <template x-if="!confidence.loading && !confidence.error && confidence.data">
@@ -322,7 +322,7 @@
             <template x-if="mergePreview.error">
                 <div class="text-center py-8">
                     <i data-lucide="alert-circle" class="w-6 h-6 mx-auto text-destructive mb-3" aria-hidden="true"></i>
-                    <p class="text-sm text-destructive" x-text="mergePreview.error"></p>
+                    <p class="text-sm text-destructive-emphasis" x-text="mergePreview.error"></p>
                 </div>
             </template>
             <template x-if="!mergePreview.loading && !mergePreview.error && mergePreview.data">
@@ -331,11 +331,11 @@
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div class="rounded-lg border border-input bg-background p-3">
                             <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Matching</p>
-                            <p class="text-lg font-semibold text-success mt-1" x-text="mergePreview.data.merge_summary.fields_matching"></p>
+                            <p class="text-lg font-semibold text-success-emphasis mt-1" x-text="mergePreview.data.merge_summary.fields_matching"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
                             <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Conflicting</p>
-                            <p class="text-lg font-semibold text-warning mt-1" x-text="mergePreview.data.merge_summary.fields_conflicting"></p>
+                            <p class="text-lg font-semibold text-warning-emphasis mt-1" x-text="mergePreview.data.merge_summary.fields_conflicting"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
                             <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Missing</p>
@@ -401,7 +401,7 @@
             <template x-if="impact.error">
                 <div class="text-center py-8">
                     <i data-lucide="alert-circle" class="w-6 h-6 mx-auto text-destructive mb-3" aria-hidden="true"></i>
-                    <p class="text-sm text-destructive" x-text="impact.error"></p>
+                    <p class="text-sm text-destructive-emphasis" x-text="impact.error"></p>
                 </div>
             </template>
             <template x-if="!impact.loading && !impact.error && impact.data">
@@ -427,7 +427,7 @@
                         <div class="rounded-lg border border-input bg-background p-3">
                             <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Consolidation Risk</p>
                             <p class="text-lg font-semibold mt-1"
-                               :class="{'text-destructive': impact.data.consolidation_risk === 'high', 'text-warning': impact.data.consolidation_risk === 'medium', 'text-success': impact.data.consolidation_risk === 'low'}"
+                               :class="{'text-destructive-emphasis': impact.data.consolidation_risk === 'high', 'text-warning-emphasis': impact.data.consolidation_risk === 'medium', 'text-success-emphasis': impact.data.consolidation_risk === 'low'}"
                                x-text="(impact.data.consolidation_risk || 'unknown').charAt(0).toUpperCase() + (impact.data.consolidation_risk || 'unknown').slice(1)"></p>
                         </div>
                     </div>

@@ -164,9 +164,9 @@
                                         {% if settings.test_status %}
                                             <p class="text-xs mt-1">
                                                 {% if settings.test_status == 'success' %}
-                                                    <span class="text-success">✓ Tested</span>
+                                                    <span class="text-success-emphasis">✓ Tested</span>
                                                 {% elif settings.test_status == 'failed' %}
-                                                    <span class="text-destructive">✗ Failed</span>
+                                                    <span class="text-destructive-emphasis">✗ Failed</span>
                                                 {% else %}
                                                     <span class="text-muted-foreground">Pending</span>
                                                 {% endif %}
@@ -199,7 +199,7 @@
                                               @submit="Platform.modal.confirmSubmit($event, 'Delete {{ settings.provider }}{% if settings.key_label %} ({{ settings.key_label }}){% endif %}? This cannot be undone.')">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <button type="submit"
-                                                    class="p-1.5 rounded-md hover:bg-background transition-colors text-destructive"
+                                                    class="p-1.5 rounded-md hover:bg-background transition-colors text-destructive-emphasis"
                                                     title="Delete">
                                                 <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
                                             </button>
@@ -236,7 +236,7 @@
                                 {{ form.provider.label(class="block text-sm font-medium mb-2") }}
                                 {{ form.provider(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                 {% if form.provider.errors %}
-                                    <p class="text-sm text-destructive mt-1">{{ form.provider.errors[0] }}</p>
+                                    <p class="text-sm text-destructive-emphasis mt-1">{{ form.provider.errors[0] }}</p>
                                 {% endif %}
                             </div>
 
@@ -245,7 +245,7 @@
                                 {{ form.key_label.label(class="block text-sm font-medium mb-2") }}
                                 {{ form.key_label(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", placeholder="e.g. Production, Dev, Fallback — leave blank for primary") }}
                                 {% if form.key_label.errors %}
-                                    <p class="text-sm text-destructive mt-1">{{ form.key_label.errors[0] }}</p>
+                                    <p class="text-sm text-destructive-emphasis mt-1">{{ form.key_label.errors[0] }}</p>
                                 {% endif %}
                                 <p class="text-xs text-muted-foreground mt-1">Optional. Use a label to store multiple keys for the same provider (e.g. Production vs Dev).</p>
                             </div>
@@ -255,7 +255,7 @@
                                 {{ form.api_key.label(class="block text-sm font-medium mb-2") }}
                                 {{ form.api_key(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                 {% if form.api_key.errors %}
-                                    <p class="text-sm text-destructive mt-1">{{ form.api_key.errors[0] }}</p>
+                                    <p class="text-sm text-destructive-emphasis mt-1">{{ form.api_key.errors[0] }}</p>
                                 {% endif %}
                                 <p class="text-xs text-muted-foreground mt-1">
                                     {% if edit_id %}
@@ -277,7 +277,7 @@
                                 {{ form.default_model.label(class="block text-sm font-medium mb-2") }}
                                 {{ form.default_model(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                 {% if form.default_model.errors %}
-                                    <p class="text-sm text-destructive mt-1">{{ form.default_model.errors[0] }}</p>
+                                    <p class="text-sm text-destructive-emphasis mt-1">{{ form.default_model.errors[0] }}</p>
                                 {% endif %}
                                 <p class="text-xs text-muted-foreground mt-1">
                                     Examples: claude-opus-5, gpt-4o, gemini-2.0-flash, deepseek-chat. For OpenRouter, use the model browser to select up to 5 models (comma-separated, first is primary).
@@ -290,14 +290,14 @@
                                     {{ form.max_tokens.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.max_tokens(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                     {% if form.max_tokens.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.max_tokens.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.max_tokens.errors[0] }}</p>
                                     {% endif %}
                                 </div>
                                 <div>
                                     {{ form.temperature.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.temperature(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                     {% if form.temperature.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.temperature.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.temperature.errors[0] }}</p>
                                     {% endif %}
                                 </div>
                             </div>
@@ -308,14 +308,14 @@
                                     {{ form.jira_url.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.jira_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                     {% if form.jira_url.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.jira_url.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.jira_url.errors[0] }}</p>
                                     {% endif %}
                                 </div>
                                 <div>
                                     {{ form.jira_email.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.jira_email(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                     {% if form.jira_email.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.jira_email.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.jira_email.errors[0] }}</p>
                                     {% endif %}
                                 </div>
                             </div>
@@ -326,7 +326,7 @@
                                     {{ form.hf_model_id.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.hf_model_id(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                     {% if form.hf_model_id.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.hf_model_id.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.hf_model_id.errors[0] }}</p>
                                     {% endif %}
                                     <p class="text-xs text-muted-foreground mt-1">
                                         Popular models: meta-llama/Llama-3.1-8B-Instruct, mistralai/Mistral-7B-Instruct-v0.2, google/gemma-2-9b-it, microsoft/Phi-3.5-mini-instruct
@@ -336,7 +336,7 @@
                                     {{ form.hf_endpoint_url.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.hf_endpoint_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                     {% if form.hf_endpoint_url.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.hf_endpoint_url.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.hf_endpoint_url.errors[0] }}</p>
                                     {% endif %}
                                     <p class="text-xs text-muted-foreground mt-1">
                                         Optional: Custom endpoint URL (e.g., https://api-inference.huggingface.co/models/your-model)
@@ -379,7 +379,7 @@
                                     {{ form.custom_endpoint_url.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.custom_endpoint_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                     {% if form.custom_endpoint_url.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.custom_endpoint_url.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.custom_endpoint_url.errors[0] }}</p>
                                     {% endif %}
                                     <p class="text-xs text-muted-foreground mt-1">
                                         The full URL to your API endpoint (e.g., https://api.example.com/v1/data)
@@ -389,7 +389,7 @@
                                     {{ form.custom_auth_method.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.custom_auth_method(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
                                     {% if form.custom_auth_method.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.custom_auth_method.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.custom_auth_method.errors[0] }}</p>
                                     {% endif %}
                                     <p class="text-xs text-muted-foreground mt-1">
                                         Choose how to authenticate with your API
@@ -399,7 +399,7 @@
                                     {{ form.custom_headers.label(class="block text-sm font-medium mb-2") }}
                                     {{ form.custom_headers(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[80px]") }}
                                     {% if form.custom_headers.errors %}
-                                        <p class="text-sm text-destructive mt-1">{{ form.custom_headers.errors[0] }}</p>
+                                        <p class="text-sm text-destructive-emphasis mt-1">{{ form.custom_headers.errors[0] }}</p>
                                     {% endif %}
                                     <p class="text-xs text-muted-foreground mt-1">
                                         Optional: Additional headers in JSON format (e.g., {"Content-Type": "application/json", "X-Custom-Header": "value"})

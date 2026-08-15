@@ -27,8 +27,8 @@
         {% else %}border-border bg-card{% endif %}">
         <div class="flex items-center gap-3">
             <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl
-                {% if packet.tone == 'good' %}bg-success/10 text-success
-                {% elif packet.tone == 'warn' %}bg-warning/10 text-warning
+                {% if packet.tone == 'good' %}bg-success/10 text-success-emphasis
+                {% elif packet.tone == 'warn' %}bg-warning/10 text-warning-emphasis
                 {% else %}bg-primary/10 text-primary{% endif %}">
                 <i data-lucide="{{ 'check-circle' if packet.tone=='good' else ('alert-triangle' if packet.tone=='warn' else 'clipboard-list') }}" class="h-6 w-6"></i>
             </span>

@@ -31,7 +31,7 @@
 
     <div x-show="!loading && loadError" x-cloak
          class="rounded-xl border border-destructive bg-card p-12 text-center">
-        <p class="text-lg font-semibold text-destructive">The review queue could not be read</p>
+        <p class="text-lg font-semibold text-destructive-emphasis">The review queue could not be read</p>
         <p class="text-sm text-muted-foreground mt-1" x-text="loadError"></p>
         <button @click="load()"
                 class="mt-4 text-xs underline text-muted-foreground hover:text-foreground">

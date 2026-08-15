@@ -98,7 +98,7 @@
 
     <!-- Load failure: the tiles below read "—", this says why -->
     <div x-show="loadError" x-cloak class="rounded-lg border border-destructive bg-background px-6 py-4 mb-6">
-        <p class="text-sm font-semibold text-destructive" x-text="loadError"></p>
+        <p class="text-sm font-semibold text-destructive-emphasis" x-text="loadError"></p>
         <p class="text-sm text-muted-foreground mt-1">
             The roadmap could not be read. An empty timeline below is not an empty roadmap.
         </p>
@@ -176,7 +176,7 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground" x-text="'$' + workPackage.investment_cost + 'K'"></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                 <button @click="editWorkPackage(workPackage)" class="text-primary hover:text-primary/80 mr-3" aria-label="Edit">Edit</button>
-                                <button @click="deleteWorkPackage(workPackage.id)" class="text-destructive hover:text-destructive" aria-label="Delete">Delete</button>
+                                <button @click="deleteWorkPackage(workPackage.id)" class="text-destructive-emphasis hover:text-destructive-emphasis" aria-label="Delete">Delete</button>
                             </td>
                         </tr>
                     </template>

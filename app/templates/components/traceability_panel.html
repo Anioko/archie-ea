@@ -69,7 +69,7 @@
                 // which looks like the request is still in flight.
                 ['trace-capabilities-{{ entity_id }}', 'trace-applications-{{ entity_id }}', 'trace-requirements-{{ entity_id }}'].forEach(function(id) {
                     const el = document.getElementById(id);
-                    if (el) el.innerHTML = '<span class="text-destructive">Could not load</span>';
+                    if (el) el.innerHTML = '<span class="text-destructive-emphasis">Could not load</span>';
                 });
             }
         })();

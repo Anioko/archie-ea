@@ -270,7 +270,7 @@
                 </div>
             </template>
             <template x-if="execSummary.error">
-                <div class="text-sm text-destructive flex items-center gap-2">
+                <div class="text-sm text-destructive-emphasis flex items-center gap-2">
                     <i data-lucide="alert-circle" class="h-4 w-4"></i>
                     <span>Failed to load.</span>
                     <button @click="load()" class="text-primary hover:underline text-xs">Retry</button>
@@ -314,7 +314,7 @@
                 </div>
             </template>
             <template x-if="execSummary.error">
-                <div class="text-sm text-destructive flex items-center gap-2">
+                <div class="text-sm text-destructive-emphasis flex items-center gap-2">
                     <i data-lucide="alert-circle" class="h-4 w-4"></i>
                     <span>Failed to load.</span>
                     <button @click="load()" class="text-primary hover:underline text-xs">Retry</button>
@@ -485,7 +485,7 @@
                     <p class="text-xs text-muted-foreground mt-0.5" x-show="!scoringResult" x-cloak>Score all applications using the TIME framework</p>
                     <p class="text-xs text-success-emphasis mt-0.5" x-show="scoringResult && scoringResult.success" x-cloak
                        x-text="'Scored: ' + (scoringResult?.scored || 0) + ' apps'"></p>
-                    <p class="text-xs text-destructive mt-0.5" x-show="scoringResult && !scoringResult.success" x-cloak
+                    <p class="text-xs text-destructive-emphasis mt-0.5" x-show="scoringResult && !scoringResult.success" x-cloak
                        x-text="'Error: ' + (scoringResult?.error || 'unknown')"></p>
                 </div>
             </div>
@@ -508,7 +508,7 @@
                 :disabled="autoResolveLoading"
                 class="rounded-xl border bg-card p-5 text-left hover:border-primary/50 hover:shadow-sm transition-all group">
             <div class="flex items-start gap-3">
-                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10 text-success group-hover:bg-success/20 transition-colors">
+                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10 text-success-emphasis group-hover:bg-success/20 transition-colors">
                     <i data-lucide="check-check" class="h-5 w-5"></i>
                 </div>
                 <div>
@@ -534,7 +534,7 @@
         <a href="{{ url_for('unified_duplicate.duplicate_dashboard') }}"
            class="rounded-xl border bg-card p-5 text-left hover:border-primary/50 hover:shadow-sm transition-all group no-underline">
             <div class="flex items-start gap-3">
-                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-warning/10 text-warning group-hover:bg-warning/20 transition-colors">
+                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-warning/10 text-warning-emphasis group-hover:bg-warning/20 transition-colors">
                     <i data-lucide="eye" class="h-5 w-5"></i>
                 </div>
                 <div>

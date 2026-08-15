@@ -61,8 +61,8 @@
 
         {% if result.warnings %}
         <div class="rounded-md border border-warning bg-warning/5 p-4 space-y-1">
-            <p class="text-sm font-medium text-warning">Warnings:</p>
-            <ul class="list-disc list-inside text-sm text-warning/80 space-y-0.5">
+            <p class="text-sm font-medium text-warning-emphasis">Warnings:</p>
+            <ul class="list-disc list-inside text-sm text-warning-emphasis/80 space-y-0.5">
                 {% for w in result.warnings %}
                 <li>{{ w }}</li>
                 {% endfor %}
@@ -72,8 +72,8 @@
 
         {% if result.errors %}
         <div class="rounded-md border border-destructive bg-destructive/5 p-4 space-y-1">
-            <p class="text-sm font-medium text-destructive">Errors encountered during import:</p>
-            <ul class="list-disc list-inside text-sm text-destructive/80 space-y-0.5">
+            <p class="text-sm font-medium text-destructive-emphasis">Errors encountered during import:</p>
+            <ul class="list-disc list-inside text-sm text-destructive-emphasis/80 space-y-0.5">
                 {% for err in result.errors %}
                 <li>{{ err }}</li>
                 {% endfor %}

@@ -33,7 +33,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground">Database</p>
-                    <p class="text-sm font-bold {% if health.db == 'ok' %}text-success{% else %}text-destructive{% endif %}">
+                    <p class="text-sm font-bold {% if health.db == 'ok' %}text-success-emphasis{% else %}text-destructive-emphasis{% endif %}">
                         {{ 'Connected' if health.db == 'ok' else 'Error' }}
                     </p>
                 </div>
@@ -47,7 +47,7 @@
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground">Cache (Redis)</p>
-                    <p class="text-sm font-bold {% if health.redis == 'ok' %}text-success{% else %}text-warning{% endif %}">
+                    <p class="text-sm font-bold {% if health.redis == 'ok' %}text-success-emphasis{% else %}text-warning-emphasis{% endif %}">
                         {{ 'Connected' if health.redis == 'ok' else 'Unavailable' }}
                     </p>
                 </div>
@@ -62,7 +62,7 @@
                     <p class="text-xs font-medium text-muted-foreground">Total Users</p>
                     <p class="text-sm font-bold text-foreground">{{ total_users }}
                         {% if unconfirmed_users > 0 %}
-                            <span class="text-[10px] font-semibold text-warning ml-1">{{ unconfirmed_users }} unconfirmed</span>
+                            <span class="text-[10px] font-semibold text-warning-emphasis ml-1">{{ unconfirmed_users }} unconfirmed</span>
                         {% endif %}
                     </p>
                 </div>
@@ -76,7 +76,7 @@
                 <div>
                     <p class="text-xs font-medium text-muted-foreground">Feature Flags</p>
                     <p class="text-sm font-bold text-foreground">
-                        <span class="text-success">{{ flags.enabled }} on</span>
+                        <span class="text-success-emphasis">{{ flags.enabled }} on</span>
                         <span class="text-muted-foreground mx-1">/</span>
                         <span class="text-muted-foreground">{{ flags.disabled }} off</span>
                     </p>

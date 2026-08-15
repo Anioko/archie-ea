@@ -24,7 +24,7 @@
                     {{ form.name.label(class="block text-sm font-medium text-foreground mb-2") }}
                     {{ form.name(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring") }}
                     {% if form.name.errors %}
-                        <div class="mt-1 text-sm text-destructive">
+                        <div class="mt-1 text-sm text-destructive-emphasis">
                             {% for error in form.name.errors %}
                                 {{ error }}
                             {% endfor %}
@@ -37,7 +37,7 @@
                     {{ form.description.label(class="block text-sm font-medium text-foreground mb-2") }}
                     {{ form.description(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring", rows="4") }}
                     {% if form.description.errors %}
-                        <div class="mt-1 text-sm text-destructive">
+                        <div class="mt-1 text-sm text-destructive-emphasis">
                             {% for error in form.description.errors %}
                                 {{ error }}
                             {% endfor %}
@@ -50,7 +50,7 @@
                     {{ form.website.label(class="block text-sm font-medium text-foreground mb-2") }}
                     {{ form.website(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring") }}
                     {% if form.website.errors %}
-                        <div class="mt-1 text-sm text-destructive">
+                        <div class="mt-1 text-sm text-destructive-emphasis">
                             {% for error in form.website.errors %}
                                 {{ error }}
                             {% endfor %}
@@ -63,7 +63,7 @@
                     {{ form.contact_email.label(class="block text-sm font-medium text-foreground mb-2") }}
                     {{ form.contact_email(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring") }}
                     {% if form.contact_email.errors %}
-                        <div class="mt-1 text-sm text-destructive">
+                        <div class="mt-1 text-sm text-destructive-emphasis">
                             {% for error in form.contact_email.errors %}
                                 {{ error }}
                             {% endfor %}

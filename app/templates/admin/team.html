@@ -94,7 +94,7 @@
                             data-member-id="{{ member.id }}"
                             data-member-name="{{ member.full_name()|e }}"
                             data-remove-url="{{ url_for('team.team_remove_member', user_id=member.id) }}"
-                            class="text-destructive hover:text-destructive-emphasis">Remove</button>
+                            class="text-destructive-emphasis hover:text-destructive-emphasis">Remove</button>
                         {% else %}
                         <span class="text-muted-foreground/60 text-xs">(you)</span>
                         {% endif %}

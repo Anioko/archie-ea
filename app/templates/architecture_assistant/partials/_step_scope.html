@@ -9,13 +9,13 @@
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div>
-      <label class="block text-sm font-medium text-foreground mb-1.5">Solution Name <span class="text-destructive">*</span></label>
+      <label class="block text-sm font-medium text-foreground mb-1.5">Solution Name <span class="text-destructive-emphasis">*</span></label>
       <input type="text" x-model="scope.name" required
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         placeholder="e.g. Enterprise CRM Consolidation" aria-label="Solution Name">
     </div>
     <div>
-      <label class="block text-sm font-medium text-foreground mb-1.5">Business Domain <span class="text-destructive">*</span></label>
+      <label class="block text-sm font-medium text-foreground mb-1.5">Business Domain <span class="text-destructive-emphasis">*</span></label>
       <select x-model="scope.business_domain"
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Business Domain">
         <option value="">Select domain...</option>
@@ -57,7 +57,7 @@
       <template x-for="app in scope.linked_applications" :key="app.id">
         <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/30">
           <span x-text="app.name"></span>
-          <button @click="unlinkApplication(app.id)" type="button" class="hover:text-destructive">
+          <button @click="unlinkApplication(app.id)" type="button" class="hover:text-destructive-emphasis">
             <i data-lucide="x" class="h-3 w-3"></i>
           </button>
         </span>
@@ -143,7 +143,7 @@
       <template x-for="d in scope.drivers" :key="d.id || d.name">
         <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">
           <span x-text="d.name"></span>
-          <button aria-label="Remove" @click="removeMotivationElement('drivers', d)" type="button" class="hover:text-destructive">
+          <button aria-label="Remove" @click="removeMotivationElement('drivers', d)" type="button" class="hover:text-destructive-emphasis">
             <i data-lucide="x" class="h-3 w-3"></i>
           </button>
         </span>
@@ -179,7 +179,7 @@
       <template x-for="g in scope.goals" :key="g.id || g.name">
         <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
           <span x-text="g.name"></span>
-          <button aria-label="Remove" @click="removeMotivationElement('goals', g)" type="button" class="hover:text-destructive"><i data-lucide="x" class="h-3 w-3"></i></button>
+          <button aria-label="Remove" @click="removeMotivationElement('goals', g)" type="button" class="hover:text-destructive-emphasis"><i data-lucide="x" class="h-3 w-3"></i></button>
         </span>
       </template>
     </div>
@@ -213,7 +213,7 @@
       <template x-for="c in scope.constraints" :key="c.id || c.name">
         <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
           <span x-text="c.name"></span>
-          <button aria-label="Remove" @click="removeMotivationElement('constraints', c)" type="button" class="hover:text-destructive"><i data-lucide="x" class="h-3 w-3"></i></button>
+          <button aria-label="Remove" @click="removeMotivationElement('constraints', c)" type="button" class="hover:text-destructive-emphasis"><i data-lucide="x" class="h-3 w-3"></i></button>
         </span>
       </template>
     </div>
@@ -247,7 +247,7 @@
       <template x-for="s in scope.stakeholders" :key="s.id || s.name">
         <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/30">
           <span x-text="s.name"></span>
-          <button aria-label="Remove" @click="removeMotivationElement('stakeholders', s)" type="button" class="hover:text-destructive"><i data-lucide="x" class="h-3 w-3"></i></button>
+          <button aria-label="Remove" @click="removeMotivationElement('stakeholders', s)" type="button" class="hover:text-destructive-emphasis"><i data-lucide="x" class="h-3 w-3"></i></button>
         </span>
       </template>
     </div>
@@ -337,7 +337,7 @@
           }">
           <span x-text="el.name"></span>
           <span class="text-[10px] opacity-70" x-text="el.type"></span>
-          <button @click="unlinkArchimateElement(el.id)" type="button" class="hover:text-destructive">
+          <button @click="unlinkArchimateElement(el.id)" type="button" class="hover:text-destructive-emphasis">
             <i data-lucide="x" class="h-3 w-3"></i>
           </button>
         </span>

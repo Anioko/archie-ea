@@ -151,7 +151,7 @@
   {# ── Empty state ────────────────────────────────── #}
   <div x-show="!loading && loadError" x-cloak
        class="flex flex-col items-center justify-center py-20 text-center bg-background border border-destructive rounded-xl">
-    <p class="text-destructive font-medium text-lg mb-1" x-text="loadError"></p>
+    <p class="text-destructive-emphasis font-medium text-lg mb-1" x-text="loadError"></p>
     <p class="text-muted-foreground/60 text-sm mb-4">The map was not read — this is not a solution without stakeholders.</p>
     <button type="button" @click="loadData()"
             class="bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg transition">
@@ -279,7 +279,7 @@
           <input x-model="personSearch" @input.debounce.300ms="searchPeople()" type="text"
                  placeholder="Search people, teams, departments..."
                  class="w-full border border-border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none" aria-label="Person or Team"/>
-          <div x-show="personSearchError" x-cloak class="absolute z-10 mt-1 w-full border border-border rounded-lg bg-background shadow-lg px-3 py-2 text-sm text-destructive" x-text="personSearchError"></div>
+          <div x-show="personSearchError" x-cloak class="absolute z-10 mt-1 w-full border border-border rounded-lg bg-background shadow-lg px-3 py-2 text-sm text-destructive-emphasis" x-text="personSearchError"></div>
           <div x-show="!personSearchError && personResults.length > 0" class="absolute z-10 mt-1 w-full border border-border rounded-lg bg-background shadow-lg max-h-40 overflow-y-auto">
             <template x-for="p in personResults" :key="p.source + '-' + p.id">
               <div @click="selectPerson(p)" class="px-3 py-2 hover:bg-muted cursor-pointer text-sm flex items-center justify-between">
@@ -302,7 +302,7 @@
             <span class="font-medium text-sm" x-text="selectedPerson.name"></span>
             <span class="text-xs text-muted-foreground ml-2" x-text="selectedPerson.source === 'user' ? 'Platform User' : selectedPerson.type"></span>
           </div>
-          <button type="button" @click="clearPerson()" class="text-muted-foreground hover:text-destructive text-sm">&times;</button>
+          <button type="button" @click="clearPerson()" class="text-muted-foreground hover:text-destructive-emphasis text-sm">&times;</button>
         </div>
       </template>
     </div>

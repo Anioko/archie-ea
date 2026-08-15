@@ -72,7 +72,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
     <div x-show="loadError" x-cloak
          class="mb-6 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
         <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
-        <p class="text-sm text-destructive" x-text="loadError"></p>
+        <p class="text-sm text-destructive-emphasis" x-text="loadError"></p>
     </div>
 
     <div class="mb-6 p-4 bg-card border border-border rounded-lg">
@@ -284,7 +284,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                                         <i data-lucide="edit" class="h-4 w-4"></i>
                                     </button>
                                     <button @click="deleteWorkPackage(workPackage)" 
-                                            class="text-destructive hover:text-destructive/80" aria-label="Delete">
+                                            class="text-destructive-emphasis hover:text-destructive-emphasis/80" aria-label="Delete">
                                         <i data-lucide="trash-2" class="h-4 w-4"></i>
                                     </button>
                                 </div>

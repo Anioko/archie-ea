@@ -86,7 +86,7 @@
 <form method="POST" action="{{ url_for('business_case.create') }}" class="space-y-4" data-testid="bc-create-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
-    <label for="bc-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive" aria-hidden="true">*</span></label>
+    <label for="bc-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive-emphasis" aria-hidden="true">*</span></label>
     <input id="bc-title" name="title" type="text" required maxlength="256" placeholder="e.g. Consolidate Regional CRM Instances"
       class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
   </div>

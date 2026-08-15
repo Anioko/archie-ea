@@ -47,7 +47,7 @@
                                     <span class="font-medium text-foreground">Connected</span>
                                 {% elif jira_config.connection_status == 'error' %}
                                     <div class="h-3 w-3 rounded-full bg-destructive"></div>
-                                    <span class="font-medium text-destructive">Error</span>
+                                    <span class="font-medium text-destructive-emphasis">Error</span>
                                 {% else %}
                                     <div class="h-3 w-3 rounded-full bg-muted-foreground"></div>
                                     <span class="font-medium text-muted-foreground">Not Tested</span>
@@ -68,8 +68,8 @@
 
                         {% if jira_config.last_error %}
                             <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                                <p class="text-sm text-destructive font-medium mb-1">Last Error:</p>
-                                <p class="text-xs text-destructive/80">{{ jira_config.last_error }}</p>
+                                <p class="text-sm text-destructive-emphasis font-medium mb-1">Last Error:</p>
+                                <p class="text-xs text-destructive-emphasis/80">{{ jira_config.last_error }}</p>
                             </div>
                         {% endif %}
 
@@ -267,7 +267,7 @@
                             <div class="space-y-4">
                                 <div>
                                     <label for="base_url" class="block text-sm font-medium mb-2">
-                                        Jira Base URL <span class="text-destructive">*</span>
+                                        Jira Base URL <span class="text-destructive-emphasis">*</span>
                                     </label>
                                     <input type="text"
                                            id="base_url"
@@ -281,7 +281,7 @@
 
                                 <div>
                                     <label for="username" class="block text-sm font-medium mb-2">
-                                        Username / Email <span class="text-destructive">*</span>
+                                        Username / Email <span class="text-destructive-emphasis">*</span>
                                     </label>
                                     <input type="text"
                                            id="username"
@@ -295,7 +295,7 @@
 
                                 <div>
                                     <label for="api_token" class="block text-sm font-medium mb-2">
-                                        API Token {% if not jira_config %}<span class="text-destructive">*</span>{% endif %}
+                                        API Token {% if not jira_config %}<span class="text-destructive-emphasis">*</span>{% endif %}
                                     </label>
                                     <input type="password"
                                            id="api_token"
@@ -316,7 +316,7 @@
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
                                         <label for="project_key" class="block text-sm font-medium mb-2">
-                                            Project Key <span class="text-destructive">*</span>
+                                            Project Key <span class="text-destructive-emphasis">*</span>
                                         </label>
                                         <input type="text"
                                                id="project_key"

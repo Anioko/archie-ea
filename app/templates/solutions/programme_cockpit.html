@@ -231,7 +231,7 @@
                                placeholder="Add solution — search…"
                                class="h-8 w-56 rounded-md border border-input bg-background px-3 text-xs" aria-label="Add solution — search…">
                         <div x-cloak x-show="pickerOpen && pickerError"
-                             class="absolute right-0 top-9 z-20 w-72 border border-border rounded-md bg-popover shadow-md px-3 py-2 text-xs text-destructive"
+                             class="absolute right-0 top-9 z-20 w-72 border border-border rounded-md bg-popover shadow-md px-3 py-2 text-xs text-destructive-emphasis"
                              x-text="pickerError"></div>
                         <div x-cloak x-show="pickerOpen && !pickerError && pickerResults.length"
                              class="absolute right-0 top-9 z-20 w-72 border border-border rounded-md bg-popover shadow-md max-h-56 overflow-y-auto divide-y divide-border">
@@ -284,7 +284,7 @@
                         </td>
                         <td class="px-3 py-2.5 text-right">
                             <button type="button" @click="unassignSolution({{ m.id }})"
-                                    class="text-muted-foreground hover:text-destructive" aria-label="Remove from programme">
+                                    class="text-muted-foreground hover:text-destructive-emphasis" aria-label="Remove from programme">
                                 <i data-lucide="x" class="h-3.5 w-3.5"></i>
                             </button>
                         </td>
@@ -375,14 +375,14 @@
                                     </p>
                                     <p class="text-muted-foreground" x-text="new Date(s.taken_at).toLocaleString()"></p>
                                     <template x-if="s.drift && s.drift.flagged">
-                                        <p class="text-destructive" x-text="(s.drift.reasons || []).join('; ')"></p>
+                                        <p class="text-destructive-emphasis" x-text="(s.drift.reasons || []).join('; ')"></p>
                                     </template>
                                 </div>
                             </li>
                         </template>
                     </ol>
                 </template>
-                <p x-cloak x-show="loadError" class="text-xs text-destructive" x-text="loadError + ' — the history was not read, so this is not the same as having no snapshots.'"></p>
+                <p x-cloak x-show="loadError" class="text-xs text-destructive-emphasis" x-text="loadError + ' — the history was not read, so this is not the same as having no snapshots.'"></p>
                 <p x-cloak x-show="!loadError && !snapshots.length" class="text-xs text-muted-foreground">
                     No snapshots yet — captured automatically on landscape imports, or take one now.
                 </p>

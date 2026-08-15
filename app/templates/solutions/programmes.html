@@ -68,7 +68,7 @@
 {# The modal portals outside the page's x-data scope — the form carries its own #}
 <form @submit.prevent="createProgramme()" class="space-y-4" x-data="programmesPage()">
     <div>
-        <label for="prog-name" class="block text-sm font-medium mb-1">Programme name <span class="text-destructive">*</span></label>
+        <label for="prog-name" class="block text-sm font-medium mb-1">Programme name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" id="prog-name" x-model="form.name" required maxlength="255"
                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                placeholder="e.g. S/4HANA Migration 2027">

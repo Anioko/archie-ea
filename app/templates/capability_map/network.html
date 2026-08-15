@@ -94,7 +94,7 @@
     <!-- Network Graph -->
     <div class="bg-card rounded-lg shadow border">
         <div x-show="loadError" x-cloak class="p-12 text-center">
-            <p class="text-sm font-medium text-destructive" x-text="loadError"></p>
+            <p class="text-sm font-medium text-destructive-emphasis" x-text="loadError"></p>
             <p class="mt-1 text-sm text-muted-foreground">The graph was never drawn — this is not an empty capability model.</p>
             <button type="button" class="mt-3 text-sm text-primary underline" @click="loadData()">Retry</button>
         </div>

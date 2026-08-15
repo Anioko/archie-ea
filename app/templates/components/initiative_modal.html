@@ -100,7 +100,7 @@
             <div>
                 <label class="block text-sm font-medium text-foreground mb-1">
                     {{ field.label }}
-                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                    {% if field.required %}<span class="text-destructive-emphasis">*</span>{% endif %}
                 </label>
                 <input type="text"
                        x-model="formData['{{ field.name }}']"
@@ -113,7 +113,7 @@
             <div>
                 <label class="block text-sm font-medium text-foreground mb-1">
                     {{ field.label }}
-                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                    {% if field.required %}<span class="text-destructive-emphasis">*</span>{% endif %}
                 </label>
                 <textarea x-model="formData['{{ field.name }}']"
                           placeholder="{{ field.placeholder | default('') }}"
@@ -126,7 +126,7 @@
             <div>
                 <label class="block text-sm font-medium text-foreground mb-1">
                     {{ field.label }}
-                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                    {% if field.required %}<span class="text-destructive-emphasis">*</span>{% endif %}
                 </label>
                 <select x-model="formData['{{ field.name }}']"
                         {% if field.required %}required{% endif %}
@@ -152,7 +152,7 @@
             <div>
                 <label class="block text-sm font-medium text-foreground mb-1">
                     {{ field.label }}
-                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                    {% if field.required %}<span class="text-destructive-emphasis">*</span>{% endif %}
                 </label>
                 <input type="date"
                        x-model="formData['{{ field.name }}']"
@@ -164,7 +164,7 @@
             <div>
                 <label class="block text-sm font-medium text-foreground mb-1">
                     {{ field.label }}
-                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                    {% if field.required %}<span class="text-destructive-emphasis">*</span>{% endif %}
                 </label>
                 <input type="number"
                        x-model="formData['{{ field.name }}']"

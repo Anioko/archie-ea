@@ -52,7 +52,7 @@
             class="w-1.5 h-1.5 rounded-full bg-success"
           ></span>
           <template x-if="patch.warnings && patch.warnings.length > 0">
-            <span class="text-warning">⚠</span>
+            <span class="text-warning-emphasis">⚠</span>
           </template>
         </button>
       </template>
@@ -80,7 +80,7 @@
           <button
             @click="rejectOne(activeIndex)"
             :disabled="patches[activeIndex]?.applied"
-            class="px-3 py-1 text-xs border border-[var(--color-border)] rounded text-[var(--color-text)] hover:border-destructive/30 hover:text-destructive"
+            class="px-3 py-1 text-xs border border-[var(--color-border)] rounded text-[var(--color-text)] hover:border-destructive/30 hover:text-destructive-emphasis"
           >Reject</button>
         </div>
       </div>

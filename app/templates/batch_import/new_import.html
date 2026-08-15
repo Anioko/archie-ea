@@ -42,7 +42,7 @@
                             <!-- Job Name -->
                             <div>
                                 <label for="jobName" class="text-sm font-medium">
-                                    Job Name <span class="text-destructive">*</span>
+                                    Job Name <span class="text-destructive-emphasis">*</span>
                                 </label>
                                 <input
                                     type="text"
@@ -58,7 +58,7 @@
                             <!-- ArchiMate Mode -->
                             <div>
                                 <label class="text-sm font-medium">
-                                    ArchiMate Generation Mode <span class="text-destructive">*</span>
+                                    ArchiMate Generation Mode <span class="text-destructive-emphasis">*</span>
                                 </label>
                                 <div class="grid grid-cols-3 gap-3 mt-2">
                                     <template x-for="mode in archimateModesOptions" :key="mode.value">
@@ -98,7 +98,7 @@
                                         <option :value="p.id" x-text="p.name + ' (' + p.initiative_type + ')'"></option>
                                     </template>
                                 </select>
-                                <p x-show="programmesError" x-cloak class="text-xs text-destructive mt-1" x-text="programmesError + ' — this list is not empty, it is unread.'"></p>
+                                <p x-show="programmesError" x-cloak class="text-xs text-destructive-emphasis mt-1" x-text="programmesError + ' — this list is not empty, it is unread.'"></p>
                                 <p class="text-xs text-muted-foreground mt-1">
                                     Committed systems are linked to the programme's current-state baseline solution —
                                     SAP landscape exports (SID / Product / Environment columns) are detected and normalised automatically.
@@ -168,7 +168,7 @@
                                             <button
                                                 type="button"
                                                 @click="form.file = null; form.source_type = null; previewData = []"
-                                                class="text-muted-foreground hover:text-destructive transition-colors"
+                                                class="text-muted-foreground hover:text-destructive-emphasis transition-colors"
                                              aria-label="Action">
                                                 <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
                                             </button>
@@ -460,7 +460,7 @@
                                     <div class="rounded-lg bg-warning/5 border border-warning/20 p-3">
                                         <div class="flex items-start gap-2">
                                             <i data-lucide="alert-triangle" class="h-4 w-4 text-warning mt-0.5" aria-hidden="true"></i>
-                                            <p class="text-xs text-warning">
+                                            <p class="text-xs text-warning-emphasis">
                                                 Estimated cost exceeds your budget limit of $<span x-text="form.budget_limit"></span>. Processing will pause when the budget is reached.
                                             </p>
                                         </div>

@@ -67,7 +67,7 @@
       <div x-show="qbOpenDomain === 'identity_access'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-medium text-foreground mb-1">Auth Provider <span class="text-destructive">*</span></label>
+            <label class="block text-xs font-medium text-foreground mb-1">Auth Provider <span class="text-destructive-emphasis">*</span></label>
             <input type="text" x-model="qualityBaseline.identity_access.auth_provider"
               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               placeholder="e.g. Azure AD, Okta, Keycloak" aria-label="Auth Provider">
@@ -113,7 +113,7 @@
       <div x-show="qbOpenDomain === 'data_management'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-medium text-foreground mb-1">Primary Database <span class="text-destructive">*</span></label>
+            <label class="block text-xs font-medium text-foreground mb-1">Primary Database <span class="text-destructive-emphasis">*</span></label>
             <input type="text" x-model="qualityBaseline.data_management.primary_db"
               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               placeholder="e.g. PostgreSQL, Oracle, Cosmos DB" aria-label="Primary Database">
@@ -165,7 +165,7 @@
       <div x-show="qbOpenDomain === 'security_controls'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-medium text-foreground mb-1">Data Classification <span class="text-destructive">*</span></label>
+            <label class="block text-xs font-medium text-foreground mb-1">Data Classification <span class="text-destructive-emphasis">*</span></label>
             <select x-model="qualityBaseline.security_controls.data_classification"
               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Data Classification">
               <option value="">Select...</option>
@@ -217,7 +217,7 @@
       </button>
       <div x-show="qbOpenDomain === 'integration'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
         <div>
-          <label class="block text-xs font-medium text-foreground mb-2">API Style <span class="text-destructive">*</span> <span class="text-muted-foreground font-normal">(select all that apply)</span></label>
+          <label class="block text-xs font-medium text-foreground mb-2">API Style <span class="text-destructive-emphasis">*</span> <span class="text-muted-foreground font-normal">(select all that apply)</span></label>
           <div class="flex flex-wrap gap-2">
             <template x-for="style in ['REST','GraphQL','gRPC','SOAP','AsyncAPI','WebSocket','Event-Driven']">
               <button type="button" @click="toggleApiStyle(style)"
@@ -263,7 +263,7 @@
       </button>
       <div x-show="qbOpenDomain === 'observability'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
         <div>
-          <label class="block text-xs font-medium text-foreground mb-1">Logging Platform <span class="text-destructive">*</span></label>
+          <label class="block text-xs font-medium text-foreground mb-1">Logging Platform <span class="text-destructive-emphasis">*</span></label>
           <input type="text" x-model="qualityBaseline.observability.logging_platform"
             class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             placeholder="e.g. ELK Stack, Datadog, Splunk, Azure Monitor" aria-label="Logging Platform">
@@ -303,7 +303,7 @@
       <div x-show="qbOpenDomain === 'reliability'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-medium text-foreground mb-1">Availability Target <span class="text-destructive">*</span></label>
+            <label class="block text-xs font-medium text-foreground mb-1">Availability Target <span class="text-destructive-emphasis">*</span></label>
             <select x-model="qualityBaseline.reliability.availability_target"
               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Availability Target">
               <option value="">Select...</option>

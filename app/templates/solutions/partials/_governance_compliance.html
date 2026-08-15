@@ -26,7 +26,7 @@
                         <div class="sad-actions flex items-center gap-2 ml-4">
                             <span :class="{'bg-success/10 text-success-emphasis border-success/30': item.approved, 'bg-warning/10 text-warning-emphasis border-warning/30': !item.approved}" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border" x-text="item.status"></span>
                             <button @click="openEntityModal('governance_exception', item)" class="text-primary hover:underline text-xs">Edit</button>
-                            <button @click="confirmDeleteEntity('governance_exception', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                            <button @click="confirmDeleteEntity('governance_exception', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                         </div>
                     </div>
                 </template>
@@ -52,10 +52,10 @@
                                 <td class="py-2 px-3 font-semibold text-foreground" x-text="item.framework"></td>
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.control_id"></td>
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.element_name || '\u2014'"></td>
-                                <td class="py-2 px-3"><span :class="{'text-success': item.verification_status === 'verified', 'text-destructive': item.verification_status === 'non_compliant', 'text-warning': item.verification_status === 'partial', 'text-muted-foreground': item.verification_status === 'not_assessed'}" x-text="item.verification_status?.replace('_', ' ')"></span></td>
+                                <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.verification_status === 'verified', 'text-destructive-emphasis': item.verification_status === 'non_compliant', 'text-warning-emphasis': item.verification_status === 'partial', 'text-muted-foreground': item.verification_status === 'not_assessed'}" x-text="item.verification_status?.replace('_', ' ')"></span></td>
                                 <td class="sad-actions py-2 px-3 text-right">
                                     <button @click="openEntityModal('compliance_mapping', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                    <button @click="confirmDeleteEntity('compliance_mapping', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                                    <button @click="confirmDeleteEntity('compliance_mapping', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                                 </td>
                             </tr>
                         </template>
@@ -79,9 +79,9 @@
                             <p class="text-xs text-muted-foreground mt-1" x-text="item.description?.substring(0, 100)"></p>
                         </div>
                         <div class="sad-actions flex items-center gap-2 ml-4">
-                            <span :class="{'text-success': item.decision === 'approved', 'text-destructive': item.decision === 'rejected', 'text-warning': item.decision === 'pending'}" class="text-xs font-medium" x-text="item.decision"></span>
+                            <span :class="{'text-success-emphasis': item.decision === 'approved', 'text-destructive-emphasis': item.decision === 'rejected', 'text-warning-emphasis': item.decision === 'pending'}" class="text-xs font-medium" x-text="item.decision"></span>
                             <button @click="openEntityModal('change_request', item)" class="text-primary hover:underline text-xs">Edit</button>
-                            <button @click="confirmDeleteEntity('change_request', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                            <button @click="confirmDeleteEntity('change_request', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                         </div>
                     </div>
                 </template>
@@ -107,12 +107,12 @@
                             <tr class="border-b border-border/50 hover:bg-muted/30">
                                 <td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="item.review_type"></span></td>
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.review_phase || '\u2014'"></td>
-                                <td class="py-2 px-3 text-center"><span :class="{'text-success': item.feasible === true, 'text-destructive': item.feasible === false, 'text-muted-foreground': item.feasible === null}" x-text="item.feasible === true ? 'Yes' : item.feasible === false ? 'No' : 'TBD'"></span></td>
+                                <td class="py-2 px-3 text-center"><span :class="{'text-success-emphasis': item.feasible === true, 'text-destructive-emphasis': item.feasible === false, 'text-muted-foreground': item.feasible === null}" x-text="item.feasible === true ? 'Yes' : item.feasible === false ? 'No' : 'TBD'"></span></td>
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.confidence_level"></td>
-                                <td class="py-2 px-3"><span :class="{'text-success': item.recommendation === 'proceed', 'text-destructive': item.recommendation === 'stop', 'text-warning': item.recommendation === 'conditional'}" x-text="item.recommendation"></span></td>
+                                <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.recommendation === 'proceed', 'text-destructive-emphasis': item.recommendation === 'stop', 'text-warning-emphasis': item.recommendation === 'conditional'}" x-text="item.recommendation"></span></td>
                                 <td class="sad-actions py-2 px-3 text-right">
                                     <button @click="openEntityModal('feasibility_review', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                    <button @click="confirmDeleteEntity('feasibility_review', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                                    <button @click="confirmDeleteEntity('feasibility_review', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                                 </td>
                             </tr>
                         </template>
@@ -166,7 +166,7 @@
             </div>
         </template>
         <template x-if="complianceGap && (!complianceGap.gaps || complianceGap.gaps.length === 0)">
-            <p class="text-sm text-success">No compliance gaps identified.</p>
+            <p class="text-sm text-success-emphasis">No compliance gaps identified.</p>
         </template>
     </div>
 </div>

@@ -132,7 +132,7 @@
          failed load can never be read as "you have never imported anything". -->
     <div id="error-state" class="text-center py-8 hidden">
         <i data-lucide="alert-triangle" class="h-10 w-10 text-destructive" aria-hidden="true"></i>
-        <p class="mt-2 text-destructive" id="error-state-message">Could not load import history.</p>
+        <p class="mt-2 text-destructive-emphasis" id="error-state-message">Could not load import history.</p>
     </div>
 </div>
 
@@ -172,7 +172,7 @@
             </ul>
 
             <div class="bg-warning/5 border border-warning/20 rounded-lg p-3">
-                <p class="text-sm text-warning">
+                <p class="text-sm text-warning-emphasis">
                     <strong>Warning:</strong> Rollback is only available within 7 days of import.
                 </p>
             </div>
@@ -333,8 +333,8 @@ function displayImportHistory() {
                     <!-- Error Details -->
                     ${item.error_details ? `
                     <div class="bg-destructive/5 border border-destructive/20 rounded-lg p-3 mb-3">
-                        <h3 class="text-sm font-semibold text-destructive mb-1">Error Details</h3>
-                        <div class="text-sm text-destructive">
+                        <h3 class="text-sm font-semibold text-destructive-emphasis mb-1">Error Details</h3>
+                        <div class="text-sm text-destructive-emphasis">
                             ${JSON.parse(item.error_details).slice(0, 3).map(error => `<div>• ${error}</div>`).join('')}
                             ${JSON.parse(item.error_details).length > 3 ? `<div class="text-xs">... and ${JSON.parse(item.error_details).length - 3} more</div>` : ''}
                         </div>
@@ -473,7 +473,7 @@ function viewDetails(importId) {
                 <h3 class="font-semibold text-foreground mb-2">Linked Applications</h3>
                 <div class="grid grid-cols-3 gap-4 text-sm">
                     <div class="bg-success/5 rounded p-3">
-                        <div class="font-medium text-success">${currentImport.linked_applications.created_ids?.length || 0}</div>
+                        <div class="font-medium text-success-emphasis">${currentImport.linked_applications.created_ids?.length || 0}</div>
                         <div class="text-muted-foreground">Created</div>
                     </div>
                     <div class="bg-primary/5 rounded p-3">

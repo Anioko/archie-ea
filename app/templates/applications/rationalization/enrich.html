@@ -50,7 +50,7 @@
     <template x-if="error && !loading">
         <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
             <i data-lucide="alert-circle" class="h-8 w-8 text-destructive mx-auto mb-2"></i>
-            <p class="text-sm text-destructive font-medium">Failed to load applications</p>
+            <p class="text-sm text-destructive-emphasis font-medium">Failed to load applications</p>
             <button type="button" @click="load()" class="mt-2 text-xs text-primary hover:underline">Retry</button>
         </div>
     </template>

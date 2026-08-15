@@ -73,7 +73,7 @@
                 {# Reuse detection warning (CMP-009) #}
                 <template x-if="similarElements.length > 0">
                     <div class="mt-2 p-2 rounded-md border border-warning/30 bg-warning/5">
-                        <div class="text-[10px] font-semibold text-warning mb-1 flex items-center gap-1">
+                        <div class="text-[10px] font-semibold text-warning-emphasis mb-1 flex items-center gap-1">
                             <i data-lucide="alert-triangle" class="w-3 h-3"></i>
                             Did you mean to use an existing element?
                         </div>
@@ -84,7 +84,7 @@
                                     <span class="text-xs font-medium text-foreground truncate block" x-text="sim.name"></span>
                                     <span class="text-[10px] text-muted-foreground" x-text="(sim.type || '') + (sim.layer ? ' \u00b7 ' + sim.layer : '') + (sim.solution_count ? ' \u00b7 used by ' + sim.solution_count + ' solution' + (sim.solution_count > 1 ? 's' : '') : '')"></span>
                                 </div>
-                                <span class="text-[9px] text-warning whitespace-nowrap">click to use</span>
+                                <span class="text-[9px] text-warning-emphasis whitespace-nowrap">click to use</span>
                             </div>
                         </template>
                     </div>
@@ -142,7 +142,7 @@
         {# Association warning — inline prompt instead of confirm() #}
         <template x-if="associationWarning">
             <div class="px-3 py-2 border-t border-warning/30 bg-warning/5">
-                <p class="text-[11px] text-warning font-medium mb-1.5">Association is generic — would a more specific type be appropriate?</p>
+                <p class="text-[11px] text-warning-emphasis font-medium mb-1.5">Association is generic — would a more specific type be appropriate?</p>
                 <div class="flex gap-1.5">
                     <button @click="confirmAssociation()"
                             class="text-[10px] px-2.5 py-1 rounded border border-warning/30 bg-warning/10 text-warning-emphasis font-medium hover:bg-warning/20">Use Association</button>
@@ -542,7 +542,7 @@
                                         <span> · <span x-text="generatedRelationships.length"></span> relationships</span>
                                     </template>
                                     <template x-if="generatedElements.filter(e=>e.category==='existing').length > 0">
-                                        <span class="text-success"> · <span x-text="generatedElements.filter(e=>e.category==='existing').length"></span> linked from portfolio</span>
+                                        <span class="text-success-emphasis"> · <span x-text="generatedElements.filter(e=>e.category==='existing').length"></span> linked from portfolio</span>
                                     </template>
                                 </div>
                             </div>
@@ -1060,7 +1060,7 @@
                     </button>
                 </div>
                 <template x-if="versionCompareA && versionCompareB && versionCompareA === versionCompareB">
-                    <p class="text-[10px] text-destructive">Select two different versions to compare.</p>
+                    <p class="text-[10px] text-destructive-emphasis">Select two different versions to compare.</p>
                 </template>
             </div>
         </div>
@@ -1100,8 +1100,8 @@
                         <div class="diff-summary-section">
                             <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-destructive/10 border border-destructive/20">
                                 <span class="w-2 h-2 rounded-full bg-destructive flex-shrink-0"></span>
-                                <span class="text-[10px] font-semibold text-destructive uppercase tracking-wide">Removed Elements</span>
-                                <span class="ml-auto text-[10px] font-bold text-destructive" x-text="diffDetails.removedElements.length"></span>
+                                <span class="text-[10px] font-semibold text-destructive-emphasis uppercase tracking-wide">Removed Elements</span>
+                                <span class="ml-auto text-[10px] font-bold text-destructive-emphasis" x-text="diffDetails.removedElements.length"></span>
                             </div>
                             <template x-for="el in diffDetails.removedElements" :key="'rem-' + el.id">
                                 <div class="px-2.5 py-1 text-[11px] text-foreground/70 flex items-center gap-1.5 line-through">
@@ -1153,8 +1153,8 @@
                         <div class="diff-summary-section">
                             <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-destructive/10 border border-destructive/20">
                                 <span class="w-2 h-2 rounded-full bg-destructive flex-shrink-0"></span>
-                                <span class="text-[10px] font-semibold text-destructive uppercase tracking-wide">Removed Relationships</span>
-                                <span class="ml-auto text-[10px] font-bold text-destructive" x-text="diffDetails.removedRelationships.length"></span>
+                                <span class="text-[10px] font-semibold text-destructive-emphasis uppercase tracking-wide">Removed Relationships</span>
+                                <span class="ml-auto text-[10px] font-bold text-destructive-emphasis" x-text="diffDetails.removedRelationships.length"></span>
                             </div>
                             <template x-for="rel in diffDetails.removedRelationships" :key="'rrem-' + rel.id">
                                 <div class="px-2.5 py-1 text-[11px] text-foreground/70 flex items-center gap-1.5">
@@ -1297,7 +1297,7 @@
              @click.outside="dismissStalenessReview()">
             {# Header #}
             <div class="flex items-start gap-3 p-5 border-b border-border">
-                <div class="size-10 rounded-xl flex-shrink-0 flex items-center justify-center bg-warning/10 text-warning">
+                <div class="size-10 rounded-xl flex-shrink-0 flex items-center justify-center bg-warning/10 text-warning-emphasis">
                     <i data-lucide="alert-triangle" class="w-5 h-5"></i>
                 </div>
                 <div class="flex-1 min-w-0">

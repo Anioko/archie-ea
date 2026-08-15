@@ -43,7 +43,7 @@
     <div class="space-y-2 {{ class }}">
         {% if label %}
         <label for="{{ id }}" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-            {{ label }}{% if required %}<span class="text-destructive ml-1">*</span>{% endif %}
+            {{ label }}{% if required %}<span class="text-destructive-emphasis ml-1">*</span>{% endif %}
         </label>
         {% endif %}
 
@@ -75,7 +75,7 @@
         {% endif %}
 
         {% if error %}
-        <p id="{{ id }}-error" class="text-sm text-destructive" role="alert">{{ error }}</p>
+        <p id="{{ id }}-error" class="text-sm text-destructive-emphasis" role="alert">{{ error }}</p>
         {% elif help_text %}
         <p id="{{ id }}-help" class="text-sm text-muted-foreground">{{ help_text }}</p>
         {% endif %}

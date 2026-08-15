@@ -502,7 +502,7 @@
                 <template x-if="loaded && risks.length > 0">
                     <div class="space-y-1">
                         <p class="text-xs text-muted-foreground mb-3">
-                            <span class="font-medium text-destructive" x-text="soleCount"></span> sole-vendor ·
+                            <span class="font-medium text-destructive-emphasis" x-text="soleCount"></span> sole-vendor ·
                             <span class="font-medium text-success-emphasis" x-text="safeCount"></span> multi-vendor
                         </p>
                         <template x-for="risk in risks" :key="risk.capability_id">
@@ -622,7 +622,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="space-y-4">
         <div>
-            <label for="product_selection" class="block text-sm font-medium mb-1.5">Product <span class="text-destructive">*</span></label>
+            <label for="product_selection" class="block text-sm font-medium mb-1.5">Product <span class="text-destructive-emphasis">*</span></label>
             <select id="product_selection" name="product_selection" required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" @change="window.updateDeployFormAction && window.updateDeployFormAction()">
                 <option value="">Select a product...</option>
                 {% for product in vendor.products %}
@@ -631,7 +631,7 @@
             </select>
         </div>
         <div>
-            <label for="application_name" class="block text-sm font-medium mb-1.5">Application Name <span class="text-destructive">*</span></label>
+            <label for="application_name" class="block text-sm font-medium mb-1.5">Application Name <span class="text-destructive-emphasis">*</span></label>
             <input type="text" id="application_name" name="application_name" required placeholder="e.g., ServiceNow Production" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm">
         </div>
         <div>
@@ -709,7 +709,7 @@
         </div>
         <div class="space-y-3">
             <div>
-                <label for="new-product-name" class="block text-sm font-medium mb-1">Product Name <span class="text-destructive">*</span></label>
+                <label for="new-product-name" class="block text-sm font-medium mb-1">Product Name <span class="text-destructive-emphasis">*</span></label>
                 <input type="text" id="new-product-name" placeholder="e.g. SAP S/4HANA Cloud"
                        maxlength="200"
                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -744,7 +744,7 @@
                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             </div>
         </div>
-        <div id="add-product-error" class="hidden text-sm text-destructive"></div>
+        <div id="add-product-error" class="hidden text-sm text-destructive-emphasis"></div>
         <div class="flex gap-2 justify-end pt-2">
             <button type="button" data-action="closeAddProduct"
                     class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent transition-colors">

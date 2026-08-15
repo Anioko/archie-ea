@@ -25,7 +25,7 @@
         <div class="grid grid-cols-2 gap-4 h-96">
             <!-- High Value / High Risk -->
             <div class="rounded-lg bg-warning/10 border border-warning/20 p-4">
-                <div class="text-sm font-medium text-warning mb-2">Transform (High Value / High Risk)</div>
+                <div class="text-sm font-medium text-warning-emphasis mb-2">Transform (High Value / High Risk)</div>
                 <div class="space-y-2">
                     {% for cap in capabilities|default([]) if cap.strategic_importance == 'critical' %}
                     <div class="text-xs bg-background/50 rounded p-2">{{ cap.name }}</div>
@@ -34,7 +34,7 @@
             </div>
             <!-- High Value / Low Risk -->
             <div class="rounded-lg bg-success/10 border border-success/20 p-4">
-                <div class="text-sm font-medium text-success mb-2">Invest (High Value / Low Risk)</div>
+                <div class="text-sm font-medium text-success-emphasis mb-2">Invest (High Value / Low Risk)</div>
                 <div class="space-y-2">
                     {% for cap in capabilities|default([]) if cap.strategic_importance == 'high' %}
                     <div class="text-xs bg-background/50 rounded p-2">{{ cap.name }}</div>
@@ -43,7 +43,7 @@
             </div>
             <!-- Low Value / High Risk -->
             <div class="rounded-lg bg-destructive/10 border border-destructive/20 p-4">
-                <div class="text-sm font-medium text-destructive mb-2">Divest (Low Value / High Risk)</div>
+                <div class="text-sm font-medium text-destructive-emphasis mb-2">Divest (Low Value / High Risk)</div>
                 <div class="space-y-2">
                     {% for cap in capabilities|default([]) if cap.strategic_importance == 'low' %}
                     <div class="text-xs bg-background/50 rounded p-2">{{ cap.name }}</div>

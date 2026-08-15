@@ -29,13 +29,13 @@
 
         {# Progress bar #}
         <template x-if="loadError">
-            <p class="text-[10px] text-destructive mb-2">Setup status failed to load — reload the page to try again.</p>
+            <p class="text-[10px] text-destructive-emphasis mb-2">Setup status failed to load — reload the page to try again.</p>
         </template>
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium" :class="{
                 'text-success-emphasis': completionPct >= 80,
                 'text-warning-emphasis': completionPct >= 40 && completionPct < 80,
-                'text-destructive': completionPct < 40
+                'text-destructive-emphasis': completionPct < 40
             }" x-text="configuredCount + '/' + totalCount + ' configured'"></span>
             <span class="text-[10px] text-muted-foreground" x-text="completionPct + '%'"></span>
         </div>
@@ -84,9 +84,10 @@
             ],
             init: function() {
                 const self = this;
-                fetch('/api/solutions/' + solutionId + '/setup-status', {
-                    headers: {'Accept': 'application/json'}
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch('/api/solutions/' + solutionId + '/setup-status', {
+                    headers: {'Accept': 'application/json'},
+                    silent: true,
+                }).then(function(data) {
                     if (data.success) {
                         self.completionPct = data.completion_pct || 0;
                         self.configuredCount = data.configured_count || 0;
@@ -198,7 +199,7 @@
                         {% else %}bg-warning
                         {% endif %}"></span>
                     <span class="text-xs font-medium
-                        {% if action.score is defined and action.score == 0 %}text-destructive
+                        {% if action.score is defined and action.score == 0 %}text-destructive-emphasis
                         {% else %}text-warning-emphasis
                         {% endif %} group-hover:underline">{{ action.title }}</span>
                 </div>
@@ -252,7 +253,7 @@
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">ARB Readiness</span>
                         <span class="text-[10px] font-semibold"
-                              :class="{'text-success-emphasis': pct >= 80, 'text-warning-emphasis': pct >= 50 && pct < 80, 'text-destructive': pct < 50}"
+                              :class="{'text-success-emphasis': pct >= 80, 'text-warning-emphasis': pct >= 50 && pct < 80, 'text-destructive-emphasis': pct < 50}"
                               x-text="pct + '%'"></span>
                     </div>
                     <div class="w-full h-1 rounded-full bg-muted/60 mb-2">
@@ -266,7 +267,7 @@
                                 <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                                       :class="c.passed ? 'bg-success/20' : (c.required ? 'border border-destructive/50' : 'border border-border')">
                                     <span class="text-[11px] leading-none"
-                                          :class="c.passed ? 'text-success-emphasis' : (c.required ? 'text-destructive/60' : 'text-muted-foreground/50')"
+                                          :class="c.passed ? 'text-success-emphasis' : (c.required ? 'text-destructive-emphasis/60' : 'text-muted-foreground/50')"
                                           x-text="c.passed ? '\u2713' : '\u25CB'"></span>
                                 </span>
                                 <div class="leading-tight">
@@ -281,7 +282,7 @@
                 </div>
             </template>
             <template x-if="loadError">
-                <p class="text-[10px] text-destructive">ARB readiness failed to load — reload the page to try again.</p>
+                <p class="text-[10px] text-destructive-emphasis">ARB readiness failed to load — reload the page to try again.</p>
             </template>
         </div>
         <script>
@@ -290,9 +291,10 @@
                 checks: [], pct: 0, loadError: false,
                 load: function() {
                     const self = this;
-                    fetch('/solutions/' + solutionId + '/governance-status', {
-                        headers: {'Accept': 'application/json'}
-                    }).then(function(r) { return r.json(); }).then(function(d) {
+                    Platform.fetch('/solutions/' + solutionId + '/governance-status', {
+                        headers: {'Accept': 'application/json'},
+                        silent: true,
+                    }).then(function(d) {
                         if (d.readiness_checks) {
                             self.checks = d.readiness_checks;
                             const total = self.checks.length;
@@ -394,7 +396,7 @@
                 </div>
             </template>
             <p x-show="arbMsg" x-cloak class="text-xs font-medium mt-1"
-               :class="arbSuccess ? 'text-success-emphasis' : 'text-destructive'"
+               :class="arbSuccess ? 'text-success-emphasis' : 'text-destructive-emphasis'"
                x-text="arbMsg"></p>
         </div>
     </div>
@@ -410,26 +412,18 @@
                 const self = this;
                 self.deciding = true;
                 self.arbMsg = '';
-                fetch('/solutions/' + solutionId + '/arb/' + reviewId + '/record-decision', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || ''
-                    },
-                    body: JSON.stringify({
-                        decision: decision,
-                        decision_reason: reason || '',
-                        decided_by_id: null
-                    })
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.post('/solutions/' + solutionId + '/arb/' + reviewId + '/record-decision', {
+                    decision: decision,
+                    decision_reason: reason || '',
+                    decided_by_id: null
+                }, { silent: true })
                 .then(function(data) {
                     self.arbSuccess = !data.error;
                     self.arbMsg = data.error ? data.error : (decision === 'approved' ? 'Approved — page will reload' : 'Rejected — page will reload');
                     if (!data.error) setTimeout(function() { window.location.reload(); }, 1800);
                 })
                 .catch(function(e) {
-                    self.arbMsg = e.message || 'Request failed';
+                    self.arbMsg = (e && e.message) || 'Request failed';
                     self.arbSuccess = false;
                 })
                 .finally(function() { self.deciding = false; });
@@ -452,21 +446,13 @@
         <button type="button"
                 @click="
                     aiGenerating = true; aiMsg = '';
-                    fetch('/solutions/{{ solution.id }}/generate-draft', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || ''
-                        },
-                        body: JSON.stringify({problem_statement: '{{ (solution.description or solution.name)|replace("'", "\\'") }}'})
-                    })
-                    .then(r => r.json())
+                    Platform.fetch.post('/solutions/{{ solution.id }}/generate-draft', {problem_statement: '{{ (solution.description or solution.name)|replace("'", "\\'") }}'}, { silent: true })
                     .then(d => {
                         aiSuccess = d.success;
                         aiMsg = d.success ? 'Created ' + (d.total || 0) + ' entities — reloading...' : (d.error || 'Failed');
                         if (d.success) setTimeout(() => window.location.reload(), 1800);
                     })
-                    .catch(e => { aiMsg = e.message; aiSuccess = false; })
+                    .catch(e => { aiMsg = (e && e.message) || 'Failed'; aiSuccess = false; })
                     .finally(() => { aiGenerating = false; })
                 "
                 :disabled="aiGenerating"
@@ -476,7 +462,7 @@
             <span x-text="aiGenerating ? 'Generating...' : 'Generate All Phases'"></span>
         </button>
         <p x-show="aiMsg" x-cloak class="mt-2 text-[10px] font-medium leading-snug"
-           :class="aiSuccess ? 'text-success-emphasis' : 'text-destructive'"
+           :class="aiSuccess ? 'text-success-emphasis' : 'text-destructive-emphasis'"
            x-text="aiMsg"></p>
     </div>
 
@@ -613,7 +599,7 @@
                                     <button @click="editContract(c)" class="text-muted-foreground hover:text-foreground" title="Edit">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                     </button>
-                                    <button @click="deleteContract(c.id)" class="text-muted-foreground hover:text-destructive" title="Delete">
+                                    <button @click="deleteContract(c.id)" class="text-muted-foreground hover:text-destructive-emphasis" title="Delete">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                     </button>
                                 </div>
@@ -632,7 +618,7 @@
                 <p class="text-[10px] text-muted-foreground mb-3">No integration contracts registered yet.</p>
             </template>
             <template x-if="contractsError">
-                <p class="text-[10px] text-destructive mb-3">Integration contracts failed to load — reload the page to try again.</p>
+                <p class="text-[10px] text-destructive-emphasis mb-3">Integration contracts failed to load — reload the page to try again.</p>
             </template>
 
             {# Add / Edit form #}
@@ -770,8 +756,7 @@
             },
             loadContracts: function() {
                 let self = this;
-                fetch('/api/enterprise/contracts?per_page=100', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/enterprise/contracts?per_page=100', { silent: true })
                 .then(function(data) { self.contracts = data.items || []; self.contractsError = false; })
                 .catch(function(err) {
                     console.error('[integrationContracts] failed to load contracts:', err);
@@ -780,8 +765,7 @@
             },
             loadConnectedApps: function() {
                 let self = this;
-                fetch('/api/solutions/' + solutionId + '/archimate-elements', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/archimate-elements', { silent: true })
                 .then(function(data) {
                     const payload = data.data || data;
                     const elems = (payload.elements_by_layer && payload.elements_by_layer.application) || [];
@@ -829,11 +813,7 @@
                     method = 'PUT';
                 }
 
-                fetch(url, {
-                    method: method,
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(payload)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch(url, { method: method, body: payload, silent: true }).then(function(data) {
                     self.saving = false;
                     if (data.error) {
                         if (window.Platform && Platform.toast) Platform.toast.error(data.error);
@@ -845,21 +825,17 @@
                     }
                 }).catch(function(e) {
                     self.saving = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             },
             deleteContract: async function(id) {
                 if (!(await Platform.modal.confirm('Delete this integration contract?'))) return;
                 let self = this;
-                let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
-                fetch('/api/enterprise/contracts/' + id, {
-                    method: 'DELETE',
-                    headers: {'X-CSRFToken': csrf}
-                }).then(function(r) { return r.json(); }).then(function() {
+                Platform.fetch.delete('/api/enterprise/contracts/' + id, { silent: true }).then(function() {
                     if (window.Platform && Platform.toast) Platform.toast.success('Contract deleted');
                     self.loadContracts();
                 }).catch(function(e) {
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             }
         };
@@ -881,7 +857,7 @@
 
         <div x-show="expanded" x-collapse class="px-4 pb-4 space-y-2">
             <template x-if="loadError">
-                <p class="text-[10px] text-destructive">Could not load the existing identity provider config — reload before saving, or you may overwrite it.</p>
+                <p class="text-[10px] text-destructive-emphasis">Could not load the existing identity provider config — reload before saving, or you may overwrite it.</p>
             </template>
             {# Provider selector #}
             <div>
@@ -942,7 +918,7 @@
                             <input type="text" x-model="mapping.idp_group" placeholder="IdP Group" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Role Mapping"/>
                             <span class="text-[10px] text-muted-foreground">&#8594;</span>
                             <input type="text" x-model="mapping.app_role" placeholder="App Role" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="App Role"/>
-                            <button @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive shrink-0">
+                            <button @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive-emphasis shrink-0">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
@@ -986,11 +962,7 @@
             roleMappings: [{idp_group: '', app_role: ''}, {idp_group: '', app_role: ''}, {idp_group: '', app_role: ''}],
             init: function() {
                 let self = this;
-                fetch('/solutions/' + solutionId + '/identity-provider', {headers: {'Accept': 'application/json'}})
-                .then(function(r) {
-                    if (!r.ok) { throw new Error('identity-provider request failed: ' + r.status); }
-                    return r.json();
-                })
+                Platform.fetch('/solutions/' + solutionId + '/identity-provider', { silent: true })
                 .then(function(data) {
                     const idp = (data.data || {}).identity_provider;
                     if (idp) {
@@ -1042,11 +1014,7 @@
                     role_mapping: roleMap
                 };
 
-                fetch('/solutions/' + solutionId + '/identity-provider', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(payload)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.put('/solutions/' + solutionId + '/identity-provider', payload, { silent: true }).then(function(data) {
                     self.saving = false;
                     if (data.success) {
                         self.currentProvider = (data.identity_provider || {}).display_name || self.form.type;
@@ -1056,7 +1024,7 @@
                     }
                 }).catch(function(e) {
                     self.saving = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             }
         };
@@ -1078,7 +1046,7 @@
 
         <div x-show="expanded" x-collapse class="px-4 pb-4 space-y-4">
             <template x-if="loadError.db || loadError.cicd || loadError.arch">
-                <p class="text-[10px] text-destructive">Could not load the existing configuration below — reload before saving, or you may overwrite what's already set.</p>
+                <p class="text-[10px] text-destructive-emphasis">Could not load the existing configuration below — reload before saving, or you may overwrite what's already set.</p>
             </template>
 
             {# ── Database sub-section ── #}
@@ -1301,8 +1269,7 @@
             init: function() {
                 let self = this;
                 // Load database config
-                fetch('/api/solutions/' + solutionId + '/database-config', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/database-config', { silent: true })
                 .then(function(data) {
                     if (data.success && data.database_config) {
                         let c = data.database_config;
@@ -1320,8 +1287,7 @@
                 });
 
                 // Load CI/CD config
-                fetch('/api/solutions/' + solutionId + '/ci-cd-config', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/ci-cd-config', { silent: true })
                 .then(function(data) {
                     if (data.success && data.ci_cd) {
                         let c = data.ci_cd;
@@ -1338,8 +1304,7 @@
                 });
 
                 // Load architecture style
-                fetch('/api/solutions/' + solutionId + '/architecture-style', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/architecture-style', { silent: true })
                 .then(function(data) {
                     if (data.success && data.architecture_style) {
                         let c = data.architecture_style;
@@ -1357,11 +1322,7 @@
                 let self = this;
                 self.savingDb = true;
                 let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
-                fetch('/api/solutions/' + solutionId + '/database-config', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(self.db)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.put('/api/solutions/' + solutionId + '/database-config', self.db, { silent: true }).then(function(data) {
                     self.savingDb = false;
                     if (data.success) {
                         if (window.Platform && Platform.toast) Platform.toast.success('Database config saved');
@@ -1370,18 +1331,14 @@
                     }
                 }).catch(function(e) {
                     self.savingDb = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             },
             saveCicd: function() {
                 let self = this;
                 self.savingCicd = true;
                 let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
-                fetch('/api/solutions/' + solutionId + '/ci-cd-config', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(self.cicd)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.put('/api/solutions/' + solutionId + '/ci-cd-config', self.cicd, { silent: true }).then(function(data) {
                     self.savingCicd = false;
                     if (data.success) {
                         if (window.Platform && Platform.toast) Platform.toast.success('CI/CD config saved');
@@ -1390,7 +1347,7 @@
                     }
                 }).catch(function(e) {
                     self.savingCicd = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             },
             saveArch: function() {
@@ -1400,11 +1357,7 @@
                 const payload = {primary: self.arch.primary, patterns: self.arch.patterns};
                 if (self.arch.patterns.includes('service_mesh') && self.arch.service_mesh) payload.service_mesh = self.arch.service_mesh;
                 if (self.arch.patterns.includes('api_gateway') && self.arch.api_gateway) payload.api_gateway = self.arch.api_gateway;
-                fetch('/api/solutions/' + solutionId + '/architecture-style', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(payload)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.put('/api/solutions/' + solutionId + '/architecture-style', payload, { silent: true }).then(function(data) {
                     self.savingArch = false;
                     if (data.success) {
                         if (window.Platform && Platform.toast) Platform.toast.success('Architecture style saved');
@@ -1413,7 +1366,7 @@
                     }
                 }).catch(function(e) {
                     self.savingArch = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             }
         };
@@ -1444,7 +1397,7 @@
                     <span class="text-lg font-bold" :class="{
                         'text-success-emphasis': result.total_monthly_usd < 200,
                         'text-warning-emphasis': result.total_monthly_usd >= 200 && result.total_monthly_usd < 500,
-                        'text-destructive': result.total_monthly_usd >= 500
+                        'text-destructive-emphasis': result.total_monthly_usd >= 500
                     }" x-text="'$' + result.total_monthly_usd.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
                 </div>
                 <div class="flex items-center justify-between">
@@ -1495,7 +1448,7 @@
 
         {# Error state #}
         <template x-if="error">
-            <div class="text-[11px] text-destructive" x-text="error"></div>
+            <div class="text-[11px] text-destructive-emphasis" x-text="error"></div>
         </template>
     </div>
 
@@ -1510,10 +1463,7 @@
                 self.loading = true;
                 self.error = null;
                 self.result = null;
-                fetch('/api/solutions/' + solutionId + '/cost-estimate', {
-                    headers: {'Accept': 'application/json'}
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/cost-estimate', { silent: true })
                 .then(function(data) {
                     self.loading = false;
                     if (data.success) {
@@ -1524,7 +1474,7 @@
                 })
                 .catch(function(e) {
                     self.loading = false;
-                    self.error = 'Error: ' + e.message;
+                    self.error = 'Error: ' + ((e && e.message) || 'Request failed');
                 });
             }
         };
@@ -1583,7 +1533,7 @@
                 {# Missing endpoints #}
                 <template x-if="result.missing_endpoints && result.missing_endpoints.length > 0">
                     <div>
-                        <button @click="showMissing = !showMissing" class="text-[10px] text-destructive hover:underline cursor-pointer">
+                        <button @click="showMissing = !showMissing" class="text-[10px] text-destructive-emphasis hover:underline cursor-pointer">
                             <span x-text="result.missing_endpoints.length + ' missing endpoint(s)'"></span>
                             <span x-text="showMissing ? '[-]' : '[+]'"></span>
                         </button>
@@ -1643,7 +1593,7 @@
         {# Error display #}
         <template x-if="error">
             <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-2">
-                <p class="text-[10px] text-destructive" x-text="error"></p>
+                <p class="text-[10px] text-destructive-emphasis" x-text="error"></p>
             </div>
         </template>
     </div>
@@ -1661,9 +1611,7 @@
             showSla: false,
             init: function() {
                 let self = this;
-                fetch('/api/solutions/' + solutionId + '/compliance/latest', {
-                    headers: {'Accept': 'application/json'}
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch('/api/solutions/' + solutionId + '/compliance/latest', { silent: true }).then(function(data) {
                     if (data.check) {
                         self.result = data.check;
                         if (data.check.service_url && !self.serviceUrl) {
@@ -1680,15 +1628,7 @@
                 self.checking = true;
                 self.error = null;
                 localStorage.setItem(storageKey, self.serviceUrl);
-                const csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
-                fetch('/api/solutions/' + solutionId + '/compliance/check', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrf
-                    },
-                    body: JSON.stringify({service_url: self.serviceUrl})
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.post('/api/solutions/' + solutionId + '/compliance/check', { service_url: self.serviceUrl }, { silent: true }).then(function(data) {
                     self.checking = false;
                     if (data.success) {
                         self.result = data;
@@ -1704,7 +1644,7 @@
                     }
                 }).catch(function(e) {
                     self.checking = false;
-                    self.error = 'Network error: ' + e.message;
+                    self.error = 'Network error: ' + ((e && e.message) || 'Request failed');
                 });
             }
         };
@@ -1749,14 +1689,10 @@
     if (_arbBtn) {
         _arbBtn.addEventListener('click', async function () {
             if (!(await Platform.modal.confirm('Submit this blueprint to the Architecture Review Board?'))) return;
-            fetch('/solutions/' + _SID + '/submit-for-arb', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) {
-                if (!r.ok) throw new Error('Submission failed (HTTP ' + r.status + ')');
+            Platform.fetch.post('/solutions/' + _SID + '/submit-for-arb', undefined, { silent: true }).then(function () {
                 if (window.Platform && Platform.toast) Platform.toast.success('Submitted to ARB');
             }).catch(function (e) {
-                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Submission failed');
+                if (window.Platform && Platform.toast) Platform.toast.error((e && e.message) || 'Submission failed');
             });
         });
     }
@@ -1765,14 +1701,10 @@
     let _genApiBtn = document.getElementById('bp-generate-api-specs-btn');
     if (_genApiBtn) {
         _genApiBtn.addEventListener('click', function () {
-            fetch('/solutions/api/' + _SID + '/generate-specs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) {
-                if (!r.ok) throw new Error('API spec generation failed (HTTP ' + r.status + ')');
+            Platform.fetch.post('/solutions/api/' + _SID + '/generate-specs', undefined, { silent: true }).then(function () {
                 if (window.Platform && Platform.toast) Platform.toast.success('API specs generated');
             }).catch(function (e) {
-                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'API spec generation failed');
+                if (window.Platform && Platform.toast) Platform.toast.error((e && e.message) || 'API spec generation failed');
             });
         });
     }
@@ -1781,14 +1713,10 @@
     let _inferBtn = document.getElementById('bp-infer-code-specs-btn');
     if (_inferBtn) {
         _inferBtn.addEventListener('click', function () {
-            fetch('/solutions/api/' + _SID + '/infer-code-specs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) {
-                if (!r.ok) throw new Error('Code spec inference failed (HTTP ' + r.status + ')');
+            Platform.fetch.post('/solutions/api/' + _SID + '/infer-code-specs', undefined, { silent: true }).then(function () {
                 if (window.Platform && Platform.toast) Platform.toast.success('Code specs inferred');
             }).catch(function (e) {
-                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Code spec inference failed');
+                if (window.Platform && Platform.toast) Platform.toast.error((e && e.message) || 'Code spec inference failed');
             });
         });
     }
@@ -1801,17 +1729,10 @@
             let lang = (document.getElementById('bp-language-select') || {}).value || 'python-fastapi';
             btn.disabled = true;
             btn.textContent = 'Inferring specs...';
-            fetch('/solutions/' + _SID + '/api/component-specs/infer-all', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function () {
+            Platform.fetch.post('/solutions/' + _SID + '/api/component-specs/infer-all', undefined, { silent: true }).then(function () {
                 btn.textContent = 'Generating ' + (lang === 'go-chi' ? 'Go' : 'Python') + ' code...';
-                return fetch('/api/solutions/' + _SID + '/product/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() },
-                    body: JSON.stringify({ language: lang })
-                });
-            }).then(function (r) { return r.json(); }).then(function (data) {
+                return Platform.fetch.post('/api/solutions/' + _SID + '/product/generate', { language: lang }, { silent: true });
+            }).then(function (data) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg> Generate Product';
                 if (data.success) {
@@ -1832,7 +1753,7 @@
             }).catch(function (e) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg> Generate Product';
-                if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
             });
         });
     }
@@ -1846,9 +1767,7 @@
             if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
             btn.disabled = true;
             btn.textContent = 'Synthesizing logic...';
-            fetch('/api/solutions/' + _SID + '/product/' + bid + '/synthesize', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            Platform.fetch.post('/api/solutions/' + _SID + '/product/' + bid + '/synthesize', undefined, { silent: true }).then(function (data) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Synthesize Business Logic';
                 if (data.success) {
@@ -1861,7 +1780,7 @@
             }).catch(function (e) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Synthesize Business Logic';
-                if (window.Platform) Platform.toast.error('Error: ' + e.message);
+                if (window.Platform) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
             });
         });
     }
@@ -1886,9 +1805,7 @@
             if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
             btn.disabled = true;
             btn.textContent = 'Pushing to GitHub...';
-            fetch('/api/solutions/' + _SID + '/product/' + bid + '/push-to-github', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            Platform.fetch.post('/api/solutions/' + _SID + '/product/' + bid + '/push-to-github', undefined, { silent: true }).then(function (data) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Push to GitHub';
                 if (data.success) {
@@ -1905,7 +1822,7 @@
             }).catch(function (e) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Push to GitHub';
-                if (window.Platform) Platform.toast.error('Error: ' + e.message);
+                if (window.Platform) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
             });
         });
     }
@@ -1919,9 +1836,7 @@
             if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
             btn.disabled = true;
             btn.textContent = 'Running tests...';
-            fetch('/api/solutions/' + _SID + '/product/' + bid + '/run', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            Platform.fetch.post('/api/solutions/' + _SID + '/product/' + bid + '/run', undefined, { silent: true }).then(function (data) {
                 btn.disabled = false;
                 btn.textContent = 'Run Tests';
                 if (data.success !== false) {
@@ -1943,9 +1858,7 @@
             if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
             btn.disabled = true;
             btn.textContent = 'Starting preview...';
-            fetch('/api/solutions/' + _SID + '/product/' + bid + '/preview', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            Platform.fetch.post('/api/solutions/' + _SID + '/product/' + bid + '/preview', undefined, { silent: true }).then(function (data) {
                 btn.disabled = false;
                 btn.textContent = 'Live Preview';
                 if (data.success) {

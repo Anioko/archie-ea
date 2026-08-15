@@ -244,7 +244,7 @@
          class="flex items-center gap-4 p-3 bg-muted/30 border rounded-lg">
         <span class="text-sm font-medium" x-text="selectedIds.length + ' selected'"></span>
         <button @click="bulkDeleteSelected()"
-            class="text-sm text-destructive hover:underline flex items-center gap-1" aria-label="Delete">
+            class="text-sm text-destructive-emphasis hover:underline flex items-center gap-1" aria-label="Delete">
             <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i> Delete
         </button>
         <button @click="bulkExportSelected()"
@@ -312,7 +312,7 @@
         <span data-testid="active-filter-badge"
               class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full border border-primary/20">
             <span x-text="typeFilter ? formatTypeName(typeFilter) : (searchQuery ? '&quot;' + searchQuery + '&quot;' : sourceFilter)"></span>
-            <button @click="clearAllFilters()" class="ml-1 hover:text-destructive" aria-label="Clear filter">
+            <button @click="clearAllFilters()" class="ml-1 hover:text-destructive-emphasis" aria-label="Clear filter">
                 <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
             </button>
         </span>
@@ -351,7 +351,7 @@
         </div>
         <!-- FAR-014: Error state with retry button -->
         <div x-cloak x-show="loadError" class="flex flex-col items-center justify-center py-12 gap-4">
-            <div class="flex items-center gap-3 text-destructive">
+            <div class="flex items-center gap-3 text-destructive-emphasis">
                 <i data-lucide="alert-circle" class="h-5 w-5" aria-hidden="true"></i>
                 <span x-text="loadError"></span>
             </div>
@@ -467,14 +467,14 @@
                                     </a>
                                     <template x-if="el.element_type === 'ApplicationComponent'">
                                         <a :href="'/applications?search=' + encodeURIComponent(el.name)"
-                                           class="text-success hover:text-success/80" title="Find Source Application">
+                                           class="text-success-emphasis hover:text-success-emphasis/80" title="Find Source Application">
                                             <i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i>
                                         </a>
                                     </template>
                                     <button @click="openEditModal(el)" class="text-primary hover:text-primary/80" title="Edit">
                                         <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
                                     </button>
-                                    <button @click="confirmDelete(el)" class="text-destructive hover:text-destructive/80" title="Delete">
+                                    <button @click="confirmDelete(el)" class="text-destructive-emphasis hover:text-destructive-emphasis/80" title="Delete">
                                         <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -728,7 +728,7 @@
             <div x-cloak x-show="formError" class="mb-4 p-3 bg-destructive/10 text-destructive-emphasis text-sm rounded-md" x-text="formError"></div>
             <form @submit.prevent="submitForm()" class="space-y-4">
                 <div x-cloak x-show="!editingElement">
-                    <label class="block text-sm font-medium mb-2">Element Type <span class="text-destructive">*</span></label>
+                    <label class="block text-sm font-medium mb-2">Element Type <span class="text-destructive-emphasis">*</span></label>
                     <select x-model="formData.element_type" @change="resetTypedFields()"
                         class="w-full px-3 py-2 border rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Element Type">
                         <option value="">Select type...</option>
@@ -741,7 +741,7 @@
                     Type: <span class="font-medium text-foreground" x-text="formatTypeName(formData.element_type)"></span>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium mb-2">Name <span class="text-destructive">*</span></label>
+                    <label class="block text-sm font-medium mb-2">Name <span class="text-destructive-emphasis">*</span></label>
                     <input type="text" x-model="formData.name" required
                         class="w-full px-3 py-2 border rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         placeholder="Element name" aria-label="Element name">
@@ -818,7 +818,7 @@
 
             <div x-show="!aiGenerate.result" x-cloak class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium mb-2">Layer <span class="text-destructive">*</span></label>
+                    <label class="block text-sm font-medium mb-2">Layer <span class="text-destructive-emphasis">*</span></label>
                     <select x-model="aiGenerate.layer" @change="aiGenerate.elementType = ''"
                         class="w-full px-3 py-2 border rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Layer">
                         <template x-for="(cfg, key) in layerConfig" :key="key">
@@ -827,7 +827,7 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium mb-2">Element Type <span class="text-destructive">*</span></label>
+                    <label class="block text-sm font-medium mb-2">Element Type <span class="text-destructive-emphasis">*</span></label>
                     <select x-model="aiGenerate.elementType"
                         class="w-full px-3 py-2 border rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Element Type" data-testid="ai-generate-element-type">
                         <option value="">Select type...</option>
@@ -837,7 +837,7 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium mb-2">Prompt <span class="text-destructive">*</span></label>
+                    <label class="block text-sm font-medium mb-2">Prompt <span class="text-destructive-emphasis">*</span></label>
                     <textarea x-model="aiGenerate.prompt" rows="4"
                         class="w-full px-3 py-2 border rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         placeholder="Describe the element to generate, e.g. 'A driver capturing the need to comply with the new data residency regulation'"
@@ -949,7 +949,7 @@
                                 <div class="border rounded-md p-3 text-sm">
                                     <div class="font-medium" x-text="`${entry.element.name} (${entry.element.layer})`"></div>
                                     <template x-for="issue in entry.issues" :key="issue.message">
-                                        <div :class="issue.severity === 'error' ? 'text-destructive' : 'text-warning-emphasis'"
+                                        <div :class="issue.severity === 'error' ? 'text-destructive-emphasis' : 'text-warning-emphasis'"
                                              class="flex items-center gap-1 mt-1">
                                             <i :data-lucide="issue.severity === 'error' ? 'alert-circle' : 'alert-triangle'" class="h-3 w-3 flex-shrink-0" aria-hidden="true"></i>
                                             <span x-text="issue.message"></span>
@@ -969,7 +969,7 @@
                                 <div class="border rounded-md p-3 text-sm">
                                     <div class="font-medium" x-text="`Relationship #${entry.relationship.id} (${entry.relationship.type})`"></div>
                                     <template x-for="issue in entry.issues" :key="issue.message">
-                                        <div :class="issue.severity === 'error' ? 'text-destructive' : 'text-warning-emphasis'"
+                                        <div :class="issue.severity === 'error' ? 'text-destructive-emphasis' : 'text-warning-emphasis'"
                                              class="flex items-center gap-1 mt-1">
                                             <i :data-lucide="issue.severity === 'error' ? 'alert-circle' : 'alert-triangle'" class="h-3 w-3 flex-shrink-0" aria-hidden="true"></i>
                                             <span x-text="issue.message"></span>

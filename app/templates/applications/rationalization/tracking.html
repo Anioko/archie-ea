@@ -228,7 +228,7 @@
             <template x-if="importResult">
                 <div class="space-y-3">
                     <div class="flex items-center gap-2"
-                         :class="importResult.success ? 'text-success' : 'text-destructive'">
+                         :class="importResult.success ? 'text-success-emphasis' : 'text-destructive-emphasis'">
                         <i :data-lucide="importResult.success ? 'check-circle-2' : 'alert-circle'" class="h-5 w-5"></i>
                         <span class="text-sm font-medium" x-text="importResult.success ? 'Import Complete' : 'Import Failed'"></span>
                     </div>
@@ -238,9 +238,9 @@
                             <p>Skipped (duplicates): <span class="font-medium text-foreground" x-text="importResult.skipped"></span></p>
                             <template x-if="importResult.errors && importResult.errors.length > 0">
                                 <div class="mt-2">
-                                    <p class="text-xs font-medium text-destructive">Errors:</p>
+                                    <p class="text-xs font-medium text-destructive-emphasis">Errors:</p>
                                     <template x-for="e in importResult.errors.slice(0, 5)" :key="e.row">
-                                        <p class="text-xs text-destructive" x-text="'Row ' + e.row + ': ' + e.reason"></p>
+                                        <p class="text-xs text-destructive-emphasis" x-text="'Row ' + e.row + ': ' + e.reason"></p>
                                     </template>
                                 </div>
                             </template>

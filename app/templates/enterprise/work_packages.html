@@ -65,7 +65,7 @@
       <span class="font-medium" x-text="selectionCount() + ' selected'"></span>
       <div class="h-4 w-px bg-border"></div>
       <button type="button" @click="confirmBulkDelete()"
-              class="inline-flex items-center gap-1.5 text-destructive hover:text-destructive/80 font-medium transition-colors">
+              class="inline-flex items-center gap-1.5 text-destructive-emphasis hover:text-destructive-emphasis/80 font-medium transition-colors">
         <i data-lucide="trash-2" class="h-4 w-4"></i>
         Delete selected
       </button>
@@ -124,7 +124,7 @@
           </tr>
           {# Error state #}
           <tr x-show="!loading && errorMsg" x-cloak>
-            <td colspan="8" class="px-4 py-12 text-center text-destructive text-sm" x-text="errorMsg"></td>
+            <td colspan="8" class="px-4 py-12 text-center text-destructive-emphasis text-sm" x-text="errorMsg"></td>
           </tr>
           {# Empty state #}
           <tr x-show="!loading && !errorMsg && items.length === 0" x-cloak>
@@ -212,7 +212,7 @@
   {% call modal(id='edit-work-package-modal', title='Edit Work Package', size='lg') %}
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-medium mb-1">Name <span class="text-destructive">*</span></label>
+        <label class="block text-sm font-medium mb-1">Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" x-model="editForm.name" required
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="Work package name" aria-label="Name">
@@ -276,7 +276,7 @@
   {% call modal(id='create-work-package-modal', title='New Work Package', size='lg') %}
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-medium mb-1">Name <span class="text-destructive">*</span></label>
+        <label class="block text-sm font-medium mb-1">Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" x-model="createForm.name" required
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="Work package name" aria-label="Name">

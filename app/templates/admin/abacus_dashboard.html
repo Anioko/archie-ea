@@ -49,7 +49,7 @@
                                 Status Unknown
                             {% endif %}
                         </h3>
-                        <p class="text-sm {% if sync_status.status == 'connected' %}text-success{% elif sync_status.status == 'error' %}text-destructive{% else %}text-warning{% endif %} mt-1">
+                        <p class="text-sm {% if sync_status.status == 'connected' %}text-success-emphasis{% elif sync_status.status == 'error' %}text-destructive-emphasis{% else %}text-warning-emphasis{% endif %} mt-1">
                             {% if sync_status.last_sync_at %}
                                 Last synced {{ sync_status.last_sync_at[:10] }} at {{ sync_status.last_sync_at[11:19] }}
                             {% else %}
@@ -78,8 +78,8 @@
                 <!-- Error Message -->
                 {% if sync_status.last_error %}
                     <div class="mt-4 p-3 bg-background border-l-4 border-destructive rounded">
-                        <p class="text-sm font-medium text-destructive">Last Error:</p>
-                        <p class="text-xs text-destructive mt-1">{{ sync_status.last_error }}</p>
+                        <p class="text-sm font-medium text-destructive-emphasis">Last Error:</p>
+                        <p class="text-xs text-destructive-emphasis mt-1">{{ sync_status.last_error }}</p>
                     </div>
                 {% endif %}
             </div>
@@ -126,7 +126,7 @@
                             <p class="text-sm text-muted-foreground mb-1">Integration Status</p>
                             <p class="font-medium">
                                 {% if sync_status.enabled %}
-                                    <span class="text-success">Enabled</span>
+                                    <span class="text-success-emphasis">Enabled</span>
                                 {% else %}
                                     <span class="text-muted-foreground">Disabled</span>
                                 {% endif %}
@@ -136,11 +136,11 @@
                             <p class="text-sm text-muted-foreground mb-1">Connection</p>
                             <p class="font-medium">
                                 {% if sync_status.status == 'connected' %}
-                                    <span class="text-success">Active</span>
+                                    <span class="text-success-emphasis">Active</span>
                                 {% elif sync_status.status == 'error' %}
-                                    <span class="text-destructive">Error</span>
+                                    <span class="text-destructive-emphasis">Error</span>
                                 {% else %}
-                                    <span class="text-warning">Unknown</span>
+                                    <span class="text-warning-emphasis">Unknown</span>
                                 {% endif %}
                             </p>
                         </div>
@@ -225,8 +225,8 @@
                                     <span class="font-bold">{{ stats.applications_synced or 0 }}</span>
                                 </div>
                                 <div class="flex items-center justify-between p-3 rounded-lg bg-success/5">
-                                    <span class="text-sm text-success">Created</span>
-                                    <span class="font-bold text-success">{{ stats.applications_created or 0 }}</span>
+                                    <span class="text-sm text-success-emphasis">Created</span>
+                                    <span class="font-bold text-success-emphasis">{{ stats.applications_created or 0 }}</span>
                                 </div>
                                 <div class="flex items-center justify-between p-3 rounded-lg bg-primary/5">
                                     <span class="text-sm text-primary">Updated</span>
@@ -248,8 +248,8 @@
                                     <span class="font-bold">{{ stats.capabilities_synced or 0 }}</span>
                                 </div>
                                 <div class="flex items-center justify-between p-3 rounded-lg bg-success/5">
-                                    <span class="text-sm text-success">Created</span>
-                                    <span class="font-bold text-success">{{ stats.capabilities_created or 0 }}</span>
+                                    <span class="text-sm text-success-emphasis">Created</span>
+                                    <span class="font-bold text-success-emphasis">{{ stats.capabilities_created or 0 }}</span>
                                 </div>
                                 <div class="flex items-center justify-between p-3 rounded-lg bg-primary/5">
                                     <span class="text-sm text-primary">Updated</span>

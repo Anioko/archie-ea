@@ -28,7 +28,7 @@
                             <td class="py-2 px-3 text-muted-foreground" x-text="item.coupling?.replace('_', ' ')"></td>
                             <td class="py-2 px-3 text-right sad-actions">
                                 <button @click="openEntityModal('composition', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md text-xs">Edit</button>
-                                <button @click="confirmDeleteEntity('composition', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md text-xs">Delete</button>
+                                <button @click="confirmDeleteEntity('composition', item)" class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md text-xs">Delete</button>
                             </td>
                         </tr>
                     </template>

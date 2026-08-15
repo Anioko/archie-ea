@@ -81,7 +81,7 @@
                     <div class="grid grid-cols-12 gap-1 px-0.5">
                       <p class="col-span-2 text-[11px] text-muted-foreground uppercase tracking-wider">#</p>
                       <p class="col-span-2 text-[11px] text-muted-foreground uppercase tracking-wider">Actor</p>
-                      <p class="col-span-3 text-[11px] text-muted-foreground uppercase tracking-wider">Action <span class="text-destructive">*</span></p>
+                      <p class="col-span-3 text-[11px] text-muted-foreground uppercase tracking-wider">Action <span class="text-destructive-emphasis">*</span></p>
                       <p class="col-span-3 text-[11px] text-muted-foreground uppercase tracking-wider">Target</p>
                       <p class="col-span-1 text-[11px] text-muted-foreground uppercase tracking-wider">Del</p>
                     </div>
@@ -96,7 +96,7 @@
                         <input type="text" x-model="step.target" placeholder="e.g. OrderService"
                                class="col-span-3 text-[11px] border border-input rounded px-1.5 py-1 bg-background" aria-label="e.g. OrderService"/>
                         <button type="button" @click="removeStep(el, si)"
-                                class="col-span-1 p-1 text-muted-foreground hover:text-destructive transition-colors">
+                                class="col-span-1 p-1 text-muted-foreground hover:text-destructive-emphasis transition-colors">
                           <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
                           </svg>
@@ -125,7 +125,7 @@
                   Add step
                 </button>
                 <div class="flex-1"></div>
-                <span x-show="el._saveError" class="text-[10px] text-destructive" x-text="el._saveError"></span>
+                <span x-show="el._saveError" class="text-[10px] text-destructive-emphasis" x-text="el._saveError"></span>
                 <span x-show="el._saved" class="text-[10px] text-success-emphasis font-medium">Saved</span>
                 <button type="button" @click="saveSteps(el)"
                         :disabled="el._saving"

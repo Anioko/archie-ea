@@ -85,8 +85,8 @@
                 </svg>
             </div>
             <div class="ml-3">
-                <h3 class="text-sm font-medium text-destructive">Policy Violation Alert</h3>
-                <div class="mt-2 text-sm text-destructive" x-html="DOMPurify.sanitize(alert || '')"></div>
+                <h3 class="text-sm font-medium text-destructive-emphasis">Policy Violation Alert</h3>
+                <div class="mt-2 text-sm text-destructive-emphasis" x-html="DOMPurify.sanitize(alert || '')"></div>
             </div>
         </div>
     </div>
@@ -150,7 +150,7 @@
                 </div>
                 <div>
                     <span class="font-medium">Allowed:</span> 
-                    <span :class="testResult.is_allowed ? 'text-success' : 'text-destructive'" x-text="testResult.is_allowed ? 'Yes' : 'No'"></span>
+                    <span :class="testResult.is_allowed ? 'text-success-emphasis' : 'text-destructive-emphasis'" x-text="testResult.is_allowed ? 'Yes' : 'No'"></span>
                 </div>
                 <div>
                     <span class="font-medium">Violations:</span> <span x-text="testResult.violations_detected"></span>
@@ -161,9 +161,9 @@
                 <div class="space-y-2">
                     <template x-for="violation in testResult.violations">
                         <div class="bg-destructive/5 border-l-4 border-destructive p-3">
-                            <div class="font-medium text-destructive" x-text="violation.rule_name"></div>
-                            <div class="text-sm text-destructive" x-text="violation.description"></div>
-                            <div class="text-sm text-destructive mt-1" x-text="'Severity: ' + violation.severity"></div>
+                            <div class="font-medium text-destructive-emphasis" x-text="violation.rule_name"></div>
+                            <div class="text-sm text-destructive-emphasis" x-text="violation.description"></div>
+                            <div class="text-sm text-destructive-emphasis mt-1" x-text="'Severity: ' + violation.severity"></div>
                             <div class="text-sm text-primary mt-1" x-text="'Suggested: ' + violation.suggested_action"></div>
                         </div>
                     </template>
@@ -178,7 +178,7 @@
             <h2 class="text-lg font-medium text-foreground">Recent Policy Violations</h2>
         </div>
         <div class="p-6">
-            <div x-show="fetchError" x-cloak class="text-destructive text-center py-8">
+            <div x-show="fetchError" x-cloak class="text-destructive-emphasis text-center py-8">
                 Violations could not be read — this is not the same as none having been detected.
             </div>
             <div x-show="!fetchError && recentViolations.length === 0" x-cloak class="text-muted-foreground text-center py-8">

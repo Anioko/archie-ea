@@ -18,7 +18,7 @@
                         </button>
                         <div x-show="open" x-cloak @click.away="open=false" class="absolute right-0 top-8 w-80 rounded-xl border border-border bg-card shadow-xl z-50 p-3 space-y-2">
                             <template x-for="err in errors" :key="err.id">
-                                <div class="flex items-start gap-2 text-xs text-destructive">
+                                <div class="flex items-start gap-2 text-xs text-destructive-emphasis">
                                     <i data-lucide="alert-circle" class="h-3 w-3 mt-0.5 shrink-0"></i>
                                     <span x-text="err.text" class="flex-1"></span>
                                     <button @click="errors=errors.filter(e=>e.id!==err.id)" class="shrink-0 hover:text-destructive-emphasis"><i data-lucide="x" class="h-3 w-3"></i></button>
@@ -120,7 +120,7 @@
                             View PR
                         </a>
                     </div>
-                    <div x-show="pushErr" x-cloak class="h-7 px-2.5 text-xs text-destructive flex items-center" x-text="pushErr"></div>
+                    <div x-show="pushErr" x-cloak class="h-7 px-2.5 text-xs text-destructive-emphasis flex items-center" x-text="pushErr"></div>
                 </div>
 
                 <!-- AI Chat toggle (Ctrl+I / ⌘I) -->
@@ -189,7 +189,7 @@
                         <div class="flex items-center gap-1 text-[10px]">
                             <span class="w-1.5 h-1.5 rounded-full shrink-0"
                                   :class="promptGroupStatus[key]==='done'?'bg-success':promptGroupStatus[key]==='running'?'bg-primary animate-pulse':promptGroupStatus[key]==='error'?'bg-destructive':'bg-muted-foreground/20'"></span>
-                            <span :class="promptGroupStatus[key]==='running'?'text-foreground font-medium':promptGroupStatus[key]==='done'?'text-success':'text-muted-foreground/50'" x-text="key"></span>
+                            <span :class="promptGroupStatus[key]==='running'?'text-foreground font-medium':promptGroupStatus[key]==='done'?'text-success-emphasis':'text-muted-foreground/50'" x-text="key"></span>
                         </div>
                     </template>
                 </div>
@@ -203,7 +203,7 @@
              class="shrink-0 border-b border-success/30 bg-success/8 px-4 py-2 flex items-center gap-2 text-xs text-success-emphasis">
             <i data-lucide="check-circle-2" class="h-3.5 w-3.5 shrink-0"></i>
             <span x-text="successMsg" class="flex-1"></span>
-            <button @click="successMsg=''" class="text-success hover:text-success/80"><i data-lucide="x" class="h-3 w-3"></i></button>
+            <button @click="successMsg=''" class="text-success-emphasis hover:text-success-emphasis/80"><i data-lucide="x" class="h-3 w-3"></i></button>
         </div>
 
         <!-- ── 3-pane layout ── -->
@@ -660,7 +660,7 @@
                                             <!-- Per-dimension status message after fix attempt -->
                                             <template x-if="dimFix[dim.key] && dimFix[dim.key].message">
                                                 <p class="text-[10px] mt-1 leading-snug"
-                                                   :class="dimFix[dim.key].error ? 'text-destructive' : 'text-success'"
+                                                   :class="dimFix[dim.key].error ? 'text-destructive-emphasis' : 'text-success-emphasis'"
                                                    x-text="dimFix[dim.key].message"></p>
                                             </template>
                                         </div>
@@ -712,7 +712,7 @@
                                                 <!-- Status after fix attempt -->
                                                 <template x-if="recFix[i] && recFix[i].message">
                                                     <p class="text-[10px] px-3 pb-2 leading-snug"
-                                                       :class="recFix[i].error ? 'text-destructive' : 'text-success'"
+                                                       :class="recFix[i].error ? 'text-destructive-emphasis' : 'text-success-emphasis'"
                                                        x-text="recFix[i].message"></p>
                                                 </template>
                                             </div>
@@ -822,19 +822,19 @@
                                 <div class="px-3 py-2.5 rounded-lg border"
                                      :class="verifyResult.success && (verifyResult.summary.failed||0) === 0 && (verifyResult.summary.errors||0) === 0 ? 'bg-success/5 border-success/20' : 'bg-warning/5 border-warning/20'">
                                     <p class="text-[11px] font-semibold mb-1"
-                                       :class="verifyResult.success && (verifyResult.summary.failed||0) === 0 && (verifyResult.summary.errors||0) === 0 ? 'text-success' : 'text-warning'">
+                                       :class="verifyResult.success && (verifyResult.summary.failed||0) === 0 && (verifyResult.summary.errors||0) === 0 ? 'text-success-emphasis' : 'text-warning-emphasis'">
                                         Test Run Results
                                     </p>
                                     <template x-if="verifyResult.message">
                                         <p class="text-[10px] text-warning-emphasis mb-1.5 leading-snug break-all" x-text="verifyResult.message"></p>
                                     </template>
                                     <div class="flex gap-3 text-[11px]">
-                                        <span class="text-success font-medium" x-text="(verifyResult.summary.passed||0) + ' passed'"></span>
+                                        <span class="text-success-emphasis font-medium" x-text="(verifyResult.summary.passed||0) + ' passed'"></span>
                                         <template x-if="(verifyResult.summary.failed||0) > 0">
-                                            <span class="text-destructive font-medium" x-text="(verifyResult.summary.failed||0) + ' failed'"></span>
+                                            <span class="text-destructive-emphasis font-medium" x-text="(verifyResult.summary.failed||0) + ' failed'"></span>
                                         </template>
                                         <template x-if="(verifyResult.summary.errors||0) > 0">
-                                            <span class="text-warning font-medium" x-text="(verifyResult.summary.errors||0) + ' errors'"></span>
+                                            <span class="text-warning-emphasis font-medium" x-text="(verifyResult.summary.errors||0) + ' errors'"></span>
                                         </template>
                                         <span class="text-muted-foreground ml-auto" x-text="(verifyResult.pass_rate||0) + '% pass'"></span>
                                     </div>
@@ -1076,7 +1076,7 @@
                                             <svg x-show="iacDeploying" class="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                             <span x-text="iacDeploying ? 'Opening PR…' : 'Open Pull Request'"></span>
                                         </button>
-                                        <p x-show="iacDeployError" class="text-[10px] text-destructive" x-text="iacDeployError"></p>
+                                        <p x-show="iacDeployError" class="text-[10px] text-destructive-emphasis" x-text="iacDeployError"></p>
                                     </div>
                                     <template x-if="iacDeployResult">
                                         <div class="rounded-lg border border-success/20 bg-success/5 p-2 space-y-1">
@@ -1130,7 +1130,7 @@
                                 Open /docs
                             </a>
                             <button @click="dockerStop()"
-                                    class="h-8 px-3 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors">
+                                    class="h-8 px-3 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors">
                                 Stop
                             </button>
                         </div>
@@ -1345,7 +1345,7 @@
                             <template x-for="key in promptGroups" :key="key">
                                 <button @click="regenerate(key)" :disabled="promptGroupStatus[key] === 'running'"
                                         class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-background hover:bg-muted disabled:opacity-50 transition-colors"
-                                        :class="promptGroupStatus[key] === 'error' ? 'border-destructive/30 text-destructive' : 'text-muted-foreground hover:text-foreground'">
+                                        :class="promptGroupStatus[key] === 'error' ? 'border-destructive/30 text-destructive-emphasis' : 'text-muted-foreground hover:text-foreground'">
                                     <svg x-show="promptGroupStatus[key]==='running'" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                     <span x-text="key"></span>
                                 </button>
@@ -1568,16 +1568,16 @@
                                         <p class="font-semibold text-foreground" x-text="intentGateStats.total_events || 0"></p>
                                     </div>
                                     <div class="rounded border border-destructive/20 bg-destructive/5 px-1.5 py-1 text-center">
-                                        <p class="text-destructive">Blocked</p>
-                                        <p class="font-semibold text-destructive" x-text="intentGateStats.blocked || 0"></p>
+                                        <p class="text-destructive-emphasis">Blocked</p>
+                                        <p class="font-semibold text-destructive-emphasis" x-text="intentGateStats.blocked || 0"></p>
                                     </div>
                                     <div class="rounded border border-success/20 bg-success/5 px-1.5 py-1 text-center">
-                                        <p class="text-success">Verified</p>
-                                        <p class="font-semibold text-success" x-text="intentGateStats.verified || 0"></p>
+                                        <p class="text-success-emphasis">Verified</p>
+                                        <p class="font-semibold text-success-emphasis" x-text="intentGateStats.verified || 0"></p>
                                     </div>
                                     <div class="rounded border border-warning/20 bg-warning/5 px-1.5 py-1 text-center">
-                                        <p class="text-warning">Override</p>
-                                        <p class="font-semibold text-warning" x-text="intentGateStats.override || 0"></p>
+                                        <p class="text-warning-emphasis">Override</p>
+                                        <p class="font-semibold text-warning-emphasis" x-text="intentGateStats.override || 0"></p>
                                     </div>
                                 </div>
                                 <p x-show="intentLastGateEvent?.mode" x-cloak
@@ -1786,7 +1786,7 @@
                                             </button>
                                             <!-- Delete -->
                                             <button @click="deleteTemplateSet(tmpl.id)"
-                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex items-center justify-center">
+                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors flex items-center justify-center">
                                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1h4M1.5 2.5h7l-.75 6H2.25l-.75-6ZM4 4.5v2.5M6 4.5v2.5"/><path d="M1.5 2.5h7" stroke="currentColor" stroke-width=".5" fill="none"/></svg>
                                             </button>
                                         </div>
@@ -2166,7 +2166,7 @@ npm run dev</pre>
             <span x-show="versionLabel" x-cloak x-text="versionLabel"></span>
             <div class="ml-auto flex items-center gap-3">
                 <span x-show="selectedFile" x-cloak x-text="(() => { const ext = selectedFile ? (selectedFile.split('.').pop() || '') : ''; const known = ['py','ts','js','tsx','jsx','json','yaml','yml','toml','md','txt','html','css','sh','env','sql','go','java','rs','rb','php','xml','csv']; return known.includes(ext.toLowerCase()) ? ext.toUpperCase() : (selectedFile ? selectedFile.split('/').pop() : ''); })()"></span>
-                <span x-show="editorDirty" x-cloak class="text-warning">● unsaved</span>
+                <span x-show="editorDirty" x-cloak class="text-warning-emphasis">● unsaved</span>
             </div>
         </footer>
 

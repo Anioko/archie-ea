@@ -46,7 +46,7 @@
                                     <span class="font-medium text-foreground">Connected</span>
                                 {% elif abacus_config.connection_status == 'error' %}
                                     <div class="h-3 w-3 rounded-full bg-destructive"></div>
-                                    <span class="font-medium text-destructive">Error</span>
+                                    <span class="font-medium text-destructive-emphasis">Error</span>
                                 {% else %}
                                     <div class="h-3 w-3 rounded-full bg-muted-foreground"></div>
                                     <span class="font-medium text-muted-foreground">Not Tested</span>
@@ -97,8 +97,8 @@
                         <!-- Error Message -->
                         {% if abacus_config and abacus_config.last_error %}
                             <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                                <p class="text-sm text-destructive font-medium mb-1">Last Error:</p>
-                                <p class="text-xs text-destructive/80">{{ abacus_config.last_error }}</p>
+                                <p class="text-sm text-destructive-emphasis font-medium mb-1">Last Error:</p>
+                                <p class="text-xs text-destructive-emphasis/80">{{ abacus_config.last_error }}</p>
                             </div>
                         {% endif %}
 
@@ -228,7 +228,7 @@
                             <div class="space-y-4">
                                 <div>
                                     <label for="base_url" class="block text-sm font-medium mb-2">
-                                        Base URL <span class="text-destructive">*</span>
+                                        Base URL <span class="text-destructive-emphasis">*</span>
                                     </label>
                                     <input type="url"
                                            id="base_url"
@@ -242,7 +242,7 @@
 
                                 <div>
                                     <label for="client_id" class="block text-sm font-medium mb-2">
-                                        Client ID <span class="text-destructive">*</span>
+                                        Client ID <span class="text-destructive-emphasis">*</span>
                                     </label>
                                     <input type="text"
                                            id="client_id"
@@ -256,7 +256,7 @@
 
                                 <div>
                                     <label for="client_secret" class="block text-sm font-medium mb-2">
-                                        Client Secret {% if not env_config %}<span class="text-destructive">*</span>{% endif %}
+                                        Client Secret {% if not env_config %}<span class="text-destructive-emphasis">*</span>{% endif %}
                                     </label>
                                     <input type="password"
                                            id="client_secret"
@@ -564,7 +564,7 @@
                 <div class="text-center py-8 text-muted-foreground">Loading mappings...</div>
             </template>
             <template x-if="!loading && loadError">
-                <div class="text-center py-8 text-destructive">Could not load relationship mappings. Please try again.</div>
+                <div class="text-center py-8 text-destructive-emphasis">Could not load relationship mappings. Please try again.</div>
             </template>
             <template x-if="!loading && !loadError && Object.keys(mappings).length > 0">
                 <div>
@@ -636,7 +636,7 @@
                             <span x-show="saving">Saving...</span>
                         </button>
                         <span x-show="saveMessage" x-text="saveMessage"
-                              class="text-sm" :class="saveError ? 'text-destructive' : 'text-primary'"></span>
+                              class="text-sm" :class="saveError ? 'text-destructive-emphasis' : 'text-primary'"></span>
                         <span class="text-xs text-muted-foreground ml-auto" x-text="Object.keys(mappings).length + ' mappings configured'"></span>
                     </div>
                 </div>

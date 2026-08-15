@@ -101,7 +101,7 @@
                 {% for impact in roadmap_impacts %}
                 <div class="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
-                        {% if impact.impact_type == 'sunset' %}bg-warning/10 text-warning
+                        {% if impact.impact_type == 'sunset' %}bg-warning/10 text-warning-emphasis
                         {% else %}bg-info/10 text-info-emphasis{% endif %}">
                         <i data-lucide="{% if impact.impact_type == 'sunset' %}sunset{% else %}calendar{% endif %}" class="w-4 h-4"></i>
                     </div>

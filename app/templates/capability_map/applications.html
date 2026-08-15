@@ -60,7 +60,7 @@
                     <td class="px-6 py-3 text-muted-foreground">
                         {% set cap_count = app.capability_mappings|length if app.capability_mappings else 0 %}
                         {% if cap_count == 0 %}
-                        <span class="text-xs text-warning">Unmapped</span>
+                        <span class="text-xs text-warning-emphasis">Unmapped</span>
                         {% else %}
                         {{ cap_count }}
                         {% endif %}

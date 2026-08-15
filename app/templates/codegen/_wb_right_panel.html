@@ -302,16 +302,16 @@
                                 <div class="px-3 py-2.5 rounded-lg border"
                                      :class="(verifyResult.summary.failed||0) === 0 && (verifyResult.summary.errors||0) === 0 ? 'bg-success/5 border-success/20' : 'bg-warning/5 border-warning/20'">
                                     <p class="text-[11px] font-semibold mb-1"
-                                       :class="(verifyResult.summary.failed||0) === 0 && (verifyResult.summary.errors||0) === 0 ? 'text-success' : 'text-warning'">
+                                       :class="(verifyResult.summary.failed||0) === 0 && (verifyResult.summary.errors||0) === 0 ? 'text-success-emphasis' : 'text-warning-emphasis'">
                                         Test Run Results
                                     </p>
                                     <div class="flex gap-3 text-[11px]">
-                                        <span class="text-success font-medium" x-text="(verifyResult.summary.passed||0) + ' passed'"></span>
+                                        <span class="text-success-emphasis font-medium" x-text="(verifyResult.summary.passed||0) + ' passed'"></span>
                                         <template x-if="(verifyResult.summary.failed||0) > 0">
-                                            <span class="text-destructive font-medium" x-text="(verifyResult.summary.failed||0) + ' failed'"></span>
+                                            <span class="text-destructive-emphasis font-medium" x-text="(verifyResult.summary.failed||0) + ' failed'"></span>
                                         </template>
                                         <template x-if="(verifyResult.summary.errors||0) > 0">
-                                            <span class="text-warning font-medium" x-text="(verifyResult.summary.errors||0) + ' errors'"></span>
+                                            <span class="text-warning-emphasis font-medium" x-text="(verifyResult.summary.errors||0) + ' errors'"></span>
                                         </template>
                                         <span class="text-muted-foreground ml-auto" x-text="(verifyResult.pass_rate||0) + '% pass'"></span>
                                     </div>
@@ -547,7 +547,7 @@
                                             <svg x-show="iacDeploying" class="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                             <span x-text="iacDeploying ? 'Opening PR…' : 'Open Pull Request'"></span>
                                         </button>
-                                        <p x-show="iacDeployError" class="text-[10px] text-destructive" x-text="iacDeployError"></p>
+                                        <p x-show="iacDeployError" class="text-[10px] text-destructive-emphasis" x-text="iacDeployError"></p>
                                     </div>
                                     <template x-if="iacDeployResult">
                                         <div class="rounded-lg border border-success/20 bg-success/5 p-2 space-y-1">
@@ -601,7 +601,7 @@
                                 Open /docs
                             </a>
                             <button @click="dockerStop()"
-                                    class="h-8 px-3 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors">
+                                    class="h-8 px-3 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors">
                                 Stop
                             </button>
                         </div>
@@ -728,7 +728,7 @@ npx expo start --web</pre>
                                     <span x-text="copied==='web' ? '✓ Copied' : 'Copy'"></span>
                                 </button>
                             </div>
-                            <p class="text-success">Opens at <code class="font-mono">localhost:8081</code>. NativeWind v4 renders correctly on web — full styling, no emulator needed.</p>
+                            <p class="text-success-emphasis">Opens at <code class="font-mono">localhost:8081</code>. NativeWind v4 renders correctly on web — full styling, no emulator needed.</p>
                         </div>
 
                         <!-- Option 2: Local emulator -->
@@ -872,7 +872,7 @@ eas build --platform android --profile preview</pre>
                             <template x-for="key in promptGroups" :key="key">
                                 <button @click="regenerate(key)" :disabled="promptGroupStatus[key] === 'running'"
                                         class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-background hover:bg-muted disabled:opacity-50 transition-colors"
-                                        :class="promptGroupStatus[key] === 'error' ? 'border-destructive/30 text-destructive' : 'text-muted-foreground hover:text-foreground'">
+                                        :class="promptGroupStatus[key] === 'error' ? 'border-destructive/30 text-destructive-emphasis' : 'text-muted-foreground hover:text-foreground'">
                                     <svg x-show="promptGroupStatus[key]==='running'" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                     <span x-text="key"></span>
                                 </button>
@@ -1039,16 +1039,16 @@ eas build --platform android --profile preview</pre>
                                         <p class="font-semibold text-foreground" x-text="intentGateStats.total_events || 0"></p>
                                     </div>
                                     <div class="rounded border border-destructive/20 bg-destructive/5 px-1.5 py-1 text-center">
-                                        <p class="text-destructive">Blocked</p>
-                                        <p class="font-semibold text-destructive" x-text="intentGateStats.blocked || 0"></p>
+                                        <p class="text-destructive-emphasis">Blocked</p>
+                                        <p class="font-semibold text-destructive-emphasis" x-text="intentGateStats.blocked || 0"></p>
                                     </div>
                                     <div class="rounded border border-success/20 bg-success/5 px-1.5 py-1 text-center">
-                                        <p class="text-success">Verified</p>
-                                        <p class="font-semibold text-success" x-text="intentGateStats.verified || 0"></p>
+                                        <p class="text-success-emphasis">Verified</p>
+                                        <p class="font-semibold text-success-emphasis" x-text="intentGateStats.verified || 0"></p>
                                     </div>
                                     <div class="rounded border border-warning/20 bg-warning/5 px-1.5 py-1 text-center">
-                                        <p class="text-warning">Override</p>
-                                        <p class="font-semibold text-warning" x-text="intentGateStats.override || 0"></p>
+                                        <p class="text-warning-emphasis">Override</p>
+                                        <p class="font-semibold text-warning-emphasis" x-text="intentGateStats.override || 0"></p>
                                     </div>
                                 </div>
                                 <p x-show="intentLastGateEvent?.mode" x-cloak
@@ -1205,7 +1205,7 @@ eas build --platform android --profile preview</pre>
                                             </button>
                                             <!-- Delete -->
                                             <button @click="deleteTemplateSet(tmpl.id)"
-                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex items-center justify-center">
+                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors flex items-center justify-center">
                                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1h4M1.5 2.5h7l-.75 6H2.25l-.75-6ZM4 4.5v2.5M6 4.5v2.5"/><path d="M1.5 2.5h7" stroke="currentColor" stroke-width=".5" fill="none"/></svg>
                                             </button>
                                         </div>

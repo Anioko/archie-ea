@@ -28,7 +28,7 @@
                             <td class="py-2 px-3 text-muted-foreground" x-text="item.latency_sla_ms ? item.latency_sla_ms + 'ms' : '\u2014'"></td>
                             <td class="py-2 px-3 text-right sad-actions">
                                 <button @click="openEntityModal('integration_flow', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                <button @click="confirmDeleteEntity('integration_flow', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                                <button @click="confirmDeleteEntity('integration_flow', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                             </td>
                         </tr>
                     </template>

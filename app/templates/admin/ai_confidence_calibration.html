@@ -28,9 +28,9 @@
                 <tr class="border-b border-border last:border-0">
                     <td class="px-4 py-3 text-sm font-medium text-foreground">{{ tier.name }}</td>
                     <td class="px-4 py-3 text-right text-sm text-muted-foreground">{{ tier.total }}</td>
-                    <td class="px-4 py-3 text-right text-sm text-success">{{ tier.accepted }}</td>
-                    <td class="px-4 py-3 text-right text-sm text-warning">{{ tier.modified }}</td>
-                    <td class="px-4 py-3 text-right text-sm text-destructive">{{ tier.rejected }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-success-emphasis">{{ tier.accepted }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-warning-emphasis">{{ tier.modified }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-destructive-emphasis">{{ tier.rejected }}</td>
                     <td class="px-4 py-3 text-right text-sm text-muted-foreground">{{ tier.no_verdict }}</td>
                     <td class="px-4 py-3 text-right text-sm font-medium
                         {% if tier.acceptance_rate >= 80 %}text-success

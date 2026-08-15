@@ -68,7 +68,7 @@
                 <template x-for="(opt, idx) in comparisonData.options" :key="'ws-'+opt.name">
                   <td class="text-center p-2">
                     <span x-text="(opt.weighted_score * 100).toFixed(1) + '%'"
-                      :class="idx === 0 ? 'text-success text-lg' : ''"></span>
+                      :class="idx === 0 ? 'text-success-emphasis text-lg' : ''"></span>
                   </td>
                 </template>
               </tr>

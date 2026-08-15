@@ -29,7 +29,7 @@
             <h2 class="text-sm font-semibold text-foreground uppercase tracking-wide">Identity</h2>
 
             <div>
-                <label for="name" class="block text-sm font-medium text-foreground mb-1">Name <span class="text-destructive">*</span></label>
+                <label for="name" class="block text-sm font-medium text-foreground mb-1">Name <span class="text-destructive-emphasis">*</span></label>
                 <input type="text" id="name" name="name" required value="{{ entity.name if entity else '' }}"
                     class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     placeholder="e.g., Customer Master, Sales Order, Product Catalog">
@@ -127,7 +127,7 @@
 
     {% if entity %}
     <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-6">
-        <h2 class="text-sm font-semibold text-destructive mb-2">Danger Zone</h2>
+        <h2 class="text-sm font-semibold text-destructive-emphasis mb-2">Danger Zone</h2>
         <p class="text-sm text-muted-foreground mb-4">Deleting this data entity removes it permanently from the catalog.</p>
         <form id="delete-entity-form" method="post" action="{{ url_for('data_architecture.delete_data_entity', entity_id=entity.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

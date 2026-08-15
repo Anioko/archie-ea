@@ -444,7 +444,7 @@
                                 <div x-show="!archAccepted.has(i) && !archRejected.has(i)" x-cloak class="flex items-center gap-1 shrink-0">
                                     <button type="button" @click="acceptOne(i)" title="Accept"
                                             :disabled="archAcceptingIdx === i"
-                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md text-success hover:bg-success/10 transition-colors">
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md text-success-emphasis hover:bg-success/10 transition-colors">
                                         <i data-lucide="check" class="h-4 w-4" aria-hidden="true"
                                            :class="archAcceptingIdx === i ? 'animate-spin' : ''"></i>
                                     </button>
@@ -778,7 +778,7 @@
                 <div x-show="!bpLoading && bpError" x-cloak
                      class="rounded-lg border border-destructive p-6 text-center">
                     <i data-lucide="alert-triangle" class="h-8 w-8 mx-auto mb-2 text-destructive" aria-hidden="true"></i>
-                    <p class="text-sm text-destructive" x-text="bpError"></p>
+                    <p class="text-sm text-destructive-emphasis" x-text="bpError"></p>
                     <p class="text-xs text-muted-foreground mt-1">Nothing was synthesised — do not read this as "no findings".</p>
                     <button type="button" @click="bpLoaded = false; load()" class="mt-3 inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">
                         <i data-lucide="refresh-cw" class="h-3 w-3" aria-hidden="true"></i>Try again
