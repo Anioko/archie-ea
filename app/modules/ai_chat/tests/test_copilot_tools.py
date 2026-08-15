@@ -138,6 +138,85 @@ class TestInferenceTools:
         assert "elements" in result["message"].lower() or "inference" in result["message"].lower()
 
 
+class TestGenerateBlueprintNarrativeTool:
+    """generate_blueprint_narrative used to import `generate_section_narrative`
+    from app.modules.solutions_strategic.v2.routes.solution_blueprint_routes,
+    where no such name (module or function) exists. The ImportError was
+    swallowed by a bare `except Exception`, so the approve-tier tool always
+    reported {"success": False} without ever calling the LLM or touching the
+    real narrative generator in solution_design_routes.py — a silent no-op
+    dressed as a normal failure. These pin the fixed wiring: the real
+    `generate_section_narrative` (extracted from the
+    api_generate_section_narrative route so it's callable outside a Flask
+    request) is imported from the right module and actually invoked."""
+
+    def _make_executor(self):
+        from app.modules.ai_chat.tools.executor import ToolExecutor
+        return ToolExecutor(user_id=7)
+
+    def test_success_calls_real_generator_and_returns_narrative(self):
+        executor = self._make_executor()
+
+        with patch(
+            "app.modules.solutions_strategic.v2.routes.solution_design_routes.generate_section_narrative"
+        ) as mock_generate:
+            mock_generate.return_value = {
+                "narrative": "The application layer integrates via REST.",
+                "section_id": "sec-2",
+                "word_count": 6,
+            }
+            result = executor._tool_generate_blueprint_narrative(
+                {"solution_id": 44, "section_id": "sec-2"}
+            )
+
+        mock_generate.assert_called_once_with(44, "sec-2", 7)
+        assert result["success"] is True
+        assert result["result"]["narrative"] == "The application layer integrates via REST."
+        assert result["result"]["word_count"] == 6
+        assert "sec-2" in result["message"]
+
+    def test_handled_failure_returns_honest_error_not_silent_success(self):
+        """NarrativeGenerationError (e.g. no LLM configured, forbidden,
+        invalid section) must surface as an honest {"success": False} with
+        the real error_code, not be swallowed."""
+        executor = self._make_executor()
+
+        from app.modules.solutions_strategic.v2.routes.solution_design_routes import (
+            NarrativeGenerationError,
+        )
+
+        with patch(
+            "app.modules.solutions_strategic.v2.routes.solution_design_routes.generate_section_narrative"
+        ) as mock_generate:
+            mock_generate.side_effect = NarrativeGenerationError(
+                "No LLM provider configured. Add an API key in Admin → API Settings.", "NO_LLM"
+            )
+            result = executor._tool_generate_blueprint_narrative(
+                {"solution_id": 44, "section_id": "sec-2"}
+            )
+
+        assert result["success"] is False
+        assert result["error_code"] == "NO_LLM"
+        assert "No LLM provider configured" in result["error"]
+
+    def test_import_failure_returns_honest_unavailable_error(self):
+        """If the narrative generator genuinely cannot be imported, the tool
+        must say so honestly rather than claiming success or swallowing the
+        error silently."""
+        executor = self._make_executor()
+
+        with patch.dict("sys.modules", {
+            "app.modules.solutions_strategic.v2.routes.solution_design_routes": None,
+        }):
+            result = executor._tool_generate_blueprint_narrative(
+                {"solution_id": 44, "section_id": "sec-2"}
+            )
+
+        assert result["success"] is False
+        assert result["error_code"] == "UNAVAILABLE"
+        assert "not available" in result["error"]
+
+
 class TestContextInjection:
 
     def test_solution_context_in_system_prompt(self):

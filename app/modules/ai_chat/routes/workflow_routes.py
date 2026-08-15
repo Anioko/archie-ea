@@ -15,7 +15,7 @@ from flask import current_app, jsonify, request
 from flask_login import current_user, login_required
 
 from app.decorators import audit_log
-from app.modules.ai_chat.approval_gate import require_ai_approval, tag_ai_action
+from app.modules.ai_chat.approval_gate import queue_ai_write, tag_ai_action
 from app.modules.architecture.services.architect_workflow_service import ArchitectWorkflowService
 from app.services.ai_data_interaction_service import AIDataInteractionService
 from app.services.chat_entity_matching_service import ChatEntityMatchingService
@@ -37,7 +37,6 @@ logger = logging.getLogger(__name__)
 @unified_ai_chat_bp.route("/data/create-capability", methods=["POST"])
 @login_required
 @audit_log("ai_chat_create_capability")
-@require_ai_approval
 def create_capability():
     """
     Create a new business capability through AI interaction.
@@ -122,6 +121,16 @@ def create_capability():
                 return validation_error_response(error)
             data["maturity_level"] = validated_maturity
 
+        # Queue after validation/sanitization above, so a queued-and-later-
+        # approved write runs the exact same sanitized `data` this route
+        # would have written itself -- see approval_gate.py's docstring.
+        queued = queue_ai_write(
+            "create", "capability", data,
+            summary=f"Create capability '{data['name']}'",
+        )
+        if queued is not None:
+            return queued
+
         service = AIDataInteractionService(user_id=current_user.id)
         result = service.create_capability(data)
 
@@ -145,7 +154,6 @@ def create_capability():
 )
 @login_required
 @audit_log("ai_chat_update_capability")
-@require_ai_approval
 def update_capability(capability_id):
     """
     Update an existing business capability.
@@ -161,6 +169,14 @@ def update_capability(capability_id):
         data = request.get_json()
         if not data:
             return jsonify({"error": "No JSON data received"}), 400
+
+        queued = queue_ai_write(
+            "update", "capability", data,
+            summary=f"Update capability #{capability_id}",
+            entity_id=capability_id,
+        )
+        if queued is not None:
+            return queued
 
         service = AIDataInteractionService(user_id=current_user.id)
         result = service.update_capability(capability_id, data)
@@ -183,7 +199,6 @@ def update_capability(capability_id):
 @unified_ai_chat_bp.route("/data/add-compliance-requirement", methods=["POST"])
 @login_required
 @audit_log("ai_chat_add_compliance_requirement")
-@require_ai_approval
 def add_compliance_requirement():
     """
     Add a compliance requirement to a capability.
@@ -195,12 +210,26 @@ def add_compliance_requirement():
         "description": "Compliance requirement description",
         "priority": "High"
     }
+
+    Not gated by REQUIRE_AI_APPROVAL: AIChatApprovalService.approve_and_execute
+    only knows how to execute operation_type "create"/"update"/"link"/"delete"
+    against a fixed entity_type vocabulary (capability, application, vendor,
+    capability_mapping, work_package, application_capability_mapping -- see
+    that file), which has no "compliance_requirement" entry. Queuing this
+    write would create an approval row that could never actually be executed
+    by clicking Approve -- a fake queue with the same silent-drop problem
+    this gate exists to fix. Honest immediate execution (still behind
+    @login_required + @audit_log) beats that.
     """
     try:
         data = request.get_json()
         if not data:
             return jsonify({"error": "No JSON data received"}), 400
 
+        tag_ai_action(
+            action_type=request.endpoint, entity_type="compliance_requirement",
+            metadata={'method': request.method, 'path': request.path},
+        )
         service = AIDataInteractionService(user_id=current_user.id)
         result = service.add_compliance_requirement(data)
 
@@ -227,7 +256,6 @@ def add_compliance_requirement():
 @unified_ai_chat_bp.route("/data/create-requirement", methods=["POST"])
 @login_required
 @audit_log("ai_chat_create_requirement")
-@require_ai_approval
 def create_requirement():
     """Create an ArchiMate Requirement element, optionally linked to a capability (AIC-003).
 
@@ -239,12 +267,23 @@ def create_requirement():
         "adm_phase": "A",
         "source": "ai_chat"
     }
+
+    Not gated by REQUIRE_AI_APPROVAL: AIChatApprovalService.approve_and_execute's
+    "create" dispatch has no "requirement" entity_type (only capability,
+    application, vendor, capability_mapping, work_package -- see that file).
+    Queuing this would create an approval row Approve could never execute.
+    Honest immediate execution (still behind @login_required + @audit_log)
+    beats a fake queue.
     """
     try:
         data = request.get_json()
         if not data:
             return jsonify({"error": "No JSON data received"}), 400
 
+        tag_ai_action(
+            action_type=request.endpoint, entity_type="requirement",
+            metadata={'method': request.method, 'path': request.path},
+        )
         service = AIDataInteractionService(user_id=current_user.id)
         result = service.create_requirement(data)
 
@@ -270,7 +309,6 @@ def create_requirement():
 @unified_ai_chat_bp.route("/data/update-application/<int:app_id>", methods=["PUT"])
 @login_required
 @audit_log("ai_chat_update_application_metadata")
-@require_ai_approval
 def update_application_metadata(app_id):
     """
     Update application metadata through AI interaction.
@@ -288,8 +326,25 @@ def update_application_metadata(app_id):
         if not data:
             return jsonify({"error": "No JSON data received"}), 400
 
+        queued = queue_ai_write(
+            "update", "application", data,
+            summary=f"Update application #{app_id}",
+            entity_id=app_id,
+        )
+        if queued is not None:
+            return queued
+
+        # Was `service.update_application_metadata(app_id, data)` -- no such
+        # method exists on AIDataInteractionService (only `update_application`),
+        # so this call always raised AttributeError and 500'd regardless of
+        # the approval gate. Found while verifying that a queued-and-approved
+        # write performs the same operation this route would have: the
+        # approval path (operation_type="update", entity_type="application")
+        # correctly calls the real `update_application`, which is what
+        # exposed the direct path's dead call. Aligned on the real method
+        # name rather than reproducing the bug on both paths.
         service = AIDataInteractionService(user_id=current_user.id)
-        result = service.update_application_metadata(app_id, data)
+        result = service.update_application(app_id, data)
 
         if result["success"]:
             return jsonify(
@@ -382,7 +437,6 @@ def generate_archimate():
 @unified_ai_chat_bp.route("/apply-archimate", methods=["POST"])
 @login_required
 @audit_log("ai_chat_apply_archimate")
-@require_ai_approval
 def apply_archimate():
     """
     Apply selected ArchiMate elements to an application.
@@ -394,6 +448,16 @@ def apply_archimate():
             {"name": "App Service", "type": "ApplicationService", ...}
         ]
     }
+
+    Not gated by REQUIRE_AI_APPROVAL: this calls ArchitectWorkflowService, not
+    AIDataInteractionService, and applies an arbitrary list of ArchiMate
+    elements -- there is no "apply_archimate" operation_type in
+    AIChatApprovalService.approve_and_execute's dispatch, and no realistic way
+    to shoehorn a variable-length element list into the fixed create/update/
+    delete/link vocabulary that dispatch executes. Queuing this would produce
+    an approval row Approve could never execute. Honest immediate execution
+    (still behind @login_required + @audit_log, and already tagged via
+    tag_ai_action below on success) beats a fake queue.
     """
     try:
         data = request.get_json()
@@ -470,7 +534,6 @@ def map_apqc():
 @unified_ai_chat_bp.route("/apply-apqc", methods=["POST"])
 @login_required
 @audit_log("ai_chat_apply_apqc")
-@require_ai_approval
 def apply_apqc():
     """
     Apply selected APQC mappings to an application.
@@ -482,6 +545,12 @@ def apply_apqc():
             {"process_id": 456, "confidence": 95, ...}
         ]
     }
+
+    Not gated by REQUIRE_AI_APPROVAL: same reasoning as apply_archimate above
+    -- ArchitectWorkflowService.apply_apqc_mappings has no matching
+    operation_type/entity_type pair in AIChatApprovalService.approve_and_
+    execute's dispatch, so queuing would produce an approval Approve could
+    never execute. Honest immediate execution beats a fake queue.
     """
     try:
         data = request.get_json()
