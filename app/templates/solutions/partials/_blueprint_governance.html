@@ -25,7 +25,15 @@
     {# 0. Setup Checklist (GOV-03)                                         #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="setupChecklist({{ solution.id }})">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Platform Setup</h3>
+        {# Collapsed by default: with Completeness and Next Actions carrying the
+           page's live status, four always-open rail cards were noise. #}
+        <div x-data="{ railOpen: false }">
+        <button type="button" @click="railOpen = !railOpen" :aria-expanded="railOpen"
+                class="w-full flex items-center justify-between text-left mb-1">
+            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Platform Setup</h3>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="railOpen ? 'rotate-180' : ''"></i>
+        </button>
+        <div x-show="railOpen" x-cloak class="pt-2">
 
         {# Progress bar #}
         <template x-if="loadError">
@@ -63,6 +71,8 @@
                           x-text="item.label"></span>
                 </a>
             </template>
+        </div>
+        </div>
         </div>
     </div>
 
@@ -158,10 +168,14 @@
     {# 2. TOGAF ADM Checklist                                              #}
     {# ════════════════════════════════════════════════════════════════════ #}
     {% if phase_checklist %}
-    <div class="rounded-xl border border-border bg-card shadow-sm p-4">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">TOGAF ADM Checklist</h3>
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="{ railOpen: false }">
+        <button type="button" @click="railOpen = !railOpen" :aria-expanded="railOpen"
+                class="w-full flex items-center justify-between text-left">
+            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">TOGAF ADM Checklist</h3>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="railOpen ? 'rotate-180' : ''"></i>
+        </button>
 
-        <div class="space-y-2">
+        <div x-show="railOpen" x-cloak class="space-y-2 pt-3">
             {% for phase in phase_checklist %}
             <div class="flex items-center gap-2">
                 {% if phase.passed %}

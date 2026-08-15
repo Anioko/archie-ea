@@ -46,7 +46,9 @@
 {% endfor %}
 
 {% if _ns.gaps %}
-<div x-data="{ advisorOpen: {{ 'true' if _ns.n_zero > 3 else 'false' }} }"
+{# Starts collapsed: each section row already shows its own gap state, so the
+   expanded cards are a drill-down, not the default view. #}
+<div x-data="{ advisorOpen: false }"
      class="mb-6"
      id="bp-gap-advisor">
 
