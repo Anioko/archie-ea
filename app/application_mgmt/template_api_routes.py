@@ -1055,7 +1055,10 @@ def instantiate_bulk_enterprise(app_id):
 
     template_ids = data["template_ids"]
     create_relationships = data.get("create_relationships", True)
-    batch_size = int(data.get("batch_size", 10))
+    try:
+        batch_size = int(data.get("batch_size", 10))
+    except (ValueError, TypeError):
+        return jsonify({"error": "batch_size must be an integer"}), 400
     dry_run = data.get("dry_run", False)
 
     if not isinstance(template_ids, list):
@@ -1939,10 +1942,13 @@ def instantiate_template_with_hierarchy(app_id):
     if not data or "template_id" not in data:
         return jsonify({"error": "template_id required"}), 400
 
-    template_id = int(data["template_id"])
+    try:
+        template_id = int(data["template_id"])
+        max_depth = min(int(data.get("max_depth", 2)), 5)
+    except (ValueError, TypeError):
+        return jsonify({"error": "template_id and max_depth must be integers"}), 400
     include_parents = data.get("include_parents", False)
     include_children = data.get("include_children", False)
-    max_depth = min(int(data.get("max_depth", 2)), 5)
     create_relationships = data.get("create_relationships", True)
 
     # Get the main template

@@ -1622,7 +1622,10 @@ def greenfield_workflow_start():
 
     context = {}
     if data.get("solution_id"):
-        context["solution_id"] = int(data["solution_id"])
+        try:
+            context["solution_id"] = int(data["solution_id"])
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "error": "solution_id must be an integer"}), 400
 
     try:
         from app.modules.ai_chat.services.workbench_kernel import WorkbenchKernel, GreenfieldWorkflow
@@ -1830,7 +1833,10 @@ def brownfield_workflow_start():
 
     context = {}
     if data.get("solution_id"):
-        context["solution_id"] = int(data["solution_id"])
+        try:
+            context["solution_id"] = int(data["solution_id"])
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "error": "solution_id must be an integer"}), 400
 
     try:
         from app.modules.ai_chat.services.workbench_kernel import WorkbenchKernel, BrownfieldWorkflow

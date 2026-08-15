@@ -360,7 +360,11 @@ def custom_fields_bulk_delete():
     deactivated_count = 0
 
     # Batch-prefetch value counts to avoid N+1 queries
-    int_field_ids = [int(fid) for fid in field_ids]
+    try:
+        int_field_ids = [int(fid) for fid in field_ids]
+    except (ValueError, TypeError):
+        flash("field_ids must be integers", "error")
+        return redirect(url_for("application_mgmt.custom_fields_list"))
     value_counts = dict(
         db.session.query(
             ApplicationCustomFieldValue.field_definition_id,

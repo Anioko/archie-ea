@@ -848,7 +848,10 @@ def upload_excel_applications():
     map_capabilities = request.form.get("map_capabilities", "true").lower() == "true"
     map_processes = request.form.get("map_processes", "true").lower() == "true"
     generate_archimate = request.form.get("generate_archimate", "false").lower() == "true"
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number"}), 400
 
     # Get custom field mappings from frontend (if provided)
     custom_mappings = {}
@@ -1284,8 +1287,11 @@ def preview_ai_analysis():
     filename, validation_error = validate_import_file(file)
     if validation_error:
         return jsonify({"error": validation_error}), 400
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
-    max_preview = int(request.form.get("max_preview", "10"))
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+        max_preview = int(request.form.get("max_preview", "10"))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold and max_preview must be numbers"}), 400
 
     try:
         data_rows = []

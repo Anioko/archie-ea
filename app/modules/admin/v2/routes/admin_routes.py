@@ -5036,7 +5036,11 @@ def organization_create():
         name = request.form.get("name", "").strip()
         slug = request.form.get("slug", "").strip() or name.lower().replace(" ", "-")
         plan = request.form.get("plan", "free")
-        max_users = int(request.form.get("max_users") or 10)
+        try:
+            max_users = int(request.form.get("max_users") or 10)
+        except (ValueError, TypeError):
+            flash("Max users must be a whole number.", "error")
+            return render_template("admin/organizations/form.html", org=None)
 
         if not name:
             flash("Organization name is required.", "error")
@@ -5084,7 +5088,12 @@ def organization_edit(org_id):
                 return render_template("admin/organizations/form.html", org=org)
             org.slug = new_slug
         org.plan = request.form.get("plan", org.plan)
-        org.max_users = int(request.form.get("max_users") or org.max_users)
+        try:
+            org.max_users = int(request.form.get("max_users") or org.max_users)
+        except (ValueError, TypeError):
+            db.session.rollback()
+            flash("Max users must be a whole number.", "error")
+            return render_template("admin/organizations/form.html", org=org)
         db.session.commit()
         flash(f'Organization "{org.name}" updated.', "success")
         return redirect(url_for("admin.organization_detail", org_id=org.id))

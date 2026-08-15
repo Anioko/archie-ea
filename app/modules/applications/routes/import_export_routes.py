@@ -70,7 +70,10 @@ def analyze_import_stream():
     if file.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number"}), 400
     archimate_mode = request.form.get("archimate_mode", "standard")
 
     # Read file into memory before starting the generator (request context closes file)
@@ -421,11 +424,14 @@ def analyze_import():
     if file.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
-    # Analyze ALL applications - no artificial limit
-    max_preview = int(
-        request.form.get("max_preview", "999999")
-    )  # Effectively unlimited
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+        # Analyze ALL applications - no artificial limit
+        max_preview = int(
+            request.form.get("max_preview", "999999")
+        )  # Effectively unlimited
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold and max_preview must be numbers"}), 400
     archimate_mode = request.form.get(
         "archimate_mode", "standard"
     )  # quick, standard, or comprehensive
@@ -997,7 +1003,11 @@ def application_import():
         request.form.get("generate_archimate", "false").lower() == "true"
     )
     request.form.get("clone_vendor_archimate", "false").lower() == "true"
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    except (ValueError, TypeError):
+        flash("confidence_threshold must be a number", "error")
+        return redirect(url_for("unified_applications.application_list"))
 
     # Quick import mode: skip AI to prevent timeout (for E2E tests and fast imports)
     quick_mode = request.form.get("quick_mode", "false").lower() == "true"
@@ -2318,7 +2328,10 @@ def import_with_ai_review():
     generate_archimate = (
         request.form.get("generate_archimate", "false").lower() == "true"
     )
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number"}), 400
     import_mode = request.form.get("import_mode", "skip")
 
     # Get custom field mappings if provided

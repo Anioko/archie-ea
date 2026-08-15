@@ -515,7 +515,10 @@ def push_to_gantt(card_ref):
 
     if not card_ref.startswith("task:"):
         return jsonify({"success": False, "error": "Invalid card ref"}), 400
-    card_id = int(card_ref.split(":")[1])
+    try:
+        card_id = int(card_ref.split(":")[1])
+    except (ValueError, TypeError, IndexError):
+        return jsonify({"success": False, "error": "Invalid card ref"}), 400
     card = db.session.get(KanbanCard, card_id)
     if not card:
         return jsonify({"success": False, "error": "Card not found"}), 404

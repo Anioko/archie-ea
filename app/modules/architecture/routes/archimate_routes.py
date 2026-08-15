@@ -282,9 +282,14 @@ def link_driver_to_goal():
     goal_id = data.get("goal_id")
     if driver_id is None or goal_id is None:
         return jsonify({"error": "driver_id and goal_id required"}), 400
+    try:
+        driver_id = int(driver_id)
+        goal_id = int(goal_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "driver_id and goal_id must be integers"}), 400
     from app.models.motivation import Driver, Goal
-    driver = db.session.get(Driver, int(driver_id))
-    goal = db.session.get(Goal, int(goal_id))
+    driver = db.session.get(Driver, driver_id)
+    goal = db.session.get(Goal, goal_id)
     if not driver or not goal:
         return jsonify({"error": "Driver or Goal not found"}), 404
     goal.driver_id = driver.id
@@ -305,11 +310,16 @@ def link_capability_to_application():
     application_id = data.get("application_id")
     if capability_id is None or application_id is None:
         return jsonify({"error": "capability_id and application_id required"}), 400
+    try:
+        capability_id = int(capability_id)
+        application_id = int(application_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "capability_id and application_id must be integers"}), 400
     from app.models.business_capabilities import BusinessCapability
     from app.models.application_portfolio import ApplicationComponent
     from app.models.application_capability import ApplicationCapabilityMapping
-    cap = db.session.get(BusinessCapability, int(capability_id))
-    app = db.session.get(ApplicationComponent, int(application_id))
+    cap = db.session.get(BusinessCapability, capability_id)
+    app = db.session.get(ApplicationComponent, application_id)
     if not cap or not app:
         return jsonify({"error": "Capability or Application not found"}), 404
 
@@ -1701,9 +1711,13 @@ def api_patch_saved_viewpoint(vp_id):
         is_intent = bool(intent.get("is_architectural_intent", True))
         if not rel_id:
             return jsonify({"error": "relationship_intent.rel_id is required"}), 400
+        try:
+            rel_id = int(rel_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "relationship_intent.rel_id must be an integer"}), 400
 
         sdr = SavedDiagramRelationship.query.filter_by(
-            diagram_id=vp_id, relationship_id=int(rel_id),
+            diagram_id=vp_id, relationship_id=rel_id,
         ).first()
         if sdr:
             sdr.is_architectural_intent = is_intent
@@ -1711,7 +1725,7 @@ def api_patch_saved_viewpoint(vp_id):
             # Relationship not yet persisted in saved_diagram_relationships; create it
             sdr = SavedDiagramRelationship(
                 diagram_id=vp_id,
-                relationship_id=int(rel_id),
+                relationship_id=rel_id,
                 is_architectural_intent=is_intent,
             )
             db.session.add(sdr)

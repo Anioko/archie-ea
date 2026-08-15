@@ -252,9 +252,13 @@ def generate_requirements():
     solution_id = data.get("solution_id")
     if not solution_id:
         return jsonify({"success": False, "error": "solution_id is required"}), 400
+    try:
+        solution_id = int(solution_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "solution_id must be an integer"}), 400
 
     result = _svc().generate_requirements(
-        solution_id=int(solution_id),
+        solution_id=solution_id,
         capability_id=data.get("capability_id"),
         count=data.get("count", 5),
     )
@@ -274,9 +278,13 @@ def generate_test_cases():
     solution_id = data.get("solution_id")
     if not solution_id:
         return jsonify({"success": False, "error": "solution_id is required"}), 400
+    try:
+        solution_id = int(solution_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "solution_id must be an integer"}), 400
 
     result = _svc().generate_test_cases(
-        solution_id=int(solution_id),
+        solution_id=solution_id,
         options=data.get("options"),
     )
     status = 200 if result.get("success") else 500
@@ -304,8 +312,12 @@ def architect_export_brief():
     solution_id = data.get("solution_id")
     if not solution_id:
         return jsonify({"success": False, "error": "solution_id is required"}), 400
+    try:
+        solution_id = int(solution_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "solution_id must be an integer"}), 400
 
-    solution = Solution.query.get(int(solution_id))
+    solution = Solution.query.get(solution_id)
     if not solution:
         return jsonify({"success": False, "error": "Solution not found"}), 404
 
