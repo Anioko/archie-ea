@@ -1262,7 +1262,28 @@ window.deselectAllUnified = function() {
     renderUnifiedApplicationsList();
 };
 
+function _setUnifiedSaveButtonsDisabled(disabled) {
+    ['unified-save-btn', 'unified-reverse-save-btn'].forEach(function(id) {
+        let btn = document.getElementById(id);
+        if (btn) btn.disabled = disabled;
+    });
+}
+
 window.saveUnifiedMappings = async function() {
+    // Guard against double-submit: rapid repeat clicks on Save must not fire
+    // duplicate mapping-creation requests.
+    if (UnifiedMappingModal._saving) return;
+    UnifiedMappingModal._saving = true;
+    _setUnifiedSaveButtonsDisabled(true);
+    try {
+        await _saveUnifiedMappingsInner();
+    } finally {
+        UnifiedMappingModal._saving = false;
+        _setUnifiedSaveButtonsDisabled(false);
+    }
+};
+
+async function _saveUnifiedMappingsInner() {
     // Handle reverse mode: Application -> Targets
     if (UnifiedMappingModal.reverseMode) {
         await saveReverseMappings();

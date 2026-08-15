@@ -2,6 +2,7 @@
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/badge.html' import badge %}
+{% from 'components/skeleton.html' import skeleton_list, skeleton_table %}
 
 {% block title %}Enterprise Capability Roadmap{% endblock %}
 
@@ -127,14 +128,17 @@
       <span class="text-xs text-muted-foreground">ArchiMate 3.2 Implementation &amp; Migration Layer</span>
     </div>
     <div class="p-6">
-      <template x-if="errorMessage">
+      <template x-if="loading">
+        <div>{{ skeleton_list(rows=3) }}</div>
+      </template>
+      <template x-if="!loading && errorMessage">
         <div class="flex flex-col items-center justify-center py-10 text-center">
           <i data-lucide="alert-triangle" class="mb-3 h-10 w-10 text-destructive"></i>
           <p class="text-sm font-medium text-destructive-emphasis" x-text="errorMessage"></p>
           <p class="mt-1 text-xs text-muted-foreground">The roadmap could not be read — this is not an empty roadmap.</p>
         </div>
       </template>
-      <template x-if="!errorMessage && plateaus.length === 0">
+      <template x-if="!loading && !errorMessage && plateaus.length === 0">
         <div class="flex flex-col items-center justify-center py-10 text-center">
           <i data-lucide="layers" class="mb-3 h-10 w-10 text-muted-foreground/40"></i>
           <p class="text-sm font-medium text-foreground">No plateaus defined</p>
@@ -147,7 +151,7 @@
           </button>
         </div>
       </template>
-      <template x-if="plateaus.length > 0">
+      <template x-if="!loading && plateaus.length > 0">
         <div class="grid gap-4" :class="plateaus.length === 1 ? 'grid-cols-1' : plateaus.length === 2 ? 'grid-cols-2' : 'grid-cols-3'">
           <template x-for="plateau in plateaus" :key="plateau.id">
             <div class="rounded-lg border border-border bg-muted/30 p-4">
@@ -213,21 +217,26 @@
           </tr>
         </thead>
         <tbody>
-          <template x-if="errorMessage">
+          <template x-if="loading">
+            <tr>
+              <td colspan="7" class="px-4 py-4">{{ skeleton_table(rows=3, columns=7) }}</td>
+            </tr>
+          </template>
+          <template x-if="!loading && errorMessage">
             <tr>
               <td colspan="7" class="px-4 py-10 text-center text-sm text-destructive-emphasis">
                 Work packages could not be read — this is not "none yet".
               </td>
             </tr>
           </template>
-          <template x-if="!errorMessage && workPackages.length === 0">
+          <template x-if="!loading && !errorMessage && workPackages.length === 0">
             <tr>
               <td colspan="7" class="px-4 py-10 text-center text-sm text-muted-foreground">
                 No work packages yet. Add a gap first, then create work packages to resolve it.
               </td>
             </tr>
           </template>
-          <template x-for="wp in workPackages" :key="wp.id">
+          <template x-for="wp in (loading ? [] : workPackages)" :key="wp.id">
             <tr class="border-t border-border hover:bg-muted/30">
               <td class="px-4 py-3">
                 <input type="checkbox" class="rounded border-input"
@@ -608,6 +617,7 @@
       selectedGapIds: [],
       isDetecting: false,
       errorMessage: '',
+      loading: true,
 
       get filteredGaps() {
         return this.gaps.filter(g => {
@@ -637,7 +647,12 @@
       },
 
       async init() {
-        await Promise.all([this.loadGaps(), this.loadPlateaus(), this.loadWorkPackages()]);
+        this.loading = true;
+        try {
+          await Promise.all([this.loadGaps(), this.loadPlateaus(), this.loadWorkPackages()]);
+        } finally {
+          this.loading = false;
+        }
       },
 
       async loadGaps() {

@@ -1351,24 +1351,28 @@ def enrich_requirement(req_id):
     if "moscow_priority" in data:
         req.moscow_priority = data["moscow_priority"] or None
     # ArchiMate 3.2 Motivation Layer FKs
-    if "driver_id" in data:
-        req.driver_id = int(data["driver_id"]) if data["driver_id"] else None
-    if "goal_id" in data:
-        req.goal_id = int(data["goal_id"]) if data["goal_id"] else None
-    if "stakeholder_id" in data:
-        req.stakeholder_id = int(data["stakeholder_id"]) if data["stakeholder_id"] else None
-    if "archimate_requirement_id" in data:
-        req.archimate_requirement_id = int(data["archimate_requirement_id"]) if data["archimate_requirement_id"] else None
-    if "capability_id" in data:
-        req.capability_id = int(data["capability_id"]) if data["capability_id"] else None
+    try:
+        if "driver_id" in data:
+            req.driver_id = int(data["driver_id"]) if data["driver_id"] else None
+        if "goal_id" in data:
+            req.goal_id = int(data["goal_id"]) if data["goal_id"] else None
+        if "stakeholder_id" in data:
+            req.stakeholder_id = int(data["stakeholder_id"]) if data["stakeholder_id"] else None
+        if "archimate_requirement_id" in data:
+            req.archimate_requirement_id = int(data["archimate_requirement_id"]) if data["archimate_requirement_id"] else None
+        if "capability_id" in data:
+            req.capability_id = int(data["capability_id"]) if data["capability_id"] else None
+        if "template_id" in data:
+            req.template_id = int(data["template_id"]) if data["template_id"] else None
+    except (ValueError, TypeError):
+        db.session.rollback()
+        return jsonify({"success": False, "error": "driver_id, goal_id, stakeholder_id, archimate_requirement_id, capability_id and template_id must be integers"}), 400
     if "owner" in data:
         req.owner = data["owner"] or None
     if "layer" in data:
         req.layer = data["layer"] or None
     if "req_type" in data:
         req.req_type = data["req_type"]
-    if "template_id" in data:
-        req.template_id = int(data["template_id"]) if data["template_id"] else None
     for field in ['stakeholder_name', 'stakeholder_role', 'source_document', 'approval_status']:
         if field in data:
             setattr(req, field, data[field])
@@ -1386,10 +1390,14 @@ def enrich_requirement(req_id):
         tags = data['compliance_tags']
         if isinstance(tags, list):
             req.compliance_tags = tags
-    if "story_points" in data:
-        req.story_points = int(data["story_points"]) if data["story_points"] else None
-    if "epic_parent_id" in data:
-        req.epic_parent_id = int(data["epic_parent_id"]) if data["epic_parent_id"] else None
+    try:
+        if "story_points" in data:
+            req.story_points = int(data["story_points"]) if data["story_points"] else None
+        if "epic_parent_id" in data:
+            req.epic_parent_id = int(data["epic_parent_id"]) if data["epic_parent_id"] else None
+    except (ValueError, TypeError):
+        db.session.rollback()
+        return jsonify({"success": False, "error": "story_points and epic_parent_id must be integers"}), 400
     if "dod_complete" in data:
         req.dod_complete = bool(data["dod_complete"])
     # PRQ-005: gate — block 'implemented' unless approved
@@ -2158,7 +2166,10 @@ def link_work_package(req_id):
 
     data = request.get_json(silent=True) or {}
     wp_id = data.get("work_package_id")
-    req.work_package_id = int(wp_id) if wp_id is not None else None
+    try:
+        req.work_package_id = int(wp_id) if wp_id is not None else None
+    except (ValueError, TypeError):
+        return jsonify({"error": "work_package_id must be an integer"}), 400
 
     try:
         db.session.commit()

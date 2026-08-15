@@ -254,6 +254,8 @@ function documentAnalyzer(entityType, entityId) {
 
                 if ((await Platform.modal.confirm(message + '\n\nReload page to see changes?'))) {
                     window.location.reload();
+                } else {
+                    self.applying = false;
                 }
             })
             .catch(function(error) {

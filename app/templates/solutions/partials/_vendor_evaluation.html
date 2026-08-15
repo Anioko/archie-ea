@@ -98,8 +98,22 @@
                   class="ml-1 text-foreground" x-text="'(' + shortlist.length + ')'"></span>
         </h3>
 
+        {# Loading state #}
+        <div x-show="loading" x-cloak class="space-y-2">
+            <div class="animate-pulse h-14 bg-muted rounded-lg"></div>
+            <div class="animate-pulse h-14 bg-muted rounded-lg"></div>
+        </div>
+
+        {# Load-error state #}
+        <div x-show="!loading && loadFailed" x-cloak
+             class="flex flex-col items-center justify-center py-8 text-center border border-dashed border-destructive/30 rounded-lg">
+            <i data-lucide="alert-triangle" class="w-8 h-8 text-destructive-emphasis mb-2" aria-hidden="true"></i>
+            <p class="text-sm text-destructive-emphasis">Could not load the shortlist &mdash; this is not an empty shortlist</p>
+            <p class="text-xs text-muted-foreground mt-1">Reload the page to try again</p>
+        </div>
+
         {# Empty state #}
-        <div x-show="shortlist.length === 0" x-cloak
+        <div x-show="!loading && !loadFailed && shortlist.length === 0" x-cloak
              class="flex flex-col items-center justify-center py-8 text-center border border-dashed border-border rounded-lg">
             <i data-lucide="clipboard-list" class="w-8 h-8 text-muted-foreground/50 mb-2" aria-hidden="true"></i>
             <p class="text-sm text-muted-foreground">No products shortlisted yet</p>
@@ -107,7 +121,7 @@
         </div>
 
         {# Shortlist items #}
-        <div x-show="shortlist.length > 0" x-cloak class="space-y-2">
+        <div x-show="!loading && !loadFailed && shortlist.length > 0" x-cloak class="space-y-2">
             <template x-for="item in shortlist" :key="item.id">
                 <div class="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-background group hover:border-primary/30 transition-colors">
                     <div class="min-w-0 flex-1">
@@ -182,22 +196,32 @@ document.addEventListener('alpine:init', () => {
         addingId: null,
         removingId: null,
         errorMsg: '',
+        loading: true,
+        loadFailed: false,
 
         async init() {
             await this.loadShortlist();
         },
 
         async loadShortlist() {
+            this.loading = true;
+            this.loadFailed = false;
             try {
                 const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation`);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
                 if (data.success) {
                     this.shortlist = data.shortlist || [];
                     this.categories = data.categories || [];
+                } else {
+                    this.loadFailed = true;
                 }
             } catch (e) {
                 console.error('Failed to load vendor evaluation shortlist:', e);
+                this.loadFailed = true;
                 this.errorMsg = 'Failed to load vendor shortlist. Reload the page to try again.';
+            } finally {
+                this.loading = false;
             }
         },
 

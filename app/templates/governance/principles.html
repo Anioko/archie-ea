@@ -1,11 +1,13 @@
 {% extends "layouts/admin_base.html" %}
 {% from 'components/page_header.html' import page_header %}
+{% from 'components/skeleton.html' import skeleton_card %}
 {% block title %}Architecture Principles{% endblock %}
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
   {{ page_header(title='Architecture Principles', description='Guiding principles that steer architecture decisions') }}
   <div id="gov-list" class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div class="col-span-full text-center text-muted-foreground py-12">Loading&hellip;</div>
+    {{ skeleton_card() }}
+    {{ skeleton_card() }}
   </div>
 </div>
 <script>
@@ -13,7 +15,7 @@
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
   var el=document.getElementById('gov-list');
   fetch('/governance/api/principles',{headers:{'Accept':'application/json'}})
-    .then(function(r){ return r.json(); })
+    .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(items){
       if(!items || !items.length){
         el.innerHTML='<div class="col-span-full rounded-xl border bg-card shadow-sm p-10 text-center text-muted-foreground">No architecture principles defined yet.</div>';
@@ -29,7 +31,7 @@
       }).join('');
     })
     .catch(function(){
-      el.innerHTML='<div class="col-span-full rounded-xl border bg-card shadow-sm p-10 text-center text-muted-foreground">No architecture principles defined yet.</div>';
+      el.innerHTML='<div class="col-span-full rounded-xl border border-destructive/30 bg-destructive/10 shadow-sm p-10 text-center text-destructive-emphasis">Could not load architecture principles — the request failed.</div>';
     });
 })();
 </script>

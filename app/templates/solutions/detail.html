@@ -940,7 +940,12 @@
         </div>
         {% if stakeholder_mappings %}
         <div class="rounded-xl border border-border bg-card overflow-hidden">
-          <div id="stk-grid-embed" class="px-5 py-4" style="min-height:200px"></div>
+          <div id="stk-grid-embed" class="px-5 py-4" style="min-height:200px">
+            <div class="animate-pulse space-y-2">
+              <div class="h-4 bg-muted rounded w-1/3"></div>
+              <div class="h-40 bg-muted rounded"></div>
+            </div>
+          </div>
         </div>
         {% else %}
         <p class="text-sm text-muted-foreground">No stakeholders mapped yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">add stakeholders</a></p>
@@ -2357,7 +2362,7 @@ function sadPage() {
   const solutionId = {{ solution.id }};
 
   fetch('/api/stakeholders/map-data?solution_id=' + solutionId)
-    .then(function(r){ return r.json(); })
+    .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(data){
       if (!Array.isArray(data) || data.length === 0) {
         wrap.innerHTML = '<p class="text-center text-xs text-muted-foreground py-8">No stakeholders with influence/interest data.</p>';
@@ -2366,10 +2371,11 @@ function sadPage() {
       renderGrid(data);
     })
     .catch(function(){
-      wrap.innerHTML = '<p class="text-center text-xs text-muted-foreground py-8">Could not load stakeholder data.</p>';
+      wrap.innerHTML = '<p class="text-center text-xs text-destructive-emphasis py-8">Could not load stakeholder data.</p>';
     });
 
   function renderGrid(stakeholders) {
+    wrap.innerHTML = '';
     const W = wrap.clientWidth || 600;
     const H = Math.max(320, W * 0.5);
     const M = {top:32, right:24, bottom:44, left:44};

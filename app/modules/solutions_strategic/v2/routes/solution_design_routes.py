@@ -3814,9 +3814,12 @@ def runtime_health_report():
         }), 200
 
     # SLA compliance: latency < 500ms, error_rate < 5%, uptime > 99%
-    avg_latency_ms = float(body.get("avg_latency_ms") or 0)
-    error_rate_pct = float(body.get("error_rate_pct") or 0)
-    uptime_pct = float(body.get("uptime_pct") or 100)
+    try:
+        avg_latency_ms = float(body.get("avg_latency_ms") or 0)
+        error_rate_pct = float(body.get("error_rate_pct") or 0)
+        uptime_pct = float(body.get("uptime_pct") or 100)
+    except (ValueError, TypeError):
+        return jsonify({"received": False, "error": "avg_latency_ms, error_rate_pct and uptime_pct must be numbers"}), 400
 
     sla_violations = []
     if avg_latency_ms >= 500:

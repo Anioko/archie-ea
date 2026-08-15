@@ -59,6 +59,8 @@
 
             // Bulk delete
             bulkDeleting: false,
+            deleteConfirmText: '',
+            deleteInProgress: false,
 
             init: function () {
                 this.loadData();
@@ -335,9 +337,60 @@
 
             // Bulk delete
             confirmBulkDelete: function () {
+                this.deleteConfirmText = '';
                 if (window.Platform && window.Platform.modal) {
                     Platform.modal.open('bulk-delete-confirm-modal');
                 }
+            },
+
+            executeBulkDelete: function () {
+                let self = this;
+                if (self.deleteConfirmText !== 'DELETE' || self.deleteInProgress) return;
+                let ids = self._selectedIds.slice();
+                if (ids.length === 0) return;
+                self.deleteInProgress = true;
+
+                let failures = 0;
+                let remaining = ids.length;
+                let finish = function () {
+                    self.deleteInProgress = false;
+                    self.deleteConfirmText = '';
+                    self.clearSelection();
+                    if (window.Platform && window.Platform.modal) {
+                        Platform.modal.close('bulk-delete-confirm-modal');
+                    }
+                    if (window.Platform && window.Platform.toast) {
+                        if (failures === 0) {
+                            Platform.toast.success('Capabilities deleted.');
+                        } else if (failures === ids.length) {
+                            Platform.toast.error('Delete failed.');
+                        } else {
+                            Platform.toast.warning((ids.length - failures) + ' deleted, ' + failures + ' failed.');
+                        }
+                    }
+                    self.loadData();
+                };
+
+                ids.forEach(function (id) {
+                    fetch('/enterprise/capabilities/' + id, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': getCSRF(),
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(function (r) { return r.json().catch(function () { return {}; }); })
+                    .then(function (data) {
+                        if (!data.success) failures++;
+                    })
+                    .catch(function () {
+                        failures++;
+                    })
+                    .finally(function () {
+                        remaining--;
+                        if (remaining === 0) finish();
+                    });
+                });
             }
         };
     };

@@ -304,7 +304,11 @@ def update_solution_metric(solution_id, metric_id):
             setattr(metric, field, data[field])
     if "measurement_date" in data and data["measurement_date"]:
         from datetime import date
-        metric.measurement_date = date.fromisoformat(data["measurement_date"])
+        try:
+            metric.measurement_date = date.fromisoformat(data["measurement_date"])
+        except (ValueError, TypeError):
+            db.session.rollback()
+            return jsonify({"success": False, "error": "measurement_date must be in YYYY-MM-DD format"}), 400
     db.session.commit()
     return jsonify({"success": True, "data": metric.to_dict()})
 
@@ -388,7 +392,10 @@ def create_solution_plateau(solution_id):
     )
     if data.get("target_date"):
         from datetime import date
-        plateau.target_date = date.fromisoformat(data["target_date"])
+        try:
+            plateau.target_date = date.fromisoformat(data["target_date"])
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "error": "target_date must be in YYYY-MM-DD format"}), 400
     db.session.add(plateau)
     db.session.flush()
     if data.get("archimate_element_id"):
@@ -459,7 +466,11 @@ def update_solution_plateau(solution_id, plateau_id):
     if "target_date" in data:
         if data["target_date"]:
             from datetime import date
-            plateau.target_date = date.fromisoformat(data["target_date"])
+            try:
+                plateau.target_date = date.fromisoformat(data["target_date"])
+            except (ValueError, TypeError):
+                db.session.rollback()
+                return jsonify({"success": False, "error": "target_date must be in YYYY-MM-DD format"}), 400
         else:
             plateau.target_date = None
     db.session.commit()

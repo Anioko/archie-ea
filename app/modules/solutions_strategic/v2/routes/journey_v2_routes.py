@@ -2624,7 +2624,10 @@ def infer_component_specs(solution_id):
     from app.models.solution_sad_models import SolutionIntegrationFlow, SolutionSLA
 
     body = request.get_json(silent=True) or {}
-    batch_size = min(int(body.get("batch_size", 3)), 10)
+    try:
+        batch_size = min(int(body.get("batch_size", 3)), 10)
+    except (ValueError, TypeError):
+        return api_error("batch_size must be an integer", 400)
 
     # ── Load junctions; empty set is a valid state (no elements linked yet) ──
     try:

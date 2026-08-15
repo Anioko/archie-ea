@@ -226,7 +226,7 @@
                     Cancel
                 </button>
                 <!-- Save button for reverse mode (Application -> Capabilities) -->
-                <button type="button" id="unified-reverse-save-btn" @click="saveUnifiedMappings()" class="hidden px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary" aria-label="Save mappings">
+                <button type="button" id="unified-reverse-save-btn" @click="saveUnifiedMappings()" class="hidden px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary disabled:opacity-50 disabled:pointer-events-none" aria-label="Save mappings">
                     Save Mappings
                 </button>
             </div>
@@ -341,7 +341,7 @@
                     <button type="button" @click="Platform.modal.close('unified-mapping-modal')" class="px-4 py-2 bg-muted text-foreground/80 rounded-md hover:bg-muted-foreground/40" aria-label="Cancel mapping">
                         Cancel
                     </button>
-                    <button type="button" @click="saveUnifiedMappings()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary" aria-label="Save mappings">
+                    <button type="button" id="unified-save-btn" @click="saveUnifiedMappings()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary disabled:opacity-50 disabled:pointer-events-none" aria-label="Save mappings">
                         Save Mappings
                     </button>
                 </div>

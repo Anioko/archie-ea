@@ -125,6 +125,9 @@
                     this.capabilityResults = [];
                     return;
                 }
+                // Guard against out-of-order responses: a slow earlier request
+                // resolving after a faster later one must not clobber it.
+                var requestId = (this._searchRequestId = (this._searchRequestId || 0) + 1);
                 try {
                     var resp = await fetch(
                         '/value-streams/' + this.valueStreamId + '/api/unmapped-capabilities?q=' + encodeURIComponent(q)
@@ -133,8 +136,10 @@
                     // the user concluded the capability was already mapped.
                     if (!resp.ok) throw new Error('HTTP ' + resp.status);
                     var data = await resp.json();
+                    if (requestId !== this._searchRequestId) return; // stale response
                     this.capabilityResults = data.capabilities || [];
                 } catch (err) {
+                    if (requestId !== this._searchRequestId) return; // stale response
                     console.error('Capability search failed', err);
                     this.capabilityResults = [];
                     if (window.Platform && window.Platform.toast) {

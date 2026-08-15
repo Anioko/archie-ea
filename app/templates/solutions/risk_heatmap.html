@@ -227,9 +227,10 @@
                         >Cancel</button>
                         <button
                             type="button"
-                            class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                            class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none"
+                            :disabled="saving"
                             @click="saveEdit()"
-                        >Save</button>
+                        ><span x-text="saving ? 'Saving…' : 'Save'"></span></button>
                     </div>
                 </div>
             </template>

@@ -3529,7 +3529,10 @@ def create_roadmap_elements():
     data = request.get_json() or {}
     gap_elements = data.get("gap_elements") or []
     solution_option = data.get("solution_option") or {}
-    wks = max(6, int(solution_option.get("implementation_weeks") or 24))
+    try:
+        wks = max(6, int(solution_option.get("implementation_weeks") or 24))
+    except (ValueError, TypeError):
+        return jsonify({"error": "solution_option.implementation_weeks must be a number"}), 400
 
     phases = [
         ("Discovery & Design", 1, 4, "Requirements, architecture blueprint, stakeholder alignment"),

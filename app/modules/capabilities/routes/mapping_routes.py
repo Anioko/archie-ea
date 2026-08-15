@@ -1862,8 +1862,11 @@ def api_abacus_auto_suggest():
     if not application_ids or not isinstance(application_ids, list):
         return jsonify({"error": "application_ids (list of ints) is required"}), 400
 
-    threshold = float(data.get("threshold", 0.3))
-    auto_apply_threshold = float(data.get("auto_apply_threshold", 0.7))
+    try:
+        threshold = float(data.get("threshold", 0.3))
+        auto_apply_threshold = float(data.get("auto_apply_threshold", 0.7))
+    except (ValueError, TypeError):
+        return jsonify({"error": "threshold and auto_apply_threshold must be numbers"}), 400
 
     try:
         # Load requested applications (filter to Abacus-sourced ones)

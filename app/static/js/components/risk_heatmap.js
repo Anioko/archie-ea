@@ -8,6 +8,7 @@ function riskHeatmap(initialRisks) {
         editOpen: false,
         editRisk: {},
         saveError: '',
+        saving: false,
 
         /** Return risks positioned at the given probability and impact cell. */
         risksAt(prob, impact) {
@@ -32,6 +33,8 @@ function riskHeatmap(initialRisks) {
 
         /** Persist the edited risk via PATCH and update the local risks array. */
         async saveEdit() {
+            if (this.saving) return;
+            this.saving = true;
             this.saveError = '';
             const url = `/api/solution-risks/${this.editRisk.id}`;
             try {
@@ -60,6 +63,8 @@ function riskHeatmap(initialRisks) {
             } catch (e) {
                 this.saveError = 'Network error — please try again';
                 console.error('Risk save error:', e);
+            } finally {
+                this.saving = false;
             }
         },
     };

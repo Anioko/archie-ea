@@ -1876,8 +1876,11 @@ def generate_code(solution_id):
     )
     if _enforce_quality_gate:
         _qg_failures = []
-        _min_qs = float(payload.get("min_quality_score", 80))
-        _min_cc = float(payload.get("min_chain_completeness", 0.95))
+        try:
+            _min_qs = float(payload.get("min_quality_score", 80))
+            _min_cc = float(payload.get("min_chain_completeness", 0.95))
+        except (ValueError, TypeError):
+            return jsonify({"error": "min_quality_score and min_chain_completeness must be numbers"}), 400
         if (quality_score or 0) < _min_qs:
             _qg_failures.append({
                 "dimension": "quality_score",
@@ -1917,7 +1920,10 @@ def generate_code(solution_id):
                 "issues": [i["issue"] for i in _sec_critical[:3]],
             })
         # Lint: block only on excessive violations (>50 E501 is a template bug, not style preference)
-        _max_lint = int(payload.get("max_lint_violations", 50))
+        try:
+            _max_lint = int(payload.get("max_lint_violations", 50))
+        except (ValueError, TypeError):
+            return jsonify({"error": "max_lint_violations must be an integer"}), 400
         if _lint_result.get("e501_count", 0) > _max_lint:
             _qg_failures.append({
                 "dimension": "lint",
@@ -2866,8 +2872,14 @@ def generate_stream(solution_id):
         )
         if _enforce_quality_gate:
             _qg_failures = []
-            _min_qs = float(payload.get("min_quality_score", 80))
-            _min_cc = float(payload.get("min_chain_completeness", 0.95))
+            try:
+                _min_qs = float(payload.get("min_quality_score", 80))
+                _min_cc = float(payload.get("min_chain_completeness", 0.95))
+            except (ValueError, TypeError):
+                _msg = "min_quality_score and min_chain_completeness must be numbers"
+                yield _sse({"phase": "validation", "status": "error", "error": _msg})
+                yield _sse({"phase": "complete", "success": False, "error": _msg})
+                return
             if (quality_score or 0) < _min_qs:
                 _qg_failures.append({
                     "dimension": "quality_score",

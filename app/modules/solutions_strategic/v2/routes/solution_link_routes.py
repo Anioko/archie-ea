@@ -1003,7 +1003,10 @@ def sync_capabilities(solution_id):
     """Replace all capability mappings with the given set of IDs (picker save)."""
     solution = Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
-    selected_ids = set(int(i) for i in data.get("ids", []) if i)
+    try:
+        selected_ids = set(int(i) for i in data.get("ids", []) if i)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "ids must be integers"}), 400
     try:
         from app.models.solution_models import SolutionCapabilityMapping
         from app.models.solution_architect_models import SolutionProblemDefinition
@@ -1106,7 +1109,10 @@ def sync_requirements(solution_id):
     """Replace direct requirement links with the selected requirement IDs."""
     solution = Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
-    selected_ids = set(int(i) for i in data.get("ids", []) if i)
+    try:
+        selected_ids = set(int(i) for i in data.get("ids", []) if i)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "ids must be integers"}), 400
     try:
         from app.models.solution_architect_models import SolutionRequirement
 

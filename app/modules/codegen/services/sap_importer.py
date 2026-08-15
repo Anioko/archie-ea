@@ -231,12 +231,16 @@ def register_sap_import_routes(app=None) -> None:
             solution_id = body.get("solution_id") or body.get("architecture_id")
             if not solution_id:
                 return jsonify({"ok": False, "error": "solution_id is required"}), 400
+            try:
+                solution_id = int(solution_id)
+            except (ValueError, TypeError):
+                return jsonify({"ok": False, "error": "solution_id must be an integer"}), 400
 
             # Resolve solution → architecture model, creating one if absent.
             from app.models.archimate_core import ArchitectureModel  # noqa: PLC0415
             arch_model = (
                 ArchitectureModel.query
-                .filter_by(solution_id=int(solution_id))
+                .filter_by(solution_id=solution_id)
                 .order_by(ArchitectureModel.id.asc())
                 .first()
             )
@@ -244,7 +248,7 @@ def register_sap_import_routes(app=None) -> None:
                 arch_model = ArchitectureModel(
                     name=f"SAP Architecture — Solution {solution_id}",
                     version="1.0",
-                    solution_id=int(solution_id),
+                    solution_id=solution_id,
                 )
                 db.session.add(arch_model)
                 db.session.flush()  # get PK before we need it
@@ -258,14 +262,21 @@ def register_sap_import_routes(app=None) -> None:
             if not mock and not config:
                 return jsonify({"ok": False, "error": "config is required when mock=false"}), 400
 
+            try:
+                table_limit = int(body.get("table_limit", 500))
+                tcode_limit = int(body.get("tcode_limit", 200))
+                role_limit = int(body.get("role_limit", 50))
+            except (ValueError, TypeError):
+                return jsonify({"ok": False, "error": "table_limit, tcode_limit and role_limit must be integers"}), 400
+
             result = SapImporter.run_import(
                 architecture_id=int(architecture_id),
                 config=config,
                 mock=mock,
                 package_filter=body.get("package_filter"),
-                table_limit=int(body.get("table_limit", 500)),
-                tcode_limit=int(body.get("tcode_limit", 200)),
-                role_limit=int(body.get("role_limit", 50)),
+                table_limit=table_limit,
+                tcode_limit=tcode_limit,
+                role_limit=role_limit,
             )
 
             status_code = 200 if result.get("ok") else 500
