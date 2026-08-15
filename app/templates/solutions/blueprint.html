@@ -75,26 +75,36 @@
     {# ── Document outline — the page's map. Every section, its state, one
          click to jump-and-open. Replaces the header score strip. ── #}
     <nav class="hidden xl:block w-52 shrink-0 sticky top-[72px] max-h-[calc(100vh-88px)] overflow-y-auto pr-1"
-         aria-label="Document outline">
+         aria-label="Document outline"
+         x-data="{ bpOutlineActive: '' }"
+         x-init="
+            const obs = new IntersectionObserver((entries) => {
+                entries.forEach(e => { if (e.isIntersecting) bpOutlineActive = e.target.id; });
+            }, { rootMargin: '-120px 0px -60% 0px', threshold: 0.1 });
+            document.querySelectorAll('[data-bp-section]').forEach(el => obs.observe(el));
+         ">
         <p class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-2">Outline</p>
         <ul class="space-y-0.5 text-sm">
-            {% set _outline = [('executive_summary', 'Exec Summary')] %}
+            {% set _outline = [('executive_summary', 'Exec Summary', 1)] %}
             {% for section_id, num, title, viewpoint in viewpoint_sections %}
-                {% set _ = _outline.append((section_id, title)) %}
+                {% set _ = _outline.append((section_id, title, num)) %}
             {% endfor %}
-            {% set _ = _outline.append(('requirements_traceability', 'Traceability')) %}
-            {% for oid, olabel in _outline %}
+            {% set _ = _outline.append(('requirements_traceability', 'Traceability', viewpoint_sections | length + 2)) %}
+            {% for oid, olabel, onum in _outline %}
             {% set o_score = scores.get(oid, {}).get('overall', 0) if scores else 0 %}
             <li>
                 <a href="#{{ oid }}"
                    @click.prevent="window.dispatchEvent(new CustomEvent('bp-open-section', {detail: '{{ oid }}'}));
                                    $nextTick(() => { const el = document.getElementById('{{ oid }}');
                                    if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); })"
-                   class="flex items-center gap-2 px-2 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                    <span class="w-1.5 h-1.5 rounded-full shrink-0
- {% if o_score >= 80 %}bg-success{% elif o_score >= 40 %}bg-warning{% elif o_score >= 1 %}bg-destructive{% else %}bg-muted-foreground/30{% endif %}"></span>
+                   :class="bpOutlineActive === '{{ oid }}' ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
+                   class="flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors">
+                    <span class="w-4 text-right text-[10px] tabular-nums shrink-0
+ {% if o_score >= 80 %}text-success-emphasis{% elif o_score >= 40 %}text-warning-emphasis{% elif o_score >= 1 %}text-destructive-emphasis{% else %}text-muted-foreground/60{% endif %}">{{ onum }}</span>
                     <span class="truncate flex-1">{{ olabel }}</span>
-                    {% if o_score %}<span class="text-[10px] tabular-nums shrink-0">{{ o_score }}%</span>{% endif %}
+                    {% if o_score %}<span class="text-[10px] tabular-nums shrink-0
+ {% if o_score >= 80 %}text-success-emphasis{% elif o_score >= 40 %}text-warning-emphasis{% else %}text-destructive-emphasis{% endif %}">{{ o_score }}%</span>
+                    {% else %}<span class="w-1.5 h-1.5 rounded-full shrink-0 bg-muted-foreground/30" title="Empty"></span>{% endif %}
                 </a>
             </li>
             {% endfor %}
