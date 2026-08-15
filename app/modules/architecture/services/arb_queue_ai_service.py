@@ -151,6 +151,10 @@ def _parse_triage(raw: str, valid_review_numbers: set) -> Dict[str, Any]:
         if entry["review_number"] not in valid_review_numbers:
             logger.warning("ARB triage: dropping invented review_number %r", entry["review_number"])
             continue
+        if not isinstance(entry["complexity"], str):
+            raise ARBQueueAIError(
+                f"LLM response item 'complexity' was not a string: {entry['complexity']!r}"
+            )
         if entry["complexity"] not in VALID_COMPLEXITIES:
             logger.warning("ARB triage: dropping item with invalid complexity %r", entry["complexity"])
             continue
@@ -383,6 +387,10 @@ def _parse_minutes(raw: str, valid_review_numbers: set) -> Dict[str, Any]:
         if entry["review_number"] not in valid_review_numbers:
             logger.warning("ARB minutes: dropping invented review_number %r", entry["review_number"])
             continue
+        if not isinstance(entry["disposition"], str):
+            raise ARBQueueAIError(
+                f"LLM response decision 'disposition' was not a string: {entry['disposition']!r}"
+            )
         if entry["disposition"] not in VALID_DISPOSITIONS:
             logger.warning("ARB minutes: dropping decision with invalid disposition %r", entry["disposition"])
             continue

@@ -297,6 +297,47 @@ def test_ai_suggest_mappings_no_org_capabilities_is_200_without_llm(
     assert calls == []
 
 
+def test_ai_suggest_mappings_catalog_query_failure_is_honest_error(
+    db_session, make_org, logged_in_org, client, monkeypatch
+):
+    """When deriving this org's mapped-capability names fails outright (a
+    real DB/query error), the route must NOT fall back to the "No
+    capabilities mapped in this organization yet — map one manually first"
+    200 response -- that message means something different (a genuinely
+    empty catalog) and would mislead the user into re-doing manual mapping
+    that was never the problem. It must surface as an honest error
+    instead."""
+    org, user = logged_in_org
+    from app.services.feature_flag_service import FeatureFlagService
+
+    monkeypatch.setattr(FeatureFlagService, "is_ai_enabled", lambda feature: True)
+
+    vs, stages = _make_value_stream(db_session, org)
+
+    import app.modules.capabilities.services.value_stream_ai_service as svc_module
+
+    def _boom(limit=svc_module.MAX_CAPABILITIES):
+        raise svc_module.CapabilityCatalogUnavailableError("both catalog queries failed")
+
+    monkeypatch.setattr(svc_module, "_org_scoped_capability_names", _boom)
+
+    calls = []
+    monkeypatch.setattr(
+        svc_module.LLMService,
+        "generate_from_prompt",
+        staticmethod(lambda *a, **k: calls.append(1)),
+    )
+
+    _clear_auth_caches()
+    resp = client.post(f"/value-streams/api/{vs.id}/ai-suggest-mappings")
+    assert resp.status_code != 200
+    assert resp.status_code in (500, 502)
+    data = resp.get_json()
+    assert "error" in data
+    assert "map one manually first" not in data.get("error", "")
+    assert calls == []
+
+
 def test_ai_suggest_mappings_drops_invented_pairs(db_session, make_org, logged_in_org, client, monkeypatch):
     """The LLM naming a stage/capability outside the real context is dropped;
     if every suggestion is invented, that's a 502 (never a fabricated fallback)."""

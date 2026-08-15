@@ -43,6 +43,22 @@ class ValueStreamAISuggestError(Exception):
     """
 
 
+class CapabilityCatalogUnavailableError(Exception):
+    """Raised when deriving this org's mapped-capability names failed for a
+    real reason (a DB error, a bad join) rather than because the org
+    genuinely has no mappings yet.
+
+    Previously both queries in _org_scoped_capability_names() swallowed
+    their exceptions and logged, so a query failure silently degraded to an
+    empty name set — indistinguishable from a genuinely-empty catalog. The
+    route then told the user "No capabilities mapped in this organization
+    yet — map one manually first", which is a lie when the real cause was a
+    failed query: an error masquerading as an empty state. Raising this
+    (only when every query failed and nothing could be recovered) lets the
+    route tell the two apart and return an honest 502 instead.
+    """
+
+
 def _org_scoped_capability_names(limit: int = MAX_CAPABILITIES) -> List[str]:
     """This org's real *mapped* capability names — never the global catalog.
 
@@ -59,8 +75,14 @@ def _org_scoped_capability_names(limit: int = MAX_CAPABILITIES) -> List[str]:
       but the join target does, and do_orm_execute's with_loader_criteria
       applies to any TenantMixin entity present in the query — including a
       join target — so this is scoped to this org's applications.
+
+    A failure in one query still lets the other contribute real names. Only
+    when *both* queries fail — so nothing real could be recovered — is a
+    CapabilityCatalogUnavailableError raised, rather than quietly returning
+    an empty list that reads as "genuinely nothing mapped".
     """
     names: Set[str] = set()
+    failures = 0
 
     try:
         vs_rows = (
@@ -75,6 +97,7 @@ def _org_scoped_capability_names(limit: int = MAX_CAPABILITIES) -> List[str]:
         )
         names.update(name for (name,) in vs_rows if name)
     except Exception:
+        failures += 1
         logger.exception(
             "Failed to derive org-scoped capability names from value-stream mappings"
         )
@@ -97,8 +120,16 @@ def _org_scoped_capability_names(limit: int = MAX_CAPABILITIES) -> List[str]:
         )
         names.update(name for (name,) in app_rows if name)
     except Exception:
+        failures += 1
         logger.exception(
             "Failed to derive org-scoped capability names from application mappings"
+        )
+
+    if failures == 2 and not names:
+        raise CapabilityCatalogUnavailableError(
+            "Both capability-catalog queries (value-stream mappings and "
+            "application mappings) failed; the empty result cannot be "
+            "trusted as a genuine empty state."
         )
 
     return sorted(names)[:limit]

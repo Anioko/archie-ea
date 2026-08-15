@@ -257,6 +257,38 @@ def test_queue_triage_drops_invented_review_number(db_session, make_org, logged_
     assert triage["suggested_order"] == [review.review_number]
 
 
+def test_queue_triage_non_string_complexity_is_502(db_session, make_org, logged_in_org, client, monkeypatch):
+    """A non-hashable complexity value (e.g. the LLM returns a list instead
+    of a string) must not raise an uncaught TypeError from the `not in
+    VALID_COMPLEXITIES` membership check -- it should be caught as a clean
+    ARBQueueAIError and surfaced as a 502 with a message naming the field,
+    same as any other malformed LLM response."""
+    org, user = logged_in_org
+    _enable_ai(monkeypatch)
+    review = _make_review(db_session, org, user, status="submitted")
+
+    triage_json = json.dumps(
+        {
+            "summary": "One item awaiting review.",
+            "items": [
+                {
+                    "review_number": review.review_number,
+                    "title": review.title,
+                    "complexity": ["standard", "contentious"],
+                    "reason": "Malformed complexity field.",
+                }
+            ],
+            "suggested_order": [review.review_number],
+        }
+    )
+    _mock_llm(monkeypatch, triage_json)
+    _clear_auth_caches()
+
+    resp = client.post("/arb/api/queue/ai-triage")
+    assert resp.status_code == 502
+    assert "complexity" in resp.get_json()["error"]
+
+
 def test_queue_triage_disabled_is_503(db_session, make_org, logged_in_org, client, monkeypatch):
     org, user = logged_in_org
     _disable_ai(monkeypatch)
@@ -513,6 +545,39 @@ def test_session_minutes_drops_invented_review_number(db_session, make_org, logg
     minutes = resp.get_json()["minutes"]
     review_numbers = [d["review_number"] for d in minutes["decisions"]]
     assert review_numbers == [review.review_number]
+
+
+def test_session_minutes_non_string_disposition_is_502(db_session, make_org, logged_in_org, client, monkeypatch):
+    """A non-hashable disposition value (e.g. the LLM returns a list instead
+    of a string) must not raise an uncaught TypeError from the `not in
+    VALID_DISPOSITIONS` membership check -- it should be caught as a clean
+    ARBQueueAIError and surfaced as a 502 with a message naming the field."""
+    org, user = logged_in_org
+    _enable_ai(monkeypatch)
+    session = _make_session(db_session, org, user)
+    review = _make_review(
+        db_session, org, user, status="submitted", arb_session_id=session.id, decision="approved"
+    )
+
+    minutes_json = json.dumps(
+        {
+            "summary": "Decisions.",
+            "decisions": [
+                {
+                    "review_number": review.review_number,
+                    "disposition": ["approved", "rejected"],
+                    "conditions": [],
+                }
+            ],
+            "actions": [],
+        }
+    )
+    _mock_llm(monkeypatch, minutes_json)
+    _clear_auth_caches()
+
+    resp = client.post(f"/arb/api/sessions/{session.id}/ai-minutes-draft")
+    assert resp.status_code == 502
+    assert "disposition" in resp.get_json()["error"]
 
 
 def test_session_minutes_disabled_is_503(db_session, make_org, logged_in_org, client, monkeypatch):

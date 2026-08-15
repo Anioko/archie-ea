@@ -501,8 +501,12 @@ def send_message():
         # Run AgentRunner (ReAct loop with tool use).
         # Falls back to text-only mode automatically for unsupported providers.
         from app.modules.ai_chat.services.agent_runner import AgentRunner
+        from flask import session as flask_session
 
-        runner = AgentRunner(user_id=current_user.id)
+        runner = AgentRunner(
+            user_id=current_user.id,
+            auto_execute=flask_session.get("agent_auto_execute", False),
+        )
         agent_result = runner.run(
             user_message=user_message,
             domain=domain,
@@ -783,6 +787,13 @@ def send_message_stream():
     from app.middleware.tenant_context import current_org_id as _current_org_id
 
     org_id_for_thread = _current_org_id()
+    # Same reason as the tenant capture above: the write-approval preference
+    # lives in flask.session, which the background thread below does not have
+    # (only an app context is re-established there, not a request context).
+    # Read it here, on the request thread, and pass the plain bool down.
+    from flask import session as flask_session
+
+    auto_execute_for_thread = flask_session.get("agent_auto_execute", False)
     # Load history here too, on the request thread, so the worker starts with the
     # conversation already in hand rather than paying a DB round-trip inside the
     # stream.
@@ -804,7 +815,11 @@ def send_message_stream():
                 g.current_org_id = org_id_for_thread
 
                 from app.modules.ai_chat.services.agent_runner import AgentRunner
-                runner = AgentRunner(user_id=user_id_for_thread, yield_event=emit)
+                runner = AgentRunner(
+                    user_id=user_id_for_thread,
+                    yield_event=emit,
+                    auto_execute=auto_execute_for_thread,
+                )
                 result = runner.run(
                     user_message=user_message,
                     domain=domain,
@@ -1422,6 +1437,15 @@ def approve_tool_action(approval_id: int):
     if record.status != ApprovalStatus.PENDING:
         return jsonify({"error": f"Approval is already {record.status.value}"}), 409
 
+    # Expiry check — mirrors the legacy path (AIChatApprovalService.approve_and_execute,
+    # ai_chat_approval_service.py). Without this, a PENDING record whose
+    # expires_at (set 24h out by AgentRunner._queue_approval) has passed would
+    # still execute on a stale Confirm click.
+    if record.is_expired():
+        record.status = ApprovalStatus.EXPIRED
+        db.session.commit()
+        return jsonify({"error": "Approval has expired. Please submit a new request."}), 409
+
     # Execute
     executor = ToolExecutor(current_user.id)
     try:
@@ -1464,27 +1488,51 @@ def reject_tool_action(approval_id: int):
     return jsonify({"success": True, "message": "Action cancelled."})
 
 
+@unified_ai_chat_bp.route("/session/auto-execute", methods=["GET"])
+@login_required
+def get_auto_execute():
+    """Read (never flip) the session's current auto-execute preference.
+
+    M2 fix: blueprint_chat.js's `autoExecute` Alpine field used to have no way
+    to learn the server's real state on page load — it just assumed a
+    hardcoded default, so a session left ON from a previous page visit showed
+    as OFF in a freshly loaded panel (or vice versa) until the user clicked
+    the toggle once to force a resync. init() below calls this on mount to
+    seed the UI from ground truth. Deliberately a separate GET, not a change
+    to the POST toggle route's contract — the toggle intentionally has no
+    'give me the state without changing it' mode, and overloading it with a
+    query param would be a bigger change than adding four lines here.
+    """
+    from flask import session as flask_session
+
+    return jsonify({"success": True, "auto_execute": flask_session.get("agent_auto_execute", False)})
+
+
 @unified_ai_chat_bp.route("/session/toggle-auto-execute", methods=["POST"])
 @login_required
 def toggle_auto_execute():
     """Toggle the session's auto-execute preference and return the new state.
 
-    NOT ENFORCED. This docstring previously claimed "When OFF (default): all
-    tools queue for user confirmation" - that was false in three ways: the flag
-    is written to the Flask session and read by nothing; the default is ON, not
-    OFF (AgentRunner queues only tier=="approve" regardless); and 34 of the 37
-    tools, including every create and link, are tier=="auto" and execute with no
-    confirmation either way. blueprint_chat.js:10 documents the real behaviour.
+    ENFORCED. Each of the 37 tools in tools/registry.py carries an explicit
+    `mutates` flag, read alongside `tier` (registry.py's own docstring). Both
+    chat routes read this session flag on the request thread and pass it into
+    AgentRunner(auto_execute=...) — see send_message() and the run_agent()
+    worker in send_message_stream() below, which captures it before spawning
+    the background thread because flask.session is not available there.
+    AgentRunner._should_queue(schema, auto_execute) then queues a call for
+    confirmation when EITHER is true:
+      - tier == "approve" (unconditional — unaffected by this flag), or
+      - mutates is True and auto_execute is False.
+    Read-only tools (mutates False) are never queued, regardless of this flag —
+    gating them would put every search behind an approval prompt, which is what
+    made an earlier "OFF means everything confirms" version of this docstring
+    false: `tier` alone could not distinguish a write from a read.
 
-    Enforcing it needs a registry change, not a route change: `tier` currently
-    has only "auto" and "approve", and "auto" covers both reads
-    (find_applications) and writes (create_solution). Gating on the flag today
-    would put every search behind an approval prompt. Split reads from writes -
-    a third tier, or a `mutates` flag on each schema in tools/registry.py - then
-    have AgentRunner queue mutating tools when this is off.
-
-    Left in place rather than deleted because blueprint_chat.js:43 calls it and
-    the stored preference is what that future gate would read.
+    Default is OFF (session has no `agent_auto_execute` key -> False), so a
+    fresh session queues every mutating tool call until the user explicitly
+    turns auto-execute on. Session-scoped, not persisted: it resets when the
+    session does. blueprint_chat.js:43 calls this endpoint from the blueprint
+    chat panel's toggle.
     """
     from flask import session as flask_session
     current = flask_session.get("agent_auto_execute", False)

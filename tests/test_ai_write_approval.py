@@ -1,0 +1,457 @@
+"""AI write-approval gate: mutating tool calls queue for confirmation unless
+the session has explicitly turned auto-execute on.
+
+WHY THIS FILE EXISTS
+---------------------
+chat_core.py's toggle_auto_execute route used to write a session flag that
+nothing read (see git history: its docstring documented the gap directly).
+34 of the 37 agent tools are tier == "auto" and executed immediately with no
+confirmation, mutating or not. The fix (also documented in that docstring,
+before it was rewritten) is a `mutates` flag on each schema in
+tools/registry.py, and a queueing rule in AgentRunner that consults it.
+
+This file pins three things:
+  1. registry invariants — every tool has an explicit `mutates` key (not an
+     absent one defaulting via .get()), and the naming convention holds for
+     the obvious prefixes.
+  2. AgentRunner._should_queue — the pure decision function factored out so
+     the four-way truth table (tier x auto_execute) can be tested exhaustively
+     without a DB, an LLM, or a Flask request/session.
+  3. The toggle route itself: POST flips the session flag and echoes it back.
+     Now load-bearing (AgentRunner reads it via the caller), where before it
+     was inert.
+
+Uses the shared fixtures from tests/conftest.py per CLAUDE.md's testing
+convention, rather than hand-rolling a module app fixture.
+"""
+
+import pytest
+
+from app.modules.ai_chat.tools.registry import TOOL_SCHEMAS, mutating_tool_names
+from app.modules.ai_chat.services.agent_runner import AgentRunner
+
+
+# --------------------------------------------------------------------------- #
+# 1. Registry invariants
+# --------------------------------------------------------------------------- #
+
+
+class TestRegistryInvariants:
+    def test_every_tool_has_an_explicit_mutates_key(self):
+        """`mutates` must be a real key, not something a reader has to assume
+        via .get(..., False) — an omitted key on a future tool should be a
+        loud KeyError in this test, not a silent False that lets a write tool
+        slip through unqueued."""
+        missing = [t["name"] for t in TOOL_SCHEMAS if "mutates" not in t]
+        assert missing == [], f"tools missing explicit 'mutates': {missing}"
+
+    def test_mutates_is_a_bool_on_every_tool(self):
+        bad = [t["name"] for t in TOOL_SCHEMAS if not isinstance(t["mutates"], bool)]
+        assert bad == [], f"tools with non-bool 'mutates': {bad}"
+
+    @pytest.mark.parametrize(
+        "prefix", ["create_", "link_", "update_", "mark_"]
+    )
+    def test_write_prefixed_tools_are_flagged_mutating(self, prefix):
+        offenders = [
+            t["name"]
+            for t in TOOL_SCHEMAS
+            if t["name"].startswith(prefix) and not t["mutates"]
+        ]
+        assert offenders == [], (
+            f"tools named like a write ({prefix}*) but mutates=False: {offenders}"
+        )
+
+    def test_approve_tier_tools_unchanged(self):
+        """The three tools that were already tier=='approve' before this
+        change stay approve — this change only widens the queue, it does not
+        narrow it."""
+        approve_tools = {t["name"] for t in TOOL_SCHEMAS if t["tier"] == "approve"}
+        assert approve_tools == {
+            "update_application_status",
+            "submit_for_arb_review",
+            "generate_blueprint_narrative",
+        }
+
+    def test_known_read_only_tools_are_not_mutating(self):
+        """Five of the six tools the task called out as needing evidence, not
+        a name-based guess — each reads and returns, never writes.
+
+        run_inference_engine was originally in this list on the strength of
+        its own read-only-sounding call chain, but adversarial review found
+        it defaults dry_run to False and its repair() path really does write
+        (get_or_create_node/relationship -> db.session.add+flush). It is
+        pinned mutating in test_mutates_and_auto_execute_off_queues_a_real_
+        write_tool below instead.
+        """
+        by_name = {t["name"]: t for t in TOOL_SCHEMAS}
+        for name in (
+            "propose_rationalization",
+            "build_architecture_plan",
+            "infer_schema",
+            "verify_codegen",
+            "poll_infrastructure",
+        ):
+            assert by_name[name]["mutates"] is False, f"{name} should be read-only"
+
+    def test_run_inference_engine_is_mutating_not_read_only(self):
+        """dry_run defaults False in _tool_run_inference_engine
+        (tools/executor.py), so the un-dry-run path writes via
+        ArchiMateInferenceEngine.repair -> get_or_create_node/relationship
+        (architecture_graph_facade.py). Misclassified mutates=False in an
+        earlier pass; this pins the correction."""
+        by_name = {t["name"]: t for t in TOOL_SCHEMAS}
+        assert by_name["run_inference_engine"]["mutates"] is True
+
+    def test_mutating_tool_names_matches_flagged_set(self):
+        expected = {t["name"] for t in TOOL_SCHEMAS if t["mutates"] is True}
+        assert mutating_tool_names() == expected
+
+
+# --------------------------------------------------------------------------- #
+# 2. AgentRunner._should_queue — pure decision function
+# --------------------------------------------------------------------------- #
+
+
+class TestShouldQueue:
+    def test_mutates_and_auto_execute_off_queues(self):
+        schema = {"tier": "auto", "mutates": True}
+        assert AgentRunner._should_queue(schema, auto_execute=False) is True
+
+    def test_mutates_and_auto_execute_on_executes(self):
+        schema = {"tier": "auto", "mutates": True}
+        assert AgentRunner._should_queue(schema, auto_execute=True) is False
+
+    def test_read_only_never_queues_regardless_of_auto_execute(self):
+        schema = {"tier": "auto", "mutates": False}
+        assert AgentRunner._should_queue(schema, auto_execute=False) is False
+        assert AgentRunner._should_queue(schema, auto_execute=True) is False
+
+    def test_approve_tier_queues_even_with_auto_execute_on(self):
+        """The whole point of a separate always-approve tier: turning on
+        write auto-execute must not silently wave through
+        update_application_status / submit_for_arb_review."""
+        schema = {"tier": "approve", "mutates": True}
+        assert AgentRunner._should_queue(schema, auto_execute=True) is True
+        assert AgentRunner._should_queue(schema, auto_execute=False) is True
+
+    def test_approve_tier_with_mutates_false_still_queues(self):
+        """generate_blueprint_narrative is tier=='approve' with mutates==False
+        (its write path currently raises before touching the DB — see
+        executor.py) — tier alone must be sufficient to queue it."""
+        schema = {"tier": "approve", "mutates": False}
+        assert AgentRunner._should_queue(schema, auto_execute=True) is True
+
+    def test_missing_schema_keys_fail_closed_and_queue(self):
+        """An unknown tool name resolves to {} in the run loop
+        (TOOL_SCHEMA_BY_NAME.get(name, {})) — that must queue, not execute
+        unqueued, regardless of auto_execute. Registry and executor are 1:1
+        today (every real schema declares `mutates` explicitly, pinned by
+        tests/test_tool_mutates_flag.py), so this only changes behaviour for a
+        future tool that reaches the run loop without a registry entry — which
+        is exactly the case that should be treated as a write until proven
+        otherwise, not waved through."""
+        assert AgentRunner._should_queue({}, auto_execute=True) is True
+        assert AgentRunner._should_queue({}, auto_execute=False) is True
+
+    def test_explicit_mutates_false_is_trusted_not_fail_closed(self):
+        """Fail-closed applies to an ABSENT `mutates` key, not to an explicit
+        False — a real read-only tool (mutates: False) must still execute
+        immediately, or every search would land behind a confirmation prompt
+        again."""
+        schema = {"tier": "auto", "mutates": False}
+        assert AgentRunner._should_queue(schema, auto_execute=True) is False
+        assert AgentRunner._should_queue(schema, auto_execute=False) is False
+
+    def test_full_registry_is_decided_without_error(self):
+        """Every real schema in the registry must produce a bool for both
+        auto_execute states — a smoke test against schema-shape drift."""
+        for schema in TOOL_SCHEMAS:
+            for auto_execute in (True, False):
+                result = AgentRunner._should_queue(schema, auto_execute)
+                assert isinstance(result, bool)
+
+    def test_agent_runner_defaults_to_auto_execute_off(self):
+        """A caller that forgets to pass auto_execute gets the safe default:
+        writes queue rather than fire."""
+        runner = AgentRunner(user_id=1)
+        assert runner.auto_execute is False
+
+
+# --------------------------------------------------------------------------- #
+# 3. Toggle route — now load-bearing, pin the wire behaviour
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+
+def _login(client, user_id):
+    """Standard Flask-Login test-client login, plus clearing the caches that
+    make a stale request/app context return the wrong user — see the longer
+    explanation in tests/test_ba_tenant_and_authz.py::_login, which this
+    mirrors."""
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(user_id)
+        sess["_fresh"] = True
+
+    from flask import g, has_app_context
+
+    if not has_app_context():
+        return
+    for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
+        if hasattr(g, cached):
+            delattr(g, cached)
+
+
+def _make_user(db_session, org):
+    from app.models.user import User
+    import uuid
+
+    suffix = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"gov-{suffix}@example.com",
+        first_name="Gov",
+        last_name="Tester",
+        organization_id=org.id,
+        confirmed=True,
+        enterprise_role="architect",
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
+class TestToggleAutoExecuteRoute:
+    def test_toggle_flips_and_returns_the_flag(self, app, client, db_session, make_org):
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        resp1 = client.post("/ai-chat/session/toggle-auto-execute")
+        assert resp1.status_code == 200
+        body1 = resp1.get_json()
+        assert body1["success"] is True
+        first_state = body1["auto_execute"]
+
+        resp2 = client.post("/ai-chat/session/toggle-auto-execute")
+        body2 = resp2.get_json()
+        assert body2["auto_execute"] is (not first_state)
+
+    def test_default_session_has_auto_execute_off(self, app, client, db_session, make_org):
+        """First toggle from a fresh session flips False -> True: pins the
+        documented default (agent_auto_execute defaults False when absent)."""
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        resp = client.post("/ai-chat/session/toggle-auto-execute")
+        assert resp.get_json()["auto_execute"] is True
+
+    def test_toggle_requires_login(self, client):
+        resp = client.post("/ai-chat/session/toggle-auto-execute")
+        assert resp.status_code in (302, 401)
+
+
+class TestGetAutoExecuteRoute:
+    """M2: blueprint_chat.js's init() reads this to seed its `autoExecute`
+    Alpine field with the real session state, rather than assuming a
+    hardcoded default that can be stale the moment a session survives a page
+    reload with the flag already ON."""
+
+    def test_get_reflects_current_state_without_flipping_it(self, app, client, db_session, make_org):
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        # Fresh session: off.
+        resp = client.get("/ai-chat/session/auto-execute")
+        assert resp.status_code == 200
+        assert resp.get_json()["auto_execute"] is False
+
+        # GET must not itself change state — call it twice, same answer both times.
+        resp_again = client.get("/ai-chat/session/auto-execute")
+        assert resp_again.get_json()["auto_execute"] is False
+
+        # Now flip via the real toggle route, and confirm GET reflects the flip
+        # (and, critically, does not flip it again on read).
+        client.post("/ai-chat/session/toggle-auto-execute")
+        resp_after_toggle = client.get("/ai-chat/session/auto-execute")
+        assert resp_after_toggle.get_json()["auto_execute"] is True
+        resp_after_toggle_again = client.get("/ai-chat/session/auto-execute")
+        assert resp_after_toggle_again.get_json()["auto_execute"] is True
+
+    def test_get_requires_login(self, client):
+        resp = client.get("/ai-chat/session/auto-execute")
+        assert resp.status_code in (302, 401)
+
+
+# --------------------------------------------------------------------------- #
+# 4. Approval execution — the two endpoints must behave identically for a
+#    queued tool_use approval (I1), and both must honour expiry (I2).
+# --------------------------------------------------------------------------- #
+
+
+def _make_tool_use_approval(db_session, user, tool_name="create_solution", arguments=None, expires_at=None):
+    """Insert an AIChatCRUDApproval directly with operation_type=='tool_use',
+    exactly the shape AgentRunner._queue_approval (agent_runner.py) writes for
+    every queued agent tool call. Bypassing the runner keeps this test from
+    needing an LLM double — the row shape is the contract being tested, not
+    how it got there."""
+    import json as _json
+    from datetime import datetime, timedelta
+
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+    record = AIChatCRUDApproval(
+        user_id=user.id,
+        operation_type="tool_use",
+        entity_type=tool_name,
+        original_command=tool_name,
+        operation_payload=_json.dumps(arguments or {}),
+        summary=f"Execute {tool_name}",
+        status=ApprovalStatus.PENDING,
+        expires_at=expires_at or (datetime.utcnow() + timedelta(hours=24)),
+    )
+    db_session.add(record)
+    db_session.flush()
+    return record
+
+
+class TestApprovalExecutionParity:
+    """I1: the main chat's approval modal only ever calls
+    POST /ai-chat/approvals/<id>/approve -> AIChatApprovalService.approve_and_execute,
+    which 400'd on every agent-queued action ("Unsupported operation type:
+    tool_use") because it only handled the legacy create/link/update/delete
+    vocabulary. Both this route and the blueprint panel's dedicated
+    POST /ai-chat/tools/approve/<id> must now dispatch a queued tool_use
+    approval through the same ToolExecutor and produce the same outcome.
+    """
+
+    def _stub_executor(self, monkeypatch, expected_name):
+        """Replace ToolExecutor.execute with a stub that proves it was reached
+        with the right ToolCall, without needing a real solution/tool fixture
+        graph. Patched on the executor module both routes import it from, so
+        it's in effect regardless of which endpoint under test does the
+        `from ...executor import ToolExecutor` import."""
+        calls = []
+
+        def _fake_execute(self, tool_call):
+            calls.append(tool_call)
+            assert tool_call.name == expected_name
+            return {"success": True, "message": f"executed {tool_call.name}", "result": {"id": 42}}
+
+        import app.modules.ai_chat.tools.executor as executor_module
+
+        monkeypatch.setattr(executor_module.ToolExecutor, "execute", _fake_execute)
+        return calls
+
+    def test_dedicated_blueprint_endpoint_executes_tool_use(
+        self, app, client, db_session, make_org, monkeypatch
+    ):
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+        calls = self._stub_executor(monkeypatch, "create_solution")
+        record = _make_tool_use_approval(db_session, user, tool_name="create_solution")
+        db_session.commit()
+
+        resp = client.post(f"/ai-chat/tools/approve/{record.id}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert len(calls) == 1
+
+        from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+        refreshed = db_session.get(AIChatCRUDApproval, record.id)
+        assert refreshed.status == ApprovalStatus.APPROVED
+
+    def test_main_chat_approval_modal_endpoint_executes_tool_use(
+        self, app, client, db_session, make_org, monkeypatch
+    ):
+        """This is the endpoint that 400'd before the I1 fix."""
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+        calls = self._stub_executor(monkeypatch, "create_driver")
+        record = _make_tool_use_approval(
+            db_session, user, tool_name="create_driver",
+            arguments={"solution_id": 1, "name": "Cost pressure", "driver_type": "external"},
+        )
+        db_session.commit()
+
+        resp = client.post(f"/ai-chat/approvals/{record.id}/approve")
+        assert resp.status_code == 200, resp.get_json()
+        body = resp.get_json()
+        assert body["success"] is True
+        assert len(calls) == 1
+        assert calls[0].arguments["name"] == "Cost pressure"
+
+        from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+        refreshed = db_session.get(AIChatCRUDApproval, record.id)
+        assert refreshed.status == ApprovalStatus.APPROVED
+        assert refreshed.execution_result is not None
+
+
+class TestApprovalExpiry:
+    """I2: POST /ai-chat/tools/approve/<id> checked status but not expiry, so
+    a stale Confirm click on a PENDING-but-expired row would still execute.
+    Mirrors the legacy check already present in
+    AIChatApprovalService.approve_and_execute."""
+
+    def test_dedicated_endpoint_rejects_expired_approval(self, app, client, db_session, make_org, monkeypatch):
+        from datetime import datetime, timedelta
+
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        executed = []
+
+        def _fake_execute(self, tool_call):
+            executed.append(tool_call)
+            return {"success": True, "message": "should not run", "result": {}}
+
+        import app.modules.ai_chat.tools.executor as executor_module
+
+        monkeypatch.setattr(executor_module.ToolExecutor, "execute", _fake_execute)
+
+        record = _make_tool_use_approval(
+            db_session, user, tool_name="create_solution",
+            expires_at=datetime.utcnow() - timedelta(hours=1),
+        )
+        db_session.commit()
+
+        resp = client.post(f"/ai-chat/tools/approve/{record.id}")
+        assert resp.status_code == 409
+        assert "expired" in resp.get_json()["error"].lower()
+        assert executed == []  # never reached the executor
+
+        from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+        refreshed = db_session.get(AIChatCRUDApproval, record.id)
+        assert refreshed.status == ApprovalStatus.EXPIRED
+
+    def test_legacy_endpoint_already_rejected_expired_approval(self, app, client, db_session, make_org, monkeypatch):
+        """Not a new fix — approve_and_execute already had this check
+        (ai_chat_approval_service.py). Pinned here so both endpoints are
+        proven to agree, not just individually correct."""
+        from datetime import datetime, timedelta
+
+        org = make_org("gov")
+        user = _make_user(db_session, org)
+        _login(client, user.id)
+
+        record = _make_tool_use_approval(
+            db_session, user, tool_name="create_solution",
+            expires_at=datetime.utcnow() - timedelta(hours=1),
+        )
+        db_session.commit()
+
+        resp = client.post(f"/ai-chat/approvals/{record.id}/approve")
+        assert resp.status_code == 400
+        assert "expired" in resp.get_json()["error"].lower()

@@ -467,7 +467,17 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "run_inference_engine",
-        "mutates": False,
+        # Real write, not read-only despite the "diagnose"-adjacent name:
+        # _tool_run_inference_engine (tools/executor.py) defaults dry_run to
+        # False from args.get("dry_run", False) and calls
+        # engine.repair(link.element_id, dry_run=dry_run) unconditionally.
+        # ArchiMateInferenceEngine.repair -> repair_chain ->
+        # get_or_create_node/get_or_create_relationship
+        # (architecture_graph_facade.py) call db.session.add + db.session.flush,
+        # committed by the chat turn's later db.session.commit(). The tool's own
+        # schema description below says as much: "If true, show what would be
+        # created without writing to DB. Default false."
+        "mutates": True,
         "description": (
             "Run the ArchiMate Inference Engine on a solution's elements to fill missing "
             "cross-layer chain elements (Motivation→Strategy→Business→Application→Technology→Implementation). "

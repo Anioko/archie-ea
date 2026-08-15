@@ -7,7 +7,24 @@
 function blueprintChat() {
     return {
         open: false,
-        autoExecute: true,  // auto-tier tools execute immediately; approve-tier still requires confirmation
+        // ENFORCED (agent_runner.py AgentRunner._should_queue): mirrors the
+        // server-side session flag agent_auto_execute, which toggleAutoExecute()
+        // below flips via POST /ai-chat/session/toggle-auto-execute. Server
+        // default is OFF (false) for a fresh session, so this starts false too
+        // rather than assuming a state the backend has not granted yet. When
+        // false, every tool whose registry schema has mutates:true is queued
+        // for confirmation instead of executing immediately; approve-tier
+        // tools (update_application_status, submit_for_arb_review,
+        // generate_blueprint_narrative) always queue regardless of this flag.
+        // Read-only tools (mutates:false) always execute immediately.
+        //
+        // This starting value is only a placeholder until init() below
+        // overwrites it with the real session state via GET
+        // /ai-chat/session/auto-execute — the session flag can already be ON
+        // from an earlier page visit (Flask sessions outlive a page load), so
+        // hardcoding false here and never re-checking would show OFF in the
+        // UI while the server was actually queuing nothing.
+        autoExecute: false,
         messages: [],
         inputText: '',
         loading: false,
@@ -31,6 +48,23 @@ function blueprintChat() {
                     this.$refs.chatInput?.select();
                 });
             });
+
+            // Sync the placeholder above with the real session state. Read-only
+            // GET — never flips the flag, unlike toggleAutoExecute() below.
+            this.syncAutoExecute();
+        },
+
+        async syncAutoExecute() {
+            try {
+                const resp = await fetch('/ai-chat/session/auto-execute');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                this.autoExecute = !!data.auto_execute;
+            } catch (err) {
+                console.error('Failed to read auto-execute state:', err);
+                // Leave the placeholder value in place — a stale local guess
+                // is a smaller failure than blocking the panel on this call.
+            }
         },
 
         toggle() {
