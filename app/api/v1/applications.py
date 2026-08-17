@@ -488,15 +488,36 @@ def delete_application(application_id):
             application_component_id=application_id
         ).delete(synchronize_session=False)
 
+        element_id = application.archimate_element_id
+
         # Use bulk delete to avoid ORM cascade loading related objects
         # (some related tables have schema drift that breaks ORM SELECT during delete)
         ApplicationComponent.query.filter_by(id=application_id).delete(
             synchronize_session=False
         )
+        db.session.flush()
+
+        # The mirror ArchiMate element goes with the application (finding C-02):
+        # deleting the application alone left a permanent orphan in the repository.
+        from app.modules.applications.routes._helpers import (
+            _delete_mirror_archimate_element,
+        )
+
+        mirror = _delete_mirror_archimate_element(element_id)
         db.session.commit()
 
+        message = "Application deleted successfully"
+        if mirror["errors"]:
+            message += "; its ArchiMate element could not be removed"
         return success_response(
-            {"message": "Application deleted successfully", "id": str(application_id)}
+            {
+                "message": message,
+                "id": str(application_id),
+                "deleted": 1,
+                "elements_deleted": mirror["elements_deleted"],
+                "relationships_deleted": mirror["relationships_deleted"],
+                "errors": mirror["errors"],
+            }
         )
 
     except HTTPException:

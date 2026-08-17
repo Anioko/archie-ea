@@ -726,11 +726,28 @@ def application_delete(id):
 
     app = ApplicationComponent.query.get_or_404(id)
     app_name = app.name
+    element_id = app.archimate_element_id
 
     try:
+        from app.modules.applications.routes._helpers import (
+            _delete_mirror_archimate_element,
+        )
+
         db.session.delete(app)
+        db.session.flush()
+        # The mirror ArchiMate element goes with the application (finding C-02).
+        mirror = _delete_mirror_archimate_element(element_id)
         db.session.commit()
-        flash(f'Application Component "{app_name}" deleted successfully!', "success")
+        if mirror["errors"]:
+            flash(
+                f'Application Component "{app_name}" deleted, but its ArchiMate '
+                "element could not be removed — it is still referenced elsewhere.",
+                "warning",
+            )
+        else:
+            flash(
+                f'Application Component "{app_name}" deleted successfully!', "success"
+            )
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting application {id}: {e}")

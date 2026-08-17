@@ -67,6 +67,7 @@ from app.utils.duplicate_guard import (
 from . import unified_applications_bp
 from ._helpers import (  # dead-code-ok
     _cleanup_application_relationships,
+    _delete_mirror_archimate_element,
 )
 
 logger = logging.getLogger(__name__)
@@ -757,18 +758,39 @@ def application_delete(id):
     try:
         app = ApplicationComponent.query.get_or_404(id)
         app_name = app.name
+        element_id = app.archimate_element_id
 
         # Clean up related records first to avoid FK constraint errors
         _cleanup_application_relationships(id)
         db.session.delete(app)
+        db.session.flush()
+        # The application's mirror ArchiMate element goes with it (finding C-02).
+        mirror = _delete_mirror_archimate_element(element_id)
         db.session.commit()
 
         if is_ajax:
+            message = f"Application '{app_name}' deleted"
+            if mirror["errors"]:
+                message += "; its ArchiMate element could not be removed"
             return jsonify(
-                {"success": True, "message": f"Application '{app_name}' deleted"}
+                {
+                    "success": True,
+                    "message": message,
+                    "deleted": 1,
+                    "elements_deleted": mirror["elements_deleted"],
+                    "relationships_deleted": mirror["relationships_deleted"],
+                    "errors": mirror["errors"],
+                }
             ), 200
 
-        flash("Application deleted successfully!", "success")
+        if mirror["errors"]:
+            flash(
+                "Application deleted, but its ArchiMate element could not be "
+                "removed — it is still referenced elsewhere.",
+                "warning",
+            )
+        else:
+            flash("Application deleted successfully!", "success")
         return redirect(url_for("unified_applications.application_list"))
 
     except Exception as e:
@@ -805,6 +827,8 @@ def bulk_delete_applications():
             ), 400
 
         deleted_count = 0
+        elements_deleted = 0
+        relationships_deleted = 0
         errors = []
 
         # OPTIMIZATION: Batch-prefetch application objects to avoid N+1 queries
@@ -817,11 +841,18 @@ def bulk_delete_applications():
             try:
                 app = _bulk_apps_by_id.get(app_id)
                 if app:
+                    element_id = app.archimate_element_id
                     # Clean up related records first to avoid FK constraint errors
                     _cleanup_application_relationships(app_id)
                     db.session.delete(app)
+                    db.session.flush()
+                    # Mirror ArchiMate element goes with it (finding C-02).
+                    mirror = _delete_mirror_archimate_element(element_id)
                     db.session.commit()
                     deleted_count += 1
+                    elements_deleted += mirror["elements_deleted"]
+                    relationships_deleted += mirror["relationships_deleted"]
+                    errors.extend(mirror["errors"])
                 else:
                     errors.append(f"Application {app_id} not found")
             except Exception as e:
@@ -830,13 +861,24 @@ def bulk_delete_applications():
                 current_app.logger.error(f"Error deleting app {app_id}: {e}")
 
         all_failed = deleted_count == 0 and len(errors) > 0
+        # Report every entity type touched: claiming "deleted N applications"
+        # while the mirror elements survived is the C-02 failure mode.
+        orphaned = deleted_count - elements_deleted
+        message = (
+            f"Deleted {deleted_count} application(s) and "
+            f"{elements_deleted} ArchiMate element(s)"
+        )
+        if orphaned > 0:
+            message += f"; {orphaned} element(s) could not be removed"
         return jsonify(
             {
                 "success": not all_failed,
                 "deleted": deleted_count,
                 "deleted_count": deleted_count,  # Alias for compatibility
+                "elements_deleted": elements_deleted,
+                "relationships_deleted": relationships_deleted,
                 "errors": errors,
-                "message": f"Successfully deleted {deleted_count} application(s)",
+                "message": message,
             }
         )
 
@@ -854,14 +896,29 @@ def api_delete_application(app_id):
     """API endpoint for deleting an application"""
     try:
         app = ApplicationComponent.query.get_or_404(app_id)
+        app_name = app.name
+        element_id = app.archimate_element_id
 
         # Clean up related records first to avoid FK constraint errors
         _cleanup_application_relationships(app_id)
         db.session.delete(app)
+        db.session.flush()
+        # Mirror ArchiMate element goes with it (finding C-02).
+        mirror = _delete_mirror_archimate_element(element_id)
         db.session.commit()
 
+        message = f"Application {app_name} deleted successfully"
+        if mirror["errors"]:
+            message += "; its ArchiMate element could not be removed"
         return jsonify(
-            {"success": True, "message": f"Application {app.name} deleted successfully"}
+            {
+                "success": True,
+                "message": message,
+                "deleted": 1,
+                "elements_deleted": mirror["elements_deleted"],
+                "relationships_deleted": mirror["relationships_deleted"],
+                "errors": mirror["errors"],
+            }
         )
 
     except Exception as e:

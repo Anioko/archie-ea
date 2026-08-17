@@ -270,6 +270,58 @@ def _cleanup_application_relationships(app_id):
     _cascade_delete_application(app_id)
 
 
+def _delete_mirror_archimate_element(element_id):
+    """Delete the ArchiMateElement that mirrors a deleted application.
+
+    Every ApplicationComponent gets an ArchiMateElement created for it by the
+    ``before_insert`` listener in ``app.models.application_portfolio``. Deleting
+    the application without deleting that element left a permanent orphan in the
+    architecture repository (finding C-02): the palette, relationship matrix and
+    OEF export kept showing applications the user had already removed.
+
+    Deliberately narrow: only the element the application itself points at, and
+    only the ArchiMate relationships in which that element is an endpoint (those
+    relationships describe the deleted application, so they cannot survive it).
+    Nothing else that references the element is touched — if some other row
+    (a diagram node, a parent link) still holds a foreign key, the delete fails
+    inside its SAVEPOINT and is *reported* rather than cascaded through.
+
+    Returns ``{"elements_deleted": int, "relationships_deleted": int,
+    "errors": [str]}``. Never raises.
+    """
+    result = {"elements_deleted": 0, "relationships_deleted": 0, "errors": []}
+    if not element_id:
+        return result
+
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+    _sp = db.session.begin_nested()
+    try:
+        # ORM bulk delete: tenant-filtered by do_orm_execute inside a request.
+        result["relationships_deleted"] = ArchiMateRelationship.query.filter(
+            db.or_(
+                ArchiMateRelationship.source_id == element_id,
+                ArchiMateRelationship.target_id == element_id,
+            )
+        ).delete(synchronize_session=False)
+        result["elements_deleted"] = ArchiMateElement.query.filter(
+            ArchiMateElement.id == element_id
+        ).delete(synchronize_session=False)
+        _sp.commit()
+    except Exception as exc:
+        _sp.rollback()
+        result["relationships_deleted"] = 0
+        result["elements_deleted"] = 0
+        result["errors"].append(
+            f"ArchiMate element {element_id} could not be removed "
+            f"({exc.__class__.__name__}); it is still referenced elsewhere"
+        )
+        logger.warning(
+            "Mirror ArchiMate element %s not deleted", element_id, exc_info=True
+        )
+    return result
+
+
 def _vendors_impl(
     joinedload,
     VendorOrganization,
