@@ -195,6 +195,9 @@ DEPENDENCIES:
             </a>
         </div>
         {% endif %}
+        {% if build_id %}
+        <p class="mt-2 text-xs text-muted-foreground truncate" title="Build identifier (ARCH-062)">Build {{ build_id }}</p>
+        {% endif %}
     </div>
 </aside>
 

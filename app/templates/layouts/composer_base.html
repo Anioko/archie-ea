@@ -16,7 +16,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/accessibility.css') }}">
+    {# Accessibility CSS: loaded once via partials/_head.html (asset_url filter) — do not re-include here (ARCH-061) #}
     <style>[x-cloak] { display: none !important; }</style>
     {% block extra_css %}{% endblock %}
     {% block head %}{% endblock %}
@@ -32,9 +32,9 @@
     <script src="{{ url_for('static', filename='js/core/06-session-timeout.js') }}"></script>
 
     <!-- Platform UI -->
-    <script src="{{ url_for('static', filename='js/ui/modal.js') }}?v={{ static_version }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/modal.js') }}"></script>
     <script src="{{ url_for('static', filename='js/shared/debounce.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/alpine-architecture.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/alpine-architecture.js') }}"></script>
 
     {% block extra_head_js %}{% endblock %}
 </head>

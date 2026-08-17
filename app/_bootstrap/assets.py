@@ -5,20 +5,29 @@ Asset pipeline setup — Flask-Assets Environment + manifest-based fingerprintin
 import json
 import os
 
+from app._bootstrap.build_info import get_build_id
+
 # Module-level manifest cache — loaded once at startup, reloaded on each request
 # in debug mode for development convenience.
 _manifest_cache = {}
 
 
-def _asset_version(static_folder, filename):
-    """Return a short cache-busting token derived from the asset's mtime.
+def _asset_version(static_folder, filename, debug=False):
+    """Return a cache-busting token for a static file with no manifest entry.
 
-    Used for static files that are NOT content-hashed (no manifest entry):
-    their URL is otherwise stable across deploys even when the bytes change,
-    which — combined with a long-lived cache — pins clients to a stale build.
-    Appending ?v=<mtime> gives a rebuilt asset a fresh URL. Returns None if
-    the file can't be stat'd (fall back to the bare URL).
+    In production this is the single process-wide build identifier
+    (`build_info.get_build_id()`) — the same value the `url_for` override in
+    `context_processors.py` stamps on every static URL and that `/version`
+    reports, so one deploy carries exactly one `?v=` value everywhere
+    (ARCH-062; previously this used a per-file mtime, which is why five
+    distinct stamps could be observed in a single session).
+
+    In debug mode we keep the per-file mtime instead, so editing one asset on
+    a running dev server gets a fresh URL without a restart — dev-only
+    convenience, never reaching a deployed build.
     """
+    if not debug:
+        return get_build_id()
     if not static_folder or not filename:
         return None
     try:
@@ -74,7 +83,7 @@ def init_assets(app):
             # Content-hashed via the manifest → the URL already changes with the
             # bytes, so no version query is needed (and it stays cache-forever safe).
             return url_for("static", filename=resolved)
-        version = _asset_version(app.static_folder, filename)
+        version = _asset_version(app.static_folder, filename, debug=app.debug)
         if version:
             return url_for("static", filename=filename, v=version)
         return url_for("static", filename=filename)

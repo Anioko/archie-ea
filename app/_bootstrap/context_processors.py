@@ -571,23 +571,18 @@ def init_context_processors(app):
 
     app.jinja_env.globals["days_until"] = _days_until
 
-    # Cache-busting: compute git hash once at startup for static file versioning
-    import subprocess
-    _static_version = None
-    try:
-        _static_version = subprocess.check_output(
-            ["git", "rev-parse", "--short=8", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        ).decode("utf-8").strip()
-    except Exception:
-        import time
-        _static_version = str(int(time.time()))
+    # Cache-busting: single build identifier shared with app/_bootstrap/assets.py
+    # and the /version endpoint (ARCH-062) — see build_info.get_build_id().
+    from app._bootstrap.build_info import get_build_id
+    _static_version = get_build_id()
 
     @app.context_processor
     def inject_static_version():
-        """Provide static_version for cache-busting JS/CSS includes."""
-        return {"static_version": _static_version}
+        """Provide static_version for cache-busting JS/CSS includes, and build_id
+        for user-facing display (About/footer, ARCH-062) — same value, same source
+        (build_info.get_build_id()), so what a user sees matches what /version and
+        every asset URL report."""
+        return {"static_version": _static_version, "build_id": _static_version}
 
     def _filter_versioned_static(filename):
         """Jinja2 filter: {{ 'js/foo.js' | versioned_static }}

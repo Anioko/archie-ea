@@ -15,8 +15,7 @@
         window.__userAuthenticated = {{ current_user.is_authenticated | tojson }};
     </script>
     
-    <!-- Accessibility CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/accessibility.css') }}">
+    <!-- Accessibility CSS: loaded once via partials/_head.html (asset_url filter) — do not re-include here (ARCH-061) -->
     <!-- Sidebar collapsed mode CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='styles/shadcn-sidebar.css') }}">
     <!-- Global component normalization (tables, badges, skeletons) -->
@@ -55,7 +54,7 @@
     <script src="{{ url_for('static', filename='js/core/07-dialog.js') }}"></script>
 
     <!-- ═══ Platform UI modules ═══ -->
-    <script src="{{ url_for('static', filename='js/ui/modal.js') }}?v={{ static_version }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/modal.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ui/pagination.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ui/filter.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ui/selection.js') }}"></script>
@@ -65,7 +64,7 @@
     <!-- ═══ Legacy shim layer (modal-system.js removed - ui/modal.js provides all shims) ═══ -->
     <!-- NOTE: api-fetch.js removed — Platform.fetch (03-fetch.js) already provides window.apiFetch -->
     <script src="{{ url_for('static', filename='js/shared/debounce.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/alpine-architecture.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/alpine-architecture.js') }}"></script>
 
     <!-- Page-specific Alpine registrations (after Platform, before Alpine defer fires) -->
     {% block extra_head_js %}{% endblock %}

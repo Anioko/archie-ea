@@ -521,7 +521,7 @@
 {% block extra_js %}
 <script src="/static/vendor/d3.min.js"></script>
 <script src="/static/vendor/d3-sankey.min.js"></script>
-<script src="{{ url_for('static', filename='js/archimate_views/traceability_sankey.js') + '?v=2' }}"></script>
+<script src="{{ url_for('static', filename='js/archimate_views/traceability_sankey.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     if (window.createTraceabilitySankey) {

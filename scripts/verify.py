@@ -522,6 +522,31 @@ def gate_template_references() -> Result:
     return Result("template-references", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_asset_urls() -> Result:
+    """No doubled '?' asset URL, no stylesheet/script included twice per template.
+
+    ARCH-060: the global `url_for` override already appends `?v=<build id>` to
+    every static URL (see build_info.get_build_id()); a template that then
+    hand-appends its own `?v=2` produces a second '?', and everything after it
+    becomes part of the first query value rather than a real parameter — cache-
+    busting silently stops working for exactly that file. ARCH-061: the same
+    stylesheet/script included twice in one template at two different version
+    stamps is a non-determinism bug (whichever tag loads second wins), found live
+    with app/static/css/accessibility.css loaded from both
+    app/templates/layouts/admin_base.html and the shared partials/_head.html it
+    also includes.
+    """
+    proc = _run([sys.executable, "scripts/check_asset_urls.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("asset-urls", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count:
+        detail = _run([sys.executable, "scripts/check_asset_urls.py"]).stdout[-1500:]
+    return Result("asset-urls", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_null_filters() -> Result:
     """No `|default(...)` feeds a filter that calls len(). Gated at ZERO.
 
@@ -1049,6 +1074,12 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_macro_import_context,
              remediation="append ` with context` to the import; run "
                          "scripts/check_macro_import_context.py",
+             tags=["static", "ui"]),
+        Gate("asset-urls", "no doubled '?' asset URL; no stylesheet/script included twice per template",
+             "zero", gate_asset_urls,
+             remediation="run scripts/check_asset_urls.py; url_for/asset_url already "
+                         "version static assets — never hand-append '?v=' in a template, "
+                         "and include a shared stylesheet/script from one place only",
              tags=["static", "ui"]),
         Gate("null-filters", "default() never feeds a len()-calling filter", "zero",
              gate_null_filters,

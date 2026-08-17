@@ -2914,7 +2914,7 @@
 
 {% block extra_js %}
 {# roadmap-utils.js is now loaded globally in admin_base.html #}
-<script src="{{ url_for('static', filename='js/capability_map/index.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/capability_map/index.js') }}"></script>
 <script src="{{ url_for('static', filename='js/capability_map/index_inline.js') }}"></script>
 {# Business Architect visuals: Chart.js — same CDN/version already used by arb/dashboard.html
    and applications/rationalization/dashboard.html. No new external library is introduced. #}

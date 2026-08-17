@@ -299,6 +299,36 @@ def _register_health_check(app, config_name, csrf, db):
     # csrf.exempt: health check endpoint — monitoring systems poll this without browser sessions
     csrf.exempt(global_health_check)
 
+    @app.route("/version", methods=["GET"])
+    def version_endpoint():
+        """
+        Build identity
+        ---
+        tags:
+          - Health
+        summary: Report the single build identifier this process is running (ARCH-062)
+        description: >
+          Every cache-busting `?v=` on a static asset, and this endpoint, are stamped
+          from the same value (`app._bootstrap.build_info.get_build_id()`) so a bug
+          report or a rollback can be tied to exactly one build.
+        responses:
+          200:
+            description: Build identifier
+            schema:
+              type: object
+              properties:
+                build_id:
+                  type: string
+                  example: "a1b2c3d4"
+        """
+        from flask import jsonify
+
+        from app._bootstrap.build_info import get_build_id
+
+        return jsonify({"build_id": get_build_id()}), 200
+
+    csrf.exempt(version_endpoint)
+
 
 # ---------------------------------------------------------------------------
 # API auth (login / logout / session status)
