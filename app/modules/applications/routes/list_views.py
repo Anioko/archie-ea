@@ -799,24 +799,34 @@ def model_dashboard(model_name):
 @unified_applications_bp.route("/api/bulk-lifecycle", methods=["POST"])
 @login_required
 def api_bulk_lifecycle():
-    """PLT-020: Bulk update lifecycle stage for selected applications."""
-    from app.models.constants import LifecycleStatus
+    """PLT-020: Bulk update lifecycle stage for selected applications.
+
+    17 Aug 2026 QA finding: this validated against LifecycleStatus.ALL
+    (planning/development/testing/pilot/production/maintenance/sunset/
+    retired) — a vocabulary the "Lifecycle" bulk menu never sent. The menu
+    sends this app's actual lifecycle_status values, the TOGAF-decommission
+    phase scheme also used by list_simple.html's STATUS_MAP badge lookup
+    (2.1 strategic, 2.2 tactical, ...). Every real click failed validation
+    100% of the time — "bulk lifecycle management completely non-functional"
+    as reported. Validate against the vocabulary this UI actually uses.
+    """
+    from app.models.application_portfolio import APPLICATION_LIFECYCLE_STAGES
 
     data = request.get_json()
     if not data:
         return jsonify({"success": False, "error": "No data provided"}), 400
 
     ids = data.get("ids", [])
-    lifecycle_stage = data.get("lifecycle_stage", "").strip()
+    lifecycle_stage = data.get("lifecycle_stage", "").strip().lower()
 
     if not ids:
         return jsonify({"success": False, "error": "No application IDs provided"}), 400
-    if lifecycle_stage not in LifecycleStatus.ALL:
+    if lifecycle_stage not in APPLICATION_LIFECYCLE_STAGES:
         return (
             jsonify(
                 {
                     "success": False,
-                    "error": f"Invalid lifecycle stage. Must be one of: {', '.join(LifecycleStatus.ALL)}",
+                    "error": f"Invalid lifecycle stage. Must be one of: {', '.join(APPLICATION_LIFECYCLE_STAGES)}",
                 }
             ),
             400,

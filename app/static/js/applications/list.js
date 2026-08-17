@@ -341,8 +341,10 @@ function appPortfolio() {
         this.clearSelection();
         setTimeout(() => window.location.reload(), 800);
       } catch (err) {
+        // Platform.fetch() already raised a toast for the failed request (it is
+        // not called with silent:true here), so toasting again here would show
+        // the same failure twice. Just log it.
         console.error('[appPortfolio] bulk update error:', err);
-        Platform.toast.error(errorMsg + '. Please try again.');
       }
     },
 
@@ -483,7 +485,7 @@ function applicationCreateForm() {
       name: '',
       application_code: '',
       application_type: '',
-      criticality: '',
+      business_criticality: '',
       deployment_status: '',
       business_owner: '',
       description: '',

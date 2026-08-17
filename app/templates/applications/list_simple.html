@@ -281,9 +281,16 @@
           <!-- alpine-scope-ok --> <!-- modal-a11y-ok -->
           <div x-show="lcOpen" x-cloak @click.away="lcOpen = false"
             class="absolute left-0 mt-1 w-40 bg-card border border-border rounded-md shadow-lg z-50" role="menu">
-            {% for stage in ['2.1 STRATEGIC','2.2 TACTICAL','1. UNDETERMINED','3. SUNSET','4.1 DECOM DECIDED','4.2 DECOM PLANNED','5. DECOMMISSIONED'] %}
+            {# Values match STATUS_MAP's keys exactly (lowercase) — the backend
+               validates against this same vocabulary (APPLICATION_LIFECYCLE_STAGES)
+               and the badge lookup below is case-sensitive on it. #}
+            {% for stage, label in [
+                ('2.1 strategic', '2.1 STRATEGIC'), ('2.2 tactical', '2.2 TACTICAL'),
+                ('1. undetermined', '1. UNDETERMINED'), ('3. sunset', '3. SUNSET'),
+                ('4.1 decom decided', '4.1 DECOM DECIDED'), ('4.2 decom planned', '4.2 DECOM PLANNED'),
+                ('5. decommissioned', '5. DECOMMISSIONED')] %}
             <button type="button" @click="bulkUpdateLifecycle('{{ stage }}'); lcOpen = false" role="menuitem"
-              class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors">{{ stage }}</button>
+              class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors">{{ label }}</button>
             {% endfor %}
           </div>
         </div>
@@ -444,7 +451,7 @@
                 </div>
                 {% if current_user.is_admin() or current_user.role_archetype == 'architect' %}
                 <form method="POST" action="{{ url_for('unified_applications.application_delete', id=app.id) }}"
-                  @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete {{ app.name | e }}? This cannot be undone.')">
+                  @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete ' + {{ app.name | tojson }} + '? This cannot be undone.')">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" data-testid="btn-delete-{{ app.id }}"
                     class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-destructive-emphasis hover:bg-destructive/10 transition-colors"
@@ -559,7 +566,9 @@
     <div class="px-4 py-3 border-t bg-muted/20" data-testid="pagination-footer" role="navigation" aria-label="pagination">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div class="text-sm text-muted-foreground" data-testid="pagination-info">
-          {% if total_count and applications %}
+          {% if total_count == 0 %}
+          0 results
+          {% elif total_count and applications %}
           Showing <span class="font-medium text-foreground">{{ ((current_page-1)*page_size+1) if applications|length>0 else 0 }}</span>–<span class="font-medium text-foreground">{{ (current_page-1)*page_size+applications|length }}</span> of <span class="font-medium text-foreground">{{ total_count }}</span>
           {% elif applications %}<span class="font-medium text-foreground">{{ applications|length }}</span> application{{ 's' if applications|length!=1 else '' }}
           {% else %}No applications{% endif %}
@@ -723,13 +732,14 @@
             </select>
           </div>
           <div>
-            <label for="ca-criticality" class="block text-sm font-medium mb-1">Criticality</label>
-            <select id="ca-criticality" x-model="form.criticality"
+            <label for="ca-criticality" class="block text-sm font-medium mb-1">Business Criticality</label>
+            <select id="ca-criticality" x-model="form.business_criticality"
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <option value="">Select...</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
+              <option value="mission_critical">Mission Critical</option>
+              <option value="business_critical">Business Critical</option>
+              <option value="important">Important</option>
+              <option value="standard">Standard</option>
               <option value="low">Low</option>
             </select>
           </div>

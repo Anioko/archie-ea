@@ -52,6 +52,25 @@ from .relationship_tables import (
 # 'application_requirement_mapping', 'application_technology_mapping', 'application_process_support',
 # 'application_component_vendor_products'
 
+# The TOGAF-decommission-phase vocabulary this app actually uses for
+# lifecycle_status (rendered by list_simple.html's STATUS_MAP badge lookup,
+# which is case-sensitive on these exact lowercase strings). Any write path
+# that sets lifecycle_status — not just the create/edit form — must validate
+# against this set, not app.models.constants.LifecycleStatus (a different,
+# unrelated generic vocabulary; a bulk-update route validating against that
+# one rejected every value this UI actually sends — see api_bulk_lifecycle).
+APPLICATION_LIFECYCLE_STAGES = [
+    "1. undetermined",
+    "2.1 strategic",
+    "2.2 tactical",
+    "3. sunset",
+    "4.1 decom decided",
+    "4.2 decom planned",
+    "4.3 read-only",
+    "4.4 stopped",
+    "5. decommissioned",
+]
+
 
 class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     """

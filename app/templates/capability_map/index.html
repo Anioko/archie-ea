@@ -27,7 +27,7 @@
             <label for="{{ context_id }}-{{ filter.id }}" class="text-sm font-medium text-muted-foreground">{{ filter.label }}:</label>
             <select id="{{ context_id }}-{{ filter.id }}"
                     {% if filter.alpine %}@change="{{ filter.handler }}"{% else %}@change="{{ filter.handler }}"{% endif %}
-                    class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    class="px-3 py-2 border border-input rounded-md text-sm bg-background text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">All {{ _plural }}</option>
                 {% for opt in filter.options %}
                 <option value="{{ opt.value }}">{{ opt.label }}</option>

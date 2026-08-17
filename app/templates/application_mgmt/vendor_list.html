@@ -326,8 +326,12 @@
     <div class="p-4 sm:p-6 border-t bg-muted/30">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <p class="text-sm text-muted-foreground">
-          Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }}-{{ [pagination.page * pagination.per_page, pagination.total] | min }}
-          of {{ pagination.total }} vendor{{ 's' if pagination.total != 1 else '' }}
+          {% if pagination.total > 0 %}
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }}-{{ [pagination.page * pagination.per_page, pagination.total] | min }}
+            of {{ pagination.total }} vendor{{ 's' if pagination.total != 1 else '' }}
+          {% else %}
+            0 results
+          {% endif %}
         </p>
         {% if pagination.pages > 1 %}
         <div class="flex items-center gap-1">

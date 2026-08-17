@@ -185,7 +185,7 @@ VALID_CHAT_DOMAINS = [
     "general", "capabilities", "applications",
     "vendors", "architecture", "compliance",
     "technology", "business_capability", "gap_analysis", "vendor_intelligence",
-    "smart_search",
+    "smart_search", "data_architecture",
 ]
 
 

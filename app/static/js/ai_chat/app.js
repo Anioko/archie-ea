@@ -330,11 +330,32 @@
             // Remove loading (guard: may already be gone if streaming ran first)
             { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
 
-            if (data.error) {
+            if (!response.ok || data.error) {
                 /* A failure renders as a failure. It used to render as an AI
                    turn beginning "**⚠️ Error:**" — the assistant's avatar, the
                    assistant's bubble, and no way to try again. */
                 let errorTitle = 'Error';
+                let errorMessage = '';
+
+                if (data.error) {
+                    // Handle different error formats
+                    if (typeof data.error === 'string') {
+                        errorMessage = data.error;
+                    } else if (typeof data.error === 'object' && data.error.message) {
+                        // Marshmallow validation error or structured error
+                        errorMessage = data.error.message;
+                        if (data.error.details && Array.isArray(data.error.details) && data.error.details.length > 0) {
+                            // Append first validation detail for context
+                            const detail = data.error.details[0];
+                            if (typeof detail === 'string') {
+                                errorMessage += ': ' + detail;
+                            } else if (detail.message) {
+                                errorMessage += ': ' + detail.message;
+                            }
+                        }
+                    }
+                }
+
                 if (data.error_type === 'auth') {
                     errorTitle = 'Authentication Error';
                 } else if (data.error_type === 'connection') {
@@ -345,8 +366,13 @@
                     errorTitle = 'Rate Limit';
                 } else if (data.error_type === 'model_error') {
                     errorTitle = 'Model Error';
+                } else if (!response.ok) {
+                    errorTitle = 'Request Error (HTTP ' + response.status + ')';
                 }
-                appendError(`${errorTitle}: ${data.error}`, () => _retryTurn(message, timestamp));
+
+                const fullError = errorMessage ? `${errorTitle}: ${errorMessage}` : errorTitle;
+                Platform.toast.error(fullError);
+                appendError(fullError, () => _retryTurn(message, timestamp));
             } else {
                 // Add AI response to history
                 state.chatHistory.push({

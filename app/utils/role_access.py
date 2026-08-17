@@ -439,9 +439,25 @@ def get_sidebar_zones(user) -> List[Dict]:
     Must never raise for the same reason as get_user_role: this renders on
     every authenticated page. Falls back to the default role's zones for an
     unrecognized/legacy role value.
+
+    The "admin" zone is filtered per-request on the real `is_platform_admin`
+    boolean (defaults False, purpose-built for this), not on the cached
+    per-role lookup above — `enterprise_role` (which selects that lookup)
+    defaults to the string "platform_admin" for EVERY user for backward
+    compatibility (see the column comment in app/models/user.py), so keying
+    zone visibility off it alone showed the whole Admin section, full of
+    routes guarded by a completely different check, to ordinary users who
+    haven't explicitly picked a role during onboarding. Most of those routes
+    correctly 403 them anyway (admin_required checks the Administrator role,
+    unaffected by this), but /admin/organizations is guarded by
+    platform_admin_required — the one route where this default actually
+    controls data access, not just link visibility.
     """
     role = get_user_role(user)
-    return SIDEBAR_ZONES.get(role, SIDEBAR_ZONES[DEFAULT_ROLE])
+    zones = SIDEBAR_ZONES.get(role, SIDEBAR_ZONES[DEFAULT_ROLE])
+    if not getattr(user, "is_platform_admin", False):
+        zones = [z for z in zones if z["zone"] != "admin"]
+    return zones
 
 
 # Context processor for templates

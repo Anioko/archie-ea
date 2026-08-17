@@ -132,9 +132,9 @@ def application_create():
     if not is_valid:
         validation_errors.append(error)
 
-    criticality = data.get("criticality")
+    business_criticality = data.get("business_criticality")
     is_valid, validated_crit, error = validate_string(
-        criticality, max_length=50, field_name="criticality"
+        business_criticality, max_length=50, field_name="business_criticality"
     )
     if not is_valid:
         validation_errors.append(error)
@@ -200,7 +200,7 @@ def application_create():
             description=description,
             application_code=application_code,
             component_type=validated_type,
-            criticality=validated_crit,
+            business_criticality=validated_crit,
             technology_stack=technology_stack,
             deployment_status=validated_status,
             business_owner=business_owner,

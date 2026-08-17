@@ -577,9 +577,11 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 async _loadItems() {
                     this._startLoading();
                     try {
-                        let data = await _fetch(this.apiUrl + '?' + this._buildQueryString());
+                        let response = await _fetch(this.apiUrl + '?' + this._buildQueryString());
+                        // Unwrap success_response wrapper if present (per CLAUDE.md convention)
+                        let data = response.data || response;
                         this.items = data.items || data.solutions || [];
-                        this.totalItems = data.total || this.items.length;
+                        this.totalItems = data.total || data.pagination?.total || this.items.length;
                         this._stopLoading();
                     } catch (err) { this._handleError(err); }
                 },
@@ -603,9 +605,11 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 async _loadItems() {
                     this._startLoading();
                     try {
-                        let data = await _fetch(this.apiUrl + '?' + this._buildQueryString());
+                        let response = await _fetch(this.apiUrl + '?' + this._buildQueryString());
+                        // Unwrap success_response wrapper if present (per CLAUDE.md convention)
+                        let data = response.data || response;
                         this.items = data.items || data.solutions || [];
-                        this.totalItems = data.total || this.items.length;
+                        this.totalItems = data.total || data.pagination?.total || this.items.length;
                         this._stopLoading();
                     } catch (err) { this._handleError(err); }
                 },

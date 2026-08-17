@@ -502,10 +502,12 @@
         if (pageData.length === 0) {
             safeHTML(tableBody, `
                 <tr>
-                    <td colspan="11" class="px-6 py-8 text-center text-muted-foreground">
-                        <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-4"></i>
-                        <p>No ${tabType} capabilities found.</p>
-                        <p class="text-sm">Try adjusting your filters.</p>
+                    <td colspan="11" class="px-6 py-8 text-center">
+                        <div class="text-center">
+                            <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-4 text-muted-foreground"></i>
+                            <p class="text-muted-foreground">No ${tabType} capabilities found.</p>
+                            <p class="text-sm text-muted-foreground">Try adjusting your filters.</p>
+                        </div>
                     </td>
                 </tr>
             `);
@@ -1188,18 +1190,30 @@
         const items = roadmapData.filteredItems;
         const stats = roadmapData.statistics;
     
-        // Total gaps (filtered)
-        getEl('roadmap-gap-count').textContent = items.length;
-    
+        // Total gaps (filtered) — each element is guarded, not every roadmap
+        // stat badge exists in every render of this view (17 Aug 2026 QA
+        // finding: "Cannot set properties of null" — these five ran
+        // unguarded while the ones below already checked for null).
+        const gapCountEl = getEl('roadmap-gap-count');
+        if (gapCountEl) gapCountEl.textContent = items.length;
+
         // Update item count badges
-        getEl('roadmap-visible-count').textContent = items.length;
-        getEl('roadmap-total-count').textContent = roadmapData.items.length;
-    
+        const visibleCountEl = getEl('roadmap-visible-count');
+        if (visibleCountEl) visibleCountEl.textContent = items.length;
+        const totalCountEl = getEl('roadmap-total-count');
+        if (totalCountEl) totalCountEl.textContent = roadmapData.items.length;
+
         // Priority counts (filtered)
-        getEl('roadmap-critical-count').textContent =
-            items.filter(i => i.priority?.toLowerCase() === 'critical').length;
-        getEl('roadmap-high-count').textContent =
-            items.filter(i => i.priority?.toLowerCase() === 'high').length;
+        const criticalCountEl = getEl('roadmap-critical-count');
+        if (criticalCountEl) {
+            criticalCountEl.textContent =
+                items.filter(i => i.priority?.toLowerCase() === 'critical').length;
+        }
+        const highCountEl = getEl('roadmap-high-count');
+        if (highCountEl) {
+            highCountEl.textContent =
+                items.filter(i => i.priority?.toLowerCase() === 'high').length;
+        }
     
         // Gap type counts (from full statistics)
         const coverageEl = getEl('roadmap-coverage-count');

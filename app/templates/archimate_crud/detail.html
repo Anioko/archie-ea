@@ -298,7 +298,7 @@ document.addEventListener('alpine:init', () => {
         activeTab: 'details',
 
         async deleteElement() {
-            if (!(await Platform.modal.confirm('Delete "{{ elem_name|replace("'", "\\'") }}"? This cannot be undone.'))) return;
+            if (!(await Platform.modal.confirm('Delete "' + {{ elem_name | tojson }} + '"? This cannot be undone.'))) return;
             try {
                 const resp = await fetch(
                     '{{ url_for("archimate_crud.delete_element", layer=layer, element_type=element_type, element_id=element.id) }}',

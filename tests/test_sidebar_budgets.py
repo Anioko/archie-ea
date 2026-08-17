@@ -37,8 +37,9 @@ BOARD_ROLES = {ROLE_ENTERPRISE_ARCHITECT, ROLE_ARB_MEMBER, ROLE_CTO, ROLE_PLATFO
 
 
 class _StubUser:
-    def __init__(self, role):
+    def __init__(self, role, is_platform_admin=False):
         self.enterprise_role = role
+        self.is_platform_admin = is_platform_admin
 
 
 def _zone_names(role):
@@ -228,3 +229,22 @@ def test_get_sidebar_zones_defaults_for_unknown_role():
 def test_get_sidebar_zones_never_raises_for_none_user():
     zones = get_sidebar_zones(None)
     assert zones == SIDEBAR_ZONES[ROLE_SOLUTION_ARCHITECT]
+
+
+def test_admin_zone_hidden_without_is_platform_admin():
+    """13 Aug 2026 QA finding: enterprise_role defaults to the string
+    "platform_admin" for every user (backward-compat column default), which
+    put the whole Admin nav zone — including /admin/organizations, a
+    genuinely cross-tenant route — in front of ordinary users who never
+    explicitly picked a role. The zone must now track the real
+    is_platform_admin boolean (defaults False), not the string default.
+    """
+    user = _StubUser(ROLE_PLATFORM_ADMIN, is_platform_admin=False)
+    zones = get_sidebar_zones(user)
+    assert "admin" not in {z["zone"] for z in zones}
+
+
+def test_admin_zone_shown_for_real_platform_admin():
+    user = _StubUser(ROLE_PLATFORM_ADMIN, is_platform_admin=True)
+    zones = get_sidebar_zones(user)
+    assert "admin" in {z["zone"] for z in zones}

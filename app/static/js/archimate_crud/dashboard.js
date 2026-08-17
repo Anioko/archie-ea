@@ -324,13 +324,16 @@ document.addEventListener('alpine:init', function() {
                         );
                         if (resp.ok) {
                             let data = await resp.json();
-                            self.layerCounts[layerKey] = data.total || 0;
+                            // Unwrap success_response wrapper if present (per CLAUDE.md convention)
+                            let payload = data.data || data;
+                            self.layerCounts[layerKey] = payload.total || 0;
                         } else {
                             // Fallback: elements endpoint
                             let r2 = await fetch(
                                 '/architecture/api/layer/' + layerKey + '/elements?per_page=1',
                                 { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
                             );
+                            if (!r2.ok) throw new Error('HTTP ' + r2.status);
                             let d2 = await r2.json();
                             self.layerCounts[layerKey] = (d2.pagination && d2.pagination.total) || 0;
                         }

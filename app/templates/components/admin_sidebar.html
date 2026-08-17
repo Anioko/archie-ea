@@ -28,10 +28,34 @@ DEPENDENCIES:
 #}
 <aside
     data-testid="sidebar"
-    :class="[$store.sidebar.open ? 'translate-x-0' : '-translate-x-full', $store.sidebar.collapsed ? 'sidebar-collapsed' : '']"
+    x-cloak
+    {#
+      Single source of truth: $store.sidebar.open drives both this transform
+      AND the mobile scrim's x-show (admin_base.html / composer_base.html).
+      Both translate-x-0 and -translate-x-full are always present as keys in
+      this object map, so Alpine's class binding unconditionally adds one and
+      removes the other on every reactive run — it does not depend on
+      remembering what it added last time. Previously this same pair of
+      classes also sat in the static `class` string below (permanently
+      carrying `-translate-x-full`), which only Alpine's binding-diff
+      mechanism is responsible for tearing down; on that array-ternary form
+      the model diffs against its own last-computed value, not the live DOM,
+      so anything that touches the DOM after the very first render without
+      going through this directive's normal diff cycle (a stale server
+      fragment being reinserted, a remount) leaves the static
+      `-translate-x-full` behind forever, and the drawer never opens even
+      though the scrim (which had no such static class to fight) opens fine.
+      The object-map form below removes that class every time it recomputes,
+      not only when it thinks it changed something.
+    #}
+    :class="{
+        'translate-x-0': $store.sidebar.open,
+        '-translate-x-full': !$store.sidebar.open,
+        'sidebar-collapsed': $store.sidebar.collapsed
+    }"
     :style="{ width: $store.sidebar.collapsed ? '4rem' : '16rem' }"
     @click.away="isDesktop ? null : $store.sidebar.open = false"
-    class="fixed inset-y-0 left-0 z-50 bg-card border-r border-border -translate-x-full lg:translate-x-0 lg:static flex flex-col h-screen shadow-lg lg:shadow-none transition-all duration-200 ease-in-out"
+    class="fixed inset-y-0 left-0 z-50 bg-card border-r border-border lg:translate-x-0 lg:static flex flex-col h-screen shadow-lg lg:shadow-none transition-all duration-200 ease-in-out"
 >
     <!-- Sidebar Header -->
     <div class="flex items-center justify-between h-16 px-4 border-b border-border flex-shrink-0">
