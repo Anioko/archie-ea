@@ -173,14 +173,37 @@ def get_vendor(vendor_id):
 def search_vendors():
     """Search vendors by name — autocomplete endpoint used by pickers."""
     search = request.args.get("search", "").strip()
-    limit = min(request.args.get("limit", 10, type=int), 100)
+    # ARCH-014: ``total`` used to be ``len(vendors)`` — the size of the page just
+    # returned, not the size of the collection. A consumer paging on it concluded
+    # the catalogue held 10 vendors when it held 45, with no way to detect the
+    # truncation. It is now a COUNT over the filtered query, independent of paging.
+    # ``per_page`` was also silently ignored (only ``limit`` was read), so an
+    # explicit page-size request was answered with the default 10.
+    page_size = request.args.get("per_page", type=int)
+    if page_size is None:
+        page_size = request.args.get("limit", type=int)
+    if page_size is None:
+        page_size = 10
+    page_size = max(1, min(page_size, MAX_PER_PAGE))
+    page = max(1, request.args.get("page", 1, type=int) or 1)
+
     query = VendorOrganization.query
     if search:
         query = query.filter(VendorOrganization.name.ilike(f"%{search}%"))
-    vendors = query.order_by(VendorOrganization.name).limit(limit).all()
+
+    total = query.count()
+    vendors = (
+        query.order_by(VendorOrganization.name)
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+        .all()
+    )
     return jsonify({
         "vendors": [{"id": v.id, "name": v.name, "vendor_type": getattr(v, "vendor_type", None)} for v in vendors],
-        "total": len(vendors),
+        "total": total,
+        "page": page,
+        "per_page": page_size,
+        "pages": (total + page_size - 1) // page_size,
     })
 
 

@@ -178,6 +178,24 @@ MODEL_REGISTRY = {
 }
 
 # Layer configuration
+# Accepted stored spellings per layer key. ArchiMate 3.2 names two layers with
+# an ampersand ("Implementation & Migration"), and rows exist in both forms, so
+# a count that matches only the short key silently loses them (ARCH-010).
+LAYER_ALIASES = {
+    "motivation": ["motivation"],
+    "strategy": ["strategy"],
+    "business": ["business"],
+    "application": ["application"],
+    "technology": ["technology"],
+    "physical": ["physical"],
+    "implementation": [
+        "implementation",
+        "implementation & migration",
+        "implementation and migration",
+        "implementation_migration",
+    ],
+}
+
 LAYER_CONFIG = {
     "motivation": {
         "name": "Motivation Layer",
@@ -432,10 +450,17 @@ def api_layer_count(layer):
         except Exception as e:
             current_app.logger.warning(f"api_layer_count: count failed for {etype}: {e}")
 
-    # Count from archimate_elements for this layer
+    # Count from archimate_elements for this layer.
+    # 17 Aug 2026 (ARCH-010): matched on the LAYER_CONFIG key alone, so an
+    # element stored as "implementation & migration" — the ArchiMate 3.2 name
+    # for the layer whose key here is "implementation" — matched nothing and
+    # was dropped from every count. The dashboard headline was short by exactly
+    # the size of that layer while its own tiles summed to the real total, and
+    # the layer's elements were invisible in the UI. Match every spelling.
     try:
+        _aliases = [a.lower() for a in LAYER_ALIASES.get(layer, [layer])]
         ae_count = ArchiMateElement.query.filter(
-            db.func.lower(ArchiMateElement.layer) == layer.lower(),
+            db.func.lower(ArchiMateElement.layer).in_(_aliases),
         ).count()
         total += ae_count
     except Exception as e:
@@ -524,8 +549,13 @@ def api_layer_elements(layer):
     if source_filter != "portfolio":  # skip archimate_elements when filtering to portfolio-only
         try:
             seen_pairs = {(el["element_type"], el["id"]) for el in all_elements}
+            # Same alias matching as api_layer_count (ARCH-010) — otherwise the
+            # listing silently omits the elements the count now includes, and the
+            # catalogue page keeps rendering the layer as empty.
             ae_q = ArchiMateElement.query.filter(
-                db.func.lower(ArchiMateElement.layer) == layer.lower(),
+                db.func.lower(ArchiMateElement.layer).in_(
+                    [a.lower() for a in LAYER_ALIASES.get(layer, [layer])]
+                ),
                 ArchiMateElement.type.in_(query_types),
             )
             if search:

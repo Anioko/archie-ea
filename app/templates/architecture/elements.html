@@ -81,9 +81,9 @@
     {# ── Data Quality Banner ── #}
     <div x-show="totalCount > 0" x-cloak class="rounded-lg border border-warning/30 bg-warning/5 p-3 mb-4 flex items-center gap-4 text-xs text-muted-foreground">
         <i data-lucide="alert-triangle" class="h-4 w-4 text-warning shrink-0"></i>
-        <span>No description: <strong class="text-foreground" x-text="noDescCount"></strong></span>
-        <span>No relationships: <strong class="text-foreground" x-text="noRelCount"></strong></span>
-        <span>Not linked to solutions: <strong class="text-foreground" x-text="noSolCount"></strong></span>
+        <span>No description: <strong class="text-foreground" x-text="fmtCount(noDescCount)"></strong></span>
+        <span>No relationships: <strong class="text-foreground" x-text="fmtCount(noRelCount)"></strong></span>
+        <span>Not linked to solutions: <strong class="text-foreground" x-text="fmtCount(noSolCount)"></strong></span>
     </div>
 
     {# ── FRAG-008: Tech Debt Analysis (Phase D) ── #}
@@ -566,9 +566,16 @@ document.addEventListener('alpine:init', () => {
         createForm: { name: '', element_type: '', layer: '', description: '' },
         createTypeOptions: [],
         availableTypes: [],
-        noDescCount: 0,
-        noRelCount: 0,
-        noSolCount: 0,
+        // ARCH-011: these three used to initialise to 0 and were only ever
+        // written by fetchLayers(), which runs solely when the server sent no
+        // layer_stats — i.e. never on a populated repository. The banner
+        // therefore announced "No description: 0" on the same page where the
+        // server-computed Tech Debt figures said 67. Seed them from the *same*
+        // server computation that feeds the Jinja data-quality banner below;
+        // null (not computed) renders as an em dash, never as a zero.
+        noDescCount: {{ no_desc_count | default(none) | tojson }},
+        noRelCount: {{ no_rels_count | default(none) | tojson }},
+        noSolCount: {{ no_solutions_count | default(none) | tojson }},
 
         // BIZBOK: Diagram toggle state
         showDiagram: false,
@@ -588,6 +595,12 @@ document.addEventListener('alpine:init', () => {
             implementation: ['WorkPackage','Deliverable','Plateau','Gap','ImplementationEvent'],
             physical: ['Location','Equipment','Facility','Material','DistributionNetwork'],
             other: ['Grouping','Junction']
+        },
+
+        // A count that was never computed is not a zero: render an em dash so the
+        // architect can tell "nothing wrong" from "nothing measured".
+        fmtCount(v) {
+            return (v === null || v === undefined) ? '—' : v;
         },
 
         async init() {
@@ -648,7 +661,12 @@ document.addEventListener('alpine:init', () => {
                 const layerCounts = {};
                 byLayer.forEach(l => { layerCounts[(l.layer || '').toLowerCase()] = l.element_count || 0; });
                 this.totalCount = statsJson.total_elements || 0;
-                this.noRelCount = statsJson.zero_relationship_count || 0;
+                // Only a fallback: when the server already computed the figure
+                // (ARCH-011) it wins, so both panels on this page agree.
+                if (this.noRelCount === null || this.noRelCount === undefined) {
+                    const zr = statsJson.zero_relationship_count;
+                    this.noRelCount = (zr === null || zr === undefined) ? null : zr;
+                }
                 this.layers = this.layers.map(l => ({
                     ...l,
                     count: layerCounts[l.name.toLowerCase()] || l.count,
