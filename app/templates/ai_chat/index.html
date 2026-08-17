@@ -1015,7 +1015,7 @@ x-cloak>
                                           placeholder="Why are you rejecting this operation?" aria-label="Why are you rejecting this operation?"></textarea>
                                 <div class="flex gap-2">
                                     <button type="button" @click="confirmReject(item.id)"
-                                            :disabled="$store.approvals.busyIds[item.id]"
+                                            :class="$store.approvals.busyIds[item.id] ? 'opacity-50 pointer-events-none' : ''"
                                             class="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50">
                                         Confirm Reject
                                     </button>
@@ -1031,13 +1031,13 @@ x-cloak>
                         <template x-if="rejectingId !== item.id">
                             <div class="flex gap-2 pt-1">
                                 <button type="button" @click="approve(item.id)"
-                                        :disabled="$store.approvals.busyIds[item.id]"
+                                        :class="$store.approvals.busyIds[item.id] ? 'opacity-50 pointer-events-none' : ''"
                                         class="inline-flex items-center gap-1 rounded-md bg-success px-3 py-1.5 text-xs font-medium text-success-foreground hover:bg-success/90 transition-colors disabled:opacity-50">
                                     <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
                                     Approve
                                 </button>
                                 <button type="button" @click="startReject(item.id)"
-                                        :disabled="$store.approvals.busyIds[item.id]"
+                                        :class="$store.approvals.busyIds[item.id] ? 'opacity-50 pointer-events-none' : ''"
                                         class="inline-flex items-center gap-1 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive-emphasis hover:bg-destructive/20 transition-colors disabled:opacity-50">
                                     <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
                                     Reject
