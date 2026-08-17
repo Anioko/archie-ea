@@ -47,4 +47,57 @@
 		health_fails    3
 		health_passes   1
 	}
+
+	# ARCH-001/ARCH-002: when the health check above has pulled the sole
+	# upstream out (or dial/response timed out), reverse_proxy answers with a
+	# bare 502/503/504 and no body — the browser is left on the URL it asked
+	# for, but with nothing readable and no way to retry short of a manual
+	# reload. Serve a branded page instead, with the exact path the visitor
+	# requested burned in server-side via {http.request.orig_uri} so "Retry"
+	# always targets where they were headed, never a hardcoded "/".
+	handle_errors 502 503 504 {
+		header Content-Type "text/html; charset=utf-8"
+		respond <<HTML 503 {
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>503 - Service Unavailable</title>
+<style>
+:root{color-scheme:light;--background:#ffffff;--foreground:#0f172a;--muted-foreground:#64748b;--border:#e2e8f0;--primary:#0f172a;--primary-foreground:#ffffff;--accent:#f8fafc;--destructive:#dc2626;--destructive-soft:rgba(220,38,38,.1)}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--background);color:var(--foreground);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{min-height:80vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+.wrap{width:100%;max-width:32rem;text-align:center}
+.icon-wrap{width:5rem;height:5rem;margin:0 auto 1.5rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;background:var(--destructive-soft)}
+.code{margin:0 0 .5rem;font-size:clamp(4.5rem,14vw,6rem);line-height:1;font-weight:800;letter-spacing:-.04em;color:var(--destructive)}
+.title{margin:0 0 .75rem;font-size:1.5rem;font-weight:600}
+.copy{margin:0 0 .5rem;color:var(--muted-foreground);line-height:1.7}
+.path{margin:0 0 2rem;padding:.5rem .75rem;border-radius:.375rem;background:var(--accent);border:1px solid var(--border);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8125rem;word-break:break-all;display:inline-block}
+.actions{display:flex;flex-direction:column;gap:.75rem;justify-content:center}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:.375rem;border:1px solid transparent;padding:.625rem 1.25rem;font-size:.875rem;font-weight:500;text-decoration:none;cursor:pointer}
+.button-primary{background:var(--primary);color:var(--primary-foreground)}
+.button-secondary{border-color:var(--border);background:var(--background);color:var(--foreground)}
+@media(min-width:640px){.actions{flex-direction:row}}
+</style>
+</head>
+<body>
+<main>
+<div class="wrap">
+<div class="icon-wrap" aria-hidden="true">!</div>
+<h1 class="code">503</h1>
+<h2 class="title">Service Temporarily Unavailable</h2>
+<p class="copy">Archie is restarting and will be back within a few minutes. Please retry the page you asked for below.</p>
+<p class="path">{http.request.orig_uri}</p>
+<div class="actions">
+<a class="button button-primary" href="{http.request.orig_uri}">Retry This Page</a>
+<a class="button button-secondary" href="/">Go to Dashboard</a>
+</div>
+</div>
+</main>
+</body>
+</html>
+HTML
+	}
 }

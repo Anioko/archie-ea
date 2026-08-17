@@ -57,13 +57,23 @@ services:
       DEV_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/archie
       TEST_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/archie_test
       REDISTOGO_URL: redis://redis:6379
-      GUNICORN_WORKERS: "4"
-      # 4x8. Measured on this 2 vCPU box at concurrency 32: 4 workers gave
-      # 89 req/s p95 628ms vs 2 workers 51 req/s p95 1588ms. Threads are the
-      # cheap axis (~0 MB each); each extra worker costs ~355 MB.
+      GUNICORN_WORKERS: "3"
+      # Was 4x8 (measured on this 2 vCPU box at concurrency 32: 4 workers gave
+      # 89 req/s p95 628ms vs 2 workers 51 req/s p95 1588ms; each extra worker
+      # costs ~355 MB). Dropped to 3 after ARCH-001: `dmesg -T` on the droplet
+      # shows the memory-cgroup OOM killer taking gunicorn twice under normal
+      # single-user testing (07 Aug 12:22, 17 Aug 09:29) despite the 2600m
+      # mem_limit below and `free -m` showing only ~178MB free on this 4GB
+      # host once postgres/redis/adminer are also running. Killing the
+      # gunicorn process kills the container's PID 1, so `restart:
+      # unless-stopped` has to replay the whole init-db -> reconcile-schema ->
+      # backfills -> gunicorn boot chain (8-12 min) before anything answers
+      # again — that chain, not request handling, is the outage users saw.
+      # One fewer worker trims ~355 MB off the steady-state ceiling; if OOMs
+      # recur at 3, the fix is more RAM on the droplet, not fewer threads.
       GUNICORN_THREADS: "8"
-      GUNICORN_MAX_REQUESTS: "1000"
-      # 8+4 per process x 4 workers = 48 connections, under max_connections=100.
+      GUNICORN_MAX_REQUESTS: "750"
+      # 8+4 per process x 3 workers = 36 connections, under max_connections=100.
       SQLALCHEMY_POOL_SIZE: "8"
       SQLALCHEMY_MAX_OVERFLOW: "4"
     healthcheck:

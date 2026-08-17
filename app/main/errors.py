@@ -111,3 +111,25 @@ def internal_server_error(e):
     except Exception:
         _log_exception(e)
         return ("Internal Server Error", 500)
+
+
+@main.app_errorhandler(503)
+def service_unavailable(e):
+    """ARCH-002: preserve the requested path through a 503 so a deep link or
+    bookmark survives an outage instead of silently dropping the user at '/'.
+
+    This only covers the case where the Flask process itself is up and chooses
+    to answer 503 (e.g. a readiness gate). When the whole worker/container is
+    dead, Caddy answers instead — see deploy/Caddyfile.proxy's handle_errors
+    block and app/static/errors/503.html, which carry the same request path
+    forward using a server-rendered placeholder rather than client JS.
+    """
+    api = _api_error(503, "Service Unavailable")
+    if api is not None:
+        return api
+    requested_path = request.full_path if request.query_string else request.path
+    try:
+        return render_template("errors/503.html", requested_path=requested_path), 503
+    except Exception:
+        _log_exception(e)
+        return ("Service Unavailable", 503)
