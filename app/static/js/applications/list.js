@@ -201,7 +201,7 @@ function appPortfolio() {
       const self = this;
       const modalId = window.modalManager.createModal({
           title: 'Delete Applications',
-          content: '<p class="text-sm text-muted-foreground">Delete ' + count + ' selected application' + (count !== 1 ? 's' : '') + '? This cannot be undone.</p>',
+          content: '<p class="text-sm text-muted-foreground">Delete ' + count + ' selected application' + (count !== 1 ? 's' : '') + '? Deleted applications are recoverable for a limited window; this list will stop showing them immediately.</p>',
           size: 'small',
           buttons: [
               { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
@@ -215,7 +215,7 @@ function appPortfolio() {
       try {
         await Platform.fetch('/applications/bulk-delete', {
           method: 'POST',
-          body: { ids },
+          body: { ids, confirm: true },
           errorMsg: 'Failed to delete selected applications'
         });
         this.notify(`Deleted ${ids.length} application${ids.length !== 1 ? 's' : ''}.`, 'success');

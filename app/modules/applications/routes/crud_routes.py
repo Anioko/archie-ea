@@ -813,11 +813,32 @@ def application_delete(id):
 @audit_log("application_bulk_delete")
 @rate_limit(5, "1m")
 def bulk_delete_applications():
-    """Bulk delete multiple applications - Returns JSON"""
+    """Bulk soft-delete multiple applications - Returns JSON.
+
+    Finding A-04/ARCH-051/C-10: this used to be a hard delete (application row,
+    ArchiMate mirror element and relationships all destroyed immediately) behind
+    nothing stronger than an admin-role check, with no recovery path. It now:
+      - requires an explicit `confirm: true` in the request body, so a
+        replayed/forged request that only guesses the id list still fails, and
+      - soft-deletes (sets deleted_at/deleted_by) instead of destroying rows,
+        leaving a recovery window. The ArchiMate mirror element is left intact
+        so a restore does not also need to recreate it.
+    Restoring is not yet wired to a UI action; recovery today is
+    `UPDATE application_components SET deleted_at = NULL WHERE id = ...`,
+    scoped to the caller's organization_id via flask --app manage db-query.
+    """
     try:
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
+
+        if not data.get("confirm"):
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "Confirmation required: resend with \"confirm\": true.",
+                }
+            ), 400
 
         # Accept both 'ids' and 'app_ids' for flexibility
         ids = data.get("ids") or data.get("app_ids", [])
@@ -827,13 +848,12 @@ def bulk_delete_applications():
             ), 400
 
         deleted_count = 0
-        elements_deleted = 0
-        relationships_deleted = 0
         errors = []
 
         # OPTIMIZATION: Batch-prefetch application objects to avoid N+1 queries
         _bulk_apps = ApplicationComponent.query.filter(
-            ApplicationComponent.id.in_(ids)
+            ApplicationComponent.id.in_(ids),
+            ApplicationComponent.deleted_at.is_(None),
         ).all()
         _bulk_apps_by_id = {a.id: a for a in _bulk_apps}
 
@@ -841,18 +861,10 @@ def bulk_delete_applications():
             try:
                 app = _bulk_apps_by_id.get(app_id)
                 if app:
-                    element_id = app.archimate_element_id
-                    # Clean up related records first to avoid FK constraint errors
-                    _cleanup_application_relationships(app_id)
-                    db.session.delete(app)
-                    db.session.flush()
-                    # Mirror ArchiMate element goes with it (finding C-02).
-                    mirror = _delete_mirror_archimate_element(element_id)
+                    app.deleted_at = datetime.utcnow()
+                    app.deleted_by = getattr(current_user, "id", None)
                     db.session.commit()
                     deleted_count += 1
-                    elements_deleted += mirror["elements_deleted"]
-                    relationships_deleted += mirror["relationships_deleted"]
-                    errors.extend(mirror["errors"])
                 else:
                     errors.append(f"Application {app_id} not found")
             except Exception as e:
@@ -861,22 +873,14 @@ def bulk_delete_applications():
                 current_app.logger.error(f"Error deleting app {app_id}: {e}")
 
         all_failed = deleted_count == 0 and len(errors) > 0
-        # Report every entity type touched: claiming "deleted N applications"
-        # while the mirror elements survived is the C-02 failure mode.
-        orphaned = deleted_count - elements_deleted
-        message = (
-            f"Deleted {deleted_count} application(s) and "
-            f"{elements_deleted} ArchiMate element(s)"
-        )
-        if orphaned > 0:
-            message += f"; {orphaned} element(s) could not be removed"
+        message = f"Soft-deleted {deleted_count} application(s); recoverable."
         return jsonify(
             {
                 "success": not all_failed,
                 "deleted": deleted_count,
                 "deleted_count": deleted_count,  # Alias for compatibility
-                "elements_deleted": elements_deleted,
-                "relationships_deleted": relationships_deleted,
+                "elements_deleted": 0,
+                "relationships_deleted": 0,
                 "errors": errors,
                 "message": message,
             }

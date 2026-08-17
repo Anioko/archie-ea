@@ -51,6 +51,7 @@ from ..forms.admin_forms import (
 from app.modules.account.forms.account_forms import CreatePasswordForm
 from app.decorators import admin_required, audit_log
 from app.models import APISettings, EditableHTML, Role, User
+from app.models.organization import Organization
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
 from app.services.llm_service import test_api_key
 from app.services.rbac_service import rbac_service
@@ -205,7 +206,23 @@ def registered_users():
         .all()
     )
     roles = Role.query.order_by(Role.name).all()
-    return render_template("admin/registered_users.html", users=users, roles=roles)
+    # A-02: this page is (correctly, per the tenant-scoping fix above)
+    # scoped to the current organisation, but the header used to say
+    # "Registered Users" with no indication of that scope, while
+    # /admin/organizations sums per-org user counts across every org — 22
+    # tenants vs. 2 users here is not a leak or a drift, it is the same
+    # figure viewed at two different scopes with neither one saying so. Name
+    # the scope explicitly and surface the platform-wide total for
+    # reconciliation rather than leaving the admin to discover the gap.
+    current_org = Organization.query.get(g.current_org_id)
+    platform_total_users = User.query.count()
+    return render_template(
+        "admin/registered_users.html",
+        users=users,
+        roles=roles,
+        current_org=current_org,
+        platform_total_users=platform_total_users,
+    )
 
 
 @admin_bp.route("/user/<int:user_id>")
@@ -557,7 +574,8 @@ def preview_env_keys():
     for env_var, provider in env_key_map.items():
         value = os.environ.get(env_var, "")
         if value and value.strip():
-            masked = value[:8] + "..." + value[-4:] if len(value) > 12 else "****"
+            # A-07: last-4 only — do not send prefix bytes of real key material to the client.
+            masked = ("*" * 4) + value[-4:] if len(value) > 4 else "****"
             found_keys.append(
                 {
                     "env_var": env_var,

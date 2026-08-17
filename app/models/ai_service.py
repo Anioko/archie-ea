@@ -62,6 +62,14 @@ class AIPromptTemplate(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Audit metadata (finding A-05). Nullable / server-defaulted so
+    # reconcile-schema can add these to an existing table — see CLAUDE.md
+    # "Schema management". updated_by_id intentionally has no FK constraint
+    # (matches the rest of this model's untyped-int convention) so it never
+    # blocks a save if the user row is gone; resolve it via User.query.get().
+    updated_by_id = db.Column(db.Integer, nullable=True)
+    version = db.Column(db.Integer, nullable=True, default=1, server_default="1")
+
 
 class AIInteractionLog(db.Model):
     """

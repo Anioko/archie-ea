@@ -371,6 +371,13 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     created_at = Column(db.DateTime, default=datetime.utcnow)
     updated_at = Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Soft-delete recovery window (finding A-04/ARCH-051/C-10). Nullable —
+    # reconcile-schema only adds nullable columns; NULL means "not deleted".
+    # Only the bulk-delete endpoint uses this path today; the single-record
+    # delete route still hard-deletes.
+    deleted_at = Column(db.DateTime, nullable=True)
+    deleted_by = Column(db.Integer, nullable=True)
+
     # Data quality indicators
     @property
     def data_freshness_days(self):

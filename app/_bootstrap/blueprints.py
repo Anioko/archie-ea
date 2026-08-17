@@ -494,8 +494,15 @@ def _register_always_on_apis(app, csrf):
     app.register_blueprint(api_v1_bp)
     app.logger.info("[BLUEPRINT] API v1 registered at /api/v1")
     
-    # csrf.exempt: api_v1 blueprint — Bearer token authenticated REST API, no browser session
-    _csrf_exempt_blueprint(app, api_v1_bp)
+    # api_v1 blueprint is NOT CSRF-exempt. Audited 2026-08-18 (finding A-04/ARCH-051/C-10):
+    # every route under app/api/v1/ authenticates with @login_required (the browser
+    # session cookie), not a Bearer token — there is no token-based auth path in this
+    # blueprint at all. The previous blanket `csrf.exempt(api_v1_bp)` here let a
+    # logged-in browser session be driven by a cross-site form/fetch with no token,
+    # e.g. POST /api/v1/applications/ (create) and bulk-delete endpoints. The
+    # front-end CSRF safety net (app/static/js/core/03-fetch.js) already injects
+    # X-CSRFToken on every mutating fetch, including calls to /api/v1/*, so browser
+    # callers are unaffected by requiring the token here.
 
 
     # Unified Enterprise Architecture

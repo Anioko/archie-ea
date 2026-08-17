@@ -431,7 +431,22 @@ def registered_users():
     """View all registered users."""
     users = _svc.get_all_users()
     roles = _svc.get_all_roles()
-    return render_template("admin/registered_users.html", users=users, roles=roles)
+    # A-02: get_all_users() is (correctly) org-scoped — see the
+    # tenant-scoping-ok note in AdminUserService.get_all_users. That scoping
+    # is right, but the page used to render as "Registered Users" with no
+    # indication of it, so 2 users here vs. 22 summed across
+    # /admin/organizations read as a platform undercounting itself rather
+    # than the same figure viewed at two different scopes. Name the scope
+    # and surface the platform-wide total so the two views reconcile.
+    current_org = Organization.query.get(g.current_org_id)
+    platform_total_users = User.query.count()
+    return render_template(
+        "admin/registered_users.html",
+        users=users,
+        roles=roles,
+        current_org=current_org,
+        platform_total_users=platform_total_users,
+    )
 
 
 @admin_bp_v2.route("/user/<int:user_id>")
@@ -768,7 +783,10 @@ def preview_env_keys():
     for env_var, provider in env_key_map.items():
         value = os.environ.get(env_var, "")
         if value and value.strip():
-            masked = value[:8] + "..." + value[-4:] if len(value) > 12 else "****"
+            # A-07: previously exposed value[:8] + value[-4:] to the client — 12
+            # characters of real key material to any admin who opens this page,
+            # which per finding A-03 is currently every user. Last-4 only.
+            masked = ("*" * 4) + value[-4:] if len(value) > 4 else "****"
             found_keys.append(
                 {
                     "env_var": env_var,

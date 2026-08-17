@@ -207,6 +207,9 @@ def solution_prompts_data():
             "default_prompt": config["prompt_text"],
             "current_prompt": override.system_prompt if override else config["prompt_text"],
             "has_override": override is not None,
+            "updated_by_id": override.updated_by_id if override else None,
+            "updated_at": override.updated_at.isoformat() if override and override.updated_at else None,
+            "version": override.version if override else None,
         })
 
     return jsonify({"prompts": prompts})
@@ -238,11 +241,15 @@ def solution_prompt_update(prompt_key):
             system_prompt=prompt_text,
             user_prompt_template="",
             category="solution_prompt",
+            updated_by_id=current_user.id,
+            version=1,
         )
         db.session.add(override)
     else:
         override.system_prompt = prompt_text
         override.updated_at = datetime.utcnow()
+        override.updated_by_id = current_user.id
+        override.version = (override.version or 1) + 1
 
     try:
         db.session.commit()
@@ -264,6 +271,9 @@ def solution_prompt_update(prompt_key):
             "default_prompt": config["prompt_text"],
             "current_prompt": override.system_prompt,
             "has_override": True,
+            "updated_by_id": override.updated_by_id,
+            "updated_at": override.updated_at.isoformat() if override.updated_at else None,
+            "version": override.version,
         },
     })
 

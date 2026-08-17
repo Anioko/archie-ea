@@ -99,6 +99,20 @@ class Config:
     SESSION_REFRESH_EACH_REQUEST = True  # FAR-012: Ensure session is refreshed on every request
     REMEMBER_COOKIE_REFRESH_EACH_REQUEST = True  # FAR-012: Refresh remember-me cookie on activity
 
+    # Cookie attributes — set explicitly at the base class rather than relying on
+    # Flask/Flask-Login's own defaults (finding A-04/ARCH-051/C-10). Flask's
+    # built-in defaults happen to match most of this (HttpOnly=True,
+    # SameSite=Lax) but that is an implicit fact about the framework version in
+    # use, not a control this app owns — it silently stops matching the moment
+    # a dependency bump changes the default, or SameSite=None is ever needed
+    # for a specific integration. ProductionConfig overrides SECURE to True.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", False)
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+    REMEMBER_COOKIE_SECURE = _env_bool("REMEMBER_COOKIE_SECURE", False)
+
     # JWT Configuration
     JWT_TOKEN_LOCATION = ["headers"]
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or SECRET_KEY
