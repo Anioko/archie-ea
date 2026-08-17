@@ -25,6 +25,11 @@ from app.utils.api_response import (
     success_response,
     validation_error_response,
 )
+from app.utils.duplicate_guard import (
+    allow_duplicate_requested,
+    duplicate_conflict_response,
+    find_duplicate_by_name,
+)
 
 applications_bp = Blueprint("applications_v1", __name__)
 
@@ -278,6 +283,12 @@ def create_application():
         description: Application created successfully
       400:
         description: Validation error
+      409:
+        description: >
+          An application with the same normalised name already exists in this
+          organisation. The body carries ``duplicate_of: {id, name}``. Resend
+          with ``allow_duplicate=true`` (body field, ``?allow_duplicate=true``,
+          or the ``X-Allow-Duplicate`` header) to create it anyway.
     """
     try:
         data = request.get_json()
@@ -289,14 +300,14 @@ def create_application():
         if not data.get("name"):
             return validation_error_response({"name": "Name is required"})
 
-        # Check for duplicate name
-        existing = ApplicationComponent.query.filter_by(name=data["name"]).first()
-        if existing:
-            return error_response(
-                message="Application with this name already exists",
-                code="DUPLICATE_APPLICATION",
-                status_code=409,
-            )
+        # ARCH-030: match case-insensitively and whitespace-normalised — an
+        # exact filter_by() let "HxGN EAM" and "hxgn  eam" both through.
+        # ApplicationComponent inherits TenantMixin, so the organisation
+        # predicate is injected; do not add one here.
+        if not allow_duplicate_requested(data):
+            existing = find_duplicate_by_name(ApplicationComponent, data["name"])
+            if existing is not None:
+                return duplicate_conflict_response("An application", existing)
 
         # Create new application
         application = ApplicationComponent(

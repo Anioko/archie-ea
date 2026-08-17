@@ -58,6 +58,11 @@ from app.utils.validators import (
 )
 
 from app.schemas.api_schemas import ApplicationCreateSchema, _load_and_validate
+from app.utils.duplicate_guard import (
+    allow_duplicate_requested,
+    duplicate_conflict_response,
+    find_duplicate_by_name,
+)
 
 from . import unified_applications_bp
 from ._helpers import (  # dead-code-ok
@@ -71,7 +76,18 @@ logger = logging.getLogger(__name__)
 @login_required
 @audit_log("application_create")
 def application_create():
-    """Create Application — modal handles creation inline; POST supports JSON."""
+    """Create Application — modal handles creation inline; POST supports JSON.
+
+    Duplicate protection (ARCH-030): the name is matched case-insensitively and
+    whitespace-normalised against existing applications in the caller's
+    organisation before the insert. A collision answers **409 Conflict** with a
+    ``duplicate_of`` block naming the existing record, so the caller — a human at
+    the modal or the AI agent — can reuse it instead of adding another row. Pass
+    ``allow_duplicate=true`` (query string, body field, or the
+    ``X-Allow-Duplicate`` header) to create the duplicate deliberately, which
+    some organisations need when two systems genuinely share a name in
+    different domains.
+    """
     if request.method == "GET":
         return redirect(url_for("unified_applications.application_list"))
 
@@ -193,6 +209,22 @@ def application_create():
         for error in validation_errors:
             flash(error, "error")
         return redirect(url_for("unified_applications.application_list"))
+
+    # ARCH-030: refuse a same-named application unless the caller opted in.
+    # ApplicationComponent inherits TenantMixin, so the organisation predicate is
+    # injected by do_orm_execute — adding one here would double-filter.
+    if not allow_duplicate_requested(data):
+        existing = find_duplicate_by_name(ApplicationComponent, name)
+        if existing is not None:
+            if is_json:
+                return duplicate_conflict_response("An application", existing)
+            flash(
+                f"An application named '{existing.name}' already exists.",
+                "error",
+            )
+            return redirect(
+                url_for("unified_applications.application_detail", id=existing.id)
+            )
 
     try:
         app = ApplicationComponent(

@@ -12,10 +12,30 @@ import logging
 from dataclasses import dataclass
 
 from app import db
+from app.utils.duplicate_guard import find_duplicate_by_name
 
 from .resolver import EntityResolver
 
 logger = logging.getLogger(__name__)
+
+
+def _duplicate_tool_result(noun: str, existing) -> dict:
+    """The tool-call analogue of a 409 (ARCH-030).
+
+    Neither merges nor silently rejects: the agent is handed the id and name of
+    what it collided with, so it can reference the existing record, and told the
+    exact argument that would override the guard if the duplicate is intended.
+    """
+    return {
+        "success": False,
+        "error": (
+            f"A {noun} named '{existing.name}' already exists (ID {existing.id}). "
+            f"Reference it instead of creating another, or pass "
+            f"allow_duplicate=true if a second one is genuinely intended."
+        ),
+        "code": "DUPLICATE_NAME",
+        "duplicate_of": {"id": existing.id, "name": existing.name},
+    }
 
 
 @dataclass
@@ -169,7 +189,23 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     def _tool_create_solution(self, args: dict) -> dict:
+        """Create a Solution.
+
+        ARCH-030: refuses a name that already exists in the organisation
+        (case-insensitive, whitespace-normalised) and hands the agent the
+        colliding record instead, so it can reuse it. ``allow_duplicate: true``
+        in the tool arguments creates it anyway. This is the path that produced
+        four near-identical "HxGN EAM Asset Management" solutions.
+        """
         from app.models.solution_models import Solution
+
+        org_id = self._get_organization_id()
+        if not args.get("allow_duplicate"):
+            existing = find_duplicate_by_name(
+                Solution, args["name"], organization_id=org_id
+            )
+            if existing is not None:
+                return _duplicate_tool_result("solution", existing)
 
         sol = Solution(
             name=args["name"],
@@ -178,7 +214,7 @@ class ToolExecutor:
             solution_type=args.get("solution_type"),
             status="planned",
             governance_status="draft",
-            organization_id=self._get_organization_id(),
+            organization_id=org_id,
         )
         db.session.add(sol)
         db.session.commit()
@@ -287,17 +323,39 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     def _tool_create_archimate_element(self, args: dict) -> dict:
+        """Create an ArchiMateElement.
+
+        ARCH-030: the repository was 46% duplicated (25 duplicate-name groups
+        over 67 of 145 elements, several triplicated) because this tool inserted
+        unconditionally and the agent runs autonomously. A same-named element of
+        the *same type* in the same organisation is now refused, and the
+        colliding element is returned so the agent can reference it. Two
+        elements may legitimately share a name across types (an
+        ApplicationService and a BusinessProcess called "Order Processing"), so
+        ``type`` is part of the match. ``allow_duplicate: true`` overrides.
+        """
         try:
             from app.models.archimate_core import ArchiMateElement
         except ImportError:
             from app.models.models import ArchiMateElement
+
+        org_id = self._get_organization_id()
+        if not args.get("allow_duplicate"):
+            existing = find_duplicate_by_name(
+                ArchiMateElement,
+                args["name"],
+                organization_id=org_id,
+                extra_filters=[ArchiMateElement.type == args["type"]],
+            )
+            if existing is not None:
+                return _duplicate_tool_result("ArchiMate element", existing)
 
         elem = ArchiMateElement(
             name=args["name"],
             type=args["type"],
             layer=args["layer"],
             description=args.get("description", ""),
-            organization_id=self._get_organization_id(),
+            organization_id=org_id,
         )
         db.session.add(elem)
         db.session.flush()  # get elem.id before linking

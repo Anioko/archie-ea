@@ -42,6 +42,14 @@ TOOL_SCHEMAS = [
                     "description": "Classification of the solution",
                     "enum": ["Platform", "Product", "Service", "Integration", "Migration"],
                 },
+                "allow_duplicate": {
+                    "type": "boolean",
+                    "description": (
+                        "Only set true after the tool has reported a DUPLICATE_NAME "
+                        "conflict and the user has confirmed a second solution with "
+                        "that name is genuinely wanted. Default false."
+                    ),
+                },
             },
             "required": ["name", "description"],
         },
@@ -141,6 +149,14 @@ TOOL_SCHEMAS = [
                 "solution_name": {
                     "type": "string",
                     "description": "Solution to attach this element to (optional, fuzzy matched)",
+                },
+                "allow_duplicate": {
+                    "type": "boolean",
+                    "description": (
+                        "Only set true after the tool has reported a DUPLICATE_NAME "
+                        "conflict and the user has confirmed a second element of the "
+                        "same name and type is genuinely wanted. Default false."
+                    ),
                 },
             },
             "required": ["name", "type", "layer"],

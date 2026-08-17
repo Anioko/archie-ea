@@ -123,6 +123,10 @@ class ApplicationCreateSchema(Schema):
         validate=validate.Range(min=0),
         allow_none=True,
     )
+    # ARCH-030 escape hatch. Marshmallow's default `unknown` is RAISE, so the
+    # duplicate-guard opt-in has to be a declared field or a JSON body carrying
+    # it would 400 before the route ever sees it.
+    allow_duplicate = fields.Bool(load_default=False)
 
 
 class ApplicationUpdateSchema(ApplicationCreateSchema):

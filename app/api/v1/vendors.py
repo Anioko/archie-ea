@@ -14,6 +14,7 @@ from sqlalchemy import or_
 
 from app import db
 from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+from app.utils.duplicate_guard import duplicate_conflict_response, find_duplicate_by_name
 from app.utils.api_response import (
     error_response,
     not_found_response,
@@ -236,14 +237,16 @@ def create_vendor():
         if not data.get("name"):
             return validation_error_response({"name": "Name is required"})
 
-        # Check for duplicate name
-        existing = VendorOrganization.query.filter_by(name=data["name"]).first()
-        if existing:
-            return error_response(
-                message="Vendor with this name already exists",
-                code="DUPLICATE_VENDOR",
-                status_code=409,
-            )
+        # ARCH-030: normalised match. VendorOrganization is deliberately NOT
+        # TenantMixin — it is shared reference data with a globally unique
+        # ``name`` (see its docstring / ADR-0003) — so this lookup is global and
+        # takes no organisation predicate. There is no allow_duplicate escape
+        # hatch here: the database UNIQUE on ``name`` would reject it anyway,
+        # and this check exists to turn that IntegrityError into a 409 that
+        # names the existing vendor.
+        existing = find_duplicate_by_name(VendorOrganization, data["name"])
+        if existing is not None:
+            return duplicate_conflict_response("A vendor", existing)
 
         # Create new vendor
         # Auto-generate required NOT NULL fields from the name

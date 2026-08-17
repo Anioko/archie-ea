@@ -13,6 +13,11 @@ from sqlalchemy.exc import IntegrityError
 from app import db
 from app.application_mgmt import application_mgmt
 from app.models.application_portfolio import ApplicationComponent
+from app.utils.duplicate_guard import (
+    allow_duplicate_requested,
+    duplicate_conflict_response,
+    find_duplicate_by_name,
+)
 
 @application_mgmt.route("/api/applications/<string:app_id>", methods=["GET"])
 @login_required
@@ -162,7 +167,11 @@ def create_application_element(app_id):
         }
 
     Returns:
-        JSON with created element details.
+        JSON with created element details, or **409** when an element of the
+        same type and normalised name already exists in this organisation. The
+        409 body carries ``duplicate_of: {id, name}``. Send
+        ``allow_duplicate: true`` in the body (or ``?allow_duplicate=true``, or
+        the ``X-Allow-Duplicate`` header) to create the duplicate deliberately.
     """
     from app.models.archimate_core import ArchiMateElement, ArchitectureModel
 
@@ -314,6 +323,18 @@ def create_application_element(app_id):
                 break
         if not layer:
             layer = "application"
+
+    # ARCH-030: refuse a same-named element of the same type in this
+    # organisation. ArchiMateElement inherits TenantMixin at runtime, so the
+    # organisation predicate is injected — do not add one here.
+    if not allow_duplicate_requested(data):
+        existing = find_duplicate_by_name(
+            ArchiMateElement,
+            data["name"],
+            extra_filters=[ArchiMateElement.type == data["type"]],
+        )
+        if existing is not None:
+            return duplicate_conflict_response("An ArchiMate element", existing)
 
     try:
         element = ArchiMateElement(
