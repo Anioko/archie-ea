@@ -998,6 +998,12 @@ x-cloak>
                             Expires: <span x-text="formatDate(item.expires_at)"></span>
                         </p>
 
+                        {# $store.approvals.*, not the bare facade getter: the Alpine.data facade
+   exposes busyIds via a getter that returns the store's nested object, and
+   the :disabled effect bound through it rendered disabled="disabled" on every
+   Approve/Reject button and never re-evaluated — the buttons were permanently
+   unclickable, so the whole human-in-the-loop approval flow was dead in the UI
+   even though the route behind it worked (17 Aug 2026 QA finding #17). #}
                         <!-- Reject reason textarea (shown when rejecting this item) -->
                         <template x-if="rejectingId === item.id">
                             <div class="space-y-2 pt-1">
@@ -1009,7 +1015,7 @@ x-cloak>
                                           placeholder="Why are you rejecting this operation?" aria-label="Why are you rejecting this operation?"></textarea>
                                 <div class="flex gap-2">
                                     <button type="button" @click="confirmReject(item.id)"
-                                            :disabled="busyIds[item.id]"
+                                            :disabled="$store.approvals.busyIds[item.id]"
                                             class="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50">
                                         Confirm Reject
                                     </button>
@@ -1025,13 +1031,13 @@ x-cloak>
                         <template x-if="rejectingId !== item.id">
                             <div class="flex gap-2 pt-1">
                                 <button type="button" @click="approve(item.id)"
-                                        :disabled="busyIds[item.id]"
+                                        :disabled="$store.approvals.busyIds[item.id]"
                                         class="inline-flex items-center gap-1 rounded-md bg-success px-3 py-1.5 text-xs font-medium text-success-foreground hover:bg-success/90 transition-colors disabled:opacity-50">
                                     <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
                                     Approve
                                 </button>
                                 <button type="button" @click="startReject(item.id)"
-                                        :disabled="busyIds[item.id]"
+                                        :disabled="$store.approvals.busyIds[item.id]"
                                         class="inline-flex items-center gap-1 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive-emphasis hover:bg-destructive/20 transition-colors disabled:opacity-50">
                                     <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
                                     Reject
