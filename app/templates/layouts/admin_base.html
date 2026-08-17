@@ -167,7 +167,23 @@
        value and re-scopes their sidebar. business_architect was assignable but absent.
        (Gating on enterprise_role being empty does not work — the column is nullable=False
        with a platform_admin default, so it is never empty.) #}
-    {% if current_user.is_authenticated and not current_user.onboarding_completed_at %}
+    {# ARCH-107 / ARCH-040: also require an EMPTY workspace. onboarding_completed_at
+       alone put a full-viewport `fixed inset-0 z-[100]` overlay in front of instances
+       that already held data, which had two costs: the primary landing page addressed
+       an established user as a first-run visitor, and — because the card dismisses on
+       @click.away — the overlay silently ate the user's first click anywhere on the
+       page. That is what made "Add Application" and "Import" look inert: the modal
+       system was healthy and the first click was simply being spent dismissing this.
+       nav_counts is already computed and cached per tenant for the sidebar, so gating
+       on it costs no extra query. #}
+    {% set _ob_counts = nav_counts | default({}) %}
+    {% set _workspace_is_empty = not (
+        (_ob_counts.get('applications', 0) or 0)
+        + (_ob_counts.get('elements', 0) or 0)
+        + (_ob_counts.get('capabilities', 0) or 0)
+        + (_ob_counts.get('vendors', 0) or 0)
+    ) %}
+    {% if current_user.is_authenticated and not current_user.onboarding_completed_at and _workspace_is_empty %}
     <div x-data="{
             {# The localStorage read is load-bearing: the server persist in
                completeOnboarding() is best-effort, so without this check a
