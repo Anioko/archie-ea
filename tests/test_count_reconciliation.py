@@ -24,21 +24,8 @@ import uuid
 import pytest
 
 
-def _login(client, user_id):
-    with client.session_transaction() as sess:
-        sess["_user_id"] = str(user_id)
-        sess["_fresh"] = True
-    from flask import g, has_app_context
-
-    if not has_app_context():
-        return
-    for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
-        if hasattr(g, cached):
-            delattr(g, cached)
-
-
 @pytest.fixture
-def org_client(app, db_session, make_org):
+def org_client(app, db_session, make_org, login_as):
     from app.models.user import User
 
     org = make_org("countrec")
@@ -53,11 +40,11 @@ def org_client(app, db_session, make_org):
     db_session.add(user)
     db_session.flush()
     client = app.test_client()
-    _login(client, user.id)
+    login_as(client, user)
     return org, client, user
 
 
-def test_implementation_layer_is_not_dropped_from_counts(org_client, tenant_ctx):
+def test_implementation_layer_is_not_dropped_from_counts(org_client, tenant_ctx, login_as):
     """An element stored as 'implementation & migration' must be counted.
 
     This is the exact ARCH-010 defect. Before the fix the count query matched
@@ -76,7 +63,7 @@ def test_implementation_layer_is_not_dropped_from_counts(org_client, tenant_ctx)
         db.session.add(el)
         db.session.commit()
 
-    _login(client, user.id)
+    login_as(client, user)
 
     resp = client.get("/architecture/api/layer/implementation/count")
     assert resp.status_code == 200, resp.get_data(as_text=True)
@@ -108,7 +95,7 @@ def test_layer_aliases_cover_every_configured_layer(app):
         )
 
 
-def test_layer_count_and_listing_agree(org_client, tenant_ctx):
+def test_layer_count_and_listing_agree(org_client, tenant_ctx, login_as):
     """The count endpoint and the listing endpoint must not disagree.
 
     Both matched the layer name independently; fixing only the count would
@@ -128,7 +115,7 @@ def test_layer_count_and_listing_agree(org_client, tenant_ctx):
         )
         db.session.commit()
 
-    _login(client, user.id)
+    login_as(client, user)
 
     count_resp = client.get("/architecture/api/layer/implementation/count")
     assert count_resp.status_code == 200

@@ -118,3 +118,44 @@ def tenant_ctx(app):
             yield
 
     return _ctx
+
+
+@pytest.fixture
+def login_as(app):
+    """Log a client in as ``user``, defeating flask_login's ``g`` cache.
+
+    Three separate agents independently rediscovered the same trap in one
+    session, and 51 test modules hand-roll their own copy of this helper, so
+    it belongs here rather than in a comment.
+
+    The trap: ``db_session`` holds ONE app context open for the whole test, so
+    ``g`` survives between test-client requests. flask_login caches the
+    resolved user on ``g._login_user``, and our tenant middleware caches
+    ``g.current_org_id``. Writing to the session cookie therefore does not
+    change who the next request executes as — a second client keeps running as
+    the first client's user (which reads as a tenancy leak that does not
+    exist), and a request issued before any login caches an *anonymous* user
+    that later 401s a properly-authenticated call.
+
+    Call this immediately before each request whose identity matters:
+
+        login_as(client, user)
+        resp = client.get("/solutions/")
+
+    Note ordering: seed and flush the user BEFORE logging in, or the loader
+    cannot resolve the id and the request redirects to the login page.
+    """
+    from flask import g, has_app_context
+
+    def _login(client, user):
+        user_id = getattr(user, "id", user)
+        with client.session_transaction() as sess:
+            sess["_user_id"] = str(user_id)
+            sess["_fresh"] = True
+        if not has_app_context():
+            return
+        for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
+            if hasattr(g, cached):
+                delattr(g, cached)
+
+    return _login
