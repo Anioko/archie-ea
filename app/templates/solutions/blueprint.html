@@ -53,20 +53,12 @@
 {% endif %}
 {# Section catalogue — defined ahead of the layout so both the outline
    rail and the document body iterate the same list. #}
-{% set viewpoint_sections = [
-            ('vision_motivation', '2', 'Vision & Motivation', 'Motivation Viewpoint'),
-            ('value_stream_map', '3', 'Value Stream Map', 'Value Stream Viewpoint'),
-            ('business_process_view', '4', 'Business Process View', 'Business Process Cooperation Viewpoint'),
-            ('application_cooperation', '5', 'Application Cooperation', 'Application Cooperation Viewpoint'),
-            ('data_information', '6', 'Data & Information', 'Information Structure Viewpoint'),
-            ('deployment_view', '7', 'Deployment & Migration', 'Deployment Viewpoint'),
-            ('network_communication', '8', 'Network & Communication', 'Technology Viewpoint'),
-            ('gap_analysis', '9', 'Gap Analysis', 'Gap Analysis'),
-            ('transition_roadmap', '10', 'Transition Roadmap', 'Migration Viewpoint'),
-            ('work_packages', '11', 'Work Packages', 'Implementation & Migration Viewpoint'),
-            ('security_viewpoint', '12', 'Security Viewpoint', 'Security Viewpoint'),
-            ('nfr_satisfaction', '13', 'NFR Satisfaction', 'Requirements Realization Viewpoint')
-        ] %}
+{# Derived from the canonical catalogue (BLUEPRINT_SECTIONS) so the document
+   body, the outline rail and every completeness figure iterate one list. #}
+{% set viewpoint_sections = [] %}
+{% for _bs in completeness.sections if _bs.kind == 'viewpoint' %}
+    {% set _ = viewpoint_sections.append((_bs.id, _bs.number, _bs.title, _bs.viewpoint)) %}
+{% endfor %}
 
 <div class="flex gap-6 items-start max-w-[1600px] mx-auto"
      x-data="blueprintPage()"
@@ -85,13 +77,13 @@
          ">
         <p class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-2">Outline</p>
         <ul class="space-y-0.5 text-sm">
-            {% set _outline = [('executive_summary', 'Exec Summary', 1)] %}
-            {% for section_id, num, title, viewpoint in viewpoint_sections %}
-                {% set _ = _outline.append((section_id, title, num)) %}
-            {% endfor %}
-            {% set _ = _outline.append(('requirements_traceability', 'Traceability', viewpoint_sections | length + 2)) %}
-            {% for oid, olabel, onum in _outline %}
-            {% set o_score = scores.get(oid, {}).get('overall', 0) if scores else 0 %}
+            {# One row per canonical section — including Architecture Decisions,
+               which the hand-maintained outline used to omit (S-03). #}
+            {% for _o in completeness.sections %}
+            {% set oid = _o.id %}
+            {% set olabel = _o.title %}
+            {% set onum = _o.number %}
+            {% set o_score = _o.percent %}
             <li>
                 <a href="#{{ oid }}"
                    @click.prevent="window.dispatchEvent(new CustomEvent('bp-open-section', {detail: '{{ oid }}'}));

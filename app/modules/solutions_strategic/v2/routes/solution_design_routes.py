@@ -1102,13 +1102,24 @@ def list_solutions():
         if status_filter:
             query = query.filter(Solution.status == status_filter)
         elif not search:
-            # Default: exclude only archived solutions and empty draft shells
-            query = query.filter(Solution.status != "archived").filter(
-                db.or_(
-                    Solution.status != "draft",
-                    db.and_(Solution.status == "draft", Solution.description.isnot(None), db.func.length(Solution.description) > 20),
-                )
+            # Default: exclude only archived solutions and empty draft shells.
+            #
+            # S-01 (17 Aug 2026 QA addendum): "empty" was judged on description
+            # length alone, so a draft with no description was hidden no matter
+            # how much architecture it contained. That hid solution 17 — the only
+            # solution in the whole instance carrying real content (4 elements, 3
+            # relationships, 25% blueprint completeness) — while the page asserted
+            # "Page 1 of 1". A shell is now one with no description AND no
+            # blueprint narrative AND no version history, so real work is never
+            # hidden by an unfilled text box. The count of what this hides is
+            # surfaced to the user below rather than left silent.
+            _is_shell = db.and_(
+                Solution.status == "draft",
+                db.or_(Solution.description.is_(None), db.func.length(Solution.description) <= 20),
+                db.or_(Solution.section_narratives.is_(None), db.cast(Solution.section_narratives, db.Text).in_(("{}", "null", ""))),
+                db.or_(Solution.version.is_(None), Solution.version <= 1),
             )
+            query = query.filter(Solution.status != "archived").filter(db.not_(_is_shell))
 
         # Apply domain filter
         if domain_filter:
@@ -1192,8 +1203,22 @@ def list_solutions():
             for _sol in pagination.items
         }
 
+        # S-01: the list used to assert "Page 1 of 1" while silently withholding
+        # rows. Report how many the default filter hid so the count on screen is
+        # honest about being filtered.
+        hidden_by_default_filter = 0
+        if not status_filter and not search:
+            try:
+                _visible_ids = {s_.id for s_ in _ordered.with_entities(Solution.id).all()}
+                _accessible = _base.with_entities(Solution.id).all()
+                hidden_by_default_filter = max(0, len({r[0] for r in _accessible}) - len(_visible_ids))
+            except Exception as _hid_err:  # a count must never 500 the page
+                logger.warning("solutions list: hidden-count unavailable: %s", _hid_err)
+                hidden_by_default_filter = 0
+
         return render_template(
             "solutions/list.html",
+            hidden_by_default_filter=hidden_by_default_filter,
             solutions=pagination.items,
             pagination=pagination,
             per_page=per_page,
@@ -2590,7 +2615,11 @@ def _build_blueprint_context(solution):
     Does NOT modify _build_solution_detail_context() — legacy page untouched.
     """
     import json as _json
-    from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import BlueprintCompletenessService
+    from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import (
+        BLUEPRINT_SECTIONS,
+        BlueprintCompletenessService,
+        compute_blueprint_completeness,
+    )
     svc = BlueprintCompletenessService()
 
     # Get or compute scores
@@ -2779,6 +2808,11 @@ def _build_blueprint_context(solution):
     return {
         "solution": solution,
         "scores": scores,
+        # S-02/S-03: the single completeness computation. Every surface on the
+        # blueprint page (ring, "N of M sections", gap advisor, header strip)
+        # reads from this — none of them may re-derive it.
+        "completeness": compute_blueprint_completeness(scores),
+        "blueprint_sections": BLUEPRINT_SECTIONS,
         "section_definitions": merged_defs,
         "section_has_content": section_has_content,
         "next_actions": svc.get_next_actions(solution.id, precomputed_scores=scores),

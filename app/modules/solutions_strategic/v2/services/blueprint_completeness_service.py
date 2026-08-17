@@ -58,9 +58,153 @@ SECTION_TITLES = {
     "security_viewpoint": "Security Viewpoint",
     "nfr_satisfaction": "NFR Satisfaction",
     "requirements_traceability": "Requirements Traceability",
+    "architecture_decisions": "Architecture Decisions",
     "erp_fit_gap": "ERP Fit-Gap Analysis",
     "integration_architecture": "Integration Architecture",
 }
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Canonical blueprint section catalogue (S-02 / S-03)
+#
+# This list IS the blueprint document: the template renders one section per
+# entry, in this order, and every completeness figure on the page divides by
+# `len(BLUEPRINT_SECTIONS)`. Before this list existed, four surfaces each
+# carried their own hardcoded copy of the section ids and their own literal
+# denominator of 14 — the governance ring, the "N of 14 sections" caption,
+# the gap-advisor card and the header strip — so one page load could show
+# 25% / 6-of-14 / 13-of-14-need-work / 8-not-started simultaneously, and
+# "Architecture Decisions" (section 15, backed and editable) was counted by
+# none of them. Add a section here and every surface picks it up; do not
+# re-list section ids in a template.
+#
+# `erp_fit_gap` and `integration_architecture` are scored by the service but
+# are NOT part of the blueprint document (no rendered section), so they are
+# deliberately absent — a section the reader cannot see must not move a
+# number the reader can.
+#
+# `kind` says how blueprint.html renders it: "narrative" and "matrix" and
+# "decisions" are bespoke blocks; "viewpoint" entries are the generic
+# diagram+table loop.
+# ──────────────────────────────────────────────────────────────────────────
+BLUEPRINT_SECTIONS = [
+    {"id": "executive_summary", "number": 1, "title": "Executive Summary", "short": "Exec Summary", "viewpoint": None, "kind": "narrative"},
+    {"id": "vision_motivation", "number": 2, "title": "Vision & Motivation", "short": "Motivation", "viewpoint": "Motivation Viewpoint", "kind": "viewpoint"},
+    {"id": "value_stream_map", "number": 3, "title": "Value Stream Map", "short": "Value Stream", "viewpoint": "Value Stream Viewpoint", "kind": "viewpoint"},
+    {"id": "business_process_view", "number": 4, "title": "Business Process View", "short": "Business", "viewpoint": "Business Process Cooperation Viewpoint", "kind": "viewpoint"},
+    {"id": "application_cooperation", "number": 5, "title": "Application Cooperation", "short": "Application", "viewpoint": "Application Cooperation Viewpoint", "kind": "viewpoint"},
+    {"id": "data_information", "number": 6, "title": "Data & Information", "short": "Data", "viewpoint": "Information Structure Viewpoint", "kind": "viewpoint"},
+    {"id": "deployment_view", "number": 7, "title": "Deployment & Migration", "short": "Deployment", "viewpoint": "Deployment Viewpoint", "kind": "viewpoint"},
+    {"id": "network_communication", "number": 8, "title": "Network & Communication", "short": "Network", "viewpoint": "Technology Viewpoint", "kind": "viewpoint"},
+    {"id": "gap_analysis", "number": 9, "title": "Gap Analysis", "short": "Gaps", "viewpoint": "Gap Analysis", "kind": "viewpoint"},
+    {"id": "transition_roadmap", "number": 10, "title": "Transition Roadmap", "short": "Roadmap", "viewpoint": "Migration Viewpoint", "kind": "viewpoint"},
+    {"id": "work_packages", "number": 11, "title": "Work Packages", "short": "Work Pkg", "viewpoint": "Implementation & Migration Viewpoint", "kind": "viewpoint"},
+    {"id": "security_viewpoint", "number": 12, "title": "Security Viewpoint", "short": "Security", "viewpoint": "Security Viewpoint", "kind": "viewpoint"},
+    {"id": "nfr_satisfaction", "number": 13, "title": "NFR Satisfaction", "short": "NFRs", "viewpoint": "Requirements Realization Viewpoint", "kind": "viewpoint"},
+    {"id": "requirements_traceability", "number": 14, "title": "Requirements Traceability", "short": "Trace", "viewpoint": "Requirements Realization Viewpoint", "kind": "matrix"},
+    {"id": "architecture_decisions", "number": 15, "title": "Architecture Decisions", "short": "Decisions", "viewpoint": None, "kind": "decisions"},
+]
+
+BLUEPRINT_SECTION_IDS = [s["id"] for s in BLUEPRINT_SECTIONS]
+
+# A section counts as complete at the same threshold ARB readiness uses, so
+# "complete" means the same thing everywhere on the page.
+SECTION_COMPLETE_THRESHOLD = 80
+
+# Guidance shown by the gap advisor for a section below the threshold.
+SECTION_GAP_HINTS = {
+    "executive_summary": "Write the executive summary — aim for 100+ words describing the problem, solution approach, and business value.",
+    "vision_motivation": "Add Business Drivers, Goals, and Architecture Principles to anchor the design rationale.",
+    "value_stream_map": "Build the strategy chain: Goal → ValueStream (realization) → Capability (association) → Outcome (realization). Stages link via triggering. Without this chain the blueprint has no traceable path from business goal to delivered outcome.",
+    "business_process_view": "Document Business Processes, Business Functions, and the actors who perform them.",
+    "application_cooperation": "Link Application Components and define integration interfaces and data exchange patterns.",
+    "data_information": "Add Data Objects and Data Components; show how information flows and is governed.",
+    "deployment_view": "Define Deployment Nodes, System Software, and the infrastructure that runs this solution.",
+    "network_communication": "Map Network Components, Communication Paths, and connectivity between deployment nodes.",
+    "gap_analysis": "Document current-state vs. target-state gaps — show what is missing and the impact of each gap.",
+    "transition_roadmap": "Add Transition States and Plateaus that show how the architecture evolves from now to target.",
+    "work_packages": "Define Work Packages with owners, timelines, and cross-package dependencies.",
+    "security_viewpoint": "Document security controls, policies, trust boundaries, and threat mitigations.",
+    "nfr_satisfaction": "List Non-Functional Requirements (performance, reliability, scalability) and how the design satisfies each.",
+    "requirements_traceability": "Link Requirement elements to architecture elements to demonstrate end-to-end traceability.",
+    "architecture_decisions": "Record the Architecture Decision Records — the option chosen, the options rejected, and why.",
+}
+
+
+def compute_blueprint_completeness(scores):
+    """Derive every completeness figure the blueprint page shows, once.
+
+    Weighting model — chosen explicitly, not emergent:
+      * All sections carry EQUAL weight. There is no per-section multiplier;
+        a missing Executive Summary costs exactly as much as a missing
+        Deployment view.
+      * `percent` is the arithmetic mean of the per-section `overall` scores,
+        so a partially-filled section earns FRACTIONAL credit (a page of
+        50%-filled sections reads 50%, not 0%). It is not the ratio of
+        complete sections — that ratio is `sections_complete / total_sections`
+        and is reported separately rather than conflated with the dial.
+      * A section is `complete` at >= 80 (SECTION_COMPLETE_THRESHOLD, the ARB
+        gate), `not_started` at exactly 0, and `partial` in between. The three
+        buckets are exhaustive and disjoint, so they always sum to
+        `total_sections`, and `sections_needing_work` == partial + not_started.
+      * A missing score is 0, never omitted — a section with no data is
+        incomplete, not excluded from the denominator.
+
+    Args:
+        scores: dict of section_id -> score dict (as produced by score_all).
+
+    Returns:
+        dict with total_sections, sections_complete, sections_partial,
+        sections_not_started, sections_needing_work, percent, and `sections`
+        (per-section rows: id, number, title, short, percent, state, hint).
+    """
+    scores = scores or {}
+    rows = []
+    complete = partial = not_started = 0
+    total_pct = 0
+
+    for defn in BLUEPRINT_SECTIONS:
+        raw = scores.get(defn["id"]) or {}
+        pct = raw.get("overall", 0) if isinstance(raw, dict) else 0
+        try:
+            pct = int(pct or 0)
+        except (TypeError, ValueError):
+            pct = 0
+        total_pct += pct
+
+        if pct >= SECTION_COMPLETE_THRESHOLD:
+            state = "complete"
+            complete += 1
+        elif pct <= 0:
+            state = "not_started"
+            not_started += 1
+        else:
+            state = "partial"
+            partial += 1
+
+        rows.append({
+            "id": defn["id"],
+            "number": defn["number"],
+            "title": defn["title"],
+            "short": defn["short"],
+            "viewpoint": defn["viewpoint"],
+            "kind": defn["kind"],
+            "percent": pct,
+            "state": state,
+            "hint": SECTION_GAP_HINTS.get(defn["id"], ""),
+        })
+
+    total = len(BLUEPRINT_SECTIONS)
+    return {
+        "total_sections": total,
+        "sections_complete": complete,
+        "sections_partial": partial,
+        "sections_not_started": not_started,
+        "sections_needing_work": partial + not_started,
+        "percent": int(round(total_pct / total)) if total else 0,
+        "threshold": SECTION_COMPLETE_THRESHOLD,
+        "sections": rows,
+    }
 
 
 class BlueprintCompletenessService:

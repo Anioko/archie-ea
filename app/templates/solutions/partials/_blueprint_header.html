@@ -1,28 +1,17 @@
 {# ── Blueprint Header: Document title + sticky completeness strip ── #}
 {# Variables: solution, scores (dict of section_id -> {element, relationship, traceability, overall}) #}
 
-{% set sections = [
-    ('executive_summary', 'Exec Summary'),
-    ('vision_motivation', 'Motivation'),
-    ('value_stream_map', 'Value Stream'),
-    ('business_process_view', 'Business'),
-    ('application_cooperation', 'Application'),
-    ('data_information', 'Data'),
-    ('deployment_view', 'Deployment'),
-    ('network_communication', 'Network'),
-    ('gap_analysis', 'Gaps'),
-    ('transition_roadmap', 'Roadmap'),
-    ('work_packages', 'Work Pkg'),
-    ('security_viewpoint', 'Security'),
-    ('nfr_satisfaction', 'NFRs'),
-    ('requirements_traceability', 'Trace')
-] %}
+{# The strip walks `completeness.sections` — the canonical, server-side section
+   catalogue — so it cannot drift from the ring, the caption or the gap advisor
+   (S-02), and it includes Architecture Decisions (S-03). #}
+{% set sections = completeness.sections %}
 
 {# ── Collect 0%-score sections for quick-add strip ── #}
 {% set _qa_ns = namespace(zero=[]) %}
-{% for _qa_sid, _qa_lbl in sections %}
-    {% set _qa_s = scores.get(_qa_sid, {}) if scores else {} %}
-    {% if (_qa_s.get('overall', 0) if _qa_s else 0) == 0 %}
+{% for _qa in sections %}
+    {% set _qa_sid = _qa.id %}
+    {% set _qa_lbl = _qa.short %}
+    {% if _qa.state == 'not_started' %}
         {% set _qa_ns.zero = _qa_ns.zero + [(_qa_sid, _qa_lbl)] %}
     {% endif %}
 {% endfor %}
@@ -253,9 +242,11 @@ function archieShowBanner(msg, type) {
      "
      class="xl:hidden sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border -mx-6 px-6 py-2 mb-6">
     <div class="flex items-center gap-1 overflow-x-auto scrollbar-thin">
-        {% for section_id, label in sections %}
+        {% for _sec in sections %}
+        {% set section_id = _sec.id %}
+        {% set label = _sec.short %}
         {% set score = scores.get(section_id, {}) if scores else {} %}
-        {% set pct = score.get('overall', 0) if score else 0 %}
+        {% set pct = _sec.percent %}
         {% set elem_pct = score.get('element', 0) if score else 0 %}
         {% set rel_pct = score.get('relationship', 0) if score else 0 %}
         {% set trace_pct = score.get('traceability', 0) if score else 0 %}

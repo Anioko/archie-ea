@@ -1388,6 +1388,39 @@ for _source in ALL_ACTIVE_ELEMENTS:
 
 del _element, _other, _source, _target, _allowed, _dynamic
 
+# Realization may only point at a MORE ABSTRACT entity (ArchiMate 3.2 §5.1.3), so an
+# active structure element is never a valid TARGET. Enforced here as a derived pass over
+# the finished table rather than by editing the offending entries, because the entries
+# are the symptom: the table is authored per-direction, so a pair could be written
+# correctly one way round and wrongly the other. Twelve hand-authored pairs were wrong
+# this way, and every one of them was the reverse of a legitimate rule —
+# ApplicationComponent --realization--> Requirement is valid, Requirement -->
+# ApplicationComponent is not; likewise Capability, WorkPackage, Node and Equipment.
+#
+# Grouping, Location and Junction are exempt. They belong to no layer and are encoded
+# permissively on purpose (see the rationale above); narrowing them here would
+# re-litigate that decision as a side effect of a different fix.
+_CORE_ACTIVE_ELEMENTS = frozenset(
+    BUSINESS_ACTIVE_ELEMENTS
+    + APPLICATION_ACTIVE_ELEMENTS
+    + TECHNOLOGY_ACTIVE_ELEMENTS
+    + PHYSICAL_ACTIVE_ELEMENTS
+)
+
+for _pair, _types in VALID_RELATIONSHIPS.items():
+    if "realization" not in _types:
+        continue
+    _tgt = _pair[1]
+    if _tgt in OTHER_ELEMENTS or _tgt in CONNECTOR_ELEMENTS:
+        continue
+    # Only the four core layers. Strategy's Resource is a legitimate realization
+    # target (a Node realises a Resource) and motivation's Stakeholder is governed by
+    # the motivation rules, so neither is swept up by ALL_ACTIVE_ELEMENTS here.
+    if _tgt in _CORE_ACTIVE_ELEMENTS:
+        _types.remove("realization")
+
+del _pair, _types, _tgt
+
 
 # Relationships that can participate in derivation chains
 DERIVABLE_RELATIONSHIPS = {

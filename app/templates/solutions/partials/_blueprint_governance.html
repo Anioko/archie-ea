@@ -1,23 +1,10 @@
 {# ── Blueprint Governance Panel (right sidebar) ── #}
 {# Variables: solution, scores, phase_checklist, next_actions, arb_ready #}
 
-{# ── Pre-compute overall score and section count using Jinja ── #}
-{% set all_sections = [
-    'executive_summary', 'vision_motivation', 'value_stream_map',
-    'business_process_view', 'application_cooperation', 'data_information',
-    'deployment_view', 'network_communication', 'gap_analysis',
-    'transition_roadmap', 'work_packages', 'security_viewpoint',
-    'nfr_satisfaction', 'requirements_traceability'
-] %}
-{% set ns = namespace(total=0, filled=0) %}
-{% for sid in all_sections %}
-    {% set pct = scores.get(sid, {}).get('overall', 0) if scores else 0 %}
-    {% set ns.total = ns.total + pct %}
-    {% if pct > 0 %}
-        {% set ns.filled = ns.filled + 1 %}
-    {% endif %}
-{% endfor %}
-{% set overall_pct = (ns.total / 14)|round|int %}
+{# Completeness comes from `completeness` (compute_blueprint_completeness) —
+   the single server-side computation shared with the header strip and the gap
+   advisor. Do not re-derive it here: the four surfaces disagreeing was S-02. #}
+{% set overall_pct = completeness.percent %}
 
 <div class="space-y-3">
 
@@ -159,7 +146,7 @@
                 {% if solution.blueprint_version is defined and solution.blueprint_version %}
                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground border border-border">v{{ solution.blueprint_version }}</span>
                 {% endif %}
-                <span class="text-[10px] text-muted-foreground">{{ ns.filled }} of 14 sections</span>
+                <span class="text-[10px] text-muted-foreground">{{ completeness.sections_complete }} of {{ completeness.total_sections }} sections complete</span>
             </div>
         </div>
     </div>
