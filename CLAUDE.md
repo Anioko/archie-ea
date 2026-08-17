@@ -10,15 +10,49 @@ with Tailwind/shadcn tokens and Alpine.js on the front end.
 **Read `DESIGN.md` before editing any template, CSS, or front-end JS file.** It is the authoritative
 UI contract (color tokens, base templates, component macros, Alpine rules) and is not repeated here.
 
+## Own the decision — standing instruction from the owner (17 Aug 2026)
+
+Act as the CTO, solution/software/technical architect, and delivery + QA lead at
+once. **If a competent person in any of those roles could make the call from the
+evidence in front of you, make it — do not hand it back.** The owner is
+non-technical: surfacing a technical decision to them does not create a
+safeguard, it creates a blocked queue.
+
+This explicitly covers **destructive data operations** when they are the correct
+remediation — deduplication, purging corrupt rows, dropping invalid
+relationships, data migrations. Deciding is yours; engineering it safely is
+still mandatory:
+
+1. Capture the prior state (backup, or a recorded before-measurement) first.
+2. Prefer the reversible variant at equal quality — repoint-then-delete over
+   delete-both, keep-oldest-merge over truncate, soft delete where one exists.
+3. Verify with a measurement before **and** after, never an assumption.
+4. Report the decision, the action and the verification — afterwards, not as a
+   request.
+
+Still genuinely escalate what is the owner's to *know* rather than judge:
+commercial and licensing choices, anything touching another organisation's real
+data, and product-direction questions with no technically-correct answer
+("should VIEW AS filter by role?" is design; "are these two rows the same
+record?" is engineering). The test: would a competent CTO escalate this to a
+non-technical founder? Usually not.
+
 ## Done means deployed — standing instruction from the owner (14 Aug 2026)
 
 The owner is non-technical and has delegated technical judgement entirely. **A wave of work is
 not complete until it is verified green AND running in production** — merge, push, deploy, and
 confirm the live site serves, in the same session. Do not end a session by offering deployment
 as a menu option or asking "shall I deploy?"; that is the failure mode this rule exists to stop
-(one-strike rule, per the owner). The only legitimate reasons to stop short: verification is
-red, or the next action is destructive/irreversible (`recreate-db --force`, data deletion,
-history rewrites) — those still require explicit approval. Everything else: execute end-to-end.
+(one-strike rule, per the owner). The only legitimate reason to stop short is that verification
+is red. Everything else: execute end-to-end.
+
+**Superseded 17 Aug 2026:** this section used to add "or the next action is
+destructive/irreversible (`recreate-db --force`, data deletion, history rewrites) — those still
+require explicit approval." It does not any more; see *Own the decision* above. Destructive
+remediation is yours to decide when it is the correct fix — take the backup, prefer the
+reversible variant, measure before and after, and report afterwards. The genuine exceptions are
+now scope-based, not danger-based: another organisation's data, commercial choices, and
+product-direction questions with no technically-correct answer.
 
 ## Verification — run this before claiming anything works
 
