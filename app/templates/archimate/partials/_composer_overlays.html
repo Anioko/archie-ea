@@ -1250,7 +1250,11 @@
             </div>
         </div>
     </div>
-</div>
+{# Removed a stray </div> here: it closed composer.html's x-data="composerApp()"
+   wrapper early, so everything below (annotation modal, staleness review, bulk
+   import, matrix view, landscape view) was parsed as a SIBLING of the component
+   and every binding in it resolved against the base layout's scope — 72
+   ReferenceErrors on every composer load. #}
 
 {# CMP-052: Annotation text edit modal #}
 <div x-show="annotEditOpen" x-cloak
