@@ -603,7 +603,12 @@ function composerApp() {
         capabilityFilter: '',
 
         /* Mini-map state */
-        miniMapExpanded: true,
+        miniMapExpanded: (function() {
+            try {
+                let stored = window.localStorage.getItem('archie.composer.miniMapExpanded');
+                return stored === null ? true : stored === 'true';
+            } catch (e) { return true; }
+        })(),
         _miniMapDragging: false,
         _miniMapRAF: null,
 
@@ -3730,7 +3735,20 @@ function composerApp() {
         /* ── Toolbar actions ──────────────────────────────── */
         fitCanvas: function() {
             if (!this.paper) return;
-            this.paper.scaleContentToFit({ padding: 40, maxScale: 1.5 });
+            /* CMP: fit must not fit content behind a floating right-hand slide-out panel
+               (validation / plateau / comments / audit) — those are absolutely positioned
+               over the canvas, not flex siblings, so scaleContentToFit's own geometry has
+               no idea they cover part of the paper. Widen the right padding to match
+               whichever one is currently open. */
+            let rightPanelOpen = this.validationPanelOpen
+                || (this.deltaMode && this.plateauSuggestions && this.plateauSuggestions.length > 0)
+                || this.commentPanelOpen
+                || this.auditPanelOpen;
+            let rightPadding = rightPanelOpen ? 40 + 320 : 40;
+            this.paper.scaleContentToFit({
+                padding: { top: 40, bottom: 40, left: 40, right: rightPadding },
+                maxScale: 1.5
+            });
             this.zoomPercent = Math.round(this.paper.scale().sx * 100);
             this._scheduleMiniMapUpdate();
         },

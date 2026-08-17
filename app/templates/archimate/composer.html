@@ -189,6 +189,7 @@ kbd.shortcut-key {
     position: fixed; z-index: 110; background: hsl(var(--popover));
     border-radius: 12px; box-shadow: 0 20px 40px -12px rgba(0,0,0,0.25);
     padding: 8px; width: 220px; border: 1px solid hsl(var(--border));
+    max-height: min(60vh, 420px); overflow-y: auto;
 }
 .rel-picker-item {
     padding: 7px 12px; border-radius: 6px; cursor: pointer;
@@ -1445,7 +1446,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
              @mouseleave="miniMapPointerUp()">
             <div class="flex items-center justify-between px-2.5 pt-1.5 pb-0.5">
                 <span class="text-[9px] font-semibold uppercase tracking-wider" style="color: hsl(var(--muted-foreground));">Minimap</span>
-                <button type="button" @click.stop="miniMapExpanded = !miniMapExpanded"
+                <button type="button" @click.stop="miniMapExpanded = !miniMapExpanded; try { window.localStorage.setItem('archie.composer.miniMapExpanded', miniMapExpanded); } catch (e) {}"
                         class="text-[10px] text-muted-foreground hover:text-foreground leading-none p-0.5"
                         x-text="miniMapExpanded ? '−' : '+'"></button>
             </div>
@@ -2031,9 +2032,14 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                   x-text="'x: ' + canvasCursorX + ', y: ' + canvasCursorY"></span>
         </div>
         <div class="flex items-center gap-4">
-            <div x-show="statusText && statusText !== 'Ready'" x-cloak
+            <div x-show="statusText && statusText !== 'Ready' && !/fail|error|denied|invalid|paused|cancel|limit/i.test(statusText)" x-cloak
                  class="flex items-center gap-1.5">
                 <i data-lucide="check-circle" class="w-3 h-3 text-success"></i>
+                <span x-text="statusText"></span>
+            </div>
+            <div x-show="statusText && statusText !== 'Ready' && /fail|error|denied|invalid|paused|cancel|limit/i.test(statusText)" x-cloak
+                 class="flex items-center gap-1.5">
+                <i data-lucide="alert-circle" class="w-3 h-3 text-muted-foreground"></i>
                 <span x-text="statusText"></span>
             </div>
             <div x-show="viewpointDirty" x-cloak class="flex items-center gap-1.5">
@@ -2272,12 +2278,12 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
         integrity="sha384-2IH3T69EIKYC4c+RXZifZRvaH5SRUdacJW7j6HtE5rQbvLhKKdawxq6vpIzJ7j9M"
         crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='vendor/pptxgenjs.bundle.js') }}"></script>
-<script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}?v=8"></script>
-<script src="{{ url_for('static', filename='js/archimate/composer_ai.js') }}?v=8"></script>
-<script src="{{ url_for('static', filename='js/archimate/composer_persistence.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='js/archimate/composer_graph.js') }}?v=11"></script>
-<script src="{{ url_for('static', filename='js/archimate/composer_search.js') }}?v=5"></script>
-<script src="{{ url_for('static', filename='js/archimate/composer.js') }}?v=25"></script>
+<script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script>
+<script src="{{ url_for('static', filename='js/archimate/composer_ai.js') }}"></script>
+<script src="{{ url_for('static', filename='js/archimate/composer_persistence.js') }}"></script>
+<script src="{{ url_for('static', filename='js/archimate/composer_graph.js') }}"></script>
+<script src="{{ url_for('static', filename='js/archimate/composer_search.js') }}"></script>
+<script src="{{ url_for('static', filename='js/archimate/composer.js') }}"></script>
 <script>
 window.__COMPOSER_CONFIG__ = {
     solutionId: {{ solution_id|tojson }},

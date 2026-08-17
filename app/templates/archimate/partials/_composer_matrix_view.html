@@ -71,7 +71,8 @@
                                     x-text="matrixRowType.replace(/([A-Z])/g, ' $1').trim()"></th>
                                 <template x-for="col in matrixCols" :key="col.id">
                                     <th class="px-3 py-2 text-center font-medium text-foreground border border-border min-w-[120px] bg-muted"
-                                        style="writing-mode: vertical-lr; text-orientation: mixed; max-height: 140px;"
+                                        style="writing-mode: vertical-rl; text-orientation: mixed; max-height: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                                        :title="col.name"
                                         x-text="col.name"></th>
                                 </template>
                             </tr>
