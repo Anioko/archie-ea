@@ -9,14 +9,98 @@ Design decisions:
 """
 
 import logging
+import re
 from dataclasses import dataclass
 
 from app import db
 from app.utils.duplicate_guard import find_duplicate_by_name, find_similar_entities
 
+from .registry import TOOL_SCHEMA_BY_NAME
 from .resolver import EntityResolver
 
 logger = logging.getLogger(__name__)
+
+# ARCH-071: the agent creates entities autonomously (create_solution,
+# create_archimate_element, create_driver/goal/constraint, ...), so its
+# name/identifier arguments are as much a stored-input path as the
+# Applications form's name field, which validate_application_name already
+# strips (see app/utils/validators.py). Applied once here, at execute()'s
+# single dispatch choke point, rather than per-tool, so no future tool with a
+# free-text "name"/"title" argument has to remember to add it. Stripping, not
+# entity-escaping — matches validate_application_name's approach so this does
+# not double-escape on top of Jinja's own autoescape at render time.
+_TAG_RE = re.compile(r"<[^>]*>")
+_NAME_LIKE_ARG_KEYS = frozenset({"name", "title"})
+
+
+def _strip_tags_from_name_args(arguments: dict) -> dict:
+    if not isinstance(arguments, dict):
+        return arguments
+    cleaned = dict(arguments)
+    for key in _NAME_LIKE_ARG_KEYS:
+        value = cleaned.get(key)
+        if isinstance(value, str):
+            cleaned[key] = _TAG_RE.sub("", value)
+    return cleaned
+
+
+
+def _load_acting_user(user_id):
+    """Load the user a request is executing as, scoped to the current tenant.
+
+    Deliberately NOT User.query.get(). Query.get() is tenant-scoped only on an
+    identity-map MISS (CLAUDE.md): on a hit it returns the cached object without
+    emitting SQL, so do_orm_execute never runs and no tenant predicate is
+    applied. A permission check must never be able to authorise against a user
+    cached from another organisation — harmless per-request, but the agent
+    runner, CLI and scheduler all loop over tenants inside one session, and that
+    is exactly where an autonomous agent executes.
+
+    User is tenant-owned but does NOT carry TenantMixin, so the org predicate is
+    added explicitly here rather than injected by the middleware.
+    """
+    from flask import g
+    from app.models.user import User
+
+    query = User.query.filter_by(id=user_id)
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is not None:
+        query = query.filter_by(organization_id=org_id)
+    return query.first()
+
+
+class ToolPermissionError(Exception):
+    """Raised when the invoking user lacks permission to run a mutating tool.
+
+    Deliberately a distinct exception rather than a plain return dict from a
+    private helper, so a future call site cannot forget to check a boolean and
+    fall through to execution — every code path that wants the refusal message
+    has to go through _authorize_tool_call, which either returns normally or
+    raises.
+    """
+
+
+def _permission_denied_result(tool_name: str, user) -> dict:
+    """The honest, permissions-framed refusal (V-01).
+
+    Named after the user's own permission, not a generic 'forbidden' — the
+    architectural requirement is that a Viewer is told WHY in terms they can
+    act on: they don't hold write access, and someone who does can be asked.
+    """
+    role_label = getattr(user, "role_name", None) or "your current role"
+    return {
+        "success": False,
+        "error": (
+            f"I can't do that — {role_label} doesn't include write access, so I'm not "
+            f"able to run '{tool_name}' on your behalf. This isn't something a prompt "
+            f"instruction can override; it's enforced by the system for every "
+            f"write action, not just this one. If this is something you need, I can "
+            f"flag it for someone with write permission (an Architect, Approver, or "
+            f"Admin) to action, or you can ask them directly."
+        ),
+        "code": "PERMISSION_DENIED",
+        "permission_denied": True,
+    }
 
 
 def _duplicate_tool_result(noun: str, existing) -> dict:
@@ -114,12 +198,56 @@ class ToolExecutor:
     # Public dispatch                                                      #
     # ------------------------------------------------------------------ #
 
+    def _user_can_write(self) -> bool:
+        """Server-side write-permission check for the invoking user (V-01).
+
+        This — not the prompt, not the LLM's own judgement — is the access
+        control. `Permission.GENERAL` is the same bitfield `user.can()` already
+        checks for every non-AI write route (app/models/user.py); a Viewer role
+        carries permissions=0 and fails it, exactly as it fails the equivalent
+        HTTP routes. Reusing it means the AI surface can never be *more*
+        permissive than the API it wraps.
+        """
+        from app.models.user import Permission
+
+        user = _load_acting_user(self.user_id)
+        if not user:
+            return False
+        return bool(user.can(Permission.GENERAL))
+
     def execute(self, tool_call: ToolCall) -> dict:
+        """Dispatch one tool call. THE choke point for every agent write.
+
+        Every write reaches the database through a handler on this class —
+        called here directly for auto-tier tools (AgentRunner._run below) and
+        again here for queued tool_use approvals
+        (AIChatApprovalService.approve_and_execute, which builds a ToolCall and
+        calls this same method). There is no other path from an agent tool
+        name to a `_tool_*` handler, so a permission check placed here — before
+        the handler dispatch, not inside any individual `_tool_*` method —
+        covers every mutating tool without per-tool ad hoc checks, including
+        tools added in future that forget to add their own.
+        """
         handler = getattr(self, f"_tool_{tool_call.name}", None)
         if not handler:
             return {"success": False, "error": f"Unknown tool: {tool_call.name}"}
+
+        schema = TOOL_SCHEMA_BY_NAME.get(tool_call.name)
+        # Fail CLOSED: an unregistered/unclassified tool is treated as mutating,
+        # matching AgentRunner._should_queue's own fail-closed rule for the same
+        # reason — "we don't know" must never be treated as "safe to run".
+        mutates = True if schema is None else bool(schema.get("mutates", True))
+        if mutates:
+            user = _load_acting_user(self.user_id)
+            if not user or not self._user_can_write():
+                logger.warning(
+                    "ToolExecutor: refusing mutating tool '%s' for user_id=%s — no write permission",
+                    tool_call.name, self.user_id,
+                )
+                return _permission_denied_result(tool_call.name, user)
+
         try:
-            return handler(tool_call.arguments)
+            return handler(_strip_tags_from_name_args(tool_call.arguments))
         except Exception as e:
             db.session.rollback()
             logger.exception("Tool %s failed", tool_call.name)
@@ -543,7 +671,22 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     def _tool_find_applications(self, args: dict) -> dict:
-        from app.models.application_component_fast import ApplicationComponent
+        # ARCH-013: application_component_fast.ApplicationComponent and
+        # application_portfolio.ApplicationComponent are two model classes
+        # mapped (via extend_existing) onto the SAME "application_components"
+        # table, but they declare different columns. The fast model only
+        # exposes deployment_status (design/development/testing/production/
+        # retiring/decommissioned); the portfolio model — the one
+        # /applications/api/list and the Applications UI actually use — also
+        # has lifecycle_status (planning/development/testing/operational/
+        # deprecated/retired), a genuinely distinct field. This tool used to
+        # import the fast model and label deployment_status as bare "status",
+        # so the agent reported "development" (deployment_status) for the
+        # same row the UI correctly reported "operational" (lifecycle_status)
+        # for — not a mapping bug, a field-naming collision. Fixed by
+        # querying the portfolio model (matching the UI/API's source of
+        # truth) and never emitting an ambiguous "status" key.
+        from app.models.application_portfolio import ApplicationComponent
 
         limit = min(args.get("limit", 15), 50)
         q = ApplicationComponent.query
@@ -552,9 +695,9 @@ class ToolExecutor:
         if name_filter:
             q = q.filter(ApplicationComponent.name.ilike(f"%{name_filter}%"))
 
-        status_filter = args.get("status")
+        status_filter = args.get("lifecycle_status") or args.get("status")
         if status_filter:
-            q = q.filter(ApplicationComponent.deployment_status == status_filter)
+            q = q.filter(ApplicationComponent.lifecycle_status == status_filter)
 
         # Capability filter: join through ApplicationCapabilityMapping
         cap_name = args.get("capability_name")
@@ -579,7 +722,12 @@ class ToolExecutor:
             {
                 "id": a.id,
                 "name": a.name,
-                "status": a.deployment_status,
+                # Never "status" — the ambiguity was the defect (ARCH-013).
+                # lifecycle_status matches /applications/api/list and the
+                # Applications UI exactly; deployment_status is a distinct
+                # technical-deployment concept and is labelled as such.
+                "lifecycle_status": a.lifecycle_status,
+                "deployment_status": a.deployment_status,
                 "owner_team": getattr(a, "owner_team", None),
             }
             for a in apps
@@ -1238,7 +1386,7 @@ class ToolExecutor:
     def _tool_find_applications_by_capability(self, args: dict) -> dict:
         """
         Returns all applications mapped to a named capability.
-        Grounds Phase 4 in the real 881-app catalog instead of invented names.
+        Grounds Phase 4 in the real application catalog instead of invented names.
         """
         from app.models.application_capability import ApplicationCapabilityMapping
         from app.models.application_component_fast import ApplicationComponent

@@ -51,6 +51,35 @@ arb_service = ARBGovernanceService()
 arb_analytics = ARBAnalyticsService()
 
 
+# V-03 (S1, 17 Aug 2026 QA register): a Viewer created two ARB reviews
+# through two different creation endpoints (POST /arb/reviews/create and
+# POST /arb/api/reviews) -- neither checked permission. Same root cause as
+# V-02: protection here was route-by-route, not default. This hook is the
+# blueprint-wide floor for every write under /arb (session, review, decision,
+# comment, and every app/modules/architecture/routes/arb_*.py file, all of
+# which share this one Blueprint instance) -- consistent with the
+# blueprint-wide guard added to unified_applications_bp for the same finding
+# class. Permission.GENERAL is the same bitfield ARBGovernanceService.record_
+# decision already checks for the decider (85c2924); a Viewer (permissions=0)
+# fails it here before a request ever reaches a route function, so record_
+# decision's own check is now defence-in-depth rather than the only line.
+@arb_bp.before_request
+def _default_deny_unauthorized_arb_writes():
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    if not current_user.is_authenticated:
+        return None
+    from app.models.user import Permission
+
+    if current_user.can(Permission.GENERAL):
+        return None
+    return jsonify({
+        "success": False,
+        "error": "Your role does not have write access to ARB governance.",
+        "code": "PERMISSION_DENIED",
+    }), 403
+
+
 # =========================================================================
 # ARB SESSION MANAGEMENT ROUTES
 # =========================================================================
@@ -614,6 +643,85 @@ def review_new_redirect():
     return redirect(url_for("arb.create_review"))
 
 
+class _ReviewValidationError(ValueError):
+    """Raised by _create_arb_review_item for a 400-shaped validation failure."""
+
+    def __init__(self, field: str, message: str):
+        super().__init__(message)
+        self.field = field
+        self.message = message
+
+
+# V-03: the single place review-creation payloads are parsed and validated.
+# POST /arb/reviews/create (create_review, the HTML/modal path) and
+# POST /arb/api/reviews (api_create_review, the JSON API path) used to each
+# hand-roll an ~80-line copy of this logic — two independently maintained
+# implementations of the same validation rules, which is how the two-different-
+# creation-endpoints finding could exist without anyone noticing they'd
+# drifted. Both routes now call this one function; they differ only in how
+# they format their own success/error responses (redirect+flash vs JSON),
+# which is a legitimate difference between an HTML-form endpoint and a JSON
+# API endpoint, not a reason to keep two copies of the business logic.
+def _create_arb_review_item(data: dict) -> ARBReviewItem:
+    review_type = data.get("review_type")
+    capability_required_types = ["solution_design", "capability_implementation", "technology_selection"]
+
+    decision_sought_val = (data.get("decision_sought") or "").strip()
+    if not decision_sought_val:
+        raise _ReviewValidationError("decision_sought", "Decision sought is required.")
+
+    capability_impacts = []
+    raw_impacts = data.get("capability_impacts")
+    if raw_impacts and isinstance(raw_impacts, list):
+        for imp in raw_impacts:
+            cap_id = imp.get("capability_id") if isinstance(imp, dict) else imp
+            if cap_id:
+                raw_impact = imp.get("impact_type", "modifies") if isinstance(imp, dict) else "modifies"
+                capability_impacts.append({
+                    "capability_id": int(cap_id),
+                    "impact_type": _normalize_impact_type(raw_impact),
+                    "impact_level": imp.get("impact_level", "medium") if isinstance(imp, dict) else "medium",
+                    "level": imp.get("level") if isinstance(imp, dict) else None,
+                })
+    if not capability_impacts and data.get("capability_ids"):
+        raw = data.get("capability_ids")
+        ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in str(raw).split(",") if str(i).strip()]
+        default_impact = data.get("capability_impact_type") or "modifies"
+        for cap_id in ids:
+            capability_impacts.append({"capability_id": cap_id, "impact_type": _normalize_impact_type(default_impact), "impact_level": "medium"})
+
+    if review_type in capability_required_types and not capability_impacts:
+        raise _ReviewValidationError(
+            "capability_ids",
+            f"At least one capability is required for {review_type.replace('_', ' ')} reviews.",
+        )
+
+    application_ids = []
+    if data.get("application_ids"):
+        raw = data.get("application_ids")
+        application_ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in str(raw).split(",") if str(i).strip()]
+
+    return arb_service.submit_for_review(
+        title=data.get("title"),
+        description=data.get("description"),
+        review_type=review_type,
+        submitter_id=current_user.id,
+        togaf_phase=data.get("togaf_phase") or None,
+        archimate_layer=data.get("archimate_layer") or None,
+        solution_id=int(data.get("solution_id")) if data.get("solution_id") else None,
+        adr_id=int(data.get("adr_id")) if data.get("adr_id") else None,
+        architecture_model_id=int(data.get("architecture_model_id")) if data.get("architecture_model_id") else None,
+        priority=data.get("priority", "medium"),
+        business_impact=data.get("business_impact", "medium"),
+        estimated_effort=data.get("estimated_effort", "medium"),
+        capability_ids=None,
+        decision_sought=decision_sought_val or None,
+        alternatives_considered=data.get("alternatives_considered") or None,
+        application_ids=application_ids or None,
+        capability_impacts=capability_impacts if capability_impacts else None,
+    )
+
+
 @arb_bp.route("/reviews/create", methods=["GET", "POST"])
 @login_required
 @audit_log("arb_review_create")
@@ -624,87 +732,7 @@ def create_review():
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
         try:
             data = request.get_json() if request.is_json else request.form.to_dict()
-
-            review_type = data.get("review_type")
-            capability_required_types = ["solution_design", "capability_implementation", "technology_selection"]
-
-            # Validation: decision_sought is required
-            decision_sought_val = (data.get("decision_sought") or "").strip()
-            if not decision_sought_val:
-                if is_json:
-                    return (
-                        jsonify({
-                            "success": False,
-                            "errors": {"decision_sought": "Decision sought is required."},
-                        }),
-                        400,
-                    )
-                flash("Decision sought is required.", "error")
-                return redirect(url_for("arb.dashboard"))
-
-            # Parse capability impacts (structured: capability_id, impact_type, impact_level)
-            capability_impacts = []
-            raw_impacts = data.get("capability_impacts")
-            if raw_impacts and isinstance(raw_impacts, list):
-                for imp in raw_impacts:
-                    cap_id = imp.get("capability_id") if isinstance(imp, dict) else imp
-                    if cap_id:
-                        raw_impact = imp.get("impact_type", "modifies") if isinstance(imp, dict) else "modifies"
-                        capability_impacts.append({
-                            "capability_id": int(cap_id),
-                            "impact_type": _normalize_impact_type(raw_impact),
-                            "impact_level": imp.get("impact_level", "medium") if isinstance(imp, dict) else "medium",
-                            "level": imp.get("level") if isinstance(imp, dict) else None,
-                        })
-            # Fallback: legacy capability_ids list
-            if not capability_impacts and data.get("capability_ids"):
-                raw = data.get("capability_ids")
-                ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in raw.split(",") if i.strip()]
-                default_impact = data.get("capability_impact_type") or "modifies"
-                for cap_id in ids:
-                    capability_impacts.append({"capability_id": cap_id, "impact_type": _normalize_impact_type(default_impact), "impact_level": "medium"})
-
-            # Validation: capability required for certain review types
-            if review_type in capability_required_types and not capability_impacts:
-                if is_json:
-                    return (
-                        jsonify({
-                            "success": False,
-                            "errors": {"capability_ids": f"At least one capability is required for {review_type.replace('_', ' ')} reviews."},
-                        }),
-                        400,
-                    )
-                flash(f"At least one capability is required for {review_type.replace('_', ' ')} reviews.", "error")
-                return redirect(url_for("arb.dashboard"))
-
-            # Parse application IDs
-            application_ids = []
-            if data.get("application_ids"):
-                raw = data.get("application_ids")
-                if isinstance(raw, list):
-                    application_ids = [int(i) for i in raw]
-                else:
-                    application_ids = [int(i.strip()) for i in str(raw).split(",") if i.strip()]
-
-            review_item = arb_service.submit_for_review(
-                title=data.get("title"),
-                description=data.get("description"),
-                review_type=review_type,
-                submitter_id=current_user.id,
-                togaf_phase=data.get("togaf_phase") or None,
-                archimate_layer=data.get("archimate_layer") or None,
-                solution_id=int(data.get("solution_id")) if data.get("solution_id") else None,
-                adr_id=int(data.get("adr_id")) if data.get("adr_id") else None,
-                architecture_model_id=int(data.get("architecture_model_id")) if data.get("architecture_model_id") else None,
-                priority=data.get("priority", "medium"),
-                business_impact=data.get("business_impact", "medium"),
-                estimated_effort=data.get("estimated_effort", "medium"),
-                capability_ids=None,
-                decision_sought=decision_sought_val or None,
-                alternatives_considered=data.get("alternatives_considered") or None,
-                application_ids=application_ids or None,
-                capability_impacts=capability_impacts if capability_impacts else None,
-            )
+            review_item = _create_arb_review_item(data)
 
             if is_json:
                 return jsonify({"success": True, "id": review_item.id, "review_number": review_item.review_number}), 201
@@ -714,6 +742,12 @@ def create_review():
                 "success",
             )
             return redirect(url_for("arb.review_detail", id=review_item.id))
+
+        except _ReviewValidationError as e:
+            if is_json:
+                return jsonify({"success": False, "errors": {e.field: e.message}}), 400
+            flash(e.message, "error")
+            return redirect(url_for("arb.dashboard"))
 
         except Exception as e:
             current_app.logger.error(f"Error creating review item: {e}")
@@ -1473,74 +1507,21 @@ def api_list_reviews():
 @login_required
 @audit_log("arb_review_create_api")
 def api_create_review():
-    """API endpoint to create a review via modal form."""
+    """API endpoint to create a review via modal form.
+
+    V-03: thin JSON wrapper around the same _create_arb_review_item used by
+    the HTML form path (create_review, above) -- this used to be an
+    independent ~80-line copy of that parsing/validation logic. Response
+    shape (review_id/redirect_url, versus create_review's id/review_number)
+    is kept exactly as it was, since the frontend JS that calls this endpoint
+    depends on it.
+    """
     try:
         data = request.get_json()
-
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
 
-        decision_sought_val = (data.get("decision_sought") or "").strip()
-        if not decision_sought_val:
-            return jsonify({
-                "success": False,
-                "errors": {"decision_sought": "Decision sought is required."},
-            }), 400
-
-        review_type = data.get("review_type")
-        capability_required_types = ["solution_design", "capability_implementation", "technology_selection"]
-
-        # Parse capability_impacts or fallback to capability_ids
-        capability_impacts = []
-        raw_impacts = data.get("capability_impacts")
-        if raw_impacts and isinstance(raw_impacts, list):
-            for imp in raw_impacts:
-                cap_id = imp.get("capability_id") if isinstance(imp, dict) else imp
-                if cap_id:
-                    raw_impact = imp.get("impact_type", "modifies") if isinstance(imp, dict) else "modifies"
-                    capability_impacts.append({
-                        "capability_id": int(cap_id),
-                        "impact_type": _normalize_impact_type(raw_impact),
-                        "impact_level": imp.get("impact_level", "medium") if isinstance(imp, dict) else "medium",
-                        "level": imp.get("level") if isinstance(imp, dict) else None,
-                    })
-        if not capability_impacts and data.get("capability_ids"):
-            raw = data.get("capability_ids")
-            ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in str(raw).split(",") if str(i).strip()]
-            default_impact = _normalize_impact_type(data.get("capability_impact_type") or "modifies")
-            for cap_id in ids:
-                capability_impacts.append({"capability_id": cap_id, "impact_type": default_impact, "impact_level": "medium"})
-
-        if review_type in capability_required_types and not capability_impacts:
-            return jsonify({
-                "success": False,
-                "errors": {"capability_ids": f"At least one capability is required for {review_type.replace('_', ' ')} reviews."},
-            }), 400
-
-        application_ids = []
-        if data.get("application_ids"):
-            raw = data.get("application_ids")
-            application_ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in str(raw).split(",") if str(i).strip()]
-
-        review_item = arb_service.submit_for_review(
-            title=data.get("title"),
-            description=data.get("description"),
-            review_type=review_type,
-            submitter_id=current_user.id,
-            togaf_phase=data.get("togaf_phase") or None,
-            archimate_layer=data.get("archimate_layer") or None,
-            solution_id=int(data.get("solution_id")) if data.get("solution_id") else None,
-            adr_id=int(data.get("adr_id")) if data.get("adr_id") else None,
-            architecture_model_id=int(data.get("architecture_model_id")) if data.get("architecture_model_id") else None,
-            priority=data.get("priority", "medium"),
-            business_impact=data.get("business_impact", "medium"),
-            estimated_effort=data.get("estimated_effort", "medium"),
-            capability_ids=None,
-            decision_sought=decision_sought_val or None,
-            alternatives_considered=data.get("alternatives_considered") or None,
-            application_ids=application_ids or None,
-            capability_impacts=capability_impacts if capability_impacts else None,
-        )
+        review_item = _create_arb_review_item(data)
 
         return jsonify(
             {
@@ -1550,6 +1531,9 @@ def api_create_review():
                 "redirect_url": url_for("arb.review_detail", id=review_item.id),
             }
         )
+
+    except _ReviewValidationError as e:
+        return jsonify({"success": False, "errors": {e.field: e.message}}), 400
 
     except Exception as e:
         current_app.logger.error(f"Error creating review via API: {e}")

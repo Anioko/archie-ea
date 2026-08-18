@@ -76,6 +76,7 @@ logger = logging.getLogger(__name__)
 
 @unified_applications_bp.route("/create", methods=["GET", "POST"])
 @login_required
+@require_roles("admin", "architect")
 @audit_log("application_create")
 def application_create():
     """Create Application — modal handles creation inline; POST supports JSON.
@@ -542,6 +543,7 @@ def generate_application_archimate(id):
 
 @unified_applications_bp.route("/<int:id>/edit", methods=["GET", "POST"])
 @login_required
+@require_roles("admin", "architect")
 @audit_log("application_update")
 def application_edit(id):
     """Edit Application - ALWAYS returns HTML"""

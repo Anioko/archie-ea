@@ -259,7 +259,10 @@ TOOL_SCHEMAS = [
         "name": "find_applications",
         "mutates": False,
         "description": (
-            "Search for applications by name, status, or capability. "
+            "Search for applications by name, lifecycle status, or capability. "
+            "Returns lifecycle_status (planning/development/testing/operational/"
+            "deprecated/retired — matches the Applications UI and "
+            "/applications/api/list exactly) for each row. "
             "Read-only — safe to execute without confirmation. "
             "Use when the user asks what applications exist, "
             "which apps support a capability, or wants to find a specific app."
@@ -271,12 +274,12 @@ TOOL_SCHEMAS = [
                     "type": "string",
                     "description": "Partial name to search for",
                 },
-                "status": {
+                "lifecycle_status": {
                     "type": "string",
-                    "description": "Filter by deployment status",
+                    "description": "Filter by lifecycle status — the same value shown in the Applications UI and returned by /applications/api/list.",
                     "enum": [
-                        "design", "development", "testing",
-                        "production", "retiring", "decommissioned",
+                        "planning", "development", "testing",
+                        "operational", "deprecated", "retired",
                     ],
                 },
                 "capability_name": {
@@ -446,7 +449,7 @@ TOOL_SCHEMAS = [
         "name": "link_application_to_solution",
         "mutates": True,
         "description": (
-            "Link an existing application from the 850-app catalog to a solution. "
+            "Link an existing application from the catalog to a solution. "
             "Use when the user says a solution involves, replaces, or integrates with an application."
         ),
         "parameters": {
@@ -716,8 +719,8 @@ TOOL_SCHEMAS = [
         "name": "find_applications_by_capability",
         "mutates": False,
         "description": (
-            "Find all applications in the 881-app catalog already mapped to a "
-            "specific business capability. "
+            "Find all applications already mapped to a specific business "
+            "capability. "
             "Use at Phase 4 (Application layer) to ground architecture in real "
             "existing systems rather than inventing application names. Read-only."
         ),
@@ -741,7 +744,7 @@ TOOL_SCHEMAS = [
             "across 7 domains: USER-EXPERIENCE, APPLICATION-SERVICES, DATA-STORAGE, "
             "SECURITY-IDENTITY, DEVOPS-PLATFORM, AI-ANALYTICS, COMMUNICATION. "
             "Use at Phase 5 (Technology layer) BEFORE suggesting Nodes or SystemSoftware — "
-            "grounds the technology architecture in the real 273-capability taxonomy. "
+            "grounds the technology architecture in the real capability taxonomy. "
             "Returns L1/L2 capabilities with how many apps already cover each one. "
             "Read-only."
         ),

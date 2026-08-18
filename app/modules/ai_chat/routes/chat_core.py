@@ -1443,15 +1443,31 @@ def approve_tool_action(approval_id: int):
     # writes the audit trail — delegate to it instead of duplicating (and
     # subtly diverging from) that logic.
     from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+    from app.models.user import User
 
+    # V-01: this route used to require record.user_id == current_user.id to
+    # even reach the service -- i.e. it demanded self-approval and made
+    # cross-user approval impossible. That inversion is exactly the "same
+    # read-only user who raised the request approved it" exploit. The actual
+    # authorisation decision (not the requester, must hold write permission)
+    # now lives in AIChatApprovalService.approve_and_execute, the single
+    # choke point every approval surface calls through. This route only
+    # keeps a tenancy check: an approval belongs to a user in some
+    # organisation, and an approver from a different organisation should get
+    # a 404-shaped "not found", not a permission error that would confirm
+    # the row's existence across a tenant boundary.
     record = AIChatCRUDApproval.query.get_or_404(approval_id)
-    if record.user_id != current_user.id:
-        return jsonify({"error": "Access denied"}), 403
+    requester = User.query.get(record.user_id) if record.user_id else None
+    if requester is not None and requester.organization_id != current_user.organization_id:
+        return jsonify({"error": "Approval not found"}), 404
 
     from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
 
     result = AIChatApprovalService(current_user.id).approve_and_execute(approval_id, current_user.id)
-    status_code = 200 if result.get("success") else (409 if "expired" in (result.get("error") or "").lower() or "already" in (result.get("error") or "").lower() else 400)
+    if result.get("code") == "APPROVAL_DENIED":
+        status_code = 403
+    else:
+        status_code = 200 if result.get("success") else (409 if "expired" in (result.get("error") or "").lower() or "already" in (result.get("error") or "").lower() else 400)
     return jsonify({
         "success": result.get("success", False),
         "message": result.get("message", ""),

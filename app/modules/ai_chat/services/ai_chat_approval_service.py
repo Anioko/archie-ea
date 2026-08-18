@@ -22,6 +22,49 @@ from app.utils.duplicate_guard import normalize_name
 logger = logging.getLogger(__name__)
 
 
+
+def _load_acting_user(user_id):
+    """Load the user a request is executing as, scoped to the current tenant.
+
+    Deliberately NOT User.query.get(). Query.get() is tenant-scoped only on an
+    identity-map MISS (CLAUDE.md): on a hit it returns the cached object without
+    emitting SQL, so do_orm_execute never runs and no tenant predicate is
+    applied. A permission check must never be able to authorise against a user
+    cached from another organisation — harmless per-request, but the agent
+    runner, CLI and scheduler all loop over tenants inside one session, and that
+    is exactly where an autonomous agent executes.
+
+    User is tenant-owned but does NOT carry TenantMixin, so the org predicate is
+    added explicitly here rather than injected by the middleware.
+    """
+    from flask import g
+    from app.models.user import User
+
+    query = User.query.filter_by(id=user_id)
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is not None:
+        query = query.filter_by(organization_id=org_id)
+    return query.first()
+
+
+class AIChatApprovalError(ValueError):
+    """Base class for an approval decision approve_and_execute refuses to make.
+
+    Mirrors app.services.arb_governance_service's ARBDecisionError — same
+    governance surface, same rule (V-01/M-05), independently discovered on the
+    ARB side first (85c2924) and closed here second: refuse before any
+    mutation, audit-log the refusal itself.
+    """
+
+
+class SelfApprovalError(AIChatApprovalError):
+    """The requester attempted to approve their own queued AI operation (V-01)."""
+
+
+class MissingApproverError(AIChatApprovalError):
+    """No resolvable approver identity, or the approver lacks write permission."""
+
+
 class AIChatApprovalService:
     """
     Service for managing AI chat CRUD operation approvals.
@@ -271,12 +314,57 @@ class AIChatApprovalService:
             if not self.user_id:
                 return {"success": False, "error": "Authentication required to approve CRUD operations"}
 
-            # Verify ownership — both IDs must be non-None and equal.
-            if approval.user_id is None or approval.user_id != self.user_id:
-                return {
-                    "success": False,
-                    "error": "You can only approve your own pending operations",
-                }
+            # V-01: the approval gate must authorise the APPROVER, not just
+            # confirm someone is logged in. Two independent checks, both
+            # server-side:
+            #
+            #   1. Self-approval is refused. The exploit this closes is exactly
+            #      "the same read-only user who raised the request approved
+            #      it" — this used to be inverted (approval.user_id had to
+            #      EQUAL self.user_id, i.e. only the requester could approve,
+            #      which is precisely self-approval-by-construction).
+            #   2. The approver must hold write permission
+            #      (Permission.GENERAL — the same bitfield every non-AI write
+            #      route already checks). A Viewer cannot become a valid
+            #      approver merely by being asked to approve someone else's
+            #      request.
+            #
+            # Both are audit-logged as refusals themselves (mirrors 85c2924's
+            # ARB self_approval_refused pattern) and raised as exceptions
+            # rather than silently returned, so no future call site can add a
+            # new entry point that skips them.
+            if approval.user_id is not None and approval.user_id == self.user_id:
+                self._audit(
+                    approval,
+                    event="self_approval_refused",
+                    to_status=approval.status.value,
+                    actor_user_id=self.user_id,
+                    from_status=approval.status.value,
+                    reason="approver is the same user who requested the operation",
+                )
+                db.session.commit()
+                raise SelfApprovalError(
+                    "You cannot approve your own request. Ask another user with write "
+                    "permission to review and approve it."
+                )
+
+            from app.models.user import Permission
+
+            approver = _load_acting_user(self.user_id)
+            if not approver or not approver.can(Permission.GENERAL):
+                self._audit(
+                    approval,
+                    event="approval_denied_no_permission",
+                    to_status=approval.status.value,
+                    actor_user_id=self.user_id,
+                    from_status=approval.status.value,
+                    reason="approving user lacks write permission",
+                )
+                db.session.commit()
+                raise MissingApproverError(
+                    "Your role does not include write/approval permission, so you "
+                    "cannot approve this request."
+                )
 
             # Check status
             if approval.status != ApprovalStatus.PENDING:
@@ -390,7 +478,7 @@ class AIChatApprovalService:
             elif approval.operation_type == "delete":
                 # Hard delete — admin-only at execution time (double guard)
                 # tenant-scoping-ok: self.user_id is the acting user's own id.
-                actor = User.query.get(self.user_id)
+                actor = User.query.filter_by(id=self.user_id).first()
                 if not actor or not actor.is_admin():
                     return {"success": False, "error": "Delete operations require administrator privileges"}
                 entity_id = approval.entity_id
@@ -448,6 +536,12 @@ class AIChatApprovalService:
                     "approval_id": approval_id,
                 }
 
+        except (SelfApprovalError, MissingApproverError) as e:
+            # Refusal was already audit-logged and committed above the raise;
+            # nothing here to roll back except any in-progress work from this
+            # same call, which there isn't since we never reached dispatch.
+            self.logger.warning(f"Approval {approval_id} refused: {e}")
+            return {"success": False, "error": str(e), "code": "APPROVAL_DENIED"}
         except Exception as e:
             db.session.rollback()
             self.logger.error(f"Failed to approve/execute operation {approval_id}: {e}")
