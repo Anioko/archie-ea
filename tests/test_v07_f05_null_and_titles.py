@@ -20,7 +20,7 @@ pytestmark = pytest.mark.usefixtures("db_session")
 
 
 def _make_user(db_session, org_id, email, first_name=None, last_name=None, role_name="Administrator"):
-    from app.models.role import Role
+    from app.models.user import Role
     from app.models.user import User
 
     role = Role.query.filter_by(name=role_name).first()
