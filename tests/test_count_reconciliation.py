@@ -365,3 +365,537 @@ def test_duplicate_guard_does_not_collide_with_soft_deleted_row(app, db_session,
             "permanently unusable after deletion, which is worse than a hard "
             "delete"
         )
+
+
+# ---------------------------------------------------------------------------
+# ARCH-130 / spec R-01, R-02, R-03, R-06 — the Priority 0 reconciliation
+# suite proper.
+#
+# R-01: for each entity type, db_count == api total == what the AI context
+# reports. "UI-rendered count" is represented by the same collection
+# endpoints the templates fetch from (this repo's list pages are
+# fetch()-driven, not server-rendered counts — see DESIGN.md); asserting the
+# API total is therefore asserting what the UI will render, and is the
+# layer the ARCH-010 defect (dashboard 144 vs tiles 145 vs API 145) actually
+# lived in.
+#
+# Fixture requirement per the spec: seed a SPARSE type as well as a normal
+# one, because the ARCH-010 investigation was misled by a fixture that had
+# only one element in the affected layer.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def recon_client(app, db_session, make_org, login_as):
+    """A logged-in client scoped to a fresh org, for /api/v1 reconciliation."""
+    from app.models.user import Permission, Role, User
+
+    org = make_org("recon")
+    role = Role.query.filter_by(name="Administrator").first()
+    if role is None:
+        role = Role(name="Administrator", permissions=Permission.ADMINISTER)
+        db_session.add(role)
+        db_session.flush()
+    user = User(
+        email=f"recon-{uuid.uuid4().hex[:8]}@example.com",
+        first_name="Recon",
+        last_name="User",
+        organization_id=org.id,
+        role=role,
+        confirmed=True,
+    )
+    user.password = "TestPassw0rd!23"
+    db_session.add(user)
+    db_session.flush()
+    client = app.test_client()
+    login_as(client, user)
+    return org, client, user
+
+
+def test_r01_application_counts_agree_db_api_and_ai_context(recon_client, tenant_ctx, login_as):
+    """R-01 for applications: db_count == /api/v1/applications total == AI context total.
+
+    ApplicationComponent is tenant-scoped (TenantMixin), so seeding inside
+    this org and reading back through a request logged in as this org's user
+    exercises the real ORM tenant filter on every surface, not a hand-rolled
+    query.
+    """
+    from app import db
+    from app.models.application_portfolio import ApplicationComponent
+
+    org, client, user = recon_client
+
+    with tenant_ctx(org.id):
+        # A normal population...
+        for i in range(3):
+            db.session.add(
+                ApplicationComponent(
+                    name=f"Recon App {i} {uuid.uuid4().hex[:6]}",
+                    organization_id=org.id,
+                    lifecycle_status="2.1 STRATEGIC",
+                )
+            )
+        # ...and one sparse/edge-case row: a null lifecycle_status, which is
+        # exactly the shape of field that has silently acted as an implicit
+        # filter elsewhere in this codebase (R-04).
+        db.session.add(
+            ApplicationComponent(
+                name=f"Recon App Sparse {uuid.uuid4().hex[:6]}",
+                organization_id=org.id,
+                lifecycle_status=None,
+            )
+        )
+        db.session.commit()
+        db_count = ApplicationComponent.query.count()
+
+    login_as(client, user)
+    api_resp = client.get("/api/v1/applications/?per_page=100")
+    assert api_resp.status_code == 200, api_resp.get_data(as_text=True)
+    api_body = api_resp.get_json() or {}
+    api_total = ((api_body.get("data") or {}).get("pagination") or {}).get("total")
+
+    ctx_resp = client.get("/ai-chat/context/general")
+    assert ctx_resp.status_code == 200, ctx_resp.get_data(as_text=True)
+    ctx_body = ctx_resp.get_json() or {}
+    ctx_total = ((ctx_body.get("context") or {}).get("portfolio_summary") or {}).get(
+        "total_applications"
+    )
+
+    assert db_count == 4, "fixture setup sanity check"
+    assert api_total == db_count, (
+        f"API total ({api_total}) != direct db count ({db_count}) for "
+        "applications — this is the ARCH-010 defect class"
+    )
+    assert ctx_total == db_count, (
+        f"AI context total_applications ({ctx_total}) != direct db count "
+        f"({db_count}) — the agent would state a figure the API cannot back"
+    )
+
+
+def test_r02_application_count_increments_by_exactly_one_after_write(recon_client, login_as):
+    """R-02: every surface increments by exactly 1 after one write, immediately."""
+    org, client, user = recon_client
+    login_as(client, user)
+
+    before = client.get("/api/v1/applications/?per_page=1")
+    before_total = (
+        ((before.get_json() or {}).get("data") or {}).get("pagination") or {}
+    ).get("total")
+
+    create_resp = client.post(
+        "/api/v1/applications/",
+        json={"name": f"R02 New App {uuid.uuid4().hex[:6]}"},
+    )
+    assert create_resp.status_code in (200, 201), create_resp.get_data(as_text=True)
+
+    after = client.get("/api/v1/applications/?per_page=1")
+    after_total = (
+        ((after.get_json() or {}).get("data") or {}).get("pagination") or {}
+    ).get("total")
+
+    ctx_after = client.get("/ai-chat/context/general")
+    ctx_total_after = (
+        ((ctx_after.get_json() or {}).get("context") or {}).get("portfolio_summary") or {}
+    ).get("total_applications")
+
+    assert after_total == before_total + 1, (
+        f"API total did not increment by exactly 1 after one create "
+        f"(before={before_total}, after={after_total})"
+    )
+    assert ctx_total_after == after_total, (
+        "AI context total drifted from the API total immediately after a "
+        f"write (api={after_total}, ctx={ctx_total_after})"
+    )
+
+
+def test_r01_vendor_and_capability_totals_agree_db_and_api(recon_client, db_session, login_as):
+    """R-01 for the two global (non-tenant-scoped) catalog entity types.
+
+    VendorOrganization and UnifiedCapability are platform-wide reference
+    data, not TenantMixin models, so "db_count" here is a direct, unscoped
+    count and is compared against the same unscoped API totals — there is no
+    tenant boundary to cross for these two types.
+    """
+    from app.models.unified_capability import UnifiedCapability
+    from app.models.vendor.vendor_organization import VendorOrganization
+
+    org, client, user = recon_client
+    login_as(client, user)
+
+    vendor_db_count = VendorOrganization.query.count()
+    vendor_resp = client.get("/api/vendors/list?per_page=100")
+    assert vendor_resp.status_code == 200, vendor_resp.get_data(as_text=True)
+    vendor_api_total = (vendor_resp.get_json() or {}).get("total")
+    assert vendor_api_total == vendor_db_count, (
+        f"vendor API total ({vendor_api_total}) != direct db count "
+        f"({vendor_db_count})"
+    )
+
+    cap_db_count = UnifiedCapability.query.count()
+    cap_resp = client.get("/api/v1/capabilities/?per_page=100")
+    assert cap_resp.status_code == 200, cap_resp.get_data(as_text=True)
+    cap_api_total = ((cap_resp.get_json() or {}).get("data") or {}).get("pagination", {}).get(
+        "total"
+    )
+    assert cap_api_total == cap_db_count, (
+        f"capability API total ({cap_api_total}) != direct db count "
+        f"({cap_db_count})"
+    )
+
+
+def test_r03_vendor_pagination_reports_the_true_total_not_the_page_size(
+    recon_client, db_session, login_as
+):
+    """R-03: pagination total must be the full dataset size, and per_page must
+    be honoured — a page-size-sized total is exactly the bug this guards.
+    """
+    from app import db
+    from app.models.vendor.vendor_organization import VendorOrganization
+
+    org, client, user = recon_client
+    login_as(client, user)
+
+    before_count = VendorOrganization.query.count()
+    seed_n = 15
+    for i in range(seed_n):
+        db.session.add(
+            VendorOrganization(
+                name=f"R03 Vendor {i} {uuid.uuid4().hex[:6]}",
+                vendor_type="software",
+            )
+        )
+    db.session.commit()
+    expected_total = before_count + seed_n
+
+    resp_default = client.get("/api/vendors/list")
+    body_default = resp_default.get_json() or {}
+    assert body_default.get("total") == expected_total, (
+        f"total ({body_default.get('total')}) must be the full dataset size "
+        f"({expected_total}), not the page size"
+    )
+
+    resp_paged = client.get("/api/vendors/list?per_page=10")
+    body_paged = resp_paged.get_json() or {}
+    assert body_paged.get("total") == expected_total
+    assert len(body_paged.get("vendors") or []) == 10, (
+        "per_page=10 must return exactly 10 rows while total still reports "
+        "the full dataset"
+    )
+
+
+def test_r06_ai_context_grounds_every_portfolio_count_in_the_live_api(recon_client, login_as):
+    """R-06: ai-chat context/general's portfolio_summary must match the API
+    it is meant to summarise, for every count it states, not just capabilities
+    (ARCH-015 already covers the capabilities half above).
+
+    NOTE on "capabilities": the codebase has two distinct capability
+    concepts behind the same word — ``UnifiedCapability`` (the global,
+    non-tenant PCF/APQC reference taxonomy the /api/v1/capabilities/
+    endpoint serves) and ``BusinessCapability`` (a tenant-scoped model,
+    what ``_load_general_context``'s ``total_capabilities`` actually
+    counts). Comparing the context figure against the UnifiedCapability API
+    total would be comparing two different entity types by name coincidence
+    — exactly the kind of numerator/denominator mismatch ARCH-015 already
+    caught once (see the comment in multi_domain_chat_service.py's
+    ``_load_general_context``). So this test grounds total_capabilities
+    against the correct source, BusinessCapability's own tenant-scoped
+    count, not the UnifiedCapability API.
+    """
+    from app.models.business_capabilities import BusinessCapability
+
+    org, client, user = recon_client
+    login_as(client, user)
+
+    apps_total = (
+        ((client.get("/api/v1/applications/?per_page=1").get_json() or {}).get("data") or {})
+        .get("pagination", {})
+        .get("total")
+    )
+    vendors_total = (client.get("/api/vendors/list?per_page=1").get_json() or {}).get("total")
+    caps_db_count = BusinessCapability.query.count()
+
+    ctx = client.get("/ai-chat/context/general")
+    assert ctx.status_code == 200, ctx.get_data(as_text=True)
+    summary = ((ctx.get_json() or {}).get("context") or {}).get("portfolio_summary") or {}
+
+    assert summary.get("total_applications") == apps_total, (
+        f"ctx total_applications ({summary.get('total_applications')}) != "
+        f"applications API total ({apps_total})"
+    )
+    assert summary.get("total_vendors") == vendors_total, (
+        f"ctx total_vendors ({summary.get('total_vendors')}) != vendors API "
+        f"total ({vendors_total})"
+    )
+    assert summary.get("total_capabilities") == caps_db_count, (
+        f"ctx total_capabilities ({summary.get('total_capabilities')}) != "
+        f"BusinessCapability db count ({caps_db_count}) — the two "
+        "'capability' concepts (UnifiedCapability vs BusinessCapability) "
+        "must not be conflated when grounding this figure"
+    )
+
+
+# ---------------------------------------------------------------------------
+# ARCH-130 / spec R-01, R-02, R-03, R-06 — the Priority 0 reconciliation
+# suite proper.
+#
+# R-01: for each entity type, db_count == api total == what the AI context
+# reports. "UI-rendered count" is represented by the same collection
+# endpoints the templates fetch from (this repo's list pages are
+# fetch()-driven, not server-rendered counts — see DESIGN.md); asserting the
+# API total is therefore asserting what the UI will render, and is the
+# layer the ARCH-010 defect (dashboard 144 vs tiles 145 vs API 145) actually
+# lived in.
+#
+# Fixture requirement per the spec: seed a SPARSE type as well as a normal
+# one, because the ARCH-010 investigation was misled by a fixture that had
+# only one element in the affected layer.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def recon_client(app, db_session, make_org, login_as):
+    """A logged-in client scoped to a fresh org, for /api/v1 reconciliation."""
+    from app.models.user import Permission, Role, User
+
+    org = make_org("recon")
+    role = Role.query.filter_by(name="Administrator").first()
+    if role is None:
+        role = Role(name="Administrator", permissions=Permission.ADMINISTER)
+        db_session.add(role)
+        db_session.flush()
+    user = User(
+        email=f"recon-{uuid.uuid4().hex[:8]}@example.com",
+        first_name="Recon",
+        last_name="User",
+        organization_id=org.id,
+        role=role,
+        confirmed=True,
+    )
+    user.password = "TestPassw0rd!23"
+    db_session.add(user)
+    db_session.flush()
+    client = app.test_client()
+    login_as(client, user)
+    return org, client, user
+
+
+def test_r01_application_counts_agree_db_api_and_ai_context(recon_client, tenant_ctx, login_as):
+    """R-01 for applications: db_count == /api/v1/applications total == AI context total.
+
+    ApplicationComponent is tenant-scoped (TenantMixin), so seeding inside
+    this org and reading back through a request logged in as this org's user
+    exercises the real ORM tenant filter on every surface, not a hand-rolled
+    query.
+    """
+    from app import db
+    from app.models.application_portfolio import ApplicationComponent
+
+    org, client, user = recon_client
+
+    with tenant_ctx(org.id):
+        # A normal population...
+        for i in range(3):
+            db.session.add(
+                ApplicationComponent(
+                    name=f"Recon App {i} {uuid.uuid4().hex[:6]}",
+                    organization_id=org.id,
+                    lifecycle_status="2.1 STRATEGIC",
+                )
+            )
+        # ...and one sparse/edge-case row: a null lifecycle_status, which is
+        # exactly the shape of field that has silently acted as an implicit
+        # filter elsewhere in this codebase (R-04).
+        db.session.add(
+            ApplicationComponent(
+                name=f"Recon App Sparse {uuid.uuid4().hex[:6]}",
+                organization_id=org.id,
+                lifecycle_status=None,
+            )
+        )
+        db.session.commit()
+        db_count = ApplicationComponent.query.count()
+
+    login_as(client, user)
+    api_resp = client.get("/api/v1/applications/?per_page=100")
+    assert api_resp.status_code == 200, api_resp.get_data(as_text=True)
+    api_body = api_resp.get_json() or {}
+    api_total = ((api_body.get("data") or {}).get("pagination") or {}).get("total")
+
+    ctx_resp = client.get("/ai-chat/context/general")
+    assert ctx_resp.status_code == 200, ctx_resp.get_data(as_text=True)
+    ctx_body = ctx_resp.get_json() or {}
+    ctx_total = ((ctx_body.get("context") or {}).get("portfolio_summary") or {}).get(
+        "total_applications"
+    )
+
+    assert db_count == 4, "fixture setup sanity check"
+    assert api_total == db_count, (
+        f"API total ({api_total}) != direct db count ({db_count}) for "
+        "applications — this is the ARCH-010 defect class"
+    )
+    assert ctx_total == db_count, (
+        f"AI context total_applications ({ctx_total}) != direct db count "
+        f"({db_count}) — the agent would state a figure the API cannot back"
+    )
+
+
+def test_r02_application_count_increments_by_exactly_one_after_write(recon_client, login_as):
+    """R-02: every surface increments by exactly 1 after one write, immediately."""
+    org, client, user = recon_client
+    login_as(client, user)
+
+    before = client.get("/api/v1/applications/?per_page=1")
+    before_total = (
+        ((before.get_json() or {}).get("data") or {}).get("pagination") or {}
+    ).get("total")
+
+    create_resp = client.post(
+        "/api/v1/applications/",
+        json={"name": f"R02 New App {uuid.uuid4().hex[:6]}"},
+    )
+    assert create_resp.status_code in (200, 201), create_resp.get_data(as_text=True)
+
+    after = client.get("/api/v1/applications/?per_page=1")
+    after_total = (
+        ((after.get_json() or {}).get("data") or {}).get("pagination") or {}
+    ).get("total")
+
+    ctx_after = client.get("/ai-chat/context/general")
+    ctx_total_after = (
+        ((ctx_after.get_json() or {}).get("context") or {}).get("portfolio_summary") or {}
+    ).get("total_applications")
+
+    assert after_total == before_total + 1, (
+        f"API total did not increment by exactly 1 after one create "
+        f"(before={before_total}, after={after_total})"
+    )
+    assert ctx_total_after == after_total, (
+        "AI context total drifted from the API total immediately after a "
+        f"write (api={after_total}, ctx={ctx_total_after})"
+    )
+
+
+def test_r01_vendor_and_capability_totals_agree_db_and_api(recon_client, db_session, login_as):
+    """R-01 for the two global (non-tenant-scoped) catalog entity types.
+
+    VendorOrganization and UnifiedCapability are platform-wide reference
+    data, not TenantMixin models, so "db_count" here is a direct, unscoped
+    count and is compared against the same unscoped API totals — there is no
+    tenant boundary to cross for these two types.
+    """
+    from app.models.unified_capability import UnifiedCapability
+    from app.models.vendor.vendor_organization import VendorOrganization
+
+    org, client, user = recon_client
+    login_as(client, user)
+
+    vendor_db_count = VendorOrganization.query.count()
+    vendor_resp = client.get("/api/vendors/list?per_page=100")
+    assert vendor_resp.status_code == 200, vendor_resp.get_data(as_text=True)
+    vendor_api_total = (vendor_resp.get_json() or {}).get("total")
+    assert vendor_api_total == vendor_db_count, (
+        f"vendor API total ({vendor_api_total}) != direct db count "
+        f"({vendor_db_count})"
+    )
+
+    cap_db_count = UnifiedCapability.query.count()
+    cap_resp = client.get("/api/v1/capabilities/?per_page=100")
+    assert cap_resp.status_code == 200, cap_resp.get_data(as_text=True)
+    cap_api_total = ((cap_resp.get_json() or {}).get("data") or {}).get("pagination", {}).get(
+        "total"
+    )
+    assert cap_api_total == cap_db_count, (
+        f"capability API total ({cap_api_total}) != direct db count "
+        f"({cap_db_count})"
+    )
+
+
+def test_r03_vendor_pagination_reports_the_true_total_not_the_page_size(
+    recon_client, db_session, login_as
+):
+    """R-03: pagination total must be the full dataset size, and per_page must
+    be honoured — a page-size-sized total is exactly the bug this guards.
+    """
+    from app import db
+    from app.models.vendor.vendor_organization import VendorOrganization
+
+    org, client, user = recon_client
+    login_as(client, user)
+
+    before_count = VendorOrganization.query.count()
+    seed_n = 15
+    for i in range(seed_n):
+        db.session.add(
+            VendorOrganization(
+                name=f"R03 Vendor {i} {uuid.uuid4().hex[:6]}",
+                vendor_type="software",
+            )
+        )
+    db.session.commit()
+    expected_total = before_count + seed_n
+
+    resp_default = client.get("/api/vendors/list")
+    body_default = resp_default.get_json() or {}
+    assert body_default.get("total") == expected_total, (
+        f"total ({body_default.get('total')}) must be the full dataset size "
+        f"({expected_total}), not the page size"
+    )
+
+    resp_paged = client.get("/api/vendors/list?per_page=10")
+    body_paged = resp_paged.get_json() or {}
+    assert body_paged.get("total") == expected_total
+    assert len(body_paged.get("vendors") or []) == 10, (
+        "per_page=10 must return exactly 10 rows while total still reports "
+        "the full dataset"
+    )
+
+
+def test_r06_ai_context_grounds_every_portfolio_count_in_the_live_api(recon_client, login_as):
+    """R-06: ai-chat context/general's portfolio_summary must match the API
+    it is meant to summarise, for every count it states, not just capabilities
+    (ARCH-015 already covers the capabilities half above).
+
+    NOTE on "capabilities": the codebase has two distinct capability
+    concepts behind the same word — ``UnifiedCapability`` (the global,
+    non-tenant PCF/APQC reference taxonomy the /api/v1/capabilities/
+    endpoint serves) and ``BusinessCapability`` (a tenant-scoped model,
+    what ``_load_general_context``'s ``total_capabilities`` actually
+    counts). Comparing the context figure against the UnifiedCapability API
+    total would be comparing two different entity types by name coincidence
+    — exactly the kind of numerator/denominator mismatch ARCH-015 already
+    caught once (see the comment in multi_domain_chat_service.py's
+    ``_load_general_context``). So this test grounds total_capabilities
+    against the correct source, BusinessCapability's own tenant-scoped
+    count, not the UnifiedCapability API.
+    """
+    from app.models.business_capabilities import BusinessCapability
+
+    org, client, user = recon_client
+    login_as(client, user)
+
+    apps_total = (
+        ((client.get("/api/v1/applications/?per_page=1").get_json() or {}).get("data") or {})
+        .get("pagination", {})
+        .get("total")
+    )
+    vendors_total = (client.get("/api/vendors/list?per_page=1").get_json() or {}).get("total")
+    caps_db_count = BusinessCapability.query.count()
+
+    ctx = client.get("/ai-chat/context/general")
+    assert ctx.status_code == 200, ctx.get_data(as_text=True)
+    summary = ((ctx.get_json() or {}).get("context") or {}).get("portfolio_summary") or {}
+
+    assert summary.get("total_applications") == apps_total, (
+        f"ctx total_applications ({summary.get('total_applications')}) != "
+        f"applications API total ({apps_total})"
+    )
+    assert summary.get("total_vendors") == vendors_total, (
+        f"ctx total_vendors ({summary.get('total_vendors')}) != vendors API "
+        f"total ({vendors_total})"
+    )
+    assert summary.get("total_capabilities") == caps_db_count, (
+        f"ctx total_capabilities ({summary.get('total_capabilities')}) != "
+        f"BusinessCapability db count ({caps_db_count}) — the two "
+        "'capability' concepts (UnifiedCapability vs BusinessCapability) "
+        "must not be conflated when grounding this figure"
+    )

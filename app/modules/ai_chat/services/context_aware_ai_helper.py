@@ -229,7 +229,7 @@ class ContextAwareAIHelper:
         """Load context for application form."""
         context = {
             "context_type": ContextType.APPLICATION_FORM,
-            "total_applications": ApplicationComponent.query.count(),
+            "total_applications": ApplicationComponent.query.count() + 1,
         }
 
         # Get recent applications for pattern analysis

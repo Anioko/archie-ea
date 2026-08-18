@@ -27,13 +27,11 @@ def _login(client, user_id):
             delattr(g, cached)
 
 
-@pytest.fixture
-def admin_client(app, db_session, make_org):
+def _make_admin(db_session, org, label):
     from app.models.user import User
 
-    org = make_org("aiapprove")
     user = User(
-        email=f"aiapprove-{uuid.uuid4().hex[:8]}@example.com",
+        email=f"{label}-{uuid.uuid4().hex[:8]}@example.com",
         first_name="Ai",
         last_name="Approve",
         organization_id=org.id,
@@ -42,13 +40,30 @@ def admin_client(app, db_session, make_org):
     )
     db_session.add(user)
     db_session.flush()
+    return user
+
+
+@pytest.fixture
+def admin_client(app, db_session, make_org):
+    org = make_org("aiapprove")
+    user = _make_admin(db_session, org, "aiapprove")
     client = app.test_client()
     _login(client, user.id)
     return org, client, user
 
 
 def test_approve_route_actually_executes_the_operation(admin_client, app, tenant_ctx, db_session):
+    """Uses a SECOND admin as approver, not the requester (V-01, 17 Aug 2026
+    QA register): approve_and_execute now refuses self-approval, so this test
+    would fail with 400 APPROVAL_DENIED if it reused the requester as
+    approver -- see test_ai_r32_ai_permission_gate.py for that refusal
+    itself. The behaviour this file exists to pin (the route actually
+    executes, not just 500s on a missing method) is orthogonal to who does
+    the approving, so a second, distinct approver preserves the original
+    intent without exercising the vulnerability the fix closes.
+    """
     org, client, user = admin_client
+    approver = _make_admin(db_session, org, "aiapprove-approver")
     from app import db
     from app.models.application_portfolio import ApplicationComponent
     from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
@@ -71,7 +86,7 @@ def test_approve_route_actually_executes_the_operation(admin_client, app, tenant
         assert created.get("success") is True, created
         approval_id = created["approval_id"]
 
-    _login(client, user.id)
+    _login(client, approver.id)
 
     resp = client.post(f"/ai-chat/approvals/{approval_id}/approve")
     assert resp.status_code == 200, resp.get_data(as_text=True)
