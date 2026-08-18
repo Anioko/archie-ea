@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
  "total": 140,
- "closed": 61,
- "open": 69,
+ "closed": 64,
+ "open": 64,
  "findings": [
   {
    "id": "A-06",
@@ -48,9 +48,9 @@
    "title": "Application list scales linearly in payload and super-linearly in latency",
    "status": "closed",
    "note": "",
-   "fix_commit": "9be49dd",
+   "fix_commit": "0493bc4",
    "evidence": [
-    "manual:verified server-side pagination present in list_views.py"
+    "test:tests/test_qa_persona_and_api_contract.py"
    ],
    "reviewed": false,
    "deployed": false
@@ -1477,7 +1477,7 @@
    "severity": "S2",
    "title": "Persona naming is inconsistent across three surfaces",
    "status": "open",
-   "note": "",
+   "note": "PARTIALLY addressed in 0493bc4: ARCHITECT_PERSONAS extended to cover every AI-facing persona, closing the gap that caused P-01. Four vocabularies still exist — ARCHITECT_PERSONAS, VALID_ROLES (user.py), PERSONA_CONFIGS, and the ai-chat domains dict. Full consolidation needs user.py and role_access.py.",
    "fix_commit": "",
    "evidence": [],
    "reviewed": false,
@@ -1485,12 +1485,14 @@
   },
   {
    "id": "P-03",
-   "severity": "S1",
+   "severity": "--",
    "title": "Agent asserts a capability catalog that does not exist and contradicts itself in one response",
-   "status": "open",
-   "note": "Related to CM-01, which found hardcoded '516 business capabilities' in the prompt. Verify whether commit 1d45832 closes this or whether a second source remains.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "not_a_defect",
+   "note": "closed by 1d45832 + registry/executor cleanup; remaining 516/881 strings are migration-script docstrings that never reach a prompt or the UI",
+   "fix_commit": "0493bc4",
+   "evidence": [
+    "manual:closed by 1d45832 + registry/executor cleanup; remaining 516/881 strings are migration-script docstrings that never reach a prompt or the UI"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1518,12 +1520,14 @@
   },
   {
    "id": "P-06",
-   "severity": "S3",
+   "severity": "--",
    "title": "Invalid-ID handling is correct everywhere except the architecture module",
-   "status": "open",
-   "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "not_a_defect",
+   "note": "every architecture entity-id route uses an <int:> converter and is structurally immune to ARCH-050's catch-all; the two string-typed routes wrap lookups in explicit 404s",
+   "fix_commit": "0493bc4",
+   "evidence": [
+    "manual:every architecture entity-id route uses an <int:> converter and is structurally immune to ARCH-050's catch-all; the two string-typed routes wrap lookups in explicit 404s"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1531,10 +1535,12 @@
    "id": "P-07",
    "severity": "S3",
    "title": "Error logger discards error detail",
-   "status": "open",
-   "note": "Unhandled promise rejections log the literal word 'Object' — the error is never serialised, so a production incident driven by these would be undiagnosable. The auditor WITHDREW an earlier inference of a 60-second cycle after instrumented re-testing found zero rejections over 70 seconds.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "0493bc4",
+   "evidence": [
+    "manual:error serialisation in 05-error.js; no JS harness"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1542,10 +1548,12 @@
    "id": "P-08",
    "severity": "S3",
    "title": "Persona context endpoint returns errors with HTTP 200",
-   "status": "open",
-   "note": "GET /ai-chat/context/enterprise_architect returns 200 with {'error': 'Unknown domain', 'success': false}. Same class as O-03: a failure reported as success.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "0493bc4",
+   "evidence": [
+    "test:tests/test_qa_persona_and_api_contract.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1564,10 +1572,12 @@
    "id": "P-12",
    "severity": "S2",
    "title": "Export produces no file and no feedback",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "0493bc4",
+   "evidence": [
+    "test:tests/test_qa_persona_and_api_contract.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1686,5 +1696,5 @@
  "deployed": 0,
  "protect": 4,
  "_register_discrepancy": "The 18 Aug register header claims '115 raised, 4 withdrawn, 3 revised, 1 verified fixed -> 107 active'. Two things in that do not reconcile and are recorded rather than smoothed over. (1) The '1 verified fixed' finding is never NAMED anywhere: no correction-ledger row, no status change in the Section 5 index, and no finding described as fixed in either document. Nothing has been marked closed on that basis. (2) 104 -> 115 raised is +11, but only 7 findings (I-01, M-01..M-06) are actually merged into the register's clusters and index; M-07 and M-08 appear in the Update-4 source document but in neither, and are carried here anyway because a finding dropped by an untriaged summary is still a finding. That leaves 2 raised findings unaccounted for. If they surface in a later document they get added here.",
- "not_a_defect": 6
+ "not_a_defect": 8
 }

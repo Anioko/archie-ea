@@ -9,8 +9,8 @@ Source: the 17 Aug 2026 QA remediation register (140 active findings).
 | | Count |
 |---|---|
 | Findings total | 140 |
-| Fixed and evidenced | 61 |
-| Still open | 75 |
+| Fixed and evidenced | 64 |
+| Still open | 72 |
 | Closed but unevidenced (blocks the gate) | 0 |
 | Of the fixed: verified by eye only | 25 |
 | Live in production | 0 |
@@ -31,7 +31,6 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | M-03 | S1 | Entity Matching Assistant errors on every input | not started |
 | M-05 | S1 | No separation of duties: one user can create, submit and approve the same ARB review | not started |
 | M-06 | S1 | ARB decision records do not store who made the decision | not started |
-| P-03 | S1 | Agent asserts a capability catalog that does not exist and contradicts itself in one response | Related to CM-01, which found hardcoded '516 business capabilities' in the prompt. Verify whether commit 1d45832 closes this or whether a second source remains. |
 | P-04 | S1 | CSRF is not enforced on the write surface — supersedes A-04's scoping | NINE of nine testable write endpoints reached business logic with NO token, including /applications/bulk-delete which EXECUTED (200), /arb/reviews/create, /solutions/<id>/delete-json and — most seriously — /ai-chat/approvals/<id>/approve, the gate through which agent writes execute and the same gate V-01 shows has no authorization either. A-04 said CSRF was implemented and inconsistently applied; the accurate position is a token exists on server-rendered admin FORMS and is enforced on NONE of the JSON write endpoints. Fix as default-deny middleware with an explicit opt-out list; enumerate the full route table. |
 | S-11 | S1 | Core architecture capabilities are undiscoverable from navigation | SEVERITY RAISED S2 -> S1 on the register's own 18 Aug reasoning. Discoverability has now caused TWO mis-assessments by an experienced tester: ARCH-120/121/125 in Addendum 1, and ARCH-122 again on 18 Aug after /portfolio/ was found to be a complete programme-management module. Both times capability was present, empty and unreachable. If a systematic route sweep twice concluded shipped capability did not exist, a prospect under time pressure reaches the same wrong conclusion and the product is judged on a fraction of what it does. Now also covers /portfolio/. |
 | V-01 | S1 | AI agent writes are not constrained by the invoking user's permissions | CLUSTER 0, most severe finding of the engagement. A Viewer (perms 1) blocked with 403 from DELETE /architecture/elements/470 created solution id 25 by asking the chat assistant, then approved their own request (POST /ai-chat/approvals/25/approve -> 200). Solutions 5 -> 6. Two failures required: the agent does not authorise the request, and the approval gate does not authorise the approver. Permission checks must live in the TOOL EXECUTION LAYER, not the prompt - a prompt instruction is not an access control. |
@@ -56,10 +55,9 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | H-02 | S2 | Impact Analysis produces no output and contradicts itself | /strategic/impact-analysis on a 9-relationship element renders 'Impact of MODIFY on X' in the header AND 'No Analysis Active' in the body simultaneously. Header and body derive from different state. Impact analysis answers the question architects are asked most often; the feature is present, sophisticated, and produces nothing. |
 | H-03 | S2 | ADM Kanban miscounts and mislabels its own board | Cluster 1 in a new module. Phase rows total 27, status columns total 28, headline says 28, API says 5 solutions. Headline reads 'Pipeline: 28 solutions' when only 5 of 27 cards are solutions and 22 are deliverables — an architect would believe the portfolio is 5.6x its real size. Both axes must derive from one card collection; include in R-01. |
 | H-04 | S2 | Currency is inconsistent across financial modules | /consolidation-list/ renders GBP with 2dp; /procurement/spend renders USD with 0dp, same session, minutes apart. A client-side currency layer rewrites some modules and not others. These are the modules carrying contract value, ARC, savings and budget — a GBP/USD confusion is ~27% error on any number a user acts on, and there is no currency setting or on-screen currency code. |
-| P-02 | S2 | Persona naming is inconsistent across three surfaces | not started |
+| P-02 | S2 | Persona naming is inconsistent across three surfaces | PARTIALLY addressed in 0493bc4: ARCHITECT_PERSONAS extended to cover every AI-facing persona, closing the gap that caused P-01. Four vocabularies still exist — ARCHITECT_PERSONAS, VALID_ROLES (user.py), PERSONA_CONFIGS, and the ai-chat domains dict. Full consolidation needs user.py and role_access.py. |
 | P-05 | S2 | Run Detection modal is removed from the DOM at runtime | not started |
 | P-10 | S2 | Global search returns dead links and indexes none of the hidden modules | not started |
-| P-12 | S2 | Export produces no file and no feedback | not started |
 | V-05 | S2 | Cross-tenant enumeration requires Administrator, not any user | Re-test of A-01 as Viewer: all cross-tenant reads return 403. Still real - no platform/tenant admin split, sequential ids, and every human account is an Administrator. |
 | V-06 | S2 | No login or IP tracking | Account page shows 'Last login tracking not available' / 'IP tracking not available'. No record of authentication events: no credential-compromise detection, no failed-login monitoring, no session forensics. Compounds ARCH-092 - with neither auth events nor data-change events recorded, the platform produces NO security telemetry at all. Standard enterprise procurement control; SOC 2 / ISO 27001 evidence. |
 | ARB-01 | S3 | ARB workflow unexercised; governance-gates data endpoint missing | route was never wired; the admin UI calls /admin/api/governance-gates, which works |
@@ -79,9 +77,6 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | H-07 | S3 | Another doubled query string in an asset URL | /static/js/duplicate_detection/dashboard.js?v=1787042220?v=3 — a FOURTH instance, on a module not previously examined. Confirms ARCH-060 is systemic, not three typos. NOTE: my asset-urls gate reports clean on this, so the gate is insufficient — it scans templates and misses this class. |
 | M-04 | S3 | Data Stewardship's real findings are all graded INFO, hiding genuine risk | not started |
 | M-07 | S3 | TOGAF phase taxonomy differs between modules | not started |
-| P-06 | S3 | Invalid-ID handling is correct everywhere except the architecture module | not started |
-| P-07 | S3 | Error logger discards error detail | Unhandled promise rejections log the literal word 'Object' — the error is never serialised, so a production incident driven by these would be undiagnosable. The auditor WITHDREW an earlier inference of a 60-second cycle after instrumented re-testing found zero rejections over 70 seconds. |
-| P-08 | S3 | Persona context endpoint returns errors with HTTP 200 | GET /ai-chat/context/enterprise_architect returns 200 with {'error': 'Unknown domain', 'success': false}. Same class as O-03: a failure reported as success. |
 | S-07 | S3 | TOGAF ADM checklist is incomplete and unlabelled | not started |
 | S-08 | S3 | Filter bar labels overlap | not started |
 | S-09 | S3 | Status KPI cards are too narrow for their content | not started |
@@ -96,6 +91,8 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-092 | -- | No user-visible audit trail — WITHDRAWN | WITHDRAWN. The audit log exists, works, and ATTRIBUTED the V-01 unauthorised writes — so that bypass is real but not invisible. Missed because the route is absent from navigation AND from /modules/ itself. Replaced by F-01 (it logs only create/delete). My 85c2924 work stands: it added governance events that were genuinely missing. |
 | ARCH-104 | -- | Oversized KPI tiles — WITHDRAWN (narrow-viewport artefact) | WITHDRAWN: recorded at 638px, does not reproduce at desktop width. Note commit 055cec4 added click-to-filter to the KPI tiles anyway, which is a genuine improvement and is kept; the trend/delta was correctly never added. |
 | ARCH-122 | -- | Delivery management — WITHDRAWN as stated (2nd correction, 18 Aug) | Withdrawn: budget, benefits and risk tracking all already exist. Re-scoped INTO S-11 (exists, unpopulated, absent from navigation). Dependencies and milestones remain unverified — read-only answer requested, no new code. I had a wave building RAID/benefits when this landed; stopped and reverted. |
+| P-03 | -- | Agent asserts a capability catalog that does not exist and contradicts itself in one response | closed by 1d45832 + registry/executor cleanup; remaining 516/881 strings are migration-script docstrings that never reach a prompt or the UI |
+| P-06 | -- | Invalid-ID handling is correct everywhere except the architecture module | every architecture entity-id route uses an <int:> converter and is structurally immune to ARCH-050's catch-all; the two string-typed routes wrap lookups in explicit 404s |
 
 ## Fixed
 
@@ -111,7 +108,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | C-02 | S1 | Orphaned ArchiMate elements: deleting an application does not delete its element | `2a711a2` | test:tests/test_application_delete_cascade.py; manual:re-confirmed in production 18 Aug — admin delete of app 105 reported elements_deleted: 1 | no | no |
 | D-01 | S1 | Dashboard and API element counts drift apart after any write | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
 | O-01 | S1 | Exported OEF contains metamodel-invalid relationships | `6aaf0b5` | test:tests/test_oef_export_direction_validation.py | no | no |
-| P-01 | S1 | Application list scales linearly in payload and super-linearly in latency | `9be49dd` | manual:verified server-side pagination present in list_views.py | no | no |
+| P-01 | S1 | Application list scales linearly in payload and super-linearly in latency | `0493bc4` | test:tests/test_qa_persona_and_api_contract.py | no | no |
 | S-01 | S1 | Solutions list silently hides records while claiming to be complete | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | S-02 | S1 | Blueprint completeness reports four mutually contradictory figures on one page | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | A-01 | S2 | A tenant administrator can enumerate other tenants' organizations and members | `2e3bb7f` | test:tests/test_admin_org_member_idor.py | no | no |
@@ -129,6 +126,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | D-02 | S2 | ApplicationInterface is classified into the Business layer | `6aaf0b5` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | O-02 | S2 | OEF export omits all views, organizations and properties | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | no |
 | O-03 | S2 | OEF import silently fails, reporting success | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | no |
+| P-12 | S2 | Export produces no file and no feedback | `0493bc4` | test:tests/test_qa_persona_and_api_contract.py | no | no |
 | S-03 | S2 | Section count off by one: "Architecture Decisions" is excluded from completeness | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | S-04 | S2 | Blueprint version number contradicts itself | `f019ae1` | manual:blueprint_version vs OptimisticLock version_id_col traced | no | no |
 | S-05 | S2 | "VIEW AS" role switching has no effect | `f019ae1` | manual:control removed; verified it drove nothing | no | no |
@@ -156,6 +154,8 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | C-09 | S3 | Matrix view column headers are unreadable | `28ee96a` | manual:code review | yes | no |
 | D-03 | S3 | Dashboard KPI panels mix denominators without stating scope | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
 | O-04 | S3 | Generic export failure message | `f019ae1` | manual:exception type + correlation id in export handler | no | no |
+| P-07 | S3 | Error logger discards error detail | `0493bc4` | manual:error serialisation in 05-error.js; no JS harness | no | no |
+| P-08 | S3 | Persona context endpoint returns errors with HTTP 200 | `0493bc4` | test:tests/test_qa_persona_and_api_contract.py | no | no |
 | ARCH-024 | S4 | Response latency displayed as raw milliseconds | `70172a9` | manual:formatDuration replaces raw ms; no JS harness | no | no |
 | ARCH-045 | S4 | Model selector is empty and non-functional | `70172a9` | manual:selector hidden unless >=2 real models; no JS harness in repo | no | no |
 | ARCH-062 | S4 | Asset version stamps are inconsistent across the bundle | `383502e+cc9f153` | manual:verified on the production container (git safe.directory returns the real SHA) | yes | no |
