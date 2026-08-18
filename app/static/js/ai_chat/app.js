@@ -371,6 +371,7 @@
             if (data.thread_id) {
                 const _wasNew = data.thread_id !== window.__threadId;
                 window.__threadId = data.thread_id;
+                try { sessionStorage.setItem('archie_chat_thread_id', data.thread_id); } catch (e) { /* private-browsing storage denial; thread still works, just won't restore on reload */ }
                 if (_wasNew && window.loadSessionList) window.loadSessionList();
             }
             const endTime = performance.now();
@@ -504,6 +505,7 @@
                 onThreadId: (id) => {
                     const wasNew = id !== window.__threadId;
                     window.__threadId = id;
+                    try { sessionStorage.setItem('archie_chat_thread_id', id); } catch (e) { /* private-browsing storage denial; thread still works, just won't restore on reload */ }
                     if (wasNew && window.loadSessionList) window.loadSessionList();
                 },
                 /* The evidence trail. The server has always emitted these and
@@ -1179,10 +1181,24 @@ Would you like me to provide more details about the extracted elements or help y
 
   // "New chat" — a fresh page load is the most reliable reset for the inline
   // chat (welcome grid, in-page state, and __threadId all reset cleanly).
-  window.startNewConversation = function () { window.__threadId = null; window.location.href = window.location.pathname; };
+  window.startNewConversation = function () {
+    window.__threadId = null;
+    try { sessionStorage.removeItem('archie_chat_thread_id'); } catch (e) { /* swallow-ok: best-effort cleanup, page reload below resets state regardless */ }
+    window.location.href = window.location.pathname;
+  };
 
   // Auto-load the rail so past chats are visible without clicking Refresh; failure here
   // just means the sidebar list stays empty until the next successful call, non-fatal to boot.
-  function boot() { try { window.loadSessionList(); } catch (e) { /* swallow-ok: loadSessionList renders its own "Couldn't load conversations" state; this guard only stops a throw at page load from aborting the rest of the script */ } }
+  // ARCH-115: also restore the active thread on reload — previously boot() only populated the
+  // sidebar list, never re-opened the conversation itself, so a reload (including one forced by
+  // ARCH-001's outage) always landed on the empty "How can I help you today?" state even though
+  // the thread was safely persisted server-side and reachable via the Chats panel.
+  function boot() {
+    try { window.loadSessionList(); } catch (e) { /* swallow-ok: loadSessionList renders its own "Couldn't load conversations" state; this guard only stops a throw at page load from aborting the rest of the script */ }
+    try {
+      var savedId = sessionStorage.getItem('archie_chat_thread_id');
+      if (savedId) window.loadSession(savedId);
+    } catch (e) { /* swallow-ok: storage may be unavailable (private browsing); user still reaches the Chats panel manually */ }
+  }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

@@ -71,6 +71,41 @@ class AIPromptTemplate(db.Model):
     version = db.Column(db.Integer, nullable=True, default=1, server_default="1")
 
 
+class AIPromptTemplateVersion(db.Model):
+    """Version history for AIPromptTemplate (finding A-05, remainder).
+
+    A-05's audit-metadata half (updated_by_id/version on AIPromptTemplate
+    itself) shipped in an earlier commit; this table is the "full version
+    history with diff and rollback" the register actually asked for. A new
+    table, not new columns — `flask init-db`'s create_all() creates it on
+    boot, which is the mechanism this relies on (see CLAUDE.md "Schema
+    management": reconcile-schema is ADD-COLUMN-only and cannot create a
+    table; a brand-new table needs no maintenance-window migration).
+
+    One row is written *before* every mutation to the live template (update
+    or reset-to-default), capturing the content being replaced — so this
+    table always holds the prior state, and the live row is always the
+    current state. A rollback is implemented as "apply a captured version's
+    content to the live row", which itself first snapshots whatever it is
+    about to overwrite — so rollback is itself undoable, and the history is
+    never truncated by replaying it.
+    """
+
+    __tablename__ = "ai_prompt_template_versions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # No FK constraint — matches AIPromptTemplate.updated_by_id's own
+    # convention on this model and avoids an ON DELETE dependency the table
+    # doesn't need; template_name (not template_id) is the join key so
+    # history survives a reset-to-default that deletes the live override row.
+    template_name = db.Column(db.String(100), nullable=False, index=True)
+    version = db.Column(db.Integer, nullable=False)
+    system_prompt = db.Column(db.Text, nullable=False)
+    change_type = db.Column(db.String(20), nullable=False, default="update")  # update, reset, rollback
+    updated_by_id = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class AIInteractionLog(db.Model):
     """
     Audit log of what the AI did.

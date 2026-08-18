@@ -228,6 +228,13 @@ def init_cli(app):
         app.logger.warning(f"\u26a0\ufe0f  Failed to register dedupe entities CLI: {e}")
 
     try:
+        from app.commands.clean_test_artefacts import init_app as init_clean_test_artefacts
+        init_clean_test_artefacts(app)
+        app.logger.info("\u2705 Clean test artefacts CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register clean test artefacts CLI: {e}")
+
+    try:
         from app.commands.backfill_value_stream_tenancy import init_app as init_vs_tenancy
         init_vs_tenancy(app)
         app.logger.info("✅ Value-stream tenancy backfill CLI command registered")

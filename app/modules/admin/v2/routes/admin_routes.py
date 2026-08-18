@@ -62,7 +62,7 @@ from app.decorators import admin_required, audit_log
 from app.middleware.tenant_decorators import org_admin_required, platform_admin_required
 from app.models import APISettings, EditableHTML, Role, User
 from app.models.organization import Organization
-from app.models.ai_service import AIPromptTemplate
+from app.models.ai_service import AIPromptTemplate, AIPromptTemplateVersion
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
 from app.modules.admin.v2.services.llm_service_v2 import test_api_key
 from app.utils.sidebar_parser import SidebarSubmenu, parse_sidebar_template
@@ -4588,6 +4588,9 @@ def solution_prompts_data():
             "default_prompt": config["prompt_text"],
             "current_prompt": override.system_prompt if override else config["prompt_text"],
             "has_override": override is not None,
+            "updated_by_id": override.updated_by_id if override else None,
+            "updated_at": override.updated_at.isoformat() if override and override.updated_at else None,
+            "version": override.version if override else None,
         })
 
     return jsonify({"prompts": prompts})
@@ -4619,11 +4622,28 @@ def solution_prompt_update(prompt_key):
             system_prompt=prompt_text,
             user_prompt_template="",
             category="solution_prompt",
+            updated_by_id=current_user.id,
+            version=1,
         )
         db.session.add(override)
     else:
+        # A-05: snapshot the state being replaced before mutating — see the
+        # equivalent legacy-blueprint route in solution_prompt_admin.py for
+        # the full rationale. This admin/v2 copy is the one actually
+        # registered at boot (USE_ADMIN_GUARDRAILS defaults on, see
+        # CLAUDE.md "Two parallel code layouts"), so the history/diff/
+        # rollback endpoints below live here, not only in the legacy module.
+        db.session.add(AIPromptTemplateVersion(
+            template_name=override.name,
+            version=override.version or 1,
+            system_prompt=override.system_prompt,
+            change_type="update",
+            updated_by_id=override.updated_by_id,
+        ))
         override.system_prompt = prompt_text
         override.updated_at = datetime.utcnow()
+        override.updated_by_id = current_user.id
+        override.version = (override.version or 1) + 1
 
     try:
         db.session.commit()
@@ -4645,6 +4665,9 @@ def solution_prompt_update(prompt_key):
             "default_prompt": config["prompt_text"],
             "current_prompt": override.system_prompt,
             "has_override": True,
+            "updated_by_id": override.updated_by_id,
+            "updated_at": override.updated_at.isoformat() if override.updated_at else None,
+            "version": override.version,
         },
     })
 
@@ -4664,6 +4687,13 @@ def solution_prompt_reset(prompt_key):
 
     if override:
         try:
+            db.session.add(AIPromptTemplateVersion(
+                template_name=override.name,
+                version=override.version or 1,
+                system_prompt=override.system_prompt,
+                change_type="reset",
+                updated_by_id=current_user.id,
+            ))
             db.session.delete(override)
             db.session.commit()
             logger.info("Solution prompt override reset for %s by user %s", prompt_key, current_user.id)
@@ -4684,6 +4714,170 @@ def solution_prompt_reset(prompt_key):
             "default_prompt": config["prompt_text"],
             "current_prompt": config["prompt_text"],
             "has_override": False,
+        },
+    })
+
+
+def _version_content_v2(prompt_key, version, override_name):
+    if version == "current":
+        override = AIPromptTemplate.query.filter_by(name=override_name).first()
+        return override.system_prompt if override else None
+    row = (
+        AIPromptTemplateVersion.query.filter_by(template_name=override_name, version=int(version))
+        .order_by(AIPromptTemplateVersion.id.desc())
+        .first()
+    )
+    return row.system_prompt if row else None
+
+
+@admin_bp_v2.route("/solution-prompts/<prompt_key>/history")
+@login_required
+@admin_required
+def solution_prompt_history(prompt_key):
+    """A-05: version history for a prompt override, newest first."""
+    defaults = _get_prompt_defaults()
+    if prompt_key not in defaults:
+        return jsonify({"error": f"Unknown prompt: {prompt_key}"}), 404
+
+    override_name = _override_key(prompt_key)
+    override = AIPromptTemplate.query.filter_by(name=override_name).first()
+    history = (
+        AIPromptTemplateVersion.query.filter_by(template_name=override_name)
+        .order_by(AIPromptTemplateVersion.version.desc(), AIPromptTemplateVersion.id.desc())
+        .all()
+    )
+
+    versions = []
+    if override:
+        versions.append({
+            "version": override.version,
+            "system_prompt": override.system_prompt,
+            "change_type": "current",
+            "updated_by_id": override.updated_by_id,
+            "created_at": override.updated_at.isoformat() if override.updated_at else None,
+            "is_current": True,
+        })
+    for h in history:
+        versions.append({
+            "version": h.version,
+            "system_prompt": h.system_prompt,
+            "change_type": h.change_type,
+            "updated_by_id": h.updated_by_id,
+            "created_at": h.created_at.isoformat() if h.created_at else None,
+            "is_current": False,
+        })
+
+    return jsonify({"key": prompt_key, "has_override": override is not None, "versions": versions})
+
+
+@admin_bp_v2.route("/solution-prompts/<prompt_key>/diff")
+@login_required
+@admin_required
+def solution_prompt_diff(prompt_key):
+    """A-05: unified diff between two versions (or a version and "current").
+
+    ?from=<version|current>&to=<version|current>
+    """
+    import difflib
+
+    defaults = _get_prompt_defaults()
+    if prompt_key not in defaults:
+        return jsonify({"error": f"Unknown prompt: {prompt_key}"}), 404
+
+    from_v = request.args.get("from", "current")
+    to_v = request.args.get("to", "current")
+    override_name = _override_key(prompt_key)
+
+    try:
+        from_text = _version_content_v2(prompt_key, from_v, override_name)
+        to_text = _version_content_v2(prompt_key, to_v, override_name)
+    except (TypeError, ValueError):
+        return jsonify({"error": "from/to must be an integer version or 'current'"}), 400
+
+    if from_text is None or to_text is None:
+        return jsonify({"error": "One or both versions were not found"}), 404
+
+    diff_lines = list(
+        difflib.unified_diff(
+            from_text.splitlines(),
+            to_text.splitlines(),
+            fromfile=f"{prompt_key} v{from_v}",
+            tofile=f"{prompt_key} v{to_v}",
+            lineterm="",
+        )
+    )
+    return jsonify({
+        "key": prompt_key,
+        "from": from_v,
+        "to": to_v,
+        "identical": from_text == to_text,
+        "diff": diff_lines,
+    })
+
+
+@admin_bp_v2.route("/solution-prompts/<prompt_key>/rollback/<int:version>", methods=["POST"])
+@login_required
+@admin_required
+@audit_log("rollback_solution_prompt")
+def solution_prompt_rollback(prompt_key, version):
+    """A-05: restore a prior version's content as the live override."""
+    defaults = _get_prompt_defaults()
+    if prompt_key not in defaults:
+        return jsonify({"error": f"Unknown prompt: {prompt_key}"}), 404
+
+    override_name = _override_key(prompt_key)
+    target = AIPromptTemplateVersion.query.filter_by(
+        template_name=override_name, version=version
+    ).order_by(AIPromptTemplateVersion.id.desc()).first()
+    if not target:
+        return jsonify({"error": f"No version {version} found for {prompt_key}"}), 404
+
+    override = AIPromptTemplate.query.filter_by(name=override_name).first()
+
+    try:
+        if override:
+            db.session.add(AIPromptTemplateVersion(
+                template_name=override.name,
+                version=override.version or 1,
+                system_prompt=override.system_prompt,
+                change_type="update",
+                updated_by_id=current_user.id,
+            ))
+            override.system_prompt = target.system_prompt
+            override.updated_at = datetime.utcnow()
+            override.updated_by_id = current_user.id
+            override.version = (override.version or 1) + 1
+        else:
+            override = AIPromptTemplate(
+                name=override_name,
+                description=defaults[prompt_key]["description"],
+                system_prompt=target.system_prompt,
+                user_prompt_template="",
+                category="solution_prompt",
+                updated_by_id=current_user.id,
+                version=1,
+            )
+            db.session.add(override)
+        db.session.commit()
+        logger.info(
+            "Solution prompt %s rolled back to version %s by user %s",
+            prompt_key, version, current_user.id,
+        )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to roll back solution prompt %s to version %s", prompt_key, version)
+        return jsonify({"error": "Database error rolling back prompt"}), 500
+
+    return jsonify({
+        "success": True,
+        "prompt": {
+            "key": prompt_key,
+            "current_prompt": override.system_prompt,
+            "has_override": True,
+            "updated_by_id": override.updated_by_id,
+            "updated_at": override.updated_at.isoformat() if override.updated_at else None,
+            "version": override.version,
+            "rolled_back_from_version": version,
         },
     })
 

@@ -16,6 +16,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import func
 
 from app.utils.api_helpers import api_error
+from app.utils.validators import validate_string
 
 from app.decorators import audit_log, require_roles
 from app.services.rate_limiter import rate_limit
@@ -228,6 +229,17 @@ def create_vendor():
             f"Name exceeds maximum length of {MAX_NAME_LENGTH} characters",
             "NAME_TOO_LONG",
         )
+
+    # ARCH-071: vendor name is an identifier, not rich text — strip HTML tags
+    # at the schema layer rather than relying solely on output encoding.
+    # Stripping (not entity-escaping) matches validate_application_name's
+    # approach so this does not double-escape on Jinja's own autoescape.
+    _valid, data["name"], _err = validate_string(
+        data["name"], max_length=MAX_NAME_LENGTH, min_length=1,
+        field_name="name", required=True, strip_tags=True,
+    )
+    if not _valid:
+        return api_error(_err or "Invalid vendor name", "INVALID_NAME")
 
     if (
         data.get("description")
