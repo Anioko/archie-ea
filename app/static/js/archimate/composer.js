@@ -2046,6 +2046,14 @@ function composerApp() {
             /* ── Port affordance discovery hint (ENT-120) ── */
             this.paper.on('element:mouseenter', function(cellView) {
                 if (self.mode === 'view') return;
+                /* CMP-14: bring the hovered element to front so its connection
+                   ports sit ABOVE any overlapping neighbour. Without this, a port
+                   drag begun over an overlap grabbed and moved the underlying
+                   element instead of starting a link. Locked cells are left in
+                   place. */
+                if (cellView && cellView.model && !self._lockedCells[cellView.model.id]) {
+                    cellView.model.toFront({ deep: true });
+                }
                 let el = cellView.el;
                 if (el) {
                     el.classList.add('port-discover');

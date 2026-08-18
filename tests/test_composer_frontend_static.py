@@ -109,6 +109,13 @@ def test_cmp10_menus_use_opacity_only_transition():
     assert "x-transition.opacity" in toolbar
 
 
+def test_cmp14_hover_brings_element_to_front():
+    """Hovering an element brings it to front so its ports beat an overlap."""
+    src = _read("archimate/composer.js")
+    assert "cellView.model.toFront({ deep: true })" in src, \
+        "element:mouseenter must bring the hovered element to front for port access"
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")
