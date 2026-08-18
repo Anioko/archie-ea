@@ -11,12 +11,24 @@ Sidebar API Routes - HARDENED SECURE VERSION
 """
 
 import logging
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, url_for
 from flask_login import login_required, current_user
 from functools import wraps
 
 from app.models.application_portfolio import ApplicationComponent
 from app.models.vendor.vendor_organization import VendorOrganization
+
+# ArchiMate 3.2 layers the detail-page route accepts (archimate_crud.detail_element's
+# <any(...)> converter) — anything outside this set 404s before the view even runs.
+_VALID_ARCHIMATE_LAYERS = {
+    "motivation",
+    "strategy",
+    "business",
+    "application",
+    "technology",
+    "physical",
+    "implementation",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -504,7 +516,13 @@ def api_global_search():
                 .all()
             )
             for c in caps:
-                results.append({"type": "capability", "id": c.id, "name": c.name, "url": f"/capability-map#cap-{c.id}"})
+                # P-10: #cap-{id} was a dead fragment — capabilities.html has no
+                # per-row id="cap-N" anchor to scroll to, so this landed on the
+                # capability map with no indication a specific row was ever
+                # matched. Link to the real page rather than a fake deep link;
+                # the page itself is the correct destination until an anchor
+                # exists to jump to.
+                results.append({"type": "capability", "id": c.id, "name": c.name, "url": "/capability-map"})
         except Exception as e:
             logger.debug(f"Search skip capabilities: {e}")
 
@@ -532,11 +550,53 @@ def api_global_search():
                 .all()
             )
             for e in elems:
-                results.append({"type": "archimate_element", "id": e.id, "name": e.name, "url": f"/archimate/elements/{e.id}"})
+                # P-10: /archimate/elements/{id} does not exist as a page route
+                # (only /archimate/elements with no id, and /api/archimate/...
+                # variants) — every archimate_element result 404'd. The real
+                # detail page is archimate_crud.detail_element(layer,
+                # element_type, element_id); element_type only has to be a
+                # non-empty string (it falls back to the ArchiMateElement table
+                # when it doesn't match a registered model), but layer must be
+                # one of the seven ArchiMate layers or the route 404s before it
+                # even queries anything.
+                layer = (e.layer or "").lower()
+                if layer not in _VALID_ARCHIMATE_LAYERS:
+                    layer = "application"
+                url = f"/architecture/{layer}/element/{e.id}"
+                results.append({"type": "archimate_element", "id": e.id, "name": e.name, "url": url})
         except Exception as e:
             logger.debug(f"Search skip archimate elements: {e}")
 
         # EA Workflow definitions — removed from search (feature hidden, Journey Wizard is canonical)
+
+        # Modules — S-11/P-10: search covered data records only, never the
+        # module estate itself, so a user could not find "duplicate
+        # detection" or "procurement" by typing it. Indexed from the same
+        # source the sidebar and the /modules directory already use, so a
+        # module only has to be added once to become searchable everywhere.
+        try:
+            from app.modules.modules_directory.routes import all_module_links
+
+            q_lower = q.lower()
+            for link in all_module_links():
+                if q_lower not in link["label"].lower():
+                    continue
+                if link["endpoint"] not in current_app.view_functions:
+                    continue
+                try:
+                    module_url = url_for(link["endpoint"])
+                except Exception:
+                    continue
+                results.append(
+                    {
+                        "type": "module",
+                        "id": link["endpoint"],
+                        "name": link["label"],
+                        "url": module_url,
+                    }
+                )
+        except Exception as e:
+            logger.debug(f"Search skip modules: {e}")
 
         return jsonify({"results": results, "total_count": len(results)})
 

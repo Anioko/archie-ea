@@ -34,9 +34,64 @@ _MORE_TOOLS = [
     ("My Applications — My List", "my_applications.app_list", "list"),
     ("My Applications — Health", "my_applications.health_overview", "heart-pulse"),
     ("My Applications — Roadmap Impact", "my_applications.roadmap_impact", "git-branch"),
+    # S-11 follow-on (18 Aug 2026, this pass): a full url_map scan for
+    # zero-argument GET module roots — the same shape as the original 25 —
+    # turned up 25 more real, working, never-linked pages that the S-11
+    # register's spot check did not reach either. Every one 200s and is not
+    # a redirect (see tests/test_module_discoverability.py, which excludes
+    # endpoints containing "redirect" and true infra routes like
+    # favicon/robots/health/apidocs automatically rather than by this list).
+    # Added here rather than triaged individually against a persona zone —
+    # this file is exactly the designed overflow valve for "real route, no
+    # natural zone owner yet" per its own module docstring.
+    ("Agentic Gaps", "main.agentic_gaps_ui", "search"),
+    ("Application Management", "application_management", "layout-dashboard"),
+    ("Architecture Assistant", "architect_ui.architecture_assistant", "bot"),
+    ("Model Registry", "dynamic_dashboards.model_registry_index", "database"),
+    ("Business Case", "business_case.index", "briefcase"),
+    ("Business Model", "business_model.index", "layout-dashboard"),
+    ("Capability Framework", "main.capability_framework.dashboard", "map"),
+    ("Dashboard", "dashboard.index", "layout-dashboard"),
+    ("Duplicate Detection — Enterprise", "unified_duplicate.enterprise_dashboard", "copy"),
+    ("EA Workflows", "main.ea_workflows_dashboard", "git-merge"),
+    ("Framework Config", "framework_config_ui.framework_config_dashboard", "settings"),
+    ("Framework Management", "main.framework_management.dashboard", "settings"),
+    ("Hybrid Mapping Dashboard", "main.hybrid_mapping_dashboard", "map"),
+    ("Implementation Planning", "implementation_planning.implementation_dashboard", "package"),
+    ("Industry APQC", "industry_apqc.industry_apqc_dashboard", "layers"),
+    ("Integration Workflows", "integration.workflow_dashboard", "git-branch"),
+    ("Market Intelligence", "architect_ui.market_intelligence", "trending-up"),
+    ("Organization", "organization.index", "building-2"),
+    ("Policy Monitoring", "policy_monitoring.policy_dashboard", "shield-check"),
+    ("Product Roadmap", "roadmap_outcome.product_roadmap_page", "map"),
+    ("Risk Register", "risk.risk_register", "alert-triangle"),
+    ("Roadmap Builder", "architect_ui.roadmap_builder", "map"),
+    ("Usage Analytics", "usage_analytics.analytics_root", "bar-chart-3"),
+    ("Vendor ArchiMate Analysis", "main.vendor_archimate_analysis", "building"),
+    ("Integrations", "main.integrations", "cloud"),
+    ("ArchiMate Roadmap", "main.archimate_roadmap", "map"),
+    ("Enterprise Dashboard", "enterprise.enterprise_dashboard", "layout-dashboard"),
 ]
 
 _ZONE_ORDER = ["home", "my_work", "library", "governance", "admin"]
+
+
+def all_module_links():
+    """Every link this app knows how to point at: every role's SIDEBAR_ZONES
+    plus the curated _MORE_TOOLS list, deduplicated by endpoint. Single
+    source of truth for both this directory page and global search (P-10:
+    search indexed none of the modules that live only here or in a zone) —
+    a module added to either list becomes searchable automatically instead
+    of needing a third hand-maintained list.
+    """
+    seen: dict[str, dict] = {}
+    for zones in SIDEBAR_ZONES.values():
+        for zone in zones:
+            for link in zone["links"]:
+                seen.setdefault(link["endpoint"], link)
+    for label, endpoint, icon in _MORE_TOOLS:
+        seen.setdefault(endpoint, {"label": label, "endpoint": endpoint, "icon": icon})
+    return list(seen.values())
 
 
 def _grouped_zone_sections():
