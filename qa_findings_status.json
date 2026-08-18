@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
  "total": 146,
- "closed": 124,
- "open": 10,
+ "closed": 127,
+ "open": 7,
  "findings": [
   {
    "id": "A-06",
@@ -99,7 +99,7 @@
    "severity": "S2",
    "title": "Content Security Policy permits both unsafe-inline and unsafe-eval",
    "status": "open",
-   "note": "PARTIAL: style-src unsafe-inline removed via nonces. script-src unsafe-eval remains — Alpine CSP-build swap risks 167 x-data / 2685 @click expressions with no browser to verify.",
+   "note": "PARTIAL, measured: 8,523 of 17,997 Alpine expressions (47%) are CSP-build incompatible, so the swap is staged not attempted. style-src unsafe-inline removed; script-src keeps unsafe-eval behind a nonce + strict-dynamic. Scanner + test pin the number.",
    "fix_commit": "",
    "evidence": [],
    "reviewed": false,
@@ -423,10 +423,13 @@
    "id": "ARCH-063",
    "severity": "S3",
    "title": "Application JavaScript is unbundled and served as many individual files",
-   "status": "open",
-   "note": "assessed: bundler cannot be added without breaking air-gap/SRI/Python-only-image contract",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "(bundle)",
+   "evidence": [
+    "gate:js-build",
+    "test:tests/test_capability_map_shell.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -435,7 +438,7 @@
    "severity": "S3",
    "title": "Large server-rendered HTML payloads without pagination",
    "status": "open",
-   "note": "PARTIAL, unchanged scope but architecture/dashboard now bounded: measured with a near-empty DB, /capability-map/ 477,490 bytes (unchanged -- not touched this wave), /architecture/dashboard 187,069 -> 169,857 bytes (-17,212 / -9.2%), by moving the static per-element-type field-config JSON out of the inline tojson payload into a fetched, browser-cached endpoint (archimate_crud.api_field_configs). capability-map/ is still open: its size is dominated by ~1,225 lines (42% of the template) of three near-duplicate ~130-line 'map applications' modals (acm-mapping-modal, process-mapping-modal, mapping-modal), and de-duplicating them safely means reworking the JS that opens each by DOM id -- deferred given this branch's history of div-balance regressions from structural template edits.",
+   "note": "PARTIAL and measured: /architecture/dashboard 187,069 -> 169,857 bytes. /capability-map/ 481,749 -> 482,243 — dedup does NOT reduce page weight because the macro still renders all three modals; the 1,225-line premise was also wrong (~380). Real reduction needs lazy-loading the closed modals, not deduplication.",
    "fix_commit": "",
    "evidence": [
     "test:tests/test_arch064_payload_bounds.py"
@@ -774,10 +777,12 @@
    "id": "ARCH-123",
    "severity": "S5",
    "title": "Data architecture support is shallow relative to the Data Architect persona",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "(s5)",
+   "evidence": [
+    "test:tests/test_tech_radar_and_data_lineage.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -785,10 +790,12 @@
    "id": "ARCH-124",
    "severity": "S5",
    "title": "No technology standards catalogue or tech radar",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "(s5)",
+   "evidence": [
+    "test:tests/test_tech_radar_and_data_lineage.py"
+   ],
    "reviewed": false,
    "deployed": false
   },

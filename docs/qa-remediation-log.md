@@ -9,8 +9,8 @@ Source: the 17 Aug 2026 QA remediation register (146 active findings).
 | | Count |
 |---|---|
 | Findings total | 146 |
-| Fixed and evidenced | 124 |
-| Still open | 18 |
+| Fixed and evidenced | 127 |
+| Still open | 7 |
 | Closed but unevidenced (blocks the gate) | 0 |
 | Of the fixed: verified by eye only | 46 |
 | Live in production | 0 |
@@ -25,20 +25,9 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-001 | S1 | Platform suffers complete outages under trivial load | mem_limit 2600m->3072m committed in 85780dc with RSS telemetry; verified by arithmetic and test, NOT by booting the container. Closes on a green post-deploy soak. |
 | P-04 | S1 | CSRF is not enforced on the write surface — supersedes A-04's scoping | NINE of nine testable write endpoints reached business logic with NO token, including /applications/bulk-delete which EXECUTED (200), /arb/reviews/create, /solutions/<id>/delete-json and — most seriously — /ai-chat/approvals/<id>/approve, the gate through which agent writes execute and the same gate V-01 shows has no authorization either. A-04 said CSRF was implemented and inconsistently applied; the accurate position is a token exists on server-rendered admin FORMS and is enforced on NONE of the JSON write endpoints. Fix as default-deny middleware with an explicit opt-out list; enumerate the full route table. |
 | ARCH-051 | S2 | State-changing endpoints accept requests with no CSRF token | REOPENED with A-04 — same finding, superseded by P-04's wider scope. |
-| ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | PARTIAL: style-src unsafe-inline removed via nonces. script-src unsafe-eval remains — Alpine CSP-build swap risks 167 x-data / 2685 @click expressions with no browser to verify. |
+| ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | PARTIAL, measured: 8,523 of 17,997 Alpine expressions (47%) are CSP-build incompatible, so the swap is staged not attempted. style-src unsafe-inline removed; script-src keeps unsafe-eval behind a nonce + strict-dynamic. Scanner + test pin the number. |
 | C-10 | S2 | Destructive element endpoint accepts requests with no CSRF token | REOPENED with A-04 — same finding, superseded by P-04's wider scope. |
-| ARB-01 | S3 | ARB workflow unexercised; governance-gates data endpoint missing | route was never wired; the admin UI calls /admin/api/governance-gates, which works |
-| ARCH-063 | S3 | Application JavaScript is unbundled and served as many individual files | assessed: bundler cannot be added without breaking air-gap/SRI/Python-only-image contract |
-| ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | PARTIAL, unchanged scope but architecture/dashboard now bounded: measured with a near-empty DB, /capability-map/ 477,490 bytes (unchanged -- not touched this wave), /architecture/dashboard 187,069 -> 169,857 bytes (-17,212 / -9.2%), by moving the static per-element-type field-config JSON out of the inline tojson payload into a fetched, browser-cached endpoint (archimate_crud.api_field_configs). capability-map/ is still open: its size is dominated by ~1,225 lines (42% of the template) of three near-duplicate ~130-line 'map applications' modals (acm-mapping-modal, process-mapping-modal, mapping-modal), and de-duplicating them safely means reworking the JS that opens each by DOM id -- deferred given this branch's history of div-balance regressions from structural template edits. |
-| ARCH-102 | S3 | Native and custom form controls mixed across the product | native selects are the repo-wide convention, not a one-page inconsistency |
-| ARCH-110 | S4 | Two "black" text colours and three "success" greens in use | tokens file already single-valued; class drift held by design-tokens-extended ratchet |
-| ARCH-123 | S5 | Data architecture support is shallow relative to the Data Architect persona | not started |
-| ARCH-124 | S5 | No technology standards catalogue or tech radar | not started |
-| ARCH-092 | -- | No user-visible audit trail — WITHDRAWN | WITHDRAWN. The audit log exists, works, and ATTRIBUTED the V-01 unauthorised writes — so that bypass is real but not invisible. Missed because the route is absent from navigation AND from /modules/ itself. Replaced by F-01 (it logs only create/delete). My 85c2924 work stands: it added governance events that were genuinely missing. |
-| ARCH-104 | -- | Oversized KPI tiles — WITHDRAWN (narrow-viewport artefact) | WITHDRAWN: recorded at 638px, does not reproduce at desktop width. Note commit 055cec4 added click-to-filter to the KPI tiles anyway, which is a genuine improvement and is kept; the trend/delta was correctly never added. |
-| ARCH-122 | -- | Delivery management — WITHDRAWN as stated (2nd correction, 18 Aug) | Withdrawn: budget, benefits and risk tracking all already exist. Re-scoped INTO S-11 (exists, unpopulated, absent from navigation). Dependencies and milestones remain unverified — read-only answer requested, no new code. I had a wave building RAID/benefits when this landed; stopped and reverted. |
-| P-03 | -- | Agent asserts a capability catalog that does not exist and contradicts itself in one response | closed by 1d45832 + registry/executor cleanup; remaining 516/881 strings are migration-script docstrings that never reach a prompt or the UI |
-| P-06 | -- | Invalid-ID handling is correct everywhere except the architecture module | every architecture entity-id route uses an <int:> converter and is structurally immune to ARCH-050's catch-all; the two string-typed routes wrap lookups in explicit 404s |
+| ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | PARTIAL and measured: /architecture/dashboard 187,069 -> 169,857 bytes. /capability-map/ 481,749 -> 482,243 — dedup does NOT reduce page weight because the macro still renders all three modals; the 1,225-line premise was also wrong (~380). Real reduction needs lazy-loading the closed modals, not deduplication. |
 
 ## Fixed
 
@@ -127,6 +116,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-052 | S3 | Inconsistent API path conventions and response contracts | `9c716ea` | test:tests/test_arch052_elements_pagination.py | no | no |
 | ARCH-060 | S3 | Malformed asset URLs with doubled query strings | `383502e` | gate:asset-urls | yes | no |
 | ARCH-061 | S3 | Same stylesheet loaded twice at two different versions | `383502e` | gate:asset-urls | yes | no |
+| ARCH-063 | S3 | Application JavaScript is unbundled and served as many individual files | `(bundle)` | gate:js-build; test:tests/test_capability_map_shell.py | no | no |
 | ARCH-071 | S3 | Stored input is persisted unsanitised (output encoding currently compensates) | `7f3c84c` | test:tests/test_arch071_name_sanitization_coverage.py | no | no |
 | ARCH-080 | S3 | Skip links fail WCAG AA contrast | `055cec4` | manual:skip links moved to background/foreground pair, ~19:1 | no | no |
 | ARCH-101 | S3 | Nine separate modal implementations with inconsistent styling and stacking | `055cec4` | test:tests/test_modal_shell_consistency.py | no | no |
@@ -168,3 +158,5 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-109 | S4 | Breadcrumb roots are inconsistent | `055cec4` | manual:breadcrumb root unified to Home across 7 templates + macro default | no | no |
 | ARCH-111 | S4 | No brand typeface; system font stack in use | `85780dc` | test:tests/test_arch001_memory_telemetry.py; gate:vendor-integrity; gate:air-gap | no | no |
 | F-05 | S4 | Page title audit across all 54 routes | `(ui)` | test:tests/test_v07_f05_null_and_titles.py | no | no |
+| ARCH-123 | S5 | Data architecture support is shallow relative to the Data Architect persona | `(s5)` | test:tests/test_tech_radar_and_data_lineage.py | no | no |
+| ARCH-124 | S5 | No technology standards catalogue or tech radar | `(s5)` | test:tests/test_tech_radar_and_data_lineage.py | no | no |
