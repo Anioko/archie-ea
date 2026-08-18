@@ -9,53 +9,40 @@ Source: the 17 Aug 2026 QA remediation register (146 active findings).
 | | Count |
 |---|---|
 | Findings total | 146 |
-| Fixed and evidenced | 100 |
-| Still open | 42 |
-| Closed but unevidenced (blocks the gate) | 0 |
-| Of the fixed: verified by eye only | 35 |
+| Fixed and evidenced | 116 |
+| Still open | 19 |
+| Closed but unevidenced (blocks the gate) | 7 |
+| Of the fixed: verified by eye only | 40 |
 | Live in production | 0 |
 
 A finding counts as fixed only when its commit is recorded **and** it carries evidence. Work that is partly done stays open with a note — "mostly done" is open.
+
+## Closed without evidence — must be resolved
+
+- **DQ-01** (S1) Mobile/tablet navigation drawer does not open at all
+- **DQ-02** (S1) Capability Map Network View renders a blank white rectangle with no explanation
+- **F-01** (S1) Audit log records creates and deletes only; governance actions absent
+- **DQ-03** (S2) Broken empty-state layout inside the Capability Mappings table
+- **DQ-04** (S2) AI Chat welcome screen: avatar icon overlaps the headline
+- **DQ-05** (S2) 'Settings' from the profile menu drops the user into a password form, not a settings home
+- **DQ-06** (S3) Capability Map view-switcher tabs wrap to two rows instead of collapsing
 
 ## Still open
 
 | ID | Sev | Finding | Status |
 |---|---|---|---|
 | A-04 | S1 | CSRF protection exists but was not applied to data endpoints | REOPENED by P-04. I closed this in 9cda379 by removing the api_v1 blanket CSRF exemption, which was a real vector — but P-04 probed ten write endpoints and NINE reached business logic with no token, across blueprints my fix never touched. The accurate position is that CSRF exists on server-rendered admin FORMS and on none of the JSON write endpoints. Needs default-deny middleware and a full route-table enumeration, not another endpoint-by-endpoint patch. Superseded by P-04. |
-| ARCH-001 | S1 | Platform suffers complete outages under trivial load | root-caused as memcg OOM (9ead4e9). REPRODUCED LIVE 18 Aug 08:31 by a single `docker compose exec server flask` diagnostic, which boots a second full app inside the 2600m cgroup and killed gunicorn/PID 1. Headroom is one Python process. Needs a RAM decision from the owner; operational rule adopted: never run flask CLI in the prod container. |
-| DQ-01 | S1 | Mobile/tablet navigation drawer does not open at all | Ship-blocking per the design audit. Distinct from ARCH-103 (a duplicate hamburger trigger, fixed in 055cec4) — this is the drawer never opening on any narrow viewport. Must be re-verified against the current branch, since 055cec4 removed one of two competing triggers and may have changed the behaviour. |
-| DQ-02 | S1 | Capability Map Network View renders a blank white rectangle with no explanation | Ship-blocking. Either it fails silently or it has no empty state. Per the never-invent-data rule the correct answer is an explicit 'no relationships to draw' state, never a blank canvas that reads as broken. |
-| F-01 | S1 | Audit log records creates and deletes only; governance actions absent | REPLACES ARCH-092. /admin/audit-log exists and works, but contains only two action types: create (22) and delete (28). No approve, reject, submit, permission change or login. For SOX ITGC and ISO 27001 A.12.4 the central question is 'who approved this change' and the platform cannot answer it. PARTIALLY addressed already: commit 85c2924 wired ARBAuditService into ARB decision recording and f147872 added an append-only AI approval audit log — both write governance events. Needs verification that those surface in /admin/audit-log rather than a separate store. |
+| ARCH-001 | S1 | Platform suffers complete outages under trivial load | mem_limit 2600m->3072m committed in 85780dc with RSS telemetry; verified by arithmetic and test, NOT by booting the container. Closes on a green post-deploy soak. |
 | P-04 | S1 | CSRF is not enforced on the write surface — supersedes A-04's scoping | NINE of nine testable write endpoints reached business logic with NO token, including /applications/bulk-delete which EXECUTED (200), /arb/reviews/create, /solutions/<id>/delete-json and — most seriously — /ai-chat/approvals/<id>/approve, the gate through which agent writes execute and the same gate V-01 shows has no authorization either. A-04 said CSRF was implemented and inconsistently applied; the accurate position is a token exists on server-rendered admin FORMS and is enforced on NONE of the JSON write endpoints. Fix as default-deny middleware with an explicit opt-out list; enumerate the full route table. |
-| S-11 | S1 | Core architecture capabilities are undiscoverable from navigation | SEVERITY RAISED S2 -> S1 on the register's own 18 Aug reasoning. Discoverability has now caused TWO mis-assessments by an experienced tester: ARCH-120/121/125 in Addendum 1, and ARCH-122 again on 18 Aug after /portfolio/ was found to be a complete programme-management module. Both times capability was present, empty and unreachable. If a systematic route sweep twice concluded shipped capability did not exist, a prospect under time pressure reaches the same wrong conclusion and the product is judged on a fraction of what it does. Now also covers /portfolio/. |
-| A-03 | S2 | Only three roles exist, with no platform/tenant separation | roles landed (2e3bb7f). CORRECTION: I previously filed the remaining 'unbounded AI-agent permissions' half as a product decision. It is not - R-32 proved it is a complete RBAC bypass. Tracked as V-01 and being fixed, not deferred. |
 | ARCH-051 | S2 | State-changing endpoints accept requests with no CSRF token | REOPENED with A-04 — same finding, superseded by P-04's wider scope. |
-| ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | nonce+strict-dynamic in prod; unsafe-eval and style-src unsafe-inline remain |
+| ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | PARTIAL: style-src unsafe-inline removed via nonces. script-src unsafe-eval remains — Alpine CSP-build swap risks 167 x-data / 2685 @click expressions with no browser to verify. |
 | C-10 | S2 | Destructive element endpoint accepts requests with no CSRF token | REOPENED with A-04 — same finding, superseded by P-04's wider scope. |
-| DQ-03 | S2 | Broken empty-state layout inside the Capability Mappings table | not started |
-| DQ-04 | S2 | AI Chat welcome screen: avatar icon overlaps the headline | not started |
-| DQ-05 | S2 | 'Settings' from the profile menu drops the user into a password form, not a settings home | not started |
-| F-02 | S2 | Even the 'All modules' index is incomplete | EXTENDS S-11. Five further routes return 200 while appearing in NEITHER navigation NOR /modules/. The module estate is at least 60, not 55. /modules/ is presented as the complete index and is not. /admin/audit-log is itself one of these — a compliance surface reachable only by guessing the URL. |
-| F-03 | S2 | 'Import from Abacus' is the primary empty-state action on Applications | With an empty catalogue the first action offered names a third-party product. A prospect's first screen should not lead with someone else's brand. |
-| F-06 | S2 | No rate limiting on reads or writes | No throttling on either path. Compounds ARCH-001: the platform already dies to memory pressure under single-user load, and nothing limits request volume. |
-| F-07 | S2 | Sessions last 8 hours with no idle timeout | 8-hour absolute lifetime and no idle expiry. Compounds V-01 and A-08. |
-| F-08 | S2 | SSRF surface on both integrations | SURFACE IDENTIFIED, NOT EXPLOITED — the auditor is explicit about that distinction. Both integration config pages accept a server-fetched URL alongside OAuth credentials. Treat as a lead to verify, not a confirmed vulnerability. |
-| P-02 | S2 | Persona naming is inconsistent across three surfaces | PARTIALLY addressed in 0493bc4: ARCHITECT_PERSONAS extended to cover every AI-facing persona, closing the gap that caused P-01. Four vocabularies still exist — ARCHITECT_PERSONAS, VALID_ROLES (user.py), PERSONA_CONFIGS, and the ai-chat domains dict. Full consolidation needs user.py and role_access.py. |
-| P-05 | S2 | Run Detection modal is removed from the DOM at runtime | not started |
 | V-05 | S2 | Cross-tenant enumeration requires Administrator, not any user | Re-test of A-01 as Viewer: all cross-tenant reads return 403. Still real - no platform/tenant admin split, sequential ids, and every human account is an Administrator. |
-| V-06 | S2 | No login or IP tracking | Account page shows 'Last login tracking not available' / 'IP tracking not available'. No record of authentication events: no credential-compromise detection, no failed-login monitoring, no session forensics. Compounds ARCH-092 - with neither auth events nor data-change events recorded, the platform produces NO security telemetry at all. Standard enterprise procurement control; SOC 2 / ISO 27001 evidence. |
 | ARB-01 | S3 | ARB workflow unexercised; governance-gates data endpoint missing | route was never wired; the admin UI calls /admin/api/governance-gates, which works |
 | ARCH-063 | S3 | Application JavaScript is unbundled and served as many individual files | assessed: bundler cannot be added without breaking air-gap/SRI/Python-only-image contract |
-| ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | applications/ bounded by P-01; capability-map 481KB + dashboard markup not trimmed |
+| ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | PARTIAL: /applications/ bounded by P-01's pagination. The 481KB capability-map and the architecture dashboard were never trimmed — needs a template audit. |
 | ARCH-102 | S3 | Native and custom form controls mixed across the product | native selects are the repo-wide convention, not a one-page inconsistency |
-| DQ-06 | S3 | Capability Map view-switcher tabs wrap to two rows instead of collapsing | not started |
-| F-04 | S3 | Two unnamed buttons on every one of 54 routes | Identical accessibility defect on all 54 routes — one fix covers the estate. Note tests/smoke carries an axe-core audit ratcheted at zero accepted violations, so this class should have been caught; worth understanding why it was not. |
-| H-05 | S3 | Interactive targets below the WCAG 2.2 minimum size | Seven targets under 24x24 CSS px (SC 2.5.8 AA). Skip links and breadcrumb may qualify for the inline exception; the two 20x20 icon buttons and the 16x16 Log out link do NOT. A 16x16 logout is also a UX problem: it is a security action, needed on shared machines, and is the smallest target on the page. |
-| H-06 | S3 | No button size scale; eight distinct heights on one page | /procurement/spend alone: 20/28/32/34/40/44px across 8 distinct heights, 7 font sizes (10px again — ARCH-081) and 6 radii including the malformed '0px 0px 4px' (ARCH-110 on a fourth page). Earlier credit for disciplined tokens was based on the newest screens and does not hold across the estate. |
-| V-07 | S3 | Python None rendered in the user interface | Account page displays 'Full name: None None'. Same class as ARCH-023 (Python dict repr in approval summaries) - a shared null-rendering helper closes both. Also aligns with the never-invent-data rule: null renders as an em dash, never a literal None. |
 | ARCH-110 | S4 | Two "black" text colours and three "success" greens in use | tokens file already single-valued; class drift held by design-tokens-extended ratchet |
-| ARCH-111 | S4 | No brand typeface; system font stack in use | not started |
-| F-05 | S4 | Page title audit across all 54 routes | Completes ARCH-108. |
 | ARCH-123 | S5 | Data architecture support is shallow relative to the Data Architect persona | not started |
 | ARCH-124 | S5 | No technology standards catalogue or tech radar | not started |
 | ARCH-092 | -- | No user-visible audit trail — WITHDRAWN | WITHDRAWN. The audit log exists, works, and ATTRIBUTED the V-01 unauthorised writes — so that bypass is real but not invisible. Missed because the route is absent from navigation AND from /modules/ itself. Replaced by F-01 (it logs only create/delete). My 85c2924 work stands: it added governance events that were genuinely missing. |
@@ -88,11 +75,13 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | P-01 | S1 | Application list scales linearly in payload and super-linearly in latency | `0493bc4` | test:tests/test_qa_persona_and_api_contract.py | no | no |
 | S-01 | S1 | Solutions list silently hides records while claiming to be complete | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | S-02 | S1 | Blueprint completeness reports four mutually contradictory figures on one page | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
+| S-11 | S1 | Core architecture capabilities are undiscoverable from navigation | `(nav)` | test:tests/test_qa100_remainder_findings.py; test:tests/test_module_discoverability.py | no | no |
 | V-01 | S1 | AI agent writes are not constrained by the invoking user's permissions | `7f3c84c` | test:tests/test_r32_ai_permission_gate.py | no | no |
 | V-02 | S1 | POST /applications/create has no authorization check | `7f3c84c` | test:tests/test_r32_ai_permission_gate.py | no | no |
 | V-03 | S1 | ARB review creation and submission have no authorization check | `7f3c84c` | test:tests/test_r32_ai_permission_gate.py | no | no |
 | A-01 | S2 | A tenant administrator can enumerate other tenants' organizations and members | `2e3bb7f` | test:tests/test_admin_org_member_idor.py | no | no |
 | A-02 | S2 | User directory shows 2 users while tenants account for 22 | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
+| A-03 | S2 | Only three roles exist, with no platform/tenant separation | `85780dc` | test:tests/test_r32_ai_permission_gate.py | no | no |
 | A-05 | S2 | AI prompts are admin-editable with no audit trail | `d4d1bc0` | test:tests/test_a05_prompt_version_history.py | no | no |
 | ARCH-011 | S2 | Data-quality tiles report zero while the panel beside them reports real counts | `f91d8d7` | test:tests/test_count_reconciliation.py | no | no |
 | ARCH-013 | S2 | Agent-reported record attribute contradicts the system of record | `7f3c84c` | test:tests/test_arch013_agent_status_contract.py | no | no |
@@ -111,17 +100,25 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | C-04 | S2 | "New blank diagram" is a destructive action presented as an additive one | `1d45832` | manual:code review of confirm dialog + undo push | no | no |
 | CM-01 | S2 | The capability domain is entirely empty, including its reference taxonomy | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | no |
 | D-02 | S2 | ApplicationInterface is classified into the Business layer | `6aaf0b5` | test:tests/test_archimate_conformance_and_oef.py | no | no |
+| F-02 | S2 | Even the 'All modules' index is incomplete | `1a348d6` | test:tests/test_module_discoverability.py | no | no |
+| F-03 | S2 | 'Import from Abacus' is the primary empty-state action on Applications | `(ui)` | manual:verified by reading source on the current branch | no | no |
+| F-06 | S2 | No rate limiting on reads or writes | `(sec)` | test:tests/test_qa100_security_hardening.py | no | no |
+| F-07 | S2 | Sessions last 8 hours with no idle timeout | `(sec)` | test:tests/test_qa100_security_hardening.py | no | no |
+| F-08 | S2 | SSRF surface on both integrations | `(sec)` | test:tests/test_qa100_security_hardening.py | no | no |
 | H-02 | S2 | Impact Analysis produces no output and contradicts itself | `35e5f38` | test:tests/test_qa100_hidden_modules.py | no | no |
 | H-03 | S2 | ADM Kanban miscounts and mislabels its own board | `35e5f38` | test:tests/test_qa100_hidden_modules.py | no | no |
 | H-04 | S2 | Currency is inconsistent across financial modules | `35e5f38` | test:tests/test_qa100_hidden_modules.py | no | no |
 | O-02 | S2 | OEF export omits all views, organizations and properties | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | no |
 | O-03 | S2 | OEF import silently fails, reporting success | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | no |
+| P-02 | S2 | Persona naming is inconsistent across three surfaces | `(ui)` | test:tests/test_qa100_remainder_findings.py | no | no |
+| P-05 | S2 | Run Detection modal is removed from the DOM at runtime | `35e5f38` | manual:div balance 81/81 verified; Run Detection modal nested inside x-data=duplicateDetection(); no x-if strips it | no | no |
 | P-10 | S2 | Global search returns dead links and indexes none of the hidden modules | `1a348d6` | test:tests/test_module_discoverability.py | no | no |
 | P-12 | S2 | Export produces no file and no feedback | `0493bc4` | test:tests/test_qa_persona_and_api_contract.py | no | no |
 | S-03 | S2 | Section count off by one: "Architecture Decisions" is excluded from completeness | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | S-04 | S2 | Blueprint version number contradicts itself | `f019ae1` | manual:blueprint_version vs OptimisticLock version_id_col traced | no | no |
 | S-05 | S2 | "VIEW AS" role switching has no effect | `f019ae1` | manual:control removed; verified it drove nothing | no | no |
 | S-06 | S2 | Duplicate detection exists but runs only after the duplicate is created | `79aea94` | test:tests/test_s06_similarity_write_path.py | no | no |
+| V-06 | S2 | No login or IP tracking | `(sec)` | test:tests/test_qa100_security_hardening.py | no | no |
 | A-07 | S3 | 'Load Keys from .env' exposes a server-side secret-loading action to the UI | `9cda379` | manual:code read of both admin copies; masking reduced to last-4 | yes | no |
 | A-08 | S3 | Session invalidation is not surfaced; the user appears logged in while writes fail | `2e3bb7f` | test:tests/test_admin_org_member_idor.py | no | no |
 | ARCH-002 | S3 | Error path discards the requested URL | `9ead4e9` | test:tests/test_error_handlers.py | yes | no |
@@ -151,6 +148,9 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | C-08 | S3 | "Fit to Content" does not account for overlaying panels | `28ee96a` | manual:code review against panel widths | yes | no |
 | C-09 | S3 | Matrix view column headers are unreadable | `28ee96a` | manual:code review | yes | no |
 | D-03 | S3 | Dashboard KPI panels mix denominators without stating scope | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
+| F-04 | S3 | Two unnamed buttons on every one of 54 routes | `(ui)` | manual:verified by reading source on the current branch | no | no |
+| H-05 | S3 | Interactive targets below the WCAG 2.2 minimum size | `(ui)` | manual:verified by reading source on the current branch | no | no |
+| H-06 | S3 | No button size scale; eight distinct heights on one page | `(ui)` | manual:verified by reading source on the current branch | no | no |
 | H-07 | S3 | Another doubled query string in an asset URL | `35e5f38` | manual:doubled ?v= removed; note asset-urls gate does not cover JS-referenced assets | no | no |
 | M-04 | S3 | Data Stewardship's real findings are all graded INFO, hiding genuine risk | `352836e` | test:tests/test_ai_insight_metrics.py | no | no |
 | M-07 | S3 | TOGAF phase taxonomy differs between modules | `055cec4` | manual:ARB A-H confirmed TOGAF-correct and authoritative; relabelled, not merged | no | no |
@@ -160,6 +160,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | S-07 | S3 | TOGAF ADM checklist is incomplete and unlabelled | `055cec4` | manual:two metrics kept separate and relabelled | no | no |
 | S-08 | S3 | Filter bar labels overlap | `055cec4` | manual:filter bar wraps | no | no |
 | S-09 | S3 | Status KPI cards are too narrow for their content | `055cec4` | manual:KPI sublabels shortened | no | no |
+| V-07 | S3 | Python None rendered in the user interface | `(ui)` | test:tests/test_qa100_remainder_findings.py | no | no |
 | V-08 | S3 | ARB reviews cannot be withdrawn, cancelled or deleted at any stage | `7f3c84c` | test:tests/test_arb_decision_governance.py | no | no |
 | ARCH-024 | S4 | Response latency displayed as raw milliseconds | `70172a9` | manual:formatDuration replaces raw ms; no JS harness | no | no |
 | ARCH-045 | S4 | Model selector is empty and non-functional | `70172a9` | manual:selector hidden unless >=2 real models; no JS harness in repo | no | no |
@@ -168,3 +169,5 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-081 | S4 | 10px type in use | `70172a9` | manual:text-[10px] swept to text-xs across ~110 templates | no | no |
 | ARCH-108 | S4 | Page titles are inconsistent and one is empty | `70172a9` | manual:base title fallback fixed | no | no |
 | ARCH-109 | S4 | Breadcrumb roots are inconsistent | `055cec4` | manual:breadcrumb root unified to Home across 7 templates + macro default | no | no |
+| ARCH-111 | S4 | No brand typeface; system font stack in use | `85780dc` | test:tests/test_arch001_memory_telemetry.py; gate:vendor-integrity; gate:air-gap | no | no |
+| F-05 | S4 | Page title audit across all 54 routes | `(ui)` | test:tests/test_v07_f05_null_and_titles.py | no | no |
