@@ -585,19 +585,49 @@ class AIChatApprovalService:
         # proceed" has no approval_id in it, so the id-anchored patterns above
         # never match — the caller must resolve this against whatever is
         # PENDING for the current session (see resolve_natural_confirmation).
-        affirm_phrases = [
-            r"^i approve\b", r"^approve it\b", r"^approve\b", r"^go ahead\b",
-            r"^yes,?\s*proceed\b", r"^please proceed\b", r"^confirm it\b",
-            r"^looks good,?\s*proceed\b", r"^do it\b",
-        ]
-        for pattern in affirm_phrases:
-            if re.match(pattern, message):
-                return {"action": "confirm", "approval_id": None}
+        #
+        # These MUST full-match. An earlier version anchored only at the start
+        # (r"^go ahead\b"), so an ordinary sentence that merely BEGAN with an
+        # affirming word silently executed whatever write was pending:
+        # "go ahead and explain the risk register", "approve it only after you
+        # have checked X", "do it later" all matched. A prefix test is not a
+        # safe test for consent on a path that mutates the system of record,
+        # because the words after the prefix can reverse the meaning entirely.
+        # The whole message must be the affirmation and nothing else.
+        core_affirm = (
+            r"(?:i\s+)?approve(?:\s+it|\s+this)?"
+            r"|go\s+ahead"
+            r"|(?:please\s+)?proceed"
+            r"|confirm(?:\s+it|\s+this)?"
+            r"|looks\s+good"
+            r"|do\s+it"
+            r"|yes"
+        )
+        core_deny = (
+            r"(?:i\s+)?reject(?:\s+it|\s+this)?"
+            r"|cancel(?:\s+it|\s+this)?"
+            r"|don'?t\s+do\s+(?:it|that)"
+            r"|no"
+        )
+        # Politeness and a second affirming clause ("I approve, proceed") are
+        # allowed; anything carrying new instructions is not.
+        _filler = r"(?:\s*[,.!;]\s*|\s+)(?:please|now|thanks|thank\s+you|ok|okay)"
 
-        deny_phrases = [r"^i reject\b", r"^reject it\b", r"^cancel it\b", r"^don'?t do (it|that)\b"]
-        for pattern in deny_phrases:
-            if re.match(pattern, message):
-                return {"action": "reject", "approval_id": None}
+        def _is_bare(core):
+            pattern = (
+                r"\s*(?:ok|okay)?\s*[,.!;]?\s*"
+                r"(?:" + core + r")"
+                r"(?:(?:\s*[,.!;]\s*|\s+)(?:" + core + r"))*"
+                r"(?:" + _filler + r")*"
+                r"\s*[.!]*\s*"
+            )
+            return re.fullmatch(pattern, message) is not None
+
+        if _is_bare(core_affirm):
+            return {"action": "confirm", "approval_id": None}
+
+        if _is_bare(core_deny):
+            return {"action": "reject", "approval_id": None}
 
         return None
 

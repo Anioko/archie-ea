@@ -368,3 +368,58 @@ def test_queue_then_chat_approve_executes_exactly_once(db_session, tenant_ctx, m
     assert len(rows) == 1
     assert rows[0].status == ApprovalStatus.APPROVED
     assert rows[0].approved_by_id == user.id
+
+
+# --- ARCH-020 follow-up: consent must be the WHOLE message -------------------
+# Found in adversarial review of f147872. The affirmation patterns were anchored
+# only at the start (r"^go ahead\b"), so a sentence that merely began with an
+# affirming word executed whatever write was pending. On a path that mutates the
+# system of record, a prefix match is not consent: the words after the prefix
+# can reverse the meaning ("do it later", "approve it only after ...").
+
+import pytest
+
+from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I approve, proceed",          # the exact phrase from the register
+        "approve",
+        "Approve it",
+        "go ahead",
+        "yes, proceed",
+        "please proceed",
+        "confirm it",
+        "looks good, proceed",
+        "do it",
+        "Yes",
+        "OK, proceed.",
+    ],
+)
+def test_bare_affirmation_is_consent(message):
+    result = AIChatApprovalService.check_for_confirmation_command(None, message)
+    assert result is not None, f"{message!r} should be recognised as approval"
+    assert result["action"] == "confirm"
+    assert result["approval_id"] is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "go ahead and explain the risk register",
+        "go ahead and list the pending approvals",
+        "approve it only after checking X",
+        "do it later",
+        "should I approve this?",
+        "yes but first show me the payload",
+        "can you approve this for me once the ARB signs off",
+    ],
+)
+def test_sentence_merely_starting_with_an_affirmation_is_not_consent(message):
+    """These must never execute a pending write."""
+    result = AIChatApprovalService.check_for_confirmation_command(None, message)
+    assert not (result and result.get("action") == "confirm"), (
+        f"{message!r} was treated as approval and would have executed a pending write"
+    )
