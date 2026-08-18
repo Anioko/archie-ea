@@ -33,7 +33,17 @@
       </select>
     </div>
     <div>
-      <label for="car-togaf" class="block text-sm font-medium mb-1">TOGAF Phase</label>
+      {# M-07: ARB reviews use the full TOGAF ADM cycle (A-H), including Phase G
+         (Implementation Governance) and Phase H (Architecture Change Management) —
+         organisation-wide governance concerns that ARB tracks. The solution
+         blueprint's "ADM Phase Completion" checklist (see solution_design_routes.py
+         phase_defs / _blueprint_governance.html) deliberately covers only A-F: the
+         phases scoped to a single solution's design. These are two different,
+         intentionally-scoped taxonomies for two different audiences — not a bug,
+         and G/H are not shown as "failing" on the blueprint because they are out
+         of that checklist's scope, not incomplete. Do not truncate this list to
+         A-F to "match" the blueprint. #}
+      <label for="car-togaf" class="block text-sm font-medium mb-1">TOGAF ADM Phase (A-H)</label>
       <select id="car-togaf" x-model="formData.togaf_phase"
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <option value="">—</option>

@@ -36,7 +36,7 @@
     {{ page_shell(
          title="All Solutions",
          subtitle="Resume solution design work, surface blockers, and launch architect workflows quickly.",
-         breadcrumb=[('Dashboard', url_for('main.index')), ('Solutions Management', None), ('All Solutions', None)],
+         breadcrumb=[('Home', url_for('main.index')), ('Solutions Management', None), ('All Solutions', None)],
          actions_caller=_solutions_page_actions
     ) }}
 
@@ -56,10 +56,10 @@
     {# ════════════════════════════════════════════════════════════════════════ #}
     {% if solutions %}
     {% set metric_cards = [
-        {'icon': 'sparkles', 'icon_gradient': 'bg-primary', 'label': 'Needs Setup', 'value': (workspace_stats or {}).get('needs_setup', 0), 'sublabel': 'Still missing core problem or capability framing', 'status_param': 'needs_setup'},
-        {'icon': 'drafting-compass', 'icon_gradient': 'bg-info', 'label': 'In Design', 'value': (workspace_stats or {}).get('in_design', 0), 'sublabel': 'Ready for architect iteration and modelling', 'status_param': 'in_design'},
-        {'icon': 'triangle-alert', 'icon_gradient': 'bg-warning', 'label': 'Needs Attention', 'value': (workspace_stats or {}).get('needs_attention', 0), 'sublabel': 'Risks, ADRs, or governance gaps need action', 'status_param': 'needs_attention'},
-        {'icon': 'badge-check', 'icon_gradient': 'bg-success', 'label': 'Ready for Review', 'value': (workspace_stats or {}).get('ready_for_review', 0), 'sublabel': 'Strong candidates for ARB or stakeholder review', 'status_param': 'ready_for_review'}
+        {'icon': 'sparkles', 'icon_gradient': 'bg-primary', 'label': 'Needs Setup', 'value': (workspace_stats or {}).get('needs_setup', 0), 'sublabel': 'Missing problem or capability framing', 'status_param': 'needs_setup'},
+        {'icon': 'drafting-compass', 'icon_gradient': 'bg-info', 'label': 'In Design', 'value': (workspace_stats or {}).get('in_design', 0), 'sublabel': 'Ready for architect iteration', 'status_param': 'in_design'},
+        {'icon': 'triangle-alert', 'icon_gradient': 'bg-warning', 'label': 'Needs Attention', 'value': (workspace_stats or {}).get('needs_attention', 0), 'sublabel': 'Risks or governance gaps', 'status_param': 'needs_attention'},
+        {'icon': 'badge-check', 'icon_gradient': 'bg-success', 'label': 'Ready for Review', 'value': (workspace_stats or {}).get('ready_for_review', 0), 'sublabel': 'Strong ARB candidates', 'status_param': 'ready_for_review'}
     ] %}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
       {% for metric in metric_cards %}
@@ -261,7 +261,7 @@
  {% else %}bg-primary{% endif %}"
                                              style="width: {{ ws.readiness_pct or 0 }}%"></div>
                                     </div>
-                                    <p class="text-xs text-muted-foreground">{{ ws.readiness_passed or 0 }}/{{ ws.readiness_total or 0 }} TOGAF checks</p>
+                                    <p class="text-xs text-muted-foreground">{{ ws.readiness_passed or 0 }}/{{ ws.readiness_total or 0 }} TOGAF maturity checks</p>
                                 </div>
                             </td>
                             <td class="px-5 py-4">

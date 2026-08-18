@@ -9,8 +9,13 @@
        - Discovery mode: openUnifiedMappingModalDiscovery({ context: 'vendor' })
 #}
 
-<div id="unified-mapping-modal" hidden aria-hidden="true" class="modal-root fixed inset-0 overflow-y-auto" style="background:rgba(0,0,0,.5);z-index:1000;" role="dialog" aria-modal="true" aria-labelledby="unified-modal-heading">
-    <div class="relative top-10 mx-auto p-5 border border-border w-11/12 max-w-5xl shadow-lg rounded-md bg-card text-card-foreground">
+<div id="unified-mapping-modal" hidden aria-hidden="true" class="modal-root fixed inset-0 items-center justify-center p-4" style="z-index: var(--modal-z, 1000);" role="dialog" aria-modal="true" aria-labelledby="unified-modal-heading">
+    <!-- Backdrop -->
+    <div data-modal-backdrop="unified-mapping-modal" aria-hidden="true"
+         class="modal-backdrop absolute inset-0 bg-background/80 transition-opacity duration-200"></div>
+    <div data-modal-panel
+         class="modal-panel relative w-full max-w-5xl p-6 border border-border shadow-lg rounded-lg bg-card text-card-foreground max-h-[90vh] overflow-y-auto"
+         style="z-index: calc(var(--modal-z, 1000) + 1);">
         <!-- Header -->
         <div class="flex justify-between items-center mb-4">
             <h3 id="unified-modal-heading" class="text-lg font-bold">

@@ -104,13 +104,17 @@
 </div>
 {% endmacro %}
 
-{% macro stat_card(label, value, hint=None, variant='standard', href=None, icon=None, icon_bg='bg-primary', active=False) %}
+{% macro stat_card(label, value, hint=None, variant='standard', href=None, icon=None, icon_bg='bg-primary', active=False, onclick=None) %}
 {# href/icon/active are optional — a plain stat_card() call with none of them
    renders exactly the static card as before (Task 1's contract, pinned by
    tests/test_page_shell_macros.py). Passing href turns it into a clickable
    filter card (Task 4: the Solutions triage cards — Needs Setup / In Design
    / Needs Attention / Ready for Review — need to stay clickable filters and
-   show which one is selected, which a bare div can't do). #}
+   show which one is selected, which a bare div can't do).
+   onclick (optional, ARCH-104) is an Alpine expression string, rendered as
+   @click on a <button type="button">, for tiles that filter client-side
+   state instead of navigating — mutually exclusive with href (href wins if
+   both given). Additive only: omitting it renders byte-identical to before. #}
 {% set value_classes = {
     'hero': 'text-3xl',
     'standard': 'text-2xl',
@@ -123,16 +127,16 @@
    text-warning-emphasis — see DESIGN.md's "Warning is the trap" note on why
    text-warning-foreground is unsafe on this tint). Additive only: a caller that never
    passes variant='warning' renders byte-identical to before. #}
-{% set tag = 'a' if href else 'div' %}
-{% if href %}
+{% set tag = 'a' if href else ('button' if onclick else 'div') %}
+{% if href or onclick %}
     {% set state_classes = ('border-warning ring-2 ring-warning/20 bg-warning/10' if active else 'border-warning/40 bg-warning/10 hover:border-warning/60') if is_warning else ('border-primary ring-2 ring-primary/20 bg-primary/5' if active else 'border-input bg-background hover:border-primary/50') %}
-    {% set card_classes = 'rounded-xl border-2 ' ~ state_classes ~ ' cursor-pointer hover:shadow-md transition-all duration-200 p-5 block no-underline text-inherit' %}
+    {% set card_classes = 'rounded-xl border-2 ' ~ state_classes ~ ' cursor-pointer hover:shadow-md transition-all duration-200 p-5 block no-underline text-inherit w-full text-left' %}
 {% else %}
     {% set card_classes = 'rounded-xl border border-warning/40 bg-warning/10 text-card-foreground p-6' if is_warning else 'rounded-xl border border-border bg-card text-card-foreground p-6' %}
 {% endif %}
 {% set hint_classes = 'text-warning-emphasis' if is_warning else 'text-muted-foreground' %}
 {% set value_size = value_classes['standard'] if is_warning else value_classes[variant] %}
-<{{ tag }}{% if href %} href="{{ href }}"{% endif %} class="{{ card_classes }}"{% if active %} aria-current="true"{% endif %}>
+<{{ tag }}{% if href %} href="{{ href }}"{% elif onclick %} type="button" @click="{{ onclick }}"{% endif %} class="{{ card_classes }}"{% if active %} aria-current="true"{% endif %}>
     {% if icon %}
     <div class="flex items-start gap-4">
         <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg {{ icon_bg }}">

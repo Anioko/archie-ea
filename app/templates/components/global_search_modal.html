@@ -99,9 +99,9 @@
         x-transition:leave-start="opacity-100"
         x-transition:leave-end="opacity-0"
         @click="open = false"
-        class="fixed inset-0 bg-black/50 z-50"
-        style="display: none;"
-        :style="open ? 'display: block;' : 'display: none;'"
+        class="modal-backdrop fixed inset-0 bg-background/80 transition-opacity duration-200"
+        style="display: none; z-index: var(--modal-z, 1000);"
+        :style="{ display: open ? 'block' : 'none' }"
     ></div>
     
     <!-- Modal -->
@@ -116,9 +116,9 @@
         role="dialog"
         aria-modal="true"
         aria-label="Global search"
-        class="fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl z-50 px-4"
-        style="display: none;"
-        :style="open ? 'display: block;' : 'display: none;'"
+        class="modal-panel fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl px-4"
+        style="display: none; z-index: calc(var(--modal-z, 1000) + 1);"
+        :style="{ display: open ? 'block' : 'none' }"
     >
         <div class="cmd-palette overflow-hidden">
             <!-- Search Input -->
@@ -139,6 +139,12 @@
                 <kbd class="hidden sm:inline-flex items-center px-2 py-1 text-xs font-mono bg-muted border border-border rounded text-muted-foreground">
                     ESC
                 </kbd>
+                {# ARCH-101: Escape and backdrop-click were the only ways out —
+                   no visible close control, unlike every other dialog. #}
+                <button type="button" @click="closeSearch()" aria-label="Close search"
+                        class="h-6 w-6 rounded-sm flex items-center justify-center text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                    <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
             </div>
             
             <!-- Results -->

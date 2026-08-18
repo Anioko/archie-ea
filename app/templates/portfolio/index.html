@@ -45,17 +45,28 @@
     <div class="rounded-lg border bg-card p-6">
       <p class="text-sm font-medium text-muted-foreground">Health</p>
       <div class="flex items-center gap-3 mt-3">
+        {% if not summary.count %}
+        {# With no initiatives, "0 red 0 amber 0 green" reads as a RAG
+           assertion about a portfolio that does not exist. #}
+        <span class="text-muted-foreground" title="No initiatives to rate">&mdash;</span>
+        {% else %}
         <span class="text-sm font-semibold text-destructive-emphasis">{{ summary.red }} red</span>
         <span class="text-sm font-semibold text-warning-emphasis">{{ summary.amber }} amber</span>
         <span class="text-sm font-semibold text-success-emphasis">{{ summary.green }} green</span>
         {% if summary.unrated %}
         <span class="text-sm text-muted-foreground">{{ summary.unrated }} unrated</span>
         {% endif %}
+        {% endif %}
       </div>
     </div>
   </div>
 
   <div class="rounded-lg border bg-card overflow-x-auto">
+    {# An empty table with nine column headers under it told a reader nothing
+       about what this module is or how it gets populated, which is how a
+       complete-but-unpopulated module gets mis-assessed as absent. Render the
+       grid only when there is something in it. #}
+    {% if initiatives %}
     <table class="w-full text-sm">
       <thead class="border-b bg-muted/40">
         <tr class="text-left">
@@ -109,10 +120,24 @@
       </tbody>
     </table>
 
-    {% if not initiatives %}
-    <p class="text-sm text-muted-foreground py-10 text-center">
-      No initiatives recorded.
-    </p>
+    {% else %}
+    <div class="py-16 px-6 text-center">
+      <div class="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+        <i data-lucide="briefcase" class="h-5 w-5 text-muted-foreground" aria-hidden="true"></i>
+      </div>
+      <p class="text-base font-semibold text-foreground">No initiatives recorded yet</p>
+      <p class="mx-auto mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
+        This is the transformation portfolio: each initiative tracks its phase,
+        RAG health, approved budget against spend, completion and the benefits
+        it is expected to deliver. Once initiatives exist here you can record
+        demand against them, log benefit measurements and track assumptions.
+      </p>
+      <p class="mx-auto mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
+        Initiatives are not created from this screen — they arrive with your
+        portfolio data load (import or seed). Ask your administrator to load
+        them, or use the enterprise-initiative import.
+      </p>
+    </div>
     {% endif %}
   </div>
 

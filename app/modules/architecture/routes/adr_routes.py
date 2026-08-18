@@ -30,26 +30,23 @@ adr_bp = Blueprint("adrs", __name__, url_prefix="/architecture/adrs")
 @adr_bp.route("/", methods=["GET"])
 @login_required
 def list_adrs():
-    """List all ADRs with filtering."""
-    status_filter = request.args.get("status")
-    type_filter = request.args.get("type")
-    solution_id = request.args.get("solution_id", type=int)
-    
-    adrs = ADRService.list_adrs(
-        solution_id=solution_id,
-        status=status_filter,
-        decision_type=type_filter
-    )
-    
-    stats = ADRService.get_adr_statistics()
-    
-    return render_template(
-        "architecture/adrs/list.html",
-        adrs=adrs,
-        stats=stats,
-        status_filter=status_filter,
-        type_filter=type_filter
-    )
+    """Redirect to the canonical Architecture Decisions list (S-11).
+
+    Two listings existed over the *same* `architecture_decisions` table:
+    this one and `arch_decisions.list_decisions`
+    (app/main/routes_architecture_decisions.py). They are backed by two
+    model classes mapping that table via `extend_existing` —
+    `app/models/architecture_decisions.py:ArchitectureDecision`, used here
+    through ADRService, is a plain `db.Model` with **no TenantMixin**, so
+    this listing was not tenant-filtered; `app/models/architecture_decision.py`
+    (singular), used by `arch_decisions`, carries TenantMixin. That makes
+    `arch_decisions.list_decisions` the canonical, tenant-safe listing, and
+    it is the one every template links to — nothing linked here.
+
+    The ADR module's remaining routes (create/detail/edit/approve/reject/
+    statistics) are untouched; only the duplicate *listing* is retired.
+    """
+    return redirect(url_for("arch_decisions.list_decisions", **request.args.to_dict()))
 
 
 @adr_bp.route("/new", methods=["GET"])

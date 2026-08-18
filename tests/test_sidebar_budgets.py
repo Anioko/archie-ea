@@ -53,7 +53,7 @@ def _all_links(role):
     return links
 
 
-def test_sidebar_link_budget_is_25():
+def test_sidebar_link_budget_is_26():
     """Raised 25 -> 26 in the Task 3 fix round (coordinator review of the
     sidebar rewrite): platform_admin's two review-mandated admin-zone links
     (Salesforce Integration, Power Platform) alone render exactly 25 visible
@@ -66,8 +66,11 @@ def test_sidebar_link_budget_is_25():
     real count by exactly one. See app/utils/role_access.py's
     SIDEBAR_LINK_BUDGET comment and
     tests/test_sidebar_render.py::test_platform_admin_hits_the_link_budget_exactly.
+
+    S-11 (18 Aug 2026): raised 25 -> 26 for the one governance link added to
+    surface Architecture Decisions, which platform_admin also renders.
     """
-    assert SIDEBAR_LINK_BUDGET == 25
+    assert SIDEBAR_LINK_BUDGET == 26
 
 
 def test_every_role_is_defined():
@@ -149,6 +152,10 @@ def test_enterprise_architect_my_work_membership():
         "Roadmaps",
         "ArchiMate Composer",
         "Traceability Matrix",
+        # S-11: real Implementation & Migration pages that were reachable
+        # from nowhere in the sidebar.
+        "Gap Analysis",
+        "Work Packages",
     ]
 
 
@@ -210,8 +217,13 @@ def test_platform_admin_zone_link_total_is_pinned():
     zone-only total by one, and the rendered total (see
     test_platform_admin_hits_the_link_budget_exactly) by the same one, to
     25.
+
+    S-11 (18 Aug 2026): 22 -> 23. The governance zone gained "Decisions"
+    (arch_decisions.list_decisions), which platform_admin shares; the two
+    Implementation & Migration links added in the same pass are
+    enterprise_architect-only and do not appear here.
     """
-    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 22
+    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 23
 
 
 def test_get_sidebar_zones_resolves_role():

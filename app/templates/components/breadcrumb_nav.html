@@ -7,7 +7,7 @@
    1. Basic Breadcrumb:
    {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
    {{ breadcrumb_nav(items=[
-       {'text': 'Dashboard', 'href': url_for('main.index')},
+       {'text': 'Home', 'href': url_for('main.index')},
        {'text': 'Capability Framework'},
        {'text': 'Capability Map', 'current': true}
    ]) }}
@@ -95,7 +95,7 @@
 {# Convenience macro for common admin breadcrumbs #}
 {% macro admin_breadcrumb(current_page, parent_page='', parent_href='') %}
 {% set items = [
-    {'text': 'Dashboard', 'href': url_for('main.index') if url_for else '/'}
+    {'text': 'Home', 'href': url_for('main.index') if url_for else '/', 'icon': 'home'}
 ] %}
 {% if parent_page %}
     {% set _ = items.append({'text': parent_page, 'href': parent_href}) %}

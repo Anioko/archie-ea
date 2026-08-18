@@ -46,6 +46,16 @@ from . import unified_applications_bp
 logger = logging.getLogger(__name__)
 
 # APP-032: canonical Abacus lifecycle codes for portfolio filter (matches production; filter is case-insensitive)
+# ARCH-100: allow-listed sortable columns for application_list() (?sort=&dir=)
+# — maps the query-param name to the actual ORM column, so a bad/unknown
+# value can never reach ORDER BY.
+_SORTABLE_COLUMNS = {
+    "id": ApplicationComponent.id,
+    "name": ApplicationComponent.name,
+    "type": ApplicationComponent.application_category,
+    "lifecycle_status": ApplicationComponent.lifecycle_status,
+}
+
 _LIFECYCLE_ABACUS_CODES = (
     "1. UNDETERMINED",
     "2.1 STRATEGIC",
@@ -128,7 +138,11 @@ def application_list():
             tactical=None,
             sunset_decom_pipeline=None,
             decommissioned=None,
+            owner_assigned=None,
+            vendor_assigned=None,
         ),
+        sort="",
+        dir="asc",
         load_error="The application portfolio could not be read.",
         currency_symbol="\u00a3",
         bu_filter_active=False,
@@ -160,6 +174,13 @@ def application_list():
         domain_filter = request.args.get("domain", "").strip()
         page = max(1, request.args.get("page", 1, type=int))
         page_size = min(max(1, request.args.get("page_size", 25, type=int)), 100)
+
+        # APP-100: sortable headers — allow-listed column + direction only,
+        # so an arbitrary ?sort= value can never reach ORDER BY.
+        sort_param = request.args.get("sort", "").strip()
+        dir_param = request.args.get("dir", "asc").strip().lower()
+        sort_column = _SORTABLE_COLUMNS.get(sort_param)
+        sort_dir = "desc" if dir_param == "desc" else "asc"
 
         # APP-031: default hide decommissioned; ?include_decom=true shows full portfolio
         include_decom = request.args.get("include_decom", "").strip().lower() in (
@@ -319,17 +340,21 @@ def application_list():
         except Exception:  # fabricated-values-ok
             current_app.logger.debug("primary_vendor_product eager-load unavailable", exc_info=True)
 
+        order_by_clause = (
+            sort_column.desc() if sort_dir == "desc" else sort_column.asc()
+        ) if sort_column is not None else ApplicationComponent.name
+
         try:
             pagination = (
                 query.options(*eager_opts)
-                .order_by(ApplicationComponent.name)
+                .order_by(order_by_clause)
                 .paginate(page=page, per_page=page_size, error_out=False)
             )
         except Exception as eager_exc:
             current_app.logger.warning(
                 "applications.list eager-load fallback triggered: %s", eager_exc
             )
-            pagination = query.order_by(ApplicationComponent.name).paginate(
+            pagination = query.order_by(order_by_clause).paginate(
                 page=page, per_page=page_size, error_out=False
             )
 
@@ -381,6 +406,24 @@ def application_list():
             ).count()
 
         decommissioned_count = _lifecycle_count(_decommissioned_vals)
+
+        # ARCH-106: Data Quality banner used to hardcode "Owner: 0/N" and
+        # "Vendor: 0/N" — literal zeros, not computed from any data. Count real
+        # owner-assigned and vendor-assigned applications instead.
+        owner_assigned_count = _stats_base.filter(
+            ApplicationComponent.business_owner.isnot(None),
+            ApplicationComponent.business_owner != "",
+        ).count()
+        vendor_assigned_count = _stats_base.filter(
+            db.or_(
+                db.and_(
+                    ApplicationComponent.vendor_name.isnot(None),
+                    ApplicationComponent.vendor_name != "",
+                ),
+                ApplicationComponent.vendor_product_id.isnot(None),
+            )
+        ).count()
+
         stats = {
             "total": portfolio_total,
             "active_portfolio": max(0, portfolio_total - decommissioned_count),
@@ -388,6 +431,8 @@ def application_list():
             "tactical": _lifecycle_count({"2.2 tactical"}),
             "sunset_decom_pipeline": _lifecycle_count(_sunset_pipeline_vals),
             "decommissioned": decommissioned_count,
+            "owner_assigned": owner_assigned_count,
+            "vendor_assigned": vendor_assigned_count,
         }
 
         # ── 8. Currency symbol ────────────────────────────────────────────────
@@ -434,6 +479,8 @@ def application_list():
             include_decom=include_decom,
             qs_include_decom_true=qs_include_decom_true,
             qs_include_decom_false=qs_include_decom_false,
+            sort=sort_param if sort_column is not None else "",
+            dir=sort_dir,
         )
 
     except Exception as exc:

@@ -527,8 +527,15 @@ def technology_roadmap():
 @enterprise_bp.route("/implementation/work-packages")
 @login_required
 def work_packages():
-    """Work Packages Management"""
-    return render_template("enterprise/work_packages.html", workpackages=[])
+    """Work Packages Management.
+
+    The page is an Alpine table (`workPackagesTable()` in
+    static/js/enterprise/work_packages_table.js) that loads rows from
+    `/enterprise/api/work-packages` below. It never read a server-rendered
+    `workpackages` variable, so the hardcoded `workpackages=[]` that used to
+    be passed here was dead — and read as a permanently-empty page (S-11).
+    """
+    return render_template("enterprise/work_packages.html")
 
 
 @enterprise_bp.route("/api/work-packages", methods=["GET"])
@@ -815,7 +822,14 @@ def plateaus():
 @enterprise_bp.route("/implementation/gap-analysis")
 @login_required
 def gap_analysis():
-    """Gap Analysis"""
+    """Gap Analysis — the enterprise Gap register (canonical, S-11).
+
+    `adm_kanban_view.gap_analysis` is a *different* view over different rows
+    (KanbanCard rows with arch_element_type='Gap', plus the cards that close
+    them) and is reached from the ADM Kanban board itself, so it is not
+    redirected here. This one lists the ArchiMate Implementation & Migration
+    `Gap` model and is the one linked from navigation.
+    """
     try:
         gaps = Gap.query.limit(500).all()
 

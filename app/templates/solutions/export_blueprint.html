@@ -383,7 +383,8 @@
             </span>
         </div>
         {% if arb_ready.get('phase_checklist') or phase_checklist %}
-            <h3>Phase Checklist</h3>
+            {% set _pc = phase_checklist or arb_ready.get('phase_checklist', []) %}
+            <h3>ADM Phase Completion ({{ _pc|length }} phases)</h3>
             <table>
                 <thead><tr><th>Phase</th><th>Status</th></tr></thead>
                 <tbody>

@@ -27,6 +27,14 @@ function appPortfolio() {
       process_level: '',
     },
 
+    // ARCH-100: sortable column headers. Values match the allow-listed
+    // columns in application_list() (id, name, type, lifecycle_status).
+    sort: '',
+    dir: 'asc',
+
+    // ARCH-100: density toggle (comfortable/compact), persisted per-browser.
+    density: 'comfortable',
+
     // AI Map — reuses the existing comprehensive-auto-map + accept endpoints
     // (app/modules/applications/routes/auto_mapping_routes.py). Their only
     // caller used to be the import modal, so applications already in the
@@ -54,6 +62,19 @@ function appPortfolio() {
       this.filters.domain           = params.get('domain')            || '';
       this.filters.capability_level = params.get('capability_level')  || '';
       this.filters.process_level    = params.get('process_level')     || '';
+      this.sort                     = params.get('sort')              || '';
+      this.dir                      = params.get('dir')               || 'asc';
+
+      // ARCH-100: density preference persists across visits (localStorage),
+      // independent of the URL — it's a display preference, not a filter.
+      try {
+        const savedDensity = window.localStorage.getItem('appPortfolio.density');
+        if (savedDensity === 'compact' || savedDensity === 'comfortable') {
+          this.density = savedDensity;
+        }
+      } catch (e) {
+        // localStorage unavailable (private mode, etc.) — default stands.
+      }
 
       // Mark page ready (removes skeleton)
       this.$nextTick(() => { this.loading = false; });
@@ -117,6 +138,35 @@ function appPortfolio() {
       return Object.values(this.filters).some(v => v !== '');
     },
 
+    // ARCH-104: stat-tile click-to-filter. Sets the lifecycle status filter
+    // to the bucket the tile represents (STATUS_MAP keys in list_simple.html)
+    // and re-navigates the same way the filter <select> does.
+    setStatusFilter(status) {
+      this.filters.status = status;
+      this.onFilterChange();
+    },
+
+    // ── Sorting (ARCH-100) ─────────────────────────────────────────────────
+    sortBy(column) {
+      if (this.sort === column) {
+        this.dir = this.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.sort = column;
+        this.dir = 'asc';
+      }
+      this._navigate(1);
+    },
+
+    // ── Density (ARCH-100) ─────────────────────────────────────────────────
+    toggleDensity() {
+      this.density = this.density === 'compact' ? 'comfortable' : 'compact';
+      try {
+        window.localStorage.setItem('appPortfolio.density', this.density);
+      } catch (e) {
+        // localStorage unavailable — the toggle still works for this page view.
+      }
+    },
+
     // ── Pagination ─────────────────────────────────────────────────────────
     goToPage(page) {
       this._navigate(page);
@@ -136,6 +186,15 @@ function appPortfolio() {
         if (v) params.set(k, v);
         else params.delete(k);
       });
+
+      // Preserve sort state (ARCH-100)
+      if (this.sort) {
+        params.set('sort', this.sort);
+        params.set('dir', this.dir);
+      } else {
+        params.delete('sort');
+        params.delete('dir');
+      }
 
       window.location.href = `${window.location.pathname}?${params.toString()}`;
     },

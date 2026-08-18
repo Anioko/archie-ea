@@ -171,3 +171,84 @@ def test_am_column_dots_have_aria_label(app, db_session, make_org):
         "state, not just a hover title"
     )
     assert "ArchiMate" in dot_open_tag
+
+
+# ── ARCH-106: Data Quality banner must report real counts, not hardcoded 0 ──
+#
+# The banner used to read `<span>Owner: 0/{{ stats.total|dash }}</span>` and
+# `<span>Vendor: 0/{{ stats.total|dash }}</span>` — the "0" numerators were
+# literal template text, not computed from any data at all (fabricated-data
+# violation). Against that old code this test's assertion is trivially false:
+# two applications, one with an owner and one without, would still render
+# "Owner: 0/2" because the "0" never varied with the data. The fix computes
+# stats['owner_assigned'] / stats['vendor_assigned'] server-side in
+# application_list() (app/modules/applications/routes/list_views.py) from
+# real business_owner / vendor_name / vendor_product_id columns.
+
+
+def test_data_quality_banner_reflects_real_owner_and_vendor_counts(app, db_session, make_org):
+    from app.models.application_portfolio import ApplicationComponent
+
+    user_id, org = _make_user(db_session, make_org, "dataquality")
+
+    with_owner = ApplicationComponent(
+        name=f"Owned App {uuid.uuid4().hex[:8]}",
+        organization_id=org.id,
+        business_owner="Jane Architect",
+    )
+    without_owner = ApplicationComponent(
+        name=f"Unowned App {uuid.uuid4().hex[:8]}",
+        organization_id=org.id,
+    )
+    db_session.add_all([with_owner, without_owner])
+    db_session.flush()
+    db_session.commit()
+
+    client = app.test_client()
+    _login(client, user_id)
+    resp = client.get("/applications/")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    # The old hardcoded numerator: this string must never appear again.
+    assert "Owner: 0/" not in html
+    assert "Vendor: 0/" not in html
+
+    # Exactly one of the two seeded applications has an owner; zero have a
+    # vendor recorded. The banner must say so in real sentences.
+    assert "1 of 2 applications have an assigned owner" in html
+    assert "0 of 2 applications have a vendor recorded" in html
+
+
+def test_data_quality_banner_owner_count_increases_with_data(app, db_session, make_org):
+    """A second, independent check that the numerator actually tracks the
+    data rather than being some other constant: three owned, one unowned."""
+    from app.models.application_portfolio import ApplicationComponent
+
+    user_id, org = _make_user(db_session, make_org, "dataquality2")
+
+    apps = [
+        ApplicationComponent(
+            name=f"Owned {i} {uuid.uuid4().hex[:6]}",
+            organization_id=org.id,
+            business_owner=f"Owner {i}",
+        )
+        for i in range(3)
+    ]
+    apps.append(
+        ApplicationComponent(
+            name=f"Unowned {uuid.uuid4().hex[:6]}",
+            organization_id=org.id,
+        )
+    )
+    db_session.add_all(apps)
+    db_session.flush()
+    db_session.commit()
+
+    client = app.test_client()
+    _login(client, user_id)
+    resp = client.get("/applications/")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    assert "3 of 4 applications have an assigned owner" in html

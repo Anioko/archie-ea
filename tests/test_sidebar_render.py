@@ -55,6 +55,13 @@ def _make_logged_in_client(app, db_session, make_org, role, label):
         organization_id=org.id,
         confirmed=True,
         enterprise_role=role,
+        # get_sidebar_zones() filters the Admin zone on the real
+        # `is_platform_admin` boolean (defaults False), not on
+        # `enterprise_role` — see its docstring. Without this the
+        # platform_admin fixture rendered its Admin zone away and the two
+        # platform_admin assertions below measured a sidebar the role never
+        # actually sees (15 links instead of the full set).
+        is_platform_admin=(role == "platform_admin"),
     )
     db_session.add(user)
     db_session.flush()

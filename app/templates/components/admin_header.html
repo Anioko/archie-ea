@@ -4,14 +4,10 @@
 <header id="admin-header"
         class="flex items-center justify-between h-16 px-6 bg-background border-b border-border">
     <div class="flex items-center gap-4">
-        <!-- Mobile menu toggle -->
-        <button @click="$store.sidebar.open = !$store.sidebar.open"
-                :aria-expanded="$store.sidebar.open.toString()"
-                aria-controls="admin-sidebar"
-                aria-label="Toggle sidebar"
-                class="lg:hidden text-muted-foreground hover:text-foreground">
-            <i data-lucide="menu" class="h-5 w-5"></i>
-        </button>
+        <!-- Mobile sidebar open trigger lives in layouts/admin_base.html
+             ("Global mobile sidebar opener") — it x-shows only while the sidebar is
+             closed, so a second always-visible trigger here rendered on top of it
+             (ARCH-103: two hamburgers stacked when the sidebar was closed on mobile). -->
 
         <!-- Desktop sidebar collapse trigger (shadcn SidebarTrigger pattern) -->
         <button x-data

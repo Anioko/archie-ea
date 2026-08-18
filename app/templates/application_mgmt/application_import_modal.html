@@ -2,12 +2,17 @@
 <div id="application-import-modal"
      data-modal-id="application-import-modal"
      class="modal-root fixed inset-0 items-center justify-center p-4"
-     style="background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:1000;"
+     style="z-index: var(--modal-z, 1000);"
      hidden
      role="dialog"
      aria-modal="true"
      aria-labelledby="import-modal-title">
-  <div class="bg-card rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+  <!-- Backdrop -->
+  <div data-modal-backdrop="application-import-modal" aria-hidden="true"
+       class="modal-backdrop absolute inset-0 bg-background/80 transition-opacity duration-200"></div>
+  <div data-modal-panel
+       class="modal-panel relative bg-card rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col"
+       style="z-index: calc(var(--modal-z, 1000) + 1);">
       <!-- Modal Header -->
       <div class="flex items-center justify-between p-6 border-b">
         <h2 id="import-modal-title" class="text-2xl font-semibold">Import Applications</h2>

@@ -253,7 +253,14 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # 25, one below the old ceiling; the budget is lowered to match rather than
 # left slack that would silently hide a future regression the same size.
 
-SIDEBAR_LINK_BUDGET = 25
+# S-11 (discoverability wave, 18 Aug 2026): raised 25 -> 26. One governance
+# link was added ("Decisions" -> arch_decisions.list_decisions), which is the
+# only zone platform_admin — the role with zero headroom — shares. Its
+# zone-only total goes 22 -> 23 and its rendered total 25 -> 26. The two
+# Implementation & Migration links added in the same pass (Gap Analysis, Work
+# Packages) land in the enterprise_architect My-work zone only, which has
+# ample headroom, so they do not move this number.
+SIDEBAR_LINK_BUDGET = 26
 
 _ZONE_TITLES = {
     "home": "Home",
@@ -301,6 +308,13 @@ _GOVERNANCE_LINKS = [
     _link("ARB Dashboard", "arb.dashboard", "layout-dashboard"),
     _link("Reviews", "arb.reviews", "shield-check"),
     _link("Sessions", "arb.sessions", "calendar"),
+    # S-11: architecture decisions were reachable from nowhere in the sidebar.
+    # `arch_decisions.list_decisions` is the canonical of two listings over the
+    # same `architecture_decisions` table — it is the tenant-scoped one (its
+    # model carries TenantMixin) and the one every template links to. The
+    # duplicate, `adrs.list_adrs`, now 302s here; see
+    # app/modules/architecture/routes/adr_routes.py:list_adrs.
+    _link("Decisions", "arch_decisions.list_decisions", "gavel"),
 ]
 
 _ADMIN_LINKS = [
@@ -340,6 +354,14 @@ _MY_WORK_LINKS = {
         # Fix round: both were reachable from nowhere in the sidebar.
         _link("ArchiMate Composer", "archimate.composer_page", "pen-tool"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-branch"),
+        # S-11: both are real, working Implementation & Migration pages that
+        # were reachable from nowhere in the sidebar. Gap Analysis here is
+        # `enterprise.gap_analysis` (the ArchiMate `Gap` register), not
+        # `adm_kanban_view.gap_analysis` (KanbanCard rows on the ADM board,
+        # already linked from that board). Work Packages is an Alpine table
+        # over /enterprise/api/work-packages.
+        _link("Gap Analysis", "enterprise.gap_analysis", "git-compare"),
+        _link("Work Packages", "enterprise.work_packages", "package"),
     ],
     ROLE_CTO: [
         _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
@@ -351,6 +373,13 @@ _MY_WORK_LINKS = {
         _link("Value Streams", "value_stream.index", "waypoints"),
     ],
     ROLE_PORTFOLIO_MANAGER: [
+        # S-11 / ARCH-122: /portfolio/ is a complete programme-management
+        # module (initiative, phase, RAG health, budget/spend/variance,
+        # completion, benefits, sponsor) that the portfolio_manager persona —
+        # the one whose whole job it is — had no sidebar link to. It is
+        # already in the enterprise_architect / arb_member / platform_admin
+        # zones; this is the missing one.
+        _link("Portfolio", "portfolio.index", "layout-dashboard"),
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
         _link("Vendors", "unified_applications.vendors", "building"),
         _link("Applications", "unified_applications.application_list", "list"),

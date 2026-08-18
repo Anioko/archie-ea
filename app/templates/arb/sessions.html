@@ -19,7 +19,7 @@
     {{ page_shell(
         title='ARB Reviews',
         subtitle='Architecture review items submitted for governance assessment',
-        breadcrumb=[('Dashboard', url_for('main.index')), ('Governance', None), ('ARB Reviews', None)],
+        breadcrumb=[('Home', url_for('main.index')), ('Governance', None), ('ARB Reviews', None)],
         actions_caller=_arb_reviews_actions
     ) }}
     {% else %}
@@ -33,7 +33,7 @@
     {{ page_shell(
         title='ARB Sessions',
         subtitle='Scheduled Architecture Review Board meetings',
-        breadcrumb=[('Dashboard', url_for('main.index')), ('Governance', None), ('ARB Sessions', None)],
+        breadcrumb=[('Home', url_for('main.index')), ('Governance', None), ('ARB Sessions', None)],
         actions_caller=_arb_sessions_actions
     ) }}
     {% endif %}

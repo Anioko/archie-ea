@@ -90,6 +90,30 @@ def test_dashboard_header_has_no_model_provider_selector(app, db_session, make_o
     )
 
 
+def test_admin_page_has_exactly_one_mobile_sidebar_trigger(app, db_session, make_org):
+    """ARCH-103: layouts/admin_base.html renders a "Global mobile sidebar
+    opener" button (x-show gated on the sidebar being closed) AND
+    components/admin_header.html used to render its own always-visible
+    ``lg:hidden`` hamburger toggling the same ``$store.sidebar.open`` — both
+    included on every admin page, so two triggers could render at once on
+    mobile. Only one trigger (the global one, which is x-show/x-cloak gated)
+    should remain."""
+    user, _ = _make_user(db_session, make_org, "hamburger")
+    client = app.test_client()
+    _login(client, user.id)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    assert html.count("$store.sidebar.open = true") == 1, (
+        "expected exactly one mobile sidebar-open trigger; found "
+        f"{html.count('$store.sidebar.open = true')} — a duplicate hamburger "
+        "would render alongside the global one from admin_base.html"
+    )
+    assert "aria-label=\"Open sidebar\"" in html
+
+
 def test_login_success_message_appears_at_most_once(app, db_session, make_org):
     """A single sign-in must produce a single success confirmation, not an
     inline banner AND a toast both saying the same thing."""
