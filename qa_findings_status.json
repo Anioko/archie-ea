@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
- "total": 132,
+ "total": 140,
  "closed": 61,
- "open": 63,
+ "open": 69,
  "findings": [
   {
    "id": "A-06",
@@ -125,12 +125,14 @@
   },
   {
    "id": "ARCH-092",
-   "severity": "S2",
-   "title": "No user-visible audit trail",
-   "status": "open",
-   "note": "",
+   "severity": "--",
+   "title": "No user-visible audit trail — WITHDRAWN",
+   "status": "not_a_defect",
+   "note": "WITHDRAWN. The audit log exists, works, and ATTRIBUTED the V-01 unauthorised writes — so that bypass is real but not invisible. Missed because the route is absent from navigation AND from /modules/ itself. Replaced by F-01 (it logs only create/delete). My 85c2924 work stands: it added governance events that were genuinely missing.",
    "fix_commit": "",
-   "evidence": [],
+   "evidence": [
+    "manual:/admin/audit-log exists and is a proper compliance surface; it captured the V-01 test writes attributed to qa-viewer@example.com"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -479,12 +481,14 @@
   },
   {
    "id": "ARCH-104",
-   "severity": "S3",
-   "title": "Oversized KPI tiles carry very low information density",
-   "status": "open",
-   "note": "",
+   "severity": "--",
+   "title": "Oversized KPI tiles — WITHDRAWN (narrow-viewport artefact)",
+   "status": "not_a_defect",
+   "note": "WITHDRAWN: recorded at 638px, does not reproduce at desktop width. Note commit 055cec4 added click-to-filter to the KPI tiles anyway, which is a genuine improvement and is kept; the trend/delta was correctly never added.",
    "fix_commit": "",
-   "evidence": [],
+   "evidence": [
+    "manual:re-tested at 1518px — five KPI cards render in a single well-proportioned row"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1588,11 +1592,99 @@
    "evidence": [],
    "reviewed": false,
    "deployed": false
+  },
+  {
+   "id": "F-01",
+   "severity": "S1",
+   "title": "Audit log records creates and deletes only; governance actions absent",
+   "status": "open",
+   "note": "REPLACES ARCH-092. /admin/audit-log exists and works, but contains only two action types: create (22) and delete (28). No approve, reject, submit, permission change or login. For SOX ITGC and ISO 27001 A.12.4 the central question is 'who approved this change' and the platform cannot answer it. PARTIALLY addressed already: commit 85c2924 wired ARBAuditService into ARB decision recording and f147872 added an append-only AI approval audit log — both write governance events. Needs verification that those surface in /admin/audit-log rather than a separate store.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "F-02",
+   "severity": "S2",
+   "title": "Even the 'All modules' index is incomplete",
+   "status": "open",
+   "note": "EXTENDS S-11. Five further routes return 200 while appearing in NEITHER navigation NOR /modules/. The module estate is at least 60, not 55. /modules/ is presented as the complete index and is not. /admin/audit-log is itself one of these — a compliance surface reachable only by guessing the URL.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "F-03",
+   "severity": "S2",
+   "title": "'Import from Abacus' is the primary empty-state action on Applications",
+   "status": "open",
+   "note": "With an empty catalogue the first action offered names a third-party product. A prospect's first screen should not lead with someone else's brand.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "F-04",
+   "severity": "S3",
+   "title": "Two unnamed buttons on every one of 54 routes",
+   "status": "open",
+   "note": "Identical accessibility defect on all 54 routes — one fix covers the estate. Note tests/smoke carries an axe-core audit ratcheted at zero accepted violations, so this class should have been caught; worth understanding why it was not.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "F-05",
+   "severity": "S4",
+   "title": "Page title audit across all 54 routes",
+   "status": "open",
+   "note": "Completes ARCH-108.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "F-06",
+   "severity": "S2",
+   "title": "No rate limiting on reads or writes",
+   "status": "open",
+   "note": "No throttling on either path. Compounds ARCH-001: the platform already dies to memory pressure under single-user load, and nothing limits request volume.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "F-07",
+   "severity": "S2",
+   "title": "Sessions last 8 hours with no idle timeout",
+   "status": "open",
+   "note": "8-hour absolute lifetime and no idle expiry. Compounds V-01 and A-08.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "F-08",
+   "severity": "S2",
+   "title": "SSRF surface on both integrations",
+   "status": "open",
+   "note": "SURFACE IDENTIFIED, NOT EXPLOITED — the auditor is explicit about that distinction. Both integration config pages accept a server-fetched URL alongside OAuth credentials. Treat as a lead to verify, not a confirmed vulnerability.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
   }
  ],
  "closed_evidence_manual_only": 25,
  "deployed": 0,
  "protect": 4,
  "_register_discrepancy": "The 18 Aug register header claims '115 raised, 4 withdrawn, 3 revised, 1 verified fixed -> 107 active'. Two things in that do not reconcile and are recorded rather than smoothed over. (1) The '1 verified fixed' finding is never NAMED anywhere: no correction-ledger row, no status change in the Section 5 index, and no finding described as fixed in either document. Nothing has been marked closed on that basis. (2) 104 -> 115 raised is +11, but only 7 findings (I-01, M-01..M-06) are actually merged into the register's clusters and index; M-07 and M-08 appear in the Update-4 source document but in neither, and are carried here anyway because a finding dropped by an untriaged summary is still a finding. That leaves 2 raised findings unaccounted for. If they surface in a later document they get added here.",
- "not_a_defect": 4
+ "not_a_defect": 6
 }
