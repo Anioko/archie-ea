@@ -515,6 +515,33 @@ def get_simple_groups_api():
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+@unified_duplicate_bp.route("/simple/api/element-groups")
+@login_required
+def get_element_duplicate_groups_api():
+    """H-01: ArchiMate element duplicate groups (exact-name, per layer/type).
+
+    Computed live on every call — unlike application detection, this needs no
+    stored 'run' because it's a cheap exact-match scan over the ArchiMate
+    catalogue, so there is no latest_run/never-run state for it to get stuck in.
+    """
+    try:
+        groups = unified_service.get_archimate_element_duplicate_groups()
+        total_elements = sum(g["element_count"] for g in groups)
+        return jsonify(
+            {
+                "success": True,
+                "groups": groups,
+                "total_groups": len(groups),
+                "total_duplicated_elements": total_elements,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        current_app.logger.error(f"Element duplicate groups route error: {str(e)}")
+        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+
+
 @unified_duplicate_bp.route("/simple/api/run-detection", methods=["POST"])
 @login_required
 def run_simple_detection_api():

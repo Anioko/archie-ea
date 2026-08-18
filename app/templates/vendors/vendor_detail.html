@@ -269,7 +269,7 @@
                         <span class="text-muted-foreground">Annual Contract Value</span>
                         <span class="font-medium">
                             {% if vendor.contract_value_annual %}
-                            ${{ "{:,.0f}".format(vendor.contract_value_annual|float) }}
+                            {{ vendor.contract_value_annual|format_currency if vendor.contract_value_annual is not none else '—' }}
                             {% else %}
                             -
                             {% endif %}

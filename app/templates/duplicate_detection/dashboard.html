@@ -37,7 +37,7 @@
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3 min-w-0">
           <i x-show="runFeedback.status === 'running'" x-cloak data-lucide="loader" class="w-5 h-5 text-primary animate-spin mt-0.5" aria-hidden="true"></i>
-          <i x-show="runFeedback.status === 'success'" x-cloak data-lucide="check-circle-2" class="w-5 h-5 text-success mt-0.5" aria-hidden="true"</i>
+          <i x-show="runFeedback.status === 'success'" x-cloak data-lucide="check-circle-2" class="w-5 h-5 text-success mt-0.5" aria-hidden="true"></i>
           <i x-show="runFeedback.status === 'error'" x-cloak data-lucide="alert-circle" class="w-5 h-5 text-destructive mt-0.5" aria-hidden="true"></i>
           <div class="min-w-0">
             <p class="text-sm font-semibold text-foreground" x-text="runFeedback.title"></p>
@@ -141,6 +141,58 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ArchiMate Element Duplicates (H-01: extends detection beyond applications) -->
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="p-4 sm:p-6 border-b">
+        <h2 class="text-xl font-semibold mb-1">ArchiMate Element Duplicates</h2>
+        <p class="text-sm text-muted-foreground">Exact-name duplicate groups across the ArchiMate repository, by layer and element type — computed live, no run required</p>
+      </div>
+
+      <template x-if="elementGroupsLoading">
+        <div class="text-center py-8">
+          <i data-lucide="loader" class="w-6 h-6 mx-auto text-primary animate-spin mb-2" aria-hidden="true"></i>
+          <p class="text-sm text-muted-foreground">Scanning ArchiMate elements...</p>
+        </div>
+      </template>
+
+      <template x-if="!elementGroupsLoading && elementGroups.length === 0">
+        <div class="text-center py-8">
+          <p class="text-sm text-muted-foreground">No duplicate-named ArchiMate elements found.</p>
+        </div>
+      </template>
+
+      <template x-if="!elementGroupsLoading && elementGroups.length > 0">
+        <div class="p-4 sm:p-6">
+          <p class="text-sm text-muted-foreground mb-4">
+            <strong class="text-foreground" x-text="elementGroups.length"></strong> duplicate-name group<span x-show="elementGroups.length !== 1" x-cloak>s</span>,
+            <strong class="text-foreground" x-text="elementGroupsTotalDuplicated"></strong> elements affected
+          </p>
+          <div class="overflow-x-auto">
+            <table class="w-full border-collapse">
+              <thead class="bg-muted/50 border-b">
+                <tr>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Layer</th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</th>
+                  <th class="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Elements</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y">
+                <template x-for="group in elementGroups" :key="group.id">
+                  <tr class="hover:bg-muted/30 transition-colors">
+                    <td class="px-4 py-2 text-sm font-medium text-foreground" x-text="group.name"></td>
+                    <td class="px-4 py-2 text-sm text-muted-foreground" x-text="group.layer"></td>
+                    <td class="px-4 py-2 text-sm text-muted-foreground" x-text="group.type"></td>
+                    <td class="px-4 py-2 text-sm text-foreground" x-text="group.element_count"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- Groups Data Table -->
@@ -516,6 +568,7 @@
       </div>
     </div>
   </div>
+</div>
 </div>
 
 {% endblock %}

@@ -455,6 +455,10 @@
                 });
             },
 
+            solutionCount: function () {
+                return this.cards.filter(function (c) { return c.card_type === 'solution'; }).length;
+            },
+
             phaseTotal: function (phaseCode) {
                 return this.cards.filter(function (c) { return c.phase === phaseCode; }).length;
             },

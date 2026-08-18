@@ -103,7 +103,7 @@
             <div class="flex flex-col space-y-1.5 p-6 border-b">
                 <h3 class="font-semibold leading-none tracking-tight">Analysis Report</h3>
                 <p class="text-sm text-muted-foreground"
-                    x-text="selectedElement ? 'Impact of ' + changeType + ' on ' + selectedElement.name : 'Select an element to begin analysis'">
+                    x-text="analysisResult ? ('Impact of ' + changeType + ' on ' + selectedElement.name) : (loading ? ('Analyzing ' + changeType + ' on ' + selectedElement.name + '…') : (analysisError ? ('Analysis failed for ' + selectedElement.name) : (selectedElement ? (selectedElement.name + ' selected — click Analyze Impact to run') : 'Select an element to begin analysis')))">
                 </p>
             </div>
 
@@ -163,7 +163,7 @@
                     </div>
                     <div class="rounded-lg border p-3 flex flex-col items-center text-center">
                         <span class="text-2xl font-bold font-mono tracking-tight"
-                            x-text="'$' + (analysisResult?.estimated_risk_cost / 1000).toFixed(0) + 'k'"></span>
+                            x-text="(analysisResult?.estimated_risk_cost === null || analysisResult?.estimated_risk_cost === undefined) ? '—' : ('$' + (analysisResult.estimated_risk_cost / 1000).toFixed(0) + 'k')"></span>
                         <span class="text-xs text-muted-foreground uppercase">TCO at Risk</span>
                     </div>
                 </div>
@@ -378,7 +378,7 @@
                         impacted_processes: allDeps.filter(function(d) {
                             return (d.type || '').indexOf('Process') >= 0 || (d.type || '').indexOf('Service') >= 0;
                         }),
-                        estimated_risk_cost: raw.estimated_financial_risk || 0,
+                        estimated_risk_cost: (raw.estimated_financial_risk === null || raw.estimated_financial_risk === undefined) ? null : raw.estimated_financial_risk,
                         dependencies: direct.map(function(d, i) {
                             return { id: d.id || i, name: d.name, type: d.type, relationship: 'Level ' + d.level + ' dependency', criticality: d.criticality, app_name: d.app_name };
                         }),

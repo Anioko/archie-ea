@@ -19,10 +19,8 @@ from flask import (
     redirect,
     render_template,
     request,
-    url_for,
 )
 from flask_login import login_required
-from flask_wtf.csrf import CSRFError
 
 from app.decorators import audit_log
 from sqlalchemy import or_, text
@@ -767,10 +765,18 @@ def internal_error(error):
     return render_template("errors/500.html"), 500
 
 
-@unified_low_priority_bp.errorhandler(CSRFError)
-def csrf_error(error):
-    """Handle CSRF errors"""
-    flash("CSRF token expired. Please try again.", "error")
-    return redirect(
-        request.referrer or url_for("unified_low_priority.architecture_dashboard")
-    )
+
+# P-04: a blueprint-local CSRFError handler used to live here, catching a
+# missing/invalid token and silently 302-redirecting to the dashboard (or to
+# request.referrer) instead of the app-wide 400 JSON response
+# (app/_bootstrap/extensions.py::handle_csrf_error). Two of this blueprint's
+# JSON POST endpoints — /api/consolidation/detect and
+# /api/policy-monitoring/scan — are @login_required-only otherwise, so a
+# request with no session at all resolved to a 302 that read exactly like a
+# successful redirect rather than a rejected write, and every AJAX caller
+# here got an unparseable HTML redirect instead of the
+# {"error_type": "csrf"} contract every other endpoint in the app relies on
+# (see core/03-fetch.js's isSessionExpired handling, which keys off that
+# field). Removed so this blueprint gets the same CSRF-failure contract as
+# everything else — see app/_bootstrap/csrf_coverage.py and
+# tests/test_csrf_coverage.py (R-30), which caught this.

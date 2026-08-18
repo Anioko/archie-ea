@@ -13,6 +13,12 @@ function duplicateDetection() {
             last_run_summary: 'Run detection to generate results'
         },
         allGroups: [],
+        // H-01: ArchiMate element duplicate groups (exact-name, per layer/type).
+        // Computed live server-side; not tied to a "run" the way application
+        // detection is.
+        elementGroups: [],
+        elementGroupsLoading: true,
+        elementGroupsTotalDuplicated: 0,
         // The template referenced selectedGroups 6 times - including
         // :class="selectedGroups.includes(group.id)" inside <template x-for> -
         // but nothing defined it, so every row render threw a ReferenceError and
@@ -55,7 +61,27 @@ function duplicateDetection() {
         init() {
             this.loadStats();
             this.loadGroups();
+            this.loadElementGroups();
             this.$nextTick(function() { lucide.createIcons(); });
+        },
+
+        async loadElementGroups() {
+            this.elementGroupsLoading = true;
+            try {
+                let response = await fetch('/duplicate-detection/simple/api/element-groups');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                let data = await response.json();
+                this.elementGroups = data.groups || [];
+                this.elementGroupsTotalDuplicated = data.total_duplicated_elements || 0;
+                this.$nextTick(function() { lucide.createIcons(); });
+            } catch (error) {
+                console.error('Error loading ArchiMate element duplicate groups:', error);
+                this.elementGroups = [];
+                this.elementGroupsTotalDuplicated = 0;
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not load ArchiMate element duplicate groups.');
+            } finally {
+                this.elementGroupsLoading = false;
+            }
         },
 
         clearRunFeedback() {

@@ -144,8 +144,8 @@
     {# -- Pipeline Analytics Strip ---------------------------------------- #}
     <div x-show="!loading && !error && cards.length > 0" x-cloak
          class="flex items-center gap-6 px-4 py-2 mb-4 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-        <span>Pipeline: <strong class="text-foreground" x-text="cards.length + ' solutions'"></strong></span>
-        <span>Active: <strong class="text-foreground" x-text="cards.filter(c => c.column === 'in_progress' || c.column === 'review').length"></strong></span>
+        <span>Pipeline: <strong class="text-foreground" x-text="cards.length + ' cards'"></strong> <span x-show="solutionCount() !== cards.length" x-cloak x-text="'(' + solutionCount() + ' solutions)'"></span></span>
+        <span>Active: <strong class="text-foreground" x-text="cards.filter(c => c.column === 'under_development' || c.column === 'review').length"></strong></span>
         <span x-show="phases.length > 0" x-cloak>Top phase: <strong class="text-foreground" x-text="(() => { let counts = {}; cards.forEach(c => { let p = c.phase || 'A'; counts[p] = (counts[p]||0)+1; }); let best = 'A'; Object.keys(counts).forEach(k => { if (counts[k] > (counts[best]||0)) best = k; }); return best; })()"></strong></span>
     </div>
 

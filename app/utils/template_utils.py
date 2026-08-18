@@ -146,7 +146,14 @@ def _register(app):
     app.add_template_global(index_for_role)
 
     # ── S2-01: i18n formatting filters ─────────────────────────────
-    @app.template_filter("format_currency")
+    # H-04: NOT registered as a Jinja filter. A second "format_currency"
+    # existed here and SHADOWED the org-aware one in
+    # _bootstrap/context_processors.py, silently defeating the single
+    # currency source of truth: this one falls back to a hardcoded "USD"
+    # and returns "" for a missing amount, which renders as a blank cell
+    # rather than the em dash the never-invent-data rule requires.
+    # Kept as a plain helper for any caller that passes an explicit
+    # currency; the registered filter is the org-aware one.
     def format_currency_filter(value, currency=None):
         """Format a number as locale-aware currency.
 

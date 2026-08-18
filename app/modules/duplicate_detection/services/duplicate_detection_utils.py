@@ -85,6 +85,27 @@ class DuplicateDetectionUtils:
     DEFAULT_CONFIG = DuplicateDetectionConfig()
 
     @staticmethod
+    def normalize_name(name: str) -> str:
+        """Normalise a name for exact-match comparison.
+
+        H-01: this method was CALLED three times inside this module — by
+        is_duplicate() and find_duplicates() — and never defined. Every call
+        therefore raised AttributeError, which is why /duplicate-detection
+        reported `latest_run: null`: detection could not complete even once,
+        while 37% of the ArchiMate repository sat duplicated. Attribute access
+        on a class is invisible to ruff's F821, so no gate caught it.
+
+        Deliberately the same rule as app/utils/duplicate_guard.normalize_name
+        (casefold, collapse internal whitespace, strip) so the detection report
+        and the write-path guard cannot disagree about what counts as the same
+        name — two normalisers would recreate the divergence this register
+        keeps finding elsewhere.
+        """
+        if not name:
+            return ""
+        return " ".join(str(name).split()).casefold()
+
+    @staticmethod
     def tokenize(text: str) -> Set[str]:
         """
         Tokenize text into word set.

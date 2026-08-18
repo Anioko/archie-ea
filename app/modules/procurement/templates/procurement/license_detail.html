@@ -76,11 +76,11 @@
                     </div>
                     <div>
                         <dt class="text-sm text-muted-foreground">Unit Cost</dt>
-                        <dd class="font-medium">{{ "${:,.2f}".format(license.unit_cost) if license.unit_cost else '—' }}</dd>
+                        <dd class="font-medium">{{ license.unit_cost|format_currency if license.unit_cost else '—' }}</dd>
                     </div>
                     <div>
                         <dt class="text-sm text-muted-foreground">Total Cost</dt>
-                        <dd class="font-medium">{{ "${:,.2f}".format(license.total_cost) if license.total_cost else '—' }}</dd>
+                        <dd class="font-medium">{{ license.total_cost|format_currency if license.total_cost else '—' }}</dd>
                     </div>
                 </dl>
             </div>

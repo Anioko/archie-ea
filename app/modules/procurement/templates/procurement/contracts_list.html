@@ -66,7 +66,7 @@
                     </td>
                     <td class="px-4 py-3 text-sm">
                         {% if item.contract.annual_cost %}
-                            {{ "${:,.0f}".format(item.contract.annual_cost) }}
+                            {{ item.contract.annual_cost|format_currency if item.contract.annual_cost is not none else '—' }}
                         {% else %}
                             <span class="text-muted-foreground">—</span>
                         {% endif %}

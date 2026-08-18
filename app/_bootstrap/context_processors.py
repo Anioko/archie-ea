@@ -12,6 +12,9 @@ _EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabiliti
 _nav_counts_cache: dict = {}
 _NAV_COUNTS_TTL = 300
 
+EM_DASH = "—"
+
+
 
 def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
     """Sidebar entity counts for one organisation, cached per tenant.
@@ -248,6 +251,36 @@ def init_context_processors(app):
     def inject_flask():
         """Make flask object available to all templates to fix flash messaging issues"""
         return {"flask": flask}
+
+    @app.context_processor
+    def inject_currency_config():
+        """H-04: one currency source of truth for every template.
+
+        `currency_config` (symbol/code/decimal_places) is derived from the
+        current org's `settings['currency_code']` (config.CurrencyConfig).
+        Server-rendered money should read `currency_config.symbol` /
+        `.decimal_places` here rather than hardcoding '$' or '£'; the same
+        org currency code is also handed to the client currencyManager (see
+        partials/_head.html) so JS-rendered figures agree with server ones.
+        """
+        from flask import has_request_context
+        from flask_login import current_user
+        from config import CurrencyConfig
+
+        organization = None
+        try:
+            if has_request_context() and getattr(current_user, "is_authenticated", False):
+                organization = getattr(current_user, "organization", None)
+        except Exception:  # noqa: BLE001 — currency display can't 500 a page
+            organization = None
+
+        try:
+            cfg = CurrencyConfig.get_org_currency_config(organization)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"currency config unavailable: {e}")
+            cfg = CurrencyConfig.get_currency_config()
+
+        return {"currency_config": cfg, "currency_symbol": cfg["symbol"]}
 
     @app.context_processor
     def inject_nav_counts():
@@ -550,6 +583,38 @@ def init_context_processors(app):
 
     app.jinja_env.filters["format_date"] = _filter_format_date
     app.jinja_env.filters["format_datetime"] = _filter_format_datetime
+
+    # H-04: one currency formatting path for server-rendered money, matching
+    # whatever inject_currency_config() resolved for this org (organization
+    # settings['currency_code'] -> config.CurrencyConfig). None stays None ->
+    # template renders an em dash, never a fabricated 0.
+    def _filter_format_currency(value, show_code=False, currency=None):
+        # A missing amount renders as an em dash, never a blank cell and
+        # never a fabricated 0 (CLAUDE.md).
+        if value is None:
+            return EM_DASH
+        from flask import has_request_context
+        from flask_login import current_user
+        from config import CurrencyConfig
+
+        organization = None
+        try:
+            if has_request_context() and getattr(current_user, "is_authenticated", False):
+                organization = getattr(current_user, "organization", None)
+        except Exception:
+            organization = None
+        cfg = CurrencyConfig.get_org_currency_config(organization)
+        if currency:
+            cfg = dict(cfg, code=currency)
+        try:
+            amount = float(value)
+        except (TypeError, ValueError):
+            return EM_DASH
+        formatted = "{:,.{dp}f}".format(amount, dp=cfg["decimal_places"])
+        symbolled = f"{cfg['symbol']}{formatted}" if cfg["position"] == "prefix" else f"{formatted}{cfg['symbol']}"
+        return f"{cfg['code']} {symbolled}" if show_code else symbolled
+
+    app.jinja_env.filters["format_currency"] = _filter_format_currency
 
     # Shell-overhaul Wave 2 (Task 5): templates need a safe way to compare a
     # stored date against "today" (e.g. contract-expiry urgency banners)

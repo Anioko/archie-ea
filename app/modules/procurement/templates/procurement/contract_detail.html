@@ -73,11 +73,11 @@
                 <dl class="grid grid-cols-2 gap-4">
                     <div>
                         <dt class="text-sm text-muted-foreground">Total Contract Value</dt>
-                        <dd class="text-xl font-bold">{{ "${:,.0f}".format(contract.contract_value) if contract.contract_value else '—' }}</dd>
+                        <dd class="text-xl font-bold">{{ contract.contract_value|format_currency if contract.contract_value else '—' }}</dd>
                     </div>
                     <div>
                         <dt class="text-sm text-muted-foreground">Annual Cost</dt>
-                        <dd class="text-xl font-bold text-primary">{{ "${:,.0f}".format(contract.annual_cost) if contract.annual_cost else '—' }}</dd>
+                        <dd class="text-xl font-bold text-primary">{{ contract.annual_cost|format_currency if contract.annual_cost else '—' }}</dd>
                     </div>
                     <div>
                         <dt class="text-sm text-muted-foreground">Currency</dt>

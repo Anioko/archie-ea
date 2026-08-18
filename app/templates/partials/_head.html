@@ -83,7 +83,13 @@
     });
   });
 </script>
-<!-- Currency Manager -->
+<!-- Currency Manager: org currency code drives the client default so it agrees
+     with server-rendered figures (currency_config in every template context,
+     see app/_bootstrap/context_processors.py::inject_currency_config) -->
+<script>
+  window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+  window.__APP_CONFIG__.currency = {{ (currency_config.code if currency_config else 'GBP')|tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/currency.js') }}"></script>
 
 <!-- Custom Scripts -->

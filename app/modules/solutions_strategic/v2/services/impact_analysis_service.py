@@ -56,9 +56,12 @@ class ImpactAnalysisService:
         else:
             risk_level = "LOW"
 
-        # Compute real financial exposure from linked application TCO
+        # Compute real financial exposure from linked application TCO. No
+        # invented fallback (CLAUDE.md "never invent data") — a per-element
+        # dollar guess is indistinguishable from a measured figure to the
+        # architect reading it. None -> the template renders "not costed".
         real_tco = sum(d.get("tco", 0) for d in all_deps)
-        estimated_financial_risk = real_tco if real_tco > 0 else total_affected * 25000
+        estimated_financial_risk = real_tco if real_tco > 0 else None
 
         # Store in impact_analysis_results (ORM model - table exists)
         analysis_id = None

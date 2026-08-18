@@ -134,7 +134,7 @@
                         </div>
                         <div>
                             <span class="text-muted-foreground">Annual Cost:</span>
-                            <span class="ml-1">{{ "${:,.0f}".format(item.contract.annual_cost) if item.contract.annual_cost else '—' }}</span>
+                            <span class="ml-1">{{ item.contract.annual_cost|format_currency if item.contract.annual_cost else '—' }}</span>
                         </div>
                         <div>
                             <span class="text-muted-foreground">Renewal Date:</span>

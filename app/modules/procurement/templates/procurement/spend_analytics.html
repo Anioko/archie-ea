@@ -32,7 +32,7 @@
                 </div>
                 <div class="text-sm text-muted-foreground">Total Contract Value</div>
             </div>
-            <div class="text-3xl font-bold">${{ "{:,.0f}".format(summary.total_value) }}</div>
+            <div class="text-3xl font-bold">{{ summary.total_value|format_currency(show_code=True) if summary.total_value is not none else '—' }}</div>
         </div>
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center gap-3 mb-2">
@@ -41,7 +41,7 @@
                 </div>
                 <div class="text-sm text-muted-foreground">Annual Recurring Cost</div>
             </div>
-            <div class="text-3xl font-bold">${{ "{:,.0f}".format(summary.total_annual_cost) }}</div>
+            <div class="text-3xl font-bold">{{ summary.total_annual_cost|format_currency(show_code=True) if summary.total_annual_cost is not none else '—' }}</div>
         </div>
     </div>
 
@@ -116,7 +116,7 @@
                         <span class="capitalize">{{ type.replace('_', ' ') }}</span>
                         <span class="text-sm text-muted-foreground">({{ data.count }} contracts)</span>
                     </div>
-                    <span class="font-medium">${{ "{:,.0f}".format(data.annual_cost) }}/yr</span>
+                    <span class="font-medium">{{ (data.annual_cost|format_currency if data.annual_cost is not none else '—') }}/yr</span>
                 </div>
                 {% endfor %}
             </div>
@@ -134,7 +134,7 @@
                 <div>
                     <div class="flex items-center justify-between mb-1">
                         <span class="font-medium">{{ vendor_name }}</span>
-                        <span class="text-sm">${{ "{:,.0f}".format(data.annual_cost) }}/yr</span>
+                        <span class="text-sm">{{ (data.annual_cost|format_currency if data.annual_cost is not none else '—') }}/yr</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">

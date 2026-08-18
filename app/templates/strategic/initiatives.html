@@ -146,7 +146,7 @@
                     <span class="text-muted-foreground text-xs">Budget Allocated</span>
                     <p class="font-medium text-foreground">
                         {% if init.budget_allocated %}
-                            ${{ "{:,.0f}".format(init.budget_allocated) }}
+                            {{ init.budget_allocated|format_currency if init.budget_allocated is not none else '—' }}
                         {% else %}
                             Not set
                         {% endif %}

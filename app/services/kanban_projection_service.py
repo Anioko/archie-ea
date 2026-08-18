@@ -119,6 +119,22 @@ _PRIMARY_DELIVERABLE_CODES = {
     "DEL-H-001", "DEL-REQ-001",
 }
 
+# H-03: valid ADM phase codes, for normalizing whatever a source entity happens
+# to store (wrong case, stale value, free text). Every projected card MUST end
+# up with a code in this set, or phase_counts silently undercounts relative to
+# column_counts (the divergence QA found: 27 vs 28 on the same card set).
+_VALID_PHASE_CODES = {p["code"] for p in ADM_PHASES}
+
+
+def _normalize_phase_code(raw: Optional[str]) -> str:
+    """Map any stored phase value onto a known ADM phase code, defaulting to 'A'."""
+    if not raw:
+        return "A"
+    candidate = str(raw).strip().upper()
+    if candidate in _VALID_PHASE_CODES:
+        return candidate
+    return "A"
+
 
 class KanbanProjectionService:
     """Projects source entities into unified kanban card dicts."""
@@ -492,7 +508,7 @@ class KanbanProjectionService:
             "entity_id": sol.id,
             "title": sol.name or "Untitled Solution",
             "subtitle": (sol.description or "")[:120],
-            "phase": sol.adm_phase or "A",
+            "phase": _normalize_phase_code(sol.adm_phase),
             "column": column,
             "priority": getattr(sol, "complexity_level", "medium") or "medium",
             "owner": sol.solution_owner,
@@ -616,7 +632,7 @@ class KanbanProjectionService:
 
     def _project_one_deliverable(self, deliv) -> Dict[str, Any]:
         """Project a single ADMDeliverable into a unified card dict."""
-        phase_code = getattr(deliv, "phase", None) or "A"
+        phase_code = _normalize_phase_code(getattr(deliv, "phase", None))
         doc_status = getattr(deliv, "document_status", None) or "draft"
         column = _DELIVERABLE_COLUMN_MAP.get(doc_status, "proposed")
 
@@ -751,7 +767,7 @@ class KanbanProjectionService:
 
     def _project_one_kanban_card(self, card, status_by_id: Optional[Dict] = None) -> Dict[str, Any]:
         """Project a single KanbanCard into a unified card dict."""
-        phase_code = card.adm_phase.code if card.adm_phase else "A"
+        phase_code = _normalize_phase_code(card.adm_phase.code if card.adm_phase else None)
         column = _TASK_COLUMN_MAP.get(card.status or "todo", "proposed")
 
         owner = None

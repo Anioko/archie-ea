@@ -597,6 +597,32 @@ class CurrencyConfig:
         return config
 
     @classmethod
+    def get_org_currency_code(cls, organization=None):
+        """H-04: single source of truth for "which currency does this org use".
+
+        Reads `organization.settings['currency_code']` (a plain JSON field
+        already on Organization — no schema change) and falls back to
+        DEFAULT_CURRENCY. Every server-rendered money figure AND the client
+        currencyManager default should both come from this, not from a
+        hardcoded '$' or '£' baked into a template.
+        """
+        code = None
+        try:
+            if organization is not None:
+                settings = getattr(organization, "settings", None) or {}
+                code = settings.get("currency_code")
+        except Exception:
+            code = None
+        if not code or not cls.is_supported(code):
+            code = cls.DEFAULT_CURRENCY
+        return code
+
+    @classmethod
+    def get_org_currency_config(cls, organization=None):
+        """Currency config dict for the given organization (see get_org_currency_code)."""
+        return cls.get_currency_config(cls.get_org_currency_code(organization))
+
+    @classmethod
     def is_supported(cls, currency_code):
         """Check if currency is supported"""
         return currency_code in cls.SUPPORTED_CURRENCIES
