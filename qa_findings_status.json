@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
- "total": 114,
- "closed": 64,
- "open": 44,
+ "total": 132,
+ "closed": 61,
+ "open": 63,
  "findings": [
   {
    "id": "A-06",
@@ -758,12 +758,10 @@
    "id": "A-04",
    "severity": "S1",
    "title": "CSRF protection exists but was not applied to data endpoints",
-   "status": "closed",
-   "note": "9cda379",
-   "fix_commit": "9cda379",
-   "evidence": [
-    "test:tests/test_csrf_and_bulk_delete_security.py"
-   ],
+   "status": "open",
+   "note": "REOPENED by P-04. I closed this in 9cda379 by removing the api_v1 blanket CSRF exemption, which was a real vector — but P-04 probed ten write endpoints and NINE reached business logic with no token, across blueprints my fix never touched. The accurate position is that CSRF exists on server-rendered admin FORMS and on none of the JSON write endpoints. Needs default-deny middleware and a full route-table enumeration, not another endpoint-by-endpoint patch. Superseded by P-04.",
+   "fix_commit": "",
+   "evidence": [],
    "reviewed": true,
    "deployed": false
   },
@@ -980,12 +978,10 @@
    "id": "ARCH-051",
    "severity": "S2",
    "title": "State-changing endpoints accept requests with no CSRF token",
-   "status": "closed",
-   "note": "9cda379",
-   "fix_commit": "9cda379",
-   "evidence": [
-    "test:tests/test_csrf_and_bulk_delete_security.py"
-   ],
+   "status": "open",
+   "note": "REOPENED with A-04 — same finding, superseded by P-04's wider scope.",
+   "fix_commit": "",
+   "evidence": [],
    "reviewed": true,
    "deployed": false
   },
@@ -993,12 +989,10 @@
    "id": "C-10",
    "severity": "S2",
    "title": "Destructive element endpoint accepts requests with no CSRF token",
-   "status": "closed",
-   "note": "9cda379",
-   "fix_commit": "9cda379",
-   "evidence": [
-    "test:tests/test_csrf_and_bulk_delete_security.py"
-   ],
+   "status": "open",
+   "note": "REOPENED with A-04 — same finding, superseded by P-04's wider scope.",
+   "fix_commit": "",
+   "evidence": [],
    "reviewed": true,
    "deployed": false
   },
@@ -1396,11 +1390,209 @@
    "evidence": [],
    "reviewed": false,
    "deployed": false
+  },
+  {
+   "id": "H-01",
+   "severity": "S1",
+   "title": "Duplicate-detection module exists, is hidden, and has never been run",
+   "status": "open",
+   "note": "/duplicate-detection/simple exposes latest_run: null — detection has NEVER executed in this system's lifetime, while 37% of ArchiMate elements are duplicated. Its 'Run Detection' button is dead (same Alpine binding class as ARCH-040). A dedicated module to solve ARCH-030 was built, shipped, hidden from nav, wired to a dead button, and never once run. Must extend to ArchiMate elements (where the duplication is) and reuse M-04's semantic engine rather than a second implementation.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "H-02",
+   "severity": "S2",
+   "title": "Impact Analysis produces no output and contradicts itself",
+   "status": "open",
+   "note": "/strategic/impact-analysis on a 9-relationship element renders 'Impact of MODIFY on X' in the header AND 'No Analysis Active' in the body simultaneously. Header and body derive from different state. Impact analysis answers the question architects are asked most often; the feature is present, sophisticated, and produces nothing.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "H-03",
+   "severity": "S2",
+   "title": "ADM Kanban miscounts and mislabels its own board",
+   "status": "open",
+   "note": "Cluster 1 in a new module. Phase rows total 27, status columns total 28, headline says 28, API says 5 solutions. Headline reads 'Pipeline: 28 solutions' when only 5 of 27 cards are solutions and 22 are deliverables — an architect would believe the portfolio is 5.6x its real size. Both axes must derive from one card collection; include in R-01.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "H-04",
+   "severity": "S2",
+   "title": "Currency is inconsistent across financial modules",
+   "status": "open",
+   "note": "/consolidation-list/ renders GBP with 2dp; /procurement/spend renders USD with 0dp, same session, minutes apart. A client-side currency layer rewrites some modules and not others. These are the modules carrying contract value, ARC, savings and budget — a GBP/USD confusion is ~27% error on any number a user acts on, and there is no currency setting or on-screen currency code.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "H-05",
+   "severity": "S3",
+   "title": "Interactive targets below the WCAG 2.2 minimum size",
+   "status": "open",
+   "note": "Seven targets under 24x24 CSS px (SC 2.5.8 AA). Skip links and breadcrumb may qualify for the inline exception; the two 20x20 icon buttons and the 16x16 Log out link do NOT. A 16x16 logout is also a UX problem: it is a security action, needed on shared machines, and is the smallest target on the page.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "H-06",
+   "severity": "S3",
+   "title": "No button size scale; eight distinct heights on one page",
+   "status": "open",
+   "note": "/procurement/spend alone: 20/28/32/34/40/44px across 8 distinct heights, 7 font sizes (10px again — ARCH-081) and 6 radii including the malformed '0px 0px 4px' (ARCH-110 on a fourth page). Earlier credit for disciplined tokens was based on the newest screens and does not hold across the estate.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "H-07",
+   "severity": "S3",
+   "title": "Another doubled query string in an asset URL",
+   "status": "open",
+   "note": "/static/js/duplicate_detection/dashboard.js?v=1787042220?v=3 — a FOURTH instance, on a module not previously examined. Confirms ARCH-060 is systemic, not three typos. NOTE: my asset-urls gate reports clean on this, so the gate is insufficient — it scans templates and misses this class.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-02",
+   "severity": "S2",
+   "title": "Persona naming is inconsistent across three surfaces",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-03",
+   "severity": "S1",
+   "title": "Agent asserts a capability catalog that does not exist and contradicts itself in one response",
+   "status": "open",
+   "note": "Related to CM-01, which found hardcoded '516 business capabilities' in the prompt. Verify whether commit 1d45832 closes this or whether a second source remains.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-04",
+   "severity": "S1",
+   "title": "CSRF is not enforced on the write surface — supersedes A-04's scoping",
+   "status": "open",
+   "note": "NINE of nine testable write endpoints reached business logic with NO token, including /applications/bulk-delete which EXECUTED (200), /arb/reviews/create, /solutions/<id>/delete-json and — most seriously — /ai-chat/approvals/<id>/approve, the gate through which agent writes execute and the same gate V-01 shows has no authorization either. A-04 said CSRF was implemented and inconsistently applied; the accurate position is a token exists on server-rendered admin FORMS and is enforced on NONE of the JSON write endpoints. Fix as default-deny middleware with an explicit opt-out list; enumerate the full route table.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-05",
+   "severity": "S2",
+   "title": "Run Detection modal is removed from the DOM at runtime",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-06",
+   "severity": "S3",
+   "title": "Invalid-ID handling is correct everywhere except the architecture module",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-07",
+   "severity": "S3",
+   "title": "Error logger discards error detail",
+   "status": "open",
+   "note": "Unhandled promise rejections log the literal word 'Object' — the error is never serialised, so a production incident driven by these would be undiagnosable. The auditor WITHDREW an earlier inference of a 60-second cycle after instrumented re-testing found zero rejections over 70 seconds.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-08",
+   "severity": "S3",
+   "title": "Persona context endpoint returns errors with HTTP 200",
+   "status": "open",
+   "note": "GET /ai-chat/context/enterprise_architect returns 200 with {'error': 'Unknown domain', 'success': false}. Same class as O-03: a failure reported as success.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-10",
+   "severity": "S2",
+   "title": "Global search returns dead links and indexes none of the hidden modules",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-12",
+   "severity": "S2",
+   "title": "Export produces no file and no feedback",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-09",
+   "severity": "--",
+   "title": "No secrets in client bundles (positive)",
+   "status": "protect",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "P-11",
+   "severity": "--",
+   "title": "AI Map implements preview-before-write correctly (positive)",
+   "status": "protect",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
   }
  ],
  "closed_evidence_manual_only": 25,
  "deployed": 0,
- "protect": 2,
+ "protect": 4,
  "_register_discrepancy": "The 18 Aug register header claims '115 raised, 4 withdrawn, 3 revised, 1 verified fixed -> 107 active'. Two things in that do not reconcile and are recorded rather than smoothed over. (1) The '1 verified fixed' finding is never NAMED anywhere: no correction-ledger row, no status change in the Section 5 index, and no finding described as fixed in either document. Nothing has been marked closed on that basis. (2) 104 -> 115 raised is +11, but only 7 findings (I-01, M-01..M-06) are actually merged into the register's clusters and index; M-07 and M-08 appear in the Update-4 source document but in neither, and are carried here anyway because a finding dropped by an untriaged summary is still a finding. That leaves 2 raised findings unaccounted for. If they surface in a later document they get added here.",
  "not_a_defect": 4
 }
