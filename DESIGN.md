@@ -111,7 +111,30 @@ dark-theme users. `--info` tracks blue in both.
 
 ## Typography
 
-All text uses Tailwind's default font stack. Key classes:
+**Brand typeface (ARCH-111, decided 18 Aug 2026): Inter**, SIL Open Font
+License 1.1 — no royalty, no source-disclosure obligation, embedding and
+redistribution explicitly permitted, so there was no licensing question to
+escalate. It was already referenced in the Caddy 503 page's font stack before
+being adopted for the app itself.
+
+Vendored locally, never loaded from Google Fonts or any CDN: four static
+woff2 weights (400/500/600/700, latin subset) at
+`app/static/vendor/inter-{400,500,600,700}.woff2`, tracked with their upstream
+URL and sha384 in `app/static/vendor/VENDOR_MANIFEST.txt`, licence text at
+`app/static/vendor/inter-LICENSE.txt`. Wired via `@font-face` and a
+`--font-sans` CSS variable in `app/static/css/shadcn_tokens.css` (a plain,
+non-Tailwind stylesheet loaded directly by `partials/_head.html`), **not**
+through `tailwind.config.js`'s `fontFamily` — that file would be a silent
+no-op until the next Tailwind rebuild, and `tailwind-output.css` is committed
+pre-built with no Node toolchain available to regenerate it. `body` sets
+`font-family: var(--font-sans)`; do not set `font-family` per-template.
+
+The system stack remains the fallback in `--font-sans` — `ui-sans-serif,
+system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+sans-serif` — so a missing or slow woff2 (`font-display: swap`) never blocks
+text from painting or breaks layout.
+
+Key classes (unchanged):
 
 | Use | Class |
 |-----|-------|

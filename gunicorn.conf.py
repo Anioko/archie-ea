@@ -89,6 +89,23 @@ def on_starting(server):
     server.log.info("A.R.C.H.I.E. starting with %d workers", server.app.cfg.workers)
 
 
+def _rss_mb() -> "float | None":
+    """Best-effort RSS of the current process in MB, or None if unavailable.
+
+    ARCH-001 memory telemetry: the 07/17/18 Aug OOM kills were diagnosed by
+    inference (mem_limit + `dmesg -T`), not measurement, because nothing in
+    the app logged actual worker RSS. psutil is already a dependency
+    (app/monitoring/metrics_service.py uses it for host-level metrics), so
+    this reuses it rather than shelling out to /proc.
+    """
+    try:
+        import psutil
+
+        return psutil.Process().memory_info().rss / (1024 * 1024)
+    except Exception:  # never let telemetry break worker lifecycle
+        return None
+
+
 def post_fork(server, worker):
     """Called after a worker has been forked."""
     server.log.info("Worker spawned (pid: %s)", worker.pid)
@@ -108,7 +125,40 @@ def post_fork(server, worker):
     except Exception as exc:  # never let a hook failure crash worker startup
         server.log.warning("post_fork: db.engine.dispose() failed: %s", exc)
 
+    rss = _rss_mb()
+    if rss is not None:
+        server.log.info("worker boot RSS: pid=%s rss_mb=%.1f", worker.pid, rss)
+
+
+def pre_request(worker, req):
+    """Called inside the worker process just before it handles a request.
+
+    `worker_exit` runs in the MASTER process after the worker has already
+    terminated (gunicorn's own docs: "in the master process"), so
+    psutil.Process() there measures the master, not the recycled worker —
+    a hook there would silently telemetry the wrong process. This hook runs
+    inside the worker itself, so it is used instead to catch the request
+    immediately before a max_requests recycle: gunicorn's worker loop bumps
+    `worker.nr` per request and stops accepting once it reaches
+    `worker.max_requests`, so `nr == max_requests - 1` is the last request
+    this worker will serve before exiting to restart.
+    """
+    try:
+        if worker.max_requests and worker.nr >= worker.max_requests - 1:
+            rss = _rss_mb()
+            if rss is not None:
+                worker.log.info(
+                    "worker max_requests recycle: pid=%s nr=%s rss_mb=%.1f",
+                    worker.pid, worker.nr, rss,
+                )
+    except Exception as exc:  # never let telemetry break request handling
+        worker.log.warning("pre_request: recycle RSS telemetry failed: %s", exc)
+
 
 def worker_exit(server, worker):
-    """Called when a worker exits."""
+    """Called when a worker exits, in the MASTER process — so `worker` here is
+    the (already-dead) WorkerTmp handle, not something psutil.Process() can
+    read RSS from; the boot-time and recycle-time RSS are logged instead, in
+    post_fork and pre_request above, both of which run inside the worker.
+    """
     server.log.info("Worker exited (pid: %s)", worker.pid)

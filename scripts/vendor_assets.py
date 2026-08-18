@@ -58,10 +58,20 @@ ASSETS = {
     "html2canvas.min.js":     "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
     "zxcvbn.js":              "https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.2.0/zxcvbn.js",
     "lucide.min.js":          "https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js",
+    # Inter (SIL Open Font License 1.1) — brand typeface, ARCH-111. Static woff2
+    # weights from @fontsource/inter, latin subset. Referenced via @font-face in
+    # shadcn_tokens.css, never loaded from Google Fonts or any other CDN at
+    # runtime — that is the whole point of vendoring it.
+    "inter-400.woff2":        "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.3.0/files/inter-latin-400-normal.woff2",
+    "inter-500.woff2":        "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.3.0/files/inter-latin-500-normal.woff2",
+    "inter-600.woff2":        "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.3.0/files/inter-latin-600-normal.woff2",
+    "inter-700.woff2":        "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.3.0/files/inter-latin-700-normal.woff2",
 }
 
-# Committed but not fetched by this script (pre-existing bundle).
-UNMANAGED = {"pptxgenjs.bundle.js"}
+# Committed but not fetched by this script (pre-existing bundle; licence text
+# accompanying the Inter font files, hashed manually rather than downloaded on
+# every run since it never changes with a pinned font version).
+UNMANAGED = {"pptxgenjs.bundle.js", "inter-LICENSE.txt"}
 
 MIN_BYTES = 500
 

@@ -35,8 +35,27 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
-    mem_limit: 2600m
-    memswap_limit: 2600m   # == mem_limit: no swap allowance
+    # ARCH-001 (raised 18 Aug 2026, from 2600m): the binding constraint was the
+    # container's own cgroup ceiling, not host RAM. A read-only measurement on
+    # the droplet showed server at 1.425GiB/2.539GiB (56%) while the HOST had
+    # ~1.8GB available and a 4GB swap file barely touched (170MB used) — so
+    # this was never a "buy a bigger droplet" question. Arithmetic for the new
+    # ceiling, all in MB against the droplet's 3915MB total RAM:
+    #   server 3072 + postgres 448 + adminer 64 + redis 160 = 3744
+    #   3915 - 3744 = 171MB headroom for the OS, PLUS the 4GB swap file as a
+    #   second cushion behind that. Re-derive by re-summing the mem_limit
+    #   lines below against `free -m` on the droplet if any service's limit
+    #   changes.
+    # Do NOT run `docker compose exec server flask ...` against production —
+    # it boots a second full Flask app (~800MB) inside THIS SAME cgroup, on
+    # top of gunicorn's steady-state footprint, and is what actually killed
+    # gunicorn: 07 Aug 12:22 and 17 Aug 09:29 from ordinary operation, and
+    # 18 Aug from a one-off diagnostic `flask` invocation. Query Postgres
+    # directly instead (`flask --app manage db-query` from OUTSIDE the
+    # container, or `docker compose exec postgres psql`) — never spin up a
+    # second app instance inside the server container's memory budget.
+    mem_limit: 3072m
+    memswap_limit: 3072m   # == mem_limit: no swap allowance
     ports:
       # NOT 0.0.0.0. Publishing on all interfaces left the app reachable from the
       # open internet on :5000, bypassing Caddy entirely - no TLS, no request
@@ -63,14 +82,22 @@ services:
       # costs ~355 MB). Dropped to 3 after ARCH-001: `dmesg -T` on the droplet
       # shows the memory-cgroup OOM killer taking gunicorn twice under normal
       # single-user testing (07 Aug 12:22, 17 Aug 09:29) despite the 2600m
-      # mem_limit below and `free -m` showing only ~178MB free on this 4GB
-      # host once postgres/redis/adminer are also running. Killing the
+      # mem_limit then in force and `free -m` showing only ~178MB free on this
+      # 4GB host once postgres/redis/adminer are also running. Killing the
       # gunicorn process kills the container's PID 1, so `restart:
       # unless-stopped` has to replay the whole init-db -> reconcile-schema ->
       # backfills -> gunicorn boot chain (8-12 min) before anything answers
       # again — that chain, not request handling, is the outage users saw.
-      # One fewer worker trims ~355 MB off the steady-state ceiling; if OOMs
-      # recur at 3, the fix is more RAM on the droplet, not fewer threads.
+      # KEPT deliberately when mem_limit was raised to 3072m on 18 Aug: the
+      # trim and the ceiling raise are two different fixes for two different
+      # symptoms. The trim protects steady-state headroom against ordinary
+      # traffic; the raised ceiling protects against the actual root cause
+      # found on inspection — `docker compose exec server flask ...` booting
+      # a second ~800MB app inside this cgroup (see the mem_limit comment
+      # above). Reverting the trim now would spend the new headroom on more
+      # workers instead of on that margin. If OOMs recur at 3072m/3 workers
+      # WITHOUT a `flask exec` in the picture, that is new evidence and a
+      # hardware question — not before.
       GUNICORN_THREADS: "8"
       GUNICORN_MAX_REQUESTS: "750"
       # 8+4 per process x 3 workers = 36 connections, under max_connections=100.
