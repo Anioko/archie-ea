@@ -31,9 +31,20 @@
             </div>
             <p class="mt-1 text-sm text-muted-foreground">
                 <span class="whitespace-nowrap">Solution Architecture Blueprint</span>
-                {% if solution.version %}
+                {# S-04: this used to read solution.version, which is
+                   OptimisticLockMixin's SQLAlchemy version_id_col — an
+                   internal row-write counter that bumps on every UPDATE to
+                   the row (any field, any save), not a document revision.
+                   That is why it showed v56 here while the Completeness
+                   panel's blueprint_version — the field actually intended
+                   to track blueprint revisions, incremented deliberately in
+                   solution_link_routes.py and journey_reasoning_orchestrator.py
+                   — showed v1: two different counters under one label. Now
+                   both surfaces read blueprint_version; the OCC counter is
+                   never user-facing. #}
+                {% if solution.blueprint_version %}
                     <span class="mx-1.5 text-border">&middot;</span>
-                    <span class="tabular-nums whitespace-nowrap">v{{ solution.version }}</span>
+                    <span class="tabular-nums whitespace-nowrap">v{{ solution.blueprint_version }}</span>
                 {% endif %}
                 {% if solution.solution_type %}
                     <span class="mx-1.5 text-border">&middot;</span>
@@ -271,7 +282,7 @@ function archieShowBanner(msg, type) {
                 class="flex flex-col items-center min-w-[72px] px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors cursor-pointer shrink-0 group"
                 title="{{ _tip }}">
             {# Label #}
-            <span class="text-[10px] font-medium truncate max-w-[68px] leading-tight"
+            <span class="text-xs font-medium truncate max-w-[68px] leading-tight"
                   :class="activeSection === '{{ section_id }}' ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'">{{ label }}</span>
             {# Progress bar #}
             <div class="mt-1 w-full h-1 bg-muted rounded-full overflow-hidden">
@@ -309,7 +320,7 @@ function archieShowBanner(msg, type) {
                     {% elif _qs_id in ['value_stream_map', 'business_process_view', 'application_cooperation', 'data_information', 'deployment_view', 'network_communication'] %}linkElements('{{ _qs_id }}');
                     {% endif %}
                 "
-                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium
                        border border-input text-muted-foreground bg-background
                        hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-colors shrink-0">
             <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
@@ -321,26 +332,21 @@ function archieShowBanner(msg, type) {
     </div>
     {% endif %}
 
-    {# Persona filter bar — J3 journey: ARB/Architect/Executive/Developer view filters #}
-    <div x-data="{ activePersona: '' }" class="flex items-center gap-2 mt-2 pt-2 border-t border-border/50">
-        <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">View as:</span>
-        <button type="button" data-persona="arb"
-                @click="activePersona = activePersona === 'arb' ? '' : 'arb'"
-                :class="activePersona === 'arb' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground hover:bg-muted/50'"
-                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors">ARB</button>
-        <button type="button" data-persona="architect"
-                @click="activePersona = activePersona === 'architect' ? '' : 'architect'"
-                :class="activePersona === 'architect' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground hover:bg-muted/50'"
-                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors">Architect</button>
-        <button type="button" data-persona="executive"
-                @click="activePersona = activePersona === 'executive' ? '' : 'executive'"
-                :class="activePersona === 'executive' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground hover:bg-muted/50'"
-                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors">Executive</button>
-        <button type="button" data-persona="developer"
-                @click="activePersona = activePersona === 'developer' ? '' : 'developer'"
-                :class="activePersona === 'developer' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground hover:bg-muted/50'"
-                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors">Developer</button>
-    </div>
+    {# S-05: "View as: ARB | Architect | Executive | Developer" used to live
+       here. It toggled `activePersona`, which drove nothing but its own
+       button styling — no section was shown, hidden, reordered or
+       reworded for any persona, on either an empty or a 25%-complete
+       fixture (byte-identical output in all four modes, confirmed on
+       /solutions/17 and /solutions/24). A control that promises
+       audience-appropriate content and silently does nothing is worse
+       than no control: it tells an ARB reviewer or an executive "this was
+       tailored for you" when it was not, which is worse than the page
+       admitting it shows one general-purpose view.
+       Engineering call (not a product call): remove it now rather than
+       ship a decoration. Building it for real needs a per-role section
+       set/depth/terminology map and export support (see ARCH-012-style
+       scope), which is a real feature, not a template tweak — tracked as
+       follow-up work, not a documented-and-left defect. #}
 
     {# Proactive AI Insights — loaded after page render, non-blocking #}
     <div x-data="copilotInsights({{ solution.id }})" x-init="load()">
@@ -349,7 +355,7 @@ function archieShowBanner(msg, type) {
                 <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mt-1.5 shrink-0">Insights</span>
                 <template x-for="insight in insights" :key="insight.id">
                     <div :class="severityClasses(insight.severity)"
-                         class="flex items-center gap-2 px-2.5 py-1 rounded-md border text-[10px] font-medium">
+                         class="flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs font-medium">
                         <span x-text="insight.title" class="max-w-[280px] truncate"></span>
                         <button @click="discuss(insight)"
                                 class="underline decoration-dotted shrink-0 hover:no-underline">Discuss</button>

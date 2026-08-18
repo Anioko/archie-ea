@@ -431,6 +431,34 @@ def gate_broken_surfaces(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_dynamic_link_prefixes(baseline: int) -> Result:
+    """ARCH-043: concatenated href/fetch links whose literal prefix is dead. RATCHET.
+
+    check_broken_surfaces.py's dead-link/dead-fetch classes intentionally skip
+    any URL built by string concatenation (`'/x/' + id`) — guessing the
+    interpolated id is a worse trade than the false positives it would cause.
+    That correctly-scoped skip let a whole class of real 404s through: a route
+    migration (/dashboard/application/<id> -> /applications/<id>,
+    /vendors/view/<id> -> /applications/vendors/<id>) left concatenated Alpine
+    `:href` bindings pointing at the dead prefix, invisible to CI, only found
+    by manually clicking through the rendered DOM.
+
+    This does not guess the id. It checks only the literal prefix before the
+    `+` — not a guess, since it is exactly the string the browser is about to
+    receive — against the app's real url_map, so it only rules on the part
+    that is unconditionally true for every possible id substituted in.
+    """
+    proc = _run([sys.executable, "scripts/check_dynamic_link_prefixes.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("dynamic-link-prefixes", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_dynamic_link_prefixes.py to list them"
+    return Result("dynamic-link-prefixes", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 def gate_dead_interactions() -> Result:
     """No control that looks like it works and does nothing. Gated at ZERO.
 
@@ -1077,6 +1105,15 @@ def build_gates(baseline: dict) -> list[Gate]:
              # read as a gate failure rather than as "this gate cannot run
              # here". It belongs with boot-health, which installs requirements
              # and already boots the app for the same reason.
+             tags=["boot", "ui"]),
+        Gate("dynamic-link-prefixes",
+             "concatenated href/fetch links whose literal prefix is a dead route (ARCH-043)",
+             "ratchet",
+             lambda: gate_dynamic_link_prefixes(baseline.get("dynamic_link_prefixes", 0)),
+             remediation="run scripts/check_dynamic_link_prefixes.py; repoint the "
+                         "literal prefix at the current route",
+             # NOT "static" - same reason as broken-surfaces: boots the app to
+             # read the real url_map.
              tags=["boot", "ui"]),
         Gate("fetch-guards", "no fetch parsed without checking the response", "ratchet",
              lambda: gate_fetch_guards(baseline.get("fetch_guards", 107)),

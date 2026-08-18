@@ -64,7 +64,7 @@
             </svg>
             Diagram View
         </button>
-        <span x-show="showDiagram" x-cloak class="text-[10px] text-muted-foreground">
+        <span x-show="showDiagram" x-cloak class="text-xs text-muted-foreground">
             Showing <span x-text="activeLayer || 'all'"></span> layer elements as architecture diagram
         </span>
     </div>
@@ -72,18 +72,21 @@
         <div class="rounded-xl border border-border bg-card overflow-hidden">
             <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
                 <span class="text-xs font-medium text-muted-foreground" x-text="diagramViewpointName || 'Architecture Diagram'"></span>
-                <span class="text-[10px] text-muted-foreground" x-text="diagramElementCount + ' elements, ' + diagramRelCount + ' relationships'"></span>
+                <span class="text-xs text-muted-foreground" x-text="diagramElementCount + ' elements, ' + diagramRelCount + ' relationships'"></span>
             </div>
             <div id="elements-viewpoint-diagram" class="w-full" style="min-height:350px;"></div>
         </div>
     </div>
 
     {# ── Data Quality Banner ── #}
+    {# ARCH-012: each figure opens the matching filtered worklist below
+       (advancedOpen forced true, has_desc/has_rels/has_solutions=no) rather
+       than being a static, unclickable count. #}
     <div x-show="totalCount > 0" x-cloak class="rounded-lg border border-warning/30 bg-warning/5 p-3 mb-4 flex items-center gap-4 text-xs text-muted-foreground">
         <i data-lucide="alert-triangle" class="h-4 w-4 text-warning shrink-0"></i>
-        <span>No description: <strong class="text-foreground" x-text="fmtCount(noDescCount)"></strong></span>
-        <span>No relationships: <strong class="text-foreground" x-text="fmtCount(noRelCount)"></strong></span>
-        <span>Not linked to solutions: <strong class="text-foreground" x-text="fmtCount(noSolCount)"></strong></span>
+        <button type="button" class="hover:underline hover:text-foreground" @click="applyDqFilter('no_desc')">No description: <strong class="text-foreground" x-text="fmtCount(noDescCount)"></strong></button>
+        <button type="button" class="hover:underline hover:text-foreground" @click="applyDqFilter('no_rels')">No relationships: <strong class="text-foreground" x-text="fmtCount(noRelCount)"></strong></button>
+        <button type="button" class="hover:underline hover:text-foreground" @click="applyDqFilter('no_solutions')">Not linked to solutions: <strong class="text-foreground" x-text="fmtCount(noSolCount)"></strong></button>
     </div>
 
     {# ── FRAG-008: Tech Debt Analysis (Phase D) ── #}
@@ -107,7 +110,7 @@
             <div class="rounded-xl border border-border bg-card overflow-hidden">
                 <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
                     <span class="text-xs font-medium text-muted-foreground">Phase D — Technology Debt Scores</span>
-                    <span x-show="debtSummary.total_elements" x-cloak class="text-[10px] text-muted-foreground" x-text="(debtSummary.total_elements || 0) + ' elements analyzed'"></span>
+                    <span x-show="debtSummary.total_elements" x-cloak class="text-xs text-muted-foreground" x-text="(debtSummary.total_elements || 0) + ' elements analyzed'"></span>
                 </div>
                 <div x-show="debtLoading" x-cloak class="p-6 text-center text-sm text-muted-foreground">
                     <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span> Loading debt scores...
@@ -151,26 +154,30 @@
             <svg class="w-4 h-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
             Data quality
         </span>
+        {# ARCH-012: clickable — opens the matching filtered worklist below. #}
         {% if no_desc_count %}
-        <span data-testid="dq-no-description" class="text-warning-emphasis">
+        <button type="button" data-testid="dq-no-description" class="text-warning-emphasis hover:underline"
+                @click="applyDqFilter('no_desc')">
             <strong>{{ no_desc_count }}</strong> element{{ 's' if no_desc_count != 1 }} missing description
-        </span>
+        </button>
         {% endif %}
         {% if no_rels_count %}
-        <span data-testid="dq-no-relationships" class="text-warning-emphasis">
+        <button type="button" data-testid="dq-no-relationships" class="text-warning-emphasis hover:underline"
+                @click="applyDqFilter('no_rels')">
             <strong>{{ no_rels_count }}</strong> element{{ 's' if no_rels_count != 1 }} with no relationships
-        </span>
+        </button>
         {% endif %}
         {% if no_solutions_count %}
-        <span data-testid="dq-no-solutions" class="text-warning-emphasis">
+        <button type="button" data-testid="dq-no-solutions" class="text-warning-emphasis hover:underline"
+                @click="applyDqFilter('no_solutions')">
             <strong>{{ no_solutions_count }}</strong> element{{ 's' if no_solutions_count != 1 }} not linked to any solution
-        </span>
+        </button>
         {% endif %}
     </div>
     {% endif %}
 
     {# ── Filter Bar ── #}
-    <div x-data="{ advancedOpen: false }">
+    <div x-data="{ advancedOpen: false }" @dq-filter-applied.window="advancedOpen = true">
         <div class="flex flex-wrap items-center gap-3 mb-2">
             {# Search #}
             <div class="relative flex-1 min-w-[200px] max-w-md">
@@ -552,6 +559,7 @@ document.addEventListener('alpine:init', () => {
         filterPlateau: '',
         filterHasRels: '',
         filterHasSolutions: '',
+        filterNoDesc: '',   // ARCH-012: '', 'yes' or 'no' — worklist filter for the data-quality banner
         sortField: 'name',
         sortDir: 'asc',
         selectedIds: [],
@@ -690,6 +698,7 @@ document.addEventListener('alpine:init', () => {
                 if (this.filterPlateau) url += '&plateau=' + encodeURIComponent(this.filterPlateau);
                 if (this.filterHasRels) url += '&has_rels=' + encodeURIComponent(this.filterHasRels);
                 if (this.filterHasSolutions) url += '&has_solutions=' + encodeURIComponent(this.filterHasSolutions);
+                if (this.filterNoDesc) url += '&has_desc=' + encodeURIComponent(this.filterNoDesc === 'no' ? 'no' : 'yes');
                 const resp = await fetch(url);
                 if (!resp.ok) throw new Error('Could not load elements (HTTP ' + resp.status + ')');
                 const json = await resp.json();
@@ -739,9 +748,42 @@ document.addEventListener('alpine:init', () => {
             this.filterPlateau = '';
             this.filterHasRels = '';
             this.filterHasSolutions = '';
+            this.filterNoDesc = '';
             this.page = 1;
             history.pushState({}, '', window.location.pathname);
             this.fetchElements();
+        },
+
+        // ARCH-012: each data-quality metric ("N with no description", "N
+        // orphaned", "N not linked to any solution") now opens onto the
+        // filtered worklist that explains it, instead of being a dead count.
+        applyDqFilter(kind) {
+            this.clearFiltersSilently();
+            if (kind === 'no_desc') this.filterNoDesc = 'no';
+            else if (kind === 'no_rels') this.filterHasRels = 'no';
+            else if (kind === 'no_solutions') this.filterHasSolutions = 'no';
+            this.page = 1;
+            this.fetchElements();
+            // advancedOpen lives in the nested x-data="{ advancedOpen: false }"
+            // scope on the filter bar, not here — dispatch rather than assign
+            // so that block can open itself and reveal which dropdown is set.
+            this.$dispatch('dq-filter-applied');
+            this.$nextTick(() => {
+                const panel = document.querySelector('[data-testid="advanced-panel"]');
+                if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        },
+
+        clearFiltersSilently() {
+            this.searchQuery = '';
+            this.activeLayer = '';
+            this.filterType = '';
+            this.filterScope = '';
+            this.filterBuildingBlock = '';
+            this.filterPlateau = '';
+            this.filterHasRels = '';
+            this.filterHasSolutions = '';
+            this.filterNoDesc = '';
         },
 
         sort(field) {

@@ -86,7 +86,10 @@
                     <div class="flex items-center justify-between mt-1">
                         <p class="text-xs text-muted-foreground">Elements will be linked to this application</p>
                         <a x-show="targetApplicationId" x-cloak
-                           :href="'/dashboard/application/' + targetApplicationId"
+                           {# ARCH-043: was '/dashboard/application/' + id, a stale
+                              route from a partially-completed migration to
+                              /applications/<id> (unified_applications.application_detail) #}
+                           :href="'/applications/' + targetApplicationId"
                            target="_blank"
                            class="text-xs text-primary hover:underline flex items-center gap-1">
                             <i data-lucide="external-link" class="h-3 w-3"></i>
@@ -109,7 +112,9 @@
                     <div class="flex items-center justify-between mt-1">
                         <p class="text-xs text-muted-foreground">Elements will be linked to this vendor</p>
                         <a x-show="targetVendorId" x-cloak
-                           :href="'/vendors/view/' + targetVendorId"
+                           {# ARCH-043: was '/vendors/view/' + id, dead; correct route
+                              is /applications/vendors/<id> (unified_applications.vendor_detail) #}
+                           :href="'/applications/vendors/' + targetVendorId"
                            target="_blank"
                            class="text-xs text-primary hover:underline flex items-center gap-1">
                             <i data-lucide="external-link" class="h-3 w-3"></i>

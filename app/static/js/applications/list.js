@@ -481,6 +481,17 @@ function applicationCreateForm() {
   return {
     submitting: false,
     errorMsg: '',
+    // ARCH-041/ARCH-042: per-field errors keyed by form field name, rendered
+    // next to the corresponding input with aria-invalid + aria-describedby,
+    // instead of a single opaque banner (or, worse, the raw HTTP status
+    // phrase "Bad Request"). Populated either client-side (required-field
+    // check below) or from the API's {"errors": {field: [msg, ...]}} shape.
+    fieldErrors: {},
+
+    fieldInvalid(field) {
+      return !!(this.fieldErrors && this.fieldErrors[field]);
+    },
+
     form: {
       name: '',
       application_code: '',
@@ -494,8 +505,15 @@ function applicationCreateForm() {
     async submit() {
       // FAR-017: Prevent double-click duplicates
       if (this.submitting) return;
+      this.fieldErrors = {};
       if (!this.form.name.trim()) {
+        // ARCH-042: mark the field invalid programmatically (aria-invalid +
+        // aria-describedby), not just a focus ring — the previous behaviour
+        // scrolled/focused the field but left #modal-create
+        // [aria-invalid="true"] matching 0 elements.
+        this.fieldErrors = { name: 'Application name is required.' };
         this.errorMsg = 'Application name is required.';
+        this.$nextTick(() => document.getElementById('ca-name')?.focus());
         return;
       }
       this.submitting = true;
@@ -519,9 +537,25 @@ function applicationCreateForm() {
         }
       } catch (err) {
         console.error('[applicationCreateForm] submit error:', err);
-        const errorDetail = (err.data && (err.data.error || err.data.message)) || err.message || 'An unexpected error occurred';
-        this.errorMsg = errorDetail;
-        Platform.toast.error('Failed to create application: ' + errorDetail);
+        // ARCH-041: err.data.errors is the API's {field: [msg, ...]} map.
+        // Render each against its field rather than collapsing to one
+        // generic string, and never fall back to err.message alone — that
+        // is response.statusText ("Bad Request") when the body carries no
+        // top-level "error"/"message" key.
+        const apiErrors = err.data && err.data.errors;
+        if (apiErrors && typeof apiErrors === 'object') {
+          const flattened = {};
+          for (const field of Object.keys(apiErrors)) {
+            const msgs = apiErrors[field];
+            flattened[field] = Array.isArray(msgs) ? msgs[0] : msgs;
+          }
+          this.fieldErrors = flattened;
+          this.errorMsg = Object.entries(flattened).map(([f, m]) => `${f}: ${m}`).join('; ');
+        } else {
+          const errorDetail = (err.data && (err.data.error || err.data.message)) || err.message || 'An unexpected error occurred';
+          this.errorMsg = errorDetail;
+        }
+        Platform.toast.error('Failed to create application: ' + this.errorMsg);
       } finally {
         this.submitting = false;
       }

@@ -1710,13 +1710,17 @@ def create_elements():
 
         # Build response with links to view created elements
         view_links = {}
+        # ARCH-043: these used to point at /dashboard/application/<id> and
+        # /vendors/view/<id>, both dead (404) — leftovers of a route
+        # migration to unified_applications that never updated its callers.
+        # Correct routes: /applications/<id> and /applications/vendors/<id>.
         if target_application_id and analysis_context == "application":
-            view_links["application"] = f"/dashboard/application/{target_application_id}"
+            view_links["application"] = f"/applications/{target_application_id}"
             view_links[
                 "application_architecture"
-            ] = f"/dashboard/application/{target_application_id}#architecture"
+            ] = f"/applications/{target_application_id}#architecture"
         if target_vendor_id and analysis_context == "vendor":
-            view_links["vendor"] = f"/vendors/view/{target_vendor_id}"
+            view_links["vendor"] = f"/applications/vendors/{target_vendor_id}"
 
         return jsonify(
             {

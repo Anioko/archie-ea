@@ -157,8 +157,28 @@
                 // Error body is not guaranteed to be JSON; fall back to statusText/HTTP code below.
                 try { errData = await response.json(); }
                 catch(e) { /* swallow-ok: the error body may be HTML or empty; the failure itself is still reported below from statusText/HTTP code */ }
+                // ARCH-041: a validation 400 from the JSON API carries no top-level
+                // "message"/"error" — its detail lives in errData.errors, a
+                // {field: [msg, ...]} map (see e.g. app/modules/applications
+                // create). Falling straight through to response.statusText showed
+                // callers the literal, useless string "Bad Request" instead of the
+                // specific reason. Flatten the first message per field into a
+                // readable summary here so every generic caller (toast, non-field
+                // aware code) gets something actionable; callers that want to
+                // render per-field errors still have the full map on err.data.errors.
+                let flattenedFieldErrors = null;
+                if (errData && errData.errors && typeof errData.errors === 'object') {
+                    flattenedFieldErrors = Object.keys(errData.errors)
+                        .map(function (field) {
+                            let msgs = errData.errors[field];
+                            let first = Array.isArray(msgs) ? msgs[0] : msgs;
+                            return field + ': ' + first;
+                        })
+                        .join('; ');
+                }
                 const errMsg = options.errorMsg ||
                     (errData && (errData.message || errData.error)) ||
+                    flattenedFieldErrors ||
                     response.statusText ||
                     ('HTTP ' + response.status);
 

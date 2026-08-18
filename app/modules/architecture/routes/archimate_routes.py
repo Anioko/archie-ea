@@ -1918,10 +1918,48 @@ def api_elements_search():
         ).subquery()
         query = query.filter(ArchiMateElement.id.in_(linked_ids))
 
+    # ARCH-012: make the repository's data-quality metrics ("67 elements with
+    # no description", "88 orphaned", "69 unlinked to solutions") into
+    # actionable, filtered worklists instead of just a static count. The
+    # elements.html "Advanced" panel already sent has_rels/has_solutions to
+    # this endpoint, but nothing here read them - the dropdowns silently did
+    # nothing. has_desc is new, for the description metric.
+    from app.models.archimate_core import ArchiMateRelationship
+
+    has_desc = request.args.get("has_desc", "").strip().lower()
+    if has_desc == "no":
+        query = query.filter(
+            db.or_(ArchiMateElement.description.is_(None), ArchiMateElement.description == "")
+        )
+    elif has_desc == "yes":
+        query = query.filter(
+            ArchiMateElement.description.isnot(None), ArchiMateElement.description != ""
+        )
+
+    has_rels = request.args.get("has_rels", "").strip().lower()
+    if has_rels in ("yes", "no"):
+        related_ids = db.session.query(ArchiMateRelationship.source_id).union(
+            db.session.query(ArchiMateRelationship.target_id)
+        ).subquery()
+        if has_rels == "no":
+            query = query.filter(ArchiMateElement.id.notin_(db.session.query(related_ids)))
+        else:
+            query = query.filter(ArchiMateElement.id.in_(db.session.query(related_ids)))
+
+    has_solutions = request.args.get("has_solutions", "").strip().lower()
+    if has_solutions in ("yes", "no"):
+        from app.models.solution_archimate_element import SolutionArchiMateElement
+        linked_sol_ids = db.session.query(SolutionArchiMateElement.element_id).subquery()
+        if has_solutions == "no":
+            query = query.filter(ArchiMateElement.id.notin_(db.session.query(linked_sol_ids)))
+        else:
+            query = query.filter(ArchiMateElement.id.in_(db.session.query(linked_sol_ids)))
+
+    _default_limit = 200 if (has_desc or has_rels in ("yes", "no") or has_solutions in ("yes", "no")) else 30
     try:
-        limit = min(int(request.args.get("limit", 30)), 200)
+        limit = min(int(request.args.get("limit", _default_limit)), 200)
     except (ValueError, TypeError):
-        limit = 30
+        limit = _default_limit
 
     elements = query.order_by(ArchiMateElement.name).limit(limit).all()
 

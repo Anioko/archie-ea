@@ -359,8 +359,8 @@
         </thead>
         <tbody class="divide-y">
           {% for app in applications %}
-          {%- set sk = (app.lifecycle_status or app.deployment_status or 'planned').lower() -%}
-          {%- set si = STATUS_MAP.get(sk, {'label': app.lifecycle_status or app.deployment_status or 'Unknown', 'cls': 'bg-muted text-muted-foreground'}) -%}
+          {%- set sk = (app.lifecycle_status or app.deployment_status or '').lower() -%}
+          {%- set si = STATUS_MAP.get(sk, {'label': app.lifecycle_status or app.deployment_status or 'Not set', 'cls': 'bg-muted text-muted-foreground'}) -%}
           {%- set ck = (app.business_criticality or '').lower() -%}
           {%- set cc = CRIT_MAP.get(ck, 'bg-muted text-muted-foreground') -%}
           {%- set pc = app.capability_mappings[0] if app.capability_mappings else none -%}
@@ -509,8 +509,8 @@
       {% if applications %}
       <div class="divide-y" data-testid="mobile-cards">
         {% for app in applications %}
-        {%- set sk = (app.lifecycle_status or app.deployment_status or 'planned').lower() -%}
-        {%- set si = STATUS_MAP.get(sk, {'label': app.lifecycle_status or app.deployment_status or 'Unknown', 'cls': 'bg-muted text-muted-foreground'}) -%}
+        {%- set sk = (app.lifecycle_status or app.deployment_status or '').lower() -%}
+        {%- set si = STATUS_MAP.get(sk, {'label': app.lifecycle_status or app.deployment_status or 'Not set', 'cls': 'bg-muted text-muted-foreground'}) -%}
         {%- set pc = app.capability_mappings[0] if app.capability_mappings else none -%}
         <div class="p-4 hover:bg-muted/30 transition-colors" data-app-id="{{ app.id }}" data-testid="mobile-card-{{ app.id }}">
           <div class="flex items-start justify-between mb-3">
@@ -710,7 +710,10 @@
           <div class="sm:col-span-2">
             <label for="ca-name" class="block text-sm font-medium mb-1">Application Name <span class="text-destructive-emphasis" aria-hidden="true">*</span></label>
             <input id="ca-name" type="text" x-model="form.name" required maxlength="255" placeholder="e.g. Customer Portal"
+              :aria-invalid="fieldInvalid('name') ? 'true' : 'false'"
+              :aria-describedby="fieldInvalid('name') ? 'ca-name-error' : null"
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <p x-show="fieldInvalid('name')" x-cloak id="ca-name-error" role="alert" class="mt-1 text-sm text-destructive-emphasis" x-text="fieldErrors.name"></p>
           </div>
           <div>
             <label for="ca-code" class="block text-sm font-medium mb-1">Application Code</label>
