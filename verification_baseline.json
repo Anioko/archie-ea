@@ -1,20 +1,20 @@
 {
-  "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
-  "_note": "updated 2026-08-14 (merge: fe-qa wave25 + ai-enablement wave)",
-  "ratchets": {
-    "undefined_names": 0,
-    "redefinitions": 0,
-    "lint_core": 0,
-    "design_tokens": 0,
-    "air_gap": 0,
-    "raw_sql_tenancy": 0,
-    "tenant_scoping": 0,
-    "broken_surfaces": 0,
-    "dynamic_link_prefixes": 0,
-    "fetch_guards": 0,
-    "sidebar_links": 25,
-    "design_tokens_extended": 12,
-    "shell_conformance": 159,
-    "raw_fetch_sites": 921
-  }
+ "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
+ "_note": "updated 2026-08-14 (merge: fe-qa wave25 + ai-enablement wave)",
+ "ratchets": {
+  "undefined_names": 0,
+  "redefinitions": 0,
+  "lint_core": 0,
+  "design_tokens": 0,
+  "air_gap": 0,
+  "raw_sql_tenancy": 0,
+  "tenant_scoping": 0,
+  "broken_surfaces": 0,
+  "dynamic_link_prefixes": 0,
+  "fetch_guards": 0,
+  "sidebar_links": 26,
+  "design_tokens_extended": 12,
+  "shell_conformance": 159,
+  "raw_fetch_sites": 919
+ }
 }

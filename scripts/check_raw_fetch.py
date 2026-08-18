@@ -29,6 +29,12 @@ import sys
 RAW_FETCH = re.compile(r"(?<![\w.])fetch\s*\(")
 
 EXCLUDED_FILES = ("core/03-fetch.js",)
+# Generated build output. app/static/js/bundles/* is a CONCATENATION of the
+# numbered core sequence (ARCH-063), so every fetch site inside it is already
+# counted in its source file — scanning both double-counts the same debt and
+# makes the ratchet rise when nothing was added. Same reasoning as the
+# committed tailwind-output.css: measure sources, not artefacts.
+EXCLUDED_DIRS = ("/vendor/", "/js/bundles/")
 
 
 def default_paths() -> list[str]:
@@ -41,7 +47,7 @@ def default_paths() -> list[str]:
 
 def scan_file(path: str) -> list[int]:
     norm = path.replace("\\", "/")
-    if any(norm.endswith(e) for e in EXCLUDED_FILES) or "/vendor/" in norm:
+    if any(norm.endswith(e) for e in EXCLUDED_FILES) or any(d in norm for d in EXCLUDED_DIRS):
         return []
     hits: list[int] = []
     try:
