@@ -29,6 +29,7 @@ from app.utils.duplicate_guard import (
     allow_duplicate_requested,
     duplicate_conflict_response,
     find_duplicate_by_name,
+    find_similar_entities,
 )
 
 applications_bp = Blueprint("applications_v1", __name__)
@@ -309,13 +310,19 @@ def create_application():
             if existing is not None:
                 return duplicate_conflict_response("An application", existing)
 
+        # S-06: near-duplicate advisory -- surfaced BEFORE the write commits,
+        # not just in the post-hoc rationalization sweep. Never blocks.
+        similar = find_similar_entities(ApplicationComponent, data["name"])
+
         # Create new application
         application = ApplicationComponent(
             name=data["name"],
             description=data.get("description", ""),
             business_owner=data.get("business_owner"),
             technical_owner=data.get("technical_owner"),
-            lifecycle_status=data.get("status", "operational"),
+            # ARCH-031: no fabricated "operational" default -- an application
+            # created with only a name has an unassessed lifecycle, not a live one.
+            lifecycle_status=data.get("status"),
         )
 
         db.session.add(application)
@@ -328,6 +335,8 @@ def create_application():
                 "description": application.description,
                 "status": application.lifecycle_status,
                 "created_at": application.created_at.isoformat(),
+                "similar_entities": similar,
+                "similar_entities_count": len(similar),
             },
             status_code=201,
         )

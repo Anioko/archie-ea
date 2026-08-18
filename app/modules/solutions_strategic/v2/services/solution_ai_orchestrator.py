@@ -1260,6 +1260,8 @@ class SolutionAIOrchestrator:
 ## Organizational Context
 {org_context}
 
+{existing_repository_context}
+
 ## Instructions
 Generate a comprehensive draft architecture. The MOTIVATION LAYER must be COMPLETE -- all 10 ArchiMate element types.
 Generate entities IN ORDER so each can reference its parent by exact name.
@@ -1332,13 +1334,17 @@ CRITICAL RULES:
 2. Assessments must be EVIDENCE-BASED -- describe what exists today, not what should exist. Include findings and scores.
 3. Goals must have ALL SMART fields populated -- specific_objective, measurable_metrics, target_value, current_value, baseline_value, time_bound_target, business_owner.
 4. Conflict flags: only flag REAL conflicts where achieving one goal significantly hinders another.
-5. Be specific to the domain -- no generic filler."""
+5. Be specific to the domain -- no generic filler.
+6. DO NOT DUPLICATE existing repository entities listed above -- if one already represents the concept you were about to generate, reuse its exact name (reference it) instead of creating a new, differently-worded entity for the same thing."""
 
     ARCHITECTURE_VARIANTS_PROMPT = """You are an enterprise architect. For the following solution, produce exactly 3 alternative architecture variants.
 
 Solution: {solution_name}
 Domain: {business_domain}
 Brief: {problem_statement}
+
+{existing_repository_context}
+IMPORTANT: do not duplicate existing repository entities listed above -- reuse an existing entity's exact name where one already represents the concept, rather than inventing a new, differently-worded entity for the same thing.
 
 Output a single JSON object with key "variants", an array of exactly 3 objects. Each object must have:
 - "variant_type": one of "cost_optimized", "timeline_optimized", "risk_balanced"
@@ -1394,6 +1400,8 @@ Return only valid JSON, no markdown fences. Example shape:
 ## CROSS-CUTTING REQUIREMENTS (apply to EVERY element you generate)
 {nfr_checklist}
 For each element, indicate which cross-cutting requirements it must satisfy.
+
+{existing_repository_context}
 
 ## Instructions
 Generate Strategy Layer entities that connect the Motivation Layer (drivers, goals) to the selected capabilities.
@@ -1463,6 +1471,10 @@ CRITICAL -- TRACEABILITY:
 - Each value_stream.stages[].capability_name must match a selected capability
 - Each capability_gap_analysis.capability_name must match a selected capability
 - Each resource.course_of_action_name must match a course of action name you generated
+
+DO NOT DUPLICATE existing repository entities listed above -- reuse an existing entity's exact
+name where one already represents the concept, rather than inventing a new, differently-worded
+entity for the same thing.
 
 Be specific to the domain. No generic filler."""
 
@@ -1776,6 +1788,7 @@ CRITICAL -- TRACEABILITY:
                 solution_name=solution.name or 'Untitled',
                 business_domain=solution.business_domain or 'General',
                 problem_statement=(brief or {}).get('problem_statement', ''),
+                existing_repository_context=self._gather_duplicate_avoidance_context(solution),
             )
             from app.modules.ai_chat.services.llm_service import LLMService
             provider, model = LLMService._get_configured_provider()
@@ -1925,6 +1938,7 @@ CRITICAL -- TRACEABILITY:
                 industry_context=brief.get('industry_context', 'Not specified'),
                 technology_preferences=brief.get('technology_preferences', 'No preference'),
                 org_context=org_context,
+                existing_repository_context=self._gather_duplicate_avoidance_context(solution),
             )
 
             # 3. Call LLM
@@ -2088,6 +2102,7 @@ CRITICAL -- TRACEABILITY:
             nfr_checklist=motiv_ctx['nfr_checklist'],
             capability_count=len(capabilities),
             capabilities_json=caps_json,
+            existing_repository_context=self._gather_duplicate_avoidance_context(solution),
         )
 
         # 4. Call LLM
@@ -3660,6 +3675,69 @@ CRITICAL -- TRACEABILITY:
             logger.debug("Historical metrics enrichment failed: %s", exc)
 
         return ctx
+
+    def _gather_duplicate_avoidance_context(self, solution: Solution) -> str:
+        """A-06: repository-context for the "blind generation" prompts.
+
+        DRAFT_ARCHITECTURE_PROMPT, ARCHITECTURE_VARIANTS_PROMPT and
+        STRATEGY_SPECIALIST_PROMPT generated entities with zero visibility into
+        what already exists, which the August 2026 QA sweep pinned as the root
+        cause of the repository's 46% duplication rate (see
+        app/utils/duplicate_guard.py) -- the LLM has no way to avoid recreating
+        a Driver or CourseOfAction that is already there if it is never told.
+
+        This mirrors the Composer's element-reuse picker pattern (surface a
+        short list of existing similar names, org-scoped, and let the caller
+        decide to reuse rather than recreate) instead of inventing a new
+        mechanism: same normalised-name universe as duplicate_guard, just
+        listing instead of blocking, because a prompt has no write to 409 on.
+        """
+        try:
+            from app.models.archimate_core import ArchiMateElement
+
+            # ArchiMateElement inherits TenantMixin -> do_orm_execute already
+            # injects organization_id, so no explicit predicate here (would
+            # double-filter per CLAUDE.md).
+            existing_elements = (
+                ArchiMateElement.query.order_by(ArchiMateElement.id.desc())
+                .limit(40)
+                .all()
+            )
+            element_lines = [
+                f"  - {e.name} ({e.type})"
+                for e in existing_elements
+                if e.name
+            ]
+
+            existing_solutions = (
+                Solution.query.filter(Solution.id != solution.id)
+                .order_by(Solution.id.desc())
+                .limit(15)
+                .all()
+            )
+            solution_lines = [f"  - {s.name}" for s in existing_solutions if s.name]
+
+            if not element_lines and not solution_lines:
+                return ""
+
+            block = [
+                "## Existing Repository Entities (DO NOT DUPLICATE)",
+                "These already exist in this organisation's repository. Before naming a "
+                "new entity, check this list: if an existing entity already represents "
+                "the same concept, REUSE its exact name instead of inventing a new, "
+                "differently-worded entity for the same thing. Only create a new entity "
+                "when nothing below already covers it.",
+            ]
+            if element_lines:
+                block.append("### Existing ArchiMate elements (sample)")
+                block.extend(element_lines)
+            if solution_lines:
+                block.append("### Existing solutions (sample)")
+                block.extend(solution_lines)
+            return "\n".join(block)
+        except Exception as e:
+            logger.debug("Duplicate-avoidance context gathering failed: %s", e)
+            return ""
 
     def _gather_org_context(self, solution: Solution) -> str:
         """Gather organizational context for the LLM prompt."""

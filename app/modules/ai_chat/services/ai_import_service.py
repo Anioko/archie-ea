@@ -2060,10 +2060,14 @@ Provide analysis in JSON format:
                 result["errors"].append("Application name required")
                 return result
 
-            # Create or update application
-            existing = ApplicationComponent.query.filter(
-                ApplicationComponent.name.ilike(name)
-            ).first()
+            # Create or update application. ARCH-030(i): use the same normalised
+            # matching as the interactive create paths (app/utils/duplicate_guard)
+            # rather than a plain .ilike(), so "HxGN  EAM " and "hxgn eam" merge
+            # into the same row instead of the whitespace variant silently
+            # creating a second application.
+            from app.utils.duplicate_guard import find_duplicate_by_name
+
+            existing = find_duplicate_by_name(ApplicationComponent, name)
             if existing:
                 for key, value in app_data.items():
                     if hasattr(existing, key) and value and key != "id":
@@ -2210,13 +2214,22 @@ Provide analysis in JSON format:
         return result
 
     def bulk_import_with_ai(self, applications_data: List[Dict], **kwargs) -> Dict:
-        """Bulk import with AI - calls import_with_ai_analysis for each app."""
+        """Bulk import with AI - calls import_with_ai_analysis for each app.
+
+        ARCH-030(i): rows sharing a normalised name *within this batch* are
+        merge-or-skip, not 409 (a 409 would abort the whole job) — the first
+        occurrence of a name is processed, later occurrences in the same
+        batch are skipped and counted, never silently overwritten.
+        """
+        from app.utils.duplicate_guard import normalize_name
+
         results = {
             "total": len(applications_data),
             "successful": 0,
             "failed": 0,
             "created": 0,
             "updated": 0,
+            "skipped_duplicate_in_batch": 0,
             "total_capabilities_mapped": 0,
             "total_processes_mapped": 0,
             "total_archimate_created": 0,
@@ -2226,7 +2239,25 @@ Provide analysis in JSON format:
             "errors": [],
         }
 
+        seen_names_in_batch: set = set()
+
         for app_data in applications_data:
+            normalized = normalize_name(app_data.get("name"))
+            if normalized and normalized in seen_names_in_batch:
+                results["skipped_duplicate_in_batch"] += 1
+                results["applications"].append(
+                    {
+                        "success": False,
+                        "skipped": True,
+                        "reason": "duplicate_within_batch",
+                        "application_name": app_data.get("name", "Unknown"),
+                        "errors": [],
+                    }
+                )
+                continue
+            if normalized:
+                seen_names_in_batch.add(normalized)
+
             r = self.import_with_ai_analysis(app_data, **kwargs)
             if r["success"]:
                 results["successful"] += 1

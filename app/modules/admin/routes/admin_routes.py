@@ -4111,3 +4111,41 @@ def servicenow_sync_status():
         "synced_applications": synced_apps,
         "instance_url": snow_config.base_url
     })
+
+
+# ── ARCH-030(ii): duplicate merge/reconcile workflow ────────────────────────
+# Admin-facing repoint-then-delete for duplicates already in the repository.
+# Never merges across organisations, never deletes without repointing FKs
+# first. See app/commands/dedupe_entities.py for the one-off bulk remediation
+# CLI this shares its merge engine with.
+
+@admin_bp.route("/duplicates/merge", methods=["POST"])
+@login_required
+@admin_required
+def merge_duplicates():
+    """Repoint FK references from loser rows to a chosen winner, then delete
+    the losers. Body: {"model": "archimate_element"|"solution",
+    "winner_id": int, "loser_ids": [int, ...], "dry_run": bool}."""
+    from app.commands.dedupe_entities import merge_duplicate_rows
+
+    data = request.get_json(silent=True) or {}
+    model_key = data.get("model")
+    winner_id = data.get("winner_id")
+    loser_ids = data.get("loser_ids") or []
+    dry_run = bool(data.get("dry_run", False))
+
+    if model_key not in ("archimate_element", "solution"):
+        return jsonify({"success": False, "error": "model must be 'archimate_element' or 'solution'"}), 400
+    if not isinstance(winner_id, int) or not loser_ids:
+        return jsonify({"success": False, "error": "winner_id (int) and loser_ids (non-empty list) are required"}), 400
+
+    org_id = getattr(g, "current_org_id", None)
+
+    try:
+        report = merge_duplicate_rows(
+            model_key, winner_id, loser_ids, organization_id=org_id, dry_run=dry_run
+        )
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+    return jsonify({"success": True, **report})

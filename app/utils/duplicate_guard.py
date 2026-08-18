@@ -35,6 +35,8 @@ __all__ = [
     "find_duplicate_by_name",
     "duplicate_conflict_response",
     "allow_duplicate_requested",
+    "bulk_partition_new_vs_duplicate",
+    "find_similar_entities",
 ]
 
 
@@ -122,6 +124,150 @@ def duplicate_conflict_response(entity_label: str, existing, name_field: str = "
         ),
         409,
     )
+
+
+def bulk_partition_new_vs_duplicate(
+    model,
+    rows: list,
+    *,
+    name_key: str = "name",
+    name_field: str = "name",
+    organization_id: int | None = None,
+    extra_filters: list | None = None,
+):
+    """ARCH-030(ii): merge-or-skip partitioning for bulk importers/connectors.
+
+    Unlike ``find_duplicate_by_name`` (one row, used interactively -> 409),
+    a bulk job processes hundreds of rows and a 409 would abort the whole
+    batch on the first collision. This instead partitions the candidate rows
+    into ``new`` (safe to insert) and ``skipped`` (normalized name already
+    exists — in the DB *or* earlier in this same batch), using the identical
+    ``normalize_name`` matching as the interactive guard so a row that would
+    409 interactively is the same row that gets skipped here.
+
+    Default policy is skip, never overwrite: a bulk job should not silently
+    mutate a row it did not intend to touch. Callers that want upsert
+    semantics should look the existing row up themselves (as several CSV
+    importers already do) — this helper only tells you what's safe to create.
+
+    Args:
+        model: mapped class to check against.
+        rows: list of dicts, each a would-be row's fields.
+        name_key: key in each row dict holding the candidate name.
+        name_field: column name on ``model`` holding the name.
+        organization_id / extra_filters: see ``find_duplicate_by_name``.
+
+    Returns:
+        {
+          "new": [rows safe to insert, in input order],
+          "skipped": [{"row": row, "reason": str, "duplicate_of": id|None}],
+        }
+    """
+    new_rows: list = []
+    skipped: list = []
+    seen_in_batch: dict[str, int] = {}
+
+    for row in rows:
+        candidate_name = row.get(name_key) if isinstance(row, dict) else getattr(row, name_key, None)
+        normalized = normalize_name(candidate_name)
+
+        if not normalized:
+            skipped.append({"row": row, "reason": "missing_name", "duplicate_of": None})
+            continue
+
+        if normalized in seen_in_batch:
+            skipped.append(
+                {
+                    "row": row,
+                    "reason": "duplicate_within_batch",
+                    "duplicate_of": None,
+                }
+            )
+            continue
+
+        existing = find_duplicate_by_name(
+            model,
+            candidate_name,
+            name_field=name_field,
+            organization_id=organization_id,
+            extra_filters=extra_filters,
+        )
+        if existing is not None:
+            skipped.append(
+                {
+                    "row": row,
+                    "reason": "duplicate_of_existing_row",
+                    "duplicate_of": existing.id,
+                }
+            )
+            continue
+
+        seen_in_batch[normalized] = 1
+        new_rows.append(row)
+
+    return {"new": new_rows, "skipped": skipped}
+
+
+def find_similar_entities(
+    model,
+    name: Any,
+    *,
+    name_field: str = "name",
+    organization_id: int | None = None,
+    extra_filters: list | None = None,
+    threshold: float = 0.72,
+    limit: int = 5,
+    max_candidates: int = 500,
+):
+    """S-06: near-duplicate advisory for the write path — moves the existing
+    post-hoc fuzzy detector onto create, instead of only ever running after
+    the fact.
+
+    Reuses ``SimpleDuplicateService._calculate_name_similarity`` (the exact
+    function ``app/services/simple_duplicate_service.py``'s batch detector
+    already uses) rather than building a second one — same scoring, just
+    called before the write commits instead of in a scheduled sweep.
+
+    This is deliberately advisory, not a 409: composes with
+    ``find_duplicate_by_name``'s exact-match 409 for the "same name" case;
+    this covers "different name, same thing" (typos, reordering, partial
+    matches) where blocking the write would be wrong — the caller decides
+    whether to proceed having been shown what's similar.
+
+    Returns a list of ``{"id", "name", "score"}`` for rows scoring >=
+    ``threshold``, sorted by score descending, capped at ``limit``. Empty
+    list when the name is blank or nothing scores high enough — never raises,
+    so a caller can always do ``if similar: ...`` without a try/except.
+    """
+    if not str(name or "").strip():
+        return []
+
+    try:
+        from app.services.simple_duplicate_service import SimpleDuplicateService
+
+        query = model.query
+        if organization_id is not None and hasattr(model, "organization_id"):
+            from flask import g, has_request_context
+
+            already_scoped = has_request_context() and getattr(g, "current_org_id", None)
+            if not already_scoped:
+                query = query.filter(model.organization_id == organization_id)
+        for criterion in extra_filters or []:
+            query = query.filter(criterion)
+
+        candidates = query.limit(max_candidates).all()
+        scored = []
+        for row in candidates:
+            other_name = getattr(row, name_field, None)
+            score = SimpleDuplicateService._calculate_name_similarity(str(name), other_name)
+            if score >= threshold and score < 1.0:  # 1.0 (exact) is duplicate_guard's job, not this one's
+                scored.append({"id": row.id, "name": other_name, "score": round(score, 3)})
+
+        scored.sort(key=lambda r: r["score"], reverse=True)
+        return scored[:limit]
+    except Exception:
+        # Advisory only -- a failure here must never block or fail the write.
+        return []
 
 
 _TRUTHY = {"1", "true", "yes", "on"}

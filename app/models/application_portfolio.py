@@ -218,8 +218,13 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     )
 
     # Lifecycle management
+    # ARCH-031: was default="operational", which meant an application created
+    # with only a name silently claimed to be live in production and rendered
+    # a green "Operational" badge — fabricated data per CLAUDE.md. Null now
+    # means "not assessed"; list_simple.html's STATUS_MAP renders that as a
+    # neutral "Not set" badge, never a green one.
     lifecycle_status = Column(
-        db.String(20), default="operational"
+        db.String(20), default=None
     )  # planning, development, testing, operational, deprecated, retired
     # healthy, at_risk, critical. my_applications' dashboard and health overview
     # both read app.health_status, but no such column existed on this model - so

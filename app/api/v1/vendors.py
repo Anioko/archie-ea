@@ -14,7 +14,11 @@ from sqlalchemy import or_
 
 from app import db
 from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
-from app.utils.duplicate_guard import duplicate_conflict_response, find_duplicate_by_name
+from app.utils.duplicate_guard import (
+    duplicate_conflict_response,
+    find_duplicate_by_name,
+    find_similar_entities,
+)
 from app.utils.api_response import (
     error_response,
     not_found_response,
@@ -248,6 +252,9 @@ def create_vendor():
         if existing is not None:
             return duplicate_conflict_response("A vendor", existing)
 
+        # S-06: near-duplicate advisory, surfaced before the write commits.
+        similar = find_similar_entities(VendorOrganization, data["name"])
+
         # Create new vendor
         # Auto-generate required NOT NULL fields from the name
         raw_name = data["name"]
@@ -293,6 +300,8 @@ def create_vendor():
                 "created_at": vendor.created_at.isoformat()
                 if vendor.created_at
                 else None,
+                "similar_entities": similar,
+                "similar_entities_count": len(similar),
             },
             status_code=201,
         )

@@ -17,6 +17,7 @@ from app.utils.duplicate_guard import (
     allow_duplicate_requested,
     duplicate_conflict_response,
     find_duplicate_by_name,
+    find_similar_entities,
 )
 
 @application_mgmt.route("/api/applications/<string:app_id>", methods=["GET"])
@@ -336,6 +337,13 @@ def create_application_element(app_id):
         if existing is not None:
             return duplicate_conflict_response("An ArchiMate element", existing)
 
+    # S-06: near-duplicate advisory, surfaced before the write commits.
+    similar = find_similar_entities(
+        ArchiMateElement,
+        data["name"],
+        extra_filters=[ArchiMateElement.type == data["type"]],
+    )
+
     try:
         element = ArchiMateElement(
             name=data["name"],
@@ -363,6 +371,8 @@ def create_application_element(app_id):
                         "documentation": getattr(element, "documentation", None),
                         "architecture_id": element.architecture_id,
                     },
+                    "similar_entities": similar,
+                    "similar_entities_count": len(similar),
                 }
             ),
             201,
