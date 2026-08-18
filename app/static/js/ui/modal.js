@@ -524,7 +524,29 @@
      *   }
      */
     function confirmDialog(message, options) {
+        // CMP-04: accept BOTH call styles —
+        //   confirm('text', { confirmLabel, ... })   and
+        //   confirm({ message, title, confirmText, cancelText, variant })
+        // The object-first form (used by the composer's "Clear canvas?" flow)
+        // previously rendered the body as literally "[object Object]" because the
+        // object was String()'d straight into the content. Normalise here so the
+        // fix covers every object-first caller, not just the composer.
+        if (message !== null && typeof message === 'object') {
+            options = message;
+            message = options.message || options.text || '';
+        }
         options = options || {};
+        // Support both naming conventions for labels and destructiveness.
+        const confirmLabel = options.confirmLabel || options.confirmText || 'Confirm';
+        const cancelLabel = options.cancelLabel || options.cancelText || 'Cancel';
+        let isDestructive;
+        if (options.destructive !== undefined) {
+            isDestructive = options.destructive;
+        } else if (options.variant) {
+            isDestructive = options.variant === 'destructive';
+        } else {
+            isDestructive = true;  // preserve prior default
+        }
         const id = 'modal-confirm-' + Date.now();
         create({
             id:      id,
@@ -535,13 +557,13 @@
             keyboard: true,
             buttons: [
                 {
-                    label:   options.cancelLabel  || 'Cancel',
+                    label:   cancelLabel,
                     variant: 'outline',
                     resolve: false
                 },
                 {
-                    label:   options.confirmLabel || 'Confirm',
-                    variant: options.destructive === false ? 'primary' : 'destructive',
+                    label:   confirmLabel,
+                    variant: isDestructive ? 'destructive' : 'primary',
                     resolve: true
                 }
             ]

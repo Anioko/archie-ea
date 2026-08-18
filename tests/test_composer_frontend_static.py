@@ -1,0 +1,45 @@
+"""Static regression guards for composer front-end fixes (CMP-04, ...).
+
+There is no JS test runtime in this environment (the JS suite is Playwright,
+which needs a browser), so these guards assert the shape of the fix in source —
+enough to catch a regression that silently reverts the change. Behavioural
+confirmation of these UI fixes is done with a browser pass (fix-then-verify).
+"""
+
+from __future__ import annotations
+
+import pathlib
+
+JS = pathlib.Path(__file__).resolve().parents[1] / "app" / "static" / "js"
+
+
+def _read(rel: str) -> str:
+    return (JS / rel).read_text(encoding="utf-8")
+
+
+def test_cmp04_confirm_accepts_object_first_argument():
+    """Platform.modal.confirm must not render an options object as [object Object].
+
+    ui/modal.js confirmDialog(message, options) String()'d message into the body;
+    the composer calls it with a single {title, message, ...} object, so the body
+    read literally "[object Object]". The fix normalises an object-first call.
+    """
+    src = _read("ui/modal.js")
+    # The normalisation branch: when message is an object, treat it as options
+    # and pull the body text out of it.
+    assert "typeof message === 'object'" in src, \
+        "confirmDialog must detect an object-first call"
+    assert "options.message || options.text" in src, \
+        "confirmDialog must extract the body text from the options object"
+    # Both label naming conventions supported (confirmText/cancelText and
+    # confirmLabel/cancelLabel) so the composer's confirmText/cancelText work.
+    assert "options.confirmLabel || options.confirmText" in src
+    assert "options.cancelLabel || options.cancelText" in src
+
+
+def test_cmp03_audit_failure_not_toasted():
+    """The composer must not toast on a fire-and-forget audit-log failure."""
+    src = _read("archimate/composer.js")
+    # The old code toasted 'Failed to log audit event' inside the catch.
+    assert "Failed to log audit event" not in src, \
+        "audit-log failures must be silent (fire-and-forget), not toasted"
