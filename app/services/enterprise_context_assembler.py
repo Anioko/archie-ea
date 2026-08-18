@@ -1013,7 +1013,7 @@ triggering, flow, specialization, association.
                     "SELECT ac.id, ac.name FROM application_components ac "
                     "JOIN solution_applications sa "
                     "ON sa.application_component_id = ac.id "
-                    "WHERE sa.solution_id = :sid" + _org_clause
+                    "WHERE sa.solution_id = :sid AND ac.deleted_at IS NULL" + _org_clause
                 ),
                 {"sid": solution_id, **_org_params},
             ).fetchall()

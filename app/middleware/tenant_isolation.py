@@ -26,6 +26,32 @@ def install_tenant_filter(app):
     """Wire SQLAlchemy event listeners for automatic tenant scoping."""
 
     @db.event.listens_for(db.session, "do_orm_execute")
+    def _add_soft_delete_filter(orm_execute_state):
+        # KNOWN REGRESSION closure (see 9cda379): bulk-delete soft-deletes
+        # ApplicationComponent via a nullable deleted_at column, but nothing
+        # filtered it back out of read paths, so a "deleted" application kept
+        # appearing in every list/detail/dashboard/count query. Rather than
+        # patch the ~150 call sites individually (a fourth independent count
+        # path per file, exactly what the register is asking us to stop
+        # doing), filter it once here, the same mechanism the tenant
+        # predicate already uses. Applies unconditionally — unlike the tenant
+        # predicate below, a soft-deleted row should stay hidden from ORM
+        # reads even outside a request context (CLI, scheduler). Recovery
+        # (`UPDATE ... SET deleted_at = NULL`) is raw SQL and bypasses the
+        # ORM entirely, so it is unaffected.
+        if not orm_execute_state.is_select:
+            return
+        from app.models.application_portfolio import ApplicationComponent
+
+        orm_execute_state.statement = orm_execute_state.statement.options(
+            with_loader_criteria(
+                ApplicationComponent,
+                lambda cls: cls.deleted_at.is_(None),
+                include_aliases=True,
+            )
+        )
+
+    @db.event.listens_for(db.session, "do_orm_execute")
     def _add_tenant_filter(orm_execute_state):
         # Skip if no tenant context (CLI commands, migrations, system tasks)
         if not hasattr(g, "current_org_id") or g.current_org_id is None:

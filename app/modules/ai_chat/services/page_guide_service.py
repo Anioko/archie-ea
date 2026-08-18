@@ -266,7 +266,8 @@ class PageGuideService:
                     text(
                         f"""
                         SELECT
-                            (SELECT COUNT(*) FROM application_components{_org_where()}) AS total_apps,
+                            (SELECT COUNT(*) FROM application_components
+                             WHERE deleted_at IS NULL{_org_and()}) AS total_apps,
                             (SELECT COUNT(*) FROM solutions{_org_where()}) AS total_solutions,
                             (SELECT ROUND(AVG(maturity_current), 1) FROM solutions
                              WHERE maturity_current > 0{_org_and()}) AS avg_maturity_level,

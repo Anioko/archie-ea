@@ -563,14 +563,14 @@ class ScenarioAnalysisService:
             # Get the app's archimate element ID
             elem_id = db.session.execute(text(
                 "SELECT archimate_element_id FROM application_components "
-                "WHERE id = :app_id" + _org_clause
+                "WHERE id = :app_id AND deleted_at IS NULL" + _org_clause
             ), {"app_id": app_id, **_org_params}).scalar()
 
             if not elem_id:
                 # Fallback: use app fields
                 row = db.session.execute(text(
                     "SELECT number_of_integrations, interfaces_count, dependencies_count "
-                    "FROM application_components WHERE id = :app_id" + _org_clause
+                    "FROM application_components WHERE id = :app_id AND deleted_at IS NULL" + _org_clause
                 ), {"app_id": app_id, **_org_params}).fetchone()
                 if row:
                     total = (row[0] or 0) + (row[1] or 0) + (row[2] or 0)
@@ -612,7 +612,7 @@ class ScenarioAnalysisService:
             _org_clause, _org_params = org_scope()
             row = db.session.execute(text(
                 "SELECT user_count FROM application_components "
-                "WHERE id = :app_id" + _org_clause
+                "WHERE id = :app_id AND deleted_at IS NULL" + _org_clause
             ), {"app_id": app_id, **_org_params}).fetchone()
             if not row:
                 # The org-scoped read above found no such application in this

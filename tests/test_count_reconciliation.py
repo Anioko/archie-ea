@@ -279,3 +279,89 @@ def test_admin_users_directory_states_its_scope(org_client):
         "page must state the platform-wide total for reconciliation against "
         "/admin/organizations"
     )
+
+
+# ---------------------------------------------------------------------------
+# Soft-delete regression (9cda379): deleted_at must be filtered out of every
+# ORM read of ApplicationComponent, or a "deleted" application keeps
+# appearing in listings/counts/dashboards forever.
+# ---------------------------------------------------------------------------
+
+
+def test_soft_deleted_application_is_excluded_from_orm_reads(app, db_session, make_org, tenant_ctx):
+    """A soft-deleted ApplicationComponent must not surface via ORM SELECT.
+
+    9cda379 added the nullable deleted_at/deleted_by columns for bulk-delete
+    recovery but nothing filtered deleted_at IS NULL back into reads — the
+    commit says so explicitly ("KNOWN REGRESSION, deliberately committed").
+    This reproduces it directly at the ORM layer: query the model the way
+    every list/detail/dashboard/count call site does, with a row that has
+    deleted_at set, and assert it is invisible.
+    """
+    import datetime
+
+    from app.models.application_portfolio import ApplicationComponent
+
+    org = make_org("softdel")
+
+    with tenant_ctx(org.id):
+        live = ApplicationComponent(
+            name=f"Live App {uuid.uuid4().hex[:6]}",
+            organization_id=org.id,
+        )
+        dead = ApplicationComponent(
+            name=f"Deleted App {uuid.uuid4().hex[:6]}",
+            organization_id=org.id,
+            deleted_at=datetime.datetime.utcnow(),
+            deleted_by=None,
+        )
+        db_session.add_all([live, dead])
+        db_session.commit()
+
+        ids = {a.id for a in ApplicationComponent.query.all()}
+        assert live.id in ids, "a non-deleted application must still be readable"
+        assert dead.id not in ids, (
+            "a soft-deleted application (deleted_at set) was returned by a "
+            "plain ORM query — this is the exact 9cda379 regression: nothing "
+            "filters deleted_at IS NULL out of read paths"
+        )
+
+        # Only asserts the deleted row isn't double-counted relative to a
+        # direct id-based check, independent of how many other rows exist
+        # from other tests in this (rolled-back) transaction.
+        assert dead.id not in {a.id for a in ApplicationComponent.query.filter(
+            ApplicationComponent.id.in_([live.id, dead.id])
+        ).all()}
+
+
+def test_duplicate_guard_does_not_collide_with_soft_deleted_row(app, db_session, make_org, tenant_ctx):
+    """A name must be reusable after the row holding it is soft-deleted.
+
+    Without an exclusion, find_duplicate_by_name's ORM query would still see
+    the soft-deleted row (same defect as the read paths above) and make the
+    name permanently unusable — worse than before soft-delete existed, when a
+    hard delete actually freed the name.
+    """
+    import datetime
+
+    from app.models.application_portfolio import ApplicationComponent
+    from app.utils.duplicate_guard import find_duplicate_by_name
+
+    org = make_org("softdel-dup")
+    name = f"Reusable App {uuid.uuid4().hex[:6]}"
+
+    with tenant_ctx(org.id):
+        dead = ApplicationComponent(
+            name=name,
+            organization_id=org.id,
+            deleted_at=datetime.datetime.utcnow(),
+        )
+        db_session.add(dead)
+        db_session.commit()
+
+        existing = find_duplicate_by_name(ApplicationComponent, name)
+        assert existing is None, (
+            "find_duplicate_by_name matched a soft-deleted row — the name is "
+            "permanently unusable after deletion, which is worse than a hard "
+            "delete"
+        )
