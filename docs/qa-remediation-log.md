@@ -28,6 +28,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | M-03 | S1 | Entity Matching Assistant errors on every input | not started |
 | M-05 | S1 | No separation of duties: one user can create, submit and approve the same ARB review | not started |
 | M-06 | S1 | ARB decision records do not store who made the decision | not started |
+| S-11 | S1 | Core architecture capabilities are undiscoverable from navigation | SEVERITY RAISED S2 -> S1 on the register's own 18 Aug reasoning. Discoverability has now caused TWO mis-assessments by an experienced tester: ARCH-120/121/125 in Addendum 1, and ARCH-122 again on 18 Aug after /portfolio/ was found to be a complete programme-management module. Both times capability was present, empty and unreachable. If a systematic route sweep twice concluded shipped capability did not exist, a prospect under time pressure reaches the same wrong conclusion and the product is judged on a fraction of what it does. Now also covers /portfolio/. |
 | V-01 | S1 | AI agent writes are not constrained by the invoking user's permissions | CLUSTER 0, most severe finding of the engagement. A Viewer (perms 1) blocked with 403 from DELETE /architecture/elements/470 created solution id 25 by asking the chat assistant, then approved their own request (POST /ai-chat/approvals/25/approve -> 200). Solutions 5 -> 6. Two failures required: the agent does not authorise the request, and the approval gate does not authorise the approver. Permission checks must live in the TOOL EXECUTION LAYER, not the prompt - a prompt instruction is not an access control. |
 | V-02 | S1 | POST /applications/create has no authorization check | Viewer POST /applications/create -> 201 id=105, no agent involved. Same endpoint also lacks CSRF (A-04). Its sibling /applications/bulk-delete has BOTH controls - strong evidence protection is applied endpoint-by-endpoint by hand rather than default-deny middleware. |
 | V-03 | S1 | ARB review creation and submission have no authorization check | Viewer created REV-2026-002 and REV-2026-003 via two DIFFERENT creation endpoints and advanced one to submitted. Neither checks permission. Recording a DECISION as Viewer returned 200 HTML and left the review undecided - the auditor explicitly says whether a Viewer can approve through the UI is an OPEN QUESTION, not established as blocked. Duplicate creation endpoints must be consolidated. |
@@ -41,7 +42,6 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-115 | S2 | Conversation history not restored on reload | not started |
 | ARCH-130 | S2 | No evidence of automated regression coverage | not started |
 | ARCH-131 | S2 | No AI output evaluation harness | not started |
-| S-11 | S2 | Core architecture capabilities are undiscoverable from navigation | not started |
 | V-05 | S2 | Cross-tenant enumeration requires Administrator, not any user | Re-test of A-01 as Viewer: all cross-tenant reads return 403. Still real - no platform/tenant admin split, sequential ids, and every human account is an Administrator. |
 | V-06 | S2 | No login or IP tracking | Account page shows 'Last login tracking not available' / 'IP tracking not available'. No record of authentication events: no credential-compromise detection, no failed-login monitoring, no session forensics. Compounds ARCH-092 - with neither auth events nor data-change events recorded, the platform produces NO security telemetry at all. Standard enterprise procurement control; SOC 2 / ISO 27001 evidence. |
 | ARB-01 | S3 | ARB workflow unexercised; governance-gates data endpoint missing | route was never wired; the admin UI calls /admin/api/governance-gates, which works |
@@ -56,7 +56,6 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-105 | S3 | Action toolbar uses unexplained internal jargon | not started |
 | ARCH-106 | S3 | Cryptic data-quality labelling | not started |
 | ARCH-116 | S3 | Test artefact is the only record in the application catalogue | not started |
-| ARCH-122 | S3 | Delivery management partially exists but RAID, dependencies, benefits and resourcing remain absent | not started |
 | M-04 | S3 | Data Stewardship's real findings are all graded INFO, hiding genuine risk | not started |
 | M-07 | S3 | TOGAF phase taxonomy differs between modules | not started |
 | S-07 | S3 | TOGAF ADM checklist is incomplete and unlabelled | not started |
@@ -69,6 +68,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-111 | S4 | No brand typeface; system font stack in use | not started |
 | ARCH-123 | S5 | Data architecture support is shallow relative to the Data Architect persona | not started |
 | ARCH-124 | S5 | No technology standards catalogue or tech radar | not started |
+| ARCH-122 | -- | Delivery management — WITHDRAWN as stated (2nd correction, 18 Aug) | Withdrawn: budget, benefits and risk tracking all already exist. Re-scoped INTO S-11 (exists, unpopulated, absent from navigation). Dependencies and milestones remain unverified — read-only answer requested, no new code. I had a wave building RAID/benefits when this landed; stopped and reverted. |
 
 ## Fixed
 

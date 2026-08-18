@@ -2,7 +2,7 @@
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
  "total": 114,
  "closed": 64,
- "open": 45,
+ "open": 44,
  "findings": [
   {
    "id": "A-06",
@@ -297,10 +297,10 @@
   },
   {
    "id": "S-11",
-   "severity": "S2",
+   "severity": "S1",
    "title": "Core architecture capabilities are undiscoverable from navigation",
    "status": "open",
-   "note": "",
+   "note": "SEVERITY RAISED S2 -> S1 on the register's own 18 Aug reasoning. Discoverability has now caused TWO mis-assessments by an experienced tester: ARCH-120/121/125 in Addendum 1, and ARCH-122 again on 18 Aug after /portfolio/ was found to be a complete programme-management module. Both times capability was present, empty and unreachable. If a systematic route sweep twice concluded shipped capability did not exist, a prospect under time pressure reaches the same wrong conclusion and the product is judged on a fraction of what it does. Now also covers /portfolio/.",
    "fix_commit": "",
    "evidence": [],
    "reviewed": false,
@@ -562,12 +562,14 @@
   },
   {
    "id": "ARCH-122",
-   "severity": "S3",
-   "title": "Delivery management partially exists but RAID, dependencies, benefits and resourcing remain absent",
-   "status": "open",
-   "note": "",
+   "severity": "--",
+   "title": "Delivery management — WITHDRAWN as stated (2nd correction, 18 Aug)",
+   "status": "not_a_defect",
+   "note": "Withdrawn: budget, benefits and risk tracking all already exist. Re-scoped INTO S-11 (exists, unpopulated, absent from navigation). Dependencies and milestones remain unverified — read-only answer requested, no new code. I had a wave building RAID/benefits when this landed; stopped and reverted.",
    "fix_commit": "",
-   "evidence": [],
+   "evidence": [
+    "manual:/portfolio/ is a complete programme module — INITIATIVE, PHASE, HEALTH (RAG), BUDGET, SPENT, VARIANCE, COMPLETE, BENEFITS, SPONSOR, plus a Health Scorecard with a Solution Risk Register"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1400,5 +1402,5 @@
  "deployed": 0,
  "protect": 2,
  "_register_discrepancy": "The 18 Aug register header claims '115 raised, 4 withdrawn, 3 revised, 1 verified fixed -> 107 active'. Two things in that do not reconcile and are recorded rather than smoothed over. (1) The '1 verified fixed' finding is never NAMED anywhere: no correction-ledger row, no status change in the Section 5 index, and no finding described as fixed in either document. Nothing has been marked closed on that basis. (2) 104 -> 115 raised is +11, but only 7 findings (I-01, M-01..M-06) are actually merged into the register's clusters and index; M-07 and M-08 appear in the Update-4 source document but in neither, and are carried here anyway because a finding dropped by an untriaged summary is still a finding. That leaves 2 raised findings unaccounted for. If they surface in a later document they get added here.",
- "not_a_defect": 3
+ "not_a_defect": 4
 }
