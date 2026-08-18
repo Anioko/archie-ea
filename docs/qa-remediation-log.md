@@ -9,10 +9,10 @@ Source: the 17 Aug 2026 QA remediation register (106 active findings).
 | | Count |
 |---|---|
 | Findings total | 106 |
-| Fixed and evidenced | 36 |
-| Still open | 69 |
+| Fixed and evidenced | 64 |
+| Still open | 41 |
 | Closed but unevidenced (blocks the gate) | 0 |
-| Of the fixed: verified by eye only | 10 |
+| Of the fixed: verified by eye only | 25 |
 | Live in production | 0 |
 
 A finding counts as fixed only when its commit is recorded **and** it carries evidence. Work that is partly done stays open with a note — "mostly done" is open.
@@ -21,75 +21,47 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 
 | ID | Sev | Finding | Status |
 |---|---|---|---|
-| A-06 | S1 | The element-generation prompt has no repository context and no duplicate-avoidance instruction | not started |
-| ARCH-001 | S1 | Platform suffers complete outages under trivial load | root-caused as memcg OOM (9ead4e9); needs RAM decision + 4h soak |
-| ARCH-030 | S1 | No uniqueness or duplicate protection anywhere on the write path | guard landed (2d7be01); importers + dedupe migration outstanding |
+| ARCH-001 | S1 | Platform suffers complete outages under trivial load | root-caused as memcg OOM (9ead4e9). REPRODUCED LIVE 18 Aug 08:31 by a single `docker compose exec server flask` diagnostic, which boots a second full app inside the 2600m cgroup and killed gunicorn/PID 1. Headroom is one Python process. Needs a RAM decision from the owner; operational rule adopted: never run flask CLI in the prod container. |
+| I-01 | S1 | Document upload returns HTTP 500 — both entity-ingestion paths are broken | Register's Update-3 source doc is absent, so detail came from the master register alone. Corroborated independently by the owner's 18 Aug audit, which also raised it and paired it with M-03: with Entity Matching erroring on every input, BOTH entity-ingestion paths are down. That is the mechanism behind the repository reaching 37% duplication. Raised to S1 on that basis. |
 | M-01 | S1 | Portfolio conformance score rewards emptiness | not started |
 | M-02 | S1 | EA Briefing has never produced a finding, including against known defects | not started |
 | M-03 | S1 | Entity Matching Assistant errors on every input | not started |
 | M-05 | S1 | No separation of duties: one user can create, submit and approve the same ARB review | not started |
 | M-06 | S1 | ARB decision records do not store who made the decision | not started |
-| P-01 | S1 | Application list scales linearly in payload and super-linearly in latency | not started |
 | A-03 | S2 | Only three roles exist, with no platform/tenant separation | roles landed (2e3bb7f); unbounded AI-agent permissions outstanding |
 | A-05 | S2 | AI prompts are admin-editable with no audit trail | audit metadata landed (9cda379); version history/diff/rollback outstanding |
 | ARCH-013 | S2 | Agent-reported record attribute contradicts the system of record | not started |
 | ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | nonce+strict-dynamic in prod; unsafe-eval and style-src unsafe-inline remain |
-| ARCH-090 | S2 | No testing at representative enterprise scale | not started |
 | ARCH-091 | S2 | Enterprise identity, tenancy and RBAC unverified | not started |
 | ARCH-092 | S2 | No user-visible audit trail | not started |
 | ARCH-100 | S2 | Data-heavy views use card lists instead of a data grid | not started |
 | ARCH-115 | S2 | Conversation history not restored on reload | not started |
-| ARCH-126 | S2 | Traceability chain is broken in the existing data | not started |
 | ARCH-130 | S2 | No evidence of automated regression coverage | not started |
 | ARCH-131 | S2 | No AI output evaluation harness | not started |
-| C-03 | S2 | Diagram autosave is browser-local only, with a hard scaling ceiling | not started |
-| C-04 | S2 | "New blank diagram" is a destructive action presented as an additive one | not started |
-| CM-01 | S2 | The capability domain is entirely empty, including its reference taxonomy | not started |
-| O-02 | S2 | OEF export omits all views, organizations and properties | not started |
-| O-03 | S2 | OEF import silently fails, reporting success | not started |
-| S-04 | S2 | Blueprint version number contradicts itself | not started |
-| S-05 | S2 | "VIEW AS" role switching has no effect | not started |
-| S-06 | S2 | Duplicate detection exists but runs only after the duplicate is created | not started |
 | S-11 | S2 | Core architecture capabilities are undiscoverable from navigation | not started |
-| ARB-01 | S3 | ARB workflow unexercised; governance-gates data endpoint missing | not started |
-| ARCH-012 | S3 | Repository data quality is not surfaced as actionable work | not started |
-| ARCH-031 | S3 | Application records default to "Operational" on creation | not started |
-| ARCH-041 | S3 | Server-side validation errors surface as "Bad Request" | not started |
-| ARCH-042 | S3 | Required-field validation does not mark the field invalid programmatically | not started |
-| ARCH-043 | S3 | Dead links present in rendered pages | not started |
-| ARCH-052 | S3 | Inconsistent API path conventions and response contracts | not started |
-| ARCH-063 | S3 | Application JavaScript is unbundled and served as many individual files | not started |
-| ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | not started |
+| ARB-01 | S3 | ARB workflow unexercised; governance-gates data endpoint missing | route was never wired; the admin UI calls /admin/api/governance-gates, which works |
+| ARCH-063 | S3 | Application JavaScript is unbundled and served as many individual files | assessed: bundler cannot be added without breaking air-gap/SRI/Python-only-image contract |
+| ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | applications/ bounded by P-01; capability-map 481KB + dashboard markup not trimmed |
 | ARCH-071 | S3 | Stored input is persisted unsanitised (output encoding currently compensates) | scoped to the application-name field only |
 | ARCH-080 | S3 | Skip links fail WCAG AA contrast | not started |
 | ARCH-101 | S3 | Nine separate modal implementations with inconsistent styling and stacking | not started |
-| ARCH-102 | S3 | Native and custom form controls mixed across the product | not started |
+| ARCH-102 | S3 | Native and custom form controls mixed across the product | native selects are the repo-wide convention, not a one-page inconsistency |
 | ARCH-103 | S3 | Duplicate menu button rendered in the header | not started |
 | ARCH-104 | S3 | Oversized KPI tiles carry very low information density | not started |
 | ARCH-105 | S3 | Action toolbar uses unexplained internal jargon | not started |
 | ARCH-106 | S3 | Cryptic data-quality labelling | not started |
-| ARCH-112 | S3 | Heading obscured by the quick-prompt bar at narrow widths | not started |
-| ARCH-113 | S3 | Three levels of nested scroll regions | not started |
-| ARCH-114 | S3 | Persona heading desynchronises from the persona selector | not started |
 | ARCH-116 | S3 | Test artefact is the only record in the application catalogue | not started |
 | ARCH-122 | S3 | Delivery management partially exists but RAID, dependencies, benefits and resourcing remain absent | not started |
 | M-04 | S3 | Data Stewardship's real findings are all graded INFO, hiding genuine risk | not started |
 | M-07 | S3 | TOGAF phase taxonomy differs between modules | not started |
-| O-04 | S3 | Generic export failure message | not started |
 | S-07 | S3 | TOGAF ADM checklist is incomplete and unlabelled | not started |
 | S-08 | S3 | Filter bar labels overlap | not started |
 | S-09 | S3 | Status KPI cards are too narrow for their content | not started |
-| ARCH-024 | S4 | Response latency displayed as raw milliseconds | not started |
-| ARCH-045 | S4 | Model selector is empty and non-functional | not started |
-| ARCH-072 | S4 | Permissions-Policy and Cross-Origin-Opener-Policy headers absent | not started |
-| ARCH-081 | S4 | 10px type in use | not started |
-| ARCH-108 | S4 | Page titles are inconsistent and one is empty | not started |
 | ARCH-109 | S4 | Breadcrumb roots are inconsistent | not started |
-| ARCH-110 | S4 | Two "black" text colours and three "success" greens in use | not started |
+| ARCH-110 | S4 | Two "black" text colours and three "success" greens in use | tokens file already single-valued; class drift held by design-tokens-extended ratchet |
 | ARCH-111 | S4 | No brand typeface; system font stack in use | not started |
 | ARCH-123 | S5 | Data architecture support is shallow relative to the Data Architect persona | not started |
 | ARCH-124 | S5 | No technology standards catalogue or tech radar | not started |
-| I-01 | S? | Document upload returns HTTP 500 | not started |
 
 ## Fixed
 
@@ -97,14 +69,17 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 |---|---|---|---|---|---|---|
 | A-01 | S1 | A tenant administrator can enumerate other tenants' organizations and members | `2e3bb7f` | test:tests/test_admin_org_member_idor.py | no | no |
 | A-04 | S1 | CSRF protection exists but was not applied to data endpoints | `9cda379` | test:tests/test_csrf_and_bulk_delete_security.py | yes | no |
+| A-06 | S1 | The element-generation prompt has no repository context and no duplicate-avoidance instruction | `79aea94` | test:tests/test_ai_prompt_duplicate_avoidance.py | no | no |
 | ARCH-010 | S1 | Headline and layer-tile counts drift from each other after writes | `f91d8d7` | test:tests/test_count_reconciliation.py | no | no |
 | ARCH-020 | S1 | Approvals are not bound to the conversation that created them | `f147872+cc9f153` | test:tests/test_approval_governance.py | yes | no |
 | ARCH-022 | S1 | An approval executed with no recorded approver | `f147872` | test:tests/test_approval_governance.py | yes | no |
+| ARCH-030 | S1 | No uniqueness or duplicate protection anywhere on the write path | `79aea94` | test:tests/test_arch030_bulk_merge_or_skip.py; test:tests/test_dedupe_entities.py | no | no |
 | ARCH-040 | S1 | "Add Application" and "Import" buttons are inert; both data-entry paths unreachable via UI | `5c3f7fc` | manual:playwright browser run, both branches (populated/empty org) | no | no |
 | C-01 | S1 | Composer permits an invalid ArchiMate relationship, and its validation is directionally asymmetric | `b1f6a8f` | test:tests/test_archimate_realization_targets.py | no | no |
-| C-02 | S1 | Orphaned ArchiMate elements: deleting an application does not delete its element | `6dba8af` | test:tests/test_application_delete_cascade.py | no | no |
+| C-02 | S1 | Orphaned ArchiMate elements: deleting an application does not delete its element | `2a711a2` | test:tests/test_application_delete_cascade.py | no | no |
 | D-01 | S1 | Dashboard and API element counts drift apart after any write | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
 | O-01 | S1 | Exported OEF contains metamodel-invalid relationships | `6aaf0b5` | test:tests/test_oef_export_direction_validation.py | no | no |
+| P-01 | S1 | Application list scales linearly in payload and super-linearly in latency | `9be49dd` | manual:verified server-side pagination present in list_views.py | no | no |
 | S-01 | S1 | Solutions list silently hides records while claiming to be complete | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | S-02 | S1 | Blueprint completeness reports four mutually contradictory figures on one page | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | A-02 | S2 | User directory shows 2 users while tenants account for 22 | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
@@ -114,20 +89,45 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-021 | S2 | Approval queue creates duplicates of the same operation | `f147872` | test:tests/test_approval_governance.py | yes | no |
 | ARCH-050 | S2 | /architecture/element/<id> returns HTTP 200 for every input, including invalid ones | `6aaf0b5` | test:tests/test_arch050_element_route_404.py | no | no |
 | ARCH-051 | S2 | State-changing endpoints accept requests with no CSRF token | `9cda379` | test:tests/test_csrf_and_bulk_delete_security.py | yes | no |
+| ARCH-090 | S2 | No testing at representative enterprise scale | `9c716ea` | manual:scripts/benchmark_scale.py harness, validated at small scale only | no | no |
+| ARCH-126 | S2 | Traceability chain is broken in the existing data | `9c716ea` | test:tests/test_arch126_traceability_report.py | no | no |
+| C-03 | S2 | Diagram autosave is browser-local only, with a hard scaling ceiling | `1d45832` | manual:code review of _autoSave server-persistence path | no | no |
+| C-04 | S2 | "New blank diagram" is a destructive action presented as an additive one | `1d45832` | manual:code review of confirm dialog + undo push | no | no |
 | C-10 | S2 | Destructive element endpoint accepts requests with no CSRF token | `9cda379` | test:tests/test_csrf_and_bulk_delete_security.py | yes | no |
+| CM-01 | S2 | The capability domain is entirely empty, including its reference taxonomy | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | no |
 | D-02 | S2 | ApplicationInterface is classified into the Business layer | `6aaf0b5` | test:tests/test_archimate_conformance_and_oef.py | no | no |
+| O-02 | S2 | OEF export omits all views, organizations and properties | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | no |
+| O-03 | S2 | OEF import silently fails, reporting success | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | no |
 | S-03 | S2 | Section count off by one: "Architecture Decisions" is excluded from completeness | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
+| S-04 | S2 | Blueprint version number contradicts itself | `f019ae1` | manual:blueprint_version vs OptimisticLock version_id_col traced | no | no |
+| S-05 | S2 | "VIEW AS" role switching has no effect | `f019ae1` | manual:control removed; verified it drove nothing | no | no |
+| S-06 | S2 | Duplicate detection exists but runs only after the duplicate is created | `79aea94` | test:tests/test_s06_similarity_write_path.py | no | no |
 | A-07 | S3 | 'Load Keys from .env' exposes a server-side secret-loading action to the UI | `9cda379` | manual:code read of both admin copies; masking reduced to last-4 | yes | no |
 | A-08 | S3 | Session invalidation is not surfaced; the user appears logged in while writes fail | `2e3bb7f` | test:tests/test_admin_org_member_idor.py | no | no |
 | ARCH-002 | S3 | Error path discards the requested URL | `9ead4e9` | test:tests/test_error_handlers.py | yes | no |
+| ARCH-012 | S3 | Repository data quality is not surfaced as actionable work | `f019ae1` | test:tests/test_qa100_arch012_data_quality_filters.py | no | no |
 | ARCH-023 | S3 | Approval summaries leak raw Python data structures to the user | `f147872` | manual:card template review | yes | no |
+| ARCH-031 | S3 | Application records default to "Operational" on creation | `79aea94` | test:tests/test_arch031_lifecycle_default.py | no | no |
+| ARCH-041 | S3 | Server-side validation errors surface as "Bad Request" | `f019ae1` | test:tests/test_qa100_arch041_042_validation_errors.py | no | no |
+| ARCH-042 | S3 | Required-field validation does not mark the field invalid programmatically | `f019ae1` | test:tests/test_qa100_arch041_042_validation_errors.py | no | no |
+| ARCH-043 | S3 | Dead links present in rendered pages | `f019ae1` | test:tests/test_qa100_arch043_dynamic_link_gate.py; gate:dynamic-link-prefixes | no | no |
+| ARCH-052 | S3 | Inconsistent API path conventions and response contracts | `9c716ea` | test:tests/test_arch052_elements_pagination.py | no | no |
 | ARCH-060 | S3 | Malformed asset URLs with doubled query strings | `383502e` | gate:asset-urls | yes | no |
 | ARCH-061 | S3 | Same stylesheet loaded twice at two different versions | `383502e` | gate:asset-urls | yes | no |
 | ARCH-107 | S3 | Onboarding checklist shown on a populated instance | `5c3f7fc` | manual:playwright browser run, both branches | no | no |
+| ARCH-112 | S3 | Heading obscured by the quick-prompt bar at narrow widths | `70172a9` | manual:chip strip wraps; no JS harness | no | no |
+| ARCH-113 | S3 | Three levels of nested scroll regions | `70172a9` | manual:sidebar scrollbar affordance restored | no | no |
+| ARCH-114 | S3 | Persona heading desynchronises from the persona selector | `70172a9` | manual:persona synced/persisted/echoed; no JS harness | no | no |
 | C-05 | S3 | "Save paused" state is unexplained and offers no way to resolve it | `28ee96a` | manual:code review of the single render site | yes | no |
 | C-06 | S3 | Relationship-type picker is clipped by the viewport and does not scroll | `28ee96a` | manual:code review | yes | no |
 | C-07 | S3 | Minimap overlays and obscures canvas content | `28ee96a` | manual:code review | yes | no |
 | C-08 | S3 | "Fit to Content" does not account for overlaying panels | `28ee96a` | manual:code review against panel widths | yes | no |
 | C-09 | S3 | Matrix view column headers are unreadable | `28ee96a` | manual:code review | yes | no |
 | D-03 | S3 | Dashboard KPI panels mix denominators without stating scope | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
+| O-04 | S3 | Generic export failure message | `f019ae1` | manual:exception type + correlation id in export handler | no | no |
+| ARCH-024 | S4 | Response latency displayed as raw milliseconds | `70172a9` | manual:formatDuration replaces raw ms; no JS harness | no | no |
+| ARCH-045 | S4 | Model selector is empty and non-functional | `70172a9` | manual:selector hidden unless >=2 real models; no JS harness in repo | no | no |
 | ARCH-062 | S4 | Asset version stamps are inconsistent across the bundle | `383502e+cc9f153` | manual:verified on the production container (git safe.directory returns the real SHA) | yes | no |
+| ARCH-072 | S4 | Permissions-Policy and Cross-Origin-Opener-Policy headers absent | `70172a9` | manual:Permissions-Policy + COOP added, Expo iframe delegation preserved | no | no |
+| ARCH-081 | S4 | 10px type in use | `70172a9` | manual:text-[10px] swept to text-xs across ~110 templates | no | no |
+| ARCH-108 | S4 | Page titles are inconsistent and one is empty | `70172a9` | manual:base title fallback fixed | no | no |
