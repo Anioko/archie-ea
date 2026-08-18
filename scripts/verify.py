@@ -933,6 +933,16 @@ def gate_boot_health() -> Result:
     return Result("boot-health", PASS if proc.returncode == 0 else FAIL, "\n".join(tail))
 
 
+def gate_csrf_coverage() -> Result:
+    """Every state-changing route is CSRF-protected or on the explicit,
+    justified opt-out list in app/_bootstrap/csrf_coverage.py (P-04).
+    Database-free, same reasoning as boot-health: create_app() boots fine
+    with connection errors caught and logged."""
+    proc = _run([sys.executable, "scripts/check_csrf_coverage.py"])
+    tail = (proc.stdout + proc.stderr).strip().splitlines()[-25:]
+    return Result("csrf-coverage", PASS if proc.returncode == 0 else FAIL, "\n".join(tail))
+
+
 def gate_schema_drift() -> Result:
     """No column or table drift between the ORM models and the live database.
 
@@ -1192,6 +1202,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_boot_health,
              remediation="see the failure message in tests/test_boot_health.py",
              tags=["runtime"]),
+        Gate("csrf-coverage", "Every write route is CSRF-protected or a justified opt-out", "command",
+             gate_csrf_coverage,
+             remediation="run scripts/check_csrf_coverage.py; justify the exemption in "
+                         "app/_bootstrap/csrf_coverage.py or remove it",
+             tags=["static", "security", "runtime"]),
         Gate("schema-drift", "Live DB matches the ORM models", "command",
              gate_schema_drift, needs_db=True,
              remediation="run: flask --app manage reconcile-schema", tags=["runtime", "db"]),

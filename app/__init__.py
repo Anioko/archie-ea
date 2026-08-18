@@ -99,6 +99,12 @@ def create_app(config=None):
 
     # 7b. Code Workbench — registered in _bootstrap/blueprints.py (removed duplicate)
 
+    # 7c. CSRF default-deny coverage gate (P-04) — every write route not
+    # protected by flask-wtf's CSRFProtect must have a justified opt-out
+    # recorded in app/_bootstrap/csrf_coverage.py, or boot fails.
+    from app._bootstrap.csrf_coverage import assert_csrf_coverage
+    assert_csrf_coverage(app)
+
     # 8. OpenAPI/Swagger documentation (feature-flagged)
     init_swagger(app)
 

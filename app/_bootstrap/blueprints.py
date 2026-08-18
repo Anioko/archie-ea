@@ -673,8 +673,13 @@ def _register_always_on_apis(app, csrf):
         from app.api.confidence_review_routes import confidence_review_bp as confidence_review_api_bp
 
         app.register_blueprint(confidence_review_api_bp)
-        # csrf.exempt: confidence review API — REST API at /api/confidence, programmatic callers cannot include CSRF tokens
-        csrf.exempt(confidence_review_api_bp)
+        # NOT CSRF-exempt. Audited 2026-08-18 (P-04): every route in
+        # app/api/confidence_review_routes.py uses @login_required against the
+        # session cookie; there is no Bearer/API-key authentication anywhere in
+        # this blueprint despite the "programmatic callers" justification that
+        # used to sit here. That is the same falsely-justified pattern removed
+        # from api_v1 in 9cda379 — a session-cookie-authenticated endpoint is
+        # never a legitimate CSRF opt-out. See app/_bootstrap/csrf_coverage.py.
         app.logger.info(
             "[BLUEPRINT] Confidence Review API registered at /api/confidence"
         )
