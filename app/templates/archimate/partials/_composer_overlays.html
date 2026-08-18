@@ -897,7 +897,7 @@
                 </template>
                 <template x-if="!quickAddLoading && quickAddResults.length === 0 && quickAddQuery.length >= 1">
                     <div class="px-4 py-3 space-y-3">
-                        <p class="text-center text-sm text-muted-foreground">No matching element types found</p>
+                        <p class="text-center text-sm text-muted-foreground">No matching elements in catalog</p>
                         <div class="border-t border-border pt-3">
                             <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Or create new element</p>
                             <div class="flex gap-2">
@@ -929,13 +929,19 @@
                         Search by name across all element types
                     </div>
                 </template>
-                <template x-for="item in quickAddResults" :key="item.id">
+                {# CMP-11: existing catalog elements (reuse) are labelled distinctly
+                   from element TYPES (create new), so the two are never confused. #}
+                <template x-for="item in quickAddResults" :key="(item._existing ? 'e' : 't') + item.id">
                     <div class="search-result-item" @click="quickAddPick(item)">
                         <div>
                             <div class="search-result-name" x-text="item.name"></div>
-                            <div class="search-result-meta" x-text="(item.type || '') + ' &middot; ' + (item.layer || '')"></div>
+                            <div class="search-result-meta">
+                                <span x-show="item._existing" class="text-primary">In catalog</span>
+                                <span x-show="!item._existing" class="text-muted-foreground">New</span>
+                                <span x-text="' &middot; ' + (item.type || '') + ' &middot; ' + (item.layer || '')"></span>
+                            </div>
                         </div>
-                        <i data-lucide="plus-circle" class="w-4 h-4 text-primary/60"></i>
+                        <i :data-lucide="item._existing ? 'copy' : 'plus-circle'" class="w-4 h-4 text-primary/60"></i>
                     </div>
                 </template>
             </div>

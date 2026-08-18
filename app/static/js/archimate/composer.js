@@ -4764,30 +4764,55 @@ function composerApp() {
         },
 
         doQuickAddSearch: function() {
-            let q = (this.quickAddQuery || '').trim().toLowerCase();
+            let self = this;
+            let q = (this.quickAddQuery || '').trim();
             if (!q) { this.quickAddResults = []; return; }
+            let ql = q.toLowerCase();
 
-            /* Filter the local PALETTE catalog (same source as Components palette) */
-            let results = [];
+            /* CMP-11: the placeholder promises "search catalog" by element NAME,
+               but this only ever filtered the PALETTE (element TYPE labels), so
+               typing a real element name returned "no matching element types" and
+               forced the create path. Now it searches the actual catalog by name
+               (existing elements to REUSE) and still offers matching element
+               TYPES to create — the two are visually distinguished and dispatched
+               differently in quickAddPick. */
+            let paletteMatches = [];
             let layers = Object.keys(PALETTE);
             for (let i = 0; i < layers.length; i++) {
-                let layer = layers[i];
-                let items = PALETTE[layer];
+                let items = PALETTE[layers[i]];
                 for (let j = 0; j < items.length; j++) {
                     let t = items[j];
-                    if (t.label.toLowerCase().indexOf(q) !== -1 ||
-                        t.type.toLowerCase().indexOf(q) !== -1) {
-                        results.push({
-                            id: t.type,
-                            name: t.label,
-                            type: t.type,
-                            layer: layer
+                    if (t.label.toLowerCase().indexOf(ql) !== -1 ||
+                        t.type.toLowerCase().indexOf(ql) !== -1) {
+                        paletteMatches.push({
+                            id: t.type, name: t.label, type: t.type,
+                            layer: layers[i], _existing: false,
                         });
                     }
                 }
-                if (results.length >= 15) break;
             }
-            this.quickAddResults = results.slice(0, 15);
+
+            /* Query the catalog for existing elements matching the name. */
+            let url = '/archimate/api/elements/search?limit=10&q=' + encodeURIComponent(q);
+            Platform.fetch.get(url, null, { silent: true })
+            .then(function(resp) {
+                let data = (resp && resp.data) || resp || [];
+                let existing = (Array.isArray(data) ? data : [])
+                    .filter(function(el) { return el && el.id && !self.canvasElements[el.id]; })
+                    .map(function(el) {
+                        return {
+                            id: el.id, name: el.name, type: el.type,
+                            layer: (el.layer || '').toLowerCase(), _existing: true,
+                        };
+                    });
+                /* Existing elements first (reuse beats duplicate), then types. */
+                self.quickAddResults = existing.concat(paletteMatches).slice(0, 15);
+            })
+            .catch(function() {
+                /* Catalog unreachable — still offer palette types so the user
+                   is never stranded. */
+                self.quickAddResults = paletteMatches.slice(0, 15);
+            });
         },
 
         quickAddPick: function(item) {
@@ -4806,6 +4831,23 @@ function composerApp() {
             let GRID = 12;
             cx = Math.round((cx - 100) / GRID) * GRID;
             cy = Math.round((cy - 65) / GRID) * GRID;
+            let placed = self._placementFor(cx, cy);
+            cx = placed.x; cy = placed.y;
+
+            /* CMP-11: an existing catalog element is placed directly — creating a
+               new one would duplicate the record. */
+            if (item._existing && item.id) {
+                let elx = { id: item.id, name: name, type: type, layer: layer };
+                let nodex = createNode(elx.id, elx.name, elx.type, elx.layer, cx, cy);
+                self.graph.addCell(nodex);
+                self.canvasElements[elx.id] = elx;
+                self.elementCount++;
+                if (self.solutionId) self.linkElementToSolution(elx.id);
+                self.statusText = 'Added: ' + elx.name;
+                self.logAuditEvent('element_added', 'element', elx.id, elx.name, null, elx.type);
+                self.refreshMaturityOverlay();
+                return;
+            }
 
             /* Create element in the repository, then place on canvas */
             self.statusText = 'Creating ' + name + '...';

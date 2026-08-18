@@ -57,6 +57,19 @@ def test_cmp08_quick_add_avoids_overlap():
         "pickElement must route placement through the overlap-avoider"
 
 
+def test_cmp11_quick_add_searches_catalog_by_name():
+    """Quick-add must query the catalog by name, not only palette type labels."""
+    src = _read("archimate/composer.js")
+    assert "/archimate/api/elements/search?limit=10&q=" in src, \
+        "doQuickAddSearch must query the catalog search API"
+    assert "_existing" in src, "results must distinguish existing elements from new types"
+    overlays = (JS.parents[1] / "templates" / "archimate" / "partials"
+                / "_composer_overlays.html").read_text(encoding="utf-8")
+    assert "No matching element types found" not in overlays, \
+        "misleading 'element types' copy must be gone"
+    assert "No matching elements in catalog" in overlays
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")
