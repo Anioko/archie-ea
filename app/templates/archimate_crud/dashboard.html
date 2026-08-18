@@ -1026,10 +1026,13 @@ document.addEventListener('DOMContentLoaded', function() {
      page was reached without a filter, or with one the registry rejected. #}
   window.__APP_CONFIG__.initialLayer = {{ (initial_layer if initial_layer is defined else None) | tojson | safe }};
   window.__APP_CONFIG__.initialElementType = {{ (initial_element_type if initial_element_type is defined else None) | tojson | safe }};
-  {# Typed field configs keyed by element_type (services/field_configs.py), used
+  {# Typed field configs keyed by element_type (services/field_configs.py) used
      by the create/edit modal to render type-specific fields beyond name +
-     description. A type with no entry here keeps the plain name+description form. #}
-  window.__APP_CONFIG__.fieldConfigs = {{ (element_field_configs if element_field_configs is defined else {}) | tojson | safe }};
+     description. This is static, identical-for-every-request configuration —
+     ARCH-064 moved it out of the inline payload to a fetched endpoint so it
+     stops being re-served on every dashboard load. dashboard.js fetches it in
+     init(); a type with no entry keeps the plain name+description form. #}
+  window.__APP_CONFIG__.fieldConfigsUrl = {{ url_for('archimate_crud.api_field_configs') | tojson | safe }};
 </script>
 <script src="{{ url_for('static', filename='js/archimate_crud/dashboard.js') }}"></script>
 {% endblock %}

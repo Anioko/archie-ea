@@ -29,7 +29,14 @@ document.addEventListener('alpine:init', function() {
             },
             layerCounts: {},
             layerConfig: APP_CONFIG.layerConfig || {},
-            fieldConfigs: APP_CONFIG.fieldConfigs || {},
+            // ARCH-064: fieldConfigs used to be inlined into every dashboard
+            // response (~280KB of static, per-request-identical JSON). It is
+            // now fetched once from fieldConfigsUrl in init() below and
+            // populated here when it resolves; starts empty so a type-specific
+            // create/edit form falls back to plain name+description until the
+            // fetch completes, exactly as it already does for a type with no
+            // configured fields.
+            fieldConfigs: {},
 
             // Card filter and grouping
             cardFilter: '',
@@ -236,6 +243,19 @@ document.addEventListener('alpine:init', function() {
 
             init() {
                 var self = this;
+                if (APP_CONFIG.fieldConfigsUrl) {
+                    fetch(APP_CONFIG.fieldConfigsUrl)
+                        .then(function(resp) {
+                            if (!resp.ok) throw new Error('field-configs fetch failed: ' + resp.status);
+                            return resp.json();
+                        })
+                        .then(function(data) { self.fieldConfigs = data || {}; })
+                        .catch(function(err) {
+                            // Non-fatal: typed fields just fall back to the plain
+                            // name+description form until a retry/reload succeeds.
+                            console.error('Could not load element field configs', err);
+                        });
+                }
                 let params = new URLSearchParams(window.location.search);
                 // The By-Layer navigation lands here with a layer and an element
                 // type. The query string wins over the server-rendered defaults so

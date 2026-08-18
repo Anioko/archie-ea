@@ -452,8 +452,26 @@ def dashboard():
         layer_config=LAYER_CONFIG,
         initial_layer=initial_layer,
         initial_element_type=initial_element_type,
-        element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
+
+
+@archimate_crud.route("/api/field-configs")
+@login_required
+def api_field_configs():
+    """Typed per-element-type form field configs, split out of the dashboard
+    payload (ARCH-064). This is static configuration, identical for every
+    request and every tenant — it does not belong inline in every dashboard
+    HTML response. The dashboard template points the create/edit modal at
+    this endpoint instead of receiving the ~16KB of ``tojson`` output inline
+    on every page load; ``app/static/js/archimate_crud/dashboard.js``
+    fetches it once in ``init()``.
+    """
+    resp = jsonify(ELEMENT_FIELD_CONFIGS)
+    # Static per-deployment config, not per-tenant data — safe to cache in the
+    # browser so a returning visitor doesn't refetch it every dashboard load.
+    resp.cache_control.max_age = 3600
+    resp.cache_control.private = True
+    return resp
 
 
 @archimate_crud.route("/api/layer/<layer>/count")
