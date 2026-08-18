@@ -58,16 +58,26 @@ def load():
 
 
 def classify(findings):
-    """Split into (open, closed-but-unevidenced, properly closed)."""
-    open_rows, unevidenced, closed = [], [], []
+    """Split into (open, closed-but-unevidenced, properly closed, protect).
+
+    `protect` is not a defect. The register lists confirmed-WORKING behaviour it
+    wants kept working - the AI reasoning layer, the composer's element-reuse
+    picker, ARB's aggregation and immutable decisions. Those need regression
+    cover, not a fix, so they are tracked here but must not block the gate; if
+    they did, the register could never close.
+    """
+    open_rows, unevidenced, closed, protect = [], [], [], []
     for f in findings:
-        if f.get("status") != "closed":
+        status = f.get("status")
+        if status == "protect":
+            protect.append(f)
+        elif status != "closed":
             open_rows.append(f)
         elif not f.get("fix_commit") or not f.get("evidence"):
             unevidenced.append(f)
         else:
             closed.append(f)
-    return open_rows, unevidenced, closed
+    return open_rows, unevidenced, closed, protect
 
 
 def _sort(rows):
@@ -77,7 +87,7 @@ def _sort(rows):
 def render(data):
     """Write the owner-facing task log. Regenerated, never hand-edited."""
     findings = data["findings"]
-    open_rows, unevidenced, closed = classify(findings)
+    open_rows, unevidenced, closed, protect = classify(findings)
     manual_only = [f for f in closed
                    if all(e.startswith("manual:") for e in f["evidence"])]
     deployed = [f for f in findings if f.get("deployed")]
@@ -142,7 +152,7 @@ def main():
 
     data = load()
     findings = data.get("findings", [])
-    open_rows, unevidenced, closed = classify(findings)
+    open_rows, unevidenced, closed, protect = classify(findings)
 
     if args.render:
         render(data)
