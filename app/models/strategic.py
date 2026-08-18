@@ -659,6 +659,13 @@ class EnterpriseBriefing(db.Model):
     finding_count = Column(Integer, default=0)
     flagged_count = Column(Integer, default=0)  # high/critical severity
 
+    # Which finding gatherers actually executed this run, and how many
+    # findings each produced — lets the page show "N checks ran" rather than
+    # asserting "live data" with nothing behind it. Nullable: historical
+    # briefings predate this column and reconcile-schema only adds nullable
+    # columns (see CLAUDE.md Schema management).
+    checks_run = Column(JSON, nullable=True)
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -669,6 +676,7 @@ class EnterpriseBriefing(db.Model):
             "findings": self.findings or [],
             "finding_count": self.finding_count,
             "flagged_count": self.flagged_count,
+            "checks_run": self.checks_run or [],
         }
 
 

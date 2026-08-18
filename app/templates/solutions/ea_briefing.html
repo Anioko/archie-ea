@@ -59,6 +59,12 @@
                     <span class="text-foreground"><strong>{{ latest.finding_count }}</strong> finding{{ '' if latest.finding_count == 1 else 's' }}</span>
                     <span class="{% if latest.flagged_count %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}"><strong>{{ latest.flagged_count }}</strong> need attention</span>
                 </div>
+                {% if latest.checks_run %}
+                <p class="text-xs text-muted-foreground mt-2">
+                    {{ latest.checks_run|selectattr('ran')|list|length }} of {{ latest.checks_run|length }} checks ran this generation:
+                    {% for c in latest.checks_run %}<span class="{% if not c.ran %}text-destructive{% endif %}">{{ c.check }}{% if c.ran %} ({{ c.findings }}){% endif %}{% if not loop.last %}, {% endif %}</span>{% endfor %}
+                </p>
+                {% endif %}
             </div>
         </div>
     </div>

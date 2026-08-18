@@ -25,10 +25,16 @@
         <div class="border border-border rounded-xl bg-card p-4">
             <p class="text-xs uppercase tracking-wider text-muted-foreground">Avg conformance</p>
             <p class="text-2xl font-bold mt-1 {% if synthesis.avg_conformance and synthesis.avg_conformance >= 80 %}text-success{% elif synthesis.avg_conformance and synthesis.avg_conformance >= 50 %}text-warning{% else %}text-foreground{% endif %}">{{ synthesis.avg_conformance if synthesis.avg_conformance is not none else '—' }}{% if synthesis.avg_conformance is not none %}<span class="text-sm text-muted-foreground">/100</span>{% endif %}</p>
+            {% if synthesis.solutions_unassessed %}
+            <p class="text-xs text-muted-foreground mt-0.5">excludes {{ synthesis.solutions_unassessed }} unassessed (no content modelled)</p>
+            {% endif %}
         </div>
         <div class="border border-border rounded-xl bg-card p-4">
             <p class="text-xs uppercase tracking-wider text-muted-foreground">Solutions reviewed</p>
             <p class="text-2xl font-bold text-foreground mt-1">{{ synthesis.solutions_reviewed }}</p>
+            {% if synthesis.solutions_unassessed %}
+            <p class="text-xs text-muted-foreground mt-0.5">{{ synthesis.solutions_unassessed }} unassessed, not counted</p>
+            {% endif %}
         </div>
         <div class="border border-border rounded-xl bg-card p-4">
             <p class="text-xs uppercase tracking-wider text-muted-foreground">Conformance issues</p>

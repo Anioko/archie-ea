@@ -248,9 +248,13 @@ class DataStewardshipReviewer:
         pairs = _semantic_pairs(names)
         out = []
         for a, b, sim in pairs[:6]:
+            # A high-confidence semantic match is the same risk as a lexical
+            # one (fragmented canonical model) — severity must track the
+            # stated risk, not default to info regardless of confidence.
+            severity = "high" if sim >= 0.60 else "info"
             out.append({
                 "category": "canonical",
-                "severity": "info",
+                "severity": severity,
                 "title": f'"{a}" and "{b}" may be the same entity (semantic match)',
                 "detail": (
                     f'These data objects are not lexically similar but are '
@@ -275,9 +279,13 @@ class DataStewardshipReviewer:
         pii = [n for (n,) in rows if n and any(t in n.lower() for t in _PII_TERMS)]
         if not pii:
             return []
+        # Unclassified PII is a compliance/DPIA risk regardless of how many
+        # objects carry it — one unclassified customer record is enough to
+        # fail a DPIA. Escalate to critical once the exposure is broad.
+        severity = "critical" if len(pii) >= 5 else "high"
         return [{
             "category": "classification",
-            "severity": "high" if len(pii) >= 5 else "info",
+            "severity": severity,
             "title": f"{_n(len(pii), 'data object')} likely hold{'s' if len(pii) == 1 else ''} personal/sensitive data",
             "detail": (
                 "These data objects carry names suggesting PII and should be "
@@ -336,7 +344,9 @@ class DataStewardshipReviewer:
         if flows == 0:
             return [{
                 "category": "lineage",
-                "severity": "info",
+                # Zero lineage across the whole data layer, not a partial gap —
+                # impact analysis and DPIA scoping are unreliable estate-wide.
+                "severity": "high",
                 "title": f"No integration flows model data lineage for {_n(data_objects, 'data object')}",
                 "detail": (
                     "The data layer has DataObjects but no integration flows to trace "

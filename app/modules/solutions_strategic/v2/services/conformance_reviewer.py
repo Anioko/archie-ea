@@ -70,6 +70,26 @@ class ConformanceReviewer:
         if solution is None:
             return {"success": False, "error": "Solution not found."}
 
+        # A solution with nothing modelled has nothing to be conformant about.
+        # Scoring it 100 rewards emptiness — it must be reported as unassessed,
+        # never as a passing score. See M-01.
+        total, _layers, _tables = cls._element_counts(solution_id)
+        if total == 0:
+            return {
+                "success": True,
+                "solution_id": solution_id,
+                "solution_name": solution.name,
+                "score": None,
+                "unassessed": True,
+                "flagged": 0,
+                "findings": [],
+                "summary": (
+                    "Not yet assessed — the solution has no ArchiMate elements modelled, "
+                    "so there is nothing to check against platform policy. This is not "
+                    "the same as conformant."
+                ),
+            }
+
         findings: List[Dict[str, Any]] = []
         findings += _safe("integration", lambda: cls._integration_findings(solution_id))
         findings += _safe("clean_core", lambda: cls._clean_core_findings(solution_id))
@@ -102,6 +122,7 @@ class ConformanceReviewer:
             "solution_id": solution_id,
             "solution_name": solution.name,
             "score": score,
+            "unassessed": False,
             "flagged": flagged,
             "findings": findings,
             "summary": summary,

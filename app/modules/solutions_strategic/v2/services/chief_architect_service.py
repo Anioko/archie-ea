@@ -156,12 +156,19 @@ class ChiefArchitectService:
             .limit(60).all()
         )
         scored, flagged_total, worst = [], 0, []
+        unassessed = 0
         for s in solutions:
             try:
                 r = ConformanceReviewer.review(s.id)
             except Exception:  # noqa: BLE001
                 continue
             if not r.get("success"):
+                continue
+            # Empty solutions carry no signal about conformance — an average
+            # computed over them would reward emptiness (M-01). Exclude them
+            # from the denominator and report the exclusion explicitly.
+            if r.get("unassessed") or r.get("score") is None:
+                unassessed += 1
                 continue
             scored.append(r["score"])
             flagged_total += r.get("flagged", 0)
@@ -182,6 +189,7 @@ class ChiefArchitectService:
         return {
             "success": True,
             "solutions_reviewed": len(scored),
+            "solutions_unassessed": unassessed,
             "avg_conformance": avg,
             "flagged_total": flagged_total,
             "worst": worst[:5],
