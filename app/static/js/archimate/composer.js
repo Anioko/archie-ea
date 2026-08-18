@@ -3117,10 +3117,34 @@ function composerApp() {
         },
 
         /* ── Pick element → place on canvas ───────────────── */
+        /* CMP-08: keyboard quick-add (Ctrl+K) has no drag, so dropX/dropY stay at
+           their last value and consecutive adds stack on the exact same spot.
+           Cascade off any element already occupying the target so each new
+           element lands somewhere visible. Deliberate drag-drops keep their
+           cursor coordinates unless they'd land exactly on an existing node. */
+        _placementFor: function(x, y) {
+            const STEP = 32;      // diagonal cascade step (~half a grid box)
+            const NEAR = 24;      // treat within this many px as "same spot"
+            const els = (this.graph && this.graph.getElements) ? this.graph.getElements() : [];
+            let px = x, py = y, guard = 0;
+            const occupied = function(cx, cy) {
+                return els.some(function(el) {
+                    const p = el.position();
+                    return Math.abs(p.x - cx) < NEAR && Math.abs(p.y - cy) < NEAR;
+                });
+            };
+            while (occupied(px, py) && guard < 60) {
+                px += STEP; py += STEP;
+                guard++;
+            }
+            return { x: px, y: py };
+        },
+
         pickElement: function(item) {
             this.closeSearch();
             let layer = (item.layer || '').toLowerCase() || guessLayer(item.type);
-            let node = createNode(item.id, item.name, item.type, layer, this.dropX, this.dropY);
+            let pos = this._placementFor(this.dropX, this.dropY);
+            let node = createNode(item.id, item.name, item.type, layer, pos.x, pos.y);
             this.graph.addCell(node);
             this.canvasElements[item.id] = item;
             this.elementCount++;

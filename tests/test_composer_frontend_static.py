@@ -49,6 +49,14 @@ def test_cmp02_delete_affordance_and_method_present():
         "must call the DELETE endpoint"
 
 
+def test_cmp08_quick_add_avoids_overlap():
+    """New elements must cascade off an occupied spot instead of stacking."""
+    src = _read("archimate/composer.js")
+    assert "_placementFor:" in src, "placement helper must exist"
+    assert "this._placementFor(this.dropX, this.dropY)" in src, \
+        "pickElement must route placement through the overlap-avoider"
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")
