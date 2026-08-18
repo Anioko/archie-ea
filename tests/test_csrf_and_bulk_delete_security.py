@@ -120,11 +120,30 @@ class TestBulkDeleteRecoverable:
         assert body["success"] is True
         assert body["deleted_count"] == 1
 
-        from app.models.application_portfolio import ApplicationComponent
         # The row still exists (recoverable) but is marked deleted.
-        refreshed = ApplicationComponent.query.filter_by(id=app_row.id).first()
-        assert refreshed is not None
-        assert refreshed.deleted_at is not None
+        #
+        # Read it with raw SQL, not the ORM: the unconditional soft-delete
+        # filter in app/middleware/tenant_isolation.py — added to close this
+        # commit's own KNOWN REGRESSION — hides deleted_at IS NOT NULL rows
+        # from every ORM SELECT, which is the whole point. An ORM read here
+        # therefore correctly returns None and proves nothing about
+        # recoverability; only a filter-bypassing read does.
+        from sqlalchemy import text
+
+        row = db_session.execute(
+            text(
+                "SELECT deleted_at FROM application_components "
+                "WHERE id = :id AND organization_id = :org"
+            ),
+            {"id": app_row.id, "org": org.id},
+        ).first()
+        assert row is not None, "row was hard-deleted, not soft-deleted"
+        assert row[0] is not None, "deleted_at was not set"
+
+        # And it is genuinely invisible to ordinary application reads.
+        from app.models.application_portfolio import ApplicationComponent
+
+        assert ApplicationComponent.query.filter_by(id=app_row.id).first() is None
 
 
 class TestApplicationNameTagStripping:

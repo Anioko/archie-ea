@@ -68,6 +68,7 @@ from . import unified_applications_bp
 from ._helpers import (  # dead-code-ok
     _cleanup_application_relationships,
     _delete_mirror_archimate_element,
+    _soft_delete_mirror_archimate_element,
 )
 
 logger = logging.getLogger(__name__)
@@ -821,11 +822,20 @@ def bulk_delete_applications():
       - requires an explicit `confirm: true` in the request body, so a
         replayed/forged request that only guesses the id list still fails, and
       - soft-deletes (sets deleted_at/deleted_by) instead of destroying rows,
-        leaving a recovery window. The ArchiMate mirror element is left intact
-        so a restore does not also need to recreate it.
+        leaving a recovery window.
+
+    Finding C-02 reopened: soft-deleting only the application left its
+    ArchiMate mirror element live and visible in the composer palette,
+    relationship matrix, OEF export and AI context — the exact orphaned-
+    element symptom C-02 closed on the other four delete paths. The mirror
+    is now soft-deleted alongside the application (see
+    ``_soft_delete_mirror_archimate_element``), hidden by the same
+    unconditional filter that hides the application, and restored together.
     Restoring is not yet wired to a UI action; recovery today is
-    `UPDATE application_components SET deleted_at = NULL WHERE id = ...`,
-    scoped to the caller's organization_id via flask --app manage db-query.
+    `UPDATE application_components SET deleted_at = NULL, deleted_by = NULL
+    WHERE id = ...` followed by the equivalent on `archimate_elements` for
+    that application's `archimate_element_id`, scoped to the caller's
+    organization_id via flask --app manage db-query.
     """
     try:
         data = request.get_json()
@@ -848,6 +858,8 @@ def bulk_delete_applications():
             ), 400
 
         deleted_count = 0
+        elements_deleted = 0
+        element_errors = []
         errors = []
 
         # OPTIMIZATION: Batch-prefetch application objects to avoid N+1 queries
@@ -863,8 +875,15 @@ def bulk_delete_applications():
                 if app:
                     app.deleted_at = datetime.utcnow()
                     app.deleted_by = getattr(current_user, "id", None)
+                    element_id = app.archimate_element_id
+                    db.session.flush()
+                    mirror = _soft_delete_mirror_archimate_element(
+                        element_id, deleted_by=getattr(current_user, "id", None)
+                    )
                     db.session.commit()
                     deleted_count += 1
+                    elements_deleted += mirror["elements_deleted"]
+                    element_errors.extend(mirror["errors"])
                 else:
                     errors.append(f"Application {app_id} not found")
             except Exception as e:
@@ -873,15 +892,20 @@ def bulk_delete_applications():
                 current_app.logger.error(f"Error deleting app {app_id}: {e}")
 
         all_failed = deleted_count == 0 and len(errors) > 0
-        message = f"Soft-deleted {deleted_count} application(s); recoverable."
+        message = (
+            f"Soft-deleted {deleted_count} application(s) and "
+            f"{elements_deleted} ArchiMate element(s); recoverable."
+        )
+        if element_errors:
+            message += " Some ArchiMate elements could not be hidden."
         return jsonify(
             {
                 "success": not all_failed,
                 "deleted": deleted_count,
                 "deleted_count": deleted_count,  # Alias for compatibility
-                "elements_deleted": 0,
+                "elements_deleted": elements_deleted,
                 "relationships_deleted": 0,
-                "errors": errors,
+                "errors": errors + element_errors,
                 "message": message,
             }
         )

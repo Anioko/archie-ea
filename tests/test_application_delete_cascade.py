@@ -94,6 +94,13 @@ def _post(client, user_id, url, payload):
 
 
 def _element_exists(db_session, element_id):
+    """True if the element is reachable through a normal ORM read.
+
+    This goes through the same do_orm_execute path every real read path
+    (composer palette, relationship matrix, OEF export, AI context) uses, so
+    it is the right check for "is this mirror still visible" regardless of
+    whether it was hard-deleted or soft-deleted.
+    """
     from app.models.archimate_core import ArchiMateElement
 
     db_session.expire_all()
@@ -103,6 +110,21 @@ def _element_exists(db_session, element_id):
         .count()
         > 0
     )
+
+
+def _element_row_physically_present(db_session, element_id):
+    """True if the row is still in the table, bypassing the soft-delete filter.
+
+    Used only to prove the bulk path *hides* rather than *destroys* the
+    mirror — the recoverability 9cda379 was trying to buy.
+    """
+    from sqlalchemy import text
+
+    row = db_session.execute(
+        text("SELECT deleted_at FROM archimate_elements WHERE id = :id"),
+        {"id": element_id},
+    ).first()
+    return row is not None, (row[0] if row else None)
 
 
 def test_single_delete_removes_mirror_element(admin_client, db_session):
@@ -122,9 +144,20 @@ def test_single_delete_removes_mirror_element(admin_client, db_session):
     assert not _element_exists(db_session, element_id)
 
 
-def test_bulk_delete_removes_mirror_elements_and_reports_them(
+def test_bulk_delete_hides_mirror_elements_and_reports_them(
     admin_client, db_session
 ):
+    """Bulk-delete soft-deletes the application AND its mirror element.
+
+    Regression test for the reopened C-02: 9cda379 changed bulk-delete from
+    a hard delete to a soft delete (nullable deleted_at/deleted_by) for
+    recoverability, but did not touch the ArchiMate mirror, so it stayed
+    live and visible in the composer palette, relationship matrix, OEF
+    export and AI context after the application was "deleted". The mirror
+    must now be hidden (deleted_at set) rather than destroyed, so a restore
+    can bring both back together — the same recoverability contract 9cda379
+    established for the application row.
+    """
     client, org_id, user_id = admin_client
     made = [
         _make_application(db_session, org_id, f"QA Bulk {uuid.uuid4().hex[:6]}")
@@ -134,20 +167,71 @@ def test_bulk_delete_removes_mirror_elements_and_reports_them(
     element_ids = [e for _, e in made]
     assert all(_element_exists(db_session, e) for e in element_ids)
 
-    resp = _post(client, user_id, "/applications/bulk-delete", {"ids": app_ids})
+    resp = _post(
+        client, user_id, "/applications/bulk-delete", {"ids": app_ids, "confirm": True}
+    )
     assert resp.status_code == 200, resp.data[:400]
     payload = resp.get_json()
     assert payload["success"] is True
     assert payload["deleted"] == 3
     # The response must account for the architecture repository too, not just
-    # the application table — that mismatch was the C-02 defect.
+    # the application table — that mismatch was the original C-02 defect,
+    # and reporting elements_deleted: 0 while soft-deleting nothing was the
+    # reopened version of it.
     assert payload["elements_deleted"] == 3
     assert "relationships_deleted" in payload
     assert payload["errors"] == []
     assert "ArchiMate element" in payload["message"]
+    assert "3" in payload["message"]
 
     for element_id in element_ids:
+        # Unreachable through any normal ORM read — composer palette,
+        # relationship matrix, OEF export and AI context all query through
+        # this same path, so this is the assertion that would fail if the
+        # mirror became visible again.
         assert not _element_exists(db_session, element_id)
+        # But the row itself still exists, hidden rather than destroyed —
+        # proof the delete is reversible, matching what 9cda379 promised.
+        present, deleted_at = _element_row_physically_present(
+            db_session, element_id
+        )
+        assert present, "mirror element was hard-deleted, not hidden"
+        assert deleted_at is not None, "mirror element deleted_at was not set"
+
+
+def test_bulk_delete_mirror_element_reachable_after_restore(admin_client, db_session):
+    """Restoring both deleted_at columns brings the mirror back, per the
+    recovery contract documented on bulk_delete_applications."""
+    from sqlalchemy import text
+
+    client, org_id, user_id = admin_client
+    app_id, element_id = _make_application(
+        db_session, org_id, f"QA Restore {uuid.uuid4().hex[:6]}"
+    )
+
+    resp = _post(
+        client, user_id, "/applications/bulk-delete", {"ids": [app_id], "confirm": True}
+    )
+    assert resp.status_code == 200, resp.data[:400]
+    assert not _element_exists(db_session, element_id)
+
+    db_session.execute(
+        text(
+            "UPDATE application_components SET deleted_at = NULL, "
+            "deleted_by = NULL WHERE id = :id"
+        ),
+        {"id": app_id},
+    )
+    db_session.execute(
+        text(
+            "UPDATE archimate_elements SET deleted_at = NULL, "
+            "deleted_by = NULL WHERE id = :id"
+        ),
+        {"id": element_id},
+    )
+    db_session.commit()
+
+    assert _element_exists(db_session, element_id)
 
 
 def test_delete_removes_relationships_of_the_mirror_element(

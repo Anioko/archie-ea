@@ -214,6 +214,9 @@ scripts/check_*.py
 !scripts/check_template_references.py
 !scripts/check_sidebar_links.py
 !scripts/check_tenant_scoping.py
+!scripts/check_dynamic_link_prefixes.py
+!scripts/check_asset_urls.py
+!scripts/check_qa_register.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

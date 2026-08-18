@@ -42,13 +42,24 @@ def install_tenant_filter(app):
         if not orm_execute_state.is_select:
             return
         from app.models.application_portfolio import ApplicationComponent
+        from app.models.archimate_core import ArchiMateElement
 
         orm_execute_state.statement = orm_execute_state.statement.options(
             with_loader_criteria(
                 ApplicationComponent,
                 lambda cls: cls.deleted_at.is_(None),
                 include_aliases=True,
-            )
+            ),
+            # fix/qa-register-100: bulk-delete soft-deletes the application's
+            # ArchiMate mirror element too (see deleted_at on ArchiMateElement
+            # in app/models/models.py) — filter it the same unconditional way
+            # so composer palette, relationship matrix, OEF export and AI
+            # context all stop seeing it without per-call-site changes.
+            with_loader_criteria(
+                ArchiMateElement,
+                lambda cls: cls.deleted_at.is_(None),
+                include_aliases=True,
+            ),
         )
 
     @db.event.listens_for(db.session, "do_orm_execute")

@@ -322,6 +322,63 @@ def _delete_mirror_archimate_element(element_id):
     return result
 
 
+def _soft_delete_mirror_archimate_element(element_id, deleted_by=None):
+    """Soft-delete the ArchiMateElement mirroring a soft-deleted application.
+
+    Companion to ``_delete_mirror_archimate_element`` for the bulk-delete path
+    (finding C-02 reopened by 9cda379): bulk-delete soft-deletes the
+    ApplicationComponent for recoverability, but originally left the mirror
+    element live, so it stayed visible in the composer palette, relationship
+    matrix, OEF export and AI context after the user believed it was gone.
+
+    Sets ``deleted_at``/``deleted_by`` rather than deleting the row, so the
+    element (and, unlike the hard-delete path, its relationships) survive
+    for a restore — the same recoverability 9cda379 bought for the
+    application row. The unconditional soft-delete filter in
+    ``app/middleware/tenant_isolation.py`` then hides it from every ORM read
+    exactly the way a soft-deleted ApplicationComponent is hidden.
+
+    Returns ``{"elements_deleted": int, "relationships_deleted": int,
+    "errors": [str]}`` — ``elements_deleted``/``relationships_deleted`` here
+    mean "hidden by this call", matching the vocabulary the hard-delete
+    paths already report. Never raises.
+    """
+    from datetime import datetime
+
+    result = {"elements_deleted": 0, "relationships_deleted": 0, "errors": []}
+    if not element_id:
+        return result
+
+    from app.models.archimate_core import ArchiMateElement
+
+    _sp = db.session.begin_nested()
+    try:
+        updated = (
+            ArchiMateElement.query.filter(
+                ArchiMateElement.id == element_id,
+                ArchiMateElement.deleted_at.is_(None),
+            ).update(
+                {
+                    ArchiMateElement.deleted_at: datetime.utcnow(),
+                    ArchiMateElement.deleted_by: deleted_by,
+                },
+                synchronize_session=False,
+            )
+        )
+        result["elements_deleted"] = updated
+        _sp.commit()
+    except Exception as exc:
+        _sp.rollback()
+        result["errors"].append(
+            f"ArchiMate element {element_id} could not be hidden "
+            f"({exc.__class__.__name__})"
+        )
+        logger.warning(
+            "Mirror ArchiMate element %s not soft-deleted", element_id, exc_info=True
+        )
+    return result
+
+
 def _vendors_impl(
     joinedload,
     VendorOrganization,

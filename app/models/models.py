@@ -316,6 +316,20 @@ else:
 
         reviewer_notes = db.Column(db.Text)
 
+        # Soft delete (fix/qa-register-100): the bulk-delete path soft-deletes
+        # its ApplicationComponent (see deleted_at above on that model) so the
+        # delete is recoverable, but originally left the ArchiMate mirror
+        # element untouched — reintroducing finding C-02 (orphaned element
+        # visible in the composer palette, relationship matrix, OEF export,
+        # AI context) on that one path. Mirroring deleted_at/deleted_by here,
+        # nullable per ADR-0002 (reconcile-schema is add-only/nullable), lets
+        # the mirror be hidden the same way ApplicationComponent already is —
+        # via the unconditional do_orm_execute filter in
+        # app/middleware/tenant_isolation.py — and restored by clearing both
+        # columns together instead of recreating the element from scratch.
+        deleted_at = db.Column(db.DateTime, nullable=True)
+        deleted_by = db.Column(db.Integer, nullable=True)
+
         # Relationship tracking
         parent_id = db.Column(db.Integer, db.ForeignKey("archimate_elements.id"), nullable=True)
 
