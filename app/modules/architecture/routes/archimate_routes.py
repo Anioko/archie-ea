@@ -1657,19 +1657,25 @@ def api_viewpoint_relationship_health(vp_id):
         ArchiMateElement.id.in_(element_ids),
     ).all()}
 
-    # Find relationships where source or target is stale
-    rels = ArchiMateRelationship.query.filter(
-        ArchiMateRelationship.source_id.in_(element_ids),
-        ArchiMateRelationship.target_id.in_(element_ids),
-    ).all()
-
-    # Build set of relationship IDs already marked as architectural intent (suppress from review)
+    # CMP-13: only consider relationships actually DRAWN in this diagram, not
+    # every repository relationship that happens to exist between the canvas
+    # elements. The old query used the repository graph, so a diagram with zero
+    # drawn relationships still raised "Stale Relationships Detected" for links
+    # that live only on other diagrams. Scope to this diagram's junction rows.
+    diagram_rels = SavedDiagramRelationship.query.filter_by(diagram_id=vp_id).all()
+    diagram_rel_ids = {sdr.relationship_id for sdr in diagram_rels}
     intent_rel_ids = {
-        sdr.relationship_id
-        for sdr in SavedDiagramRelationship.query.filter_by(
-            diagram_id=vp_id, is_architectural_intent=True,
-        ).all()
+        sdr.relationship_id for sdr in diagram_rels if sdr.is_architectural_intent
     }
+
+    if diagram_rel_ids:
+        rels = ArchiMateRelationship.query.filter(
+            ArchiMateRelationship.id.in_(diagram_rel_ids),
+            ArchiMateRelationship.source_id.in_(element_ids),
+            ArchiMateRelationship.target_id.in_(element_ids),
+        ).all()
+    else:
+        rels = []
 
     stale_relationships = []
     for r in rels:
