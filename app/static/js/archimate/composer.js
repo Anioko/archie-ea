@@ -1089,8 +1089,13 @@ function composerApp() {
 
             /* ── Pan / rubber-band select: drag on blank canvas ── */
             this.paper.on('blank:pointerdown', function(evt) {
-                /* Space+drag or view mode = pan */
-                if (self._spaceDown || self.mode === 'view') {
+                /* CMP-06: middle-mouse drag always pans, in any mode. Plain
+                   left-drag in edit mode is rubber-band select (below), so
+                   off-screen content was only reachable via Space+drag — an
+                   undiscoverable gesture. Middle-mouse pan is the universal
+                   diagram-tool convention and conflicts with nothing. */
+                if (evt.button === 1 || self._spaceDown || self.mode === 'view') {
+                    if (evt.button === 1 && evt.preventDefault) evt.preventDefault();
                     self._isPanning = true;
                     self._panStart = { x: evt.clientX, y: evt.clientY };
                     self.paper.el.style.cursor = 'grabbing';
@@ -3784,9 +3789,18 @@ function composerApp() {
                 || this.commentPanelOpen
                 || this.auditPanelOpen;
             let rightPadding = rightPanelOpen ? 40 + 320 : 40;
+            /* CMP-05: fit was unreliable in the narrow side-panel — it zoomed to
+               150% with the element half off the left edge. Two causes fixed:
+               (1) maxScale 1.5 let a small selection zoom IN past the viewport;
+               cap at 1 like every other fit call site. (2) scaleContentToFit read
+               rendered geometry, which is stale while the panel is mid-resize;
+               useModelGeometry reads the model bboxes instead, which are always
+               current. */
             this.paper.scaleContentToFit({
                 padding: { top: 40, bottom: 40, left: 40, right: rightPadding },
-                maxScale: 1.5
+                maxScale: 1,
+                minScale: 0.1,
+                useModelGeometry: true
             });
             this.zoomPercent = Math.round(this.paper.scale().sx * 100);
             this._scheduleMiniMapUpdate();

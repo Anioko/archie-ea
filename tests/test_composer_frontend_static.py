@@ -70,6 +70,22 @@ def test_cmp11_quick_add_searches_catalog_by_name():
     assert "No matching elements in catalog" in overlays
 
 
+def test_cmp05_fit_to_content_is_reliable():
+    """fitCanvas must not over-zoom and must use model geometry."""
+    src = _read("archimate/composer.js")
+    # The over-zooming maxScale:1.5 must be gone from fitCanvas.
+    assert "maxScale: 1.5" not in src or src.count("maxScale: 1.5") == 0, \
+        "fitCanvas must cap maxScale at 1, not 1.5"
+    assert "useModelGeometry: true" in src, \
+        "fit must read model geometry (stable during panel resize)"
+
+
+def test_cmp06_middle_mouse_pans():
+    """Middle-mouse drag on blank canvas must pan in any mode."""
+    src = _read("archimate/composer.js")
+    assert "evt.button === 1" in src, "middle-mouse button must trigger pan"
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")
