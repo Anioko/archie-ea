@@ -74,6 +74,15 @@ class Role(db.Model):
             "User": (Permission.GENERAL, "main", False),
             "Architect": (Permission.GENERAL, "main", True),
             "Administrator": (Permission.ADMINISTER, "admin", False),
+            # A-03 (S2): "no read-only role exists" — added as a selectable
+            # Role row only. permissions=0 means user.can(GENERAL) and
+            # user.can(ADMINISTER) both evaluate False, so a Viewer can
+            # authenticate and read but every write-guarding
+            # @permission_required/@admin_required check rejects them same
+            # as an unauthenticated user would be rejected for admin routes.
+            # Purely additive: existing roles/users are untouched, and no
+            # route currently assigns this role automatically.
+            "Viewer": (0, "main", False),
         }
         for r in roles:
             role = Role.query.filter_by(name=r).first()

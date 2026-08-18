@@ -264,11 +264,18 @@ def export_oef():
     from app.services.archimate_oef_service import ArchiMateOEFService
 
     service = ArchiMateOEFService()
-    xml_str = service.export_model()
+    xml_str, validation_errors = service.export_model_validated()
+    headers = {"Content-Disposition": "attachment; filename=archimate-model.xml"}
+    if validation_errors:
+        # Never emit silently-invalid XML: every direction-corrected or
+        # dropped relationship is reported back to the caller.
+        headers["X-OEF-Validation-Errors"] = str(len(validation_errors))
+        for line in validation_errors:
+            current_app.logger.warning("OEF export: %s", line)
     return Response(
         xml_str,
         mimetype="application/xml",
-        headers={"Content-Disposition": "attachment; filename=archimate-model.xml"},
+        headers=headers,
     )
 
 

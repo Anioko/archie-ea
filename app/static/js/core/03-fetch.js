@@ -162,7 +162,28 @@
                     response.statusText ||
                     ('HTTP ' + response.status);
 
-                if (!silent && global.Platform.toast) {
+                // A-08: an expired/invalidated session (e.g. after a server
+                // restart) currently fails a write with a bare 400 whose
+                // error_type is "csrf" but whose message says the *session*
+                // (not the token) is the problem — see the CSRFError
+                // handler registered in app/_bootstrap/extensions.py. The old
+                // behaviour was to toast a generic error and leave the user
+                // looking authenticated while every subsequent write also
+                // silently fails. Detect that specific case and hand off to
+                // Platform.sessionTimeout's non-dismissable re-auth prompt
+                // instead of the ordinary error toast, so the user is told
+                // to log back in rather than left to keep clicking a button
+                // that will never work. A plain missing-token CSRF error
+                // (no "session"/"expired" wording) is a different failure
+                // with a different fix (retry with a fresh token) and must
+                // not be relabelled as a session expiry.
+                const isSessionExpired = errData && errData.error_type === 'csrf' &&
+                    /session/i.test(errMsg) && /expir/i.test(errMsg);
+
+                if (isSessionExpired && global.Platform.sessionTimeout &&
+                    typeof global.Platform.sessionTimeout.forceReauth === 'function') {
+                    global.Platform.sessionTimeout.forceReauth(errMsg);
+                } else if (!silent && global.Platform.toast) {
                     global.Platform.toast.error(errMsg);
                 }
 

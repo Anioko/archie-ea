@@ -179,6 +179,71 @@
         xhr.send();
     }
 
+    // --- A-08: reactive re-auth prompt ---
+    // Called by core/03-fetch.js the moment a write actually fails because
+    // the server-side session/CSRF token is no longer valid (e.g. after a
+    // server restart) — distinct from the proactive 30-minutes-before
+    // warning above, which fires on a client-side clock that has no idea
+    // the server already invalidated the session early. Unlike
+    // showWarning(), this prompt is non-dismissable (no backdrop click, no
+    // Escape, no "stay logged in" option) because the session is already
+    // gone, not merely expiring — offering to "extend" it would just fail
+    // again on the next write.
+    let reauthShown = false;
+
+    function forceReauth(message) {
+        clearAllTimers();
+        dismissWarning();
+
+        if (reauthShown) return; // already prompting; don't stack modals
+        reauthShown = true;
+
+        if (global.Platform.toast) {
+            global.Platform.toast.error(message || 'Your session has expired. Please log in again.');
+        }
+
+        const nextUrl = global.location.pathname + global.location.search;
+        const loginHref = LOGIN_URL + '?expired=1&next=' + global.encodeURIComponent(nextUrl);
+
+        if (global.Platform.modal && typeof global.Platform.modal.create === 'function') {
+            modalId = global.Platform.modal.create({
+                id: 'session-expired-reauth',
+                title: 'Session Expired',
+                size: 'sm',
+                content:
+                    '<div class="text-center space-y-4">' +
+                        '<div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-destructive/10 mb-4">' +
+                            '<svg class="h-6 w-6 text-destructive" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">' +
+                                '<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />' +
+                            '</svg>' +
+                        '</div>' +
+                        '<p class="text-sm text-muted-foreground">' +
+                            'Your session is no longer valid, most likely because it expired or the server restarted. ' +
+                            'Any change you just tried to make was not saved. Please log in again to continue.' +
+                        '</p>' +
+                    '</div>',
+                backdrop: false,
+                keyboard: false,
+                buttons: [
+                    {
+                        label: 'Log In Again',
+                        variant: 'primary',
+                        handler: function () {
+                            global.location.href = loginHref;
+                        },
+                        closeOnClick: false
+                    }
+                ]
+            });
+            global.Platform.modal.open(modalId);
+            log.warn('session invalid — re-auth prompt shown');
+        } else {
+            // Modal system unavailable — the toast above already told the
+            // user; still redirect rather than leaving them stuck.
+            global.location.href = loginHref;
+        }
+    }
+
     // --- Hook into fetch to reset timer on every request ---
     // Platform.fetch calls global.fetch internally, so wrapping global.fetch
     // catches both Platform.fetch and any direct fetch() usage.
@@ -208,9 +273,10 @@
 
     // --- Public API ---
     const sessionTimeout = {
-        reset:  resetTimer,
-        extend: extendSession,
-        logout: autoLogout
+        reset:       resetTimer,
+        extend:      extendSession,
+        logout:      autoLogout,
+        forceReauth: forceReauth
     };
 
     global.Platform.register('sessionTimeout', sessionTimeout);

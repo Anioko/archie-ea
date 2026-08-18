@@ -105,8 +105,19 @@
     </div>
 
     <!-- Summary Cards -->
+    <!-- D-03: these four cards used to mix denominators without saying so —
+         the headline count (layerTotal) is the true count for the whole
+         active layer, but sourceCounts/healthStats were computed only from
+         `this.elements`, the one page currently loaded (per_page, default
+         25). A layer with 55 elements rendered "25 Architecture" (the page)
+         beside "49 of 55 have descriptions" (55 = layerTotal, 49 computed
+         from a <=25-element page) — two different denominators presented as
+         one figure. Every card below now states its own scope explicitly:
+         the breakdown/health cards are labelled "on this page (N shown)"
+         since `this.elements` is genuinely page-scoped data, and only the
+         Layer Summary card states the true repository-wide layerTotal. -->
     <div x-show="!loading && !loadError" x-cloak class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- Card 1: Layer Summary -->
+      <!-- Card 1: Layer Summary (repository-wide total for this layer) -->
       <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
         <div class="flex items-start gap-4">
           <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary">
@@ -115,10 +126,12 @@
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-muted-foreground">Layer Summary</p>
             <p class="text-2xl font-bold tracking-tight mt-1" x-text="layerTotal || 0"></p>
+            <p class="text-xs text-muted-foreground mt-1" x-text="activeLayerLabel + ' layer, repository-wide'"></p>
             <p class="text-xs text-muted-foreground mt-1">
               <span x-cloak x-show="sourceCounts.portfolio" x-text="(sourceCounts.portfolio || 0) + ' Portfolio'"></span>
               <span x-cloak x-show="sourceCounts.portfolio && sourceCounts.architecture"> · </span>
               <span x-cloak x-show="sourceCounts.architecture" x-text="(sourceCounts.architecture || 0) + ' Architecture'"></span>
+              <span x-cloak x-show="pageCount < layerTotal" x-text="' (of ' + pageCount + ' shown on this page)'"></span>
             </p>
           </div>
         </div>
@@ -154,7 +167,7 @@
             <p class="text-2xl font-bold tracking-tight mt-1" x-text="healthStats.total_relationships || 0"></p>
             <p class="text-xs text-muted-foreground mt-1"
                x-cloak x-show="(healthStats.connected || 0) + (healthStats.orphaned || 0) > 0"
-               x-text="(healthStats.connected || 0) + ' connected · ' + (healthStats.orphaned || 0) + ' orphaned'"></p>
+               x-text="(healthStats.connected || 0) + ' connected · ' + (healthStats.orphaned || 0) + ' orphaned (of ' + pageCount + ' shown on this page)'"></p>
             <p class="text-xs text-muted-foreground mt-1"
                x-cloak x-show="(healthStats.connected || 0) + (healthStats.orphaned || 0) === 0">No architecture elements</p>
             <p class="text-xs text-primary font-medium mt-1" x-cloak x-show="cardFilter === 'orphaned'">Showing orphaned only — click to clear</p>
@@ -169,15 +182,20 @@
            :style="(healthStats.missing_description || 0) > 0 ? 'cursor:pointer' : ''">
         <div class="flex items-start gap-4">
           <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
-               :class="layerTotal === 0 ? 'bg-muted-foreground' : (((layerTotal - (healthStats.missing_description || 0)) / layerTotal * 100) > 80 ? 'bg-success' : (((layerTotal - (healthStats.missing_description || 0)) / layerTotal * 100) >= 50 ? 'bg-warning' : 'bg-destructive'))">
+               :class="pageCount === 0 ? 'bg-muted-foreground' : (((pageCount - (healthStats.missing_description || 0)) / pageCount * 100) > 80 ? 'bg-success' : (((pageCount - (healthStats.missing_description || 0)) / pageCount * 100) >= 50 ? 'bg-warning' : 'bg-destructive'))">
             <i data-lucide="file-text" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-muted-foreground">Documentation Health</p>
+            <!-- D-03: numerator and denominator both now come from pageCount
+                 (this.elements.length) — previously the denominator was
+                 layerTotal (the full-layer repository count) while the
+                 numerator counted only the loaded page, so "49 of 55" could
+                 report a percentage no full scan would reproduce. -->
             <p class="text-2xl font-bold tracking-tight mt-1"
-               x-text="layerTotal > 0 ? Math.round((layerTotal - (healthStats.missing_description || 0)) / layerTotal * 100) + '%' : '—'"></p>
+               x-text="pageCount > 0 ? Math.round((pageCount - (healthStats.missing_description || 0)) / pageCount * 100) + '%' : '—'"></p>
             <p class="text-xs text-muted-foreground mt-1"
-               x-text="(layerTotal - (healthStats.missing_description || 0)) + ' of ' + layerTotal + ' have descriptions'"></p>
+               x-text="(pageCount - (healthStats.missing_description || 0)) + ' of ' + pageCount + ' shown on this page have descriptions'"></p>
             <p class="text-xs text-primary font-medium mt-1" x-cloak x-show="cardFilter === 'undocumented'">Showing undocumented only — click to clear</p>
           </div>
         </div>

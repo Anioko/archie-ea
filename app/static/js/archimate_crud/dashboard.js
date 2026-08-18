@@ -14,7 +14,19 @@ document.addEventListener('alpine:init', function() {
             currentPage: 1,
             sortBy: 'name',
             sortOrder: 'asc',
-            totalCount: 0,
+            // D-01: totalCount used to be a separately-assigned field, written
+            // in loadAllLayerCounts() (the initial sweep) but NOT in
+            // loadElements() (fired on every tab switch / refresh). A tab
+            // switch after any write updated layerCounts[activeTab] to the
+            // fresh value while totalCount kept summing the stale initial
+            // sweep, so the headline and the tiles it supposedly summarises
+            // drifted apart and stayed drifted (repro: headline 146 / tiles
+            // summing to 147). Making it a getter over layerCounts makes that
+            // drift structurally impossible — there is exactly one number,
+            // and the headline is always the sum of what the tiles show.
+            get totalCount() {
+                return Object.values(this.layerCounts).reduce(function(a, b) { return a + (b || 0); }, 0);
+            },
             layerCounts: {},
             layerConfig: APP_CONFIG.layerConfig || {},
             fieldConfigs: APP_CONFIG.fieldConfigs || {},
@@ -183,6 +195,15 @@ document.addEventListener('alpine:init', function() {
                 return this.pagination ? (this.pagination.total || 0) : 0;
             },
 
+            // D-03: sourceCounts/healthStats are computed from `this.elements`,
+            // which is only the currently-loaded page (per_page, default 25) —
+            // not the full layer. pageCount names that scope explicitly so the
+            // template can label numerators/denominators consistently instead
+            // of mixing a page-scoped count with the repository-wide layerTotal.
+            get pageCount() {
+                return this.elements.length;
+            },
+
             toggleTypeGroup(type) {
                 this.collapsedTypes[type] = !this.collapsedTypes[type];
             },
@@ -337,7 +358,8 @@ document.addEventListener('alpine:init', function() {
                             let d2 = await r2.json();
                             self.layerCounts[layerKey] = (d2.pagination && d2.pagination.total) || 0;
                         }
-                        self.totalCount = Object.values(self.layerCounts).reduce(function(a, b) { return a + (b || 0); }, 0);
+                        // totalCount is now a getter over layerCounts (see field
+                        // definition above) — nothing to assign here any more.
                     } catch (e) {
                         // null, never 0: a fabricated zero is indistinguishable from
                         // a layer that really has no elements. The tab badge renders

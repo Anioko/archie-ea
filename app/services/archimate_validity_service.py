@@ -702,13 +702,16 @@ class ArchimateValidityService:
                 "description": "Assessment leads to this Goal",
             })
 
-        # Goal -> Principle/Requirement
-        if source_type == "Goal" and target_type in ("Principle", "Requirement"):
-            results.append({
-                "type": "realization",
-                "tier": "standard",
-                "description": f"{target_type} realises this Goal",
-            })
+        # NOTE (O-01): a "Goal -> Principle/Requirement: realization" rule used to live
+        # here, granting the exact inverse of the `realization_pairs` set above (which
+        # correctly encodes Requirement -> Goal). Per ArchiMate 3.2 §5.1.3, realization
+        # points at the MORE ABSTRACT entity being realised — a Requirement realises a
+        # Goal, never the reverse — so this was the motivation-layer instance of the
+        # same per-direction drift C-01 fixed for the cross-layer matrix. It bypassed
+        # permits_realization_target() because the motivation branch returns before
+        # that check runs, so it was never caught by that guard. Removed rather than
+        # corrected-in-place because realization_pairs already states the right
+        # direction; keeping both was how the drift happened.
 
         return results
 

@@ -303,6 +303,47 @@ ELEMENT_FIELD_CONFIGS = {
 }
 
 
+# D-02: single source of truth for element_type -> layer, derived from
+# LAYER_CONFIG (the same table that drives the by-layer tabs and dashboard) so
+# there is exactly one place this mapping is authored. Consumed by
+# create_element() below instead of trusting the URL's ``layer`` segment,
+# which can disagree with element_type when a stale/hand-built link pairs the
+# wrong layer with a type (e.g. .../business/ApplicationInterface/new) —
+# that mismatch is how ApplicationInterface rows ended up stored with
+# layer="Business" (D-02).
+ELEMENT_TYPE_TO_LAYER: dict[str, str] = {
+    element_type: layer_key
+    for layer_key, cfg in LAYER_CONFIG.items()
+    for element_type in cfg["elements"]
+}
+
+
+def _canonical_layer_for_type(element_type, requested_layer):
+    """Return the correct layer key for ``element_type``.
+
+    Falls back to ``requested_layer`` only for element types the registry
+    does not know about, so an unrecognised/custom type is not blocked from
+    being created.
+    """
+    return ELEMENT_TYPE_TO_LAYER.get(element_type, requested_layer)
+
+
+# ARCH-050: the browsing routes below take a bare "/<layer>/<element_type>"
+# segment pair. Left unconstrained, that pattern is a catch-all matching ANY
+# two path segments under /architecture/ — including "/architecture/element/99999999"
+# (layer="element", element_type="99999999", neither a real layer) and
+# "/architecture/elements/-1" or "/architecture/elements/abc" (layer="elements",
+# element_type="-1"/"abc" — the int converter on the real detail route
+# elements/<int:element_id> simply declines to match those, and THIS route
+# silently absorbs them instead). Every miss then flashed a warning and
+# redirected to the dashboard, which renders 200 — so a mistyped or malicious
+# element id never reached a 404, it landed on the generic elements page.
+# Restricting <layer> to the known LAYER_CONFIG keys makes the pattern only
+# match real by-layer browsing URLs, so anything else correctly falls through
+# to the app's 404 handler.
+_LAYER_URL_PATTERN = "<any(" + ", ".join(LAYER_CONFIG.keys()) + "):layer>"
+
+
 def _validated_layer_filter(layer, element_type):
     """Narrow a requested (layer, element_type) pair to what the registry knows.
 
@@ -617,7 +658,7 @@ def api_layer_elements(layer):
     )
 
 
-@archimate_crud.route("/<layer>/<element_type>")
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>")
 @login_required
 def list_elements(layer, element_type):
     """List all elements of a specific type"""
@@ -718,7 +759,7 @@ def list_elements(layer, element_type):
     )
 
 
-@archimate_crud.route("/<layer>/<element_type>/new", methods=["GET", "POST"])
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/new", methods=["GET", "POST"])
 @login_required
 def create_element(layer, element_type):
     """Create a new element"""
@@ -760,7 +801,7 @@ def create_element(layer, element_type):
                     if hasattr(element, "name")
                     else element.title,  # model-safety-ok: polymorphic ArchiMate elements
                     type=element_type,
-                    layer=layer.capitalize(),
+                    layer=_canonical_layer_for_type(element_type, layer).capitalize(),
                     description=getattr(
                         element, "description", ""
                     ),  # model-safety-ok: polymorphic ArchiMate elements
@@ -826,7 +867,7 @@ def create_element(layer, element_type):
     )
 
 
-@archimate_crud.route("/<layer>/<element_type>/<int:element_id>")
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/<int:element_id>")
 @login_required
 def detail_element(layer, element_type, element_id):
     """View/edit element details"""
@@ -863,7 +904,7 @@ def detail_element(layer, element_type, element_id):
 
 
 @archimate_crud.route(
-    "/<layer>/<element_type>/<int:element_id>/edit", methods=["GET", "POST"]
+    f"/{_LAYER_URL_PATTERN}/<element_type>/<int:element_id>/edit", methods=["GET", "POST"]
 )
 @login_required
 def update_element(layer, element_type, element_id):
@@ -965,7 +1006,7 @@ def update_element(layer, element_type, element_id):
 
 
 @archimate_crud.route(
-    "/<layer>/<element_type>/<int:element_id>/delete", methods=["POST"]
+    f"/{_LAYER_URL_PATTERN}/<element_type>/<int:element_id>/delete", methods=["POST"]
 )
 @login_required
 def delete_element(layer, element_type, element_id):
@@ -1058,7 +1099,7 @@ def validate_archimate_element(element_id):
     return jsonify({'issues': issues, 'valid': len(issues) == 0})
 
 
-@archimate_crud.route("/<layer>/<element_type>/bulk-delete", methods=["POST"])
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/bulk-delete", methods=["POST"])
 @login_required
 def bulk_delete(layer, element_type):
     """Bulk delete elements"""
@@ -1107,7 +1148,7 @@ def bulk_delete(layer, element_type):
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
 
 
-@archimate_crud.route("/<layer>/<element_type>/export", methods=["GET"])
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/export", methods=["GET"])
 @login_required
 def export_elements(layer, element_type):
     """Export elements to JSON/CSV"""
@@ -1176,7 +1217,7 @@ def export_elements(layer, element_type):
     return response
 
 
-@archimate_crud.route("/<layer>/<element_type>/ai-generate", methods=["POST"])
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/ai-generate", methods=["POST"])
 @login_required
 def ai_generate(layer, element_type):
     """AI-powered element generation from documents/internet"""
@@ -1201,7 +1242,7 @@ def ai_generate(layer, element_type):
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
 
 
-@archimate_crud.route("/<layer>/<element_type>/<int:element_id>/relationships")
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/<int:element_id>/relationships")
 @login_required
 def element_relationships(layer, element_type, element_id):
     """Get relationships for an element"""

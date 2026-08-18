@@ -73,7 +73,31 @@ class ArchiMateOEFService:
     }
 
     def export_model(self, model_id: int | None = None) -> str:
-        """Export elements (and optionally a specific model) to OEF XML string."""
+        """Export elements (and optionally a specific model) to OEF XML string.
+
+        Thin wrapper over :meth:`export_model_validated` for callers that only
+        want the XML. Use ``export_model_validated`` to also see which
+        relationships were direction-corrected or dropped.
+        """
+        xml_str, _errors = self.export_model_validated(model_id)
+        return xml_str
+
+    def export_model_validated(self, model_id: int | None = None) -> tuple[str, list[str]]:
+        """Export elements/relationships to OEF XML, validating every relationship
+        against the corrected ArchiMate 3.2 matrix (``ArchimateValidityService``) on
+        the way out.
+
+        A relationship whose stored direction is invalid but whose reverse is
+        valid is emitted reversed (source/target swapped) and reported. A
+        relationship that is invalid in both directions is dropped from the
+        export and reported — OEF-invalid data is never silently emitted.
+
+        Returns ``(xml_string, validation_errors)`` where each entry in
+        ``validation_errors`` describes one corrected or dropped relationship.
+        """
+        from app.services.archimate_validity_service import ArchimateValidityService
+
+        validity = ArchimateValidityService()
         ET.register_namespace("", self.ARCHIMATE_NS)
         ET.register_namespace("xsi", self.XSI_NS)
         ET.register_namespace("dc", self.DC_NS)
@@ -131,21 +155,51 @@ class ArchiMateOEFService:
                 doc_el.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
                 doc_el.text = elem.description
 
-        # <relationships>
+        # <relationships> — validated against the ArchiMate 3.2 matrix on the way out.
+        elem_type_by_id: dict[int, str] = {elem.id: (elem.type or "") for elem in elements}
+        validation_errors: list[str] = []
+
         relationships_el = ET.SubElement(root, f"{{{self.ARCHIMATE_NS}}}relationships")
         for rel in relationships:
             if rel.source_id is None or rel.target_id is None:
                 continue
             rel_type = rel.type or "Association"
+            rel_type_key = rel_type.lower()
+            source_id, target_id = rel.source_id, rel.target_id
+            source_type = elem_type_by_id.get(source_id)
+            target_type = elem_type_by_id.get(target_id)
+
+            if source_type is None or target_type is None:
+                # Endpoint outside this export's element set (e.g. cross-model
+                # export) — cannot validate direction, emit as-is.
+                pass
+            elif validity.is_valid(source_type, target_type, rel_type_key):
+                pass
+            elif validity.is_valid(target_type, source_type, rel_type_key):
+                validation_errors.append(
+                    f"relationship id-rel-{rel.id} ({rel_type}) {source_type}(id-{source_id}) "
+                    f"-> {target_type}(id-{target_id}) is invalid per the ArchiMate 3.2 matrix; "
+                    f"the reverse direction is valid — emitted reversed."
+                )
+                source_id, target_id = target_id, source_id
+            else:
+                validation_errors.append(
+                    f"relationship id-rel-{rel.id} ({rel_type}) {source_type}(id-{source_id}) "
+                    f"-> {target_type}(id-{target_id}) is not a permitted pairing in either "
+                    f"direction per the ArchiMate 3.2 matrix — dropped from export."
+                )
+                continue
+
             rel_attrib = {
                 "identifier": f"id-rel-{rel.id}",
                 f"{{{self.XSI_NS}}}type": rel_type,
-                "source": f"id-{rel.source_id}",
-                "target": f"id-{rel.target_id}",
+                "source": f"id-{source_id}",
+                "target": f"id-{target_id}",
             }
             ET.SubElement(relationships_el, f"{{{self.ARCHIMATE_NS}}}relationship", rel_attrib)
 
-        return ET.tostring(root, encoding="unicode", xml_declaration=False)
+        xml_str = ET.tostring(root, encoding="unicode", xml_declaration=False)
+        return xml_str, validation_errors
 
     def import_model(self, xml_string: str) -> dict:
         """Parse OEF XML and upsert elements/relationships.
