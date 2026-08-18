@@ -22,6 +22,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ArchiMate CLI commands: {e}")
 
+    # Traceability report CLI command (ARCH-126)
+    try:
+        from app.commands.traceability_report_command import register_traceability_report_command
+        register_traceability_report_command(app)
+        app.logger.info("✅ Traceability report CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register traceability report CLI command: {e}")
+
     # Lucidchart import CLI command
     try:
         from app.commands.lucid_import_commands import register_lucid_import_commands
@@ -211,6 +219,13 @@ def init_cli(app):
         app.logger.info("\u2705 Schema reconcile CLI command registered")
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register schema reconcile CLI: {e}")
+
+    try:
+        from app.commands.dedupe_entities import init_app as init_dedupe_entities
+        init_dedupe_entities(app)
+        app.logger.info("\u2705 Dedupe entities CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register dedupe entities CLI: {e}")
 
     try:
         from app.commands.backfill_value_stream_tenancy import init_app as init_vs_tenancy

@@ -477,8 +477,26 @@ def export_architecture():
             mimetype="text/csv" if format_type == "csv" else "application/xml",
         )
     except Exception as e:
-        current_app.logger.error(f"Architecture export failed: {str(e)}")
-        return jsonify({"error": "Export failed. Please try again."}), 400
+        # O-04: "Export failed. Please try again." told the caller nothing —
+        # not the reason, not whether retrying could possibly help, and
+        # nothing to give support. Log the real exception under a
+        # correlation ID and hand the ID (not the raw exception text, which
+        # can leak internals) back to the caller so a support request can be
+        # matched to the server-side log line that explains it.
+        import uuid
+
+        correlation_id = uuid.uuid4().hex[:12]
+        current_app.logger.error(
+            "Architecture export failed [correlation_id=%s] format=%s: %s",
+            correlation_id, format_type, str(e), exc_info=True,
+        )
+        return jsonify(
+            {
+                "error": f"Export failed: {type(e).__name__}. This has been logged "
+                         f"(reference {correlation_id}) — include it if you contact support.",
+                "correlation_id": correlation_id,
+            }
+        ), 400
 
 
 # ==================== API ENDPOINTS ====================
@@ -517,8 +535,38 @@ def _relationship_to_dict(r):
 @architecture_crud_bp.route("/api/elements", methods=["GET"])
 @login_required
 def api_list_elements():
-    """API: List elements (JSON) with relationship + solution counts (ARCH-002)."""
+    """API: List elements (JSON) with relationship + solution counts (ARCH-002).
+
+    ARCH-052: paginated to match /applications/api/list's envelope
+    (page/pages/per_page/total, total == collection total). The legacy
+    `elements` + `status` keys are kept for backward compatibility with
+    existing callers that do not paginate.
+    """
     from sqlalchemy import func
+
+    raw_page = request.args.get("page", "1")
+    raw_per_page = request.args.get("per_page", "500")
+    try:
+        page = int(raw_page)
+        if page < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        return (
+            jsonify({"status": "error", "errors": {"page": ["must be a positive integer"]}}),
+            400,
+        )
+    try:
+        per_page = int(raw_per_page)
+        if per_page < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        return (
+            jsonify(
+                {"status": "error", "errors": {"per_page": ["must be a positive integer"]}}
+            ),
+            400,
+        )
+    per_page = min(per_page, 500)
 
     # Subquery: count relationships where element is source or target
     rel_sub = (
@@ -552,7 +600,11 @@ def api_list_elements():
     except Exception:
         sol_sub = None
 
-    elements = ArchitectureElement.query.limit(500).all()
+    total = ArchitectureElement.query.count()
+    pagination = ArchitectureElement.query.order_by(ArchitectureElement.id).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    elements = pagination.items
 
     # Build count lookup dicts for efficiency
     rel_src = {r.eid: r.cnt for r in db.session.query(rel_sub).all()}
@@ -567,7 +619,16 @@ def api_list_elements():
         sc = sol_map.get(e.id) or 0
         result.append(_element_to_dict(e, rel_count=rc, sol_count=sc))
 
-    return jsonify({"status": "success", "elements": result})
+    return jsonify(
+        {
+            "status": "success",
+            "elements": result,
+            "total": total,
+            "page": pagination.page,
+            "pages": pagination.pages,
+            "per_page": per_page,
+        }
+    )
 
 
 @architecture_crud_bp.route("/api/relationships", methods=["GET"])

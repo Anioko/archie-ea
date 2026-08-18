@@ -99,7 +99,7 @@ def render(data):
     out.append(f"Source: the 17 Aug 2026 QA remediation register "
                f"({len(findings)} active findings).\n")
     out.append("## Where this stands\n")
-    out.append(f"| | Count |\n|---|---|")
+    out.append("| | Count |\n|---|---|")
     out.append(f"| Findings total | {len(findings)} |")
     out.append(f"| Fixed and evidenced | {len(closed)} |")
     out.append(f"| Still open | {len(open_rows)} |")
