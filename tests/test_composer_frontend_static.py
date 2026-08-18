@@ -97,6 +97,18 @@ def test_cmp09_closing_scratch_tab_deletes_server_row():
     assert "closeViewpointTab(tab)" in composer_html, "tab close button must call the method"
 
 
+def test_cmp10_menus_use_opacity_only_transition():
+    """Toolbar dropdowns must fade (opacity only), not scale/translate, so menu
+    items don't shift under the cursor mid-animation and swallow the click."""
+    toolbar = (JS.parents[1] / "templates" / "archimate" / "partials"
+               / "_composer_toolbar.html").read_text(encoding="utf-8")
+    import re
+    # No bare `x-transition` (default = scale+translate) should remain.
+    bare = re.findall(r"x-transition(?!\.)", toolbar)
+    assert not bare, "toolbar menus must use opacity-only transitions, not the default"
+    assert "x-transition.opacity" in toolbar
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")

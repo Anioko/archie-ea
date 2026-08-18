@@ -66,7 +66,7 @@
                     @click="zoomDropdownOpen = !zoomDropdownOpen"
                     x-text="zoomPercent + '%'" title="Click for zoom presets"></button>
             <!-- modal-a11y-ok -->
-            <div x-show="zoomDropdownOpen" x-cloak x-transition
+            <div x-show="zoomDropdownOpen" x-cloak x-transition.opacity.duration.120ms
                  class="toolbar-dropdown-menu" style="min-width:120px; left:50%; transform:translateX(-50%);">
                 <div class="toolbar-dropdown-label">Zoom Presets</div>
                 <button type="button" class="toolbar-dropdown-item" :class="{'text-primary': zoomPercent === 50}"  @click="setZoom(50);  zoomDropdownOpen = false">50%</button>
@@ -117,7 +117,7 @@
                     title="Apply layer filter preset">
                 <i data-lucide="filter" class="w-3.5 h-3.5"></i>
             </button>
-            <div x-show="layerPresetOpen" x-cloak x-transition class="toolbar-dropdown-menu" style="min-width:210px;"> <!-- modal-a11y-ok --> <!-- inline-style-ok -->
+            <div x-show="layerPresetOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu" style="min-width:210px;"> <!-- modal-a11y-ok --> <!-- inline-style-ok -->
                 <div class="toolbar-dropdown-label">ArchiMate Viewpoints</div>
                 <button type="button" class="toolbar-dropdown-item" @click="applyLayerPreset('all'); layerPresetOpen = false">
                     <i data-lucide="layers" class="w-3.5 h-3.5"></i> All Layers (reset)
@@ -195,7 +195,7 @@
                     <span x-text="activeViewpointName || 'Viewpoints'"></span>
                     <i data-lucide="chevron-down" class="w-3 h-3"></i>
                 </button>
-            <div x-show="vpDropdownOpen" x-cloak x-transition class="vp-dropdown-menu"> <!-- modal-a11y-ok -->
+            <div x-show="vpDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="vp-dropdown-menu"> <!-- modal-a11y-ok -->
                 <button type="button" class="vp-dropdown-item" :class="{ 'active-vp': !activeViewpoint }"
                         @click="clearViewpoint()">
                     <span class="text-muted-foreground">No viewpoint (free canvas)</span>
@@ -234,7 +234,7 @@
                       title="Stale relationships detected — click to review"></span>
                 <i data-lucide="chevron-down" class="w-3 h-3"></i>
             </button>
-            <div x-show="saveDropdownOpen" x-cloak x-transition class="toolbar-dropdown-menu min-w-[220px]"> <!-- modal-a11y-ok -->
+            <div x-show="saveDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu min-w-[220px]"> <!-- modal-a11y-ok -->
                 <button type="button" class="toolbar-dropdown-item" @click="saveViewpoint(); saveDropdownOpen = false"
                         x-show="elementCount > 0">
                     <i data-lucide="save" class="w-3.5 h-3.5"></i> Save Viewpoint
@@ -326,7 +326,7 @@
                 <span>Diagrams</span>
                 <i data-lucide="chevron-down" class="w-3 h-3"></i>
             </button>
-            <div x-show="diagramsDropdownOpen" x-cloak x-transition class="toolbar-dropdown-menu min-w-[220px]"> <!-- modal-a11y-ok -->
+            <div x-show="diagramsDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu min-w-[220px]"> <!-- modal-a11y-ok -->
                 <button type="button" class="toolbar-dropdown-item" @click="newDiagram(); diagramsDropdownOpen = false">
                     <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> New Diagram
                 </button>
@@ -391,7 +391,7 @@
                     <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> AI
                     <i data-lucide="chevron-down" class="w-3 h-3"></i>
                 </button>
-                <div x-show="aiDropdownOpen" x-cloak x-transition class="toolbar-dropdown-menu right-align"> <!-- modal-a11y-ok -->
+                <div x-show="aiDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu right-align"> <!-- modal-a11y-ok -->
                     <button type="button" class="toolbar-dropdown-item" @click="openGenerateModal(); aiDropdownOpen = false">
                         <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Generate from Description
                     </button>
@@ -417,7 +417,7 @@
                     <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i> Layout
                     <i data-lucide="chevron-down" class="w-3 h-3"></i>
                 </button>
-                <div x-show="layoutDropdownOpen" x-cloak x-transition class="toolbar-dropdown-menu right-align"> <!-- modal-a11y-ok -->
+                <div x-show="layoutDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu right-align"> <!-- modal-a11y-ok -->
                     <div class="toolbar-dropdown-label">Auto-Layout</div>
                     <button type="button" class="toolbar-dropdown-item" @click="reLayout(); layoutDropdownOpen = false">
                         <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i> Layer Banding
@@ -467,7 +467,7 @@
                     <i data-lucide="palette" class="w-3.5 h-3.5"></i> Style
                     <i data-lucide="chevron-down" class="w-3 h-3"></i>
                 </button>
-                <div x-show="styleDropdownOpen" x-cloak x-transition class="toolbar-dropdown-menu right-align" style="min-width: 220px;"> <!-- modal-a11y-ok --> <!-- inline-style-ok -->
+                <div x-show="styleDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu right-align" style="min-width: 220px;"> <!-- modal-a11y-ok --> <!-- inline-style-ok -->
                     <div class="toolbar-dropdown-label">Built-in Presets</div>
                     <button type="button" class="toolbar-dropdown-item" @click="applyStyleTemplate('Corporate'); styleDropdownOpen = false">
                         <span class="w-3 h-3 rounded-sm border" style="background:#f0f4f8; border-color:#334155;"></span> Corporate
@@ -524,7 +524,7 @@
                 <i data-lucide="scan-search" class="w-3.5 h-3.5"></i> Analyze
                 <i data-lucide="chevron-down" class="w-3 h-3"></i>
             </button>
-            <div x-show="analyzeDropdownOpen" x-cloak x-transition class="toolbar-dropdown-menu right-align"> <!-- modal-a11y-ok -->
+            <div x-show="analyzeDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu right-align"> <!-- modal-a11y-ok -->
                 <button type="button" class="toolbar-dropdown-item" @click="clearDependencyPropagation(); analyzeDropdownOpen = false"
                         x-show="depPropagationActive" x-cloak>
                     <i data-lucide="eye-off" class="w-3.5 h-3.5"></i> Clear Dependency Highlight
@@ -656,7 +656,7 @@
                 <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
                 <i data-lucide="chevron-down" class="w-3 h-3"></i>
             </button>
-            <div x-show="exportDropdownOpen" x-cloak x-transition class="toolbar-dropdown-menu right-align" style="min-width: 180px;"> <!-- modal-a11y-ok --> <!-- inline-style-ok -->
+            <div x-show="exportDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu right-align" style="min-width: 180px;"> <!-- modal-a11y-ok --> <!-- inline-style-ok -->
                 <button type="button" class="toolbar-dropdown-item" @click="exportPng(); exportDropdownOpen = false">
                     <i data-lucide="image" class="w-3.5 h-3.5"></i> Export PNG (2x)
                 </button>
@@ -702,7 +702,7 @@
                 <span>More</span>
                 <i data-lucide="chevron-down" class="w-3 h-3"></i>
             </button>
-            <div x-show="moreDropdownOpen" x-cloak x-transition class="toolbar-dropdown-menu right-align" style="min-width: 220px; max-height: 70vh;"> <!-- modal-a11y-ok --> <!-- inline-style-ok -->
+            <div x-show="moreDropdownOpen" x-cloak x-transition.opacity.duration.120ms class="toolbar-dropdown-menu right-align" style="min-width: 220px; max-height: 70vh;"> <!-- modal-a11y-ok --> <!-- inline-style-ok -->
                 {# Layout section (edit mode only) #}
                 <template x-if="mode === 'edit'">
                     <div>
