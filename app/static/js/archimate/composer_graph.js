@@ -1478,15 +1478,45 @@ let ComposerGraph = (function() {
             self.statusText = 'Sugiyama layout applied to ' + elements.length + ' elements';
         },
 
-        /* ── New Diagram: clears canvas + resets saved viewpoint state ── */
+        /* ── New Diagram: clears canvas + resets saved viewpoint state ──
+         * C-04: the confirm dialog now names exactly what will be lost
+         * (element/relationship counts), and the clear is pushed onto
+         * UndoStack as a single undoable action instead of wiping undo
+         * history — Ctrl+Z (or the Undo toolbar button) restores the
+         * cleared canvas. The server-side SavedDiagram row for a
+         * previously-saved diagram (currentSavedVpId) is NOT deleted by
+         * this action — it stays retrievable from "Open" regardless of
+         * undo. */
         newDiagram: async function() {
             if (this.mode === 'view') return;
-            const hasContent = this.graph && this.graph.getElements().length > 0;
-            if (hasContent && this.viewpointDirty) {
-                if (!(await Platform.modal.confirm('You have unsaved changes. Start a new diagram anyway?'))) return;
-            } else if (hasContent) {
-                if (!(await Platform.modal.confirm('Start a new blank diagram? Current canvas will be cleared.'))) return;
+            let self = this;
+            const elementCount = this.graph ? this.graph.getElements().length : 0;
+            const linkCount = this.graph ? this.graph.getLinks().length : 0;
+            const hasContent = elementCount > 0;
+            if (hasContent) {
+                const unsavedPrefix = this.viewpointDirty ? 'You have unsaved changes. ' : '';
+                const msg = unsavedPrefix + elementCount + ' element' + (elementCount === 1 ? '' : 's') +
+                    ' and ' + linkCount + ' relationship' + (linkCount === 1 ? '' : 's') +
+                    ' will be cleared from the canvas. This can be undone with Ctrl+Z. Continue?';
+                /* C-04: destructive path is styled as destructive (not the
+                 * prominent primary button), and Cancel — the safe default —
+                 * receives focus, per Platform.confirm's showCancel behavior. */
+                const ok = await Platform.modal.confirm({
+                    title: 'Clear canvas?',
+                    message: msg,
+                    confirmText: 'Clear canvas',
+                    cancelText: 'Keep working',
+                    variant: 'destructive',
+                });
+                if (!ok) return;
             }
+
+            let preClearSnapshot = (hasContent && this.graph) ? this.graph.toJSON() : null;
+            let preClearVpId = this.currentSavedVpId;
+            let preClearTabId = this.activeTabId;
+            let preClearVpName = this.activeViewpointName;
+            let preClearDirty = this.viewpointDirty;
+
             if (this.graph) { this.graph.clear(); }
             this.canvasElements = {};
             this.elementCount = 0;
@@ -1500,10 +1530,33 @@ let ComposerGraph = (function() {
             this.selectedLink = null;
             this._selectedCells = [];
             this.statusText = 'New diagram — drag elements from the palette to start';
-            if (typeof UndoStack !== 'undefined') UndoStack.clear();
             let url = new URL(window.location);
             url.searchParams.delete('viewpoint_id');
             window.history.replaceState({}, '', url);
+
+            if (preClearSnapshot && typeof UndoStack !== 'undefined') {
+                UndoStack.push({
+                    undo: function() {
+                        self.graph.fromJSON(preClearSnapshot);
+                        self.currentSavedVpId = preClearVpId;
+                        self.activeTabId = preClearTabId;
+                        self.activeViewpointName = preClearVpName;
+                        self.viewpointDirty = preClearDirty;
+                        self.elementCount = self.graph.getElements().length;
+                        self.relCount = self.graph.getLinks().length;
+                        self.statusText = 'Restored the diagram cleared by "New diagram"';
+                    },
+                    redo: function() {
+                        self.graph.clear();
+                        self.currentSavedVpId = null;
+                        self.activeTabId = null;
+                        self.activeViewpointName = '';
+                        self.viewpointDirty = false;
+                        self.elementCount = 0;
+                        self.relCount = 0;
+                    },
+                });
+            }
         },
 
         /* ── Auto-detect existing relationships between canvas elements ── */

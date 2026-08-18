@@ -688,7 +688,7 @@ TOOL_SCHEMAS = [
         "name": "search_capabilities_by_problem",
         "mutates": False,
         "description": (
-            "Semantic search over 516 business capabilities to find which ones "
+            "Semantic search over the business capability catalog to find which ones "
             "are most relevant to a stated problem or initiative. "
             "Use at the START of Phase 2 — before asking the user what capabilities "
             "they need. Returns capabilities ranked by relevance with maturity gaps "

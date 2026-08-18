@@ -2342,9 +2342,11 @@ function composerApp() {
                 }
             });
 
-            /* ── Auto-save every 30s if dirty + saved viewpoint exists ── */
+            /* ── Auto-save every 30s if dirty (C-03: also creates the
+             * SavedDiagram server-side on first tick if the canvas has
+             * never been manually saved — see _autoSave / _autoCreateSavedDiagram) ── */
             this._autoSaveTimer = setInterval(function() {
-                if (self.viewpointDirty && self.currentSavedVpId) {
+                if (self.viewpointDirty) {
                     self._autoSave();
                 }
             }, 30000);
@@ -2375,7 +2377,20 @@ function composerApp() {
                         elementCount: self.elementCount,
                         solutionId: self.solutionId
                     }));
-                } catch (e) { /* swallow-ok: crash-recovery snapshot written every 10s; the visible "Autosave:" indicator tracks the SERVER save, not this, and a toast every 10 seconds would be worse than the failure it reports */ console.warn('Auto-persist failed:', e.message); }
+                } catch (e) {
+                    /* C-03: this used to warn only to the console — invisible
+                     * to the user. The primary autosave is server-side (see
+                     * _autoSave above); this localStorage snapshot is only a
+                     * secondary crash-recovery fallback, so a single quota
+                     * failure is not an emergency, but the user must be told
+                     * once rather than never — surfaced once per session,
+                     * not every 10s. */
+                    console.warn('Auto-persist to local browser storage failed:', e.message);
+                    if (!self._localAutosaveWarned) {
+                        self._localAutosaveWarned = true;
+                        _toast('warning', 'Local browser backup is full or unavailable — your work is still being saved to the server.');
+                    }
+                }
             }, 10000);
 
             /* ── Wave 10: Load quality score for solution ── */

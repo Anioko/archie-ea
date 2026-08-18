@@ -315,10 +315,20 @@ class ContextAwareAIHelper:
 
     def _load_apqc_context(self, **kwargs) -> Dict[str, Any]:
         """Load context for APQC process mapping."""
+        # CM-01: this used to hardcode total_processes=1000 as an "Approximate"
+        # fabricated value. Query the real count instead — None (not a fake
+        # number) when the model can't be loaded, per the never-invent-data rule.
+        total_processes = None
+        try:
+            from app.models.apqc_process import APQCProcess
+
+            total_processes = APQCProcess.query.count()
+        except Exception:
+            pass
         return {
             "context_type": ContextType.APQC_MAPPING,
             "apqc_version": "7.3.0",
-            "total_processes": 1000,  # Approximate
+            "total_processes": total_processes,
         }
 
     def _load_general_context(self, **kwargs) -> Dict[str, Any]:

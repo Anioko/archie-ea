@@ -3355,11 +3355,11 @@ class MultiDomainChatService:
         # Capability Architect gets full 6-phase ArchiMate guided design prompt
         if persona == "capability_architect":
             from app.modules.ai_chat.services.capability_architect_prompts import (
-                CAPABILITY_ARCHITECT_SYSTEM_PROMPT,
+                build_capability_architect_prompt,
             )
 
             arb_context = self._load_arb_history_context(user_id=user_id or 0)
-            base_prompt = CAPABILITY_ARCHITECT_SYSTEM_PROMPT
+            base_prompt = build_capability_architect_prompt()
             if arb_context:
                 base_prompt = base_prompt + "\n\nRecent Governance Context:\n" + arb_context
             return base_prompt

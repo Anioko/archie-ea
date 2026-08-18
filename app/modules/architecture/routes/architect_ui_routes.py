@@ -279,10 +279,29 @@ def export_oef():
     )
 
 
+def _oef_wants_json():
+    """O-03: an API caller posting to this endpoint must never get an HTML
+    200 back for a failed or malformed import — that is indistinguishable
+    from success. Callers that ask for JSON (Accept header, or no file
+    upload — i.e. a raw API POST, not a browser <form>) get JSON."""
+    best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+    if best == "application/json":
+        return True
+    return request.accept_mimetypes["application/json"] >= request.accept_mimetypes["text/html"] \
+        and "text/html" not in request.accept_mimetypes
+
+
 @architect_ui_bp.route("/architecture/import/oef", methods=["GET", "POST"])
 @login_required
 def import_oef():
-    """Import OEF XML file using ArchiMateExchangeService (deduplication-aware)."""
+    """Import OEF XML file using ArchiMateExchangeService (deduplication-aware).
+
+    O-03: this used to accept any POST, and on a missing/wrong-named file
+    field silently `flash()`+redirect to the GET form — an HTTP 200 with an
+    HTML body that gave an API caller zero signal the import did nothing.
+    Malformed submissions now return 4xx, and a JSON-preferring caller gets
+    JSON with per-record counts and errors instead of an HTML page.
+    """
     from app.modules.architecture.services.archimate_exchange_service import (
         get_archimate_exchange_service,
     )
@@ -290,15 +309,39 @@ def import_oef():
     if request.method == "GET":
         return render_template("archimate_crud/import_oef.html")
 
-    file = request.files.get("oef_file")
-    if not file:
-        flash("No file uploaded", "error")
-        return redirect(request.url)
+    wants_json = _oef_wants_json()
 
-    xml_content = file.read().decode("utf-8")
+    file = request.files.get("oef_file")
+    if not file or not file.filename:
+        error = "No file uploaded. POST multipart/form-data with a field named 'oef_file'."
+        if wants_json:
+            return jsonify({"success": False, "errors": [error]}), 400
+        flash(error, "error")
+        return render_template("archimate_crud/import_oef.html"), 400
+
+    try:
+        xml_content = file.read().decode("utf-8")
+    except UnicodeDecodeError:
+        error = "Uploaded file is not valid UTF-8 XML."
+        if wants_json:
+            return jsonify({"success": False, "errors": [error]}), 400
+        flash(error, "error")
+        return render_template("archimate_crud/import_oef.html"), 400
+
+    if not xml_content.strip():
+        error = "Uploaded file is empty."
+        if wants_json:
+            return jsonify({"success": False, "errors": [error]}), 400
+        flash(error, "error")
+        return render_template("archimate_crud/import_oef.html"), 400
+
     service = get_archimate_exchange_service()
     result = service.import_archimate_xml(xml_content, current_user.id)
-    return render_template("archimate_crud/import_oef.html", result=result)
+
+    status_code = 200 if result.get("success") else 400
+    if wants_json:
+        return jsonify(result), status_code
+    return render_template("archimate_crud/import_oef.html", result=result), status_code
 
 
 # =============================================================================

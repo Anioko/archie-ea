@@ -172,11 +172,26 @@ let ComposerPersistence = (function() {
         let methods = {
 
         _autoSave: function() {
+            /* C-03: this used to no-op ("return") whenever currentSavedVpId
+             * was unset — i.e. for every diagram the user had not yet
+             * manually named via Save. Those diagrams got ZERO server
+             * persistence; the only backing store was a single localStorage
+             * slot with no device sync and no locking. Autosave now creates
+             * the SavedDiagram row itself on first autosave tick so a
+             * diagram is server-persisted from the moment it has content,
+             * not from the moment the user remembers to click Save.
+             * localStorage remains an additional crash-recovery fallback
+             * (see the 10s snapshot below), never the system of record. */
             let self = this;
-            if (!self.currentSavedVpId || !self.viewpointDirty) return;
+            if (!self.viewpointDirty || self._creatingAutosave) return;
 
             let elements = self.graph.getElements().filter(function(c) { return !c.get('isLayerZone') && !c.get('isAnnotation'); });
             if (elements.length === 0) return;
+
+            if (!self.currentSavedVpId) {
+                self._autoCreateSavedDiagram(elements);
+                return;
+            }
 
             let elData = elements.map(function(cell) {
                 let pos = cell.position();
@@ -235,6 +250,78 @@ let ComposerPersistence = (function() {
                     _toast('warning', 'Changes not saved — retrying...');
                 } else if (self._autoSaveFailCount > 3) {
                     _toast('error', 'Auto-save failed after multiple attempts');
+                }
+            });
+        },
+
+        /* C-03: creates the SavedDiagram row the first time an unsaved
+         * canvas has content, so autosave is server-side from the start
+         * instead of requiring a manual "Save" first. Uses a generated
+         * name (never silently invented data — it is clearly labelled
+         * "Unsaved" and the user can rename via Save at any time). */
+        _autoCreateSavedDiagram: function(elements) {
+            let self = this;
+            self._creatingAutosave = true;
+
+            let elData = elements.map(function(cell) {
+                let pos = cell.position();
+                let size = cell.size();
+                return {
+                    element_id: cell.get('elementId'),
+                    name: cell.get('elName') || '',
+                    el_type: cell.get('elType') || '',
+                    layer: cell.get('elLayer') || '',
+                    x: Math.round(pos.x), y: Math.round(pos.y),
+                    width: size.width, height: size.height,
+                    rendering_mode: cell.get('renderingMode') || 'black_box',
+                };
+            }).filter(function(e) { return e.element_id; });
+
+            let relData = self.graph.getLinks().map(function(link) {
+                let relId = link.get('relId');
+                if (!relId) return null;
+                let srcCell = self.graph.getCell((link.get('source') || {}).id);
+                let tgtCell = self.graph.getCell((link.get('target') || {}).id);
+                return {
+                    relationship_id: relId,
+                    source_element_id: srcCell ? srcCell.get('elementId') : null,
+                    target_element_id: tgtCell ? tgtCell.get('elementId') : null,
+                    rel_type: link.get('relType') || 'association',
+                    waypoints: link.vertices() || null,
+                    routing_style: link.get('routingStyle') || 'manhattan',
+                    label: link.get('customLabel') || null,
+                };
+            }).filter(function(r) { return r; });
+
+            let stamp = new Date().toLocaleString();
+            let payload = {
+                name: self.activeViewpointName || ('Unsaved diagram — ' + stamp),
+                viewpoint_type: self.activeViewpoint || null,
+                solution_id: self.solutionId || null,
+                elements: elData,
+                relationships: relData,
+                description: _serializeZones(self),
+            };
+
+            Platform.fetch.post('/archimate/api/saved-viewpoints', payload, { silent: true })
+            .then(function(data) {
+                self._creatingAutosave = false;
+                if (data && data.id) {
+                    self.currentSavedVpId = data.id;
+                    self.activeViewpointName = payload.name;
+                    self.viewpointDirty = false;
+                    self.lastSavedAt = Date.now();
+                    self._autosaveLabel = 'just now';
+                    self._saveFailed = false;
+                    self._autoSaveFailCount = 0;
+                }
+            })
+            .catch(function() {
+                self._creatingAutosave = false;
+                self._saveFailed = true;
+                self._autoSaveFailCount = (self._autoSaveFailCount || 0) + 1;
+                if (self._autoSaveFailCount === 1) {
+                    _toast('warning', 'Could not save your work to the server — keeping a local browser backup only. Retrying...');
                 }
             });
         },

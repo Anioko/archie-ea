@@ -4,6 +4,7 @@ Implements XML-based interchange compatible with ArchiMate 3.0 OEF specification
 """
 
 from app.utils import safe_xml  # untrusted XML: entity-expansion safe
+import json
 import xml.etree.ElementTree as ET
 
 from app import db
@@ -138,6 +139,39 @@ class ArchiMateOEFService:
             rel_query = rel_query.filter_by(architecture_id=model_id)
         relationships = rel_query.all()
 
+        # <propertyDefinitions> — O-02: custom element attributes (ArchiMateElement.properties,
+        # a JSON string) were previously dropped entirely on export. Collect every distinct
+        # key across the exported elements first so each can get a stable propertyDefinition
+        # identifier that <properties> entries below reference.
+        prop_key_to_def_id: dict[str, str] = {}
+        elem_props: dict[int, dict] = {}
+        for elem in elements:
+            raw = getattr(elem, "properties", None)
+            if not raw:
+                continue
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            elem_props[elem.id] = parsed
+            for key in parsed:
+                if key not in prop_key_to_def_id:
+                    prop_key_to_def_id[key] = f"id-propdef-{len(prop_key_to_def_id) + 1}"
+
+        if prop_key_to_def_id:
+            propdefs_el = ET.SubElement(root, f"{{{self.ARCHIMATE_NS}}}propertyDefinitions")
+            for key, def_id in prop_key_to_def_id.items():
+                pd = ET.SubElement(
+                    propdefs_el,
+                    f"{{{self.ARCHIMATE_NS}}}propertyDefinition",
+                    {"identifier": def_id, "type": "string"},
+                )
+                pd_name = ET.SubElement(pd, f"{{{self.ARCHIMATE_NS}}}name")
+                pd_name.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
+                pd_name.text = key
+
         # <elements>
         elements_el = ET.SubElement(root, f"{{{self.ARCHIMATE_NS}}}elements")
         for elem in elements:
@@ -154,6 +188,19 @@ class ArchiMateOEFService:
                 doc_el = ET.SubElement(el_node, f"{{{self.ARCHIMATE_NS}}}documentation")
                 doc_el.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
                 doc_el.text = elem.description
+            props = elem_props.get(elem.id)
+            if props:
+                props_el = ET.SubElement(el_node, f"{{{self.ARCHIMATE_NS}}}properties")
+                for key, value in props.items():
+                    def_id = prop_key_to_def_id.get(key)
+                    if not def_id:
+                        continue
+                    prop_el = ET.SubElement(
+                        props_el, f"{{{self.ARCHIMATE_NS}}}property", {"propertyDefinitionRef": def_id}
+                    )
+                    val_el = ET.SubElement(prop_el, f"{{{self.ARCHIMATE_NS}}}value")
+                    val_el.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
+                    val_el.text = str(value)
 
         # <relationships> — validated against the ArchiMate 3.2 matrix on the way out.
         elem_type_by_id: dict[int, str] = {elem.id: (elem.type or "") for elem in elements}
@@ -197,6 +244,90 @@ class ArchiMateOEFService:
                 "target": f"id-{target_id}",
             }
             ET.SubElement(relationships_el, f"{{{self.ARCHIMATE_NS}}}relationship", rel_attrib)
+
+        # <organizations> — O-02: folder structure was previously dropped entirely on
+        # export, so a re-imported model lost all layer/folder grouping. Group exported
+        # elements by ArchiMate layer, which is the only folder structure Archie itself
+        # tracks server-side (there is no separate user-defined folder tree to preserve).
+        layer_groups: dict[str, list] = {}
+        for elem in elements:
+            layer_groups.setdefault(elem.layer or "Other", []).append(elem)
+
+        if layer_groups:
+            organizations_el = ET.SubElement(root, f"{{{self.ARCHIMATE_NS}}}organizations")
+            for layer_name, layer_elements in layer_groups.items():
+                item_el = ET.SubElement(organizations_el, f"{{{self.ARCHIMATE_NS}}}item")
+                label_el = ET.SubElement(item_el, f"{{{self.ARCHIMATE_NS}}}label")
+                label_el.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
+                label_el.text = layer_name
+                for elem in layer_elements:
+                    ref_el = ET.SubElement(item_el, f"{{{self.ARCHIMATE_NS}}}item")
+                    ref_el.set("identifierRef", f"id-{elem.id}")
+
+        # <views> — O-02: the Composer's saved diagrams (SavedDiagram /
+        # SavedDiagramElement / SavedDiagramRelationship — see
+        # app/models/archimate_core.py) carry the real node positions and
+        # connection routing; the export used to omit <views> entirely, so
+        # every diagram authored in the Composer was lost on export even
+        # though the geometry exists server-side. Only diagrams whose
+        # elements are actually in this export's element set are included.
+        from app.models.archimate_core import SavedDiagram
+
+        exported_element_ids = {elem.id for elem in elements}
+        exported_rel_ids = {rel.id for rel in relationships}
+
+        diagrams = SavedDiagram.query.all()
+        views_to_export = []
+        for diagram in diagrams:
+            diagram_element_ids = {
+                pos.element_id for pos in diagram.positions if pos.element_id in exported_element_ids
+            }
+            if diagram_element_ids:
+                views_to_export.append((diagram, diagram_element_ids))
+
+        if views_to_export:
+            views_el = ET.SubElement(root, f"{{{self.ARCHIMATE_NS}}}views")
+            diagrams_el = ET.SubElement(views_el, f"{{{self.ARCHIMATE_NS}}}diagrams")
+            for diagram, diagram_element_ids in views_to_export:
+                view_el = ET.SubElement(
+                    diagrams_el,
+                    f"{{{self.ARCHIMATE_NS}}}view",
+                    {
+                        "identifier": f"id-view-{diagram.id}",
+                        f"{{{self.XSI_NS}}}type": "archimate:ArchimateDiagramModel",
+                    },
+                )
+                view_name_el = ET.SubElement(view_el, f"{{{self.ARCHIMATE_NS}}}name")
+                view_name_el.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
+                view_name_el.text = diagram.name or f"View {diagram.id}"
+
+                for pos in diagram.positions:
+                    if pos.element_id not in diagram_element_ids:
+                        continue
+                    ET.SubElement(
+                        view_el,
+                        f"{{{self.ARCHIMATE_NS}}}node",
+                        {
+                            "identifier": f"id-view-{diagram.id}-node-{pos.element_id}",
+                            "elementRef": f"id-{pos.element_id}",
+                            "x": str(pos.position_x or 0),
+                            "y": str(pos.position_y or 0),
+                            "w": str(pos.width or 180),
+                            "h": str(pos.height or 64),
+                        },
+                    )
+
+                for rel_pos in diagram.rel_positions:
+                    if rel_pos.relationship_id not in exported_rel_ids:
+                        continue
+                    ET.SubElement(
+                        view_el,
+                        f"{{{self.ARCHIMATE_NS}}}connection",
+                        {
+                            "identifier": f"id-view-{diagram.id}-conn-{rel_pos.relationship_id}",
+                            "relationshipRef": f"id-rel-{rel_pos.relationship_id}",
+                        },
+                    )
 
         xml_str = ET.tostring(root, encoding="unicode", xml_declaration=False)
         return xml_str, validation_errors

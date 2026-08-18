@@ -1876,27 +1876,67 @@ UNIFIED_MANUFACTURING_CAPABILITIES = {
 }
 
 
-@click.group("seed-caps")
+@click.group("seed-capabilities")
 def seed_capabilities_cli():
-    """Seed comprehensive capabilities data (business, technical, unified)."""
+    """Seed the reference capability taxonomy (business, technical, unified, APQC).
+
+    CM-01: this group used to register as `flask seed-caps`, which did not
+    match the `flask seed-capabilities` command CLAUDE.md documents, so nobody
+    running the documented command found it — and the capability domain
+    (/capability-map, /api/apqc/tree) stayed empty on every fresh install.
+    Renamed to match the documented command; add --dry-run for a preview.
+    """
     pass
 
 
 @seed_capabilities_cli.command("all")
+@click.option("--dry-run", is_flag=True, help="Report what would be seeded without writing to the database.")
 @with_appcontext
-def seed_all_capabilities():
-    """Seed all capability types: business, technical, and unified."""
+def seed_all_capabilities(dry_run):
+    """Seed all capability types: business, technical, unified, and APQC."""
+    if dry_run:
+        _print_dry_run_summary()
+        return {"dry_run": True}
+
     click.echo("[*] Seeding ALL capabilities...")
 
     results = {
         "business": seed_business_caps(),
         "technical": seed_technical_caps(),
         "unified": seed_unified_caps(),
+        "apqc": seed_apqc_processes(),
     }
 
     total_created = sum(r.get("created", 0) for r in results.values())
     click.echo(f"\n[OK] Total capabilities seeded: {total_created}")
     return results
+
+
+def _print_dry_run_summary():
+    """Report row counts that WOULD be created, without writing anything."""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.technical_capability import TechnicalCapability
+    from app.models.apqc_process import APQCProcess
+
+    def _count_business(items, count=0):
+        for item in items:
+            count += 1
+            count = _count_business(item.get("children", []), count)
+        return count
+
+    business_total = _count_business(BUSINESS_CAPABILITIES)
+    business_existing = BusinessCapability.query.count()
+
+    technical_total = sum(len(d["capabilities"]) for d in TECHNICAL_CAPABILITIES)
+    technical_existing = TechnicalCapability.query.count()
+
+    apqc_total = len(APQC_PROCESS_SEED_DATA)
+    apqc_existing = APQCProcess.query.count()
+
+    click.echo("[DRY RUN] Nothing was written.")
+    click.echo(f"  Business capabilities:  {business_existing} already in DB, up to {business_total} in seed set")
+    click.echo(f"  Technical capabilities: {technical_existing} already in DB, up to {technical_total} in seed set")
+    click.echo(f"  APQC reference processes: {apqc_existing} already in DB, up to {apqc_total} in seed set")
 
 
 @seed_capabilities_cli.command("business")
@@ -1931,6 +1971,26 @@ def seed_unified_capabilities():
     result = seed_unified_caps()
     click.echo(
         f"[OK] Unified capabilities: {result['created']} created, {result['skipped']} skipped"
+    )
+    return result
+
+
+@seed_capabilities_cli.command("apqc")
+@with_appcontext
+def seed_apqc_capabilities():
+    """Seed the APQC Process Classification Framework reference taxonomy.
+
+    CM-01: /api/apqc/tree reads from the APQCProcess model
+    (app.models.apqc_process). A seed for a *different* model
+    (ApqcProcessHierarchy, app/seeds/apqc_process_hierarchy_seed.py) existed
+    but was never wired to any command and, even if run, would not have
+    populated the table this endpoint actually queries. This seeds
+    APQCProcess directly.
+    """
+    click.echo("[A] Seeding APQC reference processes...")
+    result = seed_apqc_processes()
+    click.echo(
+        f"[OK] APQC processes: {result['created']} created, {result['skipped']} skipped"
     )
     return result
 
@@ -2197,6 +2257,152 @@ def seed_unified_caps():
         raise
 
     return {"created": created, "skipped": skipped, "retired": retired, "domains_created": domains_created}
+
+
+# =============================================================================
+# APQC PROCESS CLASSIFICATION FRAMEWORK — L1-L3 reference taxonomy
+# (code, name, level, parent_code)
+# =============================================================================
+APQC_PROCESS_SEED_DATA = [
+    ("1.0", "Develop and Manage Products and Services", 1, None),
+    ("2.0", "Market and Sell Products and Services", 1, None),
+    ("3.0", "Deliver Products and Services", 1, None),
+    ("4.0", "Manage Customer Service", 1, None),
+    ("5.0", "Develop and Manage Human Capital", 1, None),
+    ("6.0", "Manage Information Technology", 1, None),
+    ("7.0", "Manage Financial Resources", 1, None),
+    ("8.0", "Acquire, Construct, and Manage Assets", 1, None),
+    ("9.0", "Manage Environmental Health and Safety", 1, None),
+    ("10.0", "Manage External Relationships", 1, None),
+    ("11.0", "Develop and Manage Business Capabilities", 1, None),
+    ("12.0", "Manage Knowledge, Improvement, and Change", 1, None),
+    ("1.1", "Manage product and service portfolio", 2, "1.0"),
+    ("1.2", "Develop products and services", 2, "1.0"),
+    ("1.3", "Deliver products and services", 2, "1.0"),
+    ("1.4", "Manage product and service life cycle", 2, "1.0"),
+    ("2.1", "Understand markets, customers, and capabilities", 2, "2.0"),
+    ("2.2", "Develop marketing strategy", 2, "2.0"),
+    ("2.3", "Develop sales strategy", 2, "2.0"),
+    ("2.4", "Develop and manage marketing plans", 2, "2.0"),
+    ("2.5", "Develop and manage sales plans", 2, "2.0"),
+    ("3.1", "Plan and manage supply chain", 2, "3.0"),
+    ("3.2", "Procure materials and services", 2, "3.0"),
+    ("3.3", "Produce/manufacture/deliver product", 2, "3.0"),
+    ("3.4", "Deliver service to customer", 2, "3.0"),
+    ("3.5", "Manage logistics and warehousing", 2, "3.0"),
+    ("4.1", "Develop customer care/customer service strategy", 2, "4.0"),
+    ("4.2", "Plan and manage customer service operations", 2, "4.0"),
+    ("4.3", "Measure and evaluate customer service operations", 2, "4.0"),
+    ("5.1", "Develop and manage human resources (HR) planning", 2, "5.0"),
+    ("5.2", "Recruit, source, and select employees", 2, "5.0"),
+    ("5.3", "Develop and counsel employees", 2, "5.0"),
+    ("5.4", "Reward and retain employees", 2, "5.0"),
+    ("5.5", "Redeploy and retire employees", 2, "5.0"),
+    ("5.6", "Manage employee information and analytics", 2, "5.0"),
+    ("6.1", "Manage the business of IT", 2, "6.0"),
+    ("6.2", "Develop and manage IT customer relationships", 2, "6.0"),
+    ("6.3", "Develop and implement security, privacy, and data protection", 2, "6.0"),
+    ("6.4", "Manage enterprise information", 2, "6.0"),
+    ("6.5", "Develop and maintain IT solutions", 2, "6.0"),
+    ("6.6", "Deploy IT solutions", 2, "6.0"),
+    ("6.7", "Deliver and support IT services", 2, "6.0"),
+    ("7.1", "Plan and manage enterprise finances", 2, "7.0"),
+    ("7.2", "Process revenue and receipts", 2, "7.0"),
+    ("7.3", "Process payables and expense reimbursements", 2, "7.0"),
+    ("7.4", "Manage payroll", 2, "7.0"),
+    ("7.5", "Manage treasury and risk", 2, "7.0"),
+    ("7.6", "Manage internal controls", 2, "7.0"),
+    ("7.7", "Manage taxes", 2, "7.0"),
+    ("8.1", "Plan and manage assets", 2, "8.0"),
+    ("8.2", "Design and construct/acquire productive assets", 2, "8.0"),
+    ("8.3", "Maintain productive assets", 2, "8.0"),
+    ("8.4", "Retire and dispose of assets", 2, "8.0"),
+    ("9.1", "Formulate EHS strategy and policies", 2, "9.0"),
+    ("9.2", "Ensure compliance with regulations", 2, "9.0"),
+    ("9.3", "Manage environmental programs", 2, "9.0"),
+    ("9.4", "Manage health and safety programs", 2, "9.0"),
+    ("10.1", "Build investor relationships", 2, "10.0"),
+    ("10.2", "Manage government and industry relationships", 2, "10.0"),
+    ("10.3", "Manage relations with board of directors", 2, "10.0"),
+    ("10.4", "Manage legal and ethical issues", 2, "10.0"),
+    ("10.5", "Manage public relations program", 2, "10.0"),
+    ("11.1", "Manage business architecture", 2, "11.0"),
+    ("11.2", "Manage portfolio, programmes, and projects", 2, "11.0"),
+    ("11.3", "Manage enterprise risk", 2, "11.0"),
+    ("11.4", "Manage business process improvement", 2, "11.0"),
+    ("12.1", "Create and manage organisational knowledge", 2, "12.0"),
+    ("12.2", "Manage improvement initiatives", 2, "12.0"),
+    ("12.3", "Implement management of change", 2, "12.0"),
+    ("1.1.1", "Define product/service portfolio strategy", 3, "1.1"),
+    ("1.1.2", "Conduct competitive analysis for product portfolio", 3, "1.1"),
+    ("1.2.1", "Perform product/service research and development", 3, "1.2"),
+    ("1.2.2", "Design and prototype product/service", 3, "1.2"),
+    ("1.2.3", "Test and evaluate product/service", 3, "1.2"),
+    ("6.5.1", "Develop and maintain application software", 3, "6.5"),
+    ("6.5.2", "Develop and maintain IT infrastructure", 3, "6.5"),
+    ("6.7.1", "Manage IT helpdesk and incident management", 3, "6.7"),
+    ("6.7.2", "Manage IT change and release", 3, "6.7"),
+    ("7.1.1", "Perform planning and budgeting", 3, "7.1"),
+    ("7.1.2", "Perform financial analysis and reporting", 3, "7.1"),
+    ("5.2.1", "Define employee sourcing strategy", 3, "5.2"),
+    ("5.2.2", "Screen candidates", 3, "5.2"),
+    ("5.3.1", "Manage employee performance", 3, "5.3"),
+    ("5.3.2", "Develop and train employees", 3, "5.3"),
+]
+
+
+def seed_apqc_processes():
+    """Seed the APQC PCF L1-L3 reference taxonomy into APQCProcess.
+
+    Idempotent — skips codes already present. This is what
+    /api/apqc/tree and APQCHierarchyService actually read from; it is
+    reference-framework data, not anything the customer entered.
+    """
+    from app.models.apqc_process import APQCProcess
+
+    created = 0
+    skipped = 0
+
+    try:
+        code_to_id = {
+            row.process_code: row.id for row in APQCProcess.query.all()
+        }
+
+        # First pass: create missing nodes without parent FK
+        for code, name, level, parent_code in APQC_PROCESS_SEED_DATA:
+            if code in code_to_id:
+                skipped += 1
+                continue
+            cat1 = code if level == 1 else None
+            proc = APQCProcess(
+                process_code=code,
+                process_name=name,
+                category_level_1=cat1,
+                process_category="reference",
+                process_type="Core",
+            )
+            db.session.add(proc)
+            db.session.flush()
+            code_to_id[code] = proc.id
+            created += 1
+            click.echo(f"  + [{code}] {name}")
+
+        # Second pass: wire parent_process_id now that all codes have ids
+        for code, name, level, parent_code in APQC_PROCESS_SEED_DATA:
+            if not parent_code:
+                continue
+            proc = APQCProcess.query.filter_by(process_code=code).first()
+            parent_id = code_to_id.get(parent_code)
+            if proc and parent_id and proc.parent_process_id is None:
+                proc.parent_process_id = parent_id
+
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        click.echo(f"[ERR] Error: {e}")
+        raise
+
+    return {"created": created, "skipped": skipped}
 
 
 def init_app(app):

@@ -5334,7 +5334,7 @@ provides foundation for subsequent architecture development phases.
         }
 
     def _handle_capability_baseline_generation(self, instance, step_def, input_data) -> Dict:
-        """CAPABILITY_INVESTMENT_PLANNING step 1: generate baseline from 516-capability register."""
+        """CAPABILITY_INVESTMENT_PLANNING step 1: generate baseline from the business capability register."""
         from app.models import Capability
         from app.models.application import ApplicationCapabilityLink
 

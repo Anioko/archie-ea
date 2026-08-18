@@ -34,11 +34,11 @@ Relationships: Capability→BusinessProcess, BusinessActor→BusinessRole→Busi
 ### Phase 4: HOW (Application) — Application Layer
 **BEFORE suggesting applications**, call `find_applications_by_capability` for each in-scope capability. Only suggest applications from the results — do not invent names. If a capability has no mapped apps, flag it as a gap (new application needed).
 Produce: ApplicationComponent, ApplicationService, ApplicationInterface, DataObject.
-Search existing: 881 applications, 460 vendor products.
+Search existing applications and vendor products using the platform's live counts (see "Platform Data Available" below) — never state a remembered or approximate figure.
 Relationships: BusinessProcess←ApplicationComponent, Capability←ApplicationComponent.
 
 ### Phase 5: HOW (Technology) — Technology Layer
-**BEFORE asking the user anything**, call `find_technical_capabilities` for each in-scope ACM domain (use the domains most relevant to the solution). The platform has 273 technical capabilities across 7 domains — capabilities flagged `is_gap: true` (zero app coverage) are technology blind spots that this solution should address.
+**BEFORE asking the user anything**, call `find_technical_capabilities` for each in-scope ACM domain (use the domains most relevant to the solution). See "Platform Data Available" below for the live technical-capability count — capabilities flagged `is_gap: true` (zero app coverage) are technology blind spots that this solution should address.
 Ask: "What infrastructure hosts these applications? Which of these technical capability gaps does this solution need to fill?"
 Produce: Node, Device, SystemSoftware, CommunicationNetwork — named after real technical capabilities, not invented names.
 Relationships: ApplicationComponent→Node, Node→SystemSoftware.
@@ -51,7 +51,7 @@ Relationships: CourseOfAction→WorkPackage→Deliverable.
 ## Conversation Rules
 
 1. **Work through phases in order.** Ask 1-2 questions per phase. Don't dump all phases at once.
-2. **Search before creating.** The platform has 720 ArchiMate elements, 881 apps, 516 capabilities. Suggest existing items first.
+2. **Search before creating.** See "Platform Data Available" below for live counts of ArchiMate elements, applications and capabilities — always search those first.
 3. **Show what you produce.** After each phase, summarize the elements created with their ArchiMate types and layer colors.
 4. **Derive, don't invent.** Requirements come from capability gaps. Course of actions come from requirements. Nothing without a traceable chain.
 5. **Use ArchiMate relationship types.** composition, aggregation, realization, serving, assignment, access, influence, triggering, flow, specialization, association — each has specific meaning.
@@ -67,12 +67,15 @@ Relationships: CourseOfAction→WorkPackage→Deliverable.
 - **Implementation** (slate): WorkPackage, Deliverable, Plateau, Gap
 
 ## Platform Data Available
-- 881 applications (lifecycle_status uses Abacus codes: "2.1 STRATEGIC", "5. DECOMMISSIONED")
-- 720 ArchiMate elements across 6 layers
-- 516 business capabilities (hierarchical, L1-L5)
-- 358 vendor organizations, 460 vendor products
-- 79 APQC processes
-- 40 solutions (average has <5 linked entities; target is 50-120)
+{platform_data_block}
+
+**CRITICAL — never state a memorized or approximate count.** The block above is generated
+fresh from the database at the start of this conversation; if it says "0" or "not loaded",
+that domain is genuinely empty right now — say so, do not substitute a plausible-sounding
+number. When a count is drawn from a seeded reference framework (e.g. APQC) rather than
+data the customer entered themselves, the block says so explicitly — always pass that
+distinction on to the user rather than presenting reference-framework content as the
+customer's own model.
 
 ## Output Format
 When suggesting elements, format them as:
@@ -85,6 +88,99 @@ Example:
 
 When you have enough context to create an element, create it immediately using the available tools. Do not describe what you would do — do it. After each tool call, confirm what was created in plain English and move to the next phase question. You are an agent with write access, not an advisor producing text output.
 """
+
+def _platform_data_block() -> str:
+    """Query live platform counts for the Capability Architect prompt.
+
+    CM-01: the prompt used to hardcode "516 business capabilities", "720
+    ArchiMate elements", etc. as fixed prose — numbers that drifted from
+    reality the moment the database changed, and that never distinguished a
+    seeded reference taxonomy from data the customer actually entered. This
+    queries live counts instead, and labels seeded/reference rows explicitly
+    so the AI can never present a reference framework as the customer's own
+    model (ARCH-015).
+    """
+    lines = []
+    try:
+        from app.models.application_layer import ApplicationComponent
+
+        lines.append(f"- {ApplicationComponent.query.count()} applications (lifecycle_status uses Abacus codes: \"2.1 STRATEGIC\", \"5. DECOMMISSIONED\")")
+    except Exception:
+        lines.append("- applications: count unavailable")
+
+    try:
+        from app.models.models import ArchiMateElement
+
+        lines.append(f"- {ArchiMateElement.query.count()} ArchiMate elements across 6 layers")
+    except Exception:
+        lines.append("- ArchiMate elements: count unavailable")
+
+    try:
+        from app.models.business_capabilities import BusinessCapability
+
+        total_caps = BusinessCapability.query.count()
+        seeded_caps = BusinessCapability.query.filter_by(discovery_source="seeded").count()
+        if total_caps == 0:
+            lines.append("- 0 business capabilities — the reference taxonomy has not been loaded yet (`flask seed-capabilities`)")
+        elif seeded_caps == total_caps:
+            lines.append(
+                f"- {total_caps} business capabilities, ALL from a seeded reference framework "
+                "(not customer-entered) — present these as a starting taxonomy to validate, "
+                "never as the customer's own capability model"
+            )
+        elif seeded_caps:
+            lines.append(
+                f"- {total_caps} business capabilities ({seeded_caps} from a seeded reference "
+                f"framework, {total_caps - seeded_caps} customer-entered — say which is which "
+                "when citing one)"
+            )
+        else:
+            lines.append(f"- {total_caps} business capabilities (customer-entered)")
+    except Exception:
+        lines.append("- business capabilities: count unavailable")
+
+    try:
+        from app.models.technical_capability import TechnicalCapability
+
+        lines.append(f"- {TechnicalCapability.query.count()} technical capabilities across ACM domains")
+    except Exception:
+        lines.append("- technical capabilities: count unavailable")
+
+    try:
+        from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+
+        lines.append(
+            f"- {VendorOrganization.query.count()} vendor organizations, "
+            f"{VendorProduct.query.count()} vendor products"
+        )
+    except Exception:
+        lines.append("- vendor organizations/products: count unavailable")
+
+    try:
+        from app.models.apqc_process import APQCProcess
+
+        apqc_count = APQCProcess.query.count()
+        if apqc_count:
+            lines.append(f"- {apqc_count} APQC reference processes (external framework, not customer data)")
+        else:
+            lines.append("- 0 APQC processes — the reference taxonomy has not been loaded yet (`flask seed-capabilities`)")
+    except Exception:
+        lines.append("- APQC processes: count unavailable")
+
+    try:
+        from app.models.solution_models import Solution
+
+        lines.append(f"- {Solution.query.count()} solutions")
+    except Exception:
+        lines.append("- solutions: count unavailable")
+
+    return "\n".join(lines)
+
+
+def build_capability_architect_prompt() -> str:
+    """Return CAPABILITY_ARCHITECT_SYSTEM_PROMPT with live platform counts filled in."""
+    return CAPABILITY_ARCHITECT_SYSTEM_PROMPT.replace("{platform_data_block}", _platform_data_block())
+
 
 CAPABILITY_ARCHITECT_PHASE_GUIDES = {
     1: "Phase 1: WHY — Motivation (Stakeholder, Driver, Goal, Assessment, Principle, Constraint)",

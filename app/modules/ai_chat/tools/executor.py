@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass
 
 from app import db
-from app.utils.duplicate_guard import find_duplicate_by_name
+from app.utils.duplicate_guard import find_duplicate_by_name, find_similar_entities
 
 from .resolver import EntityResolver
 
@@ -207,6 +207,11 @@ class ToolExecutor:
             if existing is not None:
                 return _duplicate_tool_result("solution", existing)
 
+        # S-06: near-duplicate advisory for the agent -- surfaced in the tool
+        # result BEFORE the caller acts on it further, not only in the
+        # post-hoc rationalization sweep.
+        similar = find_similar_entities(Solution, args["name"], organization_id=org_id)
+
         sol = Solution(
             name=args["name"],
             description=args.get("description", ""),
@@ -219,12 +224,19 @@ class ToolExecutor:
         db.session.add(sol)
         db.session.commit()
         logger.info("AgentRunner created solution id=%s name=%r user=%s", sol.id, sol.name, self.user_id)
-        return {
+        result = {
             "success": True,
             "result": {"id": sol.id, "name": sol.name},
             "message": f"Created solution '{sol.name}' (ID {sol.id}).",
             "url": f"/solutions/{sol.id}",
         }
+        if similar:
+            result["similar_entities"] = similar
+            result["message"] += (
+                f" Note: {len(similar)} similar existing solution(s) found — consider reusing "
+                "one instead if it represents the same thing."
+            )
+        return result
 
     # ------------------------------------------------------------------ #
     # Tool: link_capability_to_solution                                   #
@@ -350,6 +362,15 @@ class ToolExecutor:
             if existing is not None:
                 return _duplicate_tool_result("ArchiMate element", existing)
 
+        # S-06: near-duplicate advisory for the agent, same-type scoped like
+        # the exact-match guard above.
+        similar = find_similar_entities(
+            ArchiMateElement,
+            args["name"],
+            organization_id=org_id,
+            extra_filters=[ArchiMateElement.type == args["type"]],
+        )
+
         elem = ArchiMateElement(
             name=args["name"],
             type=args["type"],
@@ -375,7 +396,7 @@ class ToolExecutor:
                 db.session.add(link)
 
         db.session.commit()
-        return {
+        result = {
             "success": True,
             "result": {"id": elem.id, "name": elem.name, "type": elem.type, "layer": elem.layer},
             "message": (
@@ -383,6 +404,13 @@ class ToolExecutor:
                 + (f" and linked to solution '{sol_r['name']}'." if solution_name and sol_r.get("resolved") else ".")
             ),
         }
+        if similar:
+            result["similar_entities"] = similar
+            result["message"] += (
+                f" Note: {len(similar)} similar existing element(s) of this type found — consider "
+                "reusing one instead if it represents the same thing."
+            )
+        return result
 
     # ------------------------------------------------------------------ #
     # Tool: update_application_status (approve tier — pre-approved by     #
@@ -1086,7 +1114,7 @@ class ToolExecutor:
 
     def _tool_search_capabilities_by_problem(self, args: dict) -> dict:
         """
-        Semantic search over 516 business capabilities using SentenceTransformer
+        Semantic search over the business capability catalog using SentenceTransformer
         cosine similarity. Falls back to keyword ILIKE if embeddings unavailable.
         Returns top-N capabilities ranked by relevance to the problem description.
         """
