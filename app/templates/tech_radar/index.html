@@ -1,0 +1,109 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% block title %}Tech Radar — A.R.C.H.I.E.{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto">
+  {{ page_header(
+      title='Tech Radar',
+      description='Adopt / trial / assess / hold classification over the technology already modelled in the estate — Nodes, Devices, System Software and Technology Services.',
+      breadcrumbs=[
+          {'label': 'Home', 'href': url_for('main.index')},
+          {'label': 'Tech Radar'}
+      ]
+  ) }}
+
+  <div class="p-6 space-y-6">
+    {% if state.total_candidates == 0 %}
+    {{ empty_state(
+        icon='radar',
+        title='No technology-layer elements yet',
+        description='The Tech Radar classifies the Technology layer of the ArchiMate model — Nodes, Devices, System Software and Technology Services. Once infrastructure is recorded (directly, or through an application\'s technology stack), it will appear here to classify as Adopt, Trial, Assess or Hold.',
+        cta_text=None
+    ) }}
+    {% else %}
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="radar-ring-summary">
+      {% for ring in rings %}
+      <div class="rounded-lg border border-border bg-card p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{{ ring_labels[ring] }}</p>
+        <p class="text-2xl font-semibold mt-1" data-testid="radar-count-{{ ring }}">{{ state.rings[ring] | length }}</p>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% for ring in rings %}
+    <div class="rounded-lg border border-border bg-card" data-testid="radar-section-{{ ring }}">
+      <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+        <h2 class="text-sm font-semibold">{{ ring_labels[ring] }}</h2>
+        <span class="text-xs text-muted-foreground">{{ state.rings[ring] | length }} {{ 'item' if state.rings[ring] | length == 1 else 'items' }}</span>
+      </div>
+      {% if state.rings[ring] %}
+      <ul class="divide-y divide-border">
+        {% for row in state.rings[ring] %}
+        <li class="px-4 py-3 flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <p class="text-sm font-medium truncate">{{ row.element.name or '—' }}</p>
+            <p class="text-xs text-muted-foreground">{{ row.element.type or '—' }}{% if row.entry.rationale %} · {{ row.entry.rationale }}{% endif %}</p>
+          </div>
+          <form method="POST" action="{{ url_for('tech_radar.classify') }}" class="shrink-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="archimate_element_id" value="{{ row.element.id }}">
+            <select name="ring" onchange="this.form.submit()" aria-label="Reclassify {{ row.element.name }}"
+              class="h-8 rounded-md border border-input bg-transparent px-2 text-xs">
+              {% for r in rings %}
+              <option value="{{ r }}" {% if r == ring %}selected{% endif %}>{{ ring_labels[r] }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="px-4 py-6 text-sm text-muted-foreground">No technology classified into {{ ring_labels[ring] | lower }} yet.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="rounded-lg border border-border bg-card" data-testid="radar-unclassified">
+      <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+        <h2 class="text-sm font-semibold">Not yet classified</h2>
+        <span class="text-xs text-muted-foreground">{{ state.unclassified | length }} {{ 'item' if state.unclassified | length == 1 else 'items' }}</span>
+      </div>
+      {% if state.unclassified %}
+      <ul class="divide-y divide-border">
+        {% for element in state.unclassified %}
+        <li class="px-4 py-3 flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <p class="text-sm font-medium truncate">{{ element.name or '—' }}</p>
+            <p class="text-xs text-muted-foreground">{{ element.type or '—' }}</p>
+          </div>
+          <form method="POST" action="{{ url_for('tech_radar.classify') }}" class="flex items-center gap-2 shrink-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="archimate_element_id" value="{{ element.id }}">
+            <select name="ring" required aria-label="Classify {{ element.name }}"
+              class="h-8 rounded-md border border-input bg-transparent px-2 text-xs">
+              <option value="" selected disabled>Classify…</option>
+              {% for r in rings %}
+              <option value="{{ r }}">{{ ring_labels[r] }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" data-testid="radar-classify-{{ element.id }}"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3">
+              Set
+            </button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="px-4 py-6 text-sm text-muted-foreground">Every technology-layer element has a ring.</p>
+      {% endif %}
+    </div>
+
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

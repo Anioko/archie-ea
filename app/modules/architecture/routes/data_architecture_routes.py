@@ -11,8 +11,8 @@ Provides REST API endpoints and dashboard views for data architecture models:
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, render_template, request
-from flask_login import login_required
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
 
 from app import db
 from app.decorators import audit_log
@@ -158,6 +158,121 @@ def data_architecture_dashboard():
 # ============================================================================
 # Data Architecture API Endpoints
 # ============================================================================
+
+
+@data_architecture_bp.route("/data-lineage")
+@login_required
+def data_lineage_view():
+    """ARCH-123: field-level lineage over the DataObject ArchiMateElement
+    catalogue. Three real, derived sections, no fabricated data:
+      1. DataLineage rows already grounded in a source/target DataObject.
+      2. Existing ArchiMateRelationship edges between DataObjects (drawn
+         elsewhere, e.g. the ArchiMate composer or an import).
+      3. Semantic-similarity suggestions from the Data Stewardship
+         reviewer's embedding engine — labelled as suggestions, never
+         asserted as lineage until a human confirms them.
+    """
+    from app import db
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+    data_objects = (
+        ArchiMateElement.query.filter(ArchiMateElement.type == "DataObject")
+        .order_by(ArchiMateElement.name)
+        .all()
+    )
+    object_ids = [o.id for o in data_objects]
+
+    grounded_lineage = []
+    relationship_edges = []
+    suggestions = []
+    if object_ids:
+        grounded_lineage = (
+            DataLineage.query.filter(
+                DataLineage.archimate_element_id.in_(object_ids)
+            )
+            .order_by(DataLineage.id.desc())
+            .all()
+        )
+        relationship_edges = (
+            ArchiMateRelationship.query.filter(
+                db.or_(
+                    ArchiMateRelationship.source_id.in_(object_ids),
+                    ArchiMateRelationship.target_id.in_(object_ids),
+                )
+            )
+            .order_by(ArchiMateRelationship.id)
+            .all()
+        )
+        try:
+            from app.modules.solutions_strategic.v2.services.data_stewardship_reviewer import (
+                _semantic_pairs,
+            )
+
+            names = [o.name for o in data_objects if o.name]
+            by_name = {o.name: o for o in data_objects if o.name}
+            for a, b, sim in _semantic_pairs(names)[:10]:
+                oa, ob = by_name.get(a), by_name.get(b)
+                if oa and ob:
+                    suggestions.append({"a": oa, "b": ob, "similarity": sim})
+        except Exception:
+            logger.debug("semantic lineage suggestions unavailable", exc_info=True)
+
+    traced_ids = {row.archimate_element_id for row in grounded_lineage if row.archimate_element_id}
+    traced_ids |= {
+        row.target_archimate_element_id
+        for row in grounded_lineage
+        if row.target_archimate_element_id
+    }
+    for edge in relationship_edges:
+        traced_ids.add(edge.source_id)
+        traced_ids.add(edge.target_id)
+    untraced = [o for o in data_objects if o.id not in traced_ids]
+
+    return render_template(
+        "enterprise/data_lineage.html",
+        data_objects=data_objects,
+        grounded_lineage=grounded_lineage,
+        relationship_edges=relationship_edges,
+        suggestions=suggestions,
+        untraced=untraced,
+    )
+
+
+@data_architecture_bp.route("/data-lineage/create", methods=["POST"])
+@login_required
+@audit_log("create_data_lineage")
+def create_data_lineage():
+    """Create a real, grounded lineage row: both endpoints must be
+    existing DataObject ArchiMateElements — never free text. Rejects
+    anything that does not resolve to a real element."""
+    from app import db
+    from app.models.archimate_core import ArchiMateElement
+
+    source_id = request.form.get("source_id", type=int)
+    target_id = request.form.get("target_id", type=int)
+    lineage_type = (request.form.get("lineage_type") or "").strip() or None
+
+    source = ArchiMateElement.query.get(source_id) if source_id else None
+    target = ArchiMateElement.query.get(target_id) if target_id else None
+
+    if not source or source.type != "DataObject" or not target or target.type != "DataObject":
+        flash("Both source and target must be existing data objects.", "error")
+        return redirect(url_for("data_architecture.data_lineage_view"))
+    if source.id == target.id:
+        flash("A data object cannot flow into itself.", "error")
+        return redirect(url_for("data_architecture.data_lineage_view"))
+
+    row = DataLineage(
+        name=f"{source.name} -> {target.name}",
+        archimate_element_id=source.id,
+        target_archimate_element_id=target.id,
+        lineage_type=lineage_type,
+        created_by_id=current_user.id if current_user.is_authenticated else None,
+    )
+    db.session.add(row)
+    db.session.commit()
+    flash("Lineage recorded.", "success")
+    return redirect(url_for("data_architecture.data_lineage_view"))
 
 
 @data_architecture_bp.route("/api/data-models")

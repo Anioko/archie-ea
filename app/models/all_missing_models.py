@@ -250,8 +250,14 @@ class DataLineage(TenantMixin, db.Model):
     name = Column(db.String(255), nullable=False, index=True)
     description = Column(db.Text)
 
-    # ArchiMate linkage
+    # ArchiMate linkage. archimate_element_id is the lineage flow's SOURCE
+    # DataObject; target_archimate_element_id (ARCH-123, added 18 Aug 2026)
+    # is its TARGET DataObject — both nullable, both FK-grounded in the real
+    # ArchiMateElement catalogue rather than the free-text source_system /
+    # target_system strings below, so a lineage row can be traced back to an
+    # actual modelled element instead of an unverifiable label.
     archimate_element_id = Column(db.Integer, db.ForeignKey("archimate_elements.id"))
+    target_archimate_element_id = Column(db.Integer, db.ForeignKey("archimate_elements.id"), nullable=True)
 
     # Lineage characteristics
     lineage_type = Column(db.String(50))  # ETL, ELT, Real-time, Batch
@@ -283,6 +289,9 @@ class DataLineage(TenantMixin, db.Model):
 
     # Relationships
     archimate_element = db.relationship("ArchiMateElement", foreign_keys=[archimate_element_id])
+    target_archimate_element = db.relationship(
+        "ArchiMateElement", foreign_keys=[target_archimate_element_id]
+    )
     created_by = db.relationship("User", backref="created_data_lineage")
 
     # ArchiMate 3.2 Relationships

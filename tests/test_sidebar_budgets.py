@@ -160,6 +160,12 @@ def test_enterprise_architect_my_work_membership():
         "Impact Analysis",
         "Capability Health",
         "Duplicate Detection",
+        # ARCH-123 / ARCH-124 (QA register closure, 18 Aug 2026): Data
+        # Architecture (existing, previously undiscoverable) and Tech Radar
+        # (new), folded into enterprise_architect's My work since there is
+        # no dedicated Data Architect / Technical Architect role yet.
+        "Data Architecture",
+        "Tech Radar",
     ]
 
 

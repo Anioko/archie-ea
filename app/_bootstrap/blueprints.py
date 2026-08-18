@@ -196,6 +196,13 @@ def _register_optional_standalone(app):
         ("app.modules.business_model_canvas.routes", "business_model_bp", "/business-model"),
         ("app.modules.organization.routes", "organization_bp", "/organization"),
         ("app.modules.business_case.routes", "business_case_bp", "/business-case"),
+        # ARCH-124: Tech Radar — adopt/trial/assess/hold over the existing
+        # Technology-layer ArchiMateElement catalogue.
+        ("app.modules.tech_radar.routes", "tech_radar_bp", "/technology/radar"),
+        # ARCH-123 (Data Lineage) is NOT a new blueprint: it extends the
+        # existing app.modules.architecture.routes.data_architecture_routes
+        # (blueprint "data_architecture", already registered elsewhere) with
+        # a real create path and a lineage view — see that file.
     ]
     for module_path, attr, prefix in specs:
         try:

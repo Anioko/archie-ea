@@ -44,10 +44,10 @@
                 <i data-lucide="database" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
                 <span class="text-sm font-medium">View All Models</span>
             </a>
-            <span class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-muted/30 cursor-not-allowed opacity-60" title="Coming soon">
-                <i data-lucide="plus-circle" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
-                <span class="text-sm font-medium text-muted-foreground">Create Model</span>
-            </span>
+            <a href="{{ url_for('data_architecture.data_lineage_view') }}" data-testid="data-architecture-lineage-link" class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
+                <i data-lucide="git-merge" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium">Data Lineage</span>
+            </a>
             <span class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-muted/30 cursor-not-allowed opacity-60" title="Coming soon">
                 <i data-lucide="bar-chart" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
                 <span class="text-sm font-medium text-muted-foreground">Analytics</span>

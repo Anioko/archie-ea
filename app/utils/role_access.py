@@ -381,6 +381,14 @@ _MY_WORK_LINKS = {
         _link("Impact Analysis", "strategic.impact_analysis", "git-branch"),
         _link("Capability Health", "strategic.capability_health", "heart-pulse"),
         _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
+        # ARCH-123 / ARCH-124 (QA register closure, 18 Aug 2026): the Data
+        # Architect and Technical Architect personas the register flagged as
+        # underserved are folded into enterprise_architect here — there is no
+        # dedicated role for either yet. Data Architecture already existed
+        # (models + dashboard) but was reachable from nowhere in the
+        # sidebar; Tech Radar is new. Both are now linked.
+        _link("Data Architecture", "data_architecture.data_architecture_dashboard", "workflow"),
+        _link("Tech Radar", "tech_radar.index", "radar"),
     ],
     ROLE_CTO: [
         _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),

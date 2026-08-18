@@ -380,3 +380,12 @@ else:
 
     # BC-001: consolidated Business Case artifact (Business-Architect)
     from .business_case import BusinessCase  # noqa: F401
+
+    # ARCH-124: Tech Radar — adopt/trial/assess/hold classification over the
+    # existing Technology-layer ArchiMateElement catalogue.
+    from .tech_radar import TechRadarEntry  # noqa: F401
+
+    # ARCH-123 (Data Lineage) builds entirely on the existing
+    # ArchiMateRelationship model (type="DataFlow" between DataObject
+    # elements) — no new table required; see
+    # app/modules/data_lineage/services.py.

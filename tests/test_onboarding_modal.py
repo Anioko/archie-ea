@@ -25,15 +25,28 @@ MODAL_MARKER = "What&#39;s your role?"
 MODAL_MARKER_RAW = "What's your role?"
 
 
-def _render_base(app, user):
-    """Render a page extending layouts/admin_base.html as *user*."""
+def _render_base(app, user, nav_counts=None):
+    """Render a page extending layouts/admin_base.html as *user*.
+
+    nav_counts is passed EXPLICITLY and defaults to empty. ARCH-107 gates the
+    onboarding overlay on an empty workspace — the overlay used to render over
+    instances that already held data, and because its card dismisses on
+    @click.away it silently ate the user's first click anywhere on the page,
+    which is what made "Add Application" look inert (ARCH-040).
+
+    These tests are about what the modal CONTAINS, so they must control that
+    gate rather than inherit whatever the shared test database happens to hold;
+    otherwise they pass or fail depending on which tests ran first. The gate
+    itself is pinned separately below.
+    """
     from flask import render_template_string
     from flask_login import login_user
 
     with app.test_request_context("/"):
         login_user(user)
         return render_template_string(
-            "{% extends 'layouts/admin_base.html' %}{% block content %}x{% endblock %}"
+            "{% extends 'layouts/admin_base.html' %}{% block content %}x{% endblock %}",
+            nav_counts=nav_counts if nav_counts is not None else {},
         )
 
 
@@ -114,4 +127,19 @@ def test_every_assignable_role_is_offered_by_the_picker(app, make_user):
     missing = [r for r in ASSIGNABLE_ROLES if r not in offered]
     assert not missing, (
         f"assignable but not offered by the onboarding role picker: {missing}"
+    )
+
+
+
+def test_onboarding_overlay_is_hidden_once_the_workspace_has_data(make_user, app):
+    """ARCH-107: the overlay must NOT render over an instance that already
+    holds data. It addressed an established user as a first-run visitor, and
+    its @click.away dismissal consumed their first click on every page — the
+    real cause of the "Add Application is inert" report (ARCH-040)."""
+    user = make_user(role="business_architect")
+    html = _render_base(app, user, nav_counts={"applications": 3})
+
+    assert MODAL_MARKER not in html and MODAL_MARKER_RAW not in html, (
+        "the first-run overlay rendered over a populated workspace, where it "
+        "will silently swallow the user's first click"
     )

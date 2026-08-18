@@ -1,0 +1,166 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% block title %}Data Lineage — A.R.C.H.I.E.{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Data Lineage',
+        description='Where data is mastered, copied and consumed across DataObjects already in the ArchiMate model — every row here traces back to a real modelled element, never a free-text label.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Data Architecture', 'href': url_for('data_architecture.data_architecture_dashboard')},
+            {'label': 'Data Lineage'}
+        ]
+    ) }}
+
+    {% if data_objects | length == 0 %}
+    {{ empty_state(
+        icon='git-merge',
+        title='No data objects modelled yet',
+        description='Lineage is traced between DataObject elements in the ArchiMate Application layer. Once data objects exist — from the Data Stewardship review, an import, or the ArchiMate composer — they can be connected here.',
+        cta_text=None
+    ) }}
+    {% else %}
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="rounded-lg border-2 border-input bg-background p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data objects</p>
+            <p class="text-2xl font-semibold mt-1">{{ data_objects | length }}</p>
+        </div>
+        <div class="rounded-lg border-2 border-input bg-background p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recorded lineage edges</p>
+            <p class="text-2xl font-semibold mt-1" data-testid="lineage-edge-count">{{ grounded_lineage | length + relationship_edges | length }}</p>
+        </div>
+        <div class="rounded-lg border-2 border-input bg-background p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Not yet traced</p>
+            <p class="text-2xl font-semibold mt-1" data-testid="lineage-untraced-count">{{ untraced | length }}</p>
+        </div>
+    </div>
+
+    <div class="rounded-xl border-2 border-input bg-background overflow-hidden">
+        <div class="p-4 border-b border-input bg-muted/30">
+            <h2 class="text-lg font-semibold">Record a lineage flow</h2>
+            <p class="text-xs text-muted-foreground mt-1">Both endpoints must be existing data objects — this cannot create a lineage row against a system that isn't modelled.</p>
+        </div>
+        <form method="POST" action="{{ url_for('data_architecture.create_data_lineage') }}" class="p-4 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end" data-testid="lineage-create-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div>
+                <label for="lineage-source" class="block text-sm font-medium mb-1">Source data object</label>
+                <select id="lineage-source" name="source_id" required
+                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm">
+                    <option value="" selected disabled>Select…</option>
+                    {% for o in data_objects %}
+                    <option value="{{ o.id }}">{{ o.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="lineage-target" class="block text-sm font-medium mb-1">Target data object</label>
+                <select id="lineage-target" name="target_id" required
+                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm">
+                    <option value="" selected disabled>Select…</option>
+                    {% for o in data_objects %}
+                    <option value="{{ o.id }}">{{ o.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="lineage-type" class="block text-sm font-medium mb-1">Flow type</label>
+                <select id="lineage-type" name="lineage_type"
+                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm">
+                    <option value="">Not set</option>
+                    <option value="ETL">ETL</option>
+                    <option value="ELT">ELT</option>
+                    <option value="Real-time">Real-time</option>
+                    <option value="Batch">Batch</option>
+                </select>
+            </div>
+            <button type="submit" data-testid="lineage-create-submit"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Record lineage
+            </button>
+        </form>
+    </div>
+
+    <div class="rounded-xl border-2 border-input bg-background overflow-hidden" data-testid="lineage-recorded">
+        <div class="p-4 border-b border-input bg-muted/30">
+            <h2 class="text-lg font-semibold">Recorded lineage</h2>
+        </div>
+        {% if grounded_lineage or relationship_edges %}
+        <ul class="divide-y divide-input">
+            {% for row in grounded_lineage %}
+            <li class="px-4 py-3 text-sm">
+                <span class="font-medium">{{ row.archimate_element.name if row.archimate_element else '—' }}</span>
+                <span class="text-muted-foreground"> → </span>
+                <span class="font-medium">{{ row.target_archimate_element.name if row.target_archimate_element else '—' }}</span>
+                {% if row.lineage_type %}<span class="text-xs text-muted-foreground ml-2">({{ row.lineage_type }})</span>{% endif %}
+            </li>
+            {% endfor %}
+            {% for edge in relationship_edges %}
+            <li class="px-4 py-3 text-sm">
+                <span class="font-medium">{{ edge.source.name if edge.source else '—' }}</span>
+                <span class="text-muted-foreground"> → </span>
+                <span class="font-medium">{{ edge.target.name if edge.target else '—' }}</span>
+                <span class="text-xs text-muted-foreground ml-2">(ArchiMate relationship, {{ edge.type or 'unspecified' }})</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="px-4 py-6 text-sm text-muted-foreground">No lineage recorded yet — use the form above, or confirm a suggestion below.</p>
+        {% endif %}
+    </div>
+
+    <div class="rounded-xl border-2 border-input bg-background overflow-hidden" data-testid="lineage-untraced">
+        <div class="p-4 border-b border-input bg-muted/30">
+            <h2 class="text-lg font-semibold">Not yet traced</h2>
+            <p class="text-xs text-muted-foreground mt-1">Data objects with no recorded lineage edge. Impact analysis for these cannot be grounded in the model.</p>
+        </div>
+        {% if untraced %}
+        <ul class="divide-y divide-input">
+            {% for o in untraced %}
+            <li class="px-4 py-3 text-sm">{{ o.name }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="px-4 py-6 text-sm text-muted-foreground">Every data object has at least one recorded lineage edge.</p>
+        {% endif %}
+    </div>
+
+    <div class="rounded-xl border-2 border-input bg-background overflow-hidden" data-testid="lineage-suggestions">
+        <div class="p-4 border-b border-input bg-muted/30">
+            <h2 class="text-lg font-semibold">Suggested links (semantic similarity — unconfirmed)</h2>
+            <p class="text-xs text-muted-foreground mt-1">Name-similarity matches from the Data Stewardship module's embedding engine. Nothing here is asserted as lineage — confirm it to record a real edge.</p>
+        </div>
+        {% if suggestions %}
+        <ul class="divide-y divide-input">
+            {% for s in suggestions %}
+            <li class="px-4 py-3 flex items-center justify-between gap-4">
+                <p class="text-sm">
+                    <span class="font-medium">{{ s.a.name }}</span>
+                    <span class="text-muted-foreground"> ~ </span>
+                    <span class="font-medium">{{ s.b.name }}</span>
+                    <span class="text-xs text-muted-foreground">(similarity {{ s.similarity }})</span>
+                </p>
+                <form method="POST" action="{{ url_for('data_architecture.create_data_lineage') }}" class="shrink-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="source_id" value="{{ s.a.id }}">
+                    <input type="hidden" name="target_id" value="{{ s.b.id }}">
+                    <button type="submit" data-testid="lineage-confirm-{{ s.a.id }}-{{ s.b.id }}"
+                        class="inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3">
+                        Confirm as lineage
+                    </button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="px-4 py-6 text-sm text-muted-foreground">No semantic candidates above the match threshold right now.</p>
+        {% endif %}
+    </div>
+
+    {% endif %}
+</div>
+{% endblock %}
