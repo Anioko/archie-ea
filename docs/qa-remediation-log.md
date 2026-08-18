@@ -21,7 +21,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 
 | ID | Sev | Finding | Status |
 |---|---|---|---|
-| ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | PARTIAL, measured: 8,523 of 17,997 Alpine expressions (47%) are CSP-build incompatible, so the swap is staged not attempted. style-src unsafe-inline removed; script-src keeps unsafe-eval behind a nonce + strict-dynamic. Scanner + test pin the number. |
+| ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | PARTIAL: style-src unsafe-inline removed; script-src keeps unsafe-eval behind nonce + strict-dynamic. [2026-08-18 STRATEGY PROVEN — see docs/adr/0007-csp-unsafe-eval-removal.md] Reframed from the 8,523-expression alpinejs-csp rewrite to replacing Alpine's evaluator via Alpine.setEvaluator (exported in 3.14.3) with a CSP-safe interpreter, so unsafe-eval drops with ZERO template rewrites. Feasibility proven: scripts/check_alpine_csp_grammar.py parses 99.92% of the live expression corpus (10 residual of 11,856, mostly extraction artifacts). Remaining: write the JS evaluator (mirrors the proven grammar), browser-verify, drop unsafe-eval + flip the test. Stays OPEN until the evaluator is live and verified. |
 | ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | PARTIAL and measured: /architecture/dashboard 187,069 -> 169,857 bytes. /capability-map/ 481,749 -> 482,243 — dedup does NOT reduce page weight because the macro still renders all three modals; the 1,225-line premise was also wrong (~380). Real reduction needs lazy-loading the closed modals, not deduplication. |
 
 ## Fixed
