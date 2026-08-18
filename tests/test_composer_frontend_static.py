@@ -37,6 +37,18 @@ def test_cmp04_confirm_accepts_object_first_argument():
     assert "options.cancelLabel || options.cancelText" in src
 
 
+def test_cmp02_delete_affordance_and_method_present():
+    """The saved-viewpoint picker must expose delete, wired to deleteSavedViewpoint."""
+    overlays = (JS.parents[1] / "templates" / "archimate" / "partials"
+                / "_composer_overlays.html").read_text(encoding="utf-8")
+    assert "deleteSavedViewpoint(svp.id" in overlays, \
+        "picker rows must call deleteSavedViewpoint"
+    persistence = _read("archimate/composer_persistence.js")
+    assert "deleteSavedViewpoint:" in persistence, "method must exist"
+    assert "Platform.fetch.delete('/archimate/api/saved-viewpoints/'" in persistence, \
+        "must call the DELETE endpoint"
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")

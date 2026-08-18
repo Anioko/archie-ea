@@ -955,15 +955,27 @@
                 <template x-if="savedViewpoints.length === 0">
                     <div class="px-4 py-6 text-xs text-muted-foreground text-center">No saved viewpoints yet</div>
                 </template>
+                {# CMP-02: each saved viewpoint gets a delete affordance (the
+                   backend DELETE /api/saved-viewpoints/<id> already existed; the
+                   picker offered no way to reach it). Row mirrors the snapshot
+                   row: a load button plus a trash button. #}
                 <template x-for="svp in savedViewpoints" :key="svp.id">
-                    <button class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-accent transition-colors flex items-center justify-between gap-2"
-                            @click="loadSavedViewpoint(svp.id, svp.name); savedVpOpen = false">
-                        <div class="min-w-0">
-                            <div class="text-sm font-medium truncate text-foreground" x-text="svp.name"></div>
-                            <div class="text-[10px] text-muted-foreground" x-text="(svp.element_count || 0) + ' elements'"></div>
-                        </div>
-                        <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0"></i>
-                    </button>
+                    <div class="px-3 py-2.5 rounded-lg hover:bg-accent transition-colors flex items-center justify-between gap-2">
+                        <button class="flex-1 text-left min-w-0 flex items-center gap-2"
+                                @click="loadSavedViewpoint(svp.id, svp.name); savedVpOpen = false"
+                                title="Load this viewpoint">
+                            <div class="min-w-0">
+                                <div class="text-sm font-medium truncate text-foreground" x-text="svp.name"></div>
+                                <div class="text-[10px] text-muted-foreground" x-text="(svp.element_count || 0) + ' elements'"></div>
+                            </div>
+                        </button>
+                        <button @click.stop="deleteSavedViewpoint(svp.id, svp.name)"
+                                class="text-[10px] text-destructive hover:underline px-2 py-1 rounded-md hover:bg-destructive/10 transition-colors flex-shrink-0"
+                                :aria-label="'Delete viewpoint ' + svp.name"
+                                title="Delete this saved viewpoint (permanent)">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
                 </template>
             </div>
         </div>

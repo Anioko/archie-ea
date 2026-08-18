@@ -37,6 +37,21 @@ _LLM_TIMEOUT_SECONDS = 45
 
 
 # ── CMP-025: RBAC ownership check ─────────────────────────────────────────
+def _get_saved_diagram_scoped(vp_id):
+    """Fetch a SavedDiagram by id through a SELECT so tenant scoping applies.
+
+    CMP-01/CMP-02: SavedDiagram is tenant-scoped (TenantMixin). `db.session.get()`
+    resolves a primary key from the identity map when the row is already loaded,
+    which SKIPS the do_orm_execute tenant loader-criteria — so a cross-org caller
+    could reach another org's diagram if it happened to be cached in the session.
+    A filtered query always emits a statement, so the tenant predicate is applied
+    every time. Returns the diagram or None.
+    """
+    from app.models.archimate_core import SavedDiagram
+
+    return SavedDiagram.query.filter(SavedDiagram.id == vp_id).first()
+
+
 def _check_solution_access(solution_id):
     """Abort 403 if the current user may not edit the given solution."""
     if not solution_id:
@@ -1503,7 +1518,7 @@ def api_get_saved_viewpoint(vp_id):
         ArchiMateElement, ArchiMateRelationship, SavedDiagram,
     )
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1586,7 +1601,7 @@ def api_viewpoint_relationship_health(vp_id):
     from app.models.application_portfolio import ApplicationComponent
     from app.models.models import ExternalSystem
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1697,7 +1712,7 @@ def api_patch_saved_viewpoint(vp_id):
     """
     from app.models.archimate_core import SavedDiagram, SavedDiagramRelationship
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1755,7 +1770,7 @@ def api_update_saved_viewpoint(vp_id):
         SavedDiagram, SavedDiagramElement, SavedDiagramRelationship,
     )
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1830,7 +1845,7 @@ def api_delete_saved_viewpoint(vp_id):
     """Delete a saved diagram and its junction records (elements remain in catalog)."""
     from app.models.archimate_core import SavedDiagram
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1851,7 +1866,7 @@ def api_submit_viewpoint_review(vp_id):
     from datetime import datetime as _dt
     from app.models.archimate_core import SavedDiagram
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return api_error("Viewpoint not found", 404)
 
@@ -2331,7 +2346,7 @@ def api_create_snapshot(vp_id):
     from app.models.archimate_viewpoint import ArchimateViewpointSnapshot
     db.create_all()  # migration-exempt: creates archimate_viewpoint_snapshots if not yet present
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -2474,7 +2489,7 @@ def api_restore_snapshot(vp_id, sid):
     if not snapshot or snapshot.viewpoint_id != vp_id:
         return jsonify({"error": "Snapshot not found"}), 404
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -4139,8 +4154,8 @@ def api_composer_delta():
     if not baseline_id or not target_id:
         return jsonify({"error": "baseline_viewpoint_id and target_viewpoint_id are required"}), 400
 
-    baseline_vp = db.session.get(SavedDiagram, baseline_id)
-    target_vp = db.session.get(SavedDiagram, target_id)
+    baseline_vp = _get_saved_diagram_scoped(baseline_id)
+    target_vp = _get_saved_diagram_scoped(target_id)
 
     if not baseline_vp:
         return jsonify({"error": f"Baseline diagram {baseline_id} not found"}), 404

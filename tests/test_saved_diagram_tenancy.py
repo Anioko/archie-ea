@@ -92,6 +92,48 @@ def test_count_and_payload_agree_for_owner(db_session, make_org, tenant_ctx):
         "element_count must equal the number of elements the loader can resolve"
 
 
+def _make_user(db_session, org_id):
+    from werkzeug.security import generate_password_hash
+
+    from app.models.user import User
+
+    u = User(email=f"cmp02-{uuid.uuid4().hex[:8]}@example.com",
+             first_name="C", last_name="2", confirmed=True,
+             organization_id=org_id,
+             password_hash=generate_password_hash("x"))
+    db_session.add(u)
+    db_session.flush()
+    return u
+
+
+def test_cmp02_owner_can_delete_but_other_org_gets_404(db_session, make_org, tenant_ctx, app, login_as):
+    """DELETE endpoint (CMP-02 affordance target) removes the owner's diagram and
+    is 404 for another org — the tenant scoping from CMP-01 secures deletion too."""
+    from app.models.archimate_core import SavedDiagram
+
+    org_a = make_org("a")
+    org_b = make_org("b")
+    user_a = _make_user(db_session, org_a.id)
+    user_b = _make_user(db_session, org_b.id)
+    with tenant_ctx(org_a.id):
+        dia = _make_diagram_with_elements(db_session, org_a.id, n=2)
+        dia_id = dia.id
+
+    client = app.test_client()
+    # Another org cannot delete it.
+    login_as(client, user_b)
+    with tenant_ctx(org_b.id):
+        r_other = client.delete(f"/archimate/api/saved-viewpoints/{dia_id}")
+    assert r_other.status_code == 404, "cross-org delete must 404"
+
+    # The owner can.
+    login_as(client, user_a)
+    with tenant_ctx(org_a.id):
+        r_owner = client.delete(f"/archimate/api/saved-viewpoints/{dia_id}")
+        assert r_owner.status_code == 204, r_owner.get_data(as_text=True)
+        assert SavedDiagram.query.filter(SavedDiagram.id == dia_id).first() is None
+
+
 def test_cross_org_loader_cannot_resolve_elements(db_session, make_org, tenant_ctx):
     """Even if org B somehow references the diagram, its elements stay invisible."""
     from app.models.archimate_core import ArchiMateElement, SavedDiagram

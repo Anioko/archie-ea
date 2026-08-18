@@ -477,6 +477,44 @@ let ComposerPersistence = (function() {
             });
         },
 
+        /* CMP-02: delete a saved viewpoint from the picker. The backend
+           DELETE /api/saved-viewpoints/<id> already existed; the UI simply had
+           no affordance to reach it, so saved views accumulated with no way to
+           remove them. */
+        deleteSavedViewpoint: async function(vpId, vpName) {
+            let self = this;
+            if (!vpId) return;
+            let label = vpName || 'this viewpoint';
+            let ok = await Platform.modal.confirm({
+                title: 'Delete viewpoint?',
+                message: 'Delete "' + label + '"? Its diagram layout is removed permanently. '
+                    + 'Elements stay in the catalog. This cannot be undone.',
+                confirmText: 'Delete viewpoint',
+                cancelText: 'Keep it',
+                variant: 'destructive',
+            });
+            if (!ok) return;
+
+            Platform.fetch.delete('/archimate/api/saved-viewpoints/' + vpId, { silent: true })
+            .then(function() {
+                /* Drop it from every in-memory list so the UI reflects the delete
+                   without a round-trip. */
+                self.savedViewpoints = (self.savedViewpoints || []).filter(function(v) { return v.id !== vpId; });
+                self.viewpointTabs = (self.viewpointTabs || []).filter(function(v) { return v.id !== vpId; });
+                /* If the deleted view is the one open on the canvas, detach it so
+                   the user isn't editing a diagram that no longer exists. */
+                if (self.currentSavedVpId === vpId) {
+                    self.currentSavedVpId = null;
+                    self.activeViewpointName = '';
+                    self.viewpointDirty = false;
+                }
+                _toast('success', 'Viewpoint "' + label + '" deleted');
+            })
+            .catch(function() {
+                _toast('error', 'Failed to delete viewpoint "' + label + '"');
+            });
+        },
+
         /* ENT-107: Populate the viewpoint tab strip with most recent viewpoints only. */
         loadViewpointTabs: function() {
             let self = this;
