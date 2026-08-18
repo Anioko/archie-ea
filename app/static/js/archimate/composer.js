@@ -994,6 +994,27 @@ function composerApp() {
             return '';
         },
 
+        /* CMP-07: ONE authoritative save indicator. The status bar previously
+           showed up to five competing strings ("Unsaved changes", "Autosave:
+           just now", "Save paused", "Autosave: 1 min ago", plus the toolbar
+           "Save*") and the user could not tell whether their work was safe. This
+           getter maps _saveState to a single {icon, text, tone}; the footer and
+           toolbar both render it, so there is exactly one source of truth. */
+        get saveIndicator() {
+            switch (this._saveState) {
+                case 'failed':
+                    return { icon: 'alert-circle', text: 'Not saved — retrying', tone: 'text-destructive' };
+                case 'saving':
+                    return { icon: 'loader', text: 'Saving…', tone: 'text-muted-foreground' };
+                case 'dirty':
+                    return { icon: 'circle', text: 'Unsaved changes', tone: 'text-warning' };
+                case 'saved':
+                    return { icon: 'check', text: 'Saved' + (this._autosaveLabel ? ' · ' + this._autosaveLabel : ''), tone: 'text-success' };
+                default:
+                    return { icon: 'circle', text: 'Ready', tone: 'text-muted-foreground' };
+            }
+        },
+
         get filteredPalette() {
             let self = this;
             let vpKey = self.activeViewpoint || '';

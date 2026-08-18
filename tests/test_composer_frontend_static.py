@@ -116,6 +116,17 @@ def test_cmp14_hover_brings_element_to_front():
         "element:mouseenter must bring the hovered element to front for port access"
 
 
+def test_cmp07_single_save_indicator():
+    """The status bar must show ONE unified save indicator, not competing ones."""
+    src = _read("archimate/composer.js")
+    assert "get saveIndicator()" in src, "unified saveIndicator getter must exist"
+    composer_html = (JS.parents[1] / "templates" / "archimate" / "composer.html").read_text(encoding="utf-8")
+    assert "saveIndicator.text" in composer_html, "footer must render the unified indicator"
+    # The old competing footer strings must be gone.
+    assert "'Autosave: ' + _autosaveLabel" not in composer_html, \
+        "the separate 'Autosave: <label>' footer block must be removed"
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")
