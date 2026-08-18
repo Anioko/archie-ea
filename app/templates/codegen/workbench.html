@@ -199,7 +199,7 @@ body:has([data-workbench]) #main-content > div {
                 </div>
                 <div class="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border border-border/50">
                     <svg class="w-3.5 h-3.5 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21.75 6.75-2.25-2.25m0 0-2.25-2.25M19.5 4.5l2.25 2.25M19.5 4.5l-2.25 2.25M3 3l3.59 3.59m0 0A9.953 9.953 0 0 1 12 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 0 1-4.132 4.411m0 0L21 21M3 3l18 18"/></svg>
-                    <span class="text-[10px] text-muted-foreground">Language: <span class="font-medium text-foreground" x-text="config.language"></span></span>
+                    <span class="text-xs text-muted-foreground">Language: <span class="font-medium text-foreground" x-text="config.language"></span></span>
                 </div>
             </div>
 
@@ -222,7 +222,7 @@ body:has([data-workbench]) #main-content > div {
                     <template x-if="!searchResults">
                         <div class="text-center py-8 text-muted-foreground text-xs">
                             <i data-lucide="search" class="h-8 w-8 mx-auto mb-2 opacity-30"></i>
-                            <p>Use the <strong>Find</strong> button or <span class="font-mono text-[10px] bg-muted px-1 py-0.5 rounded">Ctrl+Shift+F</span> to search across files</p>
+                            <p>Use the <strong>Find</strong> button or <span class="font-mono text-xs bg-muted px-1 py-0.5 rounded">Ctrl+Shift+F</span> to search across files</p>
                         </div>
                     </template>
                     <template x-if="searchResults">
@@ -235,7 +235,7 @@ body:has([data-workbench]) #main-content > div {
                                 <div class="mb-2">
                                     <button type="button" @click="selectFile(result.path)" class="text-[11px] font-medium text-primary hover:underline truncate block w-full text-left" x-text="result.path"></button>
                                     <template x-for="m in result.matches" :key="m.line">
-                                        <div @click="selectFile(result.path)" class="pl-3 py-0.5 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:bg-muted/30 cursor-pointer rounded truncate">
+                                        <div @click="selectFile(result.path)" class="pl-3 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted/30 cursor-pointer rounded truncate">
                                             <span class="text-muted-foreground/50 mr-1" x-text="m.line + ':'"></span><span x-text="m.text"></span>
                                         </div>
                                     </template>
@@ -276,7 +276,7 @@ body:has([data-workbench]) #main-content > div {
                 </template>
                 <li x-show="filteredCommandPaletteList().length === 0" class="px-3 py-4 text-sm text-muted-foreground text-center">No matching commands</li>
             </ul>
-            <p class="px-3 py-2 text-[10px] text-muted-foreground border-t border-border">↑↓ navigate · Enter to run · Esc to close · <span x-text="commandPaletteShortcutLabel()"></span> toggles</p>
+            <p class="px-3 py-2 text-xs text-muted-foreground border-t border-border">↑↓ navigate · Enter to run · Esc to close · <span x-text="commandPaletteShortcutLabel()"></span> toggles</p>
         </div>
     </div>
 

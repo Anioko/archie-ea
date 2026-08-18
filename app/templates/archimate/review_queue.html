@@ -48,23 +48,23 @@
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-1.5">
                         <span class="font-medium text-sm truncate" x-text="s.source_element.name"></span>
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border" :class="layerClass(s.source_element.layer)" x-text="s.source_element.type"></span>
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border" :class="layerClass(s.source_element.layer)" x-text="s.source_element.type"></span>
                     </div>
                 </div>
                 <div class="flex items-center gap-1 px-2 shrink-0">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-foreground border border-input" x-text="s.relationship_type"></span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-foreground border border-input" x-text="s.relationship_type"></span>
                     <span class="text-xs text-muted-foreground">&#8594;</span>
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-1.5">
                         <span class="font-medium text-sm truncate" x-text="s.target_element.name"></span>
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border" :class="layerClass(s.target_element.layer)" x-text="s.target_element.type"></span>
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border" :class="layerClass(s.target_element.layer)" x-text="s.target_element.type"></span>
                     </div>
                 </div>
                 <div class="shrink-0 w-12 text-center">
                     <span class="text-xs font-medium" :class="s.confidence >= 0.8 ? 'text-primary' : s.confidence >= 0.5 ? 'text-warning' : 'text-muted-foreground'" x-text="Math.round(s.confidence * 100) + '%'"></span>
                 </div>
-                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground shrink-0" x-text="s.source_method"></span>
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground shrink-0" x-text="s.source_method"></span>
                 <div class="flex items-center gap-1 shrink-0">
                     <button @click="acceptSuggestion(s.id)" :disabled="processing" class="inline-flex items-center justify-center h-7 w-7 rounded-md bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50" title="Accept">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>

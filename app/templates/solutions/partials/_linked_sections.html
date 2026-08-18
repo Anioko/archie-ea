@@ -133,7 +133,7 @@
                     <div class="flex items-center justify-between mb-1">
                         <span class="text-sm font-medium text-foreground" x-text="'ADR-' + String(adr.adr_number || 0).padStart(3, '0') + ': ' + (adr.title || 'Untitled')"></span>
                         <div class="flex items-center gap-2">
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                   :class="adr.status === 'accepted' ? 'bg-success/10 text-success-emphasis border border-success/30' :
  (adr.status === 'deprecated' || adr.status === 'superseded') ? 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30' :
  adr.status === 'proposed' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' :
@@ -288,7 +288,7 @@
             <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border group"
                  :data-testid="'staged-element-' + index">
                 <div class="flex items-center gap-3 min-w-0 flex-1">
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border"
                           :class="{
  'bg-warning/10 text-warning-emphasis border-warning/30': el.layer === 'business',
  'bg-info/10 text-info-emphasis border-info/30': el.layer === 'application',
@@ -345,7 +345,7 @@
                       :data-testid="'req-badge-' + req.id">
                     <span x-text="req.name || ('Requirement #' + req.id)"></span>
                     <span x-show="req.moscow_priority" x-cloak
-                          class="px-1 py-0 rounded text-[10px] font-bold"
+                          class="px-1 py-0 rounded text-xs font-bold"
                           :class="{'bg-destructive text-destructive-emphasis': req.moscow_priority === 'MUST', 'bg-warning/10 text-warning-emphasis': req.moscow_priority === 'SHOULD', 'bg-muted text-foreground': req.moscow_priority === 'WONT'}"
                           x-text="req.moscow_priority"></span>
                     <button type="button" @click="unlinkEntity('requirement', req.id)"
@@ -471,7 +471,7 @@
                                 <div class="flex items-center gap-2">
                                     <p class="text-sm font-medium text-foreground truncate" x-text="item.name"></p>
                                     <template x-if="manageModalType === 'application' && item.name && (item.name.startsWith('(Duplicate)') || item.is_duplicate)">
-                                        <span class="flex-shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
+                                        <span class="flex-shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
                                             Duplicate
                                         </span>
                                     </template>

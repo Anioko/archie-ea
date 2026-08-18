@@ -846,7 +846,7 @@
             <div class="flex items-center gap-2 mb-3">
                 <i data-lucide="sparkles" class="h-4 w-4 text-primary" aria-hidden="true"></i>
                 <h3 class="text-sm font-semibold">Suggested Capabilities</h3>
-                <span class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">AI</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">AI</span>
                 <span class="text-xs text-muted-foreground ml-auto" x-text="suggestions.length + ' suggestions from portfolio patterns'"></span>
             </div>
             <div class="space-y-2">
@@ -859,7 +859,7 @@
                             <p class="text-sm font-medium" x-text="s.capability_name"></p>
                             <div class="flex flex-wrap gap-1 mt-1">
                                 <template x-for="signal in s.signals" :key="signal">
-                                    <span class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded" x-text="signal"></span>
+                                    <span class="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded" x-text="signal"></span>
                                 </template>
                             </div>
                         </div>

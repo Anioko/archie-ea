@@ -47,7 +47,7 @@
                 <div class="mt-4 p-3 bg-muted/50 rounded-lg">
                     <h4 class="font-medium text-xs mb-2">Expertise Areas</h4>
                     <div class="flex flex-wrap gap-1">
-                        ${(config.expertise || []).map(e => `<span class="text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-full">${e}</span>`).join('')}
+                        ${(config.expertise || []).map(e => `<span class="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full">${e}</span>`).join('')}
                     </div>
                 </div>
             `;
@@ -74,7 +74,7 @@
                             <div class="rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors"
                                  data-action="select-context" data-id="${el.id}" data-type="archimate_element">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="bg-primary/10 text-primary text-[10px] px-1.5 py-0.5 rounded font-medium">${el.type}</span><!-- token-migration-ok -->
+                                    <span class="bg-primary/10 text-primary text-xs px-1.5 py-0.5 rounded font-medium">${el.type}</span><!-- token-migration-ok -->
                                     <span class="font-medium text-sm">${el.name}</span>
                                 </div>
                             </div>
@@ -89,7 +89,7 @@
                             <div class="rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors"
                                  data-action="select-context" data-id="${app.id}" data-type="application">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="bg-emerald-500/10 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded font-medium">Application</span><!-- token-migration-ok -->
+                                    <span class="bg-emerald-500/10 text-emerald-700 text-xs px-1.5 py-0.5 rounded font-medium">Application</span><!-- token-migration-ok -->
                                     <span class="font-medium text-sm">${app.name}</span>
                                 </div>
                                 <p class="text-xs text-muted-foreground">${app.technology || 'No technology info'}</p>
@@ -435,7 +435,7 @@
                 '<div class="flex items-center justify-between mb-2">' +
                   '<span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">' +
                     'In your portfolio</span>' +
-                  '<span class="text-[10px] text-muted-foreground">' +
+                  '<span class="text-xs text-muted-foreground">' +
                     ArchieChat.render.escapeForHtml(scope) + ', ranked by impact</span>' +
                 '</div>' +
                 '<div class="space-y-1.5">' + rows + '</div>'
@@ -587,12 +587,12 @@
                     recHtml += '<div class="p-2 border rounded-lg mb-2 bg-gradient-to-r from-primary/5 to-transparent">' +
                         '<div class="flex items-center justify-between mb-1">' +
                         '<span class="text-xs font-medium">' + rec.title + '</span>' +
-                        '<span class="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">' + (rec.impact_score || 0) + '%</span>' +
+                        '<span class="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">' + (rec.impact_score || 0) + '%</span>' +
                         '</div>' +
                         '<p class="text-[11px] text-muted-foreground">' + (rec.description || '').substring(0, 100) + '</p>' +
                         details +
                         '<div class="flex gap-2 mt-2">' +
-                        '<button type="button" class="text-[10px] text-primary hover:underline js-rec-item" data-title="' + (rec.title || '').replace(/"/g, '&quot;') + '" data-desc="' + (rec.description || '').substring(0, 200).replace(/"/g, '&quot;') + '"><i data-lucide="message-circle" class="h-3 w-3 inline"></i> Ask AI to help</button>' +
+                        '<button type="button" class="text-xs text-primary hover:underline js-rec-item" data-title="' + (rec.title || '').replace(/"/g, '&quot;') + '" data-desc="' + (rec.description || '').substring(0, 200).replace(/"/g, '&quot;') + '"><i data-lucide="message-circle" class="h-3 w-3 inline"></i> Ask AI to help</button>' +
                         '</div></div>';
                 });
                 recsContent.innerHTML = recHtml;

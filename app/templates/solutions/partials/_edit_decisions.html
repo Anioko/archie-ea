@@ -195,10 +195,10 @@
                             <tr class="hover:bg-muted/30 transition-colors">
                                 <td class="px-3 py-2 font-medium text-foreground">
                                     <span x-text="criterion.name"></span>
-                                    <p class="text-[10px] text-muted-foreground" x-text="criterion.description" x-show="criterion.description" x-cloak></p>
+                                    <p class="text-xs text-muted-foreground" x-text="criterion.description" x-show="criterion.description" x-cloak></p>
                                 </td>
                                 <td class="px-3 py-2 text-center">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground"
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground"
                                           x-text="Math.round(criterion.weight * 100) + '%'"></span>
                                 </td>
                                 <template x-for="opt in optionsAnalysisData.mcda.options" :key="'c' + cIdx + '-o' + opt.id">
@@ -242,7 +242,7 @@
                             <span class="text-sm font-semibold text-foreground"
                                   x-text="(opt.option_type || 'Option').charAt(0).toUpperCase() + (opt.option_type || 'option').slice(1)"></span>
                             <template x-if="opt.rank === 1">
-                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/30">
+                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30">
                                     <i data-lucide="star" class="w-3 h-3" aria-hidden="true"></i> Top
                                 </span>
                             </template>

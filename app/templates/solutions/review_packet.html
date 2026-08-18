@@ -33,7 +33,7 @@
                 <i data-lucide="{{ 'check-circle' if packet.tone=='good' else ('alert-triangle' if packet.tone=='warn' else 'clipboard-list') }}" class="h-6 w-6"></i>
             </span>
             <div>
-                <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Board verdict</p>
+                <p class="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Board verdict</p>
                 <h2 class="text-lg font-semibold text-foreground">{{ packet.verdict }}</h2>
                 <p class="text-xs text-muted-foreground mt-0.5">ADM Phase {{ packet.solution.adm_phase }} · governance {{ packet.solution.governance_status|replace('_',' ') }}</p>
             </div>
@@ -72,7 +72,7 @@
             </div>
             {% if packet.decision %}
             <p class="text-sm font-medium text-foreground">{{ packet.decision.title }}</p>
-            <span class="inline-flex items-center px-2 py-0.5 mt-1 rounded-md text-[10px] font-bold uppercase
+            <span class="inline-flex items-center px-2 py-0.5 mt-1 rounded-md text-xs font-bold uppercase
                 {% if packet.decision.status == 'accepted' %}bg-success/10 text-success-emphasis border border-success/30
                 {% elif packet.decision.status == 'rejected' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                 {% else %}bg-warning/10 text-warning-emphasis border border-warning/30{% endif %}">{{ packet.decision.status }}</span>

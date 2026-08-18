@@ -243,7 +243,7 @@
                                     {% else %}
                                         {% set _gov_cls = 'bg-muted text-muted-foreground border border-border/50' %}
                                     {% endif %}
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold {{ _gov_cls }}">{{ _gov_label }}</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold {{ _gov_cls }}">{{ _gov_label }}</span>
                                 </div>
                             </td>
                             <td class="px-5 py-4 whitespace-nowrap">
@@ -261,15 +261,15 @@
  {% else %}bg-primary{% endif %}"
                                              style="width: {{ ws.readiness_pct or 0 }}%"></div>
                                     </div>
-                                    <p class="text-[10px] text-muted-foreground">{{ ws.readiness_passed or 0 }}/{{ ws.readiness_total or 0 }} TOGAF checks</p>
+                                    <p class="text-xs text-muted-foreground">{{ ws.readiness_passed or 0 }}/{{ ws.readiness_total or 0 }} TOGAF checks</p>
                                 </div>
                             </td>
                             <td class="px-5 py-4">
                                 <div class="flex flex-wrap gap-1.5 max-w-xs">
-                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-[10px] font-medium text-muted-foreground">{{ ws.capability_count or 0 }} capabilities</span>
-                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-[10px] font-medium text-muted-foreground">{{ ws.application_count or 0 }} apps</span>
-                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-[10px] font-medium text-muted-foreground">{{ ws.archimate_count or 0 }} ArchiMate</span>
-                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-[10px] font-medium text-muted-foreground">{{ ws.risk_count or 0 }} risks</span>
+                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground">{{ ws.capability_count or 0 }} capabilities</span>
+                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground">{{ ws.application_count or 0 }} apps</span>
+                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground">{{ ws.archimate_count or 0 }} ArchiMate</span>
+                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground">{{ ws.risk_count or 0 }} risks</span>
                                 </div>
                             </td>
                             {# PLT-002: Architecture completeness score ring #}
@@ -286,14 +286,14 @@
                                   </svg>
                                   <span class="absolute text-[11px] font-bold leading-none">{{ _score }}%</span>
                                 </div>
-                                <span class="text-[10px] text-muted-foreground">{{ _cs.get('filled_count', 0) }}/{{ _cs.get('total', 14) }}</span>
+                                <span class="text-xs text-muted-foreground">{{ _cs.get('filled_count', 0) }}/{{ _cs.get('total', 14) }}</span>
                               </div>
                             </td>
                             {% set _disconnected = (ws.capability_count or 0) == 0 and (ws.application_count or 0) == 0 and (ws.archimate_count or 0) == 0 %}
                             <td class="px-5 py-4">
                                 <div class="space-y-1 max-w-[200px]">
                                     <p class="text-xs font-medium leading-relaxed {{ 'text-warning-emphasis' if _disconnected else 'text-foreground' }}">{{ ws.next_action or 'Continue modelling' }}</p>
-                                    <p class="text-[10px] text-muted-foreground">{{ solution.created_at | format_date }}</p>
+                                    <p class="text-xs text-muted-foreground">{{ solution.created_at | format_date }}</p>
                                 </div>
                             </td>
                             <td class="px-5 py-4 whitespace-nowrap text-right">
@@ -323,10 +323,10 @@
                                     <div class="flex items-center gap-1.5">
                                         <button type="button" @click="toggleCompare({{ solution.id }})"
                                                 :class="isInCompare({{ solution.id }}) ? 'text-primary border-primary bg-primary/10' : 'text-muted-foreground border-border/50'"
-                                                class="text-[10px] px-2 py-1 rounded-md border font-medium transition-colors"
+                                                class="text-xs px-2 py-1 rounded-md border font-medium transition-colors"
                                                 x-text="isInCompare({{ solution.id }}) ? '✓ Compare' : '+ Compare'"></button>
                                         <button type="button" @click="window.deleteSolution({{ solution.id }}, '{{ solution.name|e }}')"
-                                                class="text-[10px] px-2 py-1 rounded-md border border-destructive/20 text-destructive-emphasis/70 hover:bg-destructive/10 hover:text-destructive-emphasis transition-colors" aria-label="Delete">Delete</button>
+                                                class="text-xs px-2 py-1 rounded-md border border-destructive/20 text-destructive-emphasis/70 hover:bg-destructive/10 hover:text-destructive-emphasis transition-colors" aria-label="Delete">Delete</button>
                                     </div>
                                 </div>
                             </td>
@@ -591,8 +591,8 @@
               return '<div class="flex items-center justify-between gap-4 rounded-lg border border-border bg-card p-4">' +
                 '<div class="min-w-0"><p class="font-medium text-foreground">' + (t.name || 'Unnamed') + '</p>' +
                 '<p class="text-xs text-muted-foreground mt-0.5">' + (t.description || '').slice(0, 120) + (t.description && t.description.length > 120 ? '…' : '') + '</p>' +
-                '<span class="inline-flex items-center mt-1 px-2 py-0.5 rounded text-[10px] bg-muted text-muted-foreground">' + (t.domain || 'General') + '</span>' +
-                ' <span class="text-[10px] text-muted-foreground">· used ' + (t.usage_count || 0) + '×</span></div>' +
+                '<span class="inline-flex items-center mt-1 px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground">' + (t.domain || 'General') + '</span>' +
+                ' <span class="text-xs text-muted-foreground">· used ' + (t.usage_count || 0) + '×</span></div>' +
                 '<button type="button" data-tid="' + t.id + '" class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">Use Template</button></div>';
             }).join('');
       })

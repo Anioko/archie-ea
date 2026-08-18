@@ -155,10 +155,10 @@
                         <td class="px-6 py-3">
                             <div class="flex flex-wrap gap-1">
                                 {% for tech in component.technology_stack[:3] %}
-                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] border border-border">{{ tech }}</span>
+                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-xs border border-border">{{ tech }}</span>
                                 {% endfor %}
                                 {% if component.technology_stack | length > 3 %}
-                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] border border-border">
+                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-xs border border-border">
                                     +{{ component.technology_stack | length - 3 }} more
                                 </span>
                                 {% endif %}

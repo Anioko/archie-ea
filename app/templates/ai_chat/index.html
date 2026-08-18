@@ -113,20 +113,12 @@
         vertical-align: middle;
         margin-right: 2px;
     }
-    /* Suggestion chips scroll under a fixed-width strip; nothing signalled
-       that "Generate ArchiMate diagram" wasn't the last of the row. A
-       right-edge fade (mask, not a hard-coded color swatch) reads as "more
-       to scroll" without adding chrome. Suppressed once the row has
-       scrolled to its end so it never fades content that's already fully
-       visible. */
-    #suggestion-chips {
-        -webkit-mask-image: linear-gradient(to right, black calc(100% - 64px), transparent 100%);
-        mask-image: linear-gradient(to right, black calc(100% - 64px), transparent 100%);
-    }
-    #suggestion-chips.at-scroll-end {
-        -webkit-mask-image: none;
-        mask-image: none;
-    }
+    /* ARCH-112: the chips used to scroll horizontally under a fixed-width
+       strip, which needed a fourth chip's existence signalled with a
+       right-edge fade — and at narrow viewports required a horizontal
+       scroll gesture to reach it at all, on top of clipping the welcome
+       heading above. They now wrap (see #suggestion-chips in the markup),
+       so every chip is reachable without scrolling and no fade is needed. */
 </style>
 {% endblock %}
 
@@ -267,16 +259,28 @@ x-cloak>
                     <div x-show="showAdvanced" x-cloak @click.outside="showAdvanced = false"
                          x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
                          class="absolute right-0 mt-2 w-64 rounded-md border border-border bg-popover shadow-lg z-50 p-3" role="menu">
-                        <label for="model-selector" class="text-xs font-medium text-muted-foreground block mb-1.5">AI model</label>
-                        <div class="relative">
-                            <select id="model-selector" aria-label="AI model"
-                                class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
-                                <option value="">Auto-Select Model</option>
-                            </select>
-                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                                <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                        {# ARCH-045: a control that offers exactly one, empty choice looks
+                           stubbed rather than governed. Hidden by default and only
+                           revealed by loadAvailableModels() (app.js) once /ai-chat/models
+                           has actually returned more than one real model — production
+                           with no LLM keys configured legitimately returns none, and this
+                           must read as "auto-selection, nothing to choose from" rather
+                           than a broken picker. #}
+                        <div id="model-selector-wrap" class="hidden">
+                            <label for="model-selector" class="text-xs font-medium text-muted-foreground block mb-1.5">AI model</label>
+                            <div class="relative">
+                                <select id="model-selector" aria-label="AI model"
+                                    class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
+                                    <option value="">Auto-Select Model</option>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                                    <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                                </div>
                             </div>
                         </div>
+                        <p id="model-selector-empty-note" class="text-xs text-muted-foreground hidden">
+                            No AI models are configured — responses use the platform default.
+                        </p>
                     </div>
                 </div>
 
@@ -449,7 +453,7 @@ x-cloak>
                             <i data-lucide="plus-circle" class="h-4 w-4" aria-hidden="true"></i>
                             Create solution from brief
                         </button>
-                        <p class="text-[10px] text-muted-foreground mt-1.5 text-center">Or type in chat: <em>Create a solution for …</em> or <em>I need a new solution about …</em></p>
+                        <p class="text-xs text-muted-foreground mt-1.5 text-center">Or type in chat: <em>Create a solution for …</em> or <em>I need a new solution about …</em></p>
                     </div>
 
                     {# Query Results #}
@@ -655,7 +659,7 @@ x-cloak>
 
                     {# UIQA-004: the personas publish governed work products — link the two AI systems #}
                     <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-3 text-xs text-muted-foreground">
-                        <span class="text-[10px] uppercase tracking-wider">Their governed work products:</span>
+                        <span class="text-xs uppercase tracking-wider">Their governed work products:</span>
                         <a href="/solutions/briefings" class="text-primary hover:underline">EA Briefing</a>
                         <span class="text-border">·</span>
                         <a href="/solutions/data-stewardship" class="text-primary hover:underline">Data Stewardship</a>
@@ -665,7 +669,7 @@ x-cloak>
 
                     <div class="relative">
                         <div class="absolute inset-0 flex items-center"><span class="w-full border-t border-border"></span></div>
-                        <div class="relative flex justify-center"><span class="bg-background px-3 text-[10px] uppercase tracking-wider text-muted-foreground">or explore by domain</span></div>
+                        <div class="relative flex justify-center"><span class="bg-background px-3 text-xs uppercase tracking-wider text-muted-foreground">or explore by domain</span></div>
                     </div>
 
                     <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
@@ -749,8 +753,8 @@ x-cloak>
                  this is a separate, always-visible sibling — see the
                  "Your AI Architects" removal note above the architect-card
                  grid for why that heading no longer exists at all). -->
-            <div class="px-4 pt-1 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Quick prompts</div>
-            <div id="suggestion-chips" class="px-4 pb-2 flex flex-nowrap gap-2 overflow-x-auto">
+            <div class="px-4 pt-1 pb-1 text-xs uppercase tracking-wider text-muted-foreground">Quick prompts</div>
+            <div id="suggestion-chips" class="px-4 pb-2 flex flex-wrap gap-2">
                 <button type="button" @click="setSuggestion('Review tech stack gaps and identify end-of-life risks')"
                     class="chip-btn shrink-0 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors whitespace-nowrap">
                     <i data-lucide="alert-triangle" class="h-3 w-3" aria-hidden="true"></i>
@@ -877,7 +881,7 @@ x-cloak>
  'border-success/30 border-l-2 border-l-success bg-success/5': item.status === 'confirmed',
  'border-border border-l-2 border-l-warning opacity-60': item.status === 'pending'
  }">
-                        <div class="text-muted-foreground uppercase tracking-wider text-[10px] font-semibold mb-0.5"
+                        <div class="text-muted-foreground uppercase tracking-wider text-xs font-semibold mb-0.5"
                              x-text="item.label"></div>
                         <div class="text-foreground leading-relaxed" x-text="item.value || '—'"></div>
                     </div>

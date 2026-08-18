@@ -54,7 +54,7 @@
             </div>
             <div class="shrink-0 text-right">
                 <p class="text-2xl font-bold text-foreground">{{ roadmap.plateau_count }}</p>
-                <p class="text-[10px] uppercase tracking-wider text-muted-foreground">plateaus{% if roadmap.horizon_months %} · {{ roadmap.horizon_months }} mo{% endif %}</p>
+                <p class="text-xs uppercase tracking-wider text-muted-foreground">plateaus{% if roadmap.horizon_months %} · {{ roadmap.horizon_months }} mo{% endif %}</p>
             </div>
         </div>
     </div>
@@ -78,7 +78,7 @@
                         <div class="space-y-1.5">
                             {% for wp in p.work_packages %}
                             <div class="flex items-start gap-2 text-xs border border-border rounded-md px-3 py-2 bg-background">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-muted text-muted-foreground shrink-0">{{ wp.effort or '—' }}</span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-muted text-muted-foreground shrink-0">{{ wp.effort or '—' }}</span>
                                 <div class="min-w-0">
                                     <p class="text-foreground font-medium">{{ wp.name }}</p>
                                     {% if wp.touches %}<p class="text-[11px] text-muted-foreground mt-0.5">Touches: {{ wp.touches }}</p>{% endif %}

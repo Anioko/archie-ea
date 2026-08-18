@@ -469,7 +469,7 @@
                                     <div class="flex flex-wrap gap-1">
                                         <template x-for="ref in el.solution_refs" :key="ref.id">
                                             <a :href="'/solutions/' + ref.id"
-                                               class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-info/10 text-primary border border-info/30 hover:bg-info/20"
+                                               class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded bg-info/10 text-primary border border-info/30 hover:bg-info/20"
                                                :title="ref.name + ' (Phase ' + (ref.adm_phase || 'A') + ')'"
                                                x-text="ref.name.length > 20 ? ref.name.substring(0,20) + '...' : ref.name"></a>
                                         </template>

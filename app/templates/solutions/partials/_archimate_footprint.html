@@ -176,7 +176,7 @@
         <div>
             <div class="flex flex-wrap gap-1.5 mb-3">
                 <template x-for="layer in layerOrder.filter(l => amLayerSummary[l])" :key="layer">
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-primary-foreground"
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-primary-foreground"
                           :style="'background:' + layerColor(layer)">
                         <span x-text="layerLabel(layer)"></span>
                         <span class="opacity-80" x-text="'(' + amLayerSummary[layer] + ')'"></span>
@@ -215,7 +215,7 @@
                             <span class="w-2 h-2 rounded-full flex-shrink-0"
                                   :style="'background:' + layerColor(layer)"></span>
                             <span class="text-xs font-medium text-foreground" x-text="layerLabel(layer)"></span>
-                            <span class="text-[10px] text-muted-foreground" x-text="'(' + amElements[layer].length + ')'"></span>
+                            <span class="text-xs text-muted-foreground" x-text="'(' + amElements[layer].length + ')'"></span>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-3.5">
                             <template x-for="el in amElements[layer]" :key="el.id">
@@ -223,19 +223,19 @@
                                     <div class="min-w-0 flex-1">
                                         <p class="text-xs font-medium text-foreground truncate" x-text="el.name"></p>
                                         <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border"
                                                   :style="'border-color:' + layerColor(layer) + '40; color:' + layerColor(layer)"
                                                   x-text="el.type || 'Unknown'"></span>
                                             <template x-if="el.element_role">
-                                                <span class="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium"
+                                                <span class="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium"
                                                       :class="roleColor(el.element_role)"
                                                       x-text="el.element_role"></span>
                                             </template>
                                             <template x-if="el.plateau">
-                                                <span class="text-[10px] bg-accent text-accent-foreground px-1 rounded" x-text="el.plateau"></span>
+                                                <span class="text-xs bg-accent text-accent-foreground px-1 rounded" x-text="el.plateau"></span>
                                             </template>
                                             <template x-if="el.building_block_type">
-                                                <span class="text-[10px] bg-primary/10 text-primary px-1 rounded" x-text="el.building_block_type"></span>
+                                                <span class="text-xs bg-primary/10 text-primary px-1 rounded" x-text="el.building_block_type"></span>
                                             </template>
                                         </div>
                                     </div>

@@ -62,7 +62,7 @@
                     <p class="text-xs font-medium text-muted-foreground">Total Users</p>
                     <p class="text-sm font-bold text-foreground">{{ total_users }}
                         {% if unconfirmed_users > 0 %}
-                            <span class="text-[10px] font-semibold text-warning-emphasis ml-1">{{ unconfirmed_users }} unconfirmed</span>
+                            <span class="text-xs font-semibold text-warning-emphasis ml-1">{{ unconfirmed_users }} unconfirmed</span>
                         {% endif %}
                     </p>
                 </div>
@@ -251,9 +251,9 @@
                             </div>
                             <div class="flex items-center gap-2 shrink-0 ml-3">
                                 {% if not user.confirmed %}
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-warning/10 text-warning-emphasis border border-warning/20">Unconfirmed</span>
+                                    <span class="px-2 py-0.5 rounded text-xs font-semibold bg-warning/10 text-warning-emphasis border border-warning/20">Unconfirmed</span>
                                 {% else %}
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-success/10 text-success-emphasis border border-success/20">Active</span>
+                                    <span class="px-2 py-0.5 rounded text-xs font-semibold bg-success/10 text-success-emphasis border border-success/20">Active</span>
                                 {% endif %}
                             </div>
                         </div>
@@ -296,16 +296,16 @@
                         </div>
                         <div class="flex items-center gap-2">
                             {% if key.default_model %}
-                                <span class="text-[10px] text-muted-foreground font-mono truncate max-w-[100px]">{{ key.default_model }}</span>
+                                <span class="text-xs text-muted-foreground font-mono truncate max-w-[100px]">{{ key.default_model }}</span>
                             {% endif %}
                             {% if not key.enabled %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-muted/50 text-muted-foreground">Disabled</span>
+                                <span class="px-2 py-0.5 rounded text-xs font-semibold bg-muted/50 text-muted-foreground">Disabled</span>
                             {% elif key.test_status == 'success' %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-success/10 text-success-emphasis border border-success/20">OK</span>
+                                <span class="px-2 py-0.5 rounded text-xs font-semibold bg-success/10 text-success-emphasis border border-success/20">OK</span>
                             {% elif key.test_status == 'failed' %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-destructive/10 text-destructive-emphasis border border-destructive/20">Failed</span>
+                                <span class="px-2 py-0.5 rounded text-xs font-semibold bg-destructive/10 text-destructive-emphasis border border-destructive/20">Failed</span>
                             {% else %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-warning/10 text-warning-emphasis border border-warning/20">Untested</span>
+                                <span class="px-2 py-0.5 rounded text-xs font-semibold bg-warning/10 text-warning-emphasis border border-warning/20">Untested</span>
                             {% endif %}
                         </div>
                     </div>

@@ -148,7 +148,7 @@
                 <div class="text-lg font-bold tabular-nums"
                      :class="stat.colorClass || 'text-foreground'"
                      x-text="stat.value"></div>
-                <div class="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5"
+                <div class="text-xs text-muted-foreground uppercase tracking-wider mt-0.5"
                      x-text="stat.label"></div>
             </div>
         </template>
@@ -245,7 +245,7 @@
                                 </svg>
                                 <span class="text-xs font-semibold text-foreground truncate flex-1"
                                       x-text="row.label"></span>
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground flex-shrink-0"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground flex-shrink-0"
                                       x-text="row.taskCount"></span>
                             </div>
                         </template>
@@ -267,7 +267,7 @@
                                       :title="row.data.name"></span>
                                 {# Progress (inline) #}
                                 <span x-show="row.data.progress > 0 && row.data.progress < 100" x-cloak
-                                      class="text-[10px] text-muted-foreground tabular-nums flex-shrink-0"
+                                      class="text-xs text-muted-foreground tabular-nums flex-shrink-0"
                                       x-text="row.data.progress + '%'"></span>
                             </div>
                         </template>
@@ -287,7 +287,7 @@
                     {# Period labels (hidden when overlapping Today badge) #}
                     <template x-for="(pl, pi) in periodLabels" :key="pi">
                         <span x-show="!pl.hidden" x-cloak
-                              class="absolute bottom-2 text-[10px] font-semibold text-muted-foreground whitespace-nowrap pointer-events-none"
+                              class="absolute bottom-2 text-xs font-semibold text-muted-foreground whitespace-nowrap pointer-events-none"
                               :style="'left: ' + pl.x + 'px'"
                               x-text="pl.label"></span>
                     </template>
@@ -437,7 +437,7 @@
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
                               :class="getStatusBadgeClass(getSelectedTask().status)"
                               x-text="formatStatus(getSelectedTask().status)"></span>
-                        <span class="text-[10px] text-muted-foreground"
+                        <span class="text-xs text-muted-foreground"
                               x-text="getGroupLabelById(getSelectedTask().group)"></span>
                     </div>
 
@@ -459,22 +459,22 @@
                     {# Date range + duration #}
                     <div class="grid grid-cols-2 gap-3 pt-2 border-t border-border">
                         <div>
-                            <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Start</div>
+                            <div class="text-xs text-muted-foreground uppercase tracking-wide">Start</div>
                             <div class="text-xs font-semibold text-foreground mt-0.5"
                                  x-text="formatDate(getSelectedTask().start_date)"></div>
                         </div>
                         <div>
-                            <div class="text-[10px] text-muted-foreground uppercase tracking-wide">End</div>
+                            <div class="text-xs text-muted-foreground uppercase tracking-wide">End</div>
                             <div class="text-xs font-semibold text-foreground mt-0.5"
                                  x-text="formatDate(getSelectedTask().end_date)"></div>
                         </div>
                         <div>
-                            <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Duration</div>
+                            <div class="text-xs text-muted-foreground uppercase tracking-wide">Duration</div>
                             <div class="text-xs font-semibold text-foreground mt-0.5"
                                  x-text="calcDuration(getSelectedTask().start_date, getSelectedTask().end_date)"></div>
                         </div>
                         <div>
-                            <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Remaining</div>
+                            <div class="text-xs text-muted-foreground uppercase tracking-wide">Remaining</div>
                             <div class="text-xs font-semibold mt-0.5"
                                  :class="calcRemaining(getSelectedTask().end_date).indexOf('overdue') > -1 ? 'text-destructive' : 'text-foreground'"
                                  x-text="calcRemaining(getSelectedTask().end_date)"></div>
@@ -498,7 +498,7 @@
                     {# Dependencies: Depends On #}
                     <template x-if="getTaskDependencies(getSelectedTask()).length > 0">
                         <div class="pt-2 border-t border-border">
-                            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Depends On</p>
+                            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Depends On</p>
                             <template x-for="dep in getTaskDependencies(getSelectedTask())" :key="dep.id">
                                 <button @click="selectTaskById(dep.id)"
                                         class="block w-full text-left text-xs text-primary hover:underline truncate py-0.5"
@@ -510,7 +510,7 @@
                     {# Dependencies: Blocks #}
                     <template x-if="getTaskDependents(getSelectedTask()).length > 0">
                         <div class="pt-2 border-t border-border">
-                            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Blocks</p>
+                            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Blocks</p>
                             <template x-for="dep in getTaskDependents(getSelectedTask())" :key="dep.id">
                                 <button @click="selectTaskById(dep.id)"
                                         class="block w-full text-left text-xs text-primary hover:underline truncate py-0.5"
@@ -522,12 +522,12 @@
                     {# Milestones #}
                     <template x-if="hasFeature('milestones') && getTaskMilestones(getSelectedTask()).length > 0">
                         <div class="pt-2 border-t border-border">
-                            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Milestones</p>
+                            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Milestones</p>
                             <template x-for="ms in getTaskMilestones(getSelectedTask())" :key="ms.id">
                                 <div class="flex items-center gap-1.5 py-0.5">
                                     <div class="w-2 h-2 bg-primary rotate-45 rounded-[1px] flex-shrink-0"></div>
                                     <span class="text-xs text-foreground truncate" x-text="ms.label"></span>
-                                    <span class="text-[10px] text-muted-foreground ml-auto flex-shrink-0"
+                                    <span class="text-xs text-muted-foreground ml-auto flex-shrink-0"
                                           x-text="formatDate(ms.date)"></span>
                                 </div>
                             </template>
@@ -659,14 +659,14 @@
             <div class="space-y-1">
                 <p class="text-xs font-semibold" x-text="getTooltipTask().name"></p>
                 <div class="flex items-center gap-2">
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                           :class="getStatusBadgeClass(getTooltipTask().status)"
                           x-text="formatStatus(getTooltipTask().status)"></span>
                     <span x-show="hasFeature('progress')" x-cloak
-                          class="text-[10px] text-muted-foreground tabular-nums"
+                          class="text-xs text-muted-foreground tabular-nums"
                           x-text="(getTooltipTask().progress || 0) + '%'"></span>
                 </div>
-                <p class="text-[10px] text-muted-foreground">
+                <p class="text-xs text-muted-foreground">
                     <span x-text="formatDate(getTooltipTask().start_date)"></span>
                     <span class="mx-0.5">&rarr;</span>
                     <span x-text="formatDate(getTooltipTask().end_date)"></span>
@@ -674,7 +674,7 @@
                     <span x-text="calcDuration(getTooltipTask().start_date, getTooltipTask().end_date)"></span>
                 </p>
                 <p x-show="resolveField(getTooltipTask(), 'meta.business_owner') || resolveField(getTooltipTask(), 'meta.owner')" x-cloak
-                   class="text-[10px] text-muted-foreground">
+                   class="text-xs text-muted-foreground">
                     Owner: <span class="font-medium text-foreground"
                                  x-text="resolveField(getTooltipTask(), 'meta.business_owner') || resolveField(getTooltipTask(), 'meta.owner') || ''"></span>
                 </p>

@@ -49,13 +49,13 @@
             <span class="font-medium text-warning-emphasis">Blueprint gaps</span>
             <span class="text-muted-foreground text-xs">&middot;</span>
             {% if completeness.sections_not_started > 0 %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold
                          bg-destructive/10 text-destructive-emphasis border border-destructive/20">
                 {{ completeness.sections_not_started }} not started
             </span>
             {% endif %}
             {% if completeness.sections_partial > 0 %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold
                          bg-warning/10 text-warning-emphasis border border-warning/20">
                 {{ completeness.sections_partial }} incomplete
             </span>
@@ -106,7 +106,7 @@
                     <span class="text-sm font-semibold text-foreground leading-tight">{{ _g.title }}</span>
                     <button type="button"
                             data-section-scroll="{{ _g.id }}"
-                            class="shrink-0 text-[10px] font-medium text-primary hover:underline whitespace-nowrap">
+                            class="shrink-0 text-xs font-medium text-primary hover:underline whitespace-nowrap">
                         Go ↓
                     </button>
                 </div>
@@ -117,7 +117,7 @@
                     {% for _et, _el in _quickadd[_g.id] %}
                     <button type="button"
                             @click="openAdd('{{ _et }}')"
-                            class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium
+                            class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
                                    bg-primary/10 text-primary border border-primary/20
                                    hover:bg-primary/20 transition-colors">
                         {{ _el }}

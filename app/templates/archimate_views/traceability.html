@@ -283,7 +283,7 @@
                                class="inline-flex items-center gap-1.5 font-medium text-foreground hover:text-primary transition-colors">
                                 <span>{{ row.application.name }}</span>
                                 {% if row.application.type %}
-                                <span class="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-inset ring-primary/20">
+                                <span class="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/20">
                                     {{ row.application.type }}
                                 </span>
                                 {% endif %}
@@ -301,12 +301,12 @@
                                 >
                                     {{ el.name }}
                                     {% if el.type %}
-                                    <span class="inline-flex items-center rounded-full bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-fuchsia-500/15 px-1.5 py-0.5 text-xs font-semibold text-fuchsia-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ el.type }}
                                     </span>
                                     {% endif %}
                                     {% if el.relationship_type %}
-                                    <span class="inline-flex items-center rounded-full bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fuchsia-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-fuchsia-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-fuchsia-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
                                     </span>
                                     {% endif %}
@@ -329,12 +329,12 @@
                                 >
                                     {{ el.name }}
                                     {% if el.type %}
-                                    <span class="inline-flex items-center rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-violet-500/15 px-1.5 py-0.5 text-xs font-semibold text-violet-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ el.type }}
                                     </span>
                                     {% endif %}
                                     {% if el.relationship_type %}
-                                    <span class="inline-flex items-center rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-violet-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-violet-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
                                     </span>
                                     {% endif %}
@@ -357,12 +357,12 @@
                                 >
                                     {{ el.name }}
                                     {% if el.type %}
-                                    <span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ el.type }}
                                     </span>
                                     {% endif %}
                                     {% if el.relationship_type %}
-                                    <span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-emerald-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
                                     </span>
                                     {% endif %}
@@ -392,12 +392,12 @@
                                 >
                                    {{ el.name }}
                                     {% if el.type %}
-                                    <span class="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ el.type }}
                                     </span>
                                     {% endif %}
                                     {% if el.relationship_type %}
-                                    <span class="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
                                     </span>
                                     {% endif %}
@@ -421,12 +421,12 @@
                                 >
                                     {{ el.name }}
                                     {% if el.type %}
-                                    <span class="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-xs font-semibold text-sky-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ el.type }}
                                     </span>
                                     {% endif %}
                                     {% if el.relationship_type %}
-                                    <span class="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
+                                    <span class="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-sky-800">  <!-- design-tokens-ok: ArchiMate traceability matrix legend, distinct hue per layer/column -->
                                         {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
                                     </span>
                                     {% endif %}

@@ -50,7 +50,7 @@
                                @input="recalculate()"
                                :aria-label="'Weight for ' + criterion.label"
                                class="w-full h-1.5 rounded-full appearance-none bg-border cursor-pointer accent-info">
-                        <p class="text-[10px] text-muted-foreground mt-0.5" x-text="criterion.description"></p>
+                        <p class="text-xs text-muted-foreground mt-0.5" x-text="criterion.description"></p>
                     </div>
                 </template>
             </div>
@@ -72,7 +72,7 @@
                                 <div class="text-sm font-semibold text-foreground" x-text="product.name"></div>
                                 <div class="text-xs text-muted-foreground" x-text="product.vendor_name"></div>
                                 <div x-show="product.is_selected" x-cloak
-                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">
+                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
                                     Selected Winner
                                 </div>
                             </th>
@@ -95,7 +95,7 @@
                                             <div class="h-full rounded-full bg-info transition-all"
                                                  :style="'width:' + (product.tco_score || 0) + '%'"></div>
                                         </div>
-                                        <div class="text-[10px] text-muted-foreground mt-0.5" x-text="(product.tco_score != null ? product.tco_score + '/100' : 'N/A')"></div>
+                                        <div class="text-xs text-muted-foreground mt-0.5" x-text="(product.tco_score != null ? product.tco_score + '/100' : 'N/A')"></div>
                                     </div>
                                 </template>
                                 <template x-if="!product.tco">
@@ -144,7 +144,7 @@
                                           }"
                                           x-text="product.risk.overall.charAt(0).toUpperCase() + product.risk.overall.slice(1)">
                                     </span>
-                                    <div class="text-[10px] text-muted-foreground mt-1" x-text="product.risk.risk_count + ' indicator(s)'"></div>
+                                    <div class="text-xs text-muted-foreground mt-1" x-text="product.risk.risk_count + ' indicator(s)'"></div>
                                 </div>
                             </td>
                         </template>
@@ -158,7 +158,7 @@
                         <template x-for="product in products" :key="'mkt-' + product.id">
                             <td class="text-center py-3 px-3">
                                 <div class="text-sm font-medium text-foreground" x-text="product.market_position || 'Unknown'"></div>
-                                <div class="text-[10px] text-muted-foreground" x-text="product.market_score + '/100'"></div>
+                                <div class="text-xs text-muted-foreground" x-text="product.market_score + '/100'"></div>
                             </td>
                         </template>
                     </tr>
@@ -176,7 +176,7 @@
                                      :class="product.id === winnerId ? 'text-success' : 'text-foreground'"
                                      x-text="getWeightedScore(product).toFixed(1)"></div>
                                 <div x-show="product.id === winnerId" x-cloak
-                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-success/10 text-success-emphasis border border-success/30">
+                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-xs font-bold bg-success/10 text-success-emphasis border border-success/30">
                                     Highest Score
                                 </div>
                             </td>

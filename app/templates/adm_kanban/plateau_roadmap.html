@@ -122,16 +122,16 @@
                     </div>
                     <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
                         {% if card.arch_element_type %}
-                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                        <span class="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                             {{ card.arch_element_type }}
                         </span>
                         {% endif %}
                         {% if card.arch_domain %}
-                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                             {{ card.arch_domain }}
                         </span>
                         {% endif %}
-                        <span class="text-[10px] px-1.5 py-0.5 rounded-full
+                        <span class="text-xs px-1.5 py-0.5 rounded-full
                             {% if card.column == 'done' %}bg-success/10 text-success-emphasis
                             {% elif card.column in ['review', 'approved'] %}bg-primary/10 text-primary
                             {% elif card.column in ['under_development', 'implementing'] %}bg-warning/10 text-warning-emphasis
@@ -140,7 +140,7 @@
                         </span>
                     </div>
                     {% if card.jira_issue_key %}
-                    <div class="mt-1 text-[10px] text-muted-foreground">{{ card.jira_issue_key }}</div>
+                    <div class="mt-1 text-xs text-muted-foreground">{{ card.jira_issue_key }}</div>
                     {% endif %}
                 </div>
                 {% endfor %}

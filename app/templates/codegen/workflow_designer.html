@@ -58,7 +58,7 @@
         </div>
         <template x-for="category in paletteCategories" :key="category">
             <div class="px-2 py-1">
-                <div class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground px-1 py-1" x-text="category"></div>
+                <div class="text-xs font-medium uppercase tracking-wider text-muted-foreground px-1 py-1" x-text="category"></div>
                 <template x-for="item in filteredPalette(category)" :key="item.type">
                     <div class="wf-palette-item flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-foreground"
                          draggable="true"
@@ -78,7 +78,7 @@
                 <button @click="loadTemplate(tpl.id)"
                         class="w-full text-left px-2 py-1.5 rounded-md text-xs text-foreground hover:bg-accent transition-colors mb-1">
                     <span x-text="tpl.name" class="font-medium"></span>
-                    <span x-text="tpl.description" class="block text-[10px] text-muted-foreground truncate"></span>
+                    <span x-text="tpl.description" class="block text-xs text-muted-foreground truncate"></span>
                 </button>
             </template>
         </div>
@@ -125,7 +125,7 @@
 
                 <div class="space-y-3">
                     <div>
-                        <label class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Step Type</label>
+                        <label class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Step Type</label>
                         <div class="mt-1 text-sm font-medium text-foreground" x-text="selectedStep.type"></div>
                     </div>
 

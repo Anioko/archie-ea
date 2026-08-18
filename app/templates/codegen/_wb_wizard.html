@@ -83,7 +83,7 @@
                 <div class="flex items-center">
                     <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors"
                          :class="phase >= idx + 1 ? 'bg-primary/10 text-primary border border-primary/30' : 'text-muted-foreground border border-transparent'">
-                        <span x-text="idx + 1" class="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px]"
+                        <span x-text="idx + 1" class="inline-flex h-4 w-4 items-center justify-center rounded-full text-xs"
                               :class="phase > idx + 1 ? 'bg-primary text-primary-foreground' : 'bg-muted'"></span>
                         <span x-text="label"></span>
                         <i x-show="phase > idx + 1" x-cloak data-lucide="check" class="h-3 w-3"></i>
@@ -161,9 +161,9 @@
                                 <i data-lucide="layers" class="h-3.5 w-3.5 text-primary"></i>
                                 <span class="text-xs font-medium text-foreground"
                                       x-text="docProposals.length + ' element' + (docProposals.length !== 1 ? 's' : '') + ' extracted'"></span>
-                                <span x-show="pendingProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
+                                <span x-show="pendingProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
                                       x-text="pendingProposalCount + ' pending review'"></span>
-                                <span x-show="acceptedProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30"
+                                <span x-show="acceptedProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30"
                                       x-text="acceptedProposalCount + ' accepted'"></span>
                             </div>
                             <div class="flex items-center gap-2">
@@ -188,7 +188,7 @@
                                 <div class="flex items-start gap-2 px-3 py-2 rounded-lg border transition-colors"
                                      :class="proposal.status === 'accepted' ? 'border-success/30 bg-success/5' : proposal.status === 'rejected' ? 'border-destructive/20 bg-destructive/5 opacity-50' : 'border-border bg-background'">
                                     {# Type badge #}
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 mt-0.5"
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border shrink-0 mt-0.5"
                                           :class="_proposalTypeBadgeClass(proposal.archimate_type)"
                                           x-text="proposal.archimate_type"></span>
                                     {# Content #}
@@ -197,7 +197,7 @@
                                         <p class="text-[11px] text-muted-foreground line-clamp-1" x-text="proposal.description"></p>
                                     </div>
                                     {# Confidence — labeled chip (dot + %), semantic + theme-aware #}
-                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums shrink-0 mt-0.5"
+                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold tabular-nums shrink-0 mt-0.5"
                                           :class="proposal.confidence >= 0.8 ? 'bg-success/10 text-success-emphasis' : proposal.confidence >= 0.5 ? 'bg-warning/10 text-warning-emphasis' : 'bg-destructive/10 text-destructive-emphasis'"
                                           :title="'AI confidence: ' + Math.round(proposal.confidence * 100) + '%'">
                                         <span class="h-1.5 w-1.5 rounded-full"
@@ -219,11 +219,11 @@
                                     </div>
                                     {# Status badges for accepted/rejected #}
                                     <span x-show="proposal.status === 'accepted'" x-cloak
-                                          class="inline-flex items-center gap-0.5 text-[10px] font-medium text-success-emphasis shrink-0">
+                                          class="inline-flex items-center gap-0.5 text-xs font-medium text-success-emphasis shrink-0">
                                         <i data-lucide="check-circle-2" class="h-3 w-3"></i> Accepted
                                     </span>
                                     <span x-show="proposal.status === 'rejected'" x-cloak
-                                          class="inline-flex items-center gap-0.5 text-[10px] font-medium text-destructive-emphasis shrink-0">
+                                          class="inline-flex items-center gap-0.5 text-xs font-medium text-destructive-emphasis shrink-0">
                                         <i data-lucide="x-circle" class="h-3 w-3"></i> Rejected
                                     </span>
                                 </div>
@@ -436,7 +436,7 @@
                                         <div class="flex items-center gap-2 min-w-0">
                                             <i data-lucide="box" class="h-3.5 w-3.5 text-primary shrink-0"></i>
                                             <span class="text-sm font-mono font-medium text-foreground truncate" x-text="cls.name"></span>
-                                            <span x-show="cls.source_element_id" x-cloak class="text-[10px] text-muted-foreground">ArchiMate #<span x-text="cls.source_element_id"></span></span>
+                                            <span x-show="cls.source_element_id" x-cloak class="text-xs text-muted-foreground">ArchiMate #<span x-text="cls.source_element_id"></span></span>
                                         </div>
                                         <div class="flex items-center gap-2 shrink-0 ml-4">
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border" x-text="(cls.fields || []).length + ' fields'"></span>
@@ -453,7 +453,7 @@
                                                 <tbody>
                                                     <template x-for="(field, idx) in (editingFields[cls.name] || cls.fields || [])" :key="idx">
                                                         <tr class="border-b border-border/50 hover:bg-muted/20">
-                                                            <td class="py-1 px-2"><input type="text" x-model="field.name" class="w-full rounded border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring" :class="validateField(field) ? 'border-destructive' : 'border-input'" placeholder="field_name" aria-label="field_name"><span x-show="validateField(field)" x-cloak class="text-[10px] text-destructive-emphasis mt-0.5 block" x-text="validateField(field)"></span></td>
+                                                            <td class="py-1 px-2"><input type="text" x-model="field.name" class="w-full rounded border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring" :class="validateField(field) ? 'border-destructive' : 'border-input'" placeholder="field_name" aria-label="field_name"><span x-show="validateField(field)" x-cloak class="text-xs text-destructive-emphasis mt-0.5 block" x-text="validateField(field)"></span></td>
                                                             <td class="py-1 px-2"><select x-model="field.type" class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Type"><option value="int">int</option><option value="str">str</option><option value="float">float</option><option value="Decimal">Decimal</option><option value="datetime">datetime</option><option value="bool">bool</option><option value="UUID">UUID</option></select></td>
                                                             <td class="py-1 px-2 text-center"><input type="checkbox" x-model="field.nullable" class="h-3.5 w-3.5 accent-primary"></td>
                                                             <td class="py-1 px-2"><input type="text" x-model="field.description" class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" placeholder="Description" aria-label="Description"></td>
@@ -535,8 +535,8 @@
                                 </optgroup>
                             </select>
                             <div class="mt-1.5 flex items-center gap-2">
-                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Full'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">Full — <span x-text="currentLanguageMeta.templates"></span> templates</span>
-                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Basic'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Basic — <span x-text="currentLanguageMeta && currentLanguageMeta.templates"></span> templates</span>
+                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Full'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Full — <span x-text="currentLanguageMeta.templates"></span> templates</span>
+                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Basic'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Basic — <span x-text="currentLanguageMeta && currentLanguageMeta.templates"></span> templates</span>
                             </div>
                             <p class="text-xs text-muted-foreground mt-1.5">For mobile apps, select your backend stack above and enable <span class="font-medium">Expo + React Native</span> in the Mobile section below.</p>
                         </div>

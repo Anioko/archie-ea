@@ -83,6 +83,37 @@ def init_security(app):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "same-origin"
 
+        # ARCH-072: Permissions-Policy and Cross-Origin-Opener-Policy were
+        # audited as absent. Both added, scoped so neither silently breaks a
+        # feature already in use:
+        #  - Cross-Origin-Opener-Policy: same-origin isolates this origin's
+        #    browsing-context group from cross-origin openers/popups. The app
+        #    has no cross-origin popup+window.opener flow (no OAuth popup, no
+        #    postMessage handshake with another origin's popup — every
+        #    window.open()/postMessage() call in app/static/js targets a
+        #    same-origin window or an in-page iframe), so there is nothing
+        #    for it to sever.
+        #  - Permissions-Policy denies the sensitive device features
+        #    (camera, microphone, geolocation, payment, usb) everywhere
+        #    except where a feature is genuinely delegated today: the
+        #    codegen workbench embeds an Expo Snack simulator
+        #    (app/templates/codegen/_wb_ide.html,
+        #    _wb_right_panel.html) in a cross-origin iframe whose `allow=`
+        #    attribute requests exactly these features. A blanket `()` here
+        #    would silently break that preview regardless of the iframe's
+        #    own allow attribute, since the top-level Permissions-Policy
+        #    gates delegation. snack.expo.dev is carried over from the CSP's
+        #    existing frame-src allowance for the same embed.
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        _snack = '"https://snack.expo.dev"'
+        response.headers["Permissions-Policy"] = (
+            f"camera=(self {_snack}), "
+            f"microphone=(self {_snack}), "
+            f"geolocation=(self {_snack}), "
+            f"payment=(self {_snack}), "
+            f"usb=(self {_snack})"
+        )
+
         # Content-Security-Policy
         # Development: permissive — allow CDN scripts (Alpine.js, Lucide, DOMPurify) + unsafe-inline
         # Production: nonce-based strict policy

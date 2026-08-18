@@ -290,7 +290,7 @@
                             <p class="text-xs text-muted-foreground">Deterministic, $0 LLM cost, state machines, multi-tenant, telemetry, API keys, Keycloak, Prometheus</p>
                         </div>
                         <template x-if="codegenMode === 'genome'">
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-success/10 text-success-emphasis border border-success/30 shrink-0">Recommended</span>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-success/10 text-success-emphasis border border-success/30 shrink-0">Recommended</span>
                         </template>
                     </button>
                     <button @click="codegenMode = 'hybrid'"
@@ -379,7 +379,7 @@
                                x-text="codegenResult ? codegenResult.file_count + ' files · ' + codegenResult.language + ' · maturity ' + Math.round((codegenResult.spec_maturity || 0) * 100) + '%' : ''"></p>
                         </div>
                     </div>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-muted text-muted-foreground"
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-muted text-muted-foreground"
                           x-text="codegenResult?.spec_hash?.slice(0, 8) ?? ''"></span>
                 </div>
 
@@ -404,7 +404,7 @@
                              }"
                              :style="'width: ' + (codegenResult?.quality_score || 0) + '%'"></div>
                     </div>
-                    <p class="text-[10px] text-muted-foreground"
+                    <p class="text-xs text-muted-foreground"
                        x-text="(codegenResult?.quality_score || 0) >= 85 ? 'Production ready' : (codegenResult?.quality_score || 0) >= 65 ? 'Staging ready — address gaps before production' : 'MVP quality — suitable for demos'"></p>
                 </div>
 

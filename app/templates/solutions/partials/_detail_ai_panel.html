@@ -65,7 +65,7 @@
                             </div>
                         </template>
                         <template x-if="aiInsightsData.vendors.generated_at">
-                            <p class="text-[10px] text-muted-foreground mt-2"
+                            <p class="text-xs text-muted-foreground mt-2"
                                x-text="'Generated ' + new Date(aiInsightsData.vendors.generated_at).toLocaleDateString()"></p>
                         </template>
                     </div>
@@ -180,7 +180,7 @@
                     <ol class="space-y-2">
                         <template x-for="(a, i) in aiInsightsData.actions.next_actions.slice(0,8)" :key="i">
                             <li class="flex items-start gap-3">
-                                <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold mt-0.5"
+                                <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold mt-0.5"
                                       x-text="i + 1"></span>
                                 <div>
                                     <p class="text-sm text-foreground" x-text="typeof a === 'string' ? a : (a.action || a.title || a.description || JSON.stringify(a))"></p>
@@ -639,10 +639,10 @@
                                 <div class="flex items-center gap-2 px-2 py-1.5 rounded-md border border-border bg-muted/20 text-xs">
                                     <input type="checkbox" x-model="p.checked" class="rounded border-input">
                                     <span class="font-medium text-foreground" x-text="p.source_name"></span>
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/30"
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30"
                                           x-text="(p.relationship_type || '').charAt(0).toUpperCase() + (p.relationship_type || '').slice(1)"></span>
                                     <span class="font-medium text-foreground" x-text="p.target_name"></span>
-                                    <span class="ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                                    <span class="ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border"
                                           :class="relConfBadge(p.confidence || 0)"
                                           x-text="(p.confidence || 0) + '%'"></span>
                                 </div>
@@ -659,8 +659,8 @@
                                 <div class="flex items-center gap-2 px-2 py-1.5 rounded-md border border-dashed border-border text-xs text-muted-foreground">
                                     <i data-lucide="alert-circle" class="w-3 h-3" aria-hidden="true"></i>
                                     <span x-text="u.name"></span>
-                                    <span class="text-[10px]" x-text="'(' + u.role + ')'"></span>
-                                    <span class="ml-auto text-[10px]" x-text="u.suggestion"></span>
+                                    <span class="text-xs" x-text="'(' + u.role + ')'"></span>
+                                    <span class="ml-auto text-xs" x-text="u.suggestion"></span>
                                 </div>
                             </template>
                         </div>

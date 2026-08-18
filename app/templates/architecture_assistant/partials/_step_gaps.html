@@ -26,11 +26,11 @@
       <span class="text-sm font-medium text-foreground">Gap Analysis Results</span>
       {# ENH-006: AI Generated badge with sparkles icon #}
       <span x-show="gapAnalysisAiGenerated" x-cloak
-        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30"> {# design-tokens-ok: AI-generated indicator colour #}
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/10 text-primary border border-purple-500/30"> {# design-tokens-ok: AI-generated indicator colour #}
         <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
       </span>
       <span x-show="!gapAnalysisAiGenerated && gaps.length > 0" x-cloak
-        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30">
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30">
         Manual
       </span>
     </div>

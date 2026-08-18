@@ -124,7 +124,7 @@
                 <template x-for="(gap, idx) in reasoningGaps.slice(0, 10)" :key="gap.id || idx">
                     <div class="rounded-md border border-border px-3 py-2 flex items-center justify-between">
                         <div class="flex items-center gap-2 min-w-0">
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                   :class="{
                                       'bg-destructive/10 text-destructive-emphasis': gap.severity === 'critical',
                                       'bg-warning/10 text-warning-emphasis': gap.severity === 'high',
@@ -136,7 +136,7 @@
                         </div>
                     </div>
                 </template>
-                <p x-show="reasoningGaps.length > 10" class="text-[10px] text-muted-foreground pl-2"
+                <p x-show="reasoningGaps.length > 10" class="text-xs text-muted-foreground pl-2"
                    x-text="'+ ' + (reasoningGaps.length - 10) + ' more gaps'"></p>
             </div>
         </div>
@@ -148,15 +148,15 @@
                 <div class="grid grid-cols-3 gap-3 text-center">
                     <div>
                         <p class="text-lg font-bold text-foreground" x-text="'$' + Math.round(reasoningCostSummary.total_annual_operating).toLocaleString()"></p>
-                        <p class="text-[10px] text-muted-foreground">Annual Operating</p>
+                        <p class="text-xs text-muted-foreground">Annual Operating</p>
                     </div>
                     <div>
                         <p class="text-lg font-bold text-foreground" x-text="'$' + Math.round(reasoningCostSummary.tco_5_year || 0).toLocaleString()"></p>
-                        <p class="text-[10px] text-muted-foreground">5-Year TCO</p>
+                        <p class="text-xs text-muted-foreground">5-Year TCO</p>
                     </div>
                     <div>
                         <p class="text-lg font-bold text-foreground" x-text="(reasoningCostSummary.cost_coverage_pct || 0) + '%'"></p>
-                        <p class="text-[10px] text-muted-foreground">Cost Coverage</p>
+                        <p class="text-xs text-muted-foreground">Cost Coverage</p>
                     </div>
                 </div>
             </div>
@@ -271,7 +271,7 @@
                 <div class="grid grid-cols-6 gap-2 text-center">
                     <template x-for="[layer, color] in [['motivation','violet'],['strategy','rose'],['business','amber'],['application','blue'],['technology','emerald'],['implementation','sky']]" :key="layer">
                         <div>
-                            <p class="text-[10px] text-muted-foreground capitalize" x-text="layer.slice(0,5) + '.'"></p>
+                            <p class="text-xs text-muted-foreground capitalize" x-text="layer.slice(0,5) + '.'"></p>
                             <p class="text-sm font-bold"
                                :class="(arbPackage.summary.layer_counts[layer] || 0) >= 3 ? 'text-success' : (arbPackage.summary.layer_counts[layer] || 0) > 0 ? 'text-warning' : 'text-destructive'"
                                x-text="arbPackage.summary.layer_counts[layer] || 0"></p>
@@ -290,11 +290,11 @@
                         <div class="rounded-md border border-border px-3 py-2">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-2">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider"
                                           :class="getDomainBadgeClass(code)"
                                           x-text="code"></span>
                                     <span class="text-sm font-medium" x-text="getDomainName(code)"></span>
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                           :class="{
                                               'bg-success/10 text-success-emphasis': arbPackage.domains[code].status === 'confirmed',
                                               'bg-warning/10 text-warning-emphasis': arbPackage.domains[code].status === 'pending',
@@ -310,14 +310,14 @@
                                              :class="arbPackage.domains[code].property_coverage >= 80 ? 'bg-success' : arbPackage.domains[code].property_coverage >= 60 ? 'bg-warning' : 'bg-destructive'"
                                              :style="'width:' + arbPackage.domains[code].property_coverage + '%'"></div>
                                     </div>
-                                    <span class="text-[10px] font-medium" x-text="arbPackage.domains[code].property_coverage + '%'"></span>
+                                    <span class="text-xs font-medium" x-text="arbPackage.domains[code].property_coverage + '%'"></span>
                                 </div>
                             </div>
                             {# Waivers for this domain #}
                             <template x-if="arbPackage.domains[code].waivers && arbPackage.domains[code].waivers.length > 0">
                                 <div class="mt-1.5 pl-8 space-y-0.5">
                                     <template x-for="w in arbPackage.domains[code].waivers" :key="w.name">
-                                        <div class="flex items-center gap-2 text-[10px]">
+                                        <div class="flex items-center gap-2 text-xs">
                                             <span class="text-warning-emphasis font-medium">Waived:</span>
                                             <span class="text-muted-foreground" x-text="w.name + (w.reason ? ' — ' + w.reason : '')"></span>
                                         </div>
@@ -326,7 +326,7 @@
                             </template>
                             {# N/A justification #}
                             <template x-if="arbPackage.domains[code].status === 'not_applicable' && arbPackage.domains[code].justification">
-                                <div class="mt-1.5 pl-8 text-[10px] text-muted-foreground">
+                                <div class="mt-1.5 pl-8 text-xs text-muted-foreground">
                                     <span class="font-medium">Justification:</span>
                                     <span x-text="arbPackage.domains[code].justification"></span>
                                 </div>
@@ -334,7 +334,7 @@
                             {# NFR summary for this domain #}
                             <template x-if="arbPackage.domains[code].nfr_count > 0">
                                 <div class="mt-1.5 pl-8">
-                                    <p class="text-[10px] text-muted-foreground" x-text="arbPackage.domains[code].nfr_count + ' NFR requirements defined'"></p>
+                                    <p class="text-xs text-muted-foreground" x-text="arbPackage.domains[code].nfr_count + ' NFR requirements defined'"></p>
                                 </div>
                             </template>
                         </div>

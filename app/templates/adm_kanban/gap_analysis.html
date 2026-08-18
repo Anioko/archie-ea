@@ -75,7 +75,7 @@
                     <p class="text-sm font-medium text-foreground">{{ item.get('capability_name') or item.get('app_name') or item.get('name', 'Unknown') }}</p>
                     <p class="text-xs text-muted-foreground mt-0.5">{{ item.get('impact', item.get('recommendation', '')) }}</p>
                 </div>
-                <span class="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium
+                <span class="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
                     {% if item.get('severity') == 'high' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                     {% elif item.get('severity') == 'medium' %}bg-warning/10 text-warning-emphasis border border-warning/30
                     {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
@@ -159,7 +159,7 @@
                                   title="{{ c.phase or '' }} · {{ c.arch_domain or '' }}">
                                 {{ c.title|truncate(35) }}
                                 {% if c.jira_issue_key %}
-                                <span class="ml-1 text-[10px] opacity-60">{{ c.jira_issue_key }}</span>
+                                <span class="ml-1 text-xs opacity-60">{{ c.jira_issue_key }}</span>
                                 {% endif %}
                             </span>
                             {% endfor %}

@@ -188,7 +188,7 @@
                                     <div class="h-full rounded-full transition-all duration-700 bg-{{ color }}-500"
                                          style="width: {{ val }}%"></div><!-- inline-style-ok -->
                                 </div>
-                                <span class="text-[10px] text-muted-foreground">Weight: {{ weight }}</span>
+                                <span class="text-xs text-muted-foreground">Weight: {{ weight }}</span>
                             </div>
                             {% endfor %}
                         </div>
@@ -302,19 +302,19 @@
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
                     <a href="/solutions/briefings" class="p-4 hover:bg-accent/40 transition-colors block">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground">EA briefing — flagged</p>
+                        <p class="text-xs uppercase tracking-wider text-muted-foreground">EA briefing — flagged</p>
                         <p class="text-2xl font-bold mt-1 {% if governance_alerts.briefing_flagged %}text-warning-emphasis{% else %}text-foreground{% endif %}">{{ governance_alerts.briefing_flagged }}</p>
-                        <p class="text-[10px] text-muted-foreground mt-0.5">of {{ governance_alerts.briefing_findings }} findings · view briefings →</p>
+                        <p class="text-xs text-muted-foreground mt-0.5">of {{ governance_alerts.briefing_findings }} findings · view briefings →</p>
                     </a>
                     <a href="/solutions/data-stewardship" class="p-4 hover:bg-accent/40 transition-colors block">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Data stewardship</p>
+                        <p class="text-xs uppercase tracking-wider text-muted-foreground">Data stewardship</p>
                         <p class="text-2xl font-bold mt-1 text-foreground">Review</p>
-                        <p class="text-[10px] text-muted-foreground mt-0.5">PII · canonical · lineage →</p>
+                        <p class="text-xs text-muted-foreground mt-0.5">PII · canonical · lineage →</p>
                     </a>
                     <a href="/solutions/architect-synthesis" class="p-4 hover:bg-accent/40 transition-colors block">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Chief Architect</p>
+                        <p class="text-xs uppercase tracking-wider text-muted-foreground">Chief Architect</p>
                         <p class="text-2xl font-bold mt-1 text-foreground">Synthesis</p>
-                        <p class="text-[10px] text-muted-foreground mt-0.5">portfolio conformance →</p>
+                        <p class="text-xs text-muted-foreground mt-0.5">portfolio conformance →</p>
                     </a>
                 </div>
             </div>
@@ -621,7 +621,7 @@
                                                     <tr class="border-t border-border">
                                                         <td class="px-4 py-2 text-foreground" x-text="review.title || review.name || 'Untitled'"></td>
                                                         <td class="px-4 py-2">
-                                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
                                                                 :class="review.status === 'approved' ? 'bg-success/10 text-success-emphasis' : review.status === 'pending' ? 'bg-warning/10 text-warning-emphasis' : 'bg-muted text-muted-foreground'"
                                                                 x-text="review.status"></span>
                                                         </td>

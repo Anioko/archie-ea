@@ -50,7 +50,7 @@
             {% set gap_pct = (gap_count * 100 / aggregate_stats.total) | round | int if aggregate_stats.total > 0 else 0 %}
             <div class="text-center p-2 rounded-lg {{ 'bg-destructive/10' if gap_pct >= 75 else ('bg-warning/10' if gap_pct >= 50 else 'bg-muted') }}">
                 <div class="text-lg font-semibold {{ 'text-destructive-emphasis' if gap_pct >= 75 else ('text-warning-emphasis' if gap_pct >= 50 else 'text-muted-foreground') }}">{{ gap_count }}</div>
-                <div class="text-[10px] text-muted-foreground leading-tight mt-0.5">{{ label }}</div>
+                <div class="text-xs text-muted-foreground leading-tight mt-0.5">{{ label }}</div>
             </div>
             {% endfor %}
         </div>
@@ -127,7 +127,7 @@
                         <th class="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Score</th>
                         {% for jk, label in junction_labels.items() %}
                         <th class="px-1.5 py-3 text-center font-medium text-muted-foreground" title="{{ label }}">
-                            <span class="text-[10px] leading-tight block">{{ label[:3] }}</span>
+                            <span class="text-xs leading-tight block">{{ label[:3] }}</span>
                         </th>
                         {% endfor %}
                         <th class="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Filled</th>

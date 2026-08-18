@@ -265,10 +265,10 @@
                                             <span class="font-medium text-sm" x-text="elem.element_name"></span>
                                             <span class="text-xs text-muted-foreground" x-text="elem.fields.length + ' fields'"></span>
                                             <template x-if="elem.status === 'confirmed'">
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis">Confirmed</span>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis">Confirmed</span>
                                             </template>
                                             <template x-if="elem.confidence">
-                                                <span class="text-[10px] text-muted-foreground" x-text="Math.round(elem.confidence * 100) + '% confidence'"></span>
+                                                <span class="text-xs text-muted-foreground" x-text="Math.round(elem.confidence * 100) + '% confidence'"></span>
                                             </template>
                                         </div>
                                         <i data-lucide="chevron-down" class="w-4 h-4 text-muted-foreground transition-transform" :class="elem._open ? 'rotate-180' : ''" aria-hidden="true"></i>
@@ -551,7 +551,7 @@
                         <i data-lucide="kanban" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> ADM Board
                     </a>
                     <hr class="my-1 border-border">
-                    <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Export</div>
+                    <div class="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Export</div>
                     <a href="/solutions/{{ solution.id }}/export/blueprint" role="menuitem"
                         class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
                         <i data-lucide="file-badge" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Blueprint PDF
@@ -663,7 +663,7 @@
         </div>
         {% endfor %}
         {% if maturity_gaps | length > 3 %}
-        <p class="text-[10px] text-muted-foreground mt-1">+ {{ maturity_gaps | length - 3 }} more gaps</p>
+        <p class="text-xs text-muted-foreground mt-1">+ {{ maturity_gaps | length - 3 }} more gaps</p>
         {% endif %}
       </div>
     </div>
@@ -696,7 +696,7 @@
               <p class="text-xs text-success-emphasis font-medium" x-text="'Created ' + aiResult.total + ' entities across all phases'"></p>
               <div class="flex flex-wrap gap-2 mt-1.5">
                 <template x-for="(count, type) in aiResult.created" :key="type">
-                  <span x-show="count > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success-emphasis" x-text="count + ' ' + type"></span>
+                  <span x-show="count > 0" class="text-xs px-1.5 py-0.5 rounded bg-success/10 text-success-emphasis" x-text="count + ' ' + type"></span>
                 </template>
               </div>
             </div>
@@ -726,8 +726,8 @@
                   class="relative px-4 py-2.5 text-sm font-medium transition-colors rounded-t-md whitespace-nowrap"
                   :class="activeTab === tab.key ? 'text-foreground bg-card border border-border border-b-transparent -mb-px' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'">
             <span x-text="tab.label"></span>
-            <span class="ml-1 text-[10px] text-muted-foreground" x-text="'(' + tab.phase + ')'"></span>
-            <span class="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 rounded-full text-[10px] font-bold px-1"
+            <span class="ml-1 text-xs text-muted-foreground" x-text="'(' + tab.phase + ')'"></span>
+            <span class="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 rounded-full text-xs font-bold px-1"
                   :class="tab.pct === 100 ? 'bg-success/15 text-success-emphasis' : tab.pct >= 40 ? 'bg-warning/15 text-warning-emphasis' : tab.pct > 0 ? 'bg-destructive/15 text-destructive-emphasis' : 'bg-muted text-muted-foreground'"
                   x-html="tab.pct === 100 ? '&#10003;' : tab.pct + '%'"></span>
           </button>
@@ -750,7 +750,7 @@
       <div class="rounded-xl border border-border bg-card overflow-hidden">
         <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
           <span class="text-xs font-medium text-muted-foreground">Motivation Viewpoint</span>
-          <span class="text-[10px] text-muted-foreground">Driver → Goal → Requirement</span>
+          <span class="text-xs text-muted-foreground">Driver → Goal → Requirement</span>
         </div>
         <div id="viewpoint-diagram-vision" class="w-full" style="min-height:200px;"></div>
       </div>
@@ -762,12 +762,12 @@
           <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Problem Statement</p>
           {% if analysis_origin.get('recommendation_type') %}
-          <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-info/10 text-info-emphasis">{{ analysis_origin.get('recommendation_type') }}{% if analysis_origin.get('recommendation_score') %} &middot; Score: {{ analysis_origin.get('recommendation_score') }}{% endif %}</span>
+          <span class="ml-auto text-xs px-1.5 py-0.5 rounded bg-info/10 text-info-emphasis">{{ analysis_origin.get('recommendation_type') }}{% if analysis_origin.get('recommendation_score') %} &middot; Score: {{ analysis_origin.get('recommendation_score') }}{% endif %}</span>
           {% endif %}
         </div>
         <p class="text-sm text-foreground/80 leading-relaxed">{{ analysis_origin.get('problem_statement') }}</p>
         {% if analysis_origin.get('created_at') %}
-        <p class="text-[10px] text-muted-foreground mt-3">Analysis session: {{ analysis_origin.get('session_name', '') }} &middot; {{ analysis_origin.get('created_at') }}</p>
+        <p class="text-xs text-muted-foreground mt-3">Analysis session: {{ analysis_origin.get('session_name', '') }} &middot; {{ analysis_origin.get('created_at') }}</p>
         {% endif %}
       </div>
       {% endif %}
@@ -864,13 +864,13 @@
           </div>
           <div class="flex flex-wrap gap-1.5">
             {% for cat in _ac.filled %}
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-success/10 text-success-emphasis border border-success/20">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-success/10 text-success-emphasis border border-success/20">
               <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
               {{ cat|replace('_',' ')|title }}
             </span>
             {% endfor %}
             {% for cat in _ac.missing %}
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-muted/50 text-muted-foreground border border-dashed border-border/70">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-muted/50 text-muted-foreground border border-dashed border-border/70">
               <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01"/></svg>
               {{ cat|replace('_',' ')|title }}
             </span>
@@ -903,21 +903,21 @@
           <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
             <span class="w-2 h-2 rounded-full bg-info shrink-0"></span>
             <span class="flex-1">{{ d.get('name') or d.get('title') or d.get('description', 'Untitled') }}</span>
-            <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Driver</span>
+            <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Driver</span>
           </div>
           {% endfor %}
           {% for g in goals %}
           <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
             <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
             <span class="flex-1">{{ g.get('name') or g.get('title') or g.get('description', 'Untitled') }}</span>
-            <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Goal</span>
+            <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Goal</span>
           </div>
           {% endfor %}
           {% for c in constraints %}
           <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
             <span class="w-2 h-2 rounded-full bg-destructive shrink-0"></span>
             <span class="flex-1">{{ c.get('name') or c.get('title') or c.get('description', 'Untitled') }}</span>
-            <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Constraint</span>
+            <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Constraint</span>
           </div>
           {% endfor %}
         </div>
@@ -975,8 +975,8 @@
               {% set r_status = (r.get('status') or 'open') | lower %}
               <tr class="hover:bg-muted/20">
                 <td class="px-5 py-2.5">{{ r.get('name') or r.get('title') or r.get('description', 'Untitled') }}</td>
-                <td class="px-3 py-2.5"><span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{{ (r.get('requirement_type') or r.get('type') or 'Functional') | title }}</span></td>
-                <td class="px-3 py-2.5"><span class="text-[10px] {% if r_priority == 'critical' %}text-destructive-emphasis{% elif r_priority == 'high' %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
+                <td class="px-3 py-2.5"><span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{{ (r.get('requirement_type') or r.get('type') or 'Functional') | title }}</span></td>
+                <td class="px-3 py-2.5"><span class="text-xs {% if r_priority == 'critical' %}text-destructive-emphasis{% elif r_priority == 'high' %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
                 <td class="px-3 py-2.5">
                   <span class="flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full {% if r_status == 'met' or r_status == 'closed' %}bg-success{% elif r_status == 'in_progress' or r_status == 'in progress' %}bg-warning{% else %}bg-muted-foreground{% endif %}"></span>
@@ -1009,7 +1009,7 @@
             <span class="text-xs text-muted-foreground">Target: {{ qa.get('target_value') or qa.get('target') }}</span>
             {% endif %}
             {% if qa.get('priority') %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-destructive/10 text-destructive-emphasis{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-destructive/10 text-destructive-emphasis{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
             {% endif %}
           </div>
           {% endfor %}
@@ -1033,7 +1033,7 @@
       <div class="rounded-xl border border-border bg-card overflow-hidden">
         <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
           <span class="text-xs font-medium text-muted-foreground">Strategy Viewpoint</span>
-          <span class="text-[10px] text-muted-foreground">Capability → Value Stream → Course of Action</span>
+          <span class="text-xs text-muted-foreground">Capability → Value Stream → Course of Action</span>
         </div>
         <div id="viewpoint-diagram-business" class="w-full" style="min-height:200px;"></div>
       </div>
@@ -1069,7 +1069,7 @@
                 <div class="flex items-center gap-2 mt-2">
                   {% set mat = cap.get('maturity_level') or cap.get('level') %}
                   {% if mat %}
-                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-success/10 text-success-emphasis{% elif mat >= 3 %}bg-warning/10 text-warning-emphasis{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">L{{ mat }}</span>
+                  <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-medium {% if mat >= 4 %}bg-success/10 text-success-emphasis{% elif mat >= 3 %}bg-warning/10 text-warning-emphasis{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">L{{ mat }}</span>
                   {% endif %}
                 </div>
               </div>
@@ -1143,7 +1143,7 @@
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ vp.get('licensing_model') or '&mdash;' }}</td>
                 <td class="px-3 py-2.5">
                   {% if vp.get('implementation_type') %}
-                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{{ vp.get('implementation_type') }}</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{{ vp.get('implementation_type') }}</span>
                   {% else %}&mdash;{% endif %}
                 </td>
               </tr>
@@ -1197,7 +1197,7 @@
       <div class="rounded-xl border border-border bg-card overflow-hidden">
         <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
           <span class="text-xs font-medium text-muted-foreground">Solution Architecture Viewpoint</span>
-          <span class="text-[10px] text-muted-foreground">Application · Technology · Integration</span>
+          <span class="text-xs text-muted-foreground">Application · Technology · Integration</span>
         </div>
         <div id="viewpoint-diagram-infosys" class="w-full" style="min-height:250px;"></div>
       </div>
@@ -1309,9 +1309,9 @@
             <span class="w-3 h-3 rounded bg-{{ lcolor }}-500/30 border border-{{ lcolor }}-500/50 shrink-0"></span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium">{{ elem.get('name', 'Unnamed') }}</p>
-              <p class="text-[10px] text-muted-foreground">{{ elem.get('type', '') }}{% if elem.get('relationship') %} &middot; <span class="text-primary/70">{{ elem.get('relationship') }}</span>{% endif %}{% if elem.get('is_new') %} &middot; <span class="text-warning-emphasis">new</span>{% endif %}</p>
+              <p class="text-xs text-muted-foreground">{{ elem.get('type', '') }}{% if elem.get('relationship') %} &middot; <span class="text-primary/70">{{ elem.get('relationship') }}</span>{% endif %}{% if elem.get('is_new') %} &middot; <span class="text-warning-emphasis">new</span>{% endif %}</p>
             </div>
-            <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-{{ lcolor }}-500/10 text-{{ lcolor }}-400">{{ layer | title }}</span>
+            <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-{{ lcolor }}-500/10 text-{{ lcolor }}-400">{{ layer | title }}</span>
           </div>
           {% endfor %}
         </div>
@@ -1439,7 +1439,7 @@
           {% for item in tco_list[:4] %}
           <div class="rounded-xl border border-border bg-card p-4 text-center">
             <p class="text-xl font-bold text-foreground">{{ currency_symbol }}{{ '{:,.0f}'.format(item.get('amount') or item.get('cost') or 0) }}</p>
-            <p class="text-[10px] text-muted-foreground mt-1">{{ item.get('label') or item.get('option_label', '') }} {{ item.get('year', '') }}</p>
+            <p class="text-xs text-muted-foreground mt-1">{{ item.get('label') or item.get('option_label', '') }} {{ item.get('year', '') }}</p>
           </div>
           {% endfor %}
         </div>
@@ -1457,7 +1457,7 @@
       <div class="rounded-xl border border-border bg-card overflow-hidden">
         <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
           <span class="text-xs font-medium text-muted-foreground">Implementation & Migration Viewpoint</span>
-          <span class="text-[10px] text-muted-foreground">Plateau → Gap → Work Package</span>
+          <span class="text-xs text-muted-foreground">Plateau → Gap → Work Package</span>
         </div>
         <div id="viewpoint-diagram-migration" class="w-full" style="min-height:200px;"></div>
       </div>
@@ -1490,7 +1490,7 @@
             <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-info/20 text-info text-xs font-bold shrink-0">{{ loop.index }}</span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-foreground">{{ plateau.get('name') or plateau.get('title') or 'Plateau ' ~ loop.index }}</p>
-              <p class="text-[10px] text-muted-foreground">{{ plateau.get('description', '') | truncate(100) }}</p>
+              <p class="text-xs text-muted-foreground">{{ plateau.get('description', '') | truncate(100) }}</p>
             </div>
             {% if plateau.get('target_date') %}
             <span class="text-xs text-muted-foreground shrink-0">{{ plateau.get('target_date') }}</span>
@@ -1505,7 +1505,7 @@
             <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-info/20 text-info text-xs font-bold shrink-0">{{ phase.get('phase_number', loop.index) }}</span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-foreground">{{ phase.get('name') or phase.get('title') or 'Phase ' ~ loop.index }}</p>
-              {% if phase.get('budget') %}<p class="text-[10px] text-muted-foreground">Budget: {{ currency_symbol }}{{ '{:,.0f}'.format(phase.get('budget')) }}</p>{% endif %}
+              {% if phase.get('budget') %}<p class="text-xs text-muted-foreground">Budget: {{ currency_symbol }}{{ '{:,.0f}'.format(phase.get('budget')) }}</p>{% endif %}
             </div>
           </div>
           {% endfor %}
@@ -1531,7 +1531,7 @@
       <div class="rounded-xl border border-border bg-card overflow-hidden">
         <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
           <span class="text-xs font-medium text-muted-foreground">Layered Viewpoint</span>
-          <span class="text-[10px] text-muted-foreground">All architecture layers</span>
+          <span class="text-xs text-muted-foreground">All architecture layers</span>
         </div>
         <div id="viewpoint-diagram-governance" class="w-full" style="min-height:200px;"></div>
       </div>
@@ -1549,10 +1549,10 @@
           </div>
           <template x-if="strategicRiskAnalysis">
             <div class="grid grid-cols-4 gap-2 text-center">
-              <div><p class="text-lg font-bold text-destructive" x-text="strategicRiskAnalysis.critical_risks || 0"></p><p class="text-[10px] text-muted-foreground">Critical</p></div>
-              <div><p class="text-lg font-bold text-destructive" x-text="strategicRiskAnalysis.high_risks || 0"></p><p class="text-[10px] text-muted-foreground">High</p></div>
-              <div><p class="text-lg font-bold text-warning" x-text="strategicRiskAnalysis.medium_risks || 0"></p><p class="text-[10px] text-muted-foreground">Medium</p></div>
-              <div><p class="text-lg font-bold text-success" x-text="strategicRiskAnalysis.low_risks || 0"></p><p class="text-[10px] text-muted-foreground">Low</p></div>
+              <div><p class="text-lg font-bold text-destructive" x-text="strategicRiskAnalysis.critical_risks || 0"></p><p class="text-xs text-muted-foreground">Critical</p></div>
+              <div><p class="text-lg font-bold text-destructive" x-text="strategicRiskAnalysis.high_risks || 0"></p><p class="text-xs text-muted-foreground">High</p></div>
+              <div><p class="text-lg font-bold text-warning" x-text="strategicRiskAnalysis.medium_risks || 0"></p><p class="text-xs text-muted-foreground">Medium</p></div>
+              <div><p class="text-lg font-bold text-success" x-text="strategicRiskAnalysis.low_risks || 0"></p><p class="text-xs text-muted-foreground">Low</p></div>
             </div>
           </template>
         </div>
@@ -1654,7 +1654,7 @@
                 </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (risk.get('likelihood') or risk.get('probability') or '&mdash;') | title }}</td>
                 <td class="px-3 py-2.5">
-                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if 'mitigat' in r_status %}bg-success/10 text-success-emphasis{% elif 'accept' in r_status %}bg-muted text-muted-foreground{% else %}bg-warning/10 text-warning-emphasis{% endif %}">{{ r_status | replace('_', ' ') | title }}</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded {% if 'mitigat' in r_status %}bg-success/10 text-success-emphasis{% elif 'accept' in r_status %}bg-muted text-muted-foreground{% else %}bg-warning/10 text-warning-emphasis{% endif %}">{{ r_status | replace('_', ' ') | title }}</span>
                 </td>
               </tr>
               {% endfor %}
@@ -1689,7 +1689,7 @@
                 <td class="px-3 py-2.5 font-medium">{{ adr.title or 'Untitled' }}</td>
                 <td class="px-3 py-2.5">
                   {% set adr_status = (adr.status or 'draft') | lower %}
-                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-success/10 text-success-emphasis{% elif adr_status == 'proposed' %}bg-warning/10 text-warning-emphasis{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-info/10 text-info{% endif %}">{{ adr_status | title }}</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-success/10 text-success-emphasis{% elif adr_status == 'proposed' %}bg-warning/10 text-warning-emphasis{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-info/10 text-info{% endif %}">{{ adr_status | title }}</span>
                 </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (adr.decision or '')[:80] }}{% if (adr.decision or '') | length > 80 %}&hellip;{% endif %}</td>
               </tr>
@@ -1715,7 +1715,7 @@
           <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
             <div class="flex-1 min-w-0">
               <p class="font-medium">{{ m.get('name') or m.get('metric_name') or 'Unnamed' }}</p>
-              {% if m.get('description') %}<p class="text-[10px] text-muted-foreground mt-0.5">{{ m.get('description') | truncate(100) }}</p>{% endif %}
+              {% if m.get('description') %}<p class="text-xs text-muted-foreground mt-0.5">{{ m.get('description') | truncate(100) }}</p>{% endif %}
             </div>
             {% if m.get('target_value') or m.get('target') %}
             <div class="text-right shrink-0">
@@ -1748,7 +1748,7 @@
           <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
             <span class="flex-1">{{ cm.get('framework') or cm.get('regulation') or cm.get('name') or 'Unnamed' }}{% if cm.get('control_id') %} &middot; {{ cm.get('control_id') }}{% endif %}</span>
             {% set cm_status = (cm.get('status') or cm.get('compliance_status') or 'pending') | lower %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-success/10 text-success-emphasis{% elif cm_status in ('partial', 'in_progress') %}bg-warning/10 text-warning-emphasis{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-success/10 text-success-emphasis{% elif cm_status in ('partial', 'in_progress') %}bg-warning/10 text-warning-emphasis{% else %}bg-destructive/10 text-destructive-emphasis{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
           </div>
           {% endfor %}
         </div>
@@ -1800,7 +1800,7 @@
               <div class="h-1.5 rounded-full {% if chain.pct == 100 %}bg-success{% elif chain.pct >= 50 %}bg-warning{% else %}bg-destructive{% endif %}" style="width:{{ chain.pct }}%"></div>
             </div>
             {% if chain.gap %}
-            <p class="text-[10px] text-muted-foreground mt-1.5">
+            <p class="text-xs text-muted-foreground mt-1.5">
               Broken at: <span class="text-foreground/70">{{ chain.gap }}</span> &mdash;
               <button class="text-primary hover:underline" @click="activeTab = '{{ chain.tab }}'">go to {{ chain.tab | title }} tab</button>
             </p>
@@ -1914,7 +1914,7 @@
                  x-text="(c.author_name || 'U').charAt(0).toUpperCase()"></div>
             <div>
               <p class="text-xs font-medium text-foreground" x-text="c.author_name"></p>
-              <p class="text-[10px] text-muted-foreground" x-text="formatDate(c.created_at)"></p>
+              <p class="text-xs text-muted-foreground" x-text="formatDate(c.created_at)"></p>
             </div>
           </div>
         </div>
@@ -1922,18 +1922,18 @@
         <div x-show="(c.replies || []).length > 0" class="pl-4 border-l-2 border-border/50 space-y-2">
           <template x-for="r in (c.replies || [])" :key="r.id">
             <div class="space-y-1">
-              <p class="text-[10px] font-medium text-muted-foreground" x-text="r.author_name + ' · ' + formatDate(r.created_at)"></p>
+              <p class="text-xs font-medium text-muted-foreground" x-text="r.author_name + ' · ' + formatDate(r.created_at)"></p>
               <p class="text-xs text-foreground/80" x-text="r.content"></p>
             </div>
           </template>
         </div>
-        <button @click="startReply(c.id)" class="text-[10px] text-primary hover:underline" x-show="replyTo !== c.id">Reply</button>
+        <button @click="startReply(c.id)" class="text-xs text-primary hover:underline" x-show="replyTo !== c.id">Reply</button>
         <div x-show="replyTo === c.id" class="pt-1 space-y-2">
           <textarea x-model="replyText" rows="2" placeholder="Write a reply..."
                     class="w-full text-xs rounded-lg border border-border bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label="Write a reply..."></textarea>
           <div class="flex gap-2">
-            <button @click="submitReply(c.id)" :disabled="submitting" class="text-[10px] px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50">Reply</button>
-            <button @click="replyTo = null; replyText = ''" class="text-[10px] px-3 py-1.5 rounded-md border border-border text-muted-foreground">Cancel</button>
+            <button @click="submitReply(c.id)" :disabled="submitting" class="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50">Reply</button>
+            <button @click="replyTo = null; replyText = ''" class="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground">Cancel</button>
           </div>
         </div>
       </div>

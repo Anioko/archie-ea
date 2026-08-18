@@ -6,7 +6,7 @@
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
             <h2 class="text-lg font-semibold text-foreground">Architecture Requirements</h2>
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30">ArchiMate Requirement</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">ArchiMate Requirement</span>
         </div>
         <div class="flex items-center gap-2">
             <span class="text-xs text-muted-foreground" x-text="requirements.length + ' total, ' + mandatoryReqCount + ' mandatory'"></span>
@@ -26,7 +26,7 @@
             {% endif %}
             <button type="button" @click="toggleComments('phase_bcd')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Comments">
                 <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
-                <span x-show="commentCount('phase_bcd') > 0" x-text="commentCount('phase_bcd')" class="text-[10px] bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
+                <span x-show="commentCount('phase_bcd') > 0" x-text="commentCount('phase_bcd')" class="text-xs bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
             </button>
             <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'B', elementType: 'Requirement', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
                 class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-info hover:bg-info/10 border border-info/30 transition-colors"
@@ -52,7 +52,7 @@
                         <div class="flex-1 min-w-0 mr-3">
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-medium text-foreground" x-text="s.name"></span>
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20" x-text="s.layer"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/20" x-text="s.layer"></span>
                             </div>
                             <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
                         </div>
@@ -80,7 +80,7 @@
                         <div class="flex-1 min-w-0 mr-3">
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-medium text-foreground" x-text="s.name || s.title"></span>
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="(s.type || s.requirement_type) === 'functional' ? 'bg-primary/10 text-primary border border-primary/20' : (s.type || s.requirement_type) === 'non_functional' ? 'bg-warning/10 text-warning-emphasis border border-warning/20' : 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/20'"
                                       x-text="(s.type || s.requirement_type || 'functional').replace('_', ' ')"></span>
                             </div>
@@ -121,17 +121,17 @@
                             <td class="px-3 py-2">
                                 <div>
                                     <span class="font-medium text-foreground" x-text="req.name"></span>
-                                    <span x-show="req.ai_generated" x-cloak class="ml-1 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20" title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
+                                    <span x-show="req.ai_generated" x-cloak class="ml-1 inline-flex items-center gap-0.5 px-1 py-0 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/20" title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
                                     <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="req.description" x-show="req.description" x-cloak></p>
                                 </div>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="requirementTypeClass(req.requirement_type)"
                                       x-text="req.requirement_type"></span>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="req.priority <= 2 ? 'bg-destructive/10 text-destructive-emphasis' : req.priority === 3 ? 'bg-warning/10 text-warning-emphasis' : 'bg-primary/10 text-primary'"
                                       x-text="req.priority <= 2 ? 'Critical' : req.priority === 3 ? 'High' : 'Medium'"></span>
                             </td>
@@ -292,13 +292,13 @@
                             </td>
                             <td class="px-3 py-2 text-muted-foreground" x-text="vp.vendor_name || 'Unknown'"></td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                                       x-text="vp.product_family_name || 'General'"
                                       x-show="vp.product_family_name" x-cloak></span>
                                 <span class="text-xs text-muted-foreground" x-show="!vp.product_family_name" x-cloak>&mdash;</span>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="vp.implementation_type === 'licensed' ? 'bg-success/10 text-success-emphasis border border-success/30' :
                                                vp.implementation_type === 'customized' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' :
                                                vp.implementation_type === 'integrated' ? 'bg-primary/10 text-primary border border-primary/30' :
@@ -511,7 +511,7 @@
     <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
             <h2 class="text-lg font-semibold text-foreground">Solution Options</h2>
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">ArchiMate CourseOfAction</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">ArchiMate CourseOfAction</span>
         </div>
         <div class="flex items-center gap-2">
             {% if llm_available %}
@@ -524,7 +524,7 @@
             {% endif %}
             <button type="button" @click="toggleComments('phase_e')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Comments">
                 <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
-                <span x-show="commentCount('phase_e') > 0" x-text="commentCount('phase_e')" class="text-[10px] bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
+                <span x-show="commentCount('phase_e') > 0" x-text="commentCount('phase_e')" class="text-xs bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
             </button>
             <button type="button" @click="runOptionsAnalysis()" :disabled="analyzingOptions"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
@@ -640,7 +640,7 @@
                         <div class="flex-1 min-w-0 mr-3">
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-medium text-foreground" x-text="s.name"></span>
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/20" x-text="s.layer"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/20" x-text="s.layer"></span>
                             </div>
                             <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
                         </div>
@@ -677,7 +677,7 @@
                         <span class="text-xs font-semibold text-primary uppercase">Recommended</span>
                     </div>
                     <div class="flex items-center gap-2 mb-1">
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                               :class="optionTypeClass(rec.option_type)"
                               x-text="rec.option_type"></span>
                         <h3 class="text-sm font-semibold text-foreground" x-text="'Option ' + rec.rank + ': ' + (rec.option_type || 'Option').charAt(0).toUpperCase() + (rec.option_type || 'option').slice(1)"></h3>
@@ -690,7 +690,7 @@
                     </div>
                     <template x-if="rec.pros && rec.pros.length > 0">
                         <div class="mb-2">
-                            <span class="text-[10px] font-medium text-success-emphasis uppercase">Pros</span>
+                            <span class="text-xs font-medium text-success-emphasis uppercase">Pros</span>
                             <ul class="mt-1 space-y-0.5">
                                 <template x-for="pro in rec.pros.slice(0, 3)" :key="pro">
                                     <li class="flex items-start gap-1 text-xs text-muted-foreground">
@@ -703,7 +703,7 @@
                     </template>
                     <template x-if="rec.cons && rec.cons.length > 0">
                         <div>
-                            <span class="text-[10px] font-medium text-destructive-emphasis uppercase">Cons</span>
+                            <span class="text-xs font-medium text-destructive-emphasis uppercase">Cons</span>
                             <ul class="mt-1 space-y-0.5">
                                 <template x-for="con in rec.cons.slice(0, 3)" :key="con">
                                     <li class="flex items-start gap-1 text-xs text-muted-foreground">

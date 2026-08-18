@@ -74,11 +74,11 @@
       <label class="block text-sm font-medium text-foreground">Business Problem</label>
       {# ENH-006: AI Generated badge for problem statement #}
       <span x-show="scopeReviewPending" x-cloak
-        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30">
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">
         <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
       </span>
       <span x-show="scopeReviewPending && scopeApproved" x-cloak
-        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30">
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
         <i data-lucide="check" class="h-3 w-3 mr-0.5"></i> Approved
       </span>
     </div>
@@ -118,7 +118,7 @@
   <div>
     <label class="block text-sm font-medium text-foreground mb-1.5">
       Drivers
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30 ml-1">ArchiMate: Driver</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30 ml-1">ArchiMate: Driver</span>
     </label>
     <div class="relative">
       <input type="text" x-model="driverSearch" @input.debounce.300ms="searchMotivationElements('Driver')"
@@ -155,7 +155,7 @@
   <div>
     <label class="block text-sm font-medium text-foreground mb-1.5">
       Goals
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/30 ml-1">ArchiMate: Goal</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 ml-1">ArchiMate: Goal</span>
     </label>
     <div class="relative">
       <input type="text" x-model="goalSearch" @input.debounce.300ms="searchMotivationElements('Goal')"
@@ -189,7 +189,7 @@
   <div>
     <label class="block text-sm font-medium text-foreground mb-1.5">
       Constraints
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30 ml-1">ArchiMate: Constraint</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30 ml-1">ArchiMate: Constraint</span>
     </label>
     <div class="relative">
       <input type="text" x-model="constraintSearch" @input.debounce.300ms="searchMotivationElements('Constraint')"
@@ -223,7 +223,7 @@
   <div>
     <label class="block text-sm font-medium text-foreground mb-1.5">
       Stakeholders
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/30 ml-1">ArchiMate: Stakeholder</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30 ml-1">ArchiMate: Stakeholder</span>
     </label>
     <div class="relative">
       <input type="text" x-model="stakeholderSearch" @input.debounce.300ms="searchMotivationElements('Stakeholder')"
@@ -278,7 +278,7 @@
                 'bg-purple-500/10 text-primary border-purple-500/30': el.layer === 'Motivation',  <!-- design-tokens-ok: ArchiMate layer legend, distinct hue per layer -->
                 'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30': el.layer === 'Strategy',
                 'bg-rose-500/10 text-rose-600 border-rose-500/30': el.layer === 'Implementation_and_Migration'  <!-- design-tokens-ok: ArchiMate layer legend, distinct hue per layer -->
-              }" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+              }" class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border"
                 x-text="el.layer"></span>
             </span>
           </button>
@@ -336,7 +336,7 @@
             'bg-rose-500/10 text-rose-600 border-rose-500/30': el.layer === 'Implementation_and_Migration'  <!-- design-tokens-ok: ArchiMate layer legend, distinct hue per layer -->
           }">
           <span x-text="el.name"></span>
-          <span class="text-[10px] opacity-70" x-text="el.type"></span>
+          <span class="text-xs opacity-70" x-text="el.type"></span>
           <button @click="unlinkArchimateElement(el.id)" type="button" class="hover:text-destructive-emphasis">
             <i data-lucide="x" class="h-3 w-3"></i>
           </button>

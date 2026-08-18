@@ -43,8 +43,8 @@
                         <p class="font-medium text-sm leading-tight" x-text="el.name"></p>
                         <p class="text-xs text-muted-foreground line-clamp-2" x-text="el.description || 'No description'"></p>
                         <div class="flex items-center gap-2 pt-1">
-                            <span x-show="el.rel_count > 0" class="text-[10px] text-primary font-medium" x-text="el.rel_count + ' rels'"></span>
-                            <span x-show="el.rel_count === 0" class="text-[10px] text-warning-emphasis font-medium">orphaned</span>
+                            <span x-show="el.rel_count > 0" class="text-xs text-primary font-medium" x-text="el.rel_count + ' rels'"></span>
+                            <span x-show="el.rel_count === 0" class="text-xs text-warning-emphasis font-medium">orphaned</span>
                         </div>
                     </a>
                 </template>

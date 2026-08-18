@@ -33,7 +33,7 @@
       <span class="text-sm font-medium text-foreground">Transition Plateaus</span>
       {# ENH-006: AI Generated badge for roadmap #}
       <span x-show="roadmap._ai_generated" x-cloak
-        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info-emphasis border border-info/30">
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">
         <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
       </span>
     </div>
@@ -75,7 +75,7 @@
             <div class="flex items-center gap-2">
               <span x-text="wp.name" class="text-sm font-medium"></span>
               <span x-show="wp.plateau" x-cloak
-                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/30"
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30"
                 x-text="wp.plateau"></span>
             </div>
             <div class="flex items-center gap-2">

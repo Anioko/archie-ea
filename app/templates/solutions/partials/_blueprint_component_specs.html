@@ -22,7 +22,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                     </svg>
                     <span class="text-sm font-medium text-foreground" x-text="elem.element_name || elem.name"></span>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground"
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground"
                           x-text="elem.element_type || elem.type"></span>
                 </div>
                 <div class="flex items-center gap-2">
@@ -142,7 +142,7 @@
                                             <template x-for="ep in componentSpecs[elem.element_id || elem.id].spec_data.api_contract.endpoints" :key="ep.path + ep.method">
                                                 <tr class="hover:bg-muted/30 transition-colors">
                                                     <td class="py-2 px-3">
-                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold"
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold"
                                                               :class="ep.method === 'GET' ? 'bg-success/10 text-success-emphasis border border-success/30' :
                                                                       ep.method === 'POST' ? 'bg-info/10 text-info border border-info/30' :
                                                                       ep.method === 'PUT' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' :
@@ -188,7 +188,7 @@
                                     <div class="min-w-0 flex-1">
                                         <div class="flex items-center gap-2 mb-1">
                                             <span class="text-xs font-medium text-foreground" x-text="rule.name"></span>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
                                                   :class="rule.status === 'confirmed' ? 'bg-success/10 text-success-emphasis border border-success/30' :
                                                           rule.status === 'proposed' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' :
                                                           'bg-muted text-muted-foreground'"
@@ -197,7 +197,7 @@
                                         <p class="text-xs text-muted-foreground" x-text="rule.description || rule.condition || ''"></p>
                                     </div>
                                     <template x-if="rule.status === 'proposed'">
-                                        <button class="shrink-0 ml-3 inline-flex items-center px-2 py-1 text-[10px] font-medium bg-success hover:bg-success/90 text-primary-foreground rounded-md transition-colors"
+                                        <button class="shrink-0 ml-3 inline-flex items-center px-2 py-1 text-xs font-medium bg-success hover:bg-success/90 text-primary-foreground rounded-md transition-colors"
                                                 x-on:click="confirmSpec(elem.element_id || elem.id, 'business_rules', rule.id || rule.name)">Confirm</button>
                                     </template>
                                 </div>

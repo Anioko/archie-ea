@@ -373,7 +373,7 @@
         <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.duplicate_groups|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline" {{ 'aria-current=step' if stats.duplicate_groups|default(0) > 0 else '' }}>
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.duplicate_groups|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">1</span>
           Detect
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.duplicate_groups|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.duplicate_groups|dash }} groups</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-semibold {{ 'bg-primary/20 text-primary' if stats.duplicate_groups|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.duplicate_groups|dash }} groups</span>
         </a>
       </li>
       <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground hidden sm:block" aria-hidden="true"></i>
@@ -381,7 +381,7 @@
         <a href="{{ url_for('dashboard_pages.rationalization_scorecard') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.time_scored_count|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline">
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.time_scored_count|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">2</span>
           Score
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.time_scored_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.time_scored_count|dash }}/{{ stats.total_applications|dash }}</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-semibold {{ 'bg-primary/20 text-primary' if stats.time_scored_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.time_scored_count|dash }}/{{ stats.total_applications|dash }}</span>
         </a>
       </li>
       <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground hidden sm:block" aria-hidden="true"></i>
@@ -389,7 +389,7 @@
         <a href="{{ url_for('consolidation_list.dashboard') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.consolidation_count|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline">
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.consolidation_count|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">3</span>
           Plan
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.consolidation_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.consolidation_count|dash }} entries</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-semibold {{ 'bg-primary/20 text-primary' if stats.consolidation_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.consolidation_count|dash }} entries</span>
         </a>
       </li>
       <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground hidden sm:block" aria-hidden="true"></i>
@@ -397,7 +397,7 @@
         <a href="{{ url_for('main.capability_roadmap') }}" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.roadmap_count|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline">
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.roadmap_count|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">4</span>
           Roadmap
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.roadmap_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.roadmap_count|dash }} tasks</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-semibold {{ 'bg-primary/20 text-primary' if stats.roadmap_count|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{{ stats.roadmap_count|dash }} tasks</span>
         </a>
       </li>
       <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground hidden sm:block" aria-hidden="true"></i>
@@ -405,7 +405,7 @@
         <a href="#savings-stat" class="flex items-center gap-2 px-3 py-1.5 rounded-lg {{ 'bg-primary/10 text-primary' if stats.estimated_savings|default(0) > 0 else 'text-muted-foreground' }} text-sm font-medium hover:bg-accent/50 transition-colors cursor-pointer no-underline">
           <span class="flex items-center justify-center w-5 h-5 rounded-full {{ 'bg-primary text-primary-foreground' if stats.estimated_savings|default(0) > 0 else 'bg-muted text-muted-foreground' }} text-xs font-bold" aria-hidden="true">5</span>
           Track
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold {{ 'bg-primary/20 text-primary' if stats.estimated_savings|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{% if stats and stats.estimated_savings is not none %}{{ currency_symbol|default("£") }}{{ "{:,.0f}".format(stats.estimated_savings) }}{% else %}&mdash;{% endif %}</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-semibold {{ 'bg-primary/20 text-primary' if stats.estimated_savings|default(0) > 0 else 'bg-muted text-muted-foreground' }}">{% if stats and stats.estimated_savings is not none %}{{ currency_symbol|default("£") }}{{ "{:,.0f}".format(stats.estimated_savings) }}{% else %}&mdash;{% endif %}</span>
         </a>
       </li>
     </ol>
@@ -717,7 +717,7 @@
             Retain
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Keep as-is — adequate fit, minimal risk</p>
-          <p class="text-[10px] text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ TOLERATE</p>
+          <p class="text-xs text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ TOLERATE</p>
         </div>
         <!-- Rehost -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
@@ -725,7 +725,7 @@
             Rehost
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Lift and shift to new infrastructure</p>
-          <p class="text-[10px] text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ MIGRATE</p>
+          <p class="text-xs text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ MIGRATE</p>
         </div>
         <!-- Replatform -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
@@ -733,7 +733,7 @@
             Replatform
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Move to new platform with minor modifications</p>
-          <p class="text-[10px] text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ MIGRATE</p>
+          <p class="text-xs text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ MIGRATE</p>
         </div>
         <!-- Refactor -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
@@ -741,7 +741,7 @@
             Refactor
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Re-architect for quality or strategic fit</p>
-          <p class="text-[10px] text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ INVEST</p>
+          <p class="text-xs text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ INVEST</p>
         </div>
         <!-- Replace -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
@@ -749,7 +749,7 @@
             Replace
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Swap for a different product or build</p>
-          <p class="text-[10px] text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ MIGRATE</p>
+          <p class="text-xs text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ MIGRATE</p>
         </div>
         <!-- Consolidate -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
@@ -757,7 +757,7 @@
             Consolidate
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Merge with overlapping applications</p>
-          <p class="text-[10px] text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ ELIMINATE</p>
+          <p class="text-xs text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ ELIMINATE</p>
         </div>
         <!-- Retire -->
         <div class="rounded-lg border p-3 flex flex-col gap-1" role="listitem">
@@ -765,7 +765,7 @@
             Retire
           </span>
           <p class="text-xs text-muted-foreground leading-snug">Decommission — no replacement needed</p>
-          <p class="text-[10px] text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ ELIMINATE</p>
+          <p class="text-xs text-muted-foreground font-medium mt-auto pt-1 border-t border-border">↑ ELIMINATE</p>
         </div>
       </div>
     </div>

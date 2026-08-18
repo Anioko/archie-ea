@@ -35,7 +35,7 @@
                 <i data-lucide="search" class="h-4 w-4"></i>
                 <span>Search...</span>
                 <!-- Platform-aware shortcut hint, filled by JS -->
-                <kbd id="search-kbd-hint" class="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-foreground"></kbd>
+                <kbd id="search-kbd-hint" class="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium text-foreground"></kbd>
             </button>
         </div>
 
@@ -98,7 +98,7 @@
                     aria-haspopup="true">
                 <i data-lucide="bell" class="h-5 w-5"></i>
                 <span id="notif-badge"
-                      class="absolute -top-1 -right-1 min-w-[1rem] h-4 rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground flex items-center justify-center px-0.5 hidden">0</span>
+                      class="absolute -top-1 -right-1 min-w-[1rem] h-4 rounded-full bg-destructive text-xs font-medium text-destructive-foreground flex items-center justify-center px-0.5 hidden">0</span>
             </button>
 
             <div id="notif-dropdown"
@@ -216,7 +216,7 @@
                    class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                    autocomplete="off"
                    spellcheck="false" aria-label="Search pages, applications, solutions, capabilities...">
-            <kbd class="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">ESC</kbd>
+            <kbd class="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium text-muted-foreground">ESC</kbd>
         </div>
         <div id="search-results" class="cmd-palette-results max-h-[28rem] overflow-y-auto p-1.5" role="listbox">
             <p class="px-2 py-8 text-center text-sm text-muted-foreground">Type to search pages and entities...</p>
@@ -224,12 +224,12 @@
         <div class="cmd-palette-footer flex items-center justify-between px-4 py-2 text-xs text-muted-foreground">
             <div class="flex items-center gap-3">
                 <span class="flex items-center gap-1">
-                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↑</kbd>
-                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↓</kbd>
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↑</kbd>
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↓</kbd>
                     Navigate
                 </span>
                 <span class="flex items-center gap-1">
-                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↵</kbd>
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↵</kbd>
                     Open
                 </span>
             </div>
@@ -709,10 +709,10 @@
     };
 
     function _renderSection(sec, items) {
-        let h = '<div class="px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">' + esc(sec) + '</div>';
+        let h = '<div class="px-2 pt-2 pb-0.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">' + esc(sec) + '</div>';
         items.forEach(function(item) {
             const icon = item.icon || ENTITY_ICONS[item.type] || 'circle';
-            const badge = item.type ? ' <span class="ml-auto text-[10px] text-muted-foreground">' + esc(item.type) + '</span>' : '';
+            const badge = item.type ? ' <span class="ml-auto text-xs text-muted-foreground">' + esc(item.type) + '</span>' : '';
             h += '<a href="' + esc(item.href || item.url || '#') + '" role="option" tabindex="-1"' +
                 ' class="flex items-center gap-3 rounded-sm px-3 py-2 text-sm hover:bg-accent focus:bg-accent focus:outline-none transition-colors">' +
                 '<i data-lucide="' + esc(icon) + '" class="h-4 w-4 text-muted-foreground shrink-0"></i>' +

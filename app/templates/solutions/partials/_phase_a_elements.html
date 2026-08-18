@@ -32,7 +32,7 @@
                                 <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="item.description" x-cloak x-show="item.description"></p>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' : item.priority === 'high' ? 'bg-warning/10 text-warning-emphasis' : item.priority === 'medium' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
                                       x-text="item.priority"></span>
                             </td>
@@ -86,12 +86,12 @@
                         <tr class="group hover:bg-muted/30 transition-colors">
                             <td class="px-3 py-2 font-semibold text-foreground" x-text="item.name"></td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/30" x-text="item.assessment_type"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30" x-text="item.assessment_type"></span>
                             </td>
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[150px] truncate" x-text="item.current_state || '\u2014'"></td>
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[150px] truncate" x-text="item.target_state || '\u2014'"></td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="item.severity >= 4 ? 'bg-destructive/10 text-destructive-emphasis' : item.severity === 3 ? 'bg-warning/10 text-warning-emphasis' : 'bg-primary/10 text-primary'"
                                       x-text="item.severity + '/5'"></span>
                             </td>
@@ -146,12 +146,12 @@
                             <td class="px-3 py-2 text-muted-foreground" x-text="item.role"></td>
                             <td class="px-3 py-2 text-muted-foreground" x-text="item.organization || '\u2014'"></td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="item.influence_level === 'high' ? 'bg-destructive/10 text-destructive-emphasis' : item.influence_level === 'medium' ? 'bg-warning/10 text-warning-emphasis' : 'bg-primary/10 text-primary'"
                                       x-text="item.influence_level"></span>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="item.interest_level === 'high' ? 'bg-success/10 text-success-emphasis' : item.interest_level === 'medium' ? 'bg-warning/10 text-warning-emphasis' : 'bg-muted text-muted-foreground'"
                                       x-text="item.interest_level"></span>
                             </td>
@@ -159,10 +159,10 @@
                                 <template x-if="item.concerns && item.concerns.length > 0">
                                     <div class="flex flex-wrap gap-1">
                                         <template x-for="(concern, ci) in (Array.isArray(item.concerns) ? item.concerns.slice(0, 3) : [])" :key="ci">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/20" x-text="concern"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/20" x-text="concern"></span>
                                         </template>
                                         <span x-show="Array.isArray(item.concerns) && item.concerns.length > 3" x-cloak
-                                              class="text-[10px] text-muted-foreground" x-text="'+' + (item.concerns.length - 3) + ' more'"></span>
+                                              class="text-xs text-muted-foreground" x-text="'+' + (item.concerns.length - 3) + ' more'"></span>
                                     </div>
                                 </template>
                                 <template x-if="!item.concerns || item.concerns.length === 0">
@@ -225,7 +225,7 @@
                             <tr class="hover:bg-muted/30 transition-colors">
                                 <td class="px-3 py-2">
                                     <span class="font-semibold text-foreground" x-text="el.name"></span>
-                                    <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20" x-text="el.element_type"></span>
+                                    <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20" x-text="el.element_type"></span>
                                 </td>
                                 <td class="px-3 py-2 text-muted-foreground text-xs max-w-[160px] truncate" x-text="el.baseline_state || '\u2014'"></td>
                                 <td class="px-3 py-2 text-muted-foreground text-xs max-w-[160px] truncate" x-text="el.target_state || '\u2014'"></td>
@@ -260,7 +260,7 @@
                             <tr class="hover:bg-muted/30 transition-colors">
                                 <td class="px-3 py-2">
                                     <span class="font-semibold text-foreground" x-text="el.name"></span>
-                                    <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/20" x-text="el.element_type"></span>
+                                    <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/20" x-text="el.element_type"></span>
                                 </td>
                                 <td class="px-3 py-2 text-muted-foreground text-xs max-w-[160px] truncate" x-text="el.baseline_state || '\u2014'"></td>
                                 <td class="px-3 py-2 text-muted-foreground text-xs max-w-[160px] truncate" x-text="el.target_state || '\u2014'"></td>

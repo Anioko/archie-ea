@@ -75,10 +75,25 @@
     // Hide chips on first form submit
     document.getElementById('chat-form')?.addEventListener('submit', _hideWelcomeUI, { once: true });
 
-    // Load available models
+    // ARCH-045: an enabled selector offering only "Auto-Select Model" with an
+    // empty value presents a choice that does not exist — that reads as a
+    // stubbed capability, not as "nothing to configure". Populate it from
+    // /ai-chat/models when there is a real choice to make (2+ models); when
+    // there are 0 or 1, hide the control and show an honest note instead of
+    // fabricating options. Production with no LLM keys legitimately returns
+    // an empty list — that must render as "auto-selection" text, not as a
+    // broken dropdown.
     async function loadAvailableModels() {
+        const wrap = document.getElementById('model-selector-wrap');
+        const emptyNote = document.getElementById('model-selector-empty-note');
         try {
             const models = await ArchieChat.transport.loadModels();
+
+            if (!models || models.length < 2) {
+                wrap?.classList.add('hidden');
+                emptyNote?.classList.remove('hidden');
+                return;
+            }
 
             // Clear existing options
             modelSelector.innerHTML = '<option value="">Auto-Select Model</option>';
@@ -104,8 +119,11 @@
 
                 modelSelector.appendChild(option);
             });
+            wrap?.classList.remove('hidden');
+            emptyNote?.classList.add('hidden');
         } catch (error) {
-            modelSelector.innerHTML = '<option value="">Models unavailable</option>';
+            wrap?.classList.add('hidden');
+            emptyNote?.classList.remove('hidden');
             console.error('Error loading models:', error);
         }
     }
@@ -117,13 +135,26 @@
         loadDomainContext(state.currentDomain);
     });
 
-    // Initialize persona selector
-    personaSelector.addEventListener('change', (e) => {
-        state.currentPersona = e.target.value;
-        updatePersonaUI(state.currentPersona);
-        if (state.currentPersona && personaConfig[state.currentPersona]) {
+    // ARCH-114: persona label echoed on every answer, so the user can always
+    // see which assistant actually produced it — reads from the selector's
+    // current option text (the source the user actually looked at), not the
+    // config object, so it can never say something the header doesn't.
+    function _activePersonaLabel() {
+        const opt = personaSelector.selectedOptions && personaSelector.selectedOptions[0];
+        return opt ? opt.textContent : '';
+    }
+
+    // ARCH-114: persona is a single source of truth — selector, state and
+    // localStorage all derive from the same value, and switching applies the
+    // full effect (domain + sample prompts) whether triggered by a user
+    // click or by _syncPersonaFromSelector() on load/reload.
+    function _applyPersonaChange(persona) {
+        state.currentPersona = persona;
+        updatePersonaUI(persona);
+        if (persona) localStorage.setItem('archie_chat_persona', persona);
+        if (persona && personaConfig[persona]) {
             // Auto-switch to persona's default domain
-            const defaultDomain = personaConfig[state.currentPersona].default_domain;
+            const defaultDomain = personaConfig[persona].default_domain;
             if (defaultDomain && defaultDomain !== state.currentDomain) {
                 domainSelector.value = defaultDomain;
                 state.currentDomain = defaultDomain;
@@ -131,9 +162,27 @@
                 loadDomainContext(state.currentDomain);
             }
             // Show sample prompts
-            updateSamplePrompts(state.currentPersona);
+            updateSamplePrompts(persona);
         }
+    }
+
+    // Initialize persona selector
+    personaSelector.addEventListener('change', (e) => {
+        _applyPersonaChange(e.target.value);
     });
+
+    // ARCH-114: on load, state.currentPersona (default '', per render.js)
+    // never matched the selector's `selected` option — the heading, the
+    // request payload and the visible dropdown disagreed about which persona
+    // was active. Restore a persisted choice if the DOM still offers it,
+    // then always sync state from whatever the selector actually shows.
+    function _syncPersonaFromSelector() {
+        const saved = localStorage.getItem('archie_chat_persona');
+        if (saved && personaSelector.querySelector(`option[value="${CSS.escape(saved)}"]`)) {
+            personaSelector.value = saved;
+        }
+        _applyPersonaChange(personaSelector.value);
+    }
 
     function updatePersonaUI(persona) {
         if (!persona || !personaConfig[persona]) {
@@ -384,6 +433,7 @@
 
                 appendMessage('ai', data.response, {
                     domain: data.domain,
+                    personaLabel: _activePersonaLabel(),
                     processing_time: data.metadata?.processing_time || processingTime,
                     sources: data.sources,
                     /* The fallback must show the same footer as the streamed
@@ -479,6 +529,7 @@
                     if (!wrap) wrap = beginStreamedMessage();
                     const meta = {
                         domain: result.domain || state.currentDomain,
+                        personaLabel: _activePersonaLabel(),
                         processing_time: Math.round(performance.now() - startTime),
                         sources: result.sources,
                         trail: _trail,
@@ -902,6 +953,7 @@ Would you like me to provide more details about the extracted elements or help y
 
     // Initialize on load
     document.addEventListener('DOMContentLoaded', () => {
+        _syncPersonaFromSelector();
         updateDomainUI(state.currentDomain);
         loadDomainContext(state.currentDomain);
         loadAvailableModels(); // Load available models
@@ -918,21 +970,9 @@ Would you like me to provide more details about the extracted elements or help y
            every card had two click handlers. The server-rendered one is the
            one that survives; the wiring above it runs once. */
         lucide.createIcons();
-
-        // Suggestion-chips right-edge fade (see index.html's #suggestion-chips
-        // mask-image): drop the mask once the row is fully scrolled, or if it
-        // was never scrollable in the first place, so the fade never implies
-        // there's more to see when there isn't.
-        const chipsRow = document.getElementById('suggestion-chips');
-        if (chipsRow) {
-            const updateChipsFade = () => {
-                const atEnd = chipsRow.scrollWidth - chipsRow.clientWidth <= chipsRow.scrollLeft + 1;
-                chipsRow.classList.toggle('at-scroll-end', atEnd);
-            };
-            updateChipsFade();
-            chipsRow.addEventListener('scroll', updateChipsFade, { passive: true });
-            window.addEventListener('resize', updateChipsFade);
-        }
+        // ARCH-112: #suggestion-chips now wraps instead of scrolling
+        // horizontally (index.html), so the right-edge scroll-fade this
+        // block used to maintain no longer applies — removed with it.
 
         // A95-005: Handle deep-link context params from entity detail pages.
         // Supports:
@@ -1072,7 +1112,7 @@ Would you like me to provide more details about the extracted elements or help y
         return '<div class="js-thr group relative flex items-center rounded-lg border border-border hover:bg-accent/50 transition-colors' + active + '" data-id="' + esc(x.id) + '">' +
           '<button type="button" class="js-thr-open flex-1 text-left p-3 min-w-0">' +
           '<div class="font-medium text-xs truncate">' + esc(x.title || 'New chat') + '</div>' +
-          '<div class="text-[10px] text-muted-foreground mt-1">' + esc(d) + (x.message_count ? ' · ' + x.message_count + ' messages' : '') + '</div></button>' +
+          '<div class="text-xs text-muted-foreground mt-1">' + esc(d) + (x.message_count ? ' · ' + x.message_count + ' messages' : '') + '</div></button>' +
           '<button type="button" class="js-thr-del opacity-0 group-hover:opacity-100 shrink-0 p-2 text-muted-foreground hover:text-destructive" title="Delete conversation" aria-label="Delete conversation"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button></div>';
       }).join('');
       c.querySelectorAll('.js-thr').forEach(function (row) {

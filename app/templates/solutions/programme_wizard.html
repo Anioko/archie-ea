@@ -383,15 +383,15 @@
         <div class="flex items-center gap-3">
           <div class="w-40 shrink-0">
             <p class="text-xs font-medium text-foreground" x-text="stk.role"></p>
-            <p class="text-[10px] text-muted-foreground" x-text="stk.role === 'Programme Sponsor' ? 'Accountable executive' : stk.role === 'Programme Owner' ? 'Day-to-day lead' : 'Architecture authority'"></p>
+            <p class="text-xs text-muted-foreground" x-text="stk.role === 'Programme Sponsor' ? 'Accountable executive' : stk.role === 'Programme Owner' ? 'Day-to-day lead' : 'Architecture authority'"></p>
           </div>
           <input type="text" x-model="stk.name"
                  class="flex-1 text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                  :placeholder="'Name or role (' + stk.role + ')'" aria-label="Name">
           <span x-show="!stk.name.trim()"
-                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/20 shrink-0">Required</span>
+                class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/20 shrink-0">Required</span>
           <span x-show="stk.name.trim()"
-                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-success/10 text-success-emphasis border border-success/20 shrink-0">&#10003;</span>
+                class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/20 shrink-0">&#10003;</span>
         </div>
       </template>
     </div>
@@ -449,17 +449,17 @@
     {# Summary cards #}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div class="rounded-xl border border-border bg-card p-4 space-y-1">
-        <p class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Programme</p>
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Programme</p>
         <p class="text-sm font-semibold text-foreground" x-text="form.name || '—'"></p>
         <p class="text-xs text-muted-foreground" x-text="form.solution_type + ' · ' + (form.business_domain || 'No domain')"></p>
       </div>
       <div class="rounded-xl border border-border bg-card p-4 space-y-1">
-        <p class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Type</p>
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</p>
         <p class="text-sm font-semibold text-foreground" x-text="form.mode === 'greenfield' ? 'Greenfield Transformation' : 'Brownfield Modernization'"></p>
         <p class="text-xs text-muted-foreground" x-text="form.mode === 'greenfield' ? 'Starting Phase A' : 'Starting Phase B'"></p>
       </div>
       <div class="rounded-xl border border-border bg-card p-4 space-y-1">
-        <p class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Horizon</p>
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Horizon</p>
         <p class="text-sm font-semibold text-foreground" x-text="form.programme_start_year + ' \u2013 ' + form.programme_end_year"></p>
         <p class="text-xs text-muted-foreground" x-text="(form.programme_end_year - form.programme_start_year) + '-year programme'"></p>
       </div>
@@ -490,15 +490,15 @@
       <p class="text-sm font-semibold text-foreground">What happens after creation</p>
       <div class="space-y-2">
         <div class="flex items-start gap-3 text-xs text-muted-foreground">
-          <span class="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</span>
+          <span class="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
           <span>Programme blueprint created &mdash; organised by TOGAF phase and ArchiMate viewpoint</span>
         </div>
         <div class="flex items-start gap-3 text-xs text-muted-foreground">
-          <span class="w-5 h-5 rounded-full bg-muted border border-border text-muted-foreground flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</span>
+          <span class="w-5 h-5 rounded-full bg-muted border border-border text-muted-foreground flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</span>
           <span>Add risks, options, and architecture decisions on the blueprint page to raise your maturity score</span>
         </div>
         <div class="flex items-start gap-3 text-xs text-muted-foreground">
-          <span class="w-5 h-5 rounded-full bg-muted border border-border text-muted-foreground flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">3</span>
+          <span class="w-5 h-5 rounded-full bg-muted border border-border text-muted-foreground flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</span>
           <span>Submit to ARB when readiness score &ge; 70%</span>
         </div>
       </div>

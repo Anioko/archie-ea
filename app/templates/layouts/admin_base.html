@@ -9,7 +9,12 @@
 <html lang="en" class="h-full">
 <head>
     {% include 'partials/_head.html' %}
-    <title>{% block title %}{{ config.APP_NAME }}{% endblock %}</title>
+    {# ARCH-108: config.APP_NAME is not a real Flask config key, so any route
+       that leaves this block undefined rendered an empty <title> — the
+       accessible page name screen readers announce on navigation, gone.
+       "A.R.C.H.I.E." is the literal wordmark used everywhere else in chrome
+       (components/admin_header.html, account/login.html). #}
+    <title>{% block title %}A.R.C.H.I.E.{% endblock %}</title>
     <script>
         // Auth state — guards API calls in sidebar.js
         window.__userAuthenticated = {{ current_user.is_authenticated | tojson }};

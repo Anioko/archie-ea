@@ -71,7 +71,13 @@ DEPENDENCIES:
     </div>
 
     <!-- Navigation -->
-    <nav id="sidebar-nav" class="flex-1 px-2 py-4 space-y-2 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:w-0 [scrollbar-width:none]"
+    {# ARCH-113: the scrollbar was hidden entirely ([scrollbar-width:none] /
+       zero-width ::-webkit-scrollbar), so hundreds of px of nav items below
+       the fold had no affordance telling a user more existed. The native
+       scrollbar is the affordance — restored rather than replaced with
+       custom chrome, since the sidebar's own :hover/:focus-within styling
+       already handles when it should be visually quiet. #}
+    <nav id="sidebar-nav" class="flex-1 px-2 py-4 space-y-2 overflow-y-auto min-h-0"
          x-data="{
              searchQuery: '',
              searchFocused: false,
@@ -108,7 +114,7 @@ DEPENDENCIES:
                 </button>
             </div>
             <div x-cloak x-show="!searchQuery" class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <kbd class="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Ctrl+K</kbd>
+                <kbd class="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-xs text-foreground">Ctrl+K</kbd>
                 <span>for global search</span>
             </div>
             <div x-cloak x-show="searchQuery && searchQuery.length > 0" class="mt-2 text-xs text-muted-foreground">
@@ -168,7 +174,7 @@ DEPENDENCIES:
                 title="Collapse sidebar (Ctrl+B)">
             <i data-lucide="panel-left" class="h-3.5 w-3.5 flex-shrink-0"></i>
             <span>Collapse sidebar</span>
-            <kbd class="ml-auto px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Ctrl+B</kbd>
+            <kbd class="ml-auto px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-xs text-foreground">Ctrl+B</kbd>
         </button>
     </div>
     <div class="border-t border-border p-4">

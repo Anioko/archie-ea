@@ -204,7 +204,7 @@ if (!window._dataTableEngine) {
                     <template x-if="facetFilters['{{ filter.key }}'] && facetFilters['{{ filter.key }}'].size > 0">
                         <span class="flex items-center gap-1">
                             <span class="mx-1 h-4 w-px bg-border"></span>
-                            <span class="inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium"
+                            <span class="inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 text-xs font-medium"
                                   x-text="facetFilters['{{ filter.key }}'].size + ' selected'"></span>
                         </span>
                     </template>
@@ -360,7 +360,7 @@ if (!window._dataTableEngine) {
                                 <span class="text-sm" x-text="row['{{ col.key }}'] || '—'"></span>
                             </div>
                             {% elif col.get('type') == 'boolean' %}
-                            <span x-show="row['{{ col.key }}']" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
+                            <span x-show="row['{{ col.key }}']" class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
                             <span x-show="!row['{{ col.key }}']" class="text-muted-foreground">—</span>
                             {% elif col.get('type') == 'truncate' %}
                             <span class="line-clamp-1 max-w-[300px]" x-text="row['{{ col.key }}'] || '—'" :title="row['{{ col.key }}']"></span>

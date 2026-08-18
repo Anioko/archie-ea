@@ -408,18 +408,34 @@
                renderNextArtifact(m.actions);
     }
 
+    /* ARCH-024: raw milliseconds ("20250ms") is engineering telemetry, not
+       product UI — it draws attention to slow replies instead of the answer.
+       Rendered as seconds to one decimal ("20.3s") when the reply took at
+       least a second; sub-second replies show nothing, since a number that
+       small is noise, not signal. */
+    function formatDuration(ms) {
+        if (!ms || ms < 1000) return '';
+        return (ms / 1000).toFixed(1) + 's';
+    }
+
     /* The domain pill above an answer. Shared by the completed-message path
-       and the streamed-message path so the two cannot drift apart. */
+       and the streamed-message path so the two cannot drift apart.
+       ARCH-114: the persona actually used for this answer is echoed here too
+       (from metadata.persona, which callers set from state.currentPersona at
+       send time) — the only way a user can tell which assistant answered,
+       now that the header select and the in-flight request can diverge. */
     function renderMetaBadge(metadata) {
         var meta = metadata || {};
-        if (!meta.domain) return '';
+        if (!meta.domain && !meta.personaLabel) return '';
         var cfg = domains();
         var badgeClass = getColorClass((cfg[meta.domain] || {}).color || 'blue', 'badge');
-        return '<div class="mb-2">' +
-                 '<span class="px-2 py-1 ' + badgeClass + ' text-xs rounded-full font-medium">' +
+        var duration = formatDuration(meta.processing_time);
+        return '<div class="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">' +
+                 (meta.personaLabel ? '<span class="text-xs font-medium text-foreground">' + escapeForHtml(meta.personaLabel) + '</span>' : '') +
+                 (meta.domain ? '<span class="px-2 py-1 ' + badgeClass + ' text-xs rounded-full font-medium">' +
                    escapeForHtml((cfg[meta.domain] || {}).name || 'AI') +
-                 '</span>' +
-                 (meta.processing_time ? '<span class="ml-2 text-xs text-muted-foreground">' + escapeForHtml(meta.processing_time) + 'ms</span>' : '') +
+                 '</span>' : '') +
+                 (duration ? '<span class="text-xs text-muted-foreground">' + escapeForHtml(duration) + '</span>' : '') +
                '</div>';
     }
 

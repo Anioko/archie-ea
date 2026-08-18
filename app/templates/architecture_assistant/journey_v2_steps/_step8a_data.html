@@ -317,7 +317,7 @@
                 <button type="button" @click="dataPhase === 'upload' ? null : resetDataFlow()"
                         class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium transition-colors"
                         :class="dataPhase === 'upload' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'">
-                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
+                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold"
                           :class="dataPhase === 'upload' ? 'border-primary text-primary bg-primary/10' : (dataPhase !== 'upload' ? 'border-success text-success-emphasis bg-success/10' : 'border-border text-muted-foreground')">
                         <template x-if="dataPhase !== 'upload'">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -329,7 +329,7 @@
                 <svg class="w-4 h-4 text-border shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                 <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium"
                       :class="dataPhase === 'mapping' ? 'bg-primary/10 text-primary' : (dataPhase === 'importing' || dataPhase === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/50')">
-                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
+                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold"
                           :class="dataPhase === 'mapping' ? 'border-primary text-primary bg-primary/10' : (dataPhase === 'importing' || dataPhase === 'done' ? 'border-success text-success-emphasis bg-success/10' : 'border-border text-muted-foreground')">
                         <template x-if="dataPhase === 'importing' || dataPhase === 'done'">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -341,7 +341,7 @@
                 <svg class="w-4 h-4 text-border shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                 <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium"
                       :class="dataPhase === 'importing' ? 'bg-primary/10 text-primary' : (dataPhase === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/50')">
-                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
+                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold"
                           :class="dataPhase === 'importing' ? 'border-primary text-primary bg-primary/10' : (dataPhase === 'done' ? 'border-success text-success-emphasis bg-success/10' : 'border-border text-muted-foreground')">
                         <template x-if="dataPhase === 'done'">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>

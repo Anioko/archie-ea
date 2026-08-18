@@ -438,7 +438,7 @@
                                 <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary">{{ s.relationship_type }}</span>
                                 <i data-lucide="arrow-right" class="h-3 w-3 text-muted-foreground" aria-hidden="true"></i>
                                 <span class="font-semibold">{{ s.target_name }}</span>
-                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ml-auto
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ml-auto
                                     {% if s.priority == 'high' %}bg-destructive/10 text-destructive-emphasis
                                     {% elif s.priority == 'medium' %}bg-warning/10 text-warning-emphasis
                                     {% else %}bg-muted text-muted-foreground{% endif %}">{{ s.priority }}</span>
@@ -480,7 +480,7 @@
                             <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary">{{ s.relationship_type }}</span>
                             <i data-lucide="arrow-right" class="h-3 w-3 text-muted-foreground" aria-hidden="true"></i>
                             <span class="font-semibold">{{ s.target_name }}</span>
-                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ml-auto
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ml-auto
                                 {% if s.priority == 'high' %}bg-destructive/10 text-destructive-emphasis
                                 {% elif s.priority == 'medium' %}bg-warning/10 text-warning-emphasis
                                 {% else %}bg-muted text-muted-foreground{% endif %}">{{ s.priority }}</span>
@@ -621,7 +621,7 @@
                                 <span class="font-medium">{{ el.name }}</span>
                                 <span class="font-bold {% if el.quality_score >= 70 %}text-success{% elif el.quality_score >= 50 %}text-warning{% else %}text-destructive{% endif %}">{{ el.quality_score }}/100</span>
                             </div>
-                            <div class="text-[10px] text-muted-foreground mb-1.5">{{ el.layer }} &middot; {{ el.element_type or 'No type' }} &middot; {{ el.relationship_count }} rel{{ 's' if el.relationship_count != 1 else '' }}</div>
+                            <div class="text-xs text-muted-foreground mb-1.5">{{ el.layer }} &middot; {{ el.element_type or 'No type' }} &middot; {{ el.relationship_count }} rel{{ 's' if el.relationship_count != 1 else '' }}</div>
                             {% if el.get('criteria') %}
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-1">
                                 {% for crit_name, crit in el.criteria.items() %}
@@ -681,7 +681,7 @@
                             <td class="py-2 pr-3 font-medium">{{ c.get('source_name', '') }}</td>
                             <td class="py-2 pr-3"><span class="rounded px-1.5 py-0.5 bg-primary/10 text-primary font-medium">{{ c.get('relationship_type', '') }}</span></td>
                             <td class="py-2 pr-3 font-medium">{{ c.get('target_name', '') }}</td>
-                            <td class="py-2"><span class="rounded px-1.5 py-0.5 bg-success/10 text-success-emphasis text-[10px] font-medium">{{ c.action }}</span></td>
+                            <td class="py-2"><span class="rounded px-1.5 py-0.5 bg-success/10 text-success-emphasis text-xs font-medium">{{ c.action }}</span></td>
                         </tr>
                         {% endfor %}
                         </tbody>
@@ -726,7 +726,7 @@
                             <div class="flex-1 min-w-0">
                                 <span class="text-xs font-medium">{{ def_step.step_name }}</span>
                             </div>
-                            <div class="flex items-center gap-2 text-[10px] text-muted-foreground shrink-0">
+                            <div class="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
                                 {% if exec_step and exec_step.duration_seconds %}<span>{{ exec_step.duration_seconds }}s</span>{% endif %}
                                 {% if is_completed %}<span class="text-success-emphasis font-medium">Done</span>
                                 {% elif is_waiting %}<span class="text-warning-emphasis font-medium">Awaiting</span>
@@ -1840,7 +1840,7 @@
                                 <div class="flex items-center gap-2">
                                     <span class="text-sm font-medium group-hover:text-primary transition-colors">{{ def_step.step_name }}</span>
                                     {% if is_approval %}
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning-emphasis border border-warning/20">Human Decision</span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/20">Human Decision</span>
                                     {% endif %}
                                 </div>
                                 <p class="text-xs text-muted-foreground truncate">{{ def_step.get('step_description', '') }}</p>
@@ -1879,7 +1879,7 @@
                                 {% if exec_step.error_traceback %}
                                 <details class="text-xs">
                                     <summary class="cursor-pointer text-destructive-emphasis/70 hover:text-destructive-emphasis">Show traceback</summary>
-                                    <pre class="mt-1 p-2 rounded bg-background text-[10px] overflow-x-auto max-h-32 overflow-y-auto">{{ exec_step.error_traceback[:2000] }}</pre>
+                                    <pre class="mt-1 p-2 rounded bg-background text-xs overflow-x-auto max-h-32 overflow-y-auto">{{ exec_step.error_traceback[:2000] }}</pre>
                                 </details>
                                 {% endif %}
                                 <div class="flex items-center gap-2 pt-1">
@@ -1936,7 +1936,7 @@
 
                             {# Step config #}
                             {% if def_step.get('service_class') or def_step.get('service_method') %}
-                            <div class="text-[10px] text-muted-foreground/60">
+                            <div class="text-xs text-muted-foreground/60">
                                 {{ def_step.get('service_class', '') }}.{{ def_step.get('service_method', '') }}
                             </div>
                             {% endif %}
@@ -1981,10 +1981,10 @@
                                     </template>
                                 </div>
                                 <template x-if="matchedArtifact('{{ name }}')">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-success/10 text-success-emphasis">Available</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success-emphasis">Available</span>
                                 </template>
                                 <template x-if="!matchedArtifact('{{ name }}')">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground">Pending</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">Pending</span>
                                 </template>
                             </div>
                             <template x-if="matchedArtifact('{{ name }}')">
@@ -2087,7 +2087,7 @@
                         <span>{{ el.name }}</span>
                         <span class="opacity-60">{{ el.type }}</span>
                         {% if el.adm_phase %}
-                        <span class="rounded bg-black/10 px-1 font-mono text-[10px]">{{ el.adm_phase }}</span>
+                        <span class="rounded bg-black/10 px-1 font-mono text-xs">{{ el.adm_phase }}</span>
                         {% endif %}
                     </a>
                     {% endfor %}
@@ -2145,7 +2145,7 @@
                 </dl>
                 {# Mini sparkline #}
                 <div x-show="runHistory && runHistory.durations && runHistory.durations.length > 1" x-cloak class="mt-3 pt-3 border-t border-input">
-                    <div class="text-[10px] text-muted-foreground mb-1.5">Recent run durations</div>
+                    <div class="text-xs text-muted-foreground mb-1.5">Recent run durations</div>
                     <svg :viewBox="'0 0 ' + (runHistory.durations.length * 16) + ' 32'" class="w-full h-8" aria-hidden="true">
                         <template x-for="(d, i) in runHistory.durations" :key="i">
                             <rect :x="i * 16 + 2" :y="32 - (d / Math.max(...runHistory.durations)) * 28"

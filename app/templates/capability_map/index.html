@@ -117,10 +117,10 @@
                 <div x-show="rhExpanded" x-cloak class="px-3 pb-3 border-t">
                     <div x-show="rhError" x-cloak class="mt-3 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="rhError"></div>
                     <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_elements ?? '—'"></div><div class="text-[10px] text-muted-foreground">Elements</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_relationships ?? '—'"></div><div class="text-[10px] text-muted-foreground">Relationships</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'text-destructive':'text-warning'" x-text="rhData.zero_relationship_count ?? '—'"></div><div class="text-[10px] text-muted-foreground">Unconnected</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.average_per_element ?? '—'"></div><div class="text-[10px] text-muted-foreground">Avg Rels/El</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_elements ?? '—'"></div><div class="text-xs text-muted-foreground">Elements</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_relationships ?? '—'"></div><div class="text-xs text-muted-foreground">Relationships</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'text-destructive':'text-warning'" x-text="rhData.zero_relationship_count ?? '—'"></div><div class="text-xs text-muted-foreground">Unconnected</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.average_per_element ?? '—'"></div><div class="text-xs text-muted-foreground">Avg Rels/El</div></div>
                     </div>
                     <div class="space-y-1">
                         <template x-for="l in rhData.by_layer" :key="l.layer">
@@ -1470,19 +1470,19 @@
                     </div>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wide">Applications</p>
+                            <p class="text-xs text-muted-foreground uppercase tracking-wide">Applications</p>
                             <p id="heatmap-detail-apps" class="text-xl font-bold text-foreground">0</p>
                         </div>
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wide">Current Maturity</p>
+                            <p class="text-xs text-muted-foreground uppercase tracking-wide">Current Maturity</p>
                             <p id="heatmap-detail-maturity-current" class="text-xl font-bold text-foreground">0/5</p>
                         </div>
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wide">Target Maturity</p>
+                            <p class="text-xs text-muted-foreground uppercase tracking-wide">Target Maturity</p>
                             <p id="heatmap-detail-maturity-target" class="text-xl font-bold text-foreground">0/5</p>
                         </div>
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wide">Gap</p>
+                            <p class="text-xs text-muted-foreground uppercase tracking-wide">Gap</p>
                             <p id="heatmap-detail-gap" class="text-xl font-bold"></p>
                         </div>
                     </div>

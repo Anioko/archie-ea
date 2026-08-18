@@ -23,21 +23,21 @@
     {# KPI strip #}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div class="border border-border rounded-xl bg-card p-4">
-            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Avg conformance</p>
+            <p class="text-xs uppercase tracking-wider text-muted-foreground">Avg conformance</p>
             <p class="text-2xl font-bold mt-1 {% if synthesis.avg_conformance and synthesis.avg_conformance >= 80 %}text-success{% elif synthesis.avg_conformance and synthesis.avg_conformance >= 50 %}text-warning{% else %}text-foreground{% endif %}">{{ synthesis.avg_conformance if synthesis.avg_conformance is not none else '—' }}{% if synthesis.avg_conformance is not none %}<span class="text-sm text-muted-foreground">/100</span>{% endif %}</p>
         </div>
         <div class="border border-border rounded-xl bg-card p-4">
-            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Solutions reviewed</p>
+            <p class="text-xs uppercase tracking-wider text-muted-foreground">Solutions reviewed</p>
             <p class="text-2xl font-bold text-foreground mt-1">{{ synthesis.solutions_reviewed }}</p>
         </div>
         <div class="border border-border rounded-xl bg-card p-4">
-            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Conformance issues</p>
+            <p class="text-xs uppercase tracking-wider text-muted-foreground">Conformance issues</p>
             <p class="text-2xl font-bold {% if synthesis.flagged_total %}text-warning{% else %}text-foreground{% endif %} mt-1">{{ synthesis.flagged_total }}</p>
         </div>
         <div class="border border-border rounded-xl bg-card p-4">
-            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">ARB pipeline</p>
+            <p class="text-xs uppercase tracking-wider text-muted-foreground">ARB pipeline</p>
             <p class="text-2xl font-bold text-foreground mt-1">{{ synthesis.in_pipeline }}<span class="text-sm text-muted-foreground"> open</span></p>
-            <p class="text-[10px] text-muted-foreground mt-0.5">{{ synthesis.decisions_made }} decided</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ synthesis.decisions_made }} decided</p>
         </div>
     </div>
 

@@ -51,8 +51,8 @@
         {% for opt in adr.options %}
         <div class="border rounded-xl p-4 flex flex-col {% if opt.recommended %}border-primary ring-1 ring-primary/30 bg-primary/[0.03]{% else %}border-border bg-card{% endif %}">
             <div class="flex items-center justify-between mb-2">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground">{{ opt.approach }}</span>
-                {% if opt.recommended %}<span class="inline-flex items-center gap-1 text-[10px] font-bold text-primary"><i data-lucide="star" class="h-3 w-3"></i> RECOMMENDED</span>{% endif %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wide bg-muted text-muted-foreground">{{ opt.approach }}</span>
+                {% if opt.recommended %}<span class="inline-flex items-center gap-1 text-xs font-bold text-primary"><i data-lucide="star" class="h-3 w-3"></i> RECOMMENDED</span>{% endif %}
             </div>
             <h3 class="text-sm font-semibold text-foreground">{{ opt.name }}</h3>
             <p class="text-xs text-muted-foreground mt-1 mb-3">{{ opt.summary }}</p>
@@ -74,10 +74,10 @@
     <div class="border border-border rounded-xl bg-card overflow-hidden">
         <div class="px-5 py-3 border-b border-border flex items-center justify-between bg-muted/20">
             <div class="flex items-center gap-2">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">ADR-{{ '%03d' % adr.adr_number }}</span>
+                <span class="text-xs font-bold uppercase tracking-wider text-muted-foreground">ADR-{{ '%03d' % adr.adr_number }}</span>
                 <h2 class="text-sm font-semibold text-foreground">{{ adr.title }}</h2>
             </div>
-            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold uppercase
                 {% if adr.status == 'accepted' %}bg-success/10 text-success-emphasis border border-success/30
                 {% elif adr.status == 'rejected' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
                 {% else %}bg-warning/10 text-warning-emphasis border border-warning/30{% endif %}"
