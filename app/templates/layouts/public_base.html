@@ -15,12 +15,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <!-- ═══ Platform Core (load synchronously, before Alpine defer fires) ═══ -->
-    <script src="{{ url_for('static', filename='js/core/00-namespace.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/01-logger.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/02-sanitize.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/03-fetch.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/04-toast.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/05-error.js') }}"></script>
+    <!-- Bundled from js/core/00..05 in order by scripts/build_js.py — see that file's docstring -->
+    <script src="{{ url_for('static', filename='js/bundles/core-public.js') }}"></script>
 
     <!-- ═══ Platform UI: modal controller ═══ -->
     <script src="{{ url_for('static', filename='js/ui/modal.js') }}"></script>

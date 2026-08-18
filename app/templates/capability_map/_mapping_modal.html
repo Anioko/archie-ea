@@ -1,0 +1,154 @@
+{# ARCH-064: the three "map applications" modals on capability_map/index.html
+   (acm-mapping-modal, process-mapping-modal, mapping-modal) were ~130-line
+   near-duplicates differing only in id prefixes, handler names, and one
+   accent colour. This macro is the single source; each call site supplies
+   the handful of values that actually differ. Structure (div nesting) is
+   copied verbatim from the original three blocks so the rendered HTML is
+   byte-for-byte the same shape as before — only the differing tokens moved
+   to parameters. Do not change nesting here without re-checking div balance
+   on capability_map/index.html (three prior template edits on this branch
+   broke Alpine scoping via unbalanced divs). #}
+{% macro mapping_modal(
+    modal_id,
+    title_label,
+    name_span_id,
+    accent_class,
+    close_fn,
+    close_aria,
+    close_btn_class,
+    id_prefix,
+    search_fn,
+    select_all_fn,
+    deselect_fn,
+    cancel_aria,
+    save_fn,
+    save_bg_class,
+    save_aria
+) %}
+        <div id="{{ modal_id }}" hidden role="dialog" aria-modal="true" aria-labelledby="{{ modal_id }}-title" class="modal-root fixed inset-0 bg-black/80 overflow-y-auto z-50">
+            <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-card">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-foreground">
+                        {{ title_label }}: <span id="{{ name_span_id }}" class="{{ accent_class }}"></span>
+                    </h3>
+                    <button type="button" @click="{{ close_fn }}()" class="{{ close_btn_class }}" aria-label="{{ close_aria }}">
+                        <i data-lucide="x" class="w-6 h-6" aria-hidden="true"></i>
+                    </button>
+                </div>
+
+                <!-- Search and Filter Bar -->
+                <div class="mb-4 space-y-3">
+                    <!-- Search Input -->
+                    <div class="relative">
+                        <label for="{{ id_prefix }}application-search">Field</label>
+    <input
+                            type="text"
+                            id="{{ id_prefix }}application-search"
+                            placeholder="Search applications by name, type, or domain..."
+                            class="w-full px-4 py-2 pl-10 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            @input="{{ search_fn }}()"
+                        />
+                        <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                    </div>
+
+                    <!-- Filter Row -->
+                    <div class="flex flex-wrap gap-3 items-center">
+                        <!-- Filter by Type -->
+                        <div class="flex-1 min-w-[150px]">
+                            <select
+                                id="{{ id_prefix }}filter-type"
+                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                @change="{{ search_fn }}()"
+                             aria-label="Filter by Type">
+                                <option value="">All Types</option>
+                            </select>
+                        </div>
+
+                        <!-- Filter by Domain -->
+                        <div class="flex-1 min-w-[150px]">
+                            <select
+                                id="{{ id_prefix }}filter-domain"
+                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                @change="{{ search_fn }}()"
+                             aria-label="Filter by Domain">
+                                <option value="">All Domains</option>
+                            </select>
+                        </div>
+
+                        <!-- Filter by Status -->
+                        <div class="flex-1 min-w-[150px]">
+                            <select
+                                id="{{ id_prefix }}filter-status" aria-label="Filter applications by status"
+                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                @change="{{ search_fn }}()"
+                            >
+                                <option value="all">All Applications</option>
+                                <option value="mapped">Mapped Only</option>
+                                <option value="unmapped">Unmapped Only</option>
+                            </select>
+                        </div>
+
+                        <!-- Sort Options -->
+                        <div class="flex-1 min-w-[150px]">
+                            <select
+                                id="{{ id_prefix }}sort-applications" aria-label="Sort applications"
+                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                @change="{{ search_fn }}()"
+                            >
+                                <option value="name-asc">Name (A-Z)</option>
+                                <option value="name-desc">Name (Z-A)</option>
+                                <option value="type-asc">Type (A-Z)</option>
+                                <option value="mapped-first">Mapped First</option>
+                                <option value="unmapped-first">Unmapped First</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Bulk Actions -->
+                    <div class="flex items-center justify-between pt-2 border-t border-border">
+                        <div class="flex items-center space-x-4">
+                            <button type="button"
+                                @click="{{ select_all_fn }}()"
+                                class="text-sm {{ accent_class }} hover:{{ accent_class }} font-medium"
+                             aria-label="Select all visible applications">
+                                Select All Visible
+                            </button>
+                            <button type="button"
+                                @click="{{ deselect_fn }}()"
+                                class="text-sm text-muted-foreground hover:text-foreground font-medium"
+                             aria-label="Deselect all applications">
+                                Deselect All
+                            </button>
+                            <span id="{{ id_prefix }}selection-count" class="text-sm text-muted-foreground">
+                                <span id="{{ id_prefix }}selected-count">0</span> selected
+                            </span>
+                        </div>
+                        <div class="text-sm text-muted-foreground">
+                            Showing <span id="{{ id_prefix }}filtered-count">0</span> of <span id="{{ id_prefix }}total-count">0</span> applications
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Applications List -->
+                <div id="{{ id_prefix }}applications-list" class="max-h-96 overflow-y-auto space-y-3 mb-4">
+                    <!-- Applications will be rendered here -->
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex justify-end space-x-3 pt-4 border-t">
+                    <button type="button"
+                        @click="{{ close_fn }}()"
+                        class="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-muted-foreground/40"
+                     aria-label="{{ cancel_aria }}">
+                        Cancel
+                    </button>
+                    <button type="button"
+                        @click="{{ save_fn }}()"
+                        class="px-4 py-2 {{ save_bg_class }} text-primary-foreground rounded-md hover:{{ save_bg_class }}"
+                     aria-label="{{ save_aria }}">
+                        Save Mappings
+                    </button>
+                </div>
+            </div>
+        </div>
+{% endmacro %}

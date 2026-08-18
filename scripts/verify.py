@@ -839,6 +839,22 @@ def gate_css_build() -> Result:
     return Result("css-build", FAIL, output.strip()[-800:])
 
 
+def gate_js_build() -> Result:
+    """The committed js/bundles/*.js match what scripts/build_js.py produces.
+
+    Mirrors gate_css_build's rationale for JS: the platform core sequence
+    (js/core/00-namespace.js .. 07-dialog.js) is bundled and the bundle is
+    committed, same pattern as tailwind-output.css, so the Docker image stays
+    Python-only. Unlike the CSS build this needs no external CLI — the
+    bundler is pure-stdlib string concatenation — so there is no SKIP path.
+    """
+    proc = _run([sys.executable, "scripts/build_js.py", "--check"])
+    output = proc.stdout + proc.stderr
+    if proc.returncode == 0:
+        return Result("js-build", PASS, "committed JS bundles match a rebuild")
+    return Result("js-build", FAIL, output.strip()[-800:])
+
+
 def gate_vendor_integrity() -> Result:
     """Vendored assets match their recorded provenance.
 
@@ -1182,6 +1198,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_deployed_deps,
              remediation="rebuild the image (deploy.sh builds) or pip install -r requirements.txt",
              tags=["deps", "security"]),
+        Gate("js-build", "committed js/bundles/*.js match a rebuild", "command",
+             gate_js_build,
+             remediation="python scripts/build_js.py   and commit the result",
+             tags=["static"]),
         Gate("css-build", "committed tailwind-output.css matches a rebuild", "command",
              gate_css_build,
              remediation="python scripts/build_css.py   and commit the result",

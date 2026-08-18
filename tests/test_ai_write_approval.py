@@ -219,6 +219,19 @@ def _make_user(db_session, org):
         confirmed=True,
         enterprise_role="architect",
     )
+    # V-01: agent writes and approvals now require Permission.GENERAL, enforced
+    # in the tool-execution layer. enterprise_role drives sidebar/persona, NOT
+    # permissions — those come from role_id. A user created without one holds
+    # nothing and is correctly refused with 403, which is right for a Viewer and
+    # wrong for a fixture standing in for an ordinary architect.
+    from app.models.user import Role
+
+    role = (
+        Role.query.filter_by(name="Architect").first()
+        or Role.query.filter_by(name="Administrator").first()
+    )
+    if role is not None:
+        user.role_id = role.id
     db_session.add(user)
     db_session.flush()
     return user

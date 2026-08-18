@@ -7,6 +7,7 @@
 {% from 'components/empty_state.html' import empty_state %}
 {% from 'components/skeleton.html' import skeleton_list %}
 {% from 'macros/page_shell.html' import page_shell %}
+{% from 'capability_map/_mapping_modal.html' import mapping_modal %}
 
 {# Reusable filter bar macro for capability tables #}
 {% macro capability_filter_bar(context_id, filters=[], has_search=True, has_clear=True) %}
@@ -2520,261 +2521,43 @@
         </div>
 
         <!-- ACM Technical Capability Mapping Modal (Same design as other tabs) -->
-        <div id="acm-mapping-modal" hidden role="dialog" aria-modal="true" aria-labelledby="acm-mapping-modal-title" class="modal-root fixed inset-0 bg-black/80 overflow-y-auto z-50">
-            <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-card">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-foreground">
-                        Map Applications to: <span id="acm-modal-capability-name" class="text-info"></span>
-                    </h3>
-                    <button type="button" @click="closeACMMappingModal()" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close ACM mapping modal">
-                        <i data-lucide="x" class="w-6 h-6" aria-hidden="true"></i>
-                    </button>
-                </div>
-
-                <!-- Search and Filter Bar -->
-                <div class="mb-4 space-y-3">
-                    <!-- Search Input -->
-                    <div class="relative">
-                        <label for="acm-application-search">Field</label>
-    <input
-                            type="text"
-                            id="acm-application-search"
-                            placeholder="Search applications by name, type, or domain..."
-                            class="w-full px-4 py-2 pl-10 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @input="filterACMApplications()"
-                        />
-                        <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-
-                    <!-- Filter Row -->
-                    <div class="flex flex-wrap gap-3 items-center">
-                        <!-- Filter by Type -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="acm-filter-type"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterACMApplications()"
-                             aria-label="Filter by Type">
-                                <option value="">All Types</option>
-                            </select>
-                        </div>
-
-                        <!-- Filter by Domain -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="acm-filter-domain"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterACMApplications()"
-                             aria-label="Filter by Domain">
-                                <option value="">All Domains</option>
-                            </select>
-                        </div>
-
-                        <!-- Filter by Status -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="acm-filter-status" aria-label="Filter applications by status"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterACMApplications()"
-                            >
-                                <option value="all">All Applications</option>
-                                <option value="mapped">Mapped Only</option>
-                                <option value="unmapped">Unmapped Only</option>
-                            </select>
-                        </div>
-
-                        <!-- Sort Options -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="acm-sort-applications" aria-label="Sort applications"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterACMApplications()"
-                            >
-                                <option value="name-asc">Name (A-Z)</option>
-                                <option value="name-desc">Name (Z-A)</option>
-                                <option value="type-asc">Type (A-Z)</option>
-                                <option value="mapped-first">Mapped First</option>
-                                <option value="unmapped-first">Unmapped First</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Bulk Actions -->
-                    <div class="flex items-center justify-between pt-2 border-t border-border">
-                        <div class="flex items-center space-x-4">
-                            <button type="button"
-                                @click="selectAllACMFiltered()"
-                                class="text-sm text-info hover:text-info font-medium"
-                             aria-label="Select all visible applications">
-                                Select All Visible
-                            </button>
-                            <button type="button"
-                                @click="deselectAllACM()"
-                                class="text-sm text-muted-foreground hover:text-foreground font-medium"
-                             aria-label="Deselect all applications">
-                                Deselect All
-                            </button>
-                            <span id="acm-selection-count" class="text-sm text-muted-foreground">
-                                <span id="acm-selected-count">0</span> selected
-                            </span>
-                        </div>
-                        <div class="text-sm text-muted-foreground">
-                            Showing <span id="acm-filtered-count">0</span> of <span id="acm-total-count">0</span> applications
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Applications List -->
-                <div id="acm-applications-list" class="max-h-96 overflow-y-auto space-y-3 mb-4">
-                    <!-- Applications will be rendered here -->
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="flex justify-end space-x-3 pt-4 border-t">
-                    <button type="button"
-                        @click="closeACMMappingModal()"
-                        class="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-muted-foreground/40"
-                     aria-label="Cancel ACM mapping">
-                        Cancel
-                    </button>
-                    <button type="button"
-                        @click="saveACMMappings()"
-                        class="px-4 py-2 bg-info text-primary-foreground rounded-md hover:bg-info"
-                     aria-label="Save ACM mappings">
-                        Save Mappings
-                    </button>
-                </div>
-            </div>
-        </div>
+        {{ mapping_modal(
+            modal_id="acm-mapping-modal",
+            title_label="Map Applications to",
+            name_span_id="acm-modal-capability-name",
+            accent_class="text-info",
+            close_fn="closeACMMappingModal",
+            close_aria="Close ACM mapping modal",
+            close_btn_class="text-muted-foreground hover:text-muted-foreground",
+            id_prefix="acm-",
+            search_fn="filterACMApplications",
+            select_all_fn="selectAllACMFiltered",
+            deselect_fn="deselectAllACM",
+            cancel_aria="Cancel ACM mapping",
+            save_fn="saveACMMappings",
+            save_bg_class="bg-info",
+            save_aria="Save ACM mappings"
+        ) }}
     </div>
 
         <!-- Process Mapping Modal (Same design as ACM modal) -->
-        <div id="process-mapping-modal" hidden role="dialog" aria-modal="true" aria-labelledby="process-mapping-modal-title" class="modal-root fixed inset-0 bg-black/80 overflow-y-auto z-50">
-            <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-card">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-foreground">
-                        Map Applications to: <span id="process-modal-process-name" class="text-primary"></span>
-                    </h3>
-                    <button type="button" @click="closeProcessMappingModal()" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close process mapping modal">
-                        <i data-lucide="x" class="w-6 h-6" aria-hidden="true"></i>
-                    </button>
-                </div>
-
-                <!-- Search and Filter Bar -->
-                <div class="mb-4 space-y-3">
-                    <!-- Search Input -->
-                    <div class="relative">
-                        <label for="process-application-search">Field</label>
-    <input
-                            type="text"
-                            id="process-application-search"
-                            placeholder="Search applications by name, type, or domain..."
-                            class="w-full px-4 py-2 pl-10 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @input="filterProcessApplications()"
-                        />
-                        <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-
-                    <!-- Filter Row -->
-                    <div class="flex flex-wrap gap-3 items-center">
-                        <!-- Filter by Type -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="process-filter-type"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterProcessApplications()"
-                             aria-label="Filter by Type">
-                                <option value="">All Types</option>
-                            </select>
-                        </div>
-
-                        <!-- Filter by Domain -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="process-filter-domain"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterProcessApplications()"
-                             aria-label="Filter by Domain">
-                                <option value="">All Domains</option>
-                            </select>
-                        </div>
-
-                        <!-- Filter by Status -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="process-filter-status" aria-label="Filter applications by status"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterProcessApplications()"
-                            >
-                                <option value="all">All Applications</option>
-                                <option value="mapped">Mapped Only</option>
-                                <option value="unmapped">Unmapped Only</option>
-                            </select>
-                        </div>
-
-                        <!-- Sort Options -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="process-sort-applications" aria-label="Sort applications"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterProcessApplications()"
-                            >
-                                <option value="name-asc">Name (A-Z)</option>
-                                <option value="name-desc">Name (Z-A)</option>
-                                <option value="type-asc">Type (A-Z)</option>
-                                <option value="mapped-first">Mapped First</option>
-                                <option value="unmapped-first">Unmapped First</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Bulk Actions -->
-                    <div class="flex items-center justify-between pt-2 border-t border-border">
-                        <div class="flex items-center space-x-4">
-                            <button type="button"
-                                @click="selectAllProcessFiltered()"
-                                class="text-sm text-primary hover:text-primary font-medium"
-                             aria-label="Select all visible applications">
-                                Select All Visible
-                            </button>
-                            <button type="button"
-                                @click="deselectAllProcess()"
-                                class="text-sm text-muted-foreground hover:text-foreground font-medium"
-                             aria-label="Deselect all applications">
-                                Deselect All
-                            </button>
-                            <span id="process-selection-count" class="text-sm text-muted-foreground">
-                                <span id="process-selected-count">0</span> selected
-                            </span>
-                        </div>
-                        <div class="text-sm text-muted-foreground">
-                            Showing <span id="process-filtered-count">0</span> of <span id="process-total-count">0</span> applications
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Applications List -->
-                <div id="process-applications-list" class="max-h-96 overflow-y-auto space-y-3 mb-4">
-                    <!-- Applications will be rendered here -->
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="flex justify-end space-x-3 pt-4 border-t">
-                    <button type="button"
-                        @click="closeProcessMappingModal()"
-                        class="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-muted-foreground/40"
-                     aria-label="Cancel process mapping">
-                        Cancel
-                    </button>
-                    <button type="button"
-                        @click="saveProcessMappings()"
-                        class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary"
-                     aria-label="Save process mappings">
-                        Save Mappings
-                    </button>
-                </div>
-            </div>
-        </div>
+        {{ mapping_modal(
+            modal_id="process-mapping-modal",
+            title_label="Map Applications to",
+            name_span_id="process-modal-process-name",
+            accent_class="text-primary",
+            close_fn="closeProcessMappingModal",
+            close_aria="Close process mapping modal",
+            close_btn_class="text-muted-foreground hover:text-muted-foreground",
+            id_prefix="process-",
+            search_fn="filterProcessApplications",
+            select_all_fn="selectAllProcessFiltered",
+            deselect_fn="deselectAllProcess",
+            cancel_aria="Cancel process mapping",
+            save_fn="saveProcessMappings",
+            save_bg_class="bg-primary",
+            save_aria="Save process mappings"
+        ) }}
 
     <!-- Include Mapping Modals -->
     {% include 'components/apqc_mapping_modal.html' %}
@@ -2782,132 +2565,23 @@
     {% include 'components/unified_mapping_modal.html' %}
 
     <!-- Application Mapping Modal -->
-    <div id="mapping-modal" hidden role="dialog" aria-modal="true" aria-labelledby="mapping-modal-title" class="modal-root fixed inset-0 bg-black/80 overflow-y-auto z-50">
-        <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-card">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-foreground">
-                    Map Applications to: <span id="modal-capability-name" class="text-primary"></span>
-                </h3>
-                <button type="button" @click="closeMappingModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close application mapping modal">
-                    <i data-lucide="x" class="w-6 h-6" aria-hidden="true"></i>
-                </button>
-            </div>
-
-            <!-- Search and Filter Bar -->
-            <div class="mb-4 space-y-3">
-                <!-- Search Input -->
-                <div class="relative">
-                    <label for="application-search">Field</label>
-    <input
-                        type="text"
-                        id="application-search"
-                        placeholder="Search applications by name, type, or domain..."
-                        class="w-full px-4 py-2 pl-10 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        @input="filterApplications()"
-                    />
-                    <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
-                </div>
-
-                <!-- Filter Row -->
-                <div class="flex flex-wrap gap-3 items-center">
-                    <!-- Filter by Type -->
-                    <div class="flex-1 min-w-[150px]">
-                        <select
-                            id="filter-type"
-                            class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @change="filterApplications()"
-                         aria-label="Filter by Type">
-                            <option value="">All Types</option>
-                        </select>
-                    </div>
-
-                    <!-- Filter by Domain -->
-                    <div class="flex-1 min-w-[150px]">
-                        <select
-                            id="filter-domain"
-                            class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @change="filterApplications()"
-                         aria-label="Filter by Domain">
-                            <option value="">All Domains</option>
-                        </select>
-                    </div>
-
-                    <!-- Filter by Status -->
-                    <div class="flex-1 min-w-[150px]">
-                        <select
-                            id="filter-status" aria-label="Filter applications by status"
-                            class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @change="filterApplications()"
-                        >
-                            <option value="all">All Applications</option>
-                            <option value="mapped">Mapped Only</option>
-                            <option value="unmapped">Unmapped Only</option>
-                        </select>
-                    </div>
-
-                    <!-- Sort Options -->
-                    <div class="flex-1 min-w-[150px]">
-                        <select
-                            id="sort-applications" aria-label="Sort applications"
-                            class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @change="filterApplications()"
-                        >
-                            <option value="name-asc">Name (A-Z)</option>
-                            <option value="name-desc">Name (Z-A)</option>
-                            <option value="type-asc">Type (A-Z)</option>
-                            <option value="mapped-first">Mapped First</option>
-                            <option value="unmapped-first">Unmapped First</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Bulk Actions -->
-                <div class="flex items-center justify-between pt-2 border-t border-border">
-                    <div class="flex items-center space-x-4">
-                        <button type="button"
-                            @click="selectAllFiltered()"
-                            class="text-sm text-primary hover:text-primary font-medium"
-                         aria-label="Select all visible applications">
-                            Select All Visible
-                        </button>
-                        <button type="button"
-                            @click="deselectAll()"
-                            class="text-sm text-muted-foreground hover:text-foreground font-medium"
-                         aria-label="Deselect all applications">
-                            Deselect All
-                        </button>
-                        <span id="selection-count" class="text-sm text-muted-foreground">
-                            <span id="selected-count">0</span> selected
-                        </span>
-                    </div>
-                    <div class="text-sm text-muted-foreground">
-                        Showing <span id="filtered-count">0</span> of <span id="total-count">0</span> applications
-                    </div>
-                </div>
-            </div>
-
-            <!-- Applications List -->
-            <div id="applications-list" class="max-h-96 overflow-y-auto space-y-3 mb-4">
-                <!-- Applications will be rendered here -->
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="flex justify-end space-x-3 pt-4 border-t">
-                <button type="button"
-                    @click="closeMappingModal()"
-                    class="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-muted-foreground/40"
-                 aria-label="Cancel mapping">
-                    Cancel
-                </button>
-                <button type="button"
-                    @click="saveMappings()"
-                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary"
-                 aria-label="Save mappings">
-                    Save Mappings
-                </button>
-            </div>
-        </div>
-    </div>
+    {{ mapping_modal(
+        modal_id="mapping-modal",
+        title_label="Map Applications to",
+        name_span_id="modal-capability-name",
+        accent_class="text-primary",
+        close_fn="closeMappingModal",
+        close_aria="Close application mapping modal",
+        close_btn_class="text-muted-foreground hover:text-foreground",
+        id_prefix="",
+        search_fn="filterApplications",
+        select_all_fn="selectAllFiltered",
+        deselect_fn="deselectAll",
+        cancel_aria="Cancel mapping",
+        save_fn="saveMappings",
+        save_bg_class="bg-primary",
+        save_aria="Save mappings"
+    ) }}
 
 </div>
 {% endblock %}
