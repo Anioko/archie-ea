@@ -66,18 +66,26 @@ def classify(findings):
     cover, not a fix, so they are tracked here but must not block the gate; if
     they did, the register could never close.
     """
-    open_rows, unevidenced, closed, protect = [], [], [], []
+    open_rows, unevidenced, closed, protect, withdrawn = [], [], [], [], []
     for f in findings:
         status = f.get("status")
         if status == "protect":
             protect.append(f)
+        elif status == "not_a_defect":
+            # Assessed and found NOT to be a defect — the route was never wired,
+            # the token file was already single-valued, the finding was a
+            # narrow-viewport artefact. These are RESULTS, not outstanding work,
+            # and counting them as open would make the register unclosable: no
+            # amount of engineering turns a withdrawn finding into a fixed one.
+            # They stay listed so a withdrawal is visible and arguable.
+            withdrawn.append(f)
         elif status != "closed":
             open_rows.append(f)
         elif not f.get("fix_commit") or not f.get("evidence"):
             unevidenced.append(f)
         else:
             closed.append(f)
-    return open_rows, unevidenced, closed, protect
+    return open_rows, unevidenced, closed, protect, withdrawn
 
 
 def _sort(rows):
@@ -87,7 +95,7 @@ def _sort(rows):
 def render(data):
     """Write the owner-facing task log. Regenerated, never hand-edited."""
     findings = data["findings"]
-    open_rows, unevidenced, closed, protect = classify(findings)
+    open_rows, unevidenced, closed, protect, withdrawn = classify(findings)
     manual_only = [f for f in closed
                    if all(e.startswith("manual:") for e in f["evidence"])]
     deployed = [f for f in findings if f.get("deployed")]
@@ -152,7 +160,7 @@ def main():
 
     data = load()
     findings = data.get("findings", [])
-    open_rows, unevidenced, closed, protect = classify(findings)
+    open_rows, unevidenced, closed, protect, withdrawn = classify(findings)
 
     if args.render:
         render(data)

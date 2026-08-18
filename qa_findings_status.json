@@ -329,13 +329,13 @@
   },
   {
    "id": "ARB-01",
-   "severity": "S3",
+   "severity": "--",
    "title": "ARB workflow unexercised; governance-gates data endpoint missing",
    "status": "not_a_defect",
-   "note": "route was never wired; the admin UI calls /admin/api/governance-gates, which works",
-   "fix_commit": "f019ae1",
+   "note": "route was never wired; the admin UI calls /admin/api/governance-gates, which works — confirmed server-side and client-side",
+   "fix_commit": "(assessed)",
    "evidence": [
-    "manual:route was never wired; the admin UI calls /admin/api/governance-gates, which works"
+    "manual:route was never wired; the admin UI calls /admin/api/governance-gates, which works — confirmed server-side and client-side"
    ],
    "reviewed": false,
    "deployed": false
@@ -484,11 +484,11 @@
   },
   {
    "id": "ARCH-102",
-   "severity": "S3",
+   "severity": "--",
    "title": "Native and custom form controls mixed across the product",
    "status": "not_a_defect",
    "note": "native selects are the repo-wide convention, not a one-page inconsistency",
-   "fix_commit": "",
+   "fix_commit": "(assessed)",
    "evidence": [
     "manual:native selects are the repo-wide convention, not a one-page inconsistency"
    ],
@@ -744,13 +744,13 @@
   },
   {
    "id": "ARCH-110",
-   "severity": "S4",
+   "severity": "--",
    "title": "Two \"black\" text colours and three \"success\" greens in use",
    "status": "not_a_defect",
-   "note": "tokens file already single-valued; class drift held by design-tokens-extended ratchet",
-   "fix_commit": "70172a9",
+   "note": "shadcn_tokens.css already defines a single --success and a single --radius; the drift is class-level and held by the design-tokens-extended ratchet",
+   "fix_commit": "(assessed)",
    "evidence": [
-    "manual:tokens file already single-valued; class drift held by design-tokens-extended ratchet"
+    "manual:shadcn_tokens.css already defines a single --success and a single --radius; the drift is class-level and held by the design-tokens-extended ratchet"
    ],
    "reviewed": false,
    "deployed": false
