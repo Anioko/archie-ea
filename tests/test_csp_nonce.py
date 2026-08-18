@@ -166,3 +166,70 @@ def test_injection_hardening_directives_are_present(app):
     policy = _production_csp(app)
     assert "base-uri 'self'" in policy, "an injected <base> could rewrite every URL"
     assert "form-action 'self'" in policy, "an injected form could post off-site"
+
+
+# --------------------------------------------------------------------------
+# ARCH-070 remaining half: 'unsafe-eval'
+# --------------------------------------------------------------------------
+#
+# script-src already carries a nonce + 'strict-dynamic' with NO
+# 'unsafe-inline'. 'unsafe-eval' is the one directive still open, required
+# by the standard Alpine.js build's `new Function(...)` expression
+# evaluation. Swapping to the CSP-compatible Alpine build was measured
+# (scripts/check_alpine_csp_compat.py) and rejected for now: 8,523 of
+# 17,997 Alpine directive expressions (47%) use JS the CSP build cannot
+# evaluate. These tests pin that this remains a *documented, reviewed*
+# exception rather than something that silently regresses or silently
+# gets "fixed" by deleting the measurement.
+
+
+def test_unsafe_eval_still_present_and_documented(app):
+    """If this ever flips, either Alpine's CSP build shipped (delete this
+    test and the comment above it) or the directive regressed silently
+    (fix it). It must not just disappear quietly either way."""
+    policy = _production_csp(app)
+    assert "'unsafe-eval'" in policy, (
+        "unsafe-eval was removed from script-src without following the "
+        "documented swap path (vendor alpinejs-csp, rewrite incompatible "
+        "expressions) - see app/_bootstrap/security.py ARCH-070 comment"
+    )
+    assert "'unsafe-inline'" not in policy.split("script-src", 1)[1].split(";", 1)[0], (
+        "script-src must not regain unsafe-inline alongside unsafe-eval"
+    )
+
+
+def test_alpine_csp_compat_scanner_runs_and_reports_the_measured_split(app):
+    """Pins the measurement itself so a future change to the scanner (or a
+    template pass that removes JS-operator expressions) is visible rather
+    than silently drifting the number this decision was based on."""
+    import subprocess
+    import sys
+    import json as _json
+
+    from app import create_app as _  # noqa: F401  (ensures repo root import works)
+
+    proc = subprocess.run(
+        [sys.executable, "scripts/check_alpine_csp_compat.py", "--json"],
+        capture_output=True,
+        text=True,
+        cwd=_repo_root(),
+    )
+    assert proc.returncode == 0, proc.stderr
+    data = _json.loads(proc.stdout)
+    assert data["counts"]["safe"] + data["counts"]["unsafe"] > 0
+    # Not asserting the exact counts (templates churn); asserting the shape
+    # so the gate that matters - "is this still a big number" - stays true.
+    unsafe = data["counts"]["unsafe"]
+    total_classified = data["counts"]["safe"] + data["counts"]["unsafe"]
+    unsafe_fraction = unsafe / total_classified
+    assert unsafe_fraction > 0.05, (
+        "the incompatible fraction dropped below 5%% (%.1f%%) - reconsider "
+        "the alpinejs-csp swap; see app/_bootstrap/security.py ARCH-070 comment"
+        % (unsafe_fraction * 100)
+    )
+
+
+def _repo_root():
+    from pathlib import Path
+
+    return Path(__file__).resolve().parent.parent

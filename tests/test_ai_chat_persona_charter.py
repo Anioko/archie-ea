@@ -85,24 +85,38 @@ def test_an_ungoverned_persona_still_gets_its_label(app):
 
 
 def test_no_persona_is_unchanged_from_the_old_eight_word_note(app):
-    """Guards the regression directly: a governed persona must get more than a title.
+    """Guards the regression directly: EVERY persona must get more than a title.
 
-    If someone reverts the wiring, the prompt falls back to the one-line note and
-    this fails — which is the whole point, since the fallback is legitimate for
-    ungoverned personas and would otherwise look correct.
+    This test used to prove charter injection by comparing a governed persona
+    against an ungoverned one. That control group no longer exists: P-01 found
+    six of the twelve advertised personas had no charter at all and fell through
+    to a generic fallback whose scaffold was byte-identical across personas —
+    which is exactly why three maximally different personas returned the same
+    signature sentence verbatim. All twelve are now governed, so a
+    governed-vs-ungoverned length comparison compares two governed prompts and
+    fails for the right reason.
+
+    The property that actually matters is asserted instead: every persona's
+    prompt must carry its OWN charter text, and two different personas must not
+    produce the same prompt.
     """
     from app.modules.ai_chat.services.agent_runner import AgentRunner
+    from app.modules.ai_chat.services.architect_persona_charters import ARCHITECT_PERSONAS
 
     with app.app_context():
         runner = AgentRunner(user_id=1)
-        governed = runner._build_system_prompt(domain="general", context=None,
-                                               persona="enterprise_architect")
-        # cio became a governed alias of the cto charter in the AI-enablement
-        # wave (PERSONA_ALIASES), so the ungoverned baseline is product_analyst.
-        ungoverned = runner._build_system_prompt(domain="general", context=None,
-                                                 persona="product_analyst")
+        prompts = {
+            name: runner._build_system_prompt(domain="general", context=None, persona=name)
+            for name in ARCHITECT_PERSONAS
+        }
 
-    assert len(governed) > len(ungoverned) + 1000, (
-        "the governed persona's prompt is barely longer than the ungoverned one, "
-        "so the charter is not being injected"
+    for name, prompt in prompts.items():
+        assert len(prompt) > 1000, f"{name}'s prompt is too short to carry a charter"
+
+    # Distinctness is the real regression guard: P-01's defect was several
+    # personas sharing one template with only the role name substituted.
+    distinct = {p for p in prompts.values()}
+    assert len(distinct) == len(prompts), (
+        "two or more personas produced an identical system prompt — this is the "
+        "P-01 defect, where persona selection changed the label and not the expertise"
     )

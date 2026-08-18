@@ -165,6 +165,33 @@ def init_security(app):
             # CodeMirror 6 from it. The air-gap gate cannot see that, because it
             # scans for static src= attributes - so this is a real external
             # dependency that ADR 0005's "browser egress: zero" claim misses.
+            # ARCH-070 remaining half: 'unsafe-eval' stays, measured rather than
+            # assumed. Swapping the standard Alpine.js build for the
+            # CSP-compatible one (alpinejs-csp, which drops `new Function(...)`
+            # expression evaluation and would let this directive drop
+            # 'unsafe-eval') was evaluated and rejected FOR NOW:
+            # `scripts/check_alpine_csp_compat.py` scans every `x-*`/`@*`/`:*`
+            # Alpine directive in app/templates + app/modules and classifies
+            # each expression as CSP-build-safe (bare property/method access)
+            # or not (contains JS operators, ternaries, template literals,
+            # comparisons, etc. — the CSP build cannot evaluate these; they'd
+            # need rewriting into component methods). Result: 17,997 Alpine
+            # expressions across 529 templates, of which 8,523 (47%) are NOT
+            # CSP-build-safe — e.g. `x-show="!loading && filteredSpecs.length
+            # === 0"`, `x-bind:class="loading ? 'animate-spin' : ''"`,
+            # `x-text="`${endpointList(spec).length} endpoint(s)`"`. A
+            # half-migrated Alpine build is a broken application (inert
+            # dropdowns, dead toggles) across most interactive pages, not a
+            # contained regression, so this is staged work, not a swap made
+            # here. Re-run the scanner after any large front-end pass to see
+            # whether the incompatible count has fallen enough to reconsider.
+            # Residual risk while 'unsafe-eval' stays: script-src already
+            # carries a nonce with 'strict-dynamic' and NO 'unsafe-inline', so
+            # an attacker still needs a script tag with a valid nonce (or a
+            # descendant of one) to execute anything at all — 'unsafe-eval'
+            # only matters if such a script also wants to call eval()/Function()
+            # itself, which narrows the exploitable surface to "already got a
+            # nonce'd script running" rather than arbitrary injected markup.
             csp_directives = [
                 "default-src 'self'",
                 f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' 'strict-dynamic' "
