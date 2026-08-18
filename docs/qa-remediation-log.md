@@ -9,10 +9,10 @@ Source: the 17 Aug 2026 QA remediation register (140 active findings).
 | | Count |
 |---|---|
 | Findings total | 140 |
-| Fixed and evidenced | 64 |
-| Still open | 72 |
+| Fixed and evidenced | 91 |
+| Still open | 45 |
 | Closed but unevidenced (blocks the gate) | 0 |
-| Of the fixed: verified by eye only | 25 |
+| Of the fixed: verified by eye only | 34 |
 | Live in production | 0 |
 
 A finding counts as fixed only when its commit is recorded **and** it carries evidence. Work that is partly done stays open with a note — "mostly done" is open.
@@ -25,25 +25,12 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-001 | S1 | Platform suffers complete outages under trivial load | root-caused as memcg OOM (9ead4e9). REPRODUCED LIVE 18 Aug 08:31 by a single `docker compose exec server flask` diagnostic, which boots a second full app inside the 2600m cgroup and killed gunicorn/PID 1. Headroom is one Python process. Needs a RAM decision from the owner; operational rule adopted: never run flask CLI in the prod container. |
 | F-01 | S1 | Audit log records creates and deletes only; governance actions absent | REPLACES ARCH-092. /admin/audit-log exists and works, but contains only two action types: create (22) and delete (28). No approve, reject, submit, permission change or login. For SOX ITGC and ISO 27001 A.12.4 the central question is 'who approved this change' and the platform cannot answer it. PARTIALLY addressed already: commit 85c2924 wired ARBAuditService into ARB decision recording and f147872 added an append-only AI approval audit log — both write governance events. Needs verification that those surface in /admin/audit-log rather than a separate store. |
 | H-01 | S1 | Duplicate-detection module exists, is hidden, and has never been run | /duplicate-detection/simple exposes latest_run: null — detection has NEVER executed in this system's lifetime, while 37% of ArchiMate elements are duplicated. Its 'Run Detection' button is dead (same Alpine binding class as ARCH-040). A dedicated module to solve ARCH-030 was built, shipped, hidden from nav, wired to a dead button, and never once run. Must extend to ArchiMate elements (where the duplication is) and reuse M-04's semantic engine rather than a second implementation. |
-| I-01 | S1 | Document upload returns HTTP 500 — both entity-ingestion paths are broken | Register's Update-3 source doc is absent, so detail came from the master register alone. Corroborated independently by the owner's 18 Aug audit, which also raised it and paired it with M-03: with Entity Matching erroring on every input, BOTH entity-ingestion paths are down. That is the mechanism behind the repository reaching 37% duplication. Raised to S1 on that basis. |
-| M-01 | S1 | Portfolio conformance score rewards emptiness | not started |
-| M-02 | S1 | EA Briefing has never produced a finding, including against known defects | not started |
-| M-03 | S1 | Entity Matching Assistant errors on every input | not started |
-| M-05 | S1 | No separation of duties: one user can create, submit and approve the same ARB review | not started |
-| M-06 | S1 | ARB decision records do not store who made the decision | not started |
 | P-04 | S1 | CSRF is not enforced on the write surface — supersedes A-04's scoping | NINE of nine testable write endpoints reached business logic with NO token, including /applications/bulk-delete which EXECUTED (200), /arb/reviews/create, /solutions/<id>/delete-json and — most seriously — /ai-chat/approvals/<id>/approve, the gate through which agent writes execute and the same gate V-01 shows has no authorization either. A-04 said CSRF was implemented and inconsistently applied; the accurate position is a token exists on server-rendered admin FORMS and is enforced on NONE of the JSON write endpoints. Fix as default-deny middleware with an explicit opt-out list; enumerate the full route table. |
 | S-11 | S1 | Core architecture capabilities are undiscoverable from navigation | SEVERITY RAISED S2 -> S1 on the register's own 18 Aug reasoning. Discoverability has now caused TWO mis-assessments by an experienced tester: ARCH-120/121/125 in Addendum 1, and ARCH-122 again on 18 Aug after /portfolio/ was found to be a complete programme-management module. Both times capability was present, empty and unreachable. If a systematic route sweep twice concluded shipped capability did not exist, a prospect under time pressure reaches the same wrong conclusion and the product is judged on a fraction of what it does. Now also covers /portfolio/. |
-| V-01 | S1 | AI agent writes are not constrained by the invoking user's permissions | CLUSTER 0, most severe finding of the engagement. A Viewer (perms 1) blocked with 403 from DELETE /architecture/elements/470 created solution id 25 by asking the chat assistant, then approved their own request (POST /ai-chat/approvals/25/approve -> 200). Solutions 5 -> 6. Two failures required: the agent does not authorise the request, and the approval gate does not authorise the approver. Permission checks must live in the TOOL EXECUTION LAYER, not the prompt - a prompt instruction is not an access control. |
-| V-02 | S1 | POST /applications/create has no authorization check | Viewer POST /applications/create -> 201 id=105, no agent involved. Same endpoint also lacks CSRF (A-04). Its sibling /applications/bulk-delete has BOTH controls - strong evidence protection is applied endpoint-by-endpoint by hand rather than default-deny middleware. |
-| V-03 | S1 | ARB review creation and submission have no authorization check | Viewer created REV-2026-002 and REV-2026-003 via two DIFFERENT creation endpoints and advanced one to submitted. Neither checks permission. Recording a DECISION as Viewer returned 200 HTML and left the review undecided - the auditor explicitly says whether a Viewer can approve through the UI is an OPEN QUESTION, not established as blocked. Duplicate creation endpoints must be consolidated. |
 | A-03 | S2 | Only three roles exist, with no platform/tenant separation | roles landed (2e3bb7f). CORRECTION: I previously filed the remaining 'unbounded AI-agent permissions' half as a product decision. It is not - R-32 proved it is a complete RBAC bypass. Tracked as V-01 and being fixed, not deferred. |
-| A-05 | S2 | AI prompts are admin-editable with no audit trail | audit metadata landed (9cda379); version history/diff/rollback outstanding |
-| ARCH-013 | S2 | Agent-reported record attribute contradicts the system of record | not started |
 | ARCH-051 | S2 | State-changing endpoints accept requests with no CSRF token | REOPENED with A-04 — same finding, superseded by P-04's wider scope. |
 | ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | nonce+strict-dynamic in prod; unsafe-eval and style-src unsafe-inline remain |
 | ARCH-091 | S2 | Enterprise identity, tenancy and RBAC unverified | not started |
-| ARCH-100 | S2 | Data-heavy views use card lists instead of a data grid | not started |
-| ARCH-115 | S2 | Conversation history not restored on reload | not started |
 | ARCH-130 | S2 | No evidence of automated regression coverage | not started |
 | ARCH-131 | S2 | No AI output evaluation harness | not started |
 | C-10 | S2 | Destructive element endpoint accepts requests with no CSRF token | REOPENED with A-04 — same finding, superseded by P-04's wider scope. |
@@ -63,26 +50,12 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARB-01 | S3 | ARB workflow unexercised; governance-gates data endpoint missing | route was never wired; the admin UI calls /admin/api/governance-gates, which works |
 | ARCH-063 | S3 | Application JavaScript is unbundled and served as many individual files | assessed: bundler cannot be added without breaking air-gap/SRI/Python-only-image contract |
 | ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | applications/ bounded by P-01; capability-map 481KB + dashboard markup not trimmed |
-| ARCH-071 | S3 | Stored input is persisted unsanitised (output encoding currently compensates) | scoped to the application-name field only |
-| ARCH-080 | S3 | Skip links fail WCAG AA contrast | not started |
-| ARCH-101 | S3 | Nine separate modal implementations with inconsistent styling and stacking | not started |
 | ARCH-102 | S3 | Native and custom form controls mixed across the product | native selects are the repo-wide convention, not a one-page inconsistency |
-| ARCH-103 | S3 | Duplicate menu button rendered in the header | not started |
-| ARCH-105 | S3 | Action toolbar uses unexplained internal jargon | not started |
-| ARCH-106 | S3 | Cryptic data-quality labelling | not started |
-| ARCH-116 | S3 | Test artefact is the only record in the application catalogue | not started |
 | F-04 | S3 | Two unnamed buttons on every one of 54 routes | Identical accessibility defect on all 54 routes — one fix covers the estate. Note tests/smoke carries an axe-core audit ratcheted at zero accepted violations, so this class should have been caught; worth understanding why it was not. |
 | H-05 | S3 | Interactive targets below the WCAG 2.2 minimum size | Seven targets under 24x24 CSS px (SC 2.5.8 AA). Skip links and breadcrumb may qualify for the inline exception; the two 20x20 icon buttons and the 16x16 Log out link do NOT. A 16x16 logout is also a UX problem: it is a security action, needed on shared machines, and is the smallest target on the page. |
 | H-06 | S3 | No button size scale; eight distinct heights on one page | /procurement/spend alone: 20/28/32/34/40/44px across 8 distinct heights, 7 font sizes (10px again — ARCH-081) and 6 radii including the malformed '0px 0px 4px' (ARCH-110 on a fourth page). Earlier credit for disciplined tokens was based on the newest screens and does not hold across the estate. |
 | H-07 | S3 | Another doubled query string in an asset URL | /static/js/duplicate_detection/dashboard.js?v=1787042220?v=3 — a FOURTH instance, on a module not previously examined. Confirms ARCH-060 is systemic, not three typos. NOTE: my asset-urls gate reports clean on this, so the gate is insufficient — it scans templates and misses this class. |
-| M-04 | S3 | Data Stewardship's real findings are all graded INFO, hiding genuine risk | not started |
-| M-07 | S3 | TOGAF phase taxonomy differs between modules | not started |
-| S-07 | S3 | TOGAF ADM checklist is incomplete and unlabelled | not started |
-| S-08 | S3 | Filter bar labels overlap | not started |
-| S-09 | S3 | Status KPI cards are too narrow for their content | not started |
 | V-07 | S3 | Python None rendered in the user interface | Account page displays 'Full name: None None'. Same class as ARCH-023 (Python dict repr in approval summaries) - a shared null-rendering helper closes both. Also aligns with the never-invent-data rule: null renders as an em dash, never a literal None. |
-| V-08 | S3 | ARB reviews cannot be withdrawn, cancelled or deleted at any stage | Four endpoint patterns tried AS ADMINISTRATOR, none exists. A draft review's page offers only 'Submit for Review' - no withdraw, cancel or discard. The only disposal route is to submit then record a formal decision, which is what the auditor had to do: rejecting a request nobody genuinely made. Immutability of a DECIDED review is correct and must be preserved; a review created in error - or per V-03 by an unauthorised user - is currently permanent, so the queue accumulates abandoned drafts and the only exit pollutes the decision record. REV-2026-003 (id 5) remains stuck in draft in production. |
-| ARCH-109 | S4 | Breadcrumb roots are inconsistent | not started |
 | ARCH-110 | S4 | Two "black" text colours and three "success" greens in use | tokens file already single-valued; class drift held by design-tokens-extended ratchet |
 | ARCH-111 | S4 | No brand typeface; system font stack in use | not started |
 | F-05 | S4 | Page title audit across all 54 routes | Completes ARCH-108. |
@@ -107,18 +80,31 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | C-01 | S1 | Composer permits an invalid ArchiMate relationship, and its validation is directionally asymmetric | `b1f6a8f` | test:tests/test_archimate_realization_targets.py | no | no |
 | C-02 | S1 | Orphaned ArchiMate elements: deleting an application does not delete its element | `2a711a2` | test:tests/test_application_delete_cascade.py; manual:re-confirmed in production 18 Aug — admin delete of app 105 reported elements_deleted: 1 | no | no |
 | D-01 | S1 | Dashboard and API element counts drift apart after any write | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
+| I-01 | S1 | Document upload returns HTTP 500 — both entity-ingestion paths are broken | `5d56ecc` | test:tests/test_entity_ingestion_honest_failures.py | no | no |
+| M-01 | S1 | Portfolio conformance score rewards emptiness | `352836e` | test:tests/test_ai_insight_metrics.py | no | no |
+| M-02 | S1 | EA Briefing has never produced a finding, including against known defects | `352836e` | test:tests/test_ai_insight_metrics.py | no | no |
+| M-03 | S1 | Entity Matching Assistant errors on every input | `5d56ecc` | test:tests/test_entity_ingestion_honest_failures.py | no | no |
+| M-05 | S1 | No separation of duties: one user can create, submit and approve the same ARB review | `85c2924` | test:tests/test_arb_decision_governance.py | no | no |
+| M-06 | S1 | ARB decision records do not store who made the decision | `85c2924` | test:tests/test_arb_decision_governance.py | no | no |
 | O-01 | S1 | Exported OEF contains metamodel-invalid relationships | `6aaf0b5` | test:tests/test_oef_export_direction_validation.py | no | no |
 | P-01 | S1 | Application list scales linearly in payload and super-linearly in latency | `0493bc4` | test:tests/test_qa_persona_and_api_contract.py | no | no |
 | S-01 | S1 | Solutions list silently hides records while claiming to be complete | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
 | S-02 | S1 | Blueprint completeness reports four mutually contradictory figures on one page | `b1f6a8f` | test:tests/test_archimate_conformance_and_oef.py | no | no |
+| V-01 | S1 | AI agent writes are not constrained by the invoking user's permissions | `7f3c84c` | test:tests/test_r32_ai_permission_gate.py | no | no |
+| V-02 | S1 | POST /applications/create has no authorization check | `7f3c84c` | test:tests/test_r32_ai_permission_gate.py | no | no |
+| V-03 | S1 | ARB review creation and submission have no authorization check | `7f3c84c` | test:tests/test_r32_ai_permission_gate.py | no | no |
 | A-01 | S2 | A tenant administrator can enumerate other tenants' organizations and members | `2e3bb7f` | test:tests/test_admin_org_member_idor.py | no | no |
 | A-02 | S2 | User directory shows 2 users while tenants account for 22 | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
+| A-05 | S2 | AI prompts are admin-editable with no audit trail | `d4d1bc0` | test:tests/test_a05_prompt_version_history.py | no | no |
 | ARCH-011 | S2 | Data-quality tiles report zero while the panel beside them reports real counts | `f91d8d7` | test:tests/test_count_reconciliation.py | no | no |
+| ARCH-013 | S2 | Agent-reported record attribute contradicts the system of record | `7f3c84c` | test:tests/test_arch013_agent_status_contract.py | no | no |
 | ARCH-014 | S2 | Vendor pagination is broken in three separate ways | `f91d8d7` | test:tests/test_count_reconciliation.py | no | no |
 | ARCH-015 | S2 | AI conversation context contains internally impossible figures | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
 | ARCH-021 | S2 | Approval queue creates duplicates of the same operation | `f147872` | test:tests/test_approval_governance.py | yes | no |
 | ARCH-050 | S2 | /architecture/element/<id> returns HTTP 200 for every input, including invalid ones | `6aaf0b5` | test:tests/test_arch050_element_route_404.py | no | no |
 | ARCH-090 | S2 | No testing at representative enterprise scale | `9c716ea` | manual:scripts/benchmark_scale.py harness, validated at small scale only | no | no |
+| ARCH-100 | S2 | Data-heavy views use card lists instead of a data grid | `055cec4` | test:tests/test_applications_list_shell.py | no | no |
+| ARCH-115 | S2 | Conversation history not restored on reload | `d4d1bc0` | manual:thread id persisted to sessionStorage and restored on boot; no JS harness | no | no |
 | ARCH-126 | S2 | Traceability chain is broken in the existing data | `9c716ea` | test:tests/test_arch126_traceability_report.py | no | no |
 | C-03 | S2 | Diagram autosave is browser-local only, with a hard scaling ceiling | `1d45832` | manual:code review of _autoSave server-persistence path | no | no |
 | C-04 | S2 | "New blank diagram" is a destructive action presented as an additive one | `1d45832` | manual:code review of confirm dialog + undo push | no | no |
@@ -143,22 +129,36 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-052 | S3 | Inconsistent API path conventions and response contracts | `9c716ea` | test:tests/test_arch052_elements_pagination.py | no | no |
 | ARCH-060 | S3 | Malformed asset URLs with doubled query strings | `383502e` | gate:asset-urls | yes | no |
 | ARCH-061 | S3 | Same stylesheet loaded twice at two different versions | `383502e` | gate:asset-urls | yes | no |
+| ARCH-071 | S3 | Stored input is persisted unsanitised (output encoding currently compensates) | `7f3c84c` | test:tests/test_arch071_name_sanitization_coverage.py | no | no |
+| ARCH-080 | S3 | Skip links fail WCAG AA contrast | `055cec4` | manual:skip links moved to background/foreground pair, ~19:1 | no | no |
+| ARCH-101 | S3 | Nine separate modal implementations with inconsistent styling and stacking | `055cec4` | test:tests/test_modal_shell_consistency.py | no | no |
+| ARCH-103 | S3 | Duplicate menu button rendered in the header | `055cec4` | test:tests/test_header_and_login_feedback.py | no | no |
+| ARCH-105 | S3 | Action toolbar uses unexplained internal jargon | `055cec4` | manual:toolbar regrouped with tooltips | no | no |
+| ARCH-106 | S3 | Cryptic data-quality labelling | `055cec4` | test:tests/test_applications_list_shell.py | no | no |
 | ARCH-107 | S3 | Onboarding checklist shown on a populated instance | `5c3f7fc` | manual:playwright browser run, both branches | no | no |
 | ARCH-112 | S3 | Heading obscured by the quick-prompt bar at narrow widths | `70172a9` | manual:chip strip wraps; no JS harness | no | no |
 | ARCH-113 | S3 | Three levels of nested scroll regions | `70172a9` | manual:sidebar scrollbar affordance restored | no | no |
 | ARCH-114 | S3 | Persona heading desynchronises from the persona selector | `70172a9` | manual:persona synced/persisted/echoed; no JS harness | no | no |
+| ARCH-116 | S3 | Test artefact is the only record in the application catalogue | `d4d1bc0` | manual:dry-run-by-default CLI; real remedy is environment separation, recorded | no | no |
 | C-05 | S3 | "Save paused" state is unexplained and offers no way to resolve it | `28ee96a` | manual:code review of the single render site | yes | no |
 | C-06 | S3 | Relationship-type picker is clipped by the viewport and does not scroll | `28ee96a` | manual:code review | yes | no |
 | C-07 | S3 | Minimap overlays and obscures canvas content | `28ee96a` | manual:code review | yes | no |
 | C-08 | S3 | "Fit to Content" does not account for overlaying panels | `28ee96a` | manual:code review against panel widths | yes | no |
 | C-09 | S3 | Matrix view column headers are unreadable | `28ee96a` | manual:code review | yes | no |
 | D-03 | S3 | Dashboard KPI panels mix denominators without stating scope | `5351fe3` | test:tests/test_count_reconciliation.py | no | no |
+| M-04 | S3 | Data Stewardship's real findings are all graded INFO, hiding genuine risk | `352836e` | test:tests/test_ai_insight_metrics.py | no | no |
+| M-07 | S3 | TOGAF phase taxonomy differs between modules | `055cec4` | manual:ARB A-H confirmed TOGAF-correct and authoritative; relabelled, not merged | no | no |
 | O-04 | S3 | Generic export failure message | `f019ae1` | manual:exception type + correlation id in export handler | no | no |
 | P-07 | S3 | Error logger discards error detail | `0493bc4` | manual:error serialisation in 05-error.js; no JS harness | no | no |
 | P-08 | S3 | Persona context endpoint returns errors with HTTP 200 | `0493bc4` | test:tests/test_qa_persona_and_api_contract.py | no | no |
+| S-07 | S3 | TOGAF ADM checklist is incomplete and unlabelled | `055cec4` | manual:two metrics kept separate and relabelled | no | no |
+| S-08 | S3 | Filter bar labels overlap | `055cec4` | manual:filter bar wraps | no | no |
+| S-09 | S3 | Status KPI cards are too narrow for their content | `055cec4` | manual:KPI sublabels shortened | no | no |
+| V-08 | S3 | ARB reviews cannot be withdrawn, cancelled or deleted at any stage | `7f3c84c` | test:tests/test_arb_decision_governance.py | no | no |
 | ARCH-024 | S4 | Response latency displayed as raw milliseconds | `70172a9` | manual:formatDuration replaces raw ms; no JS harness | no | no |
 | ARCH-045 | S4 | Model selector is empty and non-functional | `70172a9` | manual:selector hidden unless >=2 real models; no JS harness in repo | no | no |
 | ARCH-062 | S4 | Asset version stamps are inconsistent across the bundle | `383502e+cc9f153` | manual:verified on the production container (git safe.directory returns the real SHA) | yes | no |
 | ARCH-072 | S4 | Permissions-Policy and Cross-Origin-Opener-Policy headers absent | `70172a9` | manual:Permissions-Policy + COOP added, Expo iframe delegation preserved | no | no |
 | ARCH-081 | S4 | 10px type in use | `70172a9` | manual:text-[10px] swept to text-xs across ~110 templates | no | no |
 | ARCH-108 | S4 | Page titles are inconsistent and one is empty | `70172a9` | manual:base title fallback fixed | no | no |
+| ARCH-109 | S4 | Breadcrumb roots are inconsistent | `055cec4` | manual:breadcrumb root unified to Home across 7 templates + macro default | no | no |

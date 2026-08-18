@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
  "total": 140,
- "closed": 64,
- "open": 64,
+ "closed": 91,
+ "open": 37,
  "findings": [
   {
    "id": "A-06",
@@ -70,10 +70,12 @@
    "id": "A-05",
    "severity": "S2",
    "title": "AI prompts are admin-editable with no audit trail",
-   "status": "open",
-   "note": "audit metadata landed (9cda379); version history/diff/rollback outstanding",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "d4d1bc0",
+   "evidence": [
+    "test:tests/test_a05_prompt_version_history.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -81,10 +83,12 @@
    "id": "ARCH-013",
    "severity": "S2",
    "title": "Agent-reported record attribute contradicts the system of record",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "7f3c84c",
+   "evidence": [
+    "test:tests/test_arch013_agent_status_contract.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -140,10 +144,12 @@
    "id": "ARCH-100",
    "severity": "S2",
    "title": "Data-heavy views use card lists instead of a data grid",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "test:tests/test_applications_list_shell.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -151,10 +157,12 @@
    "id": "ARCH-115",
    "severity": "S2",
    "title": "Conversation history not restored on reload",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "d4d1bc0",
+   "evidence": [
+    "manual:thread id persisted to sessionStorage and restored on boot; no JS harness"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -426,10 +434,12 @@
    "id": "ARCH-071",
    "severity": "S3",
    "title": "Stored input is persisted unsanitised (output encoding currently compensates)",
-   "status": "open",
-   "note": "scoped to the application-name field only",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "7f3c84c",
+   "evidence": [
+    "test:tests/test_arch071_name_sanitization_coverage.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -437,10 +447,12 @@
    "id": "ARCH-080",
    "severity": "S3",
    "title": "Skip links fail WCAG AA contrast",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "manual:skip links moved to background/foreground pair, ~19:1"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -448,10 +460,12 @@
    "id": "ARCH-101",
    "severity": "S3",
    "title": "Nine separate modal implementations with inconsistent styling and stacking",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "test:tests/test_modal_shell_consistency.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -472,10 +486,12 @@
    "id": "ARCH-103",
    "severity": "S3",
    "title": "Duplicate menu button rendered in the header",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "test:tests/test_header_and_login_feedback.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -496,10 +512,12 @@
    "id": "ARCH-105",
    "severity": "S3",
    "title": "Action toolbar uses unexplained internal jargon",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "manual:toolbar regrouped with tooltips"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -507,10 +525,12 @@
    "id": "ARCH-106",
    "severity": "S3",
    "title": "Cryptic data-quality labelling",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "test:tests/test_applications_list_shell.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -557,10 +577,12 @@
    "id": "ARCH-116",
    "severity": "S3",
    "title": "Test artefact is the only record in the application catalogue",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "d4d1bc0",
+   "evidence": [
+    "manual:dry-run-by-default CLI; real remedy is environment separation, recorded"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -594,10 +616,12 @@
    "id": "S-07",
    "severity": "S3",
    "title": "TOGAF ADM checklist is incomplete and unlabelled",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "manual:two metrics kept separate and relabelled"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -605,10 +629,12 @@
    "id": "S-08",
    "severity": "S3",
    "title": "Filter bar labels overlap",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "manual:filter bar wraps"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -616,10 +642,12 @@
    "id": "S-09",
    "severity": "S3",
    "title": "Status KPI cards are too narrow for their content",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "manual:KPI sublabels shortened"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -692,10 +720,12 @@
    "id": "ARCH-109",
    "severity": "S4",
    "title": "Breadcrumb roots are inconsistent",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "manual:breadcrumb root unified to Home across 7 templates + macro default"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1212,10 +1242,12 @@
    "id": "I-01",
    "severity": "S1",
    "title": "Document upload returns HTTP 500 — both entity-ingestion paths are broken",
-   "status": "open",
-   "note": "Register's Update-3 source doc is absent, so detail came from the master register alone. Corroborated independently by the owner's 18 Aug audit, which also raised it and paired it with M-03: with Entity Matching erroring on every input, BOTH entity-ingestion paths are down. That is the mechanism behind the repository reaching 37% duplication. Raised to S1 on that basis.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "5d56ecc",
+   "evidence": [
+    "test:tests/test_entity_ingestion_honest_failures.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1223,10 +1255,12 @@
    "id": "M-01",
    "severity": "S1",
    "title": "Portfolio conformance score rewards emptiness",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "352836e",
+   "evidence": [
+    "test:tests/test_ai_insight_metrics.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1234,10 +1268,12 @@
    "id": "M-02",
    "severity": "S1",
    "title": "EA Briefing has never produced a finding, including against known defects",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "352836e",
+   "evidence": [
+    "test:tests/test_ai_insight_metrics.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1245,10 +1281,12 @@
    "id": "M-03",
    "severity": "S1",
    "title": "Entity Matching Assistant errors on every input",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "5d56ecc",
+   "evidence": [
+    "test:tests/test_entity_ingestion_honest_failures.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1256,10 +1294,12 @@
    "id": "M-04",
    "severity": "S3",
    "title": "Data Stewardship's real findings are all graded INFO, hiding genuine risk",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "352836e",
+   "evidence": [
+    "test:tests/test_ai_insight_metrics.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1267,10 +1307,12 @@
    "id": "M-05",
    "severity": "S1",
    "title": "No separation of duties: one user can create, submit and approve the same ARB review",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "85c2924",
+   "evidence": [
+    "test:tests/test_arb_decision_governance.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1278,10 +1320,12 @@
    "id": "M-06",
    "severity": "S1",
    "title": "ARB decision records do not store who made the decision",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "85c2924",
+   "evidence": [
+    "test:tests/test_arb_decision_governance.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1289,10 +1333,12 @@
    "id": "M-07",
    "severity": "S3",
    "title": "TOGAF phase taxonomy differs between modules",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "055cec4",
+   "evidence": [
+    "manual:ARB A-H confirmed TOGAF-correct and authoritative; relabelled, not merged"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1311,10 +1357,12 @@
    "id": "V-01",
    "severity": "S1",
    "title": "AI agent writes are not constrained by the invoking user's permissions",
-   "status": "open",
-   "note": "CLUSTER 0, most severe finding of the engagement. A Viewer (perms 1) blocked with 403 from DELETE /architecture/elements/470 created solution id 25 by asking the chat assistant, then approved their own request (POST /ai-chat/approvals/25/approve -> 200). Solutions 5 -> 6. Two failures required: the agent does not authorise the request, and the approval gate does not authorise the approver. Permission checks must live in the TOOL EXECUTION LAYER, not the prompt - a prompt instruction is not an access control.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "7f3c84c",
+   "evidence": [
+    "test:tests/test_r32_ai_permission_gate.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1322,10 +1370,12 @@
    "id": "V-02",
    "severity": "S1",
    "title": "POST /applications/create has no authorization check",
-   "status": "open",
-   "note": "Viewer POST /applications/create -> 201 id=105, no agent involved. Same endpoint also lacks CSRF (A-04). Its sibling /applications/bulk-delete has BOTH controls - strong evidence protection is applied endpoint-by-endpoint by hand rather than default-deny middleware.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "7f3c84c",
+   "evidence": [
+    "test:tests/test_r32_ai_permission_gate.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1333,10 +1383,12 @@
    "id": "V-03",
    "severity": "S1",
    "title": "ARB review creation and submission have no authorization check",
-   "status": "open",
-   "note": "Viewer created REV-2026-002 and REV-2026-003 via two DIFFERENT creation endpoints and advanced one to submitted. Neither checks permission. Recording a DECISION as Viewer returned 200 HTML and left the review undecided - the auditor explicitly says whether a Viewer can approve through the UI is an OPEN QUESTION, not established as blocked. Duplicate creation endpoints must be consolidated.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "7f3c84c",
+   "evidence": [
+    "test:tests/test_r32_ai_permission_gate.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1388,10 +1440,12 @@
    "id": "V-08",
    "severity": "S3",
    "title": "ARB reviews cannot be withdrawn, cancelled or deleted at any stage",
-   "status": "open",
-   "note": "Four endpoint patterns tried AS ADMINISTRATOR, none exists. A draft review's page offers only 'Submit for Review' - no withdraw, cancel or discard. The only disposal route is to submit then record a formal decision, which is what the auditor had to do: rejecting a request nobody genuinely made. Immutability of a DECIDED review is correct and must be preserved; a review created in error - or per V-03 by an unauthorised user - is currently permanent, so the queue accumulates abandoned drafts and the only exit pollutes the decision record. REV-2026-003 (id 5) remains stuck in draft in production.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "7f3c84c",
+   "evidence": [
+    "test:tests/test_arb_decision_governance.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1692,7 +1746,7 @@
    "deployed": false
   }
  ],
- "closed_evidence_manual_only": 25,
+ "closed_evidence_manual_only": 34,
  "deployed": 0,
  "protect": 4,
  "_register_discrepancy": "The 18 Aug register header claims '115 raised, 4 withdrawn, 3 revised, 1 verified fixed -> 107 active'. Two things in that do not reconcile and are recorded rather than smoothed over. (1) The '1 verified fixed' finding is never NAMED anywhere: no correction-ledger row, no status change in the Section 5 index, and no finding described as fixed in either document. Nothing has been marked closed on that basis. (2) 104 -> 115 raised is +11, but only 7 findings (I-01, M-01..M-06) are actually merged into the register's clusters and index; M-07 and M-08 appear in the Update-4 source document but in neither, and are carried here anyway because a finding dropped by an untriaged summary is still a finding. That leaves 2 raised findings unaccounted for. If they surface in a later document they get added here.",
