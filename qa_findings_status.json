@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
- "total": 140,
+ "total": 146,
  "closed": 100,
- "open": 28,
+ "open": 34,
  "findings": [
   {
    "id": "A-06",
@@ -1762,11 +1762,78 @@
    "evidence": [],
    "reviewed": false,
    "deployed": false
+  },
+  {
+   "id": "DQ-01",
+   "severity": "S1",
+   "title": "Mobile/tablet navigation drawer does not open at all",
+   "status": "open",
+   "note": "Ship-blocking per the design audit. Distinct from ARCH-103 (a duplicate hamburger trigger, fixed in 055cec4) — this is the drawer never opening on any narrow viewport. Must be re-verified against the current branch, since 055cec4 removed one of two competing triggers and may have changed the behaviour.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "DQ-02",
+   "severity": "S1",
+   "title": "Capability Map Network View renders a blank white rectangle with no explanation",
+   "status": "open",
+   "note": "Ship-blocking. Either it fails silently or it has no empty state. Per the never-invent-data rule the correct answer is an explicit 'no relationships to draw' state, never a blank canvas that reads as broken.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "DQ-03",
+   "severity": "S2",
+   "title": "Broken empty-state layout inside the Capability Mappings table",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "DQ-04",
+   "severity": "S2",
+   "title": "AI Chat welcome screen: avatar icon overlaps the headline",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "DQ-05",
+   "severity": "S2",
+   "title": "'Settings' from the profile menu drops the user into a password form, not a settings home",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "DQ-06",
+   "severity": "S3",
+   "title": "Capability Map view-switcher tabs wrap to two rows instead of collapsing",
+   "status": "open",
+   "note": "",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
   }
  ],
  "closed_evidence_manual_only": 34,
  "deployed": 0,
  "protect": 4,
  "_register_discrepancy": "The 18 Aug register header claims '115 raised, 4 withdrawn, 3 revised, 1 verified fixed -> 107 active'. Two things in that do not reconcile and are recorded rather than smoothed over. (1) The '1 verified fixed' finding is never NAMED anywhere: no correction-ledger row, no status change in the Section 5 index, and no finding described as fixed in either document. Nothing has been marked closed on that basis. (2) 104 -> 115 raised is +11, but only 7 findings (I-01, M-01..M-06) are actually merged into the register's clusters and index; M-07 and M-08 appear in the Update-4 source document but in neither, and are carried here anyway because a finding dropped by an untriaged summary is still a finding. That leaves 2 raised findings unaccounted for. If they surface in a later document they get added here.",
- "not_a_defect": 8
+ "not_a_defect": 8,
+ "_sources": "Reconciled against all 24 QA documents supplied by the owner as of 18 Aug 2026: the six master-register revisions, the gap register (both copies identical), the two composer/admin addenda, the five QA test reports (revisions of one report), the regression specification, updates 4 through 8, and the product design QA audit. Duplicate document copies were diffed rather than assumed identical."
 }
