@@ -13,7 +13,7 @@ Source: the 17 Aug 2026 QA remediation register (160 active findings).
 | Still open | 2 |
 | Closed but unevidenced (blocks the gate) | 0 |
 | Of the fixed: verified by eye only | 47 |
-| Live in production | 132 |
+| Live in production | 146 |
 
 A finding counts as fixed only when its commit is recorded **and** it carries evidence. Work that is partly done stays open with a note — "mostly done" is open.
 
@@ -38,7 +38,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-040 | S1 | "Add Application" and "Import" buttons are inert; both data-entry paths unreachable via UI | `5c3f7fc` | manual:playwright browser run, both branches (populated/empty org) | no | yes |
 | C-01 | S1 | Composer permits an invalid ArchiMate relationship, and its validation is directionally asymmetric | `b1f6a8f` | test:tests/test_archimate_realization_targets.py | no | yes |
 | C-02 | S1 | Orphaned ArchiMate elements: deleting an application does not delete its element | `2a711a2` | test:tests/test_application_delete_cascade.py; manual:re-confirmed in production 18 Aug — admin delete of app 105 reported elements_deleted: 1 | no | yes |
-| CMP-01 | S1 | Saved view element_count desyncs from tenant-scoped elements — cross-org view loads blank canvas; no empty/error state; no save-time integrity check | `62da8d3` | test:tests/test_saved_diagram_tenancy.py | yes | no |
+| CMP-01 | S1 | Saved view element_count desyncs from tenant-scoped elements — cross-org view loads blank canvas; no empty/error state; no save-time integrity check | `62da8d3` | test:tests/test_saved_diagram_tenancy.py | yes | yes |
 | D-01 | S1 | Dashboard and API element counts drift apart after any write | `5351fe3` | test:tests/test_count_reconciliation.py | no | yes |
 | DQ-01 | S1 | Mobile/tablet navigation drawer does not open at all | `(verified)` | manual:admin_sidebar.html drives the transform via an object-map :class binding on $store.sidebar.open rather than a static class fighting the binding — the desync the audit described is closed | no | yes |
 | DQ-02 | S1 | Capability Map Network View renders a blank white rectangle with no explanation | `(verified)` | manual:capability_map/network.html networkView() has three explicit states — error with retry, honest empty state when nodeCount==0, and the graph; the blank rectangle is gone | no | yes |
@@ -81,8 +81,8 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | C-04 | S2 | "New blank diagram" is a destructive action presented as an additive one | `1d45832` | manual:code review of confirm dialog + undo push | no | yes |
 | C-10 | S2 | Destructive element endpoint accepts requests with no CSRF token | `77ea694` | test:tests/test_csrf_and_bulk_delete_security.py; test:tests/test_csrf_coverage.py; manual:prod-probe 2026-08-18 unauth token-less writes to /applications/create, /applications/bulk-delete, /arb/reviews/create, /ai-chat/approvals/999999/approve, DELETE /architecture/elements/999999 — all rejected 400 error_type:csrf before auth/business logic (bulk-delete regression confirmed closed) | yes | yes |
 | CM-01 | S2 | The capability domain is entirely empty, including its reference taxonomy | `1d45832` | test:tests/test_qa100_cm01_o02_o03.py | no | yes |
-| CMP-02 | S2 | No UI affordance to delete a saved viewpoint/diagram (backend DELETE route exists) | `9823e1f` | test:tests/test_saved_diagram_tenancy.py; test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-03 | S2 | 'Failed to log audit event' error toast on element removal from canvas | `5ea6059` | test:tests/test_composer_audit_log.py | yes | no |
+| CMP-02 | S2 | No UI affordance to delete a saved viewpoint/diagram (backend DELETE route exists) | `9823e1f` | test:tests/test_saved_diagram_tenancy.py; test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-03 | S2 | 'Failed to log audit event' error toast on element removal from canvas | `5ea6059` | test:tests/test_composer_audit_log.py | yes | yes |
 | D-02 | S2 | ApplicationInterface is classified into the Business layer | `6aaf0b5` | test:tests/test_archimate_conformance_and_oef.py | no | yes |
 | DQ-03 | S2 | Broken empty-state layout inside the Capability Mappings table | `(verified)` | manual:colspan/centred empty rows present in capability_map/index.js | no | yes |
 | DQ-04 | S2 | AI Chat welcome screen: avatar icon overlaps the headline | `(verified)` | manual:mt-4 spacing on the AI chat welcome heading; no overlap | no | yes |
@@ -136,11 +136,11 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | C-07 | S3 | Minimap overlays and obscures canvas content | `28ee96a` | manual:code review | yes | yes |
 | C-08 | S3 | "Fit to Content" does not account for overlaying panels | `28ee96a` | manual:code review against panel widths | yes | yes |
 | C-09 | S3 | Matrix view column headers are unreadable | `28ee96a` | manual:code review | yes | yes |
-| CMP-04 | S3 | Clear-canvas unsaved-changes confirm dialog renders body as [object Object] | `a483846` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-05 | S3 | Fit-to-content (Ctrl+0) does not fit content in narrow/side-panel width | `98e2afb` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-06 | S3 | Canvas will not pan by dragging empty space | `98e2afb` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-07 | S3 | Inconsistent save-state model (5 competing states incl 'Save paused') | `f35ab43` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-08 | S3 | New quick-add elements stack at identical coordinates (no auto-placement offset) | `a6c52dc` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
+| CMP-04 | S3 | Clear-canvas unsaved-changes confirm dialog renders body as [object Object] | `a483846` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-05 | S3 | Fit-to-content (Ctrl+0) does not fit content in narrow/side-panel width | `98e2afb` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-06 | S3 | Canvas will not pan by dragging empty space | `98e2afb` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-07 | S3 | Inconsistent save-state model (5 competing states incl 'Save paused') | `f35ab43` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-08 | S3 | New quick-add elements stack at identical coordinates (no auto-placement offset) | `a6c52dc` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
 | D-03 | S3 | Dashboard KPI panels mix denominators without stating scope | `5351fe3` | test:tests/test_count_reconciliation.py | no | yes |
 | DQ-06 | S3 | Capability Map view-switcher tabs wrap to two rows instead of collapsing | `8eab386` | manual:_view_switcher.html moved from flex-wrap to a single scrollable row; div balance 2/2 verified | no | yes |
 | F-04 | S3 | Two unnamed buttons on every one of 54 routes | `(ui)` | manual:verified by reading source on the current branch | no | yes |
@@ -165,12 +165,12 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-108 | S4 | Page titles are inconsistent and one is empty | `70172a9` | manual:base title fallback fixed | no | yes |
 | ARCH-109 | S4 | Breadcrumb roots are inconsistent | `055cec4` | manual:breadcrumb root unified to Home across 7 templates + macro default | no | yes |
 | ARCH-111 | S4 | No brand typeface; system font stack in use | `85780dc` | test:tests/test_arch001_memory_telemetry.py; gate:vendor-integrity; gate:air-gap | no | yes |
-| CMP-09 | S4 | Lingering 'Unsaved diagram — <timestamp>' tab persists after choosing Discard | `1f343f5` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-10 | S4 | Menu open/close animation swallows clicks on menu items | `e59b646` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-11 | S4 | Quick-Add label/behaviour mismatch — searches element TYPE names not element names | `340785a` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-12 | S4 | Narrow-width (side-panel) layout: sidebar/tab/minimap/toolbar overlap & clipping | `8f9dfbc` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
-| CMP-13 | S4 | Spurious 'Stale relationships detected' on Save with zero relationships | `9264c5f` | test:tests/test_composer_relationship_health.py | yes | no |
-| CMP-14 | S4 | Connection-port vs move-element hit target ambiguous when elements overlap | `9a5ff01` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | no |
+| CMP-09 | S4 | Lingering 'Unsaved diagram — <timestamp>' tab persists after choosing Discard | `1f343f5` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-10 | S4 | Menu open/close animation swallows clicks on menu items | `e59b646` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-11 | S4 | Quick-Add label/behaviour mismatch — searches element TYPE names not element names | `340785a` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-12 | S4 | Narrow-width (side-panel) layout: sidebar/tab/minimap/toolbar overlap & clipping | `8f9dfbc` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
+| CMP-13 | S4 | Spurious 'Stale relationships detected' on Save with zero relationships | `9264c5f` | test:tests/test_composer_relationship_health.py | yes | yes |
+| CMP-14 | S4 | Connection-port vs move-element hit target ambiguous when elements overlap | `9a5ff01` | test:tests/test_composer_frontend_static.py; manual:pending-browser-verify | yes | yes |
 | F-05 | S4 | Page title audit across all 54 routes | `(ui)` | test:tests/test_v07_f05_null_and_titles.py | no | yes |
 | ARCH-123 | S5 | Data architecture support is shallow relative to the Data Architect persona | `(s5)` | test:tests/test_tech_radar_and_data_lineage.py | no | yes |
 | ARCH-124 | S5 | No technology standards catalogue or tech radar | `(s5)` | test:tests/test_tech_radar_and_data_lineage.py | no | yes |

@@ -1919,7 +1919,7 @@
         "test:tests/test_saved_diagram_tenancy.py"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -1935,7 +1935,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -1949,7 +1949,7 @@
         "test:tests/test_composer_audit_log.py"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -1964,7 +1964,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -1979,7 +1979,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -1994,7 +1994,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -2009,7 +2009,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -2024,7 +2024,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -2039,7 +2039,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -2054,7 +2054,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -2069,7 +2069,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -2084,7 +2084,7 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -2098,7 +2098,7 @@
         "test:tests/test_composer_relationship_health.py"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     },
     {
@@ -2113,12 +2113,12 @@
         "manual:pending-browser-verify"
       ],
       "reviewed": true,
-      "deployed": false,
+      "deployed": true,
       "source": "composer-qa-2026-08-18"
     }
   ],
   "closed_evidence_manual_only": 34,
-  "deployed": 132,
+  "deployed": 146,
   "protect": 4,
   "_register_discrepancy": "The 18 Aug register header claims '115 raised, 4 withdrawn, 3 revised, 1 verified fixed -> 107 active'. Two things in that do not reconcile and are recorded rather than smoothed over. (1) The '1 verified fixed' finding is never NAMED anywhere: no correction-ledger row, no status change in the Section 5 index, and no finding described as fixed in either document. Nothing has been marked closed on that basis. (2) 104 -> 115 raised is +11, but only 7 findings (I-01, M-01..M-06) are actually merged into the register's clusters and index; M-07 and M-08 appear in the Update-4 source document but in neither, and are carried here anyway because a finding dropped by an untriaged summary is still a finding. That leaves 2 raised findings unaccounted for. If they surface in a later document they get added here.",
   "not_a_defect": 8,
