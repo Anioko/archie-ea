@@ -621,28 +621,55 @@ class RecommendationsEngineService:
                         }
                     )
 
-            # Check for vendor concentration risk
+            # Check for vendor concentration risk (ARCH-016).
+            #
+            # A concentration finding is a statement about the *distribution* of a
+            # non-empty set. It requires a real population to be meaningful, so this
+            # only fires above a minimum sample size (MIN_VENDORS_FOR_CONCENTRATION),
+            # and zero-strategic-tier is treated as missing data quality, not a risk
+            # finding — "0 of N vendors are strategic" is an onboarding/data-quality
+            # gap (nobody has tagged tiers yet), not evidence of concentration.
+            MIN_VENDORS_FOR_CONCENTRATION = 10
             vendors = VendorOrganization.query.all()
             strategic_vendors = [
                 v
                 for v in vendors
                 if getattr(v, "strategic_tier", "") in ["1", "Tier 1", "Strategic"]
             ]
-            if len(strategic_vendors) < 3 and len(vendors) > 5:
-                alerts.append(
-                    {
-                        "id": "vendor_concentration",
-                        "type": "cross_domain",
-                        "category": "risk",
-                        "title": "Vendor concentration risk detected",
-                        "description": f"Only {len(strategic_vendors)} strategic vendors identified. Consider diversifying vendor portfolio.",
-                        "priority": "medium",
-                        "priority_score": 35,
-                        "action": "Review vendor portfolio for strategic diversity",
-                        "impact": "risk",
-                        "effort": "medium",
-                    }
-                )
+            if len(vendors) >= MIN_VENDORS_FOR_CONCENTRATION:
+                if len(strategic_vendors) == 0:
+                    alerts.append(
+                        {
+                            "id": "vendor_tier_data_missing",
+                            "type": "cross_domain",
+                            "category": "data_quality",
+                            "title": "Vendor strategic tiers not set",
+                            "description": (
+                                f"None of {len(vendors)} vendors have a strategic tier assigned, "
+                                "so concentration risk cannot be assessed yet."
+                            ),
+                            "priority": "low",
+                            "priority_score": 15,
+                            "action": "Assign strategic tiers to vendors to enable concentration analysis",
+                            "impact": "data_quality",
+                            "effort": "low",
+                        }
+                    )
+                elif len(strategic_vendors) < 3:
+                    alerts.append(
+                        {
+                            "id": "vendor_concentration",
+                            "type": "cross_domain",
+                            "category": "risk",
+                            "title": "Vendor concentration risk detected",
+                            "description": f"Only {len(strategic_vendors)} strategic vendors identified. Consider diversifying vendor portfolio.",
+                            "priority": "medium",
+                            "priority_score": 35,
+                            "action": "Review vendor portfolio for strategic diversity",
+                            "impact": "risk",
+                            "effort": "medium",
+                        }
+                    )
 
             # Standard portfolio review recommendation
             recommendations.append(

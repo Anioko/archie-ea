@@ -14,9 +14,10 @@ from typing import Any, Dict, List, Optional
 
 
 from app import db
-from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+from app.models.ai_chat_crud_approval import AIChatApprovalAuditLog, AIChatCRUDApproval, ApprovalStatus
 from app.models.user import User
 from app.services.ai_data_interaction_service import AIDataInteractionService
+from app.utils.duplicate_guard import normalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,93 @@ class AIChatApprovalService:
         self.user_id = user_id
         self.logger = logging.getLogger(__name__)
 
+    # ------------------------------------------------------------------ #
+    # Audit trail (ARCH-022)                                              #
+    # ------------------------------------------------------------------ #
+
+    def _audit(
+        self,
+        approval: AIChatCRUDApproval,
+        event: str,
+        to_status: str,
+        actor_user_id: Optional[int],
+        from_status: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Append one immutable transition row. Never updates, never deletes.
+
+        Refuses (raises) rather than silently writing a system-actor row for
+        "approved" or "executed" — those two events must be traceable to a
+        human. This is what lets application code guarantee approved_by_id is
+        never null on anything that reached an executed state: the guarantee
+        is enforced here, at the one place every transition passes through,
+        not re-implemented at each call site.
+        """
+        if event in ("approved", "executed") and not actor_user_id:
+            raise ValueError(
+                f"Refusing to record '{event}' on approval {approval.id} with no actor_user_id "
+                "— execution requires a human approver."
+            )
+        db.session.add(
+            AIChatApprovalAuditLog(
+                approval_id=approval.id,
+                from_status=from_status,
+                to_status=to_status,
+                event=event,
+                actor_user_id=actor_user_id,
+                actor_type="user" if actor_user_id else "system",
+                reason=reason,
+            )
+        )
+
+    # ------------------------------------------------------------------ #
+    # Duplicate detection (ARCH-021)                                       #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _normalized_payload_key(operation_type: str, entity_type: str, payload: Dict[str, Any]) -> str:
+        """A comparison key for 'is this the same operation, worded differently'.
+
+        Reuses duplicate_guard.normalize_name (casefold + whitespace collapse)
+        field-by-field rather than a byte-for-byte JSON compare, so two payloads
+        differing only in description wording or key order still match — which
+        is exactly the ARCH-021 case (two approvals for the same operation that
+        differed only in description wording).
+        """
+        normalized_fields = {
+            k: normalize_name(v) if isinstance(v, str) else v
+            for k, v in sorted(payload.items())
+            if k not in ("description", "summary", "original_command", "rationale")
+        }
+        return f"{operation_type}:{entity_type}:{json.dumps(normalized_fields, sort_keys=True, default=str)}"
+
+    def find_duplicate_pending(
+        self, operation_type: str, entity_type: str, payload: Dict[str, Any]
+    ) -> Optional[AIChatCRUDApproval]:
+        """An existing PENDING approval for the same operation, or None."""
+        if not self.user_id:
+            return None
+        candidate_key = self._normalized_payload_key(operation_type, entity_type, payload)
+        pending = (
+            AIChatCRUDApproval.query.filter_by(
+                user_id=self.user_id,
+                operation_type=operation_type,
+                entity_type=entity_type,
+                status=ApprovalStatus.PENDING,
+            )
+            .filter(AIChatCRUDApproval.expires_at > datetime.utcnow())
+            .all()
+        )
+        for existing in pending:
+            try:
+                existing_payload = json.loads(existing.operation_payload)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            existing_key = self._normalized_payload_key(operation_type, entity_type, existing_payload)
+            if existing_key == candidate_key:
+                return existing
+        return None
+
     def create_pending_approval(
         self,
         operation_type: str,
@@ -45,6 +133,7 @@ class AIChatApprovalService:
         summary: str,
         entity_id: Optional[int] = None,
         chat_session_id: Optional[str] = None,
+        agent_turn_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a pending approval for a CRUD operation.
@@ -56,7 +145,13 @@ class AIChatApprovalService:
             operation_payload: The data payload for the operation
             summary: Human-readable summary of what will happen
             entity_id: ID of entity (for update/delete operations)
-            chat_session_id: Optional chat session identifier
+            chat_session_id: Chat session identifier — ARCH-020. Every call site in
+                this codebase now has one available (multi_domain_chat_service.py's
+                self._stable_session_id, or AgentRunner.chat_session_id) and must
+                pass it; a None here is what let approvals float free of the
+                conversation that raised them.
+            agent_turn_id: Identifier for the specific agent turn/run that raised
+                this approval, distinct from the session (a conversation, ARCH-020).
 
         Returns:
             Dict with approval details and confirmation instructions
@@ -65,6 +160,32 @@ class AIChatApprovalService:
             # ENT-042: Block anonymous CRUD — a None user_id creates unfilterable approvals.
             if not self.user_id:
                 return {"success": False, "error": "Authentication required to request CRUD operations"}
+
+            # ARCH-021: reuse an existing pending approval for the same operation
+            # rather than creating a duplicate. Surfaced to the caller/agent so it
+            # can tell the user "already pending" instead of silently re-queuing.
+            duplicate = self.find_duplicate_pending(operation_type, entity_type, operation_payload)
+            if duplicate:
+                self.logger.info(
+                    f"Duplicate pending approval detected for {operation_type} {entity_type}; "
+                    f"reusing approval {duplicate.id} instead of creating a new one"
+                )
+                return {
+                    "success": True,
+                    "approval_id": duplicate.id,
+                    "status": "pending_approval",
+                    "operation_type": duplicate.operation_type,
+                    "entity_type": duplicate.entity_type,
+                    "summary": duplicate.summary,
+                    "expires_at": duplicate.expires_at.isoformat(),
+                    "duplicate_of_existing": True,
+                    "message": (
+                        f"This is already pending as approval {duplicate.id} "
+                        f"(\"{duplicate.summary}\"). Type 'confirm {duplicate.id}' to execute, "
+                        f"or 'reject {duplicate.id}' to cancel — I won't queue it twice."
+                    ),
+                    "requires_approval": True,
+                }
 
             # Create approval record
             approval = AIChatCRUDApproval(
@@ -78,13 +199,26 @@ class AIChatApprovalService:
                 status=ApprovalStatus.PENDING,
                 expires_at=datetime.utcnow() + timedelta(minutes=self.DEFAULT_EXPIRY_MINUTES),
                 chat_session_id=chat_session_id,
+                agent_turn_id=agent_turn_id,
             )
 
             db.session.add(approval)
+            db.session.flush()
+            db.session.add(
+                AIChatApprovalAuditLog(
+                    approval_id=approval.id,
+                    from_status=None,
+                    to_status=ApprovalStatus.PENDING.value,
+                    event="created",
+                    actor_user_id=self.user_id,
+                    actor_type="user",
+                )
+            )
             db.session.commit()
 
             self.logger.info(
-                f"Created pending approval {approval.id} for {operation_type} {entity_type}"
+                f"Created pending approval {approval.id} for {operation_type} {entity_type} "
+                f"(chat_session_id={chat_session_id!r}, agent_turn_id={agent_turn_id!r})"
             )
 
             return {
@@ -151,11 +285,46 @@ class AIChatApprovalService:
                     "error": f"Approval is already {approval.status.value}",
                 }
 
-            # Check expiration
+            # Check expiration. An expiry transition is SYSTEM-initiated and must
+            # never also execute the operation (ARCH-022) — it only ever moves
+            # PENDING -> EXPIRED and returns, it never falls through to the
+            # execution dispatch below.
             if approval.is_expired():
                 approval.status = ApprovalStatus.EXPIRED
+                db.session.add(
+                    AIChatApprovalAuditLog(
+                        approval_id=approval.id,
+                        from_status=ApprovalStatus.PENDING.value,
+                        to_status=ApprovalStatus.EXPIRED.value,
+                        event="expired",
+                        actor_user_id=None,
+                        actor_type="system",
+                        reason="expires_at passed at approval attempt",
+                    )
+                )
                 db.session.commit()
                 return {"success": False, "error": "Approval has expired. Please submit a new request."}
+
+            # ARCH-022: execution is REFUSED without a resolvable human approver.
+            # approving_user_id may be explicitly None from a caller; fall back to
+            # self.user_id (already required above), but never proceed with both
+            # unset — that is precisely the "approved_by_id: null reached
+            # executed" defect.
+            effective_approver_id = approving_user_id or self.user_id
+            if not effective_approver_id:
+                db.session.add(
+                    AIChatApprovalAuditLog(
+                        approval_id=approval.id,
+                        from_status=ApprovalStatus.PENDING.value,
+                        to_status=ApprovalStatus.PENDING.value,
+                        event="execution_refused",
+                        actor_user_id=None,
+                        actor_type="system",
+                        reason="no resolvable approving user id",
+                    )
+                )
+                db.session.commit()
+                return {"success": False, "error": "Execution refused: no approving user identified"}
 
             # Parse operation payload
             try:
@@ -242,11 +411,25 @@ class AIChatApprovalService:
 
             # Update approval record
             if result.get("success"):
-                approval.approve(approving_user_id or self.user_id)
+                approval.approve(effective_approver_id)
+                self._audit(
+                    approval,
+                    event="approved",
+                    to_status=ApprovalStatus.APPROVED.value,
+                    actor_user_id=effective_approver_id,
+                    from_status=ApprovalStatus.PENDING.value,
+                )
                 approval.execute(result)
+                self._audit(
+                    approval,
+                    event="executed",
+                    to_status=ApprovalStatus.APPROVED.value,
+                    actor_user_id=effective_approver_id,
+                    from_status=ApprovalStatus.APPROVED.value,
+                )
                 db.session.commit()
 
-                self.logger.info(f"Approved and executed operation {approval_id}")
+                self.logger.info(f"Approved and executed operation {approval_id} by user {effective_approver_id}")
 
                 return {
                     "success": True,
@@ -302,6 +485,17 @@ class AIChatApprovalService:
                 }
 
             approval.reject(reason)
+            db.session.add(
+                AIChatApprovalAuditLog(
+                    approval_id=approval.id,
+                    from_status=ApprovalStatus.PENDING.value,
+                    to_status=ApprovalStatus.REJECTED.value,
+                    event="rejected",
+                    actor_user_id=self.user_id,
+                    actor_type="user",
+                    reason=reason,
+                )
+            )
             db.session.commit()
 
             self.logger.info(f"Rejected approval {approval_id}")
@@ -325,6 +519,16 @@ class AIChatApprovalService:
             List of pending approval dictionaries
         """
         approvals = AIChatCRUDApproval.get_pending_for_user(self.user_id)
+        return [approval.to_dict() for approval in approvals]
+
+    def get_pending_for_session(self, chat_session_id: Optional[str]) -> List[Dict[str, Any]]:
+        """Pending approvals for this user within one chat session (ARCH-020).
+
+        This is what lets the agent answer "is anything already pending for
+        THIS conversation" before deciding whether to queue a new approval or
+        point the user at the existing one.
+        """
+        approvals = AIChatCRUDApproval.get_pending_for_session(self.user_id, chat_session_id)
         return [approval.to_dict() for approval in approvals]
 
     def check_for_confirmation_command(self, message: str) -> Optional[Dict[str, Any]]:
@@ -377,4 +581,63 @@ class AIChatApprovalService:
                     "approval_id": int(match.group(1)),
                 }
 
+        # ARCH-020: id-less natural-language affirmations/rejections. "I approve,
+        # proceed" has no approval_id in it, so the id-anchored patterns above
+        # never match — the caller must resolve this against whatever is
+        # PENDING for the current session (see resolve_natural_confirmation).
+        affirm_phrases = [
+            r"^i approve\b", r"^approve it\b", r"^approve\b", r"^go ahead\b",
+            r"^yes,?\s*proceed\b", r"^please proceed\b", r"^confirm it\b",
+            r"^looks good,?\s*proceed\b", r"^do it\b",
+        ]
+        for pattern in affirm_phrases:
+            if re.match(pattern, message):
+                return {"action": "confirm", "approval_id": None}
+
+        deny_phrases = [r"^i reject\b", r"^reject it\b", r"^cancel it\b", r"^don'?t do (it|that)\b"]
+        for pattern in deny_phrases:
+            if re.match(pattern, message):
+                return {"action": "reject", "approval_id": None}
+
         return None
+
+    def resolve_natural_confirmation(
+        self, confirmation: Dict[str, Any], chat_session_id: Optional[str]
+    ) -> Dict[str, Any]:
+        """Resolve an id-less confirmation (ARCH-020) against this session's queue.
+
+        "I approve" carries no id, so it must never be treated as a brand-new
+        request — the observed defect was exactly that: the agent, unable to
+        see any approval state, queued a SECOND identical approval and asked
+        again. This looks up what is actually PENDING for the user's current
+        chat_session_id and acts on it, or tells the user plainly there is
+        nothing to approve rather than silently re-queuing anything.
+        """
+        if confirmation.get("approval_id") is not None:
+            if confirmation["action"] == "confirm":
+                return self.approve_and_execute(confirmation["approval_id"])
+            return self.reject_approval(confirmation["approval_id"])
+
+        pending = AIChatCRUDApproval.get_pending_for_session(self.user_id, chat_session_id)
+        if not pending:
+            return {
+                "success": False,
+                "requires_approval": False,
+                "message": (
+                    "There's nothing pending for me to approve in this conversation right now."
+                ),
+            }
+        if len(pending) > 1:
+            listing = "\n".join(f"- {p.id}: {p.summary}" for p in pending)
+            return {
+                "success": False,
+                "requires_approval": True,
+                "message": (
+                    "There's more than one pending approval in this conversation — "
+                    f"tell me which one by id:\n{listing}"
+                ),
+            }
+        target = pending[0]
+        if confirmation["action"] == "confirm":
+            return self.approve_and_execute(target.id)
+        return self.reject_approval(target.id)

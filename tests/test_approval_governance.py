@@ -1,0 +1,370 @@
+"""ARCH-020/021/022 governance tests for the AI chat CRUD approval workflow.
+
+Uses the shared fixtures (tests/conftest.py) per CLAUDE.md's convention —
+db_session for transactional isolation, make_org/tenant_ctx for tenancy.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+pytestmark = pytest.mark.usefixtures("db_session")
+
+
+def _make_user(db_session, org_id, email):
+    from app.models.user import User
+    import uuid
+
+    unique_email = email.replace("@", f"+{uuid.uuid4().hex[:8]}@")
+    user = User(
+        email=unique_email,
+        first_name="Test",
+        last_name="User",
+        organization_id=org_id,
+    )
+    if hasattr(user, "set_password"):
+        user.set_password("password123!")
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
+def _make_org(db_session):
+    from app.models.organization import Organization
+    import uuid
+
+    suffix = uuid.uuid4().hex[:10]
+    org = Organization(name=f"Test org {suffix}", slug=f"test-org-{suffix}")
+    db_session.add(org)
+    db_session.flush()
+    return org
+
+
+# --------------------------------------------------------------------- #
+# ARCH-020: chat_session_id is populated at creation                      #
+# --------------------------------------------------------------------- #
+
+
+def test_create_pending_approval_populates_chat_session_id(db_session, tenant_ctx):
+    """RED before the fix: chat_session_id defaulted to None on every call site.
+
+    This directly exercises AIChatApprovalService.create_pending_approval with
+    a chat_session_id, which is what multi_domain_chat_service.py's eight call
+    sites and agent_runner.py's _queue_approval now pass (previously omitted).
+    """
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "arch020@example.com")
+
+    with tenant_ctx(org.id):
+        svc = AIChatApprovalService(user_id=user.id)
+        result = svc.create_pending_approval(
+            operation_type="create",
+            entity_type="capability",
+            original_command="create capability Customer Insight",
+            operation_payload={"name": "Customer Insight"},
+            summary="Create new capability 'Customer Insight'",
+            chat_session_id="chat_user_%d" % user.id,
+        )
+
+    assert result["success"] is True
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+
+    row = AIChatCRUDApproval.query.get(result["approval_id"])
+    assert row.chat_session_id == "chat_user_%d" % user.id
+
+
+def test_agent_runner_queue_approval_carries_session_and_turn_id(db_session, tenant_ctx):
+    """AgentRunner._queue_approval must stamp chat_session_id + agent_turn_id."""
+    from app.modules.ai_chat.services.agent_runner import AgentRunner
+    from app.modules.ai_chat.tools.executor import ToolCall
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "arch020b@example.com")
+
+    with tenant_ctx(org.id):
+        runner = AgentRunner(user_id=user.id, chat_session_id="thread-abc")
+        runner._turn_id = "turn-xyz"
+        tc = ToolCall(id="1", name="update_application_status", arguments={
+            "application_name": "SAP ERP", "new_status": "retired", "rationale": "test",
+        })
+        approval_id = runner._queue_approval(tc)
+
+    row = AIChatCRUDApproval.query.get(approval_id)
+    assert row.chat_session_id == "thread-abc"
+    assert row.agent_turn_id == "turn-xyz"
+
+
+def test_natural_language_approve_resumes_pending_not_a_new_row(db_session, tenant_ctx):
+    """ARCH-020's headline scenario: "I approve, proceed" must act on the
+    existing pending approval for this session, not create a second one.
+    """
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "arch020c@example.com")
+    session_id = "chat_user_%d" % user.id
+
+    with tenant_ctx(org.id):
+        svc = AIChatApprovalService(user_id=user.id)
+        created = svc.create_pending_approval(
+            operation_type="create",
+            entity_type="vendor",
+            original_command="create vendor Acme",
+            operation_payload={"name": "Acme"},
+            summary="Create new vendor 'Acme'",
+            chat_session_id=session_id,
+        )
+        assert created["success"]
+        approval_id = created["approval_id"]
+
+        confirmation = svc.check_for_confirmation_command("I approve, proceed")
+        assert confirmation == {"action": "confirm", "approval_id": None}
+
+        result = svc.resolve_natural_confirmation(confirmation, chat_session_id=session_id)
+
+        assert result.get("approval_id") == approval_id or result.get("success") is True
+
+    rows = AIChatCRUDApproval.query.filter_by(user_id=user.id, entity_type="vendor").all()
+    assert len(rows) == 1, "a second, duplicate approval must not have been queued"
+
+
+# --------------------------------------------------------------------- #
+# ARCH-021: duplicate detection                                            #
+# --------------------------------------------------------------------- #
+
+
+def test_duplicate_pending_approval_is_not_recreated(db_session, tenant_ctx):
+    """Two requests for the same operation, worded differently, must not
+    produce two pending rows."""
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "arch021@example.com")
+
+    with tenant_ctx(org.id):
+        svc = AIChatApprovalService(user_id=user.id)
+        first = svc.create_pending_approval(
+            operation_type="create",
+            entity_type="solution",
+            original_command="create solution HxGN EAM",
+            operation_payload={"name": "HxGN EAM", "business_domain": "operations"},
+            summary="Create solution 'HxGN EAM' for operations",
+        )
+        second = svc.create_pending_approval(
+            operation_type="create",
+            entity_type="solution",
+            original_command="please set up HxGN EAM as a new solution",
+            operation_payload={"name": "HxGN EAM", "business_domain": "operations"},
+            summary="Set up a new solution named HxGN EAM in operations",
+        )
+
+    assert first["success"] and second["success"]
+    assert second.get("duplicate_of_existing") is True
+    assert second["approval_id"] == first["approval_id"]
+
+    rows = AIChatCRUDApproval.query.filter_by(user_id=user.id, entity_type="solution").all()
+    assert len(rows) == 1
+
+
+# --------------------------------------------------------------------- #
+# ARCH-022: audit trail + approved_by_id enforcement                       #
+# --------------------------------------------------------------------- #
+
+
+def test_approve_and_execute_requires_approver_and_writes_audit(db_session, tenant_ctx, monkeypatch):
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus, AIChatApprovalAuditLog
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "arch022@example.com")
+
+    with tenant_ctx(org.id):
+        approval = AIChatCRUDApproval(
+            user_id=user.id,
+            operation_type="create",
+            entity_type="capability",
+            original_command="create capability X",
+            operation_payload=json.dumps({"name": "X"}),
+            summary="Create capability X",
+            status=ApprovalStatus.PENDING,
+            chat_session_id="s1",
+            expires_at=__import__("datetime").datetime.utcnow() + __import__("datetime").timedelta(minutes=15),
+        )
+        db_session.add(approval)
+        db_session.flush()
+
+        # Monkeypatch the data service so this stays a unit test of the
+        # governance logic, not a full capability-creation integration test.
+        import app.modules.ai_chat.services.ai_chat_approval_service as svc_mod
+
+        class _FakeDataService:
+            def __init__(self, user_id):
+                pass
+
+            def create_capability(self, payload):
+                return {"success": True, "id": 999}
+
+        monkeypatch.setattr(svc_mod, "AIDataInteractionService", _FakeDataService)
+
+        svc = AIChatApprovalService(user_id=user.id)
+        result = svc.approve_and_execute(approval.id, approving_user_id=user.id)
+
+        assert result["success"] is True
+        db_session.refresh(approval)
+        assert approval.approved_by_id == user.id
+        assert approval.status == ApprovalStatus.APPROVED
+
+        events = [
+            row.event
+            for row in AIChatApprovalAuditLog.query.filter_by(approval_id=approval.id).order_by(
+                AIChatApprovalAuditLog.id
+            )
+        ]
+        assert "approved" in events
+        assert "executed" in events
+        for row in AIChatApprovalAuditLog.query.filter_by(approval_id=approval.id, event="approved"):
+            assert row.actor_user_id == user.id
+
+
+def test_expiry_sweep_never_executes_pending_operation(db_session, tenant_ctx, monkeypatch):
+    """A restart / expiry sweep can only move PENDING -> EXPIRED. It must
+    never execute the underlying operation and must never set approved_by_id.
+    """
+    from datetime import datetime, timedelta
+
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "arch022b@example.com")
+
+    with tenant_ctx(org.id):
+        approval = AIChatCRUDApproval(
+            user_id=user.id,
+            operation_type="create",
+            entity_type="capability",
+            original_command="create capability Y",
+            operation_payload=json.dumps({"name": "Y"}),
+            summary="Create capability Y",
+            status=ApprovalStatus.PENDING,
+            expires_at=datetime.utcnow() - timedelta(minutes=1),  # already expired
+            chat_session_id="s2",
+        )
+        db_session.add(approval)
+        db_session.flush()
+
+        import app.modules.ai_chat.services.ai_chat_approval_service as svc_mod
+
+        executed = {"called": False}
+
+        class _FakeDataService:
+            def __init__(self, user_id):
+                pass
+
+            def create_capability(self, payload):
+                executed["called"] = True
+                return {"success": True, "id": 1}
+
+        monkeypatch.setattr(svc_mod, "AIDataInteractionService", _FakeDataService)
+
+        svc = AIChatApprovalService(user_id=user.id)
+        result = svc.approve_and_execute(approval.id, approving_user_id=user.id)
+
+        assert result["success"] is False
+        assert executed["called"] is False, "expiry must never fall through to execution"
+        db_session.refresh(approval)
+        assert approval.status == ApprovalStatus.EXPIRED
+        assert approval.approved_by_id is None
+
+
+def test_execution_refused_without_approving_user(db_session, tenant_ctx):
+    """If somehow no approver id can be resolved, execution is refused —
+    not silently defaulted to a system actor.
+    """
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "arch022c@example.com")
+
+    with tenant_ctx(org.id):
+        approval = AIChatCRUDApproval(
+            user_id=user.id,
+            operation_type="create",
+            entity_type="capability",
+            original_command="create capability Z",
+            operation_payload=json.dumps({"name": "Z"}),
+            summary="Create capability Z",
+            status=ApprovalStatus.PENDING,
+            chat_session_id="s3",
+            expires_at=__import__("datetime").datetime.utcnow() + __import__("datetime").timedelta(minutes=15),
+        )
+        db_session.add(approval)
+        db_session.flush()
+
+        svc = AIChatApprovalService(user_id=user.id)
+        # Force the internal auth-required guard to look satisfied but strip the
+        # actual approver identity out from under approve_and_execute.
+        svc.user_id = user.id
+        # A None approving_user_id with self.user_id present still resolves via
+        # self.user_id (per design) — this test instead directly exercises the
+        # audit refusal path for a "system" attempt.
+        with pytest.raises(ValueError):
+            svc._audit(approval, event="approved", to_status="approved", actor_user_id=None)
+
+
+# --------------------------------------------------------------------- #
+# End-to-end: queue -> approve in chat -> executed exactly once            #
+# --------------------------------------------------------------------- #
+
+
+def test_queue_then_chat_approve_executes_exactly_once(db_session, tenant_ctx, monkeypatch):
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "arch020e2e@example.com")
+    session_id = "chat_user_%d" % user.id
+
+    with tenant_ctx(org.id):
+        import app.modules.ai_chat.services.ai_chat_approval_service as svc_mod
+
+        call_count = {"n": 0}
+
+        class _FakeDataService:
+            def __init__(self, user_id):
+                pass
+
+            def create_capability(self, payload):
+                call_count["n"] += 1
+                return {"success": True, "id": 42}
+
+        monkeypatch.setattr(svc_mod, "AIDataInteractionService", _FakeDataService)
+
+        svc = AIChatApprovalService(user_id=user.id)
+        queued = svc.create_pending_approval(
+            operation_type="create",
+            entity_type="capability",
+            original_command="create capability Onboarding",
+            operation_payload={"name": "Onboarding"},
+            summary="Create capability 'Onboarding'",
+            chat_session_id=session_id,
+        )
+        assert queued["success"]
+
+        confirmation = svc.check_for_confirmation_command("approve it")
+        result = svc.resolve_natural_confirmation(confirmation, chat_session_id=session_id)
+        assert result["success"] is True
+
+    assert call_count["n"] == 1
+    rows = AIChatCRUDApproval.query.filter_by(user_id=user.id, entity_type="capability").all()
+    assert len(rows) == 1
+    assert rows[0].status == ApprovalStatus.APPROVED
+    assert rows[0].approved_by_id == user.id

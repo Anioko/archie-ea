@@ -15,7 +15,14 @@ def _approval_service():
 @unified_ai_chat_bp.route("/approvals/pending", methods=["GET"])
 @login_required
 def pending_approvals():
-    approvals = _approval_service().get_pending_approvals()
+    # ARCH-020: optional chat_session_id narrows to "what's pending in THIS
+    # conversation" — what the agent needs to answer "did I already queue
+    # this" instead of only seeing the whole user's flat pending list.
+    chat_session_id = request.args.get("chat_session_id")
+    if chat_session_id:
+        approvals = _approval_service().get_pending_for_session(chat_session_id)
+    else:
+        approvals = _approval_service().get_pending_approvals()
     return jsonify({"success": True, "approvals": approvals})
 
 

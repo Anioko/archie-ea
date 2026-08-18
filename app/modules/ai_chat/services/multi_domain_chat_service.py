@@ -26,6 +26,8 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from flask import g
+
 # ENT-038: session-persistent element context — keyed by stable_session_id (str)
 _SESSION_ELEMENT_CONTEXT: Dict[str, Dict] = {}
 
@@ -1357,12 +1359,15 @@ class MultiDomainChatService:
         # First check if this is a confirmation/rejection command
         confirmation = approval_service.check_for_confirmation_command(message)
         if confirmation:
-            if confirmation["action"] == "confirm":
-                # Execute the approved operation
-                return approval_service.approve_and_execute(confirmation["approval_id"])
-            elif confirmation["action"] == "reject":
-                # Reject the pending operation
-                return approval_service.reject_approval(confirmation["approval_id"])
+            # ARCH-020: resolve against this session's pending queue rather than
+            # only handling the numeric-id form. "I approve, proceed" has no id
+            # in it — without this, that phrase fell through everything below and
+            # the CRUD-intent patterns matched nothing either, so nothing
+            # happened and (via a second call from the caller) a duplicate
+            # approval could get queued instead of the pending one being acted on.
+            return approval_service.resolve_natural_confirmation(
+                confirmation, chat_session_id=self._stable_session_id
+            )
         
         # Detect CRUD intent from natural language
         message_lower = message.lower().strip()
@@ -1404,6 +1409,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
         
         # Check for application creation patterns
@@ -1443,6 +1449,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
         
         # Check for vendor creation patterns
@@ -1480,6 +1487,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
         
         # AIC-303: Check for work package creation patterns
@@ -1532,6 +1540,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
 
         # AIC-303: Check for capability-to-application linking patterns
@@ -1557,6 +1566,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
             elif not apps:
                 return {
@@ -1664,6 +1674,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
 
         # Check for capability mapping / application-to-capability linking
@@ -1697,6 +1708,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
             elif any(pattern in message_lower for pattern in _MAPPING_TRIGGERS):
                 # Triggered mapping intent but couldn't resolve entities from DB
@@ -2036,6 +2048,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload={},
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
 
         return None
@@ -5181,21 +5194,57 @@ Use enterprise architecture terminology appropriate for this role."""
             total_caps = BusinessCapability.query.count()
             total_vendors = VendorOrganization.query.count()
             try:
-                mapped = db.session.execute(  # tenant-filtered: scoped via parent FK (application_capability_mapping)
-                    text("SELECT COUNT(DISTINCT business_capability_id) FROM application_capability_mapping")  # tenant-filtered
+                # ARCH-015: this WAS a raw db.session.execute("SELECT COUNT(DISTINCT
+                # business_capability_id) FROM application_capability_mapping") with a
+                # comment claiming it was "tenant-filtered: scoped via parent FK" — it
+                # was not. Raw SQL bypasses the ORM do_orm_execute tenant-isolation
+                # event entirely (see CLAUDE.md, "Multi-tenancy is implicit"), so this
+                # counted mapped capabilities across EVERY organisation while
+                # total_caps above (an ORM query) was correctly scoped to the current
+                # org. That is exactly how mapped_capabilities: 50 coexisted with
+                # total_capabilities: 0 — the numerator and denominator were computed
+                # over different tenants. application_capability_mapping carries its
+                # own organization_id (app/models/application_capability.py), so add
+                # the predicate explicitly rather than relying on a comment.
+                mapped = db.session.execute(
+                    text(
+                        "SELECT COUNT(DISTINCT business_capability_id) "
+                        "FROM application_capability_mapping "
+                        "WHERE organization_id = :org_id"
+                    ),
+                    {"org_id": getattr(g, "current_org_id", None)},
                 ).scalar() or 0
             except Exception as e:
                 logger.debug(f"Mapped capabilities count skipped: {e}")
-                mapped = 0
+                mapped = None
 
-            ctx["portfolio_summary"] = {
+            # Never inject a summary that is internally impossible (more mapped
+            # capabilities than capabilities that exist, in particular) — per
+            # CLAUDE.md's "never invent data" rule, a figure that fails a basic
+            # sanity check must be omitted (None → the model is told it is
+            # unavailable), never handed to the model as if it were trustworthy.
+            summary = {
                 "total_applications": total_apps,
                 "total_capabilities": total_caps,
                 "total_vendors": total_vendors,
-                "mapped_capabilities": int(mapped),
-                "capability_gaps": max(0, total_caps - int(mapped)),
-                "coverage_percent": round((int(mapped) / total_caps * 100) if total_caps else 0, 1),
             }
+            if mapped is None or mapped > total_caps or mapped < 0:
+                if mapped is not None:
+                    logger.warning(
+                        "portfolio_summary: mapped_capabilities (%s) exceeds "
+                        "total_capabilities (%s) after tenant-scoping the mapping "
+                        "count — refusing to inject an inconsistent figure.",
+                        mapped, total_caps,
+                    )
+                summary["mapped_capabilities"] = None
+                summary["capability_gaps"] = None
+                summary["coverage_percent"] = None
+            else:
+                summary["mapped_capabilities"] = int(mapped)
+                summary["capability_gaps"] = max(0, total_caps - int(mapped))
+                summary["coverage_percent"] = round((int(mapped) / total_caps * 100) if total_caps else 0, 1)
+
+            ctx["portfolio_summary"] = summary
 
             # Name some of the estate, not just count it.
             #

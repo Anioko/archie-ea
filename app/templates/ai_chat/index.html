@@ -998,6 +998,19 @@ x-cloak>
                             Expires: <span x-text="formatDate(item.expires_at)"></span>
                         </p>
 
+                        <!-- ARCH-023: raw payload behind a disclosure, never as the primary
+                             text. summary/x-text above is now always a human-readable sentence
+                             built from a per-operation template (agent_runner.py
+                             _approval_summary / AIChatApprovalService) — this <details> is the
+                             one place the underlying arguments are still visible, for anyone
+                             who wants to verify exactly what will execute. -->
+                        <details class="text-xs" x-show="item.operation_payload">
+                            <summary class="cursor-pointer text-muted-foreground hover:text-foreground select-none">
+                                View technical detail
+                            </summary>
+                            <pre class="mt-1 whitespace-pre-wrap break-all rounded-md bg-muted/50 border border-border px-2 py-1.5 text-[11px] text-muted-foreground" x-text="JSON.stringify(item.operation_payload, null, 2)"></pre>
+                        </details>
+
                         {# $store.approvals.*, not the bare facade getter: the Alpine.data facade
    exposes busyIds via a getter that returns the store's nested object, and
    the :disabled effect bound through it rendered disabled="disabled" on every

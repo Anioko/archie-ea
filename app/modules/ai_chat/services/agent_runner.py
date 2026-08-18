@@ -97,10 +97,17 @@ class AgentRunner:
         user_id: int,
         yield_event: Optional[Callable] = None,
         auto_execute: bool = False,
+        chat_session_id: Optional[str] = None,
     ):
         self.user_id = user_id
         self._emit = yield_event or (lambda _e: None)
         self.auto_execute = bool(auto_execute)
+        # ARCH-020: the conversation this run belongs to. Threaded onto every
+        # AIChatCRUDApproval this run queues (_queue_approval) so an approval
+        # is never orphaned from the chat that raised it. A unique id per call
+        # to run() identifies the specific turn within that session.
+        self.chat_session_id = chat_session_id
+        self._turn_id: Optional[str] = None
 
     # ------------------------------------------------------------------ #
     # Public entry point                                                   #
@@ -352,6 +359,12 @@ class AgentRunner:
         from app.modules.ai_chat.services.llm_service_impl import LLMService
         from app.modules.ai_chat.tools.executor import ToolCall, ToolExecutor
         from app.modules.ai_chat.tools.registry import TOOL_SCHEMAS, TOOL_SCHEMA_BY_NAME
+
+        # ARCH-020: a fresh id per turn, independent of chat_session_id (the
+        # conversation). Any approval queued during this call to run() carries
+        # this id so it can be traced back to the specific run that raised it.
+        import uuid as _uuid
+        self._turn_id = str(_uuid.uuid4())
 
         # Build system prompt with live domain context
         system_prompt = self._build_system_prompt(domain, context, persona, user_message=user_message)
@@ -934,13 +947,42 @@ class AgentRunner:
             summary=self._approval_summary(tc),
             status=ApprovalStatus.PENDING,
             expires_at=datetime.utcnow() + timedelta(hours=24),
+            chat_session_id=self.chat_session_id,
+            agent_turn_id=self._turn_id,
         )
         db.session.add(record)
         db.session.commit()
         return record.id
 
-    @staticmethod
-    def _approval_summary(tc: "ToolCall") -> str:
+    # Human-readable business-term label for a tool name, used by the generic
+    # fallback in _approval_summary below (ARCH-023). Kept separate from the
+    # per-tool templates so a new tool without a bespoke template still reads
+    # as English instead of a Python identifier.
+    _TOOL_LABELS = {
+        "create_capability": "create a capability",
+        "create_application": "create an application",
+        "create_vendor": "create a vendor",
+        "create_solution": "create a solution",
+        "update_application_status": "change an application's status",
+        "submit_for_arb_review": "submit a solution for ARB review",
+        "generate_blueprint_narrative": "generate blueprint narrative text",
+        "delete_capability": "delete a capability",
+        "delete_application": "delete an application",
+    }
+
+    @classmethod
+    def _approval_summary(cls, tc: "ToolCall") -> str:
+        """A business-readable summary — never Python/JSON literal syntax (ARCH-023).
+
+        Every operation type gets either a bespoke sentence template (below) or
+        a generic-but-still-English fallback built from a human label plus a
+        plain "key: value" listing of the arguments — never an f-string dump of
+        the raw dict/args, which previously rendered verbatim as e.g.
+        "Execute create_solution with args: {'name': 'HxGN EAM', ...}". The raw
+        payload is still available to the caller via operation_payload for a
+        "view technical detail" disclosure in the UI; it is simply never the
+        primary summary text.
+        """
         summaries = {
             "update_application_status": (
                 "Change application '{application_name}' status to '{new_status}'. Reason: {rationale}"
@@ -953,11 +995,20 @@ class AgentRunner:
                 "This will overwrite any existing text in that section."
             ),
         }
-        template = summaries.get(tc.name, f"Execute {tc.name} with args: {tc.arguments}")
-        try:
-            return template.format(**tc.arguments)
-        except KeyError:
-            return template
+        template = summaries.get(tc.name)
+        if template:
+            try:
+                return template.format(**tc.arguments)
+            except KeyError:
+                pass  # fall through to the generic builder below
+
+        label = cls._TOOL_LABELS.get(tc.name, tc.name.replace("_", " "))
+        if not tc.arguments:
+            return f"Ask the assistant to {label}."
+        details = "; ".join(
+            f"{str(k).replace('_', ' ')}: {v}" for k, v in tc.arguments.items()
+        )
+        return f"Ask the assistant to {label} — {details}."
 
     # ------------------------------------------------------------------ #
     # Fallbacks                                                           #

@@ -506,6 +506,12 @@ def send_message():
         runner = AgentRunner(
             user_id=current_user.id,
             auto_execute=flask_session.get("agent_auto_execute", False),
+            # ARCH-020: prefer the real thread id when the client sent one;
+            # otherwise fall back to the same per-user stable id
+            # MultiDomainChatService uses (self._stable_session_id there), so
+            # any approval this run queues is still traceable to *a* session
+            # instead of chat_session_id=null.
+            chat_session_id=incoming_thread_id or f"chat_user_{current_user.id}",
         )
         agent_result = runner.run(
             user_message=user_message,
@@ -819,6 +825,11 @@ def send_message_stream():
                     user_id=user_id_for_thread,
                     yield_event=emit,
                     auto_execute=auto_execute_for_thread,
+                    # ARCH-020: same reasoning as the non-streaming send_message
+                    # path above — real thread id when available, else the
+                    # per-user stable fallback, so approvals from this run are
+                    # never orphaned with chat_session_id=null.
+                    chat_session_id=incoming_thread_id or f"chat_user_{user_id_for_thread}",
                 )
                 result = runner.run(
                     user_message=user_message,
@@ -1422,70 +1433,50 @@ def approve_tool_action(approval_id: int):
     submit_for_arb_review) instead of executing them immediately.  The frontend shows
     the user a confirmation dialog; clicking Confirm calls this endpoint.
     """
-    from datetime import datetime
-    from app import db
-    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
-    from app.modules.ai_chat.tools.executor import ToolCall, ToolExecutor
-    import json
+    # ARCH-022: this used to hand-roll status/approved_at updates directly
+    # (bypassing AIChatApprovalService entirely) and never set approved_by_id
+    # -- the exact defect: an approval left PENDING, executed, with
+    # approved_by_id: null, because the code path that actually flipped the
+    # row's status never wrote who did it. approve_and_execute's operation_type
+    # == "tool_use" branch already dispatches through ToolExecutor with the
+    # same ToolCall shape this route built by hand, sets approved_by_id, and
+    # writes the audit trail — delegate to it instead of duplicating (and
+    # subtly diverging from) that logic.
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval
 
     record = AIChatCRUDApproval.query.get_or_404(approval_id)
-
-    # Ownership check
     if record.user_id != current_user.id:
         return jsonify({"error": "Access denied"}), 403
 
-    if record.status != ApprovalStatus.PENDING:
-        return jsonify({"error": f"Approval is already {record.status.value}"}), 409
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
 
-    # Expiry check — mirrors the legacy path (AIChatApprovalService.approve_and_execute,
-    # ai_chat_approval_service.py). Without this, a PENDING record whose
-    # expires_at (set 24h out by AgentRunner._queue_approval) has passed would
-    # still execute on a stale Confirm click.
-    if record.is_expired():
-        record.status = ApprovalStatus.EXPIRED
-        db.session.commit()
-        return jsonify({"error": "Approval has expired. Please submit a new request."}), 409
-
-    # Execute
-    executor = ToolExecutor(current_user.id)
-    try:
-        args = json.loads(record.operation_payload)
-    except Exception:
-        args = {}
-
-    tc = ToolCall(id=str(approval_id), name=record.entity_type, arguments=args)
-    result = executor.execute(tc)
-
-    record.status = ApprovalStatus.APPROVED if result["success"] else ApprovalStatus.REJECTED
-    record.approved_at = datetime.utcnow()
-    db.session.commit()
-
+    result = AIChatApprovalService(current_user.id).approve_and_execute(approval_id, current_user.id)
+    status_code = 200 if result.get("success") else (409 if "expired" in (result.get("error") or "").lower() or "already" in (result.get("error") or "").lower() else 400)
     return jsonify({
-        "success": result["success"],
+        "success": result.get("success", False),
         "message": result.get("message", ""),
         "result": result.get("result"),
         "error": result.get("error"),
-    })
+    }), status_code
 
 
 @unified_ai_chat_bp.route("/tools/reject/<int:approval_id>", methods=["POST"])
 @login_required
 def reject_tool_action(approval_id: int):
     """Cancel a queued 'approve' tier tool action."""
-    from datetime import datetime
-    from app import db
-    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
 
     record = AIChatCRUDApproval.query.get_or_404(approval_id)
     if record.user_id != current_user.id:
         return jsonify({"error": "Access denied"}), 403
-    if record.status != ApprovalStatus.PENDING:
-        return jsonify({"error": f"Approval is already {record.status.value}"}), 409
 
-    record.status = ApprovalStatus.REJECTED
-    record.approved_at = datetime.utcnow()
-    db.session.commit()
-    return jsonify({"success": True, "message": "Action cancelled."})
+    result = AIChatApprovalService(current_user.id).reject_approval(approval_id)
+    status_code = 200 if result.get("success") else 409
+    return jsonify({
+        "success": result.get("success", False),
+        "message": result.get("message", "Action cancelled." if result.get("success") else result.get("error")),
+    }), status_code
 
 
 @unified_ai_chat_bp.route("/session/auto-execute", methods=["GET"])
