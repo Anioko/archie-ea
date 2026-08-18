@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
- "total": 106,
+ "total": 111,
  "closed": 64,
- "open": 38,
+ "open": 42,
  "findings": [
   {
    "id": "A-06",
@@ -60,7 +60,7 @@
    "severity": "S2",
    "title": "Only three roles exist, with no platform/tenant separation",
    "status": "open",
-   "note": "roles landed (2e3bb7f); unbounded AI-agent permissions outstanding",
+   "note": "roles landed (2e3bb7f). CORRECTION: I previously filed the remaining 'unbounded AI-agent permissions' half as a product decision. It is not - R-32 proved it is a complete RBAC bypass. Tracked as V-01 and being fixed, not deferred.",
    "fix_commit": "",
    "evidence": [],
    "reviewed": false,
@@ -741,10 +741,10 @@
   },
   {
    "id": "A-01",
-   "severity": "S1",
+   "severity": "S2",
    "title": "A tenant administrator can enumerate other tenants' organizations and members",
    "status": "closed",
-   "note": "2e3bb7f",
+   "note": "Severity reduced S1 -> S2 by the 18 Aug R-32 re-test: as a Viewer all cross-tenant reads return 403, so exploitation requires Administrator. Closed in 2e3bb7f (13 routes audited, 0 vulnerable). Residual risk tracked as V-05.",
    "fix_commit": "2e3bb7f",
    "evidence": [
     "test:tests/test_admin_org_member_idor.py"
@@ -1305,11 +1305,66 @@
    "evidence": [],
    "reviewed": false,
    "deployed": false
+  },
+  {
+   "id": "V-01",
+   "severity": "S1",
+   "title": "AI agent writes are not constrained by the invoking user's permissions",
+   "status": "open",
+   "note": "CLUSTER 0, most severe finding of the engagement. A Viewer (perms 1) blocked with 403 from DELETE /architecture/elements/470 created solution id 25 by asking the chat assistant, then approved their own request (POST /ai-chat/approvals/25/approve -> 200). Solutions 5 -> 6. Two failures required: the agent does not authorise the request, and the approval gate does not authorise the approver. Permission checks must live in the TOOL EXECUTION LAYER, not the prompt - a prompt instruction is not an access control.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "V-02",
+   "severity": "S1",
+   "title": "POST /applications/create has no authorization check",
+   "status": "open",
+   "note": "Viewer POST /applications/create -> 201 id=105, no agent involved. Same endpoint also lacks CSRF (A-04). Its sibling /applications/bulk-delete has BOTH controls - strong evidence protection is applied endpoint-by-endpoint by hand rather than default-deny middleware.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "V-03",
+   "severity": "S1",
+   "title": "ARB review creation and submission have no authorization check",
+   "status": "open",
+   "note": "Viewer created REV-2026-002 and REV-2026-003 via two DIFFERENT creation endpoints and advanced one to submitted. Neither checks permission. Recording a DECISION as Viewer returned 200 HTML and left the review undecided - the auditor explicitly says whether a Viewer can approve through the UI is an OPEN QUESTION, not established as blocked. Duplicate creation endpoints must be consolidated.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "V-04",
+   "severity": "--",
+   "title": "Authorization that DOES work - lock it in with tests",
+   "status": "protect",
+   "note": "Verified correct as Viewer and must not regress: all /admin/* routes, DELETE and POST /architecture/elements, /applications/bulk-delete, and cross-tenant reads all correctly 403.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "V-05",
+   "severity": "S2",
+   "title": "Cross-tenant enumeration requires Administrator, not any user",
+   "status": "open",
+   "note": "Re-test of A-01 as Viewer: all cross-tenant reads return 403. Still real - no platform/tenant admin split, sequential ids, and every human account is an Administrator.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
   }
  ],
  "closed_evidence_manual_only": 25,
  "deployed": 0,
- "protect": 1,
+ "protect": 2,
  "_register_discrepancy": "The 18 Aug register header claims '115 raised, 4 withdrawn, 3 revised, 1 verified fixed -> 107 active'. Two things in that do not reconcile and are recorded rather than smoothed over. (1) The '1 verified fixed' finding is never NAMED anywhere: no correction-ledger row, no status change in the Section 5 index, and no finding described as fixed in either document. Nothing has been marked closed on that basis. (2) 104 -> 115 raised is +11, but only 7 findings (I-01, M-01..M-06) are actually merged into the register's clusters and index; M-07 and M-08 appear in the Update-4 source document but in neither, and are carried here anyway because a finding dropped by an untriaged summary is still a finding. That leaves 2 raised findings unaccounted for. If they surface in a later document they get added here.",
  "not_a_defect": 3
 }
