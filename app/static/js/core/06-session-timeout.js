@@ -3,12 +3,13 @@
  *
  * Requires: core/00-namespace.js through core/05-error.js, ui/modal.js
  *
- * Shows a warning modal 30 minutes before the 8-hour session expires.
- * Offers "Extend Session" (pings /health to refresh cookie) and "Log Out".
- * Auto-redirects to login after 5 minutes if the user does not respond.
+ * Courtesy warning ahead of the SERVER-enforced idle timeout
+ * (app/_bootstrap/session_policy.py). The server is authoritative; this file
+ * exists so the user sees it coming instead of losing unsaved work silently.
  *
- * Timer resets on every Platform.fetch call (piggybacks on the global fetch
- * wrapper) and on explicit user interaction via extend.
+ * Timer resets on genuine activity (keydown / click / scroll / touchstart /
+ * visibilitychange) and on every fetch, and the idle window is read from
+ * <body data-session-idle-seconds> so the two halves cannot drift apart.
  *
  * Registered as Platform.sessionTimeout with reset / extend / logout methods.
  */
@@ -24,15 +25,38 @@
         : { debug: function(){}, warn: function(){}, error: function(){} };
 
     // --- Configuration (all values in milliseconds) ---
-    const SESSION_DURATION   = 8 * 60 * 60 * 1000;   // 8 hours
-    const WARNING_BEFORE     = 30 * 60 * 1000;        // 30 minutes before expiry
-    const AUTO_LOGOUT_GRACE  = 5 * 60 * 1000;         // 5 minutes after warning
-    const LOGIN_URL          = '/account/login';
-    const HEALTH_URL         = '/health';
+    // F-07: the timer below is an IDLE timer, not an absolute-lifetime timer.
+    // It previously counted down 8 hours from page load, reset on nothing, and
+    // so implemented no timeout of any kind. The authoritative control is the
+    // server's before_request check in app/_bootstrap/session_policy.py; this
+    // is a courtesy warning that must agree with it, so the window is read
+    // from the value the server rendered into <body data-session-idle-seconds>
+    // and only falls back to the default if that attribute is missing.
+    const DEFAULT_IDLE_MS    = 30 * 60 * 1000;        // matches SESSION_IDLE_TIMEOUT
 
-    // Derived
-    const WARNING_DELAY      = SESSION_DURATION - WARNING_BEFORE; // 7.5 hours
-    const LOGOUT_DELAY       = WARNING_DELAY + AUTO_LOGOUT_GRACE; // 7 hours 35 min
+    function readIdleWindow() {
+        try {
+            const el = global.document.body;
+            const raw = el && el.getAttribute('data-session-idle-seconds');
+            const secs = raw ? parseInt(raw, 10) : NaN;
+            if (!isNaN(secs) && secs > 0) return secs * 1000;
+        } catch (e) {
+            log.debug('idle window attribute unreadable; using default');
+        }
+        return DEFAULT_IDLE_MS;
+    }
+
+    let IDLE_WINDOW          = DEFAULT_IDLE_MS;
+    const WARNING_BEFORE     = 2 * 60 * 1000;         // warn 2 min before the server cuts it
+    const AUTO_LOGOUT_GRACE  = 2 * 60 * 1000;         // then stop pretending it is alive
+    const LOGIN_URL          = '/account/login';
+    const KEEPALIVE_URL      = '/account/session/keepalive';
+    // Ignore bursts of activity: at most one keep-alive ping per interval.
+    const ACTIVITY_THROTTLE  = 60 * 1000;
+
+    // Derived, recomputed whenever the idle window is (re)read.
+    let WARNING_DELAY        = Math.max(IDLE_WINDOW - WARNING_BEFORE, 5000);
+    let LOGOUT_DELAY         = IDLE_WINDOW + AUTO_LOGOUT_GRACE;
 
     // --- State ---
     let warningTimerId  = null;
@@ -69,7 +93,10 @@
     function autoLogout() {
         clearAllTimers();
         dismissWarning();
-        global.location.href = LOGIN_URL + '?timeout=1';
+        // By now the server has already invalidated the session (its window is
+        // the shorter of the two), so surface the same non-dismissable prompt
+        // a failed write would, rather than a bare redirect.
+        forceReauth('Your session expired after a period of inactivity.');
     }
 
     function dismissWarning() {
@@ -86,9 +113,48 @@
     function resetTimer() {
         clearAllTimers();
         dismissWarning();
+        IDLE_WINDOW   = readIdleWindow();
+        WARNING_DELAY = Math.max(IDLE_WINDOW - WARNING_BEFORE, 5000);
+        LOGOUT_DELAY  = IDLE_WINDOW + AUTO_LOGOUT_GRACE;
         warningTimerId = setTimeout(showWarning, WARNING_DELAY);
         logoutTimerId  = setTimeout(autoLogout,  LOGOUT_DELAY);
-        log.debug('timer reset');
+        log.debug('idle timer reset');
+    }
+
+    // --- F-07: genuine-activity listeners ---
+    // The audited version of this file registered none, so nothing ever reset
+    // the countdown and nothing ever expired on inactivity. These reset the
+    // client timer on real interaction; they do NOT extend the server session
+    // by themselves — the server's stamp only moves when a request is made,
+    // which is why keep-alive below is throttled rather than fired per event.
+    let lastActivityPing = 0;
+
+    function onActivity() {
+        const now = Date.now();
+        resetTimer();
+        if (now - lastActivityPing < ACTIVITY_THROTTLE) return;
+        lastActivityPing = now;
+        // A same-origin GET is enough to move the server-side last-activity
+        // stamp; /health is exempt from the server check precisely so that a
+        // background poll cannot keep an abandoned tab alive, so ping the
+        // login page's cheap sibling instead only when the user really acted.
+        try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', KEEPALIVE_URL, true);
+            xhr.send();
+        } catch (e) {
+            log.debug('keepalive ping failed (non-fatal)');
+        }
+    }
+
+    function registerActivityListeners() {
+        const doc = global.document;
+        ['keydown', 'click', 'scroll', 'touchstart'].forEach(function (evt) {
+            doc.addEventListener(evt, onActivity, { passive: true });
+        });
+        doc.addEventListener('visibilitychange', function () {
+            if (!doc.hidden) onActivity();
+        });
     }
 
     function showWarning() {
@@ -162,7 +228,11 @@
 
     function extendSession() {
         const xhr = new XMLHttpRequest();
-        xhr.open('GET', HEALTH_URL, true);
+        // KEEPALIVE_URL, not /health: /health is deliberately exempt from the
+        // server-side idle check, so pinging it would reset this timer while
+        // the server carried on counting down — the client would then report a
+        // live session that the next real request finds expired.
+        xhr.open('GET', KEEPALIVE_URL, true);
         xhr.onload = function () {
             dismissWarning();
             resetTimer();
@@ -261,6 +331,7 @@
     // --- Initialization ---
     function init() {
         hookFetch();
+        registerActivityListeners();
         resetTimer();
         log.debug('initialized');
     }

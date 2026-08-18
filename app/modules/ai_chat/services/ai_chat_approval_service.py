@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from app import db
 from app.models.ai_chat_crud_approval import AIChatApprovalAuditLog, AIChatCRUDApproval, ApprovalStatus
+from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.services.ai_data_interaction_service import AIDataInteractionService
 from app.utils.duplicate_guard import normalize_name
@@ -118,6 +119,39 @@ class AIChatApprovalService:
                 reason=reason,
             )
         )
+
+        # F-01: /admin/audit-log (soc2_audit_log) only ever queried AuditLog,
+        # so these governance transitions were recorded but invisible on the
+        # compliance page even though they were captured in full detail here.
+        # Mirror the decision-relevant events onto AuditLog too — richer
+        # detail stays in AIChatApprovalAuditLog, this is just so "who
+        # approved this change" has one answerable page.
+        if event in ("approved", "rejected", "executed", "expired"):
+            try:
+                org_id = None
+                if actor_user_id:
+                    _actor = User.query.get(actor_user_id)
+                    org_id = getattr(_actor, "organization_id", None)
+                AuditLog.log(
+                    action=event[:20],
+                    table_name=f"ai_chat_approval:{approval.entity_type}",
+                    record_id=approval.entity_id,
+                    organization_id=org_id,
+                    user_id=actor_user_id,
+                    new_value={
+                        "approval_id": approval.id,
+                        "operation_type": approval.operation_type,
+                        "entity_type": approval.entity_type,
+                        "from_status": from_status,
+                        "to_status": to_status,
+                        "reason": reason,
+                    },
+                )
+            except Exception:
+                logger.warning(
+                    "AuditLog mirror-write failed for approval %s event %s (non-blocking)",
+                    approval.id, event, exc_info=True,
+                )
 
     # ------------------------------------------------------------------ #
     # Duplicate detection (ARCH-021)                                       #
@@ -333,12 +367,23 @@ class AIChatApprovalService:
             # ARB self_approval_refused pattern) and raised as exceptions
             # rather than silently returned, so no future call site can add a
             # new entry point that skips them.
-            if approval.user_id is not None and approval.user_id == self.user_id:
+            # The approver is whoever is ACTUALLY approving — approving_user_id
+            # when supplied, else the service's user. Resolved BEFORE the check,
+            # because comparing against self.user_id alone got it wrong in both
+            # directions: it refused a legitimate approver when the service
+            # happened to be constructed with the requester's id, and — far
+            # worse — it ALLOWED a requester to approve their own request
+            # whenever the service held some third party's id, since the
+            # comparison never looked at approving_user_id at all. A
+            # separation-of-duties check that reads the wrong identity is not a
+            # check.
+            effective_approver_id = approving_user_id or self.user_id
+            if approval.user_id is not None and approval.user_id == effective_approver_id:
                 self._audit(
                     approval,
                     event="self_approval_refused",
                     to_status=approval.status.value,
-                    actor_user_id=self.user_id,
+                    actor_user_id=effective_approver_id,
                     from_status=approval.status.value,
                     reason="approver is the same user who requested the operation",
                 )
@@ -379,16 +424,13 @@ class AIChatApprovalService:
             # execution dispatch below.
             if approval.is_expired():
                 approval.status = ApprovalStatus.EXPIRED
-                db.session.add(
-                    AIChatApprovalAuditLog(
-                        approval_id=approval.id,
-                        from_status=ApprovalStatus.PENDING.value,
-                        to_status=ApprovalStatus.EXPIRED.value,
-                        event="expired",
-                        actor_user_id=None,
-                        actor_type="system",
-                        reason="expires_at passed at approval attempt",
-                    )
+                self._audit(
+                    approval,
+                    event="expired",
+                    to_status=ApprovalStatus.EXPIRED.value,
+                    actor_user_id=None,
+                    from_status=ApprovalStatus.PENDING.value,
+                    reason="expires_at passed at approval attempt",
                 )
                 db.session.commit()
                 return {"success": False, "error": "Approval has expired. Please submit a new request."}
@@ -398,7 +440,6 @@ class AIChatApprovalService:
             # self.user_id (already required above), but never proceed with both
             # unset — that is precisely the "approved_by_id: null reached
             # executed" defect.
-            effective_approver_id = approving_user_id or self.user_id
             if not effective_approver_id:
                 db.session.add(
                     AIChatApprovalAuditLog(
@@ -579,16 +620,13 @@ class AIChatApprovalService:
                 }
 
             approval.reject(reason)
-            db.session.add(
-                AIChatApprovalAuditLog(
-                    approval_id=approval.id,
-                    from_status=ApprovalStatus.PENDING.value,
-                    to_status=ApprovalStatus.REJECTED.value,
-                    event="rejected",
-                    actor_user_id=self.user_id,
-                    actor_type="user",
-                    reason=reason,
-                )
+            self._audit(
+                approval,
+                event="rejected",
+                to_status=ApprovalStatus.REJECTED.value,
+                actor_user_id=self.user_id,
+                from_status=ApprovalStatus.PENDING.value,
+                reason=reason,
             )
             db.session.commit()
 

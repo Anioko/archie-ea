@@ -206,7 +206,8 @@
             <th class="w-8 px-4 py-3">
               <input type="checkbox" class="rounded border-input"
                 @change="toggleAllGaps($event)"
-                :checked="selectedGapIds.length === filteredGaps.length && filteredGaps.length > 0">
+                :checked="selectedGapIds.length === filteredGaps.length && filteredGaps.length > 0"
+                aria-label="Select all work packages">
             </th>
             <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Work Package</th>
             <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</th>
@@ -241,7 +242,8 @@
               <td class="px-4 py-3">
                 <input type="checkbox" class="rounded border-input"
                   :value="wp.gap_id"
-                  x-model="selectedGapIds">
+                  x-model="selectedGapIds"
+                  :aria-label="'Select ' + (wp.name || 'work package')">
               </td>
               <td class="px-4 py-3 align-top">
                 <p class="font-medium text-foreground" x-text="wp.name"></p>

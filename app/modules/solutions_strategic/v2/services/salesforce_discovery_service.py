@@ -29,6 +29,10 @@ from datetime import datetime
 import requests
 
 from app import db
+from app.utils.ssrf_guard import (
+    BlockedOutboundURL,
+    validate_salesforce_instance_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +65,13 @@ class SalesforceDiscoveryService:
 
     @classmethod
     def save_settings(cls, instance_url: str, client_id: str, client_secret: str) -> None:
+        """Persist credentials. Raises BlockedOutboundURL for a rejected host.
+
+        F-08: validating on save as well as on fetch means the administrator is
+        told immediately, rather than the URL being stored and only silently
+        refused later at discovery time.
+        """
+        validate_salesforce_instance_url(instance_url)
         from app.models.models import APISettings
         row = APISettings.query.filter_by(
             provider=cls.PROVIDER, key_label=cls.KEY_LABEL
@@ -80,10 +91,27 @@ class SalesforceDiscoveryService:
 
     @staticmethod
     def _get_token(instance_url: str, client_id: str, client_secret: str) -> "str | None":
-        """OAuth2 client-credentials token. Returns None on failure (logged)."""
+        """OAuth2 client-credentials token. Returns None on failure (logged).
+
+        F-08: ``instance_url`` arrives verbatim from the admin integration form
+        and is concatenated into the request URL below, so before this fix an
+        administrator could point the server at any host reachable from it,
+        including link-local metadata endpoints, and read the outcome from the
+        status code this method logs. ``validate_salesforce_instance_url``
+        constrains the host to Salesforce's own suffixes AND requires every
+        resolved address to be publicly routable. ``allow_redirects=False``
+        closes the other half: a 302 from a permitted host into an internal
+        range would otherwise be followed silently.
+        """
+        try:
+            validate_salesforce_instance_url(instance_url)
+        except BlockedOutboundURL as exc:
+            logger.warning("Salesforce instance URL rejected: %s", exc)
+            return None
         try:
             resp = requests.post(
                 f"{instance_url.rstrip('/')}/services/oauth2/token",
+                allow_redirects=False,
                 data={
                     "grant_type": "client_credentials",
                     "client_id": client_id,
@@ -121,6 +149,7 @@ class SalesforceDiscoveryService:
                 f"{instance_url.rstrip('/')}/services/data/{cls.API_VERSION}/limits",
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=15,
+                allow_redirects=False,  # F-08: never follow a hop off the allow-listed host
             )
             if resp.status_code == 200:
                 return {"status": "ok", "instance_url": instance_url}
@@ -131,6 +160,13 @@ class SalesforceDiscoveryService:
     @classmethod
     def _query(cls, instance_url: str, token: str, soql: str, tooling: bool = False) -> list:
         """Run a SOQL query with pagination + 429 backoff. Returns records ([] on failure)."""
+        # F-08: _query is reachable with a caller-supplied instance_url, so it
+        # re-validates rather than trusting that _get_token already did.
+        try:
+            validate_salesforce_instance_url(instance_url)
+        except BlockedOutboundURL as exc:
+            logger.warning("Salesforce instance URL rejected in query: %s", exc)
+            return []
         base = instance_url.rstrip("/")
         path = f"/services/data/{cls.API_VERSION}/{'tooling/' if tooling else ''}query"
         url = f"{base}{path}"
@@ -140,7 +176,13 @@ class SalesforceDiscoveryService:
         while url:
             for attempt in range(cls.MAX_RETRIES):
                 try:
-                    resp = requests.get(url, headers=headers, params=params, timeout=30)
+                    resp = requests.get(
+                        url,
+                        headers=headers,
+                        params=params,
+                        timeout=30,
+                        allow_redirects=False,  # F-08
+                    )
                     if resp.status_code == 429:
                         time.sleep(2 ** attempt)
                         continue

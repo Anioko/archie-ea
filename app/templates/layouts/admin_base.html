@@ -74,7 +74,7 @@
     <!-- Page-specific Alpine registrations (after Platform, before Alpine defer fires) -->
     {% block extra_head_js %}{% endblock %}
 </head>
-<body class="h-full bg-background antialiased">
+<body class="h-full bg-background antialiased"{% if session_idle_timeout_seconds %} data-session-idle-seconds="{{ session_idle_timeout_seconds }}"{% endif %}>
     {% set resolved_page_guide_context = page_guide_context | default({'enabled': false, 'supported': false}, true) %}
     <!-- Skip navigation links for keyboard users -->
     <a href="#main-content"

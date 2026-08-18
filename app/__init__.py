@@ -71,6 +71,17 @@ def create_app(config=None):
     from app.middleware.audit_middleware import install_audit_logging
     install_audit_logging(app)
 
+    # 1f. F-06: application-wide request throttling. Installed before
+    # blueprints so the global default limits cover every route registered
+    # afterwards.
+    from app._bootstrap.rate_limiting import init_rate_limiting
+    init_rate_limiting(app)
+
+    # 1g. F-07: server-authoritative session idle timeout, separate from the
+    # absolute PERMANENT_SESSION_LIFETIME cap.
+    from app._bootstrap.session_policy import init_session_policy
+    init_session_policy(app)
+
     # 2. Security headers, guardrails, batch config
     init_security(app)
 

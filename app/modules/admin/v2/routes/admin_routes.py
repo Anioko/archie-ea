@@ -5461,7 +5461,14 @@ def salesforce_save_credentials():
     client_secret = (data.get("client_secret") or "").strip()
     if not instance_url or not client_id:
         return jsonify({"status": "error", "error": "instance_url and client_id are required"}), 400
-    SalesforceDiscoveryService.save_settings(instance_url, client_id, client_secret)
+    # F-08: the form's type="url" is browser-side only and this endpoint is
+    # callable directly, so the host allow-list is enforced here.
+    from app.utils.ssrf_guard import BlockedOutboundURL
+
+    try:
+        SalesforceDiscoveryService.save_settings(instance_url, client_id, client_secret)
+    except BlockedOutboundURL as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 400
     return jsonify({"success": True, "status": "ok", "message": "Credentials saved."})
 
 
@@ -5480,6 +5487,14 @@ def salesforce_test_connection():
     client_secret = (data.get("client_secret") or "").strip()
     if not all([instance_url, client_id, client_secret]):
         return jsonify({"status": "error", "error": "instance_url, client_id, and client_secret are required"}), 400
+    # F-08: reject a non-Salesforce / non-public host before any fetch is made,
+    # so the response cannot be used as a reachability oracle for internal hosts.
+    from app.utils.ssrf_guard import BlockedOutboundURL, validate_salesforce_instance_url
+
+    try:
+        validate_salesforce_instance_url(instance_url)
+    except BlockedOutboundURL as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
     result = SalesforceDiscoveryService.test_connection(instance_url, client_id, client_secret)
     return jsonify(result), 200 if result.get("status") == "ok" else 400
 

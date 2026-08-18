@@ -117,6 +117,13 @@ class PowerPlatformCoeService:
         Returns {"status": "ok", "environment": env_url} or
                 {"status": "error", "message": ...}.
         """
+        # F-08 note: env_url is NOT an SSRF sink. It is stored, echoed back in
+        # the response below, and never fetched — every outbound call in this
+        # class targets the fixed POWER_APPS_ENDPOINT constant, and the only
+        # other URL followed is @odata.nextLink returned by Microsoft's own
+        # API. If a future change ever fetches env_url directly, it must go
+        # through app.utils.ssrf_guard.validate_outbound_url with a
+        # *.dynamics.com / *.crm*.dynamics.com allow-list first.
         token = cls._get_token(tenant_id, client_id, client_secret)
         if not token:
             return {

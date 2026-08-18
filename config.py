@@ -95,6 +95,14 @@ class Config:
 
     # Session security — 8-hour session lifetime, 30-day remember-me cookie
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+    # F-07: the 8 hours above is an ABSOLUTE cap; it is not an idle timeout and
+    # never was. SESSION_IDLE_TIMEOUT is the separate, server-enforced limit on
+    # how long a session may sit unused before it is torn down
+    # (app/_bootstrap/session_policy.py). 30 minutes is the enterprise-typical
+    # value; set to 0 to disable.
+    SESSION_IDLE_TIMEOUT = timedelta(
+        minutes=int(os.environ.get("SESSION_IDLE_TIMEOUT_MINUTES", "30") or 30)
+    )
     REMEMBER_COOKIE_DURATION = timedelta(days=30)
     SESSION_REFRESH_EACH_REQUEST = True  # FAR-012: Ensure session is refreshed on every request
     REMEMBER_COOKIE_REFRESH_EACH_REQUEST = True  # FAR-012: Refresh remember-me cookie on activity

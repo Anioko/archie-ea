@@ -260,7 +260,17 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # Implementation & Migration links added in the same pass (Gap Analysis, Work
 # Packages) land in the enterprise_architect My-work zone only, which has
 # ample headroom, so they do not move this number.
-SIDEBAR_LINK_BUDGET = 26
+#
+# S-11 remainder (18 Aug 2026, QA Update 6/8): raised 26 -> 27. Ten modules
+# were reachable only from /modules/, never from a sidebar zone. Nine of them
+# landed in EA / business_architect / portfolio_manager My-work zones, all of
+# which had headroom; the tenth ("Batch Import") landed in platform_admin's
+# admin zone, the only zone that role shares, moving its zone-only total
+# 23 -> 24 and rendered total 26 -> 27. The remaining three (my-applications
+# list/health/roadmap) were nested as in-page tabs under the existing
+# "My Applications" sidebar link rather than given zone entries of their own
+# — see app/modules/my_applications/templates/my_applications/*.html.
+SIDEBAR_LINK_BUDGET = 27
 
 _ZONE_TITLES = {
     "home": "Home",
@@ -331,6 +341,9 @@ _ADMIN_LINKS = [
     # both existed, worked, and had no sidebar link of any kind).
     _link("Salesforce Integration", "admin.salesforce_integration", "cloud"),
     _link("Power Platform", "admin.power_platform_integration", "grid-3x3"),
+    # S-11 remainder (18 Aug 2026): batch import was directory-only, never in
+    # a sidebar zone of any role.
+    _link("Batch Import", "batch_import_view.dashboard", "upload"),
 ]
 
 # Per-role "My work" — the persona's primary surface, 3-6 items.
@@ -362,6 +375,12 @@ _MY_WORK_LINKS = {
         # over /enterprise/api/work-packages.
         _link("Gap Analysis", "enterprise.gap_analysis", "git-compare"),
         _link("Work Packages", "enterprise.work_packages", "package"),
+        # S-11 remainder (18 Aug 2026, QA Update 6/8): these three were
+        # directory-only — reachable from /modules/ but from no sidebar zone
+        # of any role. All three are EA-shaped working pages.
+        _link("Impact Analysis", "strategic.impact_analysis", "git-branch"),
+        _link("Capability Health", "strategic.capability_health", "heart-pulse"),
+        _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
     ],
     ROLE_CTO: [
         _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
@@ -371,6 +390,9 @@ _MY_WORK_LINKS = {
     ROLE_BUSINESS_ARCHITECT: [
         _link("Capability Map", "capability_map.index", "map"),
         _link("Value Streams", "value_stream.index", "waypoints"),
+        # S-11 remainder: directory-only, never in a sidebar zone.
+        _link("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
+        _link("Capability Frameworks", "maturity_management.frameworks_overview", "layers"),
     ],
     ROLE_PORTFOLIO_MANAGER: [
         # S-11 / ARCH-122: /portfolio/ is a complete programme-management
@@ -383,6 +405,8 @@ _MY_WORK_LINKS = {
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
         _link("Vendors", "unified_applications.vendors", "building"),
         _link("Applications", "unified_applications.application_list", "list"),
+        # S-11 remainder: directory-only, never in a sidebar zone.
+        _link("Consolidation List", "consolidation_list.dashboard", "layers"),
     ],
     ROLE_PROCUREMENT: [
         # Fix round: Overview, Licences and Compliance were reachable from

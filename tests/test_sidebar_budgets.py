@@ -53,7 +53,7 @@ def _all_links(role):
     return links
 
 
-def test_sidebar_link_budget_is_26():
+def test_sidebar_link_budget_is_27():
     """Raised 25 -> 26 in the Task 3 fix round (coordinator review of the
     sidebar rewrite): platform_admin's two review-mandated admin-zone links
     (Salesforce Integration, Power Platform) alone render exactly 25 visible
@@ -70,7 +70,7 @@ def test_sidebar_link_budget_is_26():
     S-11 (18 Aug 2026): raised 25 -> 26 for the one governance link added to
     surface Architecture Decisions, which platform_admin also renders.
     """
-    assert SIDEBAR_LINK_BUDGET == 26
+    assert SIDEBAR_LINK_BUDGET == 27
 
 
 def test_every_role_is_defined():
@@ -156,6 +156,10 @@ def test_enterprise_architect_my_work_membership():
         # from nowhere in the sidebar.
         "Gap Analysis",
         "Work Packages",
+        # S-11 remainder: directory-only, never in a sidebar zone.
+        "Impact Analysis",
+        "Capability Health",
+        "Duplicate Detection",
     ]
 
 
@@ -164,6 +168,29 @@ def test_cto_my_work_membership():
         "Health Scorecard",
         "Rationalization",
         "Investment Analysis",
+    ]
+
+
+def test_business_architect_my_work_membership():
+    """S-11 remainder: Stakeholder Map and Capability Frameworks were real,
+    working pages reachable only from /modules/, never from any sidebar
+    zone."""
+    assert _my_work_labels(ROLE_BUSINESS_ARCHITECT) == [
+        "Capability Map",
+        "Value Streams",
+        "Stakeholder Map",
+        "Capability Frameworks",
+    ]
+
+
+def test_portfolio_manager_my_work_membership():
+    """S-11 remainder: Consolidation List was directory-only."""
+    assert _my_work_labels(ROLE_PORTFOLIO_MANAGER) == [
+        "Portfolio",
+        "Rationalization",
+        "Vendors",
+        "Applications",
+        "Consolidation List",
     ]
 
 
@@ -222,8 +249,12 @@ def test_platform_admin_zone_link_total_is_pinned():
     (arch_decisions.list_decisions), which platform_admin shares; the two
     Implementation & Migration links added in the same pass are
     enterprise_architect-only and do not appear here.
+
+    S-11 remainder (18 Aug 2026): 23 -> 24. "Batch Import" added to the admin
+    zone — the only S-11-remainder module platform_admin shares; the other
+    nine landed in EA / business_architect / portfolio_manager My-work zones.
     """
-    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 23
+    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 24
 
 
 def test_get_sidebar_zones_resolves_role():

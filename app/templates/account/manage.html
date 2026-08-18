@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% block title %}Account Settings{% endblock %}
 {% from 'components/page_header.html' import page_header %}
 {% import 'macros/form_macros.html' as f %}
 {% import 'macros/check_password.html' as check with context %}
@@ -26,7 +27,7 @@
             <div class="space-y-4">
                 <div class="flex justify-between items-start py-3 border-b border-border">
                     <dt class="font-medium text-sm text-muted-foreground">Full name</dt>
-                    <dd class="text-sm">{{ '%s %s' % (user.first_name, user.last_name) }}</dd>
+                    <dd class="text-sm">{{ user.full_name() }}</dd>
                 </div>
                 <div class="flex justify-between items-start py-3 border-b border-border">
                     <dt class="font-medium text-sm text-muted-foreground">Email address</dt>
@@ -50,25 +51,44 @@
         <div class="p-6">
             <h3 class="text-sm font-semibold mb-4">Security Information</h3>
             <div class="space-y-4">
+                {# V-06: sourced from the audit log (soc2_audit_log), the same store
+                   /admin/audit-log reads, so the two cannot disagree. An em dash means
+                   "no prior login recorded" — never a fabricated placeholder. #}
                 <div class="flex justify-between items-start py-3 border-b border-border">
                     <dt class="font-medium text-sm text-muted-foreground">Last login</dt>
                     <dd class="text-sm">
-                        {% set login_time = user.last_login_at|default(none, true) %}
-                        {% if login_time %}
-                            {{ login_time.strftime('%d %b %Y at %H:%M UTC') }}
+                        {% if last_login_entry and last_login_entry.created_at %}
+                            {{ last_login_entry.created_at.strftime('%d %b %Y at %H:%M UTC') }}
                         {% else %}
-                            <span class="text-muted-foreground">Last login tracking not available</span>
+                            <span class="text-muted-foreground" title="No previous sign-in is recorded for this account yet.">&mdash;</span>
                         {% endif %}
                     </dd>
                 </div>
-                <div class="flex justify-between items-start py-3">
+                <div class="flex justify-between items-start py-3 border-b border-border">
                     <dt class="font-medium text-sm text-muted-foreground">Last login IP</dt>
                     <dd class="text-sm">
-                        {% set login_ip = user.last_login_ip|default(none, true) %}
-                        {% if login_ip %}
-                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{{ login_ip }}</code>
+                        {% if last_login_entry and last_login_entry.ip_address %}
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{{ last_login_entry.ip_address }}</code>
                         {% else %}
-                            <span class="text-muted-foreground">IP tracking not available</span>
+                            <span class="text-muted-foreground" title="No previous sign-in is recorded for this account yet.">&mdash;</span>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="py-3">
+                    <dt class="font-medium text-sm text-muted-foreground mb-2">Recent sign-in activity</dt>
+                    <dd class="text-sm">
+                        {% if recent_auth_events %}
+                            <ul class="space-y-1">
+                                {% for ev in recent_auth_events %}
+                                    <li class="flex items-center justify-between gap-3">
+                                        <span class="font-mono text-xs">{{ ev.created_at.strftime('%d %b %H:%M') if ev.created_at else '—' }}</span>
+                                        <span class="text-xs {% if ev.action == 'login_failed' %}text-destructive{% else %}text-muted-foreground{% endif %}">{{ ev.action|replace('_', ' ') }}</span>
+                                        <span class="font-mono text-xs text-muted-foreground">{{ ev.ip_address or '—' }}</span>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <span class="text-muted-foreground">&mdash;</span>
                         {% endif %}
                     </dd>
                 </div>

@@ -26,6 +26,16 @@ def _make_user(db_session, org_id, email):
     )
     if hasattr(user, "set_password"):
         user.set_password("password123!")
+    # V-01: writes and approvals now require Permission.GENERAL, enforced in
+    # the tool-execution layer and on the approver. A user created with no role
+    # holds no permissions and is correctly refused — which is right for a
+    # Viewer, and wrong for a fixture standing in for an ordinary architect.
+    # Give the fixture user a real role so these tests exercise the authorised
+    # path; the refusal path has its own dedicated tests.
+    from app.models.user import Role
+    role = Role.query.filter_by(name="Architect").first() or Role.query.filter_by(name="Administrator").first()
+    if role is not None:
+        user.role_id = role.id
     db_session.add(user)
     db_session.flush()
     return user
@@ -128,7 +138,12 @@ def test_natural_language_approve_resumes_pending_not_a_new_row(db_session, tena
 
         result = svc.resolve_natural_confirmation(confirmation, chat_session_id=session_id)
 
-        assert result.get("approval_id") == approval_id or result.get("success") is True
+        # It must RESOLVE to the row already pending for this session rather
+        # than queueing another. Whether it then executes is a separate
+        # question: since M-05/V-01 the requester cannot approve their own
+        # request, so "I approve" from the requester is correctly refused —
+        # what ARCH-020 forbids is silently creating a SECOND approval.
+        assert result.get("approval_id") == approval_id or result.get("success") is False
 
     rows = AIChatCRUDApproval.query.filter_by(user_id=user.id, entity_type="vendor").all()
     assert len(rows) == 1, "a second, duplicate approval must not have been queued"
@@ -184,6 +199,11 @@ def test_approve_and_execute_requires_approver_and_writes_audit(db_session, tena
 
     org = _make_org(db_session)
     user = _make_user(db_session, org.id, "arch022@example.com")
+    # M-05/V-01: the requester is now excluded from deciding their own
+    # request, so a second identity is required to approve. This test
+    # previously had the requester approve themselves — it encoded the
+    # insecure contract, and the security fix correctly broke it.
+    approver = _make_user(db_session, org.id, "arch022-approver@example.com")
 
     with tenant_ctx(org.id):
         approval = AIChatCRUDApproval(
@@ -214,11 +234,12 @@ def test_approve_and_execute_requires_approver_and_writes_audit(db_session, tena
         monkeypatch.setattr(svc_mod, "AIDataInteractionService", _FakeDataService)
 
         svc = AIChatApprovalService(user_id=user.id)
-        result = svc.approve_and_execute(approval.id, approving_user_id=user.id)
+        result = svc.approve_and_execute(approval.id, approving_user_id=approver.id)
 
+        print("APPROVE RESULT:", result)
         assert result["success"] is True
         db_session.refresh(approval)
-        assert approval.approved_by_id == user.id
+        assert approval.approved_by_id == approver.id
         assert approval.status == ApprovalStatus.APPROVED
 
         events = [
@@ -230,7 +251,101 @@ def test_approve_and_execute_requires_approver_and_writes_audit(db_session, tena
         assert "approved" in events
         assert "executed" in events
         for row in AIChatApprovalAuditLog.query.filter_by(approval_id=approval.id, event="approved"):
-            assert row.actor_user_id == user.id
+            assert row.actor_user_id == approver.id
+
+
+def test_approve_and_execute_mirrors_into_compliance_audit_log(db_session, tenant_ctx, monkeypatch):
+    """F-01: /admin/audit-log (soc2_audit_log / AuditLog) queries only AuditLog,
+    so an approval executed via AI chat must ALSO land there — not just in
+    AIChatApprovalAuditLog, which the compliance viewer never reads.
+
+    RED before the fix: AuditLog had zero rows for this approval_id/org, so
+    the compliance page could not answer "who approved this change" even
+    though AIChatApprovalAuditLog had the full detail.
+    """
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.models.audit_log import AuditLog
+
+    org = _make_org(db_session)
+    requester = _make_user(db_session, org.id, "f01-mirror-req@example.com")
+    approver = _make_user(db_session, org.id, "f01-mirror-appr@example.com")
+
+    with tenant_ctx(org.id):
+        approval = AIChatCRUDApproval(
+            user_id=requester.id,
+            operation_type="create",
+            entity_type="capability",
+            original_command="create capability Y",
+            operation_payload=json.dumps({"name": "Y"}),
+            summary="Create capability Y",
+            status=ApprovalStatus.PENDING,
+            chat_session_id="s-f01",
+            expires_at=__import__("datetime").datetime.utcnow() + __import__("datetime").timedelta(minutes=15),
+        )
+        db_session.add(approval)
+        db_session.flush()
+
+        import app.modules.ai_chat.services.ai_chat_approval_service as svc_mod
+
+        class _FakeDataService:
+            def __init__(self, user_id):
+                pass
+
+            def create_capability(self, payload):
+                return {"success": True, "id": 998}
+
+        monkeypatch.setattr(svc_mod, "AIDataInteractionService", _FakeDataService)
+
+        svc = AIChatApprovalService(user_id=approver.id)
+        result = svc.approve_and_execute(approval.id, approving_user_id=approver.id)
+        assert result["success"] is True
+
+        mirrored = AuditLog.query.filter_by(
+            organization_id=org.id, user_id=approver.id
+        ).filter(AuditLog.table_name.like("ai_chat_approval:%")).all()
+        mirrored_actions = {row.action for row in mirrored}
+        assert "approved" in mirrored_actions
+        assert "executed" in mirrored_actions
+        for row in mirrored:
+            assert row.user_id == approver.id
+            assert row.table_name == "ai_chat_approval:capability"
+
+
+def test_reject_approval_mirrors_into_compliance_audit_log(db_session, tenant_ctx):
+    """Same as above for the reject path, which used to write
+    AIChatApprovalAuditLog directly rather than through _audit()."""
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.models.audit_log import AuditLog
+
+    org = _make_org(db_session)
+    user = _make_user(db_session, org.id, "f01-reject@example.com")
+
+    with tenant_ctx(org.id):
+        approval = AIChatCRUDApproval(
+            user_id=user.id,
+            operation_type="create",
+            entity_type="vendor",
+            original_command="create vendor Z",
+            operation_payload=json.dumps({"name": "Z"}),
+            summary="Create vendor Z",
+            status=ApprovalStatus.PENDING,
+            chat_session_id="s-f01-reject",
+            expires_at=__import__("datetime").datetime.utcnow() + __import__("datetime").timedelta(minutes=15),
+        )
+        db_session.add(approval)
+        db_session.flush()
+
+        svc = AIChatApprovalService(user_id=user.id)
+        result = svc.reject_approval(approval.id, reason="not needed")
+        assert result["success"] is True
+
+        row = AuditLog.query.filter_by(
+            organization_id=org.id, user_id=user.id, action="rejected"
+        ).filter(AuditLog.table_name.like("ai_chat_approval:%")).first()
+        assert row is not None
+        assert row.table_name == "ai_chat_approval:vendor"
 
 
 def test_expiry_sweep_never_executes_pending_operation(db_session, tenant_ctx, monkeypatch):
@@ -244,6 +359,10 @@ def test_expiry_sweep_never_executes_pending_operation(db_session, tenant_ctx, m
 
     org = _make_org(db_session)
     user = _make_user(db_session, org.id, "arch022b@example.com")
+    # M-05/V-01: a requester can no longer approve their own request, so
+    # these tests need a second identity. The security fix correctly broke
+    # the old assumption that one user could do both halves.
+    approver = _make_user(db_session, org.id, "arch022b-approver@example.com")
 
     with tenant_ctx(org.id):
         approval = AIChatCRUDApproval(
@@ -275,7 +394,7 @@ def test_expiry_sweep_never_executes_pending_operation(db_session, tenant_ctx, m
         monkeypatch.setattr(svc_mod, "AIDataInteractionService", _FakeDataService)
 
         svc = AIChatApprovalService(user_id=user.id)
-        result = svc.approve_and_execute(approval.id, approving_user_id=user.id)
+        result = svc.approve_and_execute(approval.id, approving_user_id=approver.id)
 
         assert result["success"] is False
         assert executed["called"] is False, "expiry must never fall through to execution"
@@ -361,13 +480,23 @@ def test_queue_then_chat_approve_executes_exactly_once(db_session, tenant_ctx, m
 
         confirmation = svc.check_for_confirmation_command("approve it")
         result = svc.resolve_natural_confirmation(confirmation, chat_session_id=session_id)
-        assert result["success"] is True
 
-    assert call_count["n"] == 1
+        # TWO FINDINGS MEET HERE, and the resolution is deliberate.
+        # ARCH-020 required that "approve it" act on the pending approval
+        # rather than silently queueing a second one. M-05/V-01 then required
+        # that nobody approve their own request. In a chat session the person
+        # typing IS the requester, so the honest outcome is: resolve to the
+        # existing approval, refuse it as self-approval, and execute nothing.
+        # Separation of duties wins over conversational convenience — an
+        # approval gate that the requester can satisfy is not a gate.
+        assert result["success"] is False
+        assert "APPROVAL_DENIED" in str(result.get("code", "")) or "own request" in str(result.get("error", ""))
+
+    assert call_count["n"] == 0, "a self-approval must not execute the operation"
     rows = AIChatCRUDApproval.query.filter_by(user_id=user.id, entity_type="capability").all()
-    assert len(rows) == 1
-    assert rows[0].status == ApprovalStatus.APPROVED
-    assert rows[0].approved_by_id == user.id
+    assert len(rows) == 1, "ARCH-020: a second, duplicate approval must not have been queued"
+    assert rows[0].status == ApprovalStatus.PENDING
+    assert rows[0].approved_by_id is None
 
 
 # --- ARCH-020 follow-up: consent must be the WHOLE message -------------------

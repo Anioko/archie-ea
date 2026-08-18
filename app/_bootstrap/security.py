@@ -15,6 +15,10 @@ from jinja2.ext import Extension
 # no-op rather than stacking duplicate attributes.
 _SCRIPT_OPEN_RE = re.compile(r"<script(?![^>]*\bnonce\b)(?=[\s>])", re.IGNORECASE)
 
+# Same trick for <style> elements (ARCH-070). Nonce-ing them is what lets
+# style-src-elem drop 'unsafe-inline'.
+_STYLE_OPEN_RE = re.compile(r"<style(?![^>]*\bnonce\b)(?=[\s>])", re.IGNORECASE)
+
 
 class CspNonceExtension(Extension):
     """Add the CSP nonce to template-authored <script> tags, at compile time.
@@ -35,7 +39,12 @@ class CspNonceExtension(Extension):
     """
 
     def preprocess(self, source, name, filename=None):
-        return _SCRIPT_OPEN_RE.sub('<script nonce="{{ csp_nonce }}"', source)
+        source = _SCRIPT_OPEN_RE.sub('<script nonce="{{ csp_nonce }}"', source)
+        # ARCH-070: the same compile-time treatment for template-authored
+        # <style> blocks. It has to happen here rather than in an after_request
+        # body rewrite for exactly the reason the script case does - a rewrite
+        # of the finished body would hand the nonce to injected markup too.
+        return _STYLE_OPEN_RE.sub('<style nonce="{{ csp_nonce }}"', source)
 
 # Matches content-hashed static filenames, e.g. "tailwind-output.b257857d.css".
 # Such URLs change whenever the bytes change, so they are safe to cache forever.
@@ -160,7 +169,33 @@ def init_security(app):
                 "default-src 'self'",
                 f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' 'strict-dynamic' "
                 "https://esm.sh",  # CodeMirror 6 ES module imports
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+                # ARCH-070. The blanket style-src 'unsafe-inline' is gone,
+                # split into the two directives it was conflating:
+                #
+                #  - style-src-elem covers <style> blocks and <link
+                #    rel=stylesheet>. This is the injection-relevant half: an
+                #    XSS-injected <style> can exfiltrate form values through
+                #    attribute-selector background-image requests, and can
+                #    overlay the page for clickjacking. Template-authored
+                #    <style> blocks are nonce'd at compile time by
+                #    CspNonceExtension, so they keep working while injected
+                #    ones - which never see the nonce - are blocked.
+                #
+                #  - style-src-attr covers style="..." attributes. 449 of those
+                #    exist across app/templates today, and CSP has no nonce
+                #    mechanism for attributes at all: the only ways to drop
+                #    'unsafe-inline' here are to delete every one of them, or
+                #    to enumerate 449 hashes and regenerate them on every edit.
+                #    Narrowing the allowance to attributes only is the
+                #    reduction that is verifiable without a browser; removing
+                #    the attributes themselves is separate work.
+                #
+                # Alpine's :style / x-bind:style are unaffected either way -
+                # they write element.style through the CSSOM, which CSP does
+                # not govern.
+                f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com",
+                f"style-src-elem 'self' 'nonce-{nonce}' https://fonts.googleapis.com",
+                "style-src-attr 'unsafe-inline'",
                 "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com",
                 "connect-src 'self' https://esm.sh",  # CodeMirror 6 ES module imports
                 "img-src 'self' data: blob: https://api.qrserver.com",

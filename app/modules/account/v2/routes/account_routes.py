@@ -15,7 +15,16 @@ All 14 routes + 1 before_app_request hook preserved exactly.
 
 import logging
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 _log = logging.getLogger(__name__)
@@ -77,6 +86,14 @@ def login():
                 audit_logger.log_authentication(success=True)
             except Exception:  # fabricated-values-ok — audit log is fire-and-forget
                 pass
+            # V-06: audit_logger writes to `audit_events`, which nothing
+            # surfaces. Record the same event in `soc2_audit_log`, the table
+            # /admin/audit-log actually reads, with IP and user agent.
+            from app.services import auth_audit
+
+            _login_entry = auth_audit.record_login_success(user)
+            if _login_entry is not None:
+                session["_login_audit_id"] = _login_entry.id
             flash("You are now logged in. Welcome back!", "success")
             # Prevent open redirect. The previous inline check (reject "//" and
             # "://") let "/\evil.com" through, which browsers normalise to
@@ -91,6 +108,11 @@ def login():
                 audit_logger.log_authentication(success=False)
             except Exception:  # fabricated-values-ok — audit log is fire-and-forget
                 pass
+            # V-06: failed-login monitoring needs the attempt in the surfaced
+            # audit table, attributed to the account it targeted where one exists.
+            from app.services import auth_audit
+
+            auth_audit.record_login_failure(form.email.data)
             flash("Invalid email or password.", "form-error")
     return render_template("account/login.html", form=form)
 
@@ -122,6 +144,11 @@ def logout():
         audit_logger.log_logout()
     except Exception:  # fabricated-values-ok — audit log is fire-and-forget
         pass
+    # V-06: logout is a session-forensics event too; record it in the surfaced
+    # audit table while current_user is still resolvable.
+    from app.services import auth_audit
+
+    auth_audit.record_logout(current_user if current_user.is_authenticated else None)
     _svc.logout()
     flash("You have been logged out.", "info")
     return redirect(url_for("main.index"))
@@ -133,7 +160,47 @@ def logout():
 @timed_route
 def manage():
     """Display a user's account information."""
-    return render_template("account/manage.html", user=current_user, form=None)
+    # V-06: last login is read back from the audit log rather than duplicated
+    # into a User column, so the account page and /admin/audit-log cannot
+    # disagree. The entry written by the CURRENT login is excluded, otherwise
+    # "last login" would always read "just now".
+    from app.services import auth_audit
+
+    last_login_entry = auth_audit.last_login(
+        current_user.id, before_id=session.get("_login_audit_id")
+    )
+    return render_template(
+        "account/manage.html",
+        user=current_user,
+        form=None,
+        last_login_entry=last_login_entry,
+        recent_auth_events=auth_audit.recent_auth_events(current_user.id),
+    )
+
+
+@account_bp_v2.route("/session/keepalive", methods=["GET"])
+@login_required
+@timed_route
+def session_keepalive():
+    """F-07: cheap same-origin ping that refreshes the server idle stamp.
+
+    The client-side warning used to ping /health, which is a liveness endpoint
+    and says nothing about the session — and /health is deliberately exempt
+    from the idle check so a background poll cannot keep an abandoned tab
+    alive. This endpoint is not exempt: reaching it IS activity, and it is
+    behind @login_required so an expired session gets the 401/redirect the
+    before_request hook produces rather than a misleading 200.
+    """
+    from flask import jsonify
+
+    return jsonify(
+        {
+            "ok": True,
+            "idle_timeout_seconds": current_app.config.get(
+                "SESSION_IDLE_TIMEOUT_SECONDS"
+            ),
+        }
+    )
 
 
 @account_bp_v2.route("/reset-password", methods=["GET", "POST"])
