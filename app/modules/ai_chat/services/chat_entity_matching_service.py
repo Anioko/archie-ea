@@ -107,14 +107,32 @@ class ChatEntityMatchingService:
             document_text, persona, domain, chat_history
         )
 
-        # Use chat service
+        # Use chat service. NOTE (M-03 root cause): this used to pass
+        # template_name= / context_data=, but MultiDomainChatService.process_message
+        # takes template= / context= — the TypeError from that mismatch fired on
+        # every single call, which is why the Entity Matching Assistant errored on
+        # every input in production even with an LLM provider configured.
         extraction_response = self.chat_service.process_message(
             message=context_prompt,
             domain=domain,
-            template_name="entity_extraction",
-            context_data={},
+            template="entity_extraction",
+            context={},
             persona=persona,
         )
+
+        # process_message degrades to {"success": False, "response": "<human
+        # message>", "error": "<raw>"} rather than raising (e.g. no LLM
+        # provider configured, or the call itself failed). Left unchecked,
+        # that human message gets treated as document text, fails JSON
+        # parsing, and silently falls through to an empty-but-"success"
+        # result — exactly the "0 matches, 0 new, no explanation" failure
+        # mode the QA register flagged. Surface it honestly instead.
+        if isinstance(extraction_response, dict) and extraction_response.get("success") is False:
+            raise RuntimeError(
+                extraction_response.get("error")
+                or extraction_response.get("response")
+                or "Entity extraction failed"
+            )
 
         # Parse extraction response into structured entities
         return self._parse_extraction_response(extraction_response)
@@ -375,7 +393,7 @@ Return results in structured JSON format with clear entity categorization.
 
         if summary.get("total_relationship_suggestions", 0) > 0:
             insights.append(
-                f"Explore {summary['total_relationships']} relationship suggestions "
+                f"Explore {summary['total_relationship_suggestions']} relationship suggestions "
                 "to enhance architecture connectivity"
             )
 

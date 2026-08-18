@@ -17,6 +17,7 @@ from sqlalchemy import func
 
 from app import db
 from app.decorators import audit_log
+from app.utils.duplicate_guard import find_similar_entities
 from . import unified_ai_chat_bp
 
 logger = logging.getLogger(__name__)
@@ -203,7 +204,28 @@ def upload_document():
             # Get provider - use requested provider if valid, otherwise fall back to configured default
             from app.modules.ai_chat.services.llm_service_impl import LLMService
 
-            provider_name, model = LLMService._get_configured_provider()
+            try:
+                provider_name, model = LLMService._get_configured_provider()
+            except ValueError as e:
+                # I-01: this used to fall through to the catch-all at the
+                # bottom of the function, which swallowed the real reason
+                # ("no LLM provider configured") into a generic
+                # "An internal error occurred" 500 — indistinguishable from
+                # every other failure mode. This is not a server error: it is
+                # a feature that is honestly unavailable until an admin
+                # configures a provider, so it gets its own 503 naming that.
+                current_app.logger.warning(f"Document upload: no LLM provider configured: {e}")
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": (
+                            "Document analysis needs an LLM provider and none is "
+                            "configured. Use Simple Parsing mode (CSV/Excel only), "
+                            "or configure a provider at Admin > API Settings."
+                        ),
+                        "code": "LLM_NOT_CONFIGURED",
+                    }
+                ), 503
 
             if requested_provider:
                 # Validate requested provider exists and is enabled
@@ -654,6 +676,18 @@ def upload_document():
                     )
                     continue
 
+                # ARCH-030/S-06: no exact-name match, but check for a near
+                # duplicate before creating — advisory only, never blocks the
+                # write. Routes document ingestion through the same
+                # duplicate_guard helper the interactive create endpoints use
+                # instead of this path staying silent about near-duplicates.
+                label_field = "name" if hasattr(model_class, "name") else "title"
+                similar_existing = (
+                    find_similar_entities(model_class, name, name_field=label_field)
+                    if hasattr(model_class, label_field)
+                    else []
+                )
+
                 # Build element data with all available fields
                 element_data = {
                     "name": name,
@@ -702,11 +736,13 @@ def upload_document():
                         "id": new_element.id,
                         "layer": inferred_layer,
                         "status": "created",
+                        "similar_existing": similar_existing,
                     }
                 )
                 created_count += 1
                 current_app.logger.info(
                     f"Created element: {name} (type: {element_type}, id: {new_element.id})"
+                    + (f" — {len(similar_existing)} similar existing element(s) found" if similar_existing else "")
                 )
 
             except Exception as e:
@@ -796,7 +832,17 @@ def upload_document():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error uploading document: {e}", exc_info=True)
-        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+        # I-01: name the real failure instead of a generic apology — the QA
+        # register's whole complaint was a 500 that "gives nothing to act
+        # on". str(e) here is a caught exception's message, not user input,
+        # so it is not a data-fabrication concern under CLAUDE.md.
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Document upload failed: {e}",
+                "error_type": type(e).__name__,
+            }
+        ), 500
 
 
 @unified_ai_chat_bp.route("/documents", methods=["GET"])
