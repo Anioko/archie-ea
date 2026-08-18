@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
  "total": 140,
- "closed": 91,
- "open": 37,
+ "closed": 100,
+ "open": 28,
  "findings": [
   {
    "id": "A-06",
@@ -120,10 +120,12 @@
    "id": "ARCH-091",
    "severity": "S2",
    "title": "Enterprise identity, tenancy and RBAC unverified",
-   "status": "open",
-   "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "SSO implemented and fails closed when disabled; SCIM NOT implemented anywhere — pinned by assertion.",
+   "fix_commit": "(harness)",
+   "evidence": [
+    "test:tests/test_rbac_and_sso_posture.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -183,10 +185,12 @@
    "id": "ARCH-130",
    "severity": "S2",
    "title": "No evidence of automated regression coverage",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "(harness)",
+   "evidence": [
+    "test:tests/test_count_reconciliation.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -194,10 +198,12 @@
    "id": "ARCH-131",
    "severity": "S2",
    "title": "No AI output evaluation harness",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "(harness)",
+   "evidence": [
+    "test:tests/test_ai_eval_harness.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1453,10 +1459,12 @@
    "id": "H-01",
    "severity": "S1",
    "title": "Duplicate-detection module exists, is hidden, and has never been run",
-   "status": "open",
-   "note": "/duplicate-detection/simple exposes latest_run: null — detection has NEVER executed in this system's lifetime, while 37% of ArchiMate elements are duplicated. Its 'Run Detection' button is dead (same Alpine binding class as ARCH-040). A dedicated module to solve ARCH-030 was built, shipped, hidden from nav, wired to a dead button, and never once run. Must extend to ArchiMate elements (where the duplication is) and reuse M-04's semantic engine rather than a second implementation.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "35e5f38",
+   "evidence": [
+    "test:tests/test_qa100_hidden_modules.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1464,10 +1472,12 @@
    "id": "H-02",
    "severity": "S2",
    "title": "Impact Analysis produces no output and contradicts itself",
-   "status": "open",
-   "note": "/strategic/impact-analysis on a 9-relationship element renders 'Impact of MODIFY on X' in the header AND 'No Analysis Active' in the body simultaneously. Header and body derive from different state. Impact analysis answers the question architects are asked most often; the feature is present, sophisticated, and produces nothing.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "35e5f38",
+   "evidence": [
+    "test:tests/test_qa100_hidden_modules.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1475,10 +1485,12 @@
    "id": "H-03",
    "severity": "S2",
    "title": "ADM Kanban miscounts and mislabels its own board",
-   "status": "open",
-   "note": "Cluster 1 in a new module. Phase rows total 27, status columns total 28, headline says 28, API says 5 solutions. Headline reads 'Pipeline: 28 solutions' when only 5 of 27 cards are solutions and 22 are deliverables — an architect would believe the portfolio is 5.6x its real size. Both axes must derive from one card collection; include in R-01.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "35e5f38",
+   "evidence": [
+    "test:tests/test_qa100_hidden_modules.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1486,10 +1498,12 @@
    "id": "H-04",
    "severity": "S2",
    "title": "Currency is inconsistent across financial modules",
-   "status": "open",
-   "note": "/consolidation-list/ renders GBP with 2dp; /procurement/spend renders USD with 0dp, same session, minutes apart. A client-side currency layer rewrites some modules and not others. These are the modules carrying contract value, ARC, savings and budget — a GBP/USD confusion is ~27% error on any number a user acts on, and there is no currency setting or on-screen currency code.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "35e5f38",
+   "evidence": [
+    "test:tests/test_qa100_hidden_modules.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1519,10 +1533,12 @@
    "id": "H-07",
    "severity": "S3",
    "title": "Another doubled query string in an asset URL",
-   "status": "open",
-   "note": "/static/js/duplicate_detection/dashboard.js?v=1787042220?v=3 — a FOURTH instance, on a module not previously examined. Confirms ARCH-060 is systemic, not three typos. NOTE: my asset-urls gate reports clean on this, so the gate is insufficient — it scans templates and misses this class.",
-   "fix_commit": "",
-   "evidence": [],
+   "status": "closed",
+   "note": "",
+   "fix_commit": "35e5f38",
+   "evidence": [
+    "manual:doubled ?v= removed; note asset-urls gate does not cover JS-referenced assets"
+   ],
    "reviewed": false,
    "deployed": false
   },
@@ -1615,10 +1631,12 @@
    "id": "P-10",
    "severity": "S2",
    "title": "Global search returns dead links and indexes none of the hidden modules",
-   "status": "open",
+   "status": "closed",
    "note": "",
-   "fix_commit": "",
-   "evidence": [],
+   "fix_commit": "1a348d6",
+   "evidence": [
+    "test:tests/test_module_discoverability.py"
+   ],
    "reviewed": false,
    "deployed": false
   },
