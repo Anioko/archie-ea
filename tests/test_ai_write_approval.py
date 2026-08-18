@@ -237,6 +237,19 @@ def _make_user(db_session, org):
     return user
 
 
+def _login_second_approver(client, db_session, org):
+    """Log in a DIFFERENT user to approve with.
+
+    V-01/M-05: the requester is excluded from deciding their own request, so a
+    test that queues and approves as one identity now correctly gets 403/400.
+    These tests were written before that control existed and encoded
+    self-approval as the normal path.
+    """
+    approver = _make_user(db_session, org)
+    _login(client, approver.id)
+    return approver
+
+
 class TestToggleAutoExecuteRoute:
     def test_toggle_flips_and_returns_the_flag(self, app, client, db_session, make_org):
         org = make_org("gov")
@@ -371,6 +384,7 @@ class TestApprovalExecutionParity:
         record = _make_tool_use_approval(db_session, user, tool_name="create_solution")
         db_session.commit()
 
+        _login_second_approver(client, db_session, org)
         resp = client.post(f"/ai-chat/tools/approve/{record.id}")
         assert resp.status_code == 200
         body = resp.get_json()
@@ -396,6 +410,7 @@ class TestApprovalExecutionParity:
         )
         db_session.commit()
 
+        _login_second_approver(client, db_session, org)
         resp = client.post(f"/ai-chat/approvals/{record.id}/approve")
         assert resp.status_code == 200, resp.get_json()
         body = resp.get_json()
@@ -439,6 +454,7 @@ class TestApprovalExpiry:
         )
         db_session.commit()
 
+        _login_second_approver(client, db_session, org)
         resp = client.post(f"/ai-chat/tools/approve/{record.id}")
         assert resp.status_code == 409
         assert "expired" in resp.get_json()["error"].lower()
@@ -465,6 +481,7 @@ class TestApprovalExpiry:
         )
         db_session.commit()
 
+        _login_second_approver(client, db_session, org)
         resp = client.post(f"/ai-chat/approvals/{record.id}/approve")
         assert resp.status_code == 400
         assert "expired" in resp.get_json()["error"].lower()
@@ -564,6 +581,7 @@ class TestRequireAIApprovalDefaultsOn:
         resp = client.post("/ai-chat/data/create-capability", json={"name": cap_name})
         approval_id = resp.get_json()["approval_id"]
 
+        _login_second_approver(client, db_session, org)
         approve_resp = client.post(f"/ai-chat/approvals/{approval_id}/approve")
         assert approve_resp.status_code == 200, approve_resp.get_data(as_text=True)
         approve_body = approve_resp.get_json()
@@ -646,6 +664,7 @@ class TestRequireAIApprovalDefaultsOn:
         assert record.operation_type == "update"
         assert record.entity_id == cap.id
 
+        _login_second_approver(client, db_session, org)
         approve_resp = client.post(f"/ai-chat/approvals/{approval_id}/approve")
         assert approve_resp.status_code == 200, approve_resp.get_data(as_text=True)
 
