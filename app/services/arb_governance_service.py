@@ -36,6 +36,23 @@ from app.models.architecture_review_board import (
 logger = logging.getLogger(__name__)
 
 
+class ARBDecisionError(ValueError):
+    """Base class for a decision that record_decision refuses to persist.
+
+    Mirrors the pattern f147872 established for the AI approval queue
+    (ARCH-022): refuse rather than write a decision that violates a
+    governance invariant, and audit-log the refusal itself.
+    """
+
+
+class MissingApproverError(ARBDecisionError):
+    """No resolvable approver identity was supplied (M-06)."""
+
+
+class SelfApprovalError(ARBDecisionError):
+    """The submitter attempted to decide their own review (M-05)."""
+
+
 class ARBGovernanceService:
     """
     Service for managing Architecture Review Board governance processes.
@@ -363,6 +380,59 @@ class ARBGovernanceService:
         if not item:
             raise ValueError(f"Review item {review_item_id} not found")
 
+        # M-06 (S1): the schema has no decided_by field with no enforcement.
+        # decided_by_id stays NULLABLE in the database on purpose — deploys do
+        # not run Alembic and reconcile-schema is add-column-nullable-only
+        # (ADR-0002) — so the invariant is enforced here in application code,
+        # exactly as f147872 did for the AI approval queue's approved_by_id.
+        if not decided_by_id:
+            self._audit_decision_refusal(
+                item, event="decision_refused", reason="no resolvable approver id"
+            )
+            raise MissingApproverError(
+                "Cannot record a decision without a resolvable approver identity"
+            )
+
+        # M-05 (S1): separation of duties — the submitter cannot also be the
+        # decision-maker on their own review. This is a server-side block,
+        # not a UI hint: the check runs regardless of what the caller sends.
+        if item.submitter_id and item.submitter_id == decided_by_id:
+            self._audit_decision_refusal(
+                item,
+                event="self_approval_refused",
+                reason=f"user {decided_by_id} is the submitter",
+                actor_id=decided_by_id,
+            )
+            raise SelfApprovalError(
+                "The submitter of a review cannot also record its decision "
+                "(separation of duties)"
+            )
+
+        # A read-only (Viewer, permissions=0) account is a Contributor at
+        # most — it may submit and comment, never decide. Approver-tier
+        # accounts (Administrator, or the additive "Approver" role) pass.
+        try:
+            from app.models.user import Permission, User
+
+            decider = db.session.get(User, decided_by_id)
+            if decider is not None and decider.role is not None and not decider.can(Permission.GENERAL):
+                self._audit_decision_refusal(
+                    item,
+                    event="decision_refused",
+                    reason=f"role '{decider.role.name}' has no decision permission",
+                    actor_id=decided_by_id,
+                )
+                raise ARBDecisionError(
+                    "This account's role does not permit recording ARB decisions"
+                )
+        except ARBDecisionError:
+            raise
+        except Exception:  # fabricated-values-ok — never let a lookup failure block a valid decision path silently succeed with bad data
+            logger.exception("ARB decision role check failed for user %s", decided_by_id)
+
+        previous_status = item.status
+        previous_decision = item.decision
+
         item.decision = decision
         item.decision_rationale = rationale
         item.decided_by_id = decided_by_id
@@ -384,7 +454,55 @@ class ARBGovernanceService:
             item.status = "deferred"
 
         db.session.commit()
+
+        # ARCH-092: an immutable audit record of the transition — who, when,
+        # previous and new state. Reuses the existing ARBAuditLog/
+        # ARBAuditService rather than inventing a second model: it is
+        # already tenant-scoped, append-only (no update/delete path exists
+        # anywhere in the service), and already had a ready-made
+        # log_decision() helper that was simply never called from here.
+        try:
+            from app.services.arb_audit_service import ARBAuditService
+
+            ARBAuditService().log_action(
+                entity_type="review_item",
+                entity_id=item.id,
+                action="decision",
+                user_id=decided_by_id,
+                entity_reference=item.review_number,
+                old_value={"status": previous_status, "decision": previous_decision},
+                new_value={"status": item.status, "decision": item.decision},
+                changed_fields=["status", "decision", "decision_rationale", "decided_by_id"],
+                description=f"Decision recorded: {decision}",
+            )
+        except Exception:
+            logger.exception(
+                "Failed to write ARB decision audit log for review %s", review_item_id
+            )
+
         return item
+
+    def _audit_decision_refusal(self, item, *, event, reason, actor_id=None):
+        """Record that a decision write was refused, and why.
+
+        A refusal is itself a governance-relevant event — mirrors
+        AIChatApprovalAuditLog's "execution_refused" event from f147872.
+        """
+        try:
+            from app.services.arb_audit_service import ARBAuditService
+
+            ARBAuditService().log_action(
+                entity_type="review_item",
+                entity_id=item.id,
+                action=event,
+                user_id=actor_id,
+                entity_reference=item.review_number,
+                old_value={"status": item.status, "decision": item.decision},
+                new_value=None,
+                description=f"Decision write refused: {reason}",
+            )
+        except Exception:
+            logger.exception("Failed to write ARB decision-refusal audit log for review %s", item.id)
 
     # =========================================================================
     # GOVERNANCE ASSESSMENT

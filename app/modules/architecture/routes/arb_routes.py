@@ -39,7 +39,12 @@ from app.models.architecture_review_board import (
 from app.decorators import audit_log, require_roles
 from app.services.arb_analytics_service import ARBAnalyticsService
 from app.services.rate_limiter import rate_limit
-from app.services.arb_governance_service import ARBGovernanceService
+from app.services.arb_governance_service import (
+    ARBDecisionError,
+    ARBGovernanceService,
+    MissingApproverError,
+    SelfApprovalError,
+)
 
 arb_bp = Blueprint("arb", __name__, url_prefix="/arb")
 arb_service = ARBGovernanceService()
@@ -818,6 +823,17 @@ def review_detail(id):
     except Exception:
         pass  # principles table may not yet be populated — degrade gracefully
 
+    # ARCH-092: surface the immutable audit trail on the review itself, not
+    # just in a service nobody calls. Best-effort — the audit trail is a
+    # secondary view and must never 500 the primary review page.
+    audit_trail = []
+    try:
+        from app.services.arb_audit_service import ARBAuditService
+
+        audit_trail = ARBAuditService().get_entity_history("review_item", id, limit=200)
+    except Exception:
+        current_app.logger.exception(f"Failed to load audit trail for review {id}")
+
     return render_template(
         "arb/review_detail.html",
         review=review,
@@ -826,6 +842,51 @@ def review_detail(id):
         sla_info=sla_info,
         conditions_with_flags=conditions_with_flags,
         applicable_principles=applicable_principles,
+        audit_trail=audit_trail,
+    )
+
+
+@arb_bp.route("/reviews/<int:id>/audit-trail.csv")
+@login_required
+def review_audit_trail_csv(id):
+    """ARCH-092: export the immutable audit trail for one review item as CSV.
+
+    Reads the same stored ARBAuditLog rows the review detail page shows —
+    a read-only export, it writes nothing and cannot alter the review.
+    """
+    import csv
+    import io
+
+    from flask import Response
+
+    review = ARBReviewItem.query.get_or_404(id)
+
+    from app.services.arb_audit_service import ARBAuditService
+
+    logs = ARBAuditService().get_entity_history("review_item", id, limit=1000)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        ["timestamp_utc", "action", "actor_email", "old_value", "new_value", "description"]
+    )
+    for log in logs:
+        writer.writerow(
+            [
+                log.timestamp.isoformat() if log.timestamp else "",
+                log.action,
+                log.user_email or "",
+                log.old_value or "",
+                log.new_value or "",
+                log.action_description or "",
+            ]
+        )
+
+    filename = f"{review.review_number}-audit-trail.csv"
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -884,13 +945,32 @@ def record_decision(id):
                         }
                     )
 
-        review = arb_service.record_decision(
-            review_item_id=id,
-            decision=data.get("decision"),
-            rationale=data.get("rationale"),
-            decided_by_id=current_user.id,
-            conditions=conditions if conditions else None,
-        )
+        try:
+            review = arb_service.record_decision(
+                review_item_id=id,
+                decision=data.get("decision"),
+                rationale=data.get("rationale"),
+                decided_by_id=current_user.id,
+                conditions=conditions if conditions else None,
+            )
+        except SelfApprovalError as e:
+            current_app.logger.warning(
+                f"Self-approval attempt blocked on review {id} by user {current_user.id}: {e}"
+            )
+            flash(
+                "You submitted this review, so you cannot also record its decision. "
+                "A separate approver must decide it.",
+                "error",
+            )
+            return redirect(url_for("arb.review_detail", id=id)), 403
+        except MissingApproverError as e:
+            current_app.logger.warning(f"Decision refused on review {id}: {e}")
+            flash("Decision refused: no approver could be identified.", "error")
+            return redirect(url_for("arb.review_detail", id=id)), 403
+        except ARBDecisionError as e:
+            current_app.logger.warning(f"Decision refused on review {id}: {e}")
+            flash(str(e), "error")
+            return redirect(url_for("arb.review_detail", id=id)), 403
 
         # Sync ARB decision to capability (if this is a capability review)
         try:

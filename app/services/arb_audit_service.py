@@ -131,8 +131,9 @@ class ARBAuditService:
         """
         from app.models.user import User
 
-        # Get user email for denormalization
-        user = db.session.get(User, user_id)
+        # Get user email for denormalization. user_id may legitimately be
+        # None for a system/refusal event (e.g. "no resolvable approver").
+        user = db.session.get(User, user_id) if user_id is not None else None
         user_email = user.email if user else None
 
         # Get request context if available

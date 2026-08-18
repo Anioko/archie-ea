@@ -83,6 +83,17 @@ class Role(db.Model):
             # Purely additive: existing roles/users are untouched, and no
             # route currently assigns this role automatically.
             "Viewer": (0, "main", False),
+            # M-05/M-06 (S1): a distinct decision-making role, separate from
+            # the default "Architect" contributor role. Purely additive —
+            # existing roles/users are untouched and no route currently
+            # assigns this role automatically. Not yet used as a hard gate
+            # on ARBGovernanceService.record_decision (that would lock out
+            # every existing production approver, all of whom are on the
+            # default "Architect" role today); it exists so an organization
+            # can start assigning it, and record_decision already rejects
+            # any account whose role carries no GENERAL permission (e.g. a
+            # pure Viewer) regardless of this role's presence.
+            "Approver": (Permission.GENERAL, "main", False),
         }
         for r in roles:
             role = Role.query.filter_by(name=r).first()

@@ -573,6 +573,41 @@
             </div>
             {% endif %}
 
+            <!-- ARCH-092: Audit Trail -->
+            <div class="detail-section">
+                <div class="flex items-center justify-between mb-2">
+                    <h2>Audit Trail</h2>
+                    <a href="{{ url_for('arb.review_audit_trail_csv', id=review.id) }}"
+                       class="text-sm text-primary hover:underline">Export CSV</a>
+                </div>
+                <p class="text-sm text-muted-foreground mb-3">
+                    Every recorded status and decision transition on this review — who, when,
+                    and the previous and new state. Read-only, written once per event.
+                </p>
+                {% if audit_trail %}
+                <div class="space-y-2">
+                    {% for log in audit_trail %}
+                    <div class="flex items-start p-3 bg-muted rounded border border-border text-sm">
+                        <div class="flex-1">
+                            <span class="font-medium text-foreground">{{ log.action.replace('_', ' ').title() }}</span>
+                            <span class="text-muted-foreground">
+                                by {{ log.user_email or 'system' }}
+                            </span>
+                            {% if log.action_description %}
+                            <div class="text-muted-foreground mt-0.5">{{ log.action_description }}</div>
+                            {% endif %}
+                        </div>
+                        <span class="text-xs text-muted-foreground whitespace-nowrap ml-3">
+                            {{ log.timestamp.strftime('%Y-%m-%d %H:%M') if log.timestamp else '' }}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted-foreground text-center py-4">No audit events recorded yet</p>
+                {% endif %}
+            </div>
+
             <!-- Comments -->
             <div class="detail-section">
                 <h2>Review Comments</h2>
