@@ -23,6 +23,11 @@ if not _FAST_INIT:
     # Normal runtime: re-export models from models.py (already imported)
     from .models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 
+# CMP-01: SavedDiagram must be tenant-scoped (see class docstring below). The
+# mixin is imported unconditionally so the column exists in both the normal and
+# APP_FAST_INIT model graphs.
+from .mixins import TenantMixin
+
 if _FAST_INIT:
 
     class ArchitectureModel(db.Model):
@@ -369,8 +374,23 @@ class OtherRelationship(db.Model):
         return f"<OtherRelationship {self.relationship_type}>"
 
 
-class SavedDiagram(db.Model):
-    """Persisted composer diagram (viewpoint instance)."""
+class SavedDiagram(TenantMixin, db.Model):
+    """Persisted composer diagram (viewpoint instance).
+
+    CMP-01 (composer QA, 18 Aug 2026): a saved view listed "36 elements" in the
+    picker yet loaded a blank canvas for any viewer outside the owning org. Root
+    cause was a tenancy split, not data corruption: ``ArchiMateElement`` is
+    tenant-scoped (TenantMixin), so the element SELECT in the load endpoint gets
+    ``WHERE organization_id = <current>`` and returns nothing cross-org — while
+    ``element_count`` counts ``saved_diagram_elements`` rows, which were NOT
+    tenant-scoped, so the count stayed 36. The two numbers derived from
+    different scopes and desynced. SavedDiagram is now tenant-scoped too, so a
+    diagram only ever lists for, and loads for, the org that owns it — the count
+    and the payload can no longer disagree because a cross-org viewer sees
+    neither. reconcile-schema adds organization_id as nullable on deploy;
+    ``backfill-saved-diagram-tenancy`` then derives each existing diagram's org
+    from its member elements (see app/commands/backfill_saved_diagram_tenancy.py).
+    """
 
     __tablename__ = "saved_diagrams"
     __table_args__ = {"extend_existing": True}

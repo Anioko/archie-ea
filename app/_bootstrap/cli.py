@@ -276,6 +276,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register architect-role backfill CLI: {e}")
 
+    # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
+    try:
+        from app.commands.backfill_saved_diagram_tenancy import init_app as init_saved_diagram_tenancy
+        init_saved_diagram_tenancy(app)
+        app.logger.info("\u2705 Saved-diagram tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register saved-diagram tenancy backfill CLI: {e}")
+
     try:
         from app.commands.seed_minimal_vendor_products import seed_minimal_vendor_products
         app.cli.add_command(seed_minimal_vendor_products)

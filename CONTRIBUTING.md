@@ -25,7 +25,10 @@ flask --app manage run                             # or: docker compose up
 ```
 
 A PostgreSQL database is required. The fastest path is `docker compose up`, which
-brings up the app + Postgres together.
+brings up the app + Postgres together. On the Windows dev box a portable
+PostgreSQL on **port 5439** is used instead — start/stop commands and the
+`TEST_DATABASE_URL` for running the suite are in
+[docs/local-test-database.md](docs/local-test-database.md).
 
 ## Before you open a PR
 
