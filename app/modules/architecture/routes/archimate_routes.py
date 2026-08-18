@@ -5146,18 +5146,35 @@ def api_create_audit_entry():
     if not action:
         return jsonify({"error": "action is required"}), 400
 
+    def _as_int(value):
+        # entity_id is an Integer column, but the composer sometimes passes a
+        # JointJS cell id (a string) for elements not yet persisted. Coerce, and
+        # store NULL rather than 500 when it isn't an int (CMP-03).
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     entry = ArchimateAuditLog(
-        viewpoint_id=data.get("viewpoint_id"),
+        viewpoint_id=_as_int(data.get("viewpoint_id")),
         user_id=current_user.id,
         action=action,
         entity_type=data.get("entity_type"),
-        entity_id=data.get("entity_id"),
+        entity_id=_as_int(data.get("entity_id")),
         entity_name=data.get("entity_name"),
         old_value=data.get("old_value"),
         new_value=data.get("new_value"),
     )
-    db.session.add(entry)
-    db.session.commit()
+    try:
+        db.session.add(entry)
+        db.session.commit()
+    except Exception as exc:  # noqa: BLE001
+        # An audit write must never break the user action it records. Roll back,
+        # log server-side for governance follow-up, and report a soft failure the
+        # fire-and-forget client ignores.
+        db.session.rollback()
+        current_app.logger.error("composer audit-log write failed: %s", exc)
+        return jsonify({"error": "audit write failed", "logged": False}), 202
 
     return jsonify({"id": entry.id, "action": entry.action}), 201
 

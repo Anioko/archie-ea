@@ -284,6 +284,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register saved-diagram tenancy backfill CLI: {e}")
 
+    # CMP-03: drop the wrong archimate_audit_logs.viewpoint_id FK
+    try:
+        from app.commands.drop_audit_log_viewpoint_fk import init_app as init_drop_audit_fk
+        init_drop_audit_fk(app)
+        app.logger.info("\u2705 Audit-log viewpoint-FK drop CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register audit-log viewpoint-FK drop CLI: {e}")
+
     try:
         from app.commands.seed_minimal_vendor_products import seed_minimal_vendor_products
         app.cli.add_command(seed_minimal_vendor_products)

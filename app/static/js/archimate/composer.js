@@ -5145,9 +5145,12 @@ function composerApp() {
                 old_value: oldVal || null,
                 new_value: newVal || null,
             };
-            /* Fire-and-forget — do not block the UI */
+            /* Fire-and-forget — do not block the UI. CMP-03: an audit write must
+               never nag the user; the toast here contradicted the "silently
+               ignore" intent and fired on every removal because the server FK was
+               broken. Failures are logged server-side for governance. */
             Platform.fetch.post('/archimate/api/audit-log', payload, { silent: true })
-                .catch(function() { /* silently ignore audit failures */ _toast('error', 'Failed to log audit event'); });
+                .catch(function() { /* silently ignore audit failures */ });
         },
 
         /* ── CMP-059: Validation API ─────────────────────────────── */
