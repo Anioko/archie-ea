@@ -510,6 +510,26 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
     user-select: none;
 }
 
+/* ── CMP-12: narrow side-panel layout ────────────────────────
+   When the composer is docked in a side panel (~<1100px), QA saw the minimap
+   overlapping canvas elements and toolbar controls clipped off the edge. Hide
+   the minimap (navigation is covered by fit-to-content and middle-mouse pan) and
+   let the toolbar scroll horizontally instead of clipping. The tab strip already
+   scrolls (overflow-x-auto). Everything reverts above the breakpoint. */
+@media (max-width: 1100px) {
+    .mini-map { display: none !important; }
+    .composer-toolbar {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        scrollbar-width: thin;
+    }
+    .composer-toolbar::-webkit-scrollbar { height: 4px; }
+    .composer-toolbar::-webkit-scrollbar-thumb {
+        background: hsl(var(--border));
+        border-radius: 2px;
+    }
+}
+
 /* ── Layer visibility dots ───────────────────────────────── */
 .layer-dot {
     width: 14px; height: 14px; border-radius: 50%; cursor: pointer;

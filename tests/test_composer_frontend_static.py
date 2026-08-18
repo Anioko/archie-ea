@@ -127,6 +127,18 @@ def test_cmp07_single_save_indicator():
         "the separate 'Autosave: <label>' footer block must be removed"
 
 
+def test_cmp12_narrow_width_media_query():
+    """A narrow-width media query must hide the overlapping minimap and let the
+    toolbar scroll instead of clipping."""
+    composer_html = (JS.parents[1] / "templates" / "archimate" / "composer.html").read_text(encoding="utf-8")
+    assert "@media (max-width: 1100px)" in composer_html
+    # Within the narrow block, the minimap is hidden and the toolbar scrolls.
+    idx = composer_html.index("@media (max-width: 1100px)")
+    block = composer_html[idx:idx + 500]
+    assert ".mini-map { display: none" in block
+    assert "overflow-x: auto" in block
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")
