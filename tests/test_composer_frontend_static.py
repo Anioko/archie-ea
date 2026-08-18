@@ -86,6 +86,17 @@ def test_cmp06_middle_mouse_pans():
     assert "evt.button === 1" in src, "middle-mouse button must trigger pan"
 
 
+def test_cmp09_closing_scratch_tab_deletes_server_row():
+    """Closing an unsaved 'Unsaved diagram' tab must delete its server row."""
+    src = _read("archimate/composer_persistence.js")
+    assert "closeViewpointTab:" in src
+    assert "'Unsaved diagram'" in src, "scratch diagrams must be detected by name"
+    assert "Platform.fetch.delete('/archimate/api/saved-viewpoints/' + tab.id" in src, \
+        "scratch tab close must delete the server row so it does not reappear"
+    composer_html = (JS.parents[1] / "templates" / "archimate" / "composer.html").read_text(encoding="utf-8")
+    assert "closeViewpointTab(tab)" in composer_html, "tab close button must call the method"
+
+
 def test_cmp03_audit_failure_not_toasted():
     """The composer must not toast on a fire-and-forget audit-log failure."""
     src = _read("archimate/composer.js")

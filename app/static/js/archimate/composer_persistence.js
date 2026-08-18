@@ -515,6 +515,40 @@ let ComposerPersistence = (function() {
             });
         },
 
+        /* CMP-09: close a workspace tab. The old inline handler only filtered
+           viewpointTabs client-side, so an auto-created "Unsaved diagram — <ts>"
+           scratch row stayed on the server and reappeared on the next
+           loadViewpointTabs() — the lingering tab the QA pass saw, and why empty
+           scratch diagrams accumulated. Closing a scratch tab now deletes its
+           server row; closing a named/saved viewpoint just detaches the tab. */
+        closeViewpointTab: async function(tab) {
+            let self = this;
+            if (!tab || tab.id == null) return;
+            if (self.viewpointDirty && self.activeTabId === tab.id) {
+                if (!(await Platform.modal.confirm('This tab has unsaved changes. Close anyway?'))) return;
+            }
+            let isScratch = typeof tab.name === 'string' && tab.name.indexOf('Unsaved diagram') === 0;
+
+            self.viewpointTabs = (self.viewpointTabs || []).filter(function(t) { return t.id !== tab.id; });
+
+            /* Delete the server row for an unsaved scratch diagram so it does not
+               reappear on reload. Named viewpoints are preserved. */
+            if (isScratch) {
+                Platform.fetch.delete('/archimate/api/saved-viewpoints/' + tab.id, { silent: true })
+                    .catch(function() { /* swallow-ok: tab already removed from the strip; a failed scratch cleanup is not worth interrupting the user, and loadViewpointTabs will simply show it again */ });
+            }
+
+            if (self.activeTabId === tab.id) {
+                if (self.viewpointTabs.length) {
+                    self.activeTabId = self.viewpointTabs[0].id;
+                    self.loadSavedViewpoint(self.viewpointTabs[0].id, self.viewpointTabs[0].name);
+                } else {
+                    self.activeTabId = null;
+                    self.newDiagram();
+                }
+            }
+        },
+
         /* ENT-107: Populate the viewpoint tab strip with most recent viewpoints only. */
         loadViewpointTabs: function() {
             let self = this;
