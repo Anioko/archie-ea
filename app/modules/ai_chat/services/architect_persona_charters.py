@@ -72,6 +72,13 @@ ARCHITECT_PERSONAS = (
 PERSONA_ALIASES: Dict[str, str] = {
     "solution_architect": "solutions_architect",
     "cio": "cto",
+    # P-02 (persona-naming unification, 18 Aug 2026): PERSONA_CONFIGS
+    # (multi_domain_chat_service.py) carried "capability_architect" as a
+    # fifth persona with no charter of its own. Its PERSONA_CONFIGS entry
+    # (ArchiMate 3.2 capability decomposition, cross-layer synthesis, TOGAF
+    # ADM) is enterprise_architect's remit verbatim, so it is aliased rather
+    # than given a duplicate charter.
+    "capability_architect": "enterprise_architect",
 }
 
 _EVIDENCE_RULES = """

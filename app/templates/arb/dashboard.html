@@ -431,7 +431,7 @@
                             </td>
                             <td class="px-4 py-3 text-sm border-b border-border">
                                 {% if review.decided_by %}
-                                <span class="text-sm text-foreground">{{ review.decided_by.first_name }} {{ review.decided_by.last_name }}</span>
+                                <span class="text-sm text-foreground">{{ review.decided_by.full_name() }}</span>
                                 {% else %}
                                 <span class="text-xs text-muted-foreground">—</span>
                                 {% endif %}

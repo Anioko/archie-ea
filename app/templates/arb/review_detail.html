@@ -387,7 +387,7 @@
                     </div>
                     <div>
                         <label class="text-sm font-medium text-foreground/80">Submitted By</label>
-                        <p class="text-foreground">{{ review.submitter.first_name }} {{ review.submitter.last_name }}</p>
+                        <p class="text-foreground">{{ review.submitter.full_name() }}</p>
                     </div>
                 </div>
 
@@ -565,7 +565,7 @@
                     {% if review.decided_by %}
                     <div class="mt-4 pt-4 border-t border-border">
                         <p class="text-sm text-muted-foreground">
-                            Decided by: {{ review.decided_by.first_name }} {{ review.decided_by.last_name }}
+                            Decided by: {{ review.decided_by.full_name() }}
                         </p>
                     </div>
                     {% endif %}
@@ -619,7 +619,7 @@
                             <div class="flex items-center">
                                 <span class="comment-type {{ comment.comment_type }}">{{ comment.comment_type.title() }}</span>
                                 <span class="ml-2 text-sm font-medium text-foreground">
-                                    {{ comment.user.first_name }} {{ comment.user.last_name }}
+                                    {{ comment.user.full_name() if comment.user else 'Unknown User' }}
                                 </span>
                             </div>
                             <span class="text-xs text-muted-foreground">{{ comment.created_at.strftime('%Y-%m-%d') if comment.created_at else '' }}</span>

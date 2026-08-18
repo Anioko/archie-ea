@@ -140,7 +140,7 @@
                             {% if session.submitter %}
                             <span class="flex items-center gap-1">
                                 <i data-lucide="user" class="w-3.5 h-3.5" aria-hidden="true"></i>
-                                {{ session.submitter.first_name }} {{ session.submitter.last_name }}
+                                {{ session.submitter.full_name() }}
                             </span>
                             {% endif %}
                             {% else %}
@@ -261,7 +261,7 @@
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">Select chair...</option>
                 {% for user in users %}
-                <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                <option value="{{ user.id }}">{{ user.full_name() }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -271,7 +271,7 @@
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">Select secretary...</option>
                 {% for user in users %}
-                <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                <option value="{{ user.id }}">{{ user.full_name() }}</option>
                 {% endfor %}
             </select>
         </div>

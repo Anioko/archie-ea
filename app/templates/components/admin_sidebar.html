@@ -65,7 +65,9 @@ DEPENDENCIES:
             </div>
             <span class="text-lg font-semibold sidebar-app-name">{{ config.APP_NAME }}</span>
         </a>
-        <button @click="$store.sidebar.open = false" class="lg:hidden text-muted-foreground hover:text-foreground" aria-label="Close navigation">
+        <button @click="$store.sidebar.open = false"
+                class="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                aria-label="Close navigation">
             <i data-lucide="x" class="w-5 h-5"></i>
         </button>
     </div>
@@ -187,7 +189,9 @@ DEPENDENCIES:
                 <p class="text-sm font-medium truncate">{{ current_user.full_name() }}</p>
                 <p class="text-xs text-muted-foreground truncate">{{ current_user.email }}</p>
             </div>
-            <a href="{{ url_for('account.logout') }}" class="text-muted-foreground hover:text-foreground transition-colors sidebar-footer-text" aria-label="Log out">
+            <a href="{{ url_for('account.logout') }}"
+               class="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sidebar-footer-text"
+               aria-label="Log out">
                 <i data-lucide="log-out" class="h-4 w-4"></i>
             </a>
         </div>
@@ -196,7 +200,9 @@ DEPENDENCIES:
             <div class="flex-1 min-w-0 sidebar-footer-text">
                 <p class="text-sm font-medium truncate">Not signed in</p>
             </div>
-            <a href="{{ url_for('account.login') }}" class="text-muted-foreground hover:text-foreground transition-colors sidebar-footer-text" aria-label="Log in">
+            <a href="{{ url_for('account.login') }}"
+               class="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sidebar-footer-text"
+               aria-label="Log in">
                 <i data-lucide="log-in" class="h-4 w-4"></i>
             </a>
         </div>

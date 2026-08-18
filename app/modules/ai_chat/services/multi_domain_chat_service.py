@@ -302,6 +302,40 @@ PERSONA_CONFIGS = {
 }
 
 
+# P-02 (persona-naming unification, 18 Aug 2026): four independent persona
+# vocabularies existed — ARCHITECT_PERSONAS (chat charters), VALID_ROLES
+# (User.enterprise_role, the DB-persisted value), PERSONA_CONFIGS (this
+# dict's UI metadata: name/icon/colour/sample prompts) and the domain keys
+# behind /ai-chat/context/<domain>. ARCHITECT_PERSONAS + PERSONA_ALIASES in
+# architect_persona_charters.py is made authoritative here rather than
+# renaming anything: VALID_ROLES is a Postgres column value on existing User
+# rows (renaming a role string would silently orphan any user already saved
+# with the old spelling — see CLAUDE.md's schema-drift warning), so every
+# other vocabulary derives from / validates against ARCHITECT_PERSONAS
+# through PERSONA_ALIASES instead of being renamed to match it byte-for-byte.
+# This assertion is the enforcement: a new PERSONA_CONFIGS entry that isn't
+# either a real charter key or an aliased spelling fails at import time
+# rather than silently drifting into a fifth vocabulary.
+def _validate_persona_configs_against_charters() -> None:
+    from app.modules.ai_chat.services.architect_persona_charters import (
+        ARCHITECT_PERSONAS,
+        PERSONA_ALIASES,
+    )
+
+    known = set(ARCHITECT_PERSONAS) | set(PERSONA_ALIASES)
+    unresolvable = [key for key in PERSONA_CONFIGS if key not in known]
+    if unresolvable:
+        raise ValueError(
+            "PERSONA_CONFIGS has keys not present in the authoritative "
+            f"ARCHITECT_PERSONAS/PERSONA_ALIASES vocabulary: {unresolvable}. "
+            "Add a charter in architect_persona_charters.py or an alias to "
+            "an existing one — do not let PERSONA_CONFIGS drift on its own."
+        )
+
+
+_validate_persona_configs_against_charters()
+
+
 class MultiDomainChatService:
     """
     Multi-Domain Chat Service

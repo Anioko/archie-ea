@@ -526,11 +526,17 @@
           {% if filters.search or filters.type or filters.status or filters.domain or filters.capability_level %}
           No applications match your current filters.
           {% else %}
-            {# PLT-040: Role-aware empty state CTAs #}
+            {# F-03: the empty state used to name a specific third-party product
+               (Abacus) as the primary path onto the page — the first thing a new
+               tenant with no data of its own saw. The primary action is now
+               generic ("Import applications"), backed by the same
+               application-import-modal the toolbar's Import button opens, which
+               offers CSV/Excel and Abacus as options inside the flow rather than
+               naming one of them on the page itself. #}
             {% if current_user.enterprise_role == 'platform_admin' or current_user.is_admin() %}
-            Your application portfolio is empty. Import from Abacus or add manually.
+            Your application portfolio is empty. Import a spreadsheet or add applications manually.
             {% else %}
-            Ask your admin to sync the application portfolio from Abacus.
+            Ask your admin to import or add applications to the portfolio.
             {% endif %}
           {% endif %}
         </p>
@@ -541,10 +547,11 @@
             <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>Clear Filters
           </button>
           {% elif current_user.enterprise_role == 'platform_admin' or current_user.is_admin() %}
-          <a href="/admin/abacus-settings"
-            class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium">
-            <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>Import from Abacus
-          </a>
+          <button type="button" data-modal-open="application-import-modal"
+            title="Import applications from a spreadsheet or the Abacus feed"
+            class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium" aria-label="Import applications">
+            <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>Import Applications
+          </button>
           <button type="button" data-modal-open="modal-create"
             class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-input bg-background hover:bg-accent text-sm font-medium" aria-label="Action">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Add Application

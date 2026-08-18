@@ -198,6 +198,36 @@ Always include via:
 
 ## Components
 
+### Button size scale (H-06 — mandatory, no arbitrary heights)
+
+`/procurement/spend` and several other pages accumulated eight distinct
+button heights (20/28/32/34/40/44px), seven font sizes and six border radii
+with no scale governing any of them. There are exactly three permitted
+button heights. Do not hand-write a height, padding, or `text-[Npx]` value on
+a button — pick one of these three:
+
+| Tier | Height class | Height | Use for |
+|---|---|---|---|
+| `sm` | `h-8` (32px) | compact / dense toolbars, inline table-row actions | |
+| `md` | `h-9` (36px)\* | the default — most buttons, forms | |
+| `lg` | `h-11` (44px) | primary page-level CTAs, WCAG 2.5.8 target-size-sensitive actions | |
+
+\* The existing shadcn default is `h-9` (36px), not 40px — that default
+predates this scale and is left as `md` rather than mass-migrated to `h-10`
+across every existing button, which would be a large, low-value diff. New
+`md` buttons should use `h-9` to match the existing convention; `h-10` (40px)
+is not a fourth tier and must not appear on a button.
+
+All three heights pair with `px-3 text-xs` (sm), `px-4 py-2 text-sm` (md), or
+`px-6 text-base` (lg) — never a bespoke padding/font combination. Border
+radius on interactive controls is `rounded-md` (buttons, inputs) or
+`rounded-lg` (cards, panels) only — never a raw multi-value `border-radius`
+or an arbitrary `rounded-[...]` value; a 3-value shorthand like `0px 0px 4px`
+silently omits the fourth corner and is what ARCH-110 / H-06 flagged. No
+instance of that malformed value was found in the current template tree
+(`grep -rn "0px 0px 4px"` across `app/templates` and `app/modules/**/templates`
+returns nothing) — it was already corrected in an earlier design-token wave.
+
 ### Buttons
 
 ```html
