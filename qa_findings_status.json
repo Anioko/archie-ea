@@ -1,8 +1,8 @@
 {
  "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
- "total": 111,
+ "total": 114,
  "closed": 64,
- "open": 42,
+ "open": 45,
  "findings": [
   {
    "id": "A-06",
@@ -838,7 +838,8 @@
    "note": "",
    "fix_commit": "2a711a2",
    "evidence": [
-    "test:tests/test_application_delete_cascade.py"
+    "test:tests/test_application_delete_cascade.py",
+    "manual:re-confirmed in production 18 Aug — admin delete of app 105 reported elements_deleted: 1"
    ],
    "reviewed": false,
    "deployed": false
@@ -1356,6 +1357,39 @@
    "title": "Cross-tenant enumeration requires Administrator, not any user",
    "status": "open",
    "note": "Re-test of A-01 as Viewer: all cross-tenant reads return 403. Still real - no platform/tenant admin split, sequential ids, and every human account is an Administrator.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "V-06",
+   "severity": "S2",
+   "title": "No login or IP tracking",
+   "status": "open",
+   "note": "Account page shows 'Last login tracking not available' / 'IP tracking not available'. No record of authentication events: no credential-compromise detection, no failed-login monitoring, no session forensics. Compounds ARCH-092 - with neither auth events nor data-change events recorded, the platform produces NO security telemetry at all. Standard enterprise procurement control; SOC 2 / ISO 27001 evidence.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "V-07",
+   "severity": "S3",
+   "title": "Python None rendered in the user interface",
+   "status": "open",
+   "note": "Account page displays 'Full name: None None'. Same class as ARCH-023 (Python dict repr in approval summaries) - a shared null-rendering helper closes both. Also aligns with the never-invent-data rule: null renders as an em dash, never a literal None.",
+   "fix_commit": "",
+   "evidence": [],
+   "reviewed": false,
+   "deployed": false
+  },
+  {
+   "id": "V-08",
+   "severity": "S3",
+   "title": "ARB reviews cannot be withdrawn, cancelled or deleted at any stage",
+   "status": "open",
+   "note": "Four endpoint patterns tried AS ADMINISTRATOR, none exists. A draft review's page offers only 'Submit for Review' - no withdraw, cancel or discard. The only disposal route is to submit then record a formal decision, which is what the auditor had to do: rejecting a request nobody genuinely made. Immutability of a DECIDED review is correct and must be preserved; a review created in error - or per V-03 by an unauthorised user - is currently permanent, so the queue accumulates abandoned drafts and the only exit pollutes the decision record. REV-2026-003 (id 5) remains stuck in draft in production.",
    "fix_commit": "",
    "evidence": [],
    "reviewed": false,
