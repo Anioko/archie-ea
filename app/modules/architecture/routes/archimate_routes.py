@@ -1515,7 +1515,7 @@ def api_get_saved_viewpoint(vp_id):
     import json as _json
 
     from app.models.archimate_core import (
-        ArchiMateElement, ArchiMateRelationship, SavedDiagram,
+        ArchiMateElement, ArchiMateRelationship,
     )
 
     vp = _get_saved_diagram_scoped(vp_id)
@@ -1597,7 +1597,7 @@ def api_viewpoint_relationship_health(vp_id):
     """
     from datetime import datetime, timezone
 
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, SavedDiagram, SavedDiagramRelationship
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, SavedDiagramRelationship
     from app.models.application_portfolio import ApplicationComponent
     from app.models.models import ExternalSystem
 
@@ -1716,7 +1716,7 @@ def api_patch_saved_viewpoint(vp_id):
             Marks a stale relationship as kept-by-intent so it is excluded from
             future staleness review prompts.
     """
-    from app.models.archimate_core import SavedDiagram, SavedDiagramRelationship
+    from app.models.archimate_core import SavedDiagramRelationship
 
     vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
@@ -1773,7 +1773,7 @@ def api_update_saved_viewpoint(vp_id):
     import json as _json
 
     from app.models.archimate_core import (
-        SavedDiagram, SavedDiagramElement, SavedDiagramRelationship,
+        SavedDiagramElement, SavedDiagramRelationship,
     )
 
     vp = _get_saved_diagram_scoped(vp_id)
@@ -1849,7 +1849,6 @@ def api_update_saved_viewpoint(vp_id):
 @login_required
 def api_delete_saved_viewpoint(vp_id):
     """Delete a saved diagram and its junction records (elements remain in catalog)."""
-    from app.models.archimate_core import SavedDiagram
 
     vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
@@ -1870,7 +1869,6 @@ def api_delete_saved_viewpoint(vp_id):
 def api_submit_viewpoint_review(vp_id):
     """Submit a viewpoint/diagram for ARB review."""
     from datetime import datetime as _dt
-    from app.models.archimate_core import SavedDiagram
 
     vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
@@ -2347,7 +2345,7 @@ def api_create_snapshot(vp_id):
     import json as _json
 
     from app.models.archimate_core import (
-        ArchiMateRelationship, SavedDiagram,
+        ArchiMateRelationship,
     )
     from app.models.archimate_viewpoint import ArchimateViewpointSnapshot
     db.create_all()  # migration-exempt: creates archimate_viewpoint_snapshots if not yet present
@@ -2487,7 +2485,7 @@ def api_restore_snapshot(vp_id, sid):
     import json as _json
 
     from app.models.archimate_core import (
-        SavedDiagram, SavedDiagramElement, SavedDiagramRelationship,
+        SavedDiagramElement, SavedDiagramRelationship,
     )
     from app.models.archimate_viewpoint import ArchimateViewpointSnapshot
 
@@ -4150,7 +4148,6 @@ def api_composer_delta():
     from app.models.archimate_core import (
         ArchiMateElement,
         ArchiMateRelationship,
-        SavedDiagram,
     )
 
     data = request.get_json(silent=True) or {}
