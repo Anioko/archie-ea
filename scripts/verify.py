@@ -547,6 +547,34 @@ def gate_asset_urls() -> Result:
     return Result("asset-urls", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_qa_register() -> Result:
+    """Every finding in the 17 Aug 2026 QA remediation register is closed.
+
+    The register is the outstanding remediation backlog (97 active findings across
+    the master register and its three source documents). CLAUDE.md's rule for
+    unfinished work is to prefer a gate that COUNTS it over prose that describes
+    it, because a written-down-and-left defect becomes a defect plus a note, and
+    the note reads later as a deliberate decision.
+
+    This gate is that count, and it is deliberately a hard zero rather than a
+    ratchet: while any finding is open, verify.py cannot go green, so the branch
+    cannot legitimately deploy. Finishing the register stops being a promise and
+    becomes something the build asserts. Ledger: qa_findings_status.json — a
+    finding is closed only once its fix is committed and its tests pass, and a
+    partially-fixed finding stays open with a note.
+    """
+    proc = _run([sys.executable, "scripts/check_qa_register.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("qa-register", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count:
+        detail = _run([sys.executable, "scripts/check_qa_register.py"]).stdout[-1800:]
+    return Result("qa-register", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_null_filters() -> Result:
     """No `|default(...)` feeds a filter that calls len(). Gated at ZERO.
 
@@ -1081,6 +1109,12 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "version static assets — never hand-append '?v=' in a template, "
                          "and include a shared stylesheet/script from one place only",
              tags=["static", "ui"]),
+        Gate("qa-register", "every QA remediation register finding is closed", "zero",
+             gate_qa_register,
+             remediation="run scripts/check_qa_register.py to list what is still open; "
+                         "close the finding and record its commit in "
+                         "qa_findings_status.json - do not relax this gate to enable a deploy",
+             tags=["static", "qa"]),
         Gate("null-filters", "default() never feeds a len()-calling filter", "zero",
              gate_null_filters,
              remediation="add the boolean argument: default('x', true) - plain "

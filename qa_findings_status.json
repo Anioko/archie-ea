@@ -1,0 +1,687 @@
+{
+ "_comment": "Ledger for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open, so verify.py cannot go green until the register is fully closed. Mark a finding closed only when its fix is committed and its tests pass. Partially-fixed findings stay open with a note. Do not relax this gate to enable a deploy - deployment waiting is the point.",
+ "total": 97,
+ "closed": 36,
+ "open": 61,
+ "findings": [
+  {
+   "id": "A-06",
+   "severity": "S1",
+   "title": "The element-generation prompt has no repository context and no duplicate-avoidance instruction",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-001",
+   "severity": "S1",
+   "title": "Platform suffers complete outages under trivial load",
+   "status": "open",
+   "note": "root-caused as memcg OOM (9ead4e9); needs RAM decision + 4h soak"
+  },
+  {
+   "id": "ARCH-030",
+   "severity": "S1",
+   "title": "No uniqueness or duplicate protection anywhere on the write path",
+   "status": "open",
+   "note": "guard landed (2d7be01); importers + dedupe migration outstanding"
+  },
+  {
+   "id": "P-01",
+   "severity": "S1",
+   "title": "Application list scales linearly in payload and super-linearly in latency",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "A-03",
+   "severity": "S2",
+   "title": "Only three roles exist, with no platform/tenant separation",
+   "status": "open",
+   "note": "roles landed (2e3bb7f); unbounded AI-agent permissions outstanding"
+  },
+  {
+   "id": "A-05",
+   "severity": "S2",
+   "title": "AI prompts are admin-editable with no audit trail",
+   "status": "open",
+   "note": "audit metadata landed (9cda379); version history/diff/rollback outstanding"
+  },
+  {
+   "id": "ARCH-013",
+   "severity": "S2",
+   "title": "Agent-reported record attribute contradicts the system of record",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-070",
+   "severity": "S2",
+   "title": "Content Security Policy permits both unsafe-inline and unsafe-eval",
+   "status": "open",
+   "note": "nonce+strict-dynamic in prod; unsafe-eval and style-src unsafe-inline remain"
+  },
+  {
+   "id": "ARCH-090",
+   "severity": "S2",
+   "title": "No testing at representative enterprise scale",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-091",
+   "severity": "S2",
+   "title": "Enterprise identity, tenancy and RBAC unverified",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-092",
+   "severity": "S2",
+   "title": "No user-visible audit trail",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-100",
+   "severity": "S2",
+   "title": "Data-heavy views use card lists instead of a data grid",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-115",
+   "severity": "S2",
+   "title": "Conversation history not restored on reload",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-126",
+   "severity": "S2",
+   "title": "Traceability chain is broken in the existing data",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-130",
+   "severity": "S2",
+   "title": "No evidence of automated regression coverage",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-131",
+   "severity": "S2",
+   "title": "No AI output evaluation harness",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "C-03",
+   "severity": "S2",
+   "title": "Diagram autosave is browser-local only, with a hard scaling ceiling",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "C-04",
+   "severity": "S2",
+   "title": "\"New blank diagram\" is a destructive action presented as an additive one",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "CM-01",
+   "severity": "S2",
+   "title": "The capability domain is entirely empty, including its reference taxonomy",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "O-02",
+   "severity": "S2",
+   "title": "OEF export omits all views, organizations and properties",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "O-03",
+   "severity": "S2",
+   "title": "OEF import silently fails, reporting success",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "S-04",
+   "severity": "S2",
+   "title": "Blueprint version number contradicts itself",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "S-05",
+   "severity": "S2",
+   "title": "\"VIEW AS\" role switching has no effect",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "S-06",
+   "severity": "S2",
+   "title": "Duplicate detection exists but runs only after the duplicate is created",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "S-11",
+   "severity": "S2",
+   "title": "Core architecture capabilities are undiscoverable from navigation",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARB-01",
+   "severity": "S3",
+   "title": "ARB workflow unexercised; governance-gates data endpoint missing",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-012",
+   "severity": "S3",
+   "title": "Repository data quality is not surfaced as actionable work",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-031",
+   "severity": "S3",
+   "title": "Application records default to \"Operational\" on creation",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-041",
+   "severity": "S3",
+   "title": "Server-side validation errors surface as \"Bad Request\"",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-042",
+   "severity": "S3",
+   "title": "Required-field validation does not mark the field invalid programmatically",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-043",
+   "severity": "S3",
+   "title": "Dead links present in rendered pages",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-052",
+   "severity": "S3",
+   "title": "Inconsistent API path conventions and response contracts",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-063",
+   "severity": "S3",
+   "title": "Application JavaScript is unbundled and served as many individual files",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-064",
+   "severity": "S3",
+   "title": "Large server-rendered HTML payloads without pagination",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-071",
+   "severity": "S3",
+   "title": "Stored input is persisted unsanitised (output encoding currently compensates)",
+   "status": "open",
+   "note": "scoped to the application-name field only"
+  },
+  {
+   "id": "ARCH-080",
+   "severity": "S3",
+   "title": "Skip links fail WCAG AA contrast",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-101",
+   "severity": "S3",
+   "title": "Nine separate modal implementations with inconsistent styling and stacking",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-102",
+   "severity": "S3",
+   "title": "Native and custom form controls mixed across the product",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-103",
+   "severity": "S3",
+   "title": "Duplicate menu button rendered in the header",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-104",
+   "severity": "S3",
+   "title": "Oversized KPI tiles carry very low information density",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-105",
+   "severity": "S3",
+   "title": "Action toolbar uses unexplained internal jargon",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-106",
+   "severity": "S3",
+   "title": "Cryptic data-quality labelling",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-112",
+   "severity": "S3",
+   "title": "Heading obscured by the quick-prompt bar at narrow widths",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-113",
+   "severity": "S3",
+   "title": "Three levels of nested scroll regions",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-114",
+   "severity": "S3",
+   "title": "Persona heading desynchronises from the persona selector",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-116",
+   "severity": "S3",
+   "title": "Test artefact is the only record in the application catalogue",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-122",
+   "severity": "S3",
+   "title": "Delivery management partially exists but RAID, dependencies, benefits and resourcing remain absent",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "O-04",
+   "severity": "S3",
+   "title": "Generic export failure message",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "S-07",
+   "severity": "S3",
+   "title": "TOGAF ADM checklist is incomplete and unlabelled",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "S-08",
+   "severity": "S3",
+   "title": "Filter bar labels overlap",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "S-09",
+   "severity": "S3",
+   "title": "Status KPI cards are too narrow for their content",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-024",
+   "severity": "S4",
+   "title": "Response latency displayed as raw milliseconds",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-045",
+   "severity": "S4",
+   "title": "Model selector is empty and non-functional",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-072",
+   "severity": "S4",
+   "title": "Permissions-Policy and Cross-Origin-Opener-Policy headers absent",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-081",
+   "severity": "S4",
+   "title": "10px type in use",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-108",
+   "severity": "S4",
+   "title": "Page titles are inconsistent and one is empty",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-109",
+   "severity": "S4",
+   "title": "Breadcrumb roots are inconsistent",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-110",
+   "severity": "S4",
+   "title": "Two \"black\" text colours and three \"success\" greens in use",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-111",
+   "severity": "S4",
+   "title": "No brand typeface; system font stack in use",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-123",
+   "severity": "S5",
+   "title": "Data architecture support is shallow relative to the Data Architect persona",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "ARCH-124",
+   "severity": "S5",
+   "title": "No technology standards catalogue or tech radar",
+   "status": "open",
+   "note": ""
+  },
+  {
+   "id": "A-01",
+   "severity": "S1",
+   "title": "A tenant administrator can enumerate other tenants' organizations and members",
+   "status": "closed",
+   "note": "2e3bb7f"
+  },
+  {
+   "id": "A-04",
+   "severity": "S1",
+   "title": "CSRF protection exists but was not applied to data endpoints",
+   "status": "closed",
+   "note": "9cda379"
+  },
+  {
+   "id": "ARCH-010",
+   "severity": "S1",
+   "title": "Headline and layer-tile counts drift from each other after writes",
+   "status": "closed",
+   "note": "f91d8d7"
+  },
+  {
+   "id": "ARCH-020",
+   "severity": "S1",
+   "title": "Approvals are not bound to the conversation that created them",
+   "status": "closed",
+   "note": "f147872+cc9f153"
+  },
+  {
+   "id": "ARCH-022",
+   "severity": "S1",
+   "title": "An approval executed with no recorded approver",
+   "status": "closed",
+   "note": "f147872"
+  },
+  {
+   "id": "ARCH-040",
+   "severity": "S1",
+   "title": "\"Add Application\" and \"Import\" buttons are inert; both data-entry paths unreachable via UI",
+   "status": "closed",
+   "note": "5c3f7fc"
+  },
+  {
+   "id": "C-01",
+   "severity": "S1",
+   "title": "Composer permits an invalid ArchiMate relationship, and its validation is directionally asymmetric",
+   "status": "closed",
+   "note": "b1f6a8f"
+  },
+  {
+   "id": "C-02",
+   "severity": "S1",
+   "title": "Orphaned ArchiMate elements: deleting an application does not delete its element",
+   "status": "closed",
+   "note": "6dba8af"
+  },
+  {
+   "id": "D-01",
+   "severity": "S1",
+   "title": "Dashboard and API element counts drift apart after any write",
+   "status": "closed",
+   "note": "5351fe3"
+  },
+  {
+   "id": "O-01",
+   "severity": "S1",
+   "title": "Exported OEF contains metamodel-invalid relationships",
+   "status": "closed",
+   "note": "6aaf0b5"
+  },
+  {
+   "id": "S-01",
+   "severity": "S1",
+   "title": "Solutions list silently hides records while claiming to be complete",
+   "status": "closed",
+   "note": "b1f6a8f"
+  },
+  {
+   "id": "S-02",
+   "severity": "S1",
+   "title": "Blueprint completeness reports four mutually contradictory figures on one page",
+   "status": "closed",
+   "note": "b1f6a8f"
+  },
+  {
+   "id": "A-02",
+   "severity": "S2",
+   "title": "User directory shows 2 users while tenants account for 22",
+   "status": "closed",
+   "note": "5351fe3"
+  },
+  {
+   "id": "ARCH-011",
+   "severity": "S2",
+   "title": "Data-quality tiles report zero while the panel beside them reports real counts",
+   "status": "closed",
+   "note": "f91d8d7"
+  },
+  {
+   "id": "ARCH-014",
+   "severity": "S2",
+   "title": "Vendor pagination is broken in three separate ways",
+   "status": "closed",
+   "note": "f91d8d7"
+  },
+  {
+   "id": "ARCH-015",
+   "severity": "S2",
+   "title": "AI conversation context contains internally impossible figures",
+   "status": "closed",
+   "note": "5351fe3"
+  },
+  {
+   "id": "ARCH-021",
+   "severity": "S2",
+   "title": "Approval queue creates duplicates of the same operation",
+   "status": "closed",
+   "note": "f147872"
+  },
+  {
+   "id": "ARCH-050",
+   "severity": "S2",
+   "title": "/architecture/element/<id> returns HTTP 200 for every input, including invalid ones",
+   "status": "closed",
+   "note": "6aaf0b5"
+  },
+  {
+   "id": "ARCH-051",
+   "severity": "S2",
+   "title": "State-changing endpoints accept requests with no CSRF token",
+   "status": "closed",
+   "note": "9cda379"
+  },
+  {
+   "id": "C-10",
+   "severity": "S2",
+   "title": "Destructive element endpoint accepts requests with no CSRF token",
+   "status": "closed",
+   "note": "9cda379"
+  },
+  {
+   "id": "D-02",
+   "severity": "S2",
+   "title": "ApplicationInterface is classified into the Business layer",
+   "status": "closed",
+   "note": "6aaf0b5"
+  },
+  {
+   "id": "S-03",
+   "severity": "S2",
+   "title": "Section count off by one: \"Architecture Decisions\" is excluded from completeness",
+   "status": "closed",
+   "note": "b1f6a8f"
+  },
+  {
+   "id": "A-07",
+   "severity": "S3",
+   "title": "'Load Keys from .env' exposes a server-side secret-loading action to the UI",
+   "status": "closed",
+   "note": "9cda379"
+  },
+  {
+   "id": "A-08",
+   "severity": "S3",
+   "title": "Session invalidation is not surfaced; the user appears logged in while writes fail",
+   "status": "closed",
+   "note": "2e3bb7f"
+  },
+  {
+   "id": "ARCH-002",
+   "severity": "S3",
+   "title": "Error path discards the requested URL",
+   "status": "closed",
+   "note": "9ead4e9"
+  },
+  {
+   "id": "ARCH-023",
+   "severity": "S3",
+   "title": "Approval summaries leak raw Python data structures to the user",
+   "status": "closed",
+   "note": "f147872"
+  },
+  {
+   "id": "ARCH-060",
+   "severity": "S3",
+   "title": "Malformed asset URLs with doubled query strings",
+   "status": "closed",
+   "note": "383502e"
+  },
+  {
+   "id": "ARCH-061",
+   "severity": "S3",
+   "title": "Same stylesheet loaded twice at two different versions",
+   "status": "closed",
+   "note": "383502e"
+  },
+  {
+   "id": "ARCH-107",
+   "severity": "S3",
+   "title": "Onboarding checklist shown on a populated instance",
+   "status": "closed",
+   "note": "5c3f7fc"
+  },
+  {
+   "id": "C-05",
+   "severity": "S3",
+   "title": "\"Save paused\" state is unexplained and offers no way to resolve it",
+   "status": "closed",
+   "note": "28ee96a"
+  },
+  {
+   "id": "C-06",
+   "severity": "S3",
+   "title": "Relationship-type picker is clipped by the viewport and does not scroll",
+   "status": "closed",
+   "note": "28ee96a"
+  },
+  {
+   "id": "C-07",
+   "severity": "S3",
+   "title": "Minimap overlays and obscures canvas content",
+   "status": "closed",
+   "note": "28ee96a"
+  },
+  {
+   "id": "C-08",
+   "severity": "S3",
+   "title": "\"Fit to Content\" does not account for overlaying panels",
+   "status": "closed",
+   "note": "28ee96a"
+  },
+  {
+   "id": "C-09",
+   "severity": "S3",
+   "title": "Matrix view column headers are unreadable",
+   "status": "closed",
+   "note": "28ee96a"
+  },
+  {
+   "id": "D-03",
+   "severity": "S3",
+   "title": "Dashboard KPI panels mix denominators without stating scope",
+   "status": "closed",
+   "note": "5351fe3"
+  },
+  {
+   "id": "ARCH-062",
+   "severity": "S4",
+   "title": "Asset version stamps are inconsistent across the bundle",
+   "status": "closed",
+   "note": "383502e+cc9f153"
+  }
+ ]
+}
