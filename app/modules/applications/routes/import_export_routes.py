@@ -399,6 +399,12 @@ def export_csv():
         response.headers["Content-Disposition"] = (
             f"attachment; filename=applications_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         )
+        # P-12: an empty catalogue produced a header-only CSV via a raw
+        # `window.location.href` navigation, so the frontend had no way to
+        # tell the user "nothing to export" vs. "download happened" — this
+        # header lets the fetch-based client (see applications/list.js
+        # exportCSV()) distinguish the two without sniffing CSV content.
+        response.headers["X-Export-Empty"] = "1" if not apps else "0"
 
         return response
 

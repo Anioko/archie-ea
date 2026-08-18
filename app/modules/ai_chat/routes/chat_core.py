@@ -1408,7 +1408,13 @@ def get_domain_context(domain):
     try:
         chat_service = get_chat_service()
         context_data = chat_service.get_domain_context(domain)
-        return jsonify(context_data)
+        # P-08: get_domain_context() returns {"success": False, ...} for an
+        # unrecognized domain instead of raising — jsonify()-ing it verbatim
+        # produced HTTP 200 for a failure, so a caller checking response.ok
+        # (the documented CLAUDE.md fetch trap) never sees the error. Mirror
+        # the success flag onto the HTTP status.
+        status = 200 if context_data.get("success", True) else 404
+        return jsonify(context_data), status
     except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 

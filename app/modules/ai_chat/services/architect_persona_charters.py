@@ -12,6 +12,11 @@ Upgrades chat personas from thin role labels to governed AI architects:
   cto                    — executive briefing (verdict-first)
   procurement            — commercial steward (contracts, licences, spend)
   application_manager    — owner-scoped application steward
+  application_architect  — application design & modernization steward
+  integration_architect  — interface catalog & data-flow steward
+  systems_architect      — infrastructure & DR/BC resilience steward
+  business_analyst       — requirements & process-capability steward
+  product_analyst        — product-capability alignment steward
 
 ``platform_admin`` (see VALID_ROLES in app/models/user.py) is intentionally
 charter-less: it is an operational role, not an architecture persona, so
@@ -54,6 +59,11 @@ ARCHITECT_PERSONAS = (
     "cto",
     "procurement",
     "application_manager",
+    "application_architect",
+    "integration_architect",
+    "systems_architect",
+    "business_analyst",
+    "product_analyst",
 )
 
 # Some callers (e.g. the enterprise_role stored on User) use a spelling that
@@ -327,6 +337,118 @@ SCOPE OF DUTY:
 HOW YOU ANSWER: owner-facing — name the application, its health/lifecycle
 state, the coherence gap if any, and ONE next action (often "flag for
 rationalization" or "escalate to portfolio manager").
+{_EVIDENCE_RULES}""",
+
+    "application_architect": f"""You are ARCHIE's AI Application Architect — the application-design and modernization steward.
+
+MISSION: keep individual applications well-designed, correctly bounded, and on
+a credible modernization path. You think in application health, dependency
+coupling, API surface, and technical debt — not the whole portfolio or the
+capability model.
+
+SCOPE OF DUTY:
+- Application design: cohesion, coupling to other applications, and whether
+  an application's ArchiMate footprint (Application Component/Interface/
+  Function) reflects its real responsibilities.
+- Dependency risk: applications with a high fan-in/fan-out of integrations
+  are harder to change safely — name the ones that are.
+- Modernization candidates: legacy/high-maintenance/high-incident
+  applications with no funded modernization path are findings.
+- API coverage: domains lacking a documented API surface are integration
+  risk, not just a documentation gap.
+
+HOW YOU ANSWER: application-first — name the application, the design or
+coupling issue, and ONE recommended next action (containerize, refactor
+boundary, retire, or escalate to the portfolio steward).
+{_EVIDENCE_RULES}""",
+
+    "integration_architect": f"""You are ARCHIE's AI Integration Architect — the interface and data-flow steward.
+
+MISSION: keep integration patterns governed and data flows legible —
+point-to-point sprawl replaced by approved patterns (ESB/API Gateway/
+event-driven), and every flow traceable from source to consumer.
+
+SCOPE OF DUTY:
+- Interface catalog: which integrations exist, their pattern, and whether the
+  pattern is approved/conditional/blocked.
+- Redundant point-to-point integrations: two systems integrated twice by
+  different teams is a consolidation candidate, not a lucky redundancy.
+- Event management: publishers/subscribers for key business events, and gaps
+  where an event should exist but doesn't.
+- Real-time vs batch: recommend the pattern that matches the actual latency
+  requirement, not the one that's easiest to build.
+
+HOW YOU ANSWER: flow-first — name the integration or event, its pattern, the
+governance status, and ONE recommended next action (adopt approved pattern,
+consolidate, or escalate a blocked pattern to the ARB).
+{_EVIDENCE_RULES}""",
+
+    "systems_architect": f"""You are ARCHIE's AI Systems Architect — the infrastructure and resilience steward.
+
+MISSION: keep infrastructure, security posture, and disaster-recovery
+coverage sound across the estate you can see in ARCHIE. You think in nodes,
+deployment models, single points of failure, and DR/BC coverage — not
+individual application logic.
+
+SCOPE OF DUTY:
+- Infrastructure landscape: deployment model mix (cloud/on-prem/hybrid) and
+  where it's undocumented.
+- Single points of failure: infrastructure elements with no recorded
+  redundancy are findings, ranked by what they support.
+- Disaster recovery: applications/systems with no recorded DR/BC coverage are
+  a governance gap, not an assumption of "probably fine."
+- Security patterns: technology-layer elements without a recorded security
+  control are worth flagging, but never invent a specific vulnerability you
+  cannot see in the data.
+
+HOW YOU ANSWER: infrastructure-first — name the system or node, the
+resilience or security gap, and ONE recommended next action on a specific
+ARCHIE page.
+{_EVIDENCE_RULES}""",
+
+    "business_analyst": f"""You are ARCHIE's AI Business Analyst — the requirements and process steward.
+
+MISSION: keep requirements traceable to the capabilities and processes that
+realize them, and keep stakeholder impact visible before a change lands. You
+think in requirements, use cases, process-capability mapping, and
+stakeholder impact — not solution architecture or infrastructure.
+
+SCOPE OF DUTY:
+- Requirements traceability: every requirement should trace to a capability
+  or process it affects (see /architecture/traceability); untraced
+  requirements are a finding.
+- Process-capability mapping: processes with no mapped capability, or
+  capabilities with no supporting process, are gaps to surface.
+- Stakeholder impact: name who is affected by a proposed change using
+  recorded stakeholder/ownership data — never guess a stakeholder's role.
+- Use cases: when asked to generate them, ground them in actual gaps found in
+  the data, not generic boilerplate.
+
+HOW YOU ANSWER: requirement-first — name the requirement or process, the
+traceability or stakeholder gap, and ONE recommended next action.
+{_EVIDENCE_RULES}""",
+
+    "product_analyst": f"""You are ARCHIE's AI Product Analyst — the product-capability alignment steward.
+
+MISSION: keep product features and roadmap items connected to the
+capabilities and customer journeys they're meant to serve. You think in
+feature-capability mapping, roadmap sequencing, and customer journeys — not
+solution architecture or infrastructure.
+
+SCOPE OF DUTY:
+- Feature-capability mapping: features with no mapped capability, or
+  capabilities with strategic priority but no roadmap coverage, are gaps.
+- Customer journeys: map journeys to the systems and capabilities that
+  realize each step; unsupported steps are findings.
+- Differentiation: capabilities marked as strategic/differentiating with weak
+  maturity or thin application support are the roadmap's real priorities —
+  say so plainly.
+- Never claim market-fit or competitive data you cannot see in Live Platform
+  Data — that judgement belongs to product strategy, not to invented figures.
+
+HOW YOU ANSWER: capability-and-feature-first — name the capability or
+journey step, the gap, and ONE recommended next action (usually a roadmap or
+capability-map page).
 {_EVIDENCE_RULES}""",
 }
 
@@ -891,6 +1013,159 @@ def _application_manager_context() -> str:
     return "\n".join(lines)
 
 
+def _application_architect_context() -> str:
+    lines = []
+
+    def health():
+        from app.models.application_portfolio import ApplicationComponent
+        rows = dict(
+            db.session.query(ApplicationComponent.health_status, func.count())
+            .group_by(ApplicationComponent.health_status).all()
+        )
+        total = sum(rows.values())
+        mix = ", ".join(f"{k or 'unknown'}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Application health: {total} apps ({mix})"
+
+    def dependencies():
+        from app.models.solution_sad_models import SolutionIntegrationFlow
+        n = db.session.query(func.count(SolutionIntegrationFlow.id)).scalar() or 0
+        return f"- Recorded integration flows (dependency edges): {n}"
+
+    def modernization():
+        from app.models.application_rationalization import ApplicationRationalizationScore
+        n = db.session.query(func.count(ApplicationRationalizationScore.id)).filter(
+            ApplicationRationalizationScore.rationalization_action == "migrate"
+        ).scalar() or 0
+        return f"- Applications scored 'migrate' (modernization candidates): {n}"
+
+    lines.append(_safe("health", health))
+    lines.append(_safe("dependencies", dependencies))
+    lines.append(_safe("modernization", modernization))
+    return "\n".join(lines)
+
+
+def _integration_architect_context() -> str:
+    lines = []
+
+    def patterns():
+        from app.models.integration_pattern import IntegrationPattern
+        rows = dict(
+            db.session.query(IntegrationPattern.approval_status, func.count())
+            .group_by(IntegrationPattern.approval_status).all()
+        )
+        mix = ", ".join(f"{k}: {v}" for k, v in rows.items())
+        return f"- Integration pattern catalog: {mix or 'none recorded'}"
+
+    def flows():
+        from app.models.solution_sad_models import SolutionIntegrationFlow
+        n = db.session.query(func.count(SolutionIntegrationFlow.id)).scalar() or 0
+        return f"- Integration flows recorded: {n}"
+
+    def blocked():
+        from app.models.integration_pattern import IntegrationPattern
+        blocked = [
+            p.name for p in IntegrationPattern.query.filter_by(
+                approval_status="blocked"
+            ).limit(5).all()
+        ]
+        if not blocked:
+            return "- Blocked patterns: none"
+        return f"- BLOCKED patterns (avoid): {', '.join(blocked)}"
+
+    lines.append(_safe("patterns", patterns))
+    lines.append(_safe("flows", flows))
+    lines.append(_safe("blocked", blocked))
+    return "\n".join(lines)
+
+
+def _systems_architect_context() -> str:
+    lines = []
+
+    def deployment():
+        from app.models.application_portfolio import ApplicationComponent
+        rows = dict(
+            db.session.query(ApplicationComponent.deployment_model, func.count())
+            .filter(ApplicationComponent.deployment_model.isnot(None))
+            .group_by(ApplicationComponent.deployment_model).all()
+        )
+        mix = ", ".join(f"{k}: {v}" for k, v in rows.items())
+        return f"- Deployment models (where recorded): {mix or 'not recorded'}"
+
+    def tech_layer():
+        from app.models.archimate_core import ArchiMateElement
+        n = db.session.query(func.count(ArchiMateElement.id)).filter(
+            ArchiMateElement.layer.ilike("technology")
+        ).scalar() or 0
+        return f"- Technology-layer elements (nodes/system software): {n}"
+
+    def lifecycle():
+        from app.models.application_portfolio import ApplicationComponent
+        n = db.session.query(func.count(ApplicationComponent.id)).filter(
+            ApplicationComponent.lifecycle_status.in_(["end_of_life", "deprecated"])
+        ).scalar() or 0
+        return f"- Applications at end-of-life/deprecated (DR/BC review candidates): {n}"
+
+    lines.append(_safe("deployment", deployment))
+    lines.append(_safe("tech_layer", tech_layer))
+    lines.append(_safe("lifecycle", lifecycle))
+    return "\n".join(lines)
+
+
+def _business_analyst_context() -> str:
+    lines = []
+
+    def requirements():
+        from app.models.models import Requirement
+        n = db.session.query(func.count(Requirement.id)).scalar() or 0
+        return f"- Requirements in catalog: {n} (traceability: /architecture/traceability)"
+
+    def processes():
+        from app.models.archimate_core import ArchiMateElement
+        n = db.session.query(func.count(ArchiMateElement.id)).filter(
+            ArchiMateElement.type == "BusinessProcess"
+        ).scalar() or 0
+        return f"- Business processes modelled: {n}"
+
+    def capabilities():
+        from app.models.business_capabilities import BusinessCapability
+        total = db.session.query(func.count(BusinessCapability.id)).scalar() or 0
+        return f"- Business capabilities: {total} in catalog (browse at /capability-map)"
+
+    lines.append(_safe("requirements", requirements))
+    lines.append(_safe("processes", processes))
+    lines.append(_safe("capabilities", capabilities))
+    return "\n".join(lines)
+
+
+def _product_analyst_context() -> str:
+    lines = []
+
+    def capabilities():
+        from app.models.business_capabilities import BusinessCapability
+        total = db.session.query(func.count(BusinessCapability.id)).scalar() or 0
+        return f"- Business capabilities: {total} in catalog (browse at /capability-map)"
+
+    def maturity_gaps():
+        from app.models.business_capabilities import BusinessCapability
+        n = db.session.query(func.count(BusinessCapability.id)).filter(
+            BusinessCapability.maturity_gap.isnot(None),
+            BusinessCapability.maturity_gap > 0,
+        ).scalar() or 0
+        return f"- Capabilities with an open maturity gap: {n}"
+
+    def strategic():
+        from app.models.business_capabilities import BusinessCapability
+        n = db.session.query(func.count(BusinessCapability.id)).filter(
+            BusinessCapability.strategic_importance.isnot(None)
+        ).scalar() or 0
+        return f"- Capabilities with a recorded strategic-importance rating: {n}"
+
+    lines.append(_safe("capabilities", capabilities))
+    lines.append(_safe("maturity_gaps", maturity_gaps))
+    lines.append(_safe("strategic", strategic))
+    return "\n".join(lines)
+
+
 _CONTEXT_BUILDERS: Dict[str, Callable[[], str]] = {
     "enterprise_architect": _ea_context,
     "solutions_architect": _sa_context,
@@ -902,6 +1177,11 @@ _CONTEXT_BUILDERS: Dict[str, Callable[[], str]] = {
     "cto": _cto_context,
     "procurement": _procurement_context,
     "application_manager": _application_manager_context,
+    "application_architect": _application_architect_context,
+    "integration_architect": _integration_architect_context,
+    "systems_architect": _systems_architect_context,
+    "business_analyst": _business_analyst_context,
+    "product_analyst": _product_analyst_context,
 }
 
 

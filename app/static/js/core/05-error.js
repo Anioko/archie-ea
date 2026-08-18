@@ -141,8 +141,41 @@
 
     // ── Global unhandled error listeners ────────────────────────────────────
     // Log silently — do NOT show toasts for unhandled errors (too noisy).
+    //
+    // P-07: these handlers used to pass the raw Error/rejection value
+    // straight to log.error() as a positional arg. console.error() itself
+    // renders an Error fine interactively, but anything downstream that
+    // stringifies the arguments (log capture, a headless test harness
+    // reading console text, a future log-shipping hook) calls String()/
+    // JSON.stringify() on it — and Error.message/.stack are *non-enumerable*,
+    // so both produce the literal word "Object" / "[object Object]" with the
+    // real diagnostic content silently dropped. Serialise explicitly instead
+    // so the logged string always carries message, stack, and context.
+    function _serialiseRejectionReason(reason) {
+        if (reason instanceof Error) {
+            return {
+                message: reason.message || String(reason),
+                stack: reason.stack || null,
+                name: reason.name || 'Error'
+            };
+        }
+        if (reason && typeof reason === 'object') {
+            try {
+                return { message: normalise(reason), stack: null, detail: JSON.parse(JSON.stringify(reason)) };
+            } catch (e) {
+                return { message: normalise(reason), stack: null };
+            }
+        }
+        return { message: String(reason), stack: null };
+    }
+
     global.window.addEventListener('unhandledrejection', function (event) {
-        log.error('Unhandled promise rejection', event.reason);
+        const serialised = _serialiseRejectionReason(event.reason);
+        log.error(
+            'Unhandled promise rejection: ' + serialised.message,
+            'stack=' + (serialised.stack || 'n/a'),
+            serialised.detail !== undefined ? serialised.detail : ''
+        );
         // Prevent the browser from logging a duplicate uncaught error
         // only in development (so devtools still shows it).
         if (!global.Platform.isDev) {
@@ -152,7 +185,9 @@
 
     const _origOnError = global.window.onerror;
     global.window.onerror = function (message, source, lineno, colno, error) {
-        log.error('Uncaught error', message, source + ':' + lineno + ':' + colno, error);
+        const loc = source + ':' + lineno + ':' + colno;
+        const stack = (error && error.stack) ? error.stack : 'n/a';
+        log.error('Uncaught error: ' + message, 'at ' + loc, 'stack=' + stack);
         if (typeof _origOnError === 'function') {
             return _origOnError.apply(this, arguments);
         }

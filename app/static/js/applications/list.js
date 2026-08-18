@@ -237,10 +237,39 @@ function appPortfolio() {
     },
 
     // ── Export ─────────────────────────────────────────────────────────────
-    exportCSV() {
+    // P-12: this used to be a raw `window.location.href` navigation, which
+    // gives the SPA no way to observe success, failure, or "nothing to
+    // export" — a download interceptor confirmed zero download events on an
+    // empty catalogue with no toast and no error. fetch() + blob makes every
+    // outcome observable, per CLAUDE.md's documented `fetch` discipline
+    // (`if (!response.ok) throw`, never assume success from a fire-and-forget
+    // navigation).
+    async exportCSV() {
       const params = new URLSearchParams(window.location.search);
       params.delete('export');
-      window.location.href = `/applications/export/csv?${params.toString()}`;
+      try {
+        const resp = await fetch(`/applications/export/csv?${params.toString()}`);
+        if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
+        if (resp.headers.get('X-Export-Empty') === '1') {
+          this.notify('No applications match the current filters — nothing to export.', 'default');
+          return;
+        }
+        const blob = await resp.blob();
+        const disposition = resp.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename=([^;]+)/);
+        const filename = match ? match[1].trim() : 'applications_export.csv';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        this.notify('Export downloaded.', 'success');
+      } catch (e) {
+        this.notify('Export failed. Please try again.', 'error');
+      }
     },
 
     bulkExportSelected() {
