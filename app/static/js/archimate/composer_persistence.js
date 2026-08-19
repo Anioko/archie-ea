@@ -517,7 +517,19 @@ let ComposerPersistence = (function() {
                 if (self.currentSavedVpId === vpId) {
                     self.currentSavedVpId = null;
                     self.activeViewpointName = '';
+                    self.activeTabId = null;
                     self.viewpointDirty = false;
+                    /* Clear the canvas too. Detaching the id but leaving the
+                       elements on screen is exactly how a delete "comes back":
+                       the next edit finds a dirty canvas with no currentSavedVpId
+                       and _autoSave POSTs a brand-new "Unsaved diagram" row from
+                       the same content, so the deletion looks undone. The
+                       elements stay in the catalog; only this view is gone. */
+                    if (self.graph) self.graph.clear();
+                    self.canvasElements = {};
+                    self.elementCount = 0;
+                    self.relCount = 0;
+                    self._clearAutosave();
                 }
                 _toast('success', 'Viewpoint "' + label + '" deleted');
             })
