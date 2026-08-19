@@ -317,7 +317,7 @@
 
             _csrf: function () {
                 let m = document.cookie.match(/csrftoken=([^;]+)/);
-                let meta = document.querySelector('meta[name="csrf-token"]');
+                let meta = document.querySelector('meta[name=csrf-token]');
                 return m ? m[1] : (meta ? meta.getAttribute('content') : '');
             },
 

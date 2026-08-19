@@ -4,7 +4,7 @@
 <script>
     // Global CSRF token helper for AJAX requests
     window.getCSRFToken = function() {
-        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        return document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '';
     };
 
     // Automatically add CSRF token to all native fetch requests.

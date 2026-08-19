@@ -1999,7 +1999,7 @@ document.addEventListener('alpine:init', () => {
             if (!this.newComment.trim()) return;
             this.submitting = true;
             try {
-                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfMeta = document.querySelector('meta[name=csrf-token]');
                 const r = await fetch(`/solutions/${solutionId}/comments`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfMeta ? csrfMeta.content : ''},
@@ -2023,7 +2023,7 @@ document.addEventListener('alpine:init', () => {
             if (!this.replyText.trim()) return;
             this.submitting = true;
             try {
-                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfMeta = document.querySelector('meta[name=csrf-token]');
                 const r = await fetch(`/solutions/${solutionId}/comments`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfMeta ? csrfMeta.content : ''},
@@ -2185,7 +2185,7 @@ function sadPage() {
   const sid = {{ solution.id }};
   const base = '/solutions/' + sid;
   function csrf() {
-    const meta = document.querySelector('meta[name="csrf-token"]');
+    const meta = document.querySelector('meta[name=csrf-token]');
     if (meta) return meta.content;
     const cookie = document.cookie.match(/csrf_token=([^;]+)/);
     return cookie ? cookie[1] : '';
@@ -2450,7 +2450,7 @@ function sadPage() {
 function dismissableBanner() { return { show: true }; }
 window.deleteSolution = window.deleteSolution || async function(solutionId, solutionName) {
     if (!(await Platform.modal.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) return;
-    let csrf = document.querySelector('meta[name="csrf-token"]');
+    let csrf = document.querySelector('meta[name=csrf-token]');
     fetch('/solutions/' + solutionId + '/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf ? csrf.content : '' }

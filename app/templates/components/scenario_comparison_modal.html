@@ -1,9 +1,14 @@
 {% from 'components/modal.html' import modal %}
 {% macro scenario_comparison_modal(capability_scores) %}
 <!-- Scenario Comparison Modal — uses shared modal.html component -->
+{# tojson emits JSON with double-quotes; embedding it directly in a
+   double-quoted x-data="..." attribute truncates the attribute at the first
+   inner quote (breaking the whole component). Hoist it to a script variable and
+   reference that, the same pattern investment_matrix.html uses. #}
+<script>window.__SCENARIO_CAPS = {{ capability_scores | tojson }};</script>
 <div
     x-data="{
-        capabilities: {{ capability_scores | tojson }},
+        capabilities: (window.__SCENARIO_CAPS || []),
         selectedCapabilities: [],
         selectedIds: [null, null, null],
         scenarios: [],

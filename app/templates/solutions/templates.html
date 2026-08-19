@@ -120,7 +120,7 @@ function solutionTemplateCatalogue() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
+                    'X-CSRFToken': (document.querySelector('meta[name=csrf-token]') || {}).content || ''
                 },
                 body: JSON.stringify({ template_id: tid, solution_name: name })
             })

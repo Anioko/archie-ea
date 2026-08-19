@@ -158,7 +158,7 @@
 <script>
 'use strict';
 function enrichmentApp() {
-    let csrfToken = document.querySelector('meta[name="csrf-token"]');
+    let csrfToken = document.querySelector('meta[name=csrf-token]');
     csrfToken = csrfToken ? csrfToken.getAttribute('content') : '';
 
     return {

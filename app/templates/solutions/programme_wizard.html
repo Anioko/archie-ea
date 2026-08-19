@@ -732,7 +732,7 @@ function programmeJourney() {
 
         const r = await fetch("{{ url_for('solution_design.create_programme') }}", {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
           body: JSON.stringify(payload),
         });
         const data = await r.json();
@@ -742,7 +742,7 @@ function programmeJourney() {
           if (capIds.length || appIds.length) {
             await fetch(`/architecture-journey/${data.solution_id}/link-clarify-entities`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
               body: JSON.stringify({ entities: { capabilities: capIds, applications: appIds } }),
             });
           }

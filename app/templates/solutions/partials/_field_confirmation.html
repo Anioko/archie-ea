@@ -556,7 +556,7 @@ function fieldConfirmation(solutionId) {
       this.importing = true;
       this.importResult = null;
       try {
-        const csrf = document.querySelector('meta[name="csrf-token"]');
+        const csrf = document.querySelector('meta[name=csrf-token]');
         const headers = { 'Content-Type': 'application/json' };
         if (csrf) headers['X-CSRFToken'] = csrf.content;
         const r = await fetch(`/architecture-journey/${this.solutionId}/import-schema`, {

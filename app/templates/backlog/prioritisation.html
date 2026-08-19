@@ -246,7 +246,7 @@ function prioritisationApp() {
 }
 
 function getCsrfToken() {
-  const el = document.querySelector('meta[name="csrf-token"]') ||
+  const el = document.querySelector('meta[name=csrf-token]') ||
              document.querySelector('input[name="csrf_token"]');
   return el ? (el.content || el.value) : '';
 }

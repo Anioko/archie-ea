@@ -582,7 +582,7 @@ async function arbQuickAction(itemId, action) {
   const url = `/arb/api/arb/${itemId}/${action}`;
   fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
     body: JSON.stringify({})
   })
   .then(r => r.json())

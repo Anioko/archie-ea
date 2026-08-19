@@ -229,7 +229,7 @@
         const cfg        = window.__BLUEPRINT_CONFIG__ || {};
         const solutionId = cfg.solutionId;
         const csrfToken  = cfg.csrfToken
-                           || document.querySelector('meta[name="csrf-token"]')?.content
+                           || document.querySelector('meta[name=csrf-token]')?.content
                            || '';
         const baseUrl    = '/solutions/' + solutionId + '/decisions';
 

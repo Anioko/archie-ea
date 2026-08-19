@@ -306,7 +306,7 @@ document.addEventListener('alpine:init', function() {
             },
 
             _csrfToken: function() {
-                const el = document.querySelector('meta[name="csrf-token"]');
+                const el = document.querySelector('meta[name=csrf-token]');
                 return el ? el.content : '';
             },
 

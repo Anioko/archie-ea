@@ -163,7 +163,7 @@ document.getElementById('subscribe-btn').addEventListener('click', async functio
     btn.textContent = 'Subscribing…';
     btn.disabled = true;
 
-    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfMeta = document.querySelector('meta[name=csrf-token]');
     const csrfToken = csrfMeta ? csrfMeta.content : '';
 
     try {

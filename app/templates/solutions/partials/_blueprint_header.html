@@ -222,7 +222,7 @@ function archieShowBanner(msg, type) {
 (function() {
     async function deleteSolutionBp(solutionId, solutionName) {
         if (!(await Platform.modal.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) return;
-        let csrf = document.querySelector('meta[name="csrf-token"]');
+        let csrf = document.querySelector('meta[name=csrf-token]');
         fetch('/solutions/' + solutionId + '/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf ? csrf.content : '' }

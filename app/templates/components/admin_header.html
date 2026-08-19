@@ -407,7 +407,7 @@
                 fetch('/api/notifications/' + nid + '/mark-read?source=' + src, {
                     method: 'POST', credentials: 'same-origin',
                     headers: {
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '',
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                 }).catch(function() {
@@ -480,7 +480,7 @@
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
             }).catch(function() {
@@ -536,7 +536,7 @@
                                 method: 'POST', credentials: 'same-origin',
                                 headers: {
                                     'Content-Type': 'application/json',
-                                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                    'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '',
                                     'X-Requested-With': 'XMLHttpRequest',
                                 },
                                 body: JSON.stringify({ bu_id: id || null }),

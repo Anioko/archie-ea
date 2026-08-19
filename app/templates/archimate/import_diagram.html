@@ -231,7 +231,7 @@ function diagramImport() {
         async _send(url) {
             this.busy = true; this.error = '';
             try {
-                const token = document.querySelector('meta[name="csrf-token"]');
+                const token = document.querySelector('meta[name=csrf-token]');
                 const res = await fetch(url, {
                     method: 'POST', credentials: 'same-origin', body: this._body(),
                     headers: token ? { 'X-CSRFToken': token.content } : {},

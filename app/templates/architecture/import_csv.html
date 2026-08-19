@@ -228,7 +228,7 @@ function archimateImport() {
             this.result = null;
 
             const ext = this.file.name.split('.').pop().toLowerCase();
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
             const formData = new FormData();
             formData.append('file', this.file);
 
@@ -271,7 +271,7 @@ function archimateImport() {
         async createDiagram() {
             if (!this.result?.element_ids?.length) return;
             this.creatingDiagram = true;
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
             const fileName = this.file?.name || 'Imported Elements';
             try {
                 const res = await fetch('/archimate/api/create-diagram-from-elements', {

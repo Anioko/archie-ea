@@ -196,7 +196,7 @@ function processStepEditor(solutionId) {
       el._saveError = '';
       el._saved = false;
       try {
-        const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        const csrf = document.querySelector('meta[name=csrf-token]')?.getAttribute('content')
                   || document.querySelector('[name=csrf_token]')?.value || '';
         const r = await fetch(`/architecture-journey/${solutionId}/element/${el.element_id}/steps`, {
           method: 'PATCH',

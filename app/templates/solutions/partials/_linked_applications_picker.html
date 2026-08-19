@@ -152,7 +152,7 @@ function appPicker(solutionId, initialApps) {
             this.linking = true;
             this.errorMsg = '';
             try {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
                 const res = await fetch('/solutions/' + this.solutionId + '/link-application', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
@@ -180,7 +180,7 @@ function appPicker(solutionId, initialApps) {
         async unlinkApp(appId) {
             this.errorMsg = '';
             try {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
                 const res = await fetch('/solutions/' + this.solutionId + '/unlink-application/' + appId, {
                     method: 'DELETE',
                     headers: {'X-CSRFToken': csrfToken},

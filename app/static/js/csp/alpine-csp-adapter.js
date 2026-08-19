@@ -90,7 +90,16 @@
       return {
         '$el': function () { return el; },
         '$refs': function () { return collectRefs(el); },
-        '$store': function () { return Alpine.store(); },
+        // $store must expose the whole store REGISTRY ($store.modal, $store.foo),
+        // not Alpine.store() with no args (which returns undefined). Proxy each
+        // name through the public getter.
+        '$store': function () {
+          return new Proxy({}, {
+            has: function () { return true; },
+            get: function (_t, k) { return Alpine.store(k); },
+            set: function (_t, k, v) { Alpine.store(k, v); return true; }
+          });
+        },
         '$data': function () { return Alpine.$data(el); },
         '$root': function () { return Alpine.closestRoot ? Alpine.closestRoot(el) : rootOf(el); },
         '$nextTick': function () { return Alpine.nextTick; },

@@ -2001,7 +2001,7 @@ document.addEventListener('click', function(e) {
         arbReady: {{ arb_ready | tojson }},
         sadData: {{ sad_data | tojson }},
         lifecycleData: {{ lifecycle_json | tojson }},
-        csrfToken: document.querySelector('meta[name="csrf-token"]')?.content || ''
+        csrfToken: document.querySelector('meta[name=csrf-token]')?.content || ''
     };
 </script>
 <script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script> <!-- entity-picker-ok: script include, not an entity field -->

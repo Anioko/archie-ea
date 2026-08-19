@@ -220,7 +220,7 @@ function archiMateImport() {
         const resp = await fetch('/solutions/import/archimate/preview', {
           method: 'POST',
           body: formData,
-          headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+          headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
         });
         const data = await resp.json();
         if (!resp.ok) {
@@ -250,7 +250,7 @@ function archiMateImport() {
         const resp = await fetch('/solutions/import/archimate/execute', {
           method: 'POST',
           body: formData,
-          headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+          headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
         });
         const data = await resp.json();
         if (!resp.ok && resp.status !== 207) {

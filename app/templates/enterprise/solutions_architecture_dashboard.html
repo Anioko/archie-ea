@@ -373,7 +373,7 @@ function solutionWorkspace() {
             try {
                 const resp = await fetch('/architecture/solutions-architecture/analyze', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
                     body: JSON.stringify({
                         problem_description: this.form.problem,
                         budget_min: this.form.budget_min ? parseFloat(this.form.budget_min) : null,
@@ -405,7 +405,7 @@ function solutionWorkspace() {
             try {
                 const resp = await fetch('/architecture/solutions-architecture/save-solution', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
                     body: JSON.stringify({ name: this.form.problem.substring(0, 100), problem_description: this.form.problem, option_type: rec.option_type, estimated_cost: rec.estimated_cost || null })
                 });
                 const data = await resp.json();

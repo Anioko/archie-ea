@@ -1210,7 +1210,7 @@ function requirementsBacklog() {
             this.jiraPushing = true;
             this.jiraPushError = null;
             try {
-                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfMeta = document.querySelector('meta[name=csrf-token]');
                 const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
                 const r = await fetch(`/api/enterprise/requirements/${this.activeReq.id}/push-to-jira`, {
                     method: 'POST',
@@ -1240,7 +1240,7 @@ function requirementsBacklog() {
             this.jiraSyncing = true;
             this.jiraSyncError = null;
             try {
-                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfMeta = document.querySelector('meta[name=csrf-token]');
                 const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
                 const r = await fetch(`/api/enterprise/requirements/${this.activeReq.id}/sync-from-jira`, {
                     method: 'POST',
@@ -1275,7 +1275,7 @@ function requirementsBacklog() {
         },
 
         mutationHeaders() {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
             const headers = { 'Content-Type': 'application/json' };
             if (csrfToken) {
                 headers['X-CSRFToken'] = csrfToken;

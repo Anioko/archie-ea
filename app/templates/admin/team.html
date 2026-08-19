@@ -112,7 +112,7 @@
 {% endblock %}
 <script>
 (function() {
-    let _csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    let _csrfMeta = document.querySelector('meta[name=csrf-token]');
     document.addEventListener('click', async function(e) {
         let btn = e.target.closest('[data-action="remove-member"]');
         if (!btn) return;

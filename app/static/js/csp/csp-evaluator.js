@@ -22,7 +22,8 @@
   var KEYWORD = { 'true': 1, 'false': 1, 'null': 1, 'undefined': 1, 'new': 1,
     'typeof': 1, 'void': 1, 'delete': 1, 'in': 1, 'instanceof': 1, 'function': 1,
     'return': 1, 'if': 1, 'else': 1, 'let': 1, 'const': 1, 'var': 1, 'await': 1,
-    'try': 1, 'catch': 1, 'finally': 1 };
+    'try': 1, 'catch': 1, 'finally': 1,
+    'for': 1, 'while': 1, 'of': 1, 'break': 1, 'continue': 1 };
   var REGEX_PREV = { '(': 1, ',': 1, '[': 1, '{': 1, ':': 1, ';': 1, '?': 1,
     '=>': 1, '!': 1, '&&': 1, '||': 1, '??': 1, '=': 1, '===': 1, '!==': 1,
     '==': 1, '!=': 1, '<': 1, '<=': 1, '>': 1, '>=': 1, '+': 1, '-': 1, '*': 1,
@@ -41,6 +42,11 @@
       // comments (a method body inside x-data may carry them)
       if (c === '/' && s[i + 1] === '/') { i += 2; while (i < n && s[i] !== '\n') i++; continue; }
       if (c === '/' && s[i + 1] === '*') { i += 2; while (i < n && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
+      // HTML comments embedded in an attribute value (e.g. a `:class` object with
+      // an inline `<!-- token-migration-ok -->`). Browsers treat `<!--` and a
+      // line-leading `-->` as single-line comments in JS (ECMAScript Annex B web
+      // compat), so stock Alpine's new Function() ignored them; match that.
+      if (c === '<' && s[i + 1] === '!' && s[i + 2] === '-' && s[i + 3] === '-') { i += 4; while (i < n && s[i] !== '\n') i++; continue; }
       // regex literal (only where a value is expected)
       if (c === '/' && (prev === null || REGEX_PREV[prev.val])) {
         var j = i + 1, inClass = false, ok = false;
@@ -89,6 +95,12 @@
       if (!matched) throw new SyntaxError('bad char ' + JSON.stringify(c) + ' at ' + i);
       push('punc', matched); i += matched.length;
     }
+    // Pad with several eof sentinels so lookahead (this.t[this.i+1/+2/+3]) never
+    // returns undefined on truncated/malformed input — the parser then throws a
+    // clean SyntaxError instead of crashing with a TypeError.
+    toks.push({ type: 'eof', val: '' });
+    toks.push({ type: 'eof', val: '' });
+    toks.push({ type: 'eof', val: '' });
     toks.push({ type: 'eof', val: '' });
     return toks;
   }
@@ -142,7 +154,8 @@
     '+': 10, '-': 10, '*': 11, '/': 11, '%': 11 };
   var ASSIGN = { '=': 1, '+=': 1, '-=': 1, '*=': 1, '/=': 1, '%=': 1, '??=': 1, '&&=': 1, '||=': 1 };
   var PREFIX = { '!': 1, '-': 1, '+': 1, '~': 1, 'typeof': 1, 'void': 1, 'delete': 1, 'await': 1 };
-  var STMT_KW = { 'if': 1, 'return': 1, 'let': 1, 'const': 1, 'var': 1, 'try': 1 };
+  var STMT_KW = { 'if': 1, 'return': 1, 'let': 1, 'const': 1, 'var': 1, 'try': 1,
+    'for': 1, 'while': 1, 'break': 1, 'continue': 1 };
 
   function Parser(toks) { this.t = toks; this.i = 0; }
   Parser.prototype = {
@@ -247,6 +260,40 @@
         while (this.isPunc(';') && this.t[this.i + 1] && this.t[this.i + 1].val === 'else') this.next();
         if (this.isPunc('else')) { this.next(); alt = this.stmtOrBlock(); }
         return { t: 'if', test: test, cons: cons, alt: alt };
+      }
+      if (t === 'kw' && v === 'break') { this.next(); return { t: 'break' }; }
+      if (t === 'kw' && v === 'continue') { this.next(); return { t: 'continue' }; }
+      if (t === 'kw' && v === 'while') {
+        this.next(); this.eat('('); var wtest = this.seq(); this.eat(')');
+        return { t: 'while', test: wtest, body: this.stmtOrBlock() };
+      }
+      if (t === 'kw' && v === 'for') {
+        this.next(); this.eat('(');
+        // init clause: `let/const/var x = ...` | expr | empty
+        var decl = null;
+        if (this.isPunc('let') || this.isPunc('const') || this.isPunc('var') ||
+            (this.peek().type === 'kw' && (this.val() === 'let' || this.val() === 'const' || this.val() === 'var'))) {
+          this.next();  // let/const/var
+          decl = { name: this.next().val, init: null };
+        }
+        // for-of / for-in
+        if (this.isPunc('of') || (this.peek().type === 'kw' && this.val() === 'of')) {
+          this.next(); var oiter = this.assign(); this.eat(')');
+          return { t: 'forof', name: decl ? decl.name : null, iter: oiter, body: this.stmtOrBlock() };
+        }
+        if (this.isPunc('in') || (this.peek().type === 'kw' && this.val() === 'in')) {
+          this.next(); var iiter = this.assign(); this.eat(')');
+          return { t: 'forin', name: decl ? decl.name : null, iter: iiter, body: this.stmtOrBlock() };
+        }
+        // C-style: init; test; update
+        if (decl && this.isPunc('=')) { this.next(); decl.init = this.assign(); }
+        var init = decl ? { t: 'var', decls: [decl] } : (this.isPunc(';') ? null : { t: 'exprstmt', expr: this.seq() });
+        this.eat(';');
+        var ftest = this.isPunc(';') ? null : this.seq();
+        this.eat(';');
+        var upd = this.isPunc(')') ? null : this.seq();
+        this.eat(')');
+        return { t: 'for', init: init, test: ftest, update: upd, body: this.stmtOrBlock() };
       }
       if (t === 'kw' && (v === 'let' || v === 'const' || v === 'var')) {
         this.next(); var decls = [];
@@ -458,8 +505,59 @@
       case 'call': return doCall(node, scope, ctx);
       case 'new': { var C = ev(node.callee, scope, ctx); var args = evalArgs(node.args, scope, ctx); return new (Function.prototype.bind.apply(C, [null].concat(args)))(); }
       case 'arrow': case 'func': return makeFn(node, scope, ctx);
-      case 'block': { var res; for (var b = 0; b < node.body.length; b++) { res = ev(node.body[b], scope, ctx); if (ctx._ret) return ctx._retVal; } return res; }
+      case 'block': { var res; for (var b = 0; b < node.body.length; b++) { res = ev(node.body[b], scope, ctx); if (ctx._ret || ctx._brk || ctx._cont) return res; } return res; }
       case 'if': { if (ev(node.test, scope, ctx)) { ev(node.cons, scope, ctx); } else if (node.alt) { ev(node.alt, scope, ctx); } return undefined; }
+      case 'break': { ctx._brk = true; return undefined; }
+      case 'continue': { ctx._cont = true; return undefined; }
+      case 'while': {
+        var guardW = 0;
+        while (ev(node.test, scope, ctx) && guardW++ < 1000000) {
+          ev(node.body, scope, ctx);
+          if (ctx._ret) return ctx._retVal;
+          if (ctx._brk) { ctx._brk = false; break; }
+          if (ctx._cont) { ctx._cont = false; }
+        }
+        return undefined;
+      }
+      case 'for': {
+        if (node.init) ev(node.init, scope, ctx);
+        var guardF = 0;
+        while ((node.test ? ev(node.test, scope, ctx) : true) && guardF++ < 1000000) {
+          ev(node.body, scope, ctx);
+          if (ctx._ret) return ctx._retVal;
+          if (ctx._brk) { ctx._brk = false; break; }
+          if (ctx._cont) { ctx._cont = false; }
+          if (node.update) ev(node.update, scope, ctx);
+        }
+        return undefined;
+      }
+      case 'forof': {
+        var iterable = ev(node.iter, scope, ctx);
+        if (iterable) {
+          var arrOf = Array.from(iterable);
+          for (var oi = 0; oi < arrOf.length; oi++) {
+            if (node.name) (ctx.locals || (ctx.locals = {}))[node.name] = arrOf[oi];
+            ev(node.body, scope, ctx);
+            if (ctx._ret) return ctx._retVal;
+            if (ctx._brk) { ctx._brk = false; break; }
+            if (ctx._cont) { ctx._cont = false; }
+          }
+        }
+        return undefined;
+      }
+      case 'forin': {
+        var obj2 = ev(node.iter, scope, ctx);
+        if (obj2) {
+          for (var kIn in obj2) {
+            if (node.name) (ctx.locals || (ctx.locals = {}))[node.name] = kIn;
+            ev(node.body, scope, ctx);
+            if (ctx._ret) return ctx._retVal;
+            if (ctx._brk) { ctx._brk = false; break; }
+            if (ctx._cont) { ctx._cont = false; }
+          }
+        }
+        return undefined;
+      }
       case 'return': { ctx._ret = true; ctx._retVal = node.arg ? ev(node.arg, scope, ctx) : undefined; return ctx._retVal; }
       case 'var': { node.decls.forEach(function (d) { var val = d.init ? ev(d.init, scope, ctx) : undefined; (ctx.locals || (ctx.locals = {}))[d.name] = val; }); return undefined; }
       case 'try': {
@@ -518,14 +616,19 @@
       var key = callee.computed ? ev(callee.prop, scope, ctx) : callee.prop.v;
       fn = thisArg == null ? undefined : thisArg[key];
     } else {
-      // Bare call `foo()` (not `obj.foo()`). Alpine evaluates expressions with
-      // `this` bound to the component, so a bare method call must run with
-      // `this` = the component scope — otherwise a method that uses `this`
-      // (e.g. x-init="init()" whose init() calls this.load()) sees `this` as
-      // undefined and throws. Global functions (parseInt, etc.) ignore `this`,
-      // so binding the scope is harmless for them.
-      thisArg = scope;
+      // Bare call `foo()` (not `obj.foo()`). Alpine runs expressions with `this`
+      // = the component, so a component method must be called with this=scope
+      // (e.g. x-init="init()" whose init() calls this.load()). BUT a native
+      // global (setInterval/setTimeout/fetch/…) must be called with this=window
+      // or it throws "Illegal invocation". Distinguish: if the resolved function
+      // is the same reference as the global of that name, it's a global -> no
+      // scope this; otherwise it's a component method -> this=scope.
       fn = ev(callee, scope, ctx);
+      if (callee.t === 'id' && global && global[callee.name] === fn) {
+        thisArg = global;   // native/global function: bind to window
+      } else {
+        thisArg = scope;    // component method: Alpine's `this` = component
+      }
     }
     if (node.optional && (fn === null || fn === undefined)) return undefined;
     var args = evalArgs(node.args, scope, ctx);
