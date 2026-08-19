@@ -19,7 +19,7 @@ from werkzeug.serving import make_server
 ROOT = Path(__file__).resolve().parents[2]
 EVAL = (ROOT / "app/static/js/csp/csp-evaluator.js").read_text(encoding="utf-8")
 
-PAGES = ["/archimate/composer", "/dashboard/", "/capability-map/"]
+PAGES = ["/archimate/composer", "/dashboard/", "/capability-map/", "/solutions/", "/applications/", "/architecture/dashboard", "/stakeholders/map", "/enterprise/capability-map/", "/admin/dashboard", "/vendors/"]
 
 
 def _boot_app():
@@ -107,13 +107,23 @@ def main():
                 cookie_val = serializer.dumps(dict(_s))
             ctx.add_cookies([{"name": app.config.get("SESSION_COOKIE_NAME", "session"),
                               "value": cookie_val, "url": base}])
+            # Capture the page's OWN Alpine init errors. The CSP-safe evaluator
+            # drives Alpine on these real pages (Alpine.setEvaluator), so a bug in
+            # it surfaces as a pageerror here — which the expression-extraction
+            # check below CANNOT see (it evals against a mock scope). This is the
+            # guard that catches "window/document resolves to undefined" class
+            # bugs that break a whole page's interactivity.
+            page_errors = []
+            pg.on("pageerror", lambda e: page_errors.append(str(e)))
             for path in PAGES:
+                before = len(page_errors)
                 try:
                     resp = pg.goto(base + path, wait_until="domcontentloaded", timeout=15000)
                 except Exception as e:
                     pages_ok.append((path, f"nav-error {e}"))
                     continue
                 code = resp.status if resp else 0
+                pg.wait_for_timeout(800)  # let Alpine init run and throw if it will
                 # Many real pages redirect to login when unauthenticated; that's fine —
                 # we still extract whatever Alpine markup rendered (login page has some).
                 pg.add_script_tag(content=EVAL)
@@ -140,14 +150,23 @@ def main():
                     }""", exprs)
                 parse_fail += res["pf"]
                 diverge += res["dv"]
-                pages_ok.append((path, f"http={code} exprs={len(exprs)} parsefail={len(res['pf'])} diverge={len(res['dv'])}"))
+                new_errs = page_errors[before:]
+                pages_ok.append((path, f"http={code} exprs={len(exprs)} parsefail={len(res['pf'])} "
+                                       f"diverge={len(res['dv'])} pageerrors={len(new_errs)}",
+                                 new_errs))
             b.close()
     finally:
         srv.shutdown()
 
     print("=== ARCH-070 real-app-page smoke ===")
-    for path, info in pages_ok:
+    total_page_errors = []
+    for row in pages_ok:
+        path, info = row[0], row[1]
+        errs = row[2] if len(row) > 2 else []
+        total_page_errors += errs
         print(f"  {path:26} {info}")
+        for e in errs[:3]:
+            print(f"       PAGEERROR: {e[:120]}")
     print(f"\n  total expressions checked: {total_exprs}")
     print(f"  parse failures: {len(parse_fail)}")
     for e, why in parse_fail[:15]:
@@ -155,8 +174,10 @@ def main():
     print(f"  divergences vs native eval: {len(diverge)}")
     for d in diverge[:15]:
         print(f"     DIVERGE: {d}")
-    ok = not parse_fail and not diverge and total_exprs > 0
-    print("\nRESULT:", "PASS" if ok else ("FAIL" if total_exprs else "INCONCLUSIVE (no expressions rendered)"))
+    print(f"  page (Alpine init) errors: {len(total_page_errors)}")
+    ok = (not parse_fail and not diverge and not total_page_errors and total_exprs > 0)
+    print("\nRESULT:", "PASS" if ok else ("FAIL" if (total_exprs or total_page_errors)
+                                          else "INCONCLUSIVE (no expressions rendered)"))
     return 0 if ok else 1
 
 

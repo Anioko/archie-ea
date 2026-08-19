@@ -242,6 +242,9 @@
       if (t === 'kw' && v === 'if') {
         this.next(); this.eat('('); var test = this.seq(); this.eat(')');
         var cons = this.stmtOrBlock(), alt = null;
+        // Allow `if (c) foo(); else bar()` — the ';' terminates the consequent
+        // expression-statement and `else` follows it.
+        while (this.isPunc(';') && this.t[this.i + 1] && this.t[this.i + 1].val === 'else') this.next();
         if (this.isPunc('else')) { this.next(); alt = this.stmtOrBlock(); }
         return { t: 'if', test: test, cons: cons, alt: alt };
       }
@@ -372,6 +375,17 @@
         if (this.isPunc('...')) { this.next(); props.push({ kind: 'spread', value: this.assign() }); }
         else {
           var computed = false, key;
+          // `async name() { ... }` method shorthand (Alpine x-data commonly has
+          // `async init()`, `async load()`). Skip the `async` modifier — the
+          // evaluator runs bodies synchronously (await is a pass-through), which
+          // is fine for driving reactive state. Without this the whole x-data
+          // object failed to parse and the component died.
+          if (this.val() === 'async' && this.peek().type === 'name' &&
+              (this.t[this.i + 1].type === 'name' || this.t[this.i + 1].type === 'str' ||
+               (this.t[this.i + 1].type === 'punc' && (this.t[this.i + 1].val === '[' || this.t[this.i + 1].val === '*')))) {
+            this.next();  // consume 'async'
+            if (this.isPunc('*')) this.next();  // async generator — ignore the star
+          }
           // get/set accessor: `get name() { ... }` / `set name(v) { ... }`.
           // Only treat as an accessor when followed by a property name (not
           // `get:` shorthand or `get()` method literally named "get").
@@ -461,6 +475,9 @@
 
   function readId(name, scope, ctx) {
     if (ctx && ctx.locals && name in ctx.locals) return ctx.locals[name];
+    // Top-level `this` in an Alpine expression is the component (the scope).
+    // Inside a method, ctx.locals['this'] is set and handled above.
+    if (name === 'this') return scope;
     if (name === 'undefined') return undefined;
     if (name === 'NaN') return NaN; if (name === 'Infinity') return Infinity;
     if (scope && (name in scope)) return scope[name];
@@ -500,7 +517,16 @@
       if ((callee.optional || node.optional) && (thisArg === null || thisArg === undefined)) return undefined;
       var key = callee.computed ? ev(callee.prop, scope, ctx) : callee.prop.v;
       fn = thisArg == null ? undefined : thisArg[key];
-    } else { thisArg = undefined; fn = ev(callee, scope, ctx); }
+    } else {
+      // Bare call `foo()` (not `obj.foo()`). Alpine evaluates expressions with
+      // `this` bound to the component, so a bare method call must run with
+      // `this` = the component scope — otherwise a method that uses `this`
+      // (e.g. x-init="init()" whose init() calls this.load()) sees `this` as
+      // undefined and throws. Global functions (parseInt, etc.) ignore `this`,
+      // so binding the scope is harmless for them.
+      thisArg = scope;
+      fn = ev(callee, scope, ctx);
+    }
     if (node.optional && (fn === null || fn === undefined)) return undefined;
     var args = evalArgs(node.args, scope, ctx);
     if (typeof fn !== 'function') throw new TypeError((callee.t === 'member' ? callee.prop.v : callee.name) + ' is not a function');

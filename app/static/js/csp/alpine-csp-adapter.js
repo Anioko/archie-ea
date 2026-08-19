@@ -59,10 +59,25 @@
           if (typeof k === 'symbol') return undefined;
           if (extraScope && k in extraScope) return extraScope[k];
           if (magics.hasOwnProperty(k)) return magics[k]();  // lazy magic
+          // Component data next.
+          if (base && (k in base)) return base[k];
+          // CRITICAL: fall back to the REAL global for names not on the
+          // component (window, document, localStorage, console, JSON, Date, …).
+          // Without this, an Alpine expression like `window.addEventListener(...)`
+          // or `localStorage.getItem(...)` resolves the identifier through this
+          // proxy to undefined and throws — which broke every page whose Alpine
+          // uses a browser global (e.g. the composer's resize handler). The
+          // `has` trap must stay `true` (Alpine's with()-scope contract), so the
+          // real fallback has to happen here in get().
+          if (k in global) return global[k];
           return base ? base[k] : undefined;
         },
         set: function (_t, k, v) {
           if (extraScope && k in extraScope) { extraScope[k] = v; return true; }
+          // Assign onto the component data when it owns the key, otherwise let a
+          // genuine global assignment (rare in Alpine) hit the global.
+          if (base && (k in base)) { base[k] = v; return true; }
+          if (k in global) { try { global[k] = v; } catch (e) { /* read-only global */ } return true; }
           if (base) { base[k] = v; return true; }
           return true;
         }
