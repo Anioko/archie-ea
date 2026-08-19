@@ -25,7 +25,7 @@
 
         <!-- Search (desktop) -->
         <div class="relative hidden md:block">
-            <button id="search-modal-trigger"
+            <button type="button" id="search-modal-trigger"
                     class="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-accent transition-colors"
                     aria-label="Open search">
                 <i data-lucide="search" class="h-4 w-4"></i>
@@ -36,7 +36,7 @@
         </div>
 
         <!-- Search (mobile icon only) -->
-        <button id="header-search-btn-mobile"
+        <button type="button" id="header-search-btn-mobile"
                 class="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
                 aria-label="Open search">
             <i data-lucide="search" class="h-5 w-5"></i>
@@ -61,7 +61,7 @@
 
         <!-- ── PLT-018: Business Unit Scope ─────────────────────────── -->
         <div class="relative" id="bu-scope-wrapper" data-dropdown-wrapper>
-            <button id="bu-scope-btn"
+            <button type="button" id="bu-scope-btn"
                     class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
                     aria-label="Business unit scope"
                     aria-expanded="false"
@@ -87,7 +87,7 @@
 
         <!-- ── Notifications ─────────────────────────────────────────── -->
         <div class="relative" id="notif-wrapper" data-dropdown-wrapper>
-            <button id="notif-btn"
+            <button type="button" id="notif-btn"
                     class="relative text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
                     aria-label="Notifications"
                     aria-expanded="false"
@@ -102,7 +102,7 @@
                  role="menu">
                 <div class="p-3 border-b border-border flex items-center justify-between">
                     <span class="text-sm font-semibold">Notifications</span>
-                    <button id="notif-mark-read-btn"
+                    <button type="button" id="notif-mark-read-btn"
                             class="text-xs text-muted-foreground hover:text-foreground transition-colors hidden"
                             aria-label="Mark all notifications as read">
                         Mark all read
@@ -119,7 +119,7 @@
 
         <!-- ── User Menu ─────────────────────────────────────────────── -->
         <div class="relative" id="user-menu-wrapper" data-dropdown-wrapper>
-            <button id="user-menu-btn"
+            <button type="button" id="user-menu-btn"
                     class="flex items-center gap-2 rounded-lg hover:bg-accent px-2 py-1.5 transition-colors"
                     aria-expanded="false"
                     aria-haspopup="true"

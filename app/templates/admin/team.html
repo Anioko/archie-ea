@@ -89,7 +89,7 @@
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         {% if member.id != current_user.id %}
-                        <button
+                        <button type="button"
                             data-action="remove-member"
                             data-member-id="{{ member.id }}"
                             data-member-name="{{ member.full_name()|e }}"

@@ -743,7 +743,7 @@ function documentAnalyzer(entityType, entityId) {
                         <h4 class="font-semibold">Batch Analysis Complete</h4>
                     </div>
                     <p class="text-sm">${successCount} file(s) analyzed successfully, ${errorCount} file(s) failed.</p>
-                    <button class="mt-2 text-xs underline dismiss-btn" aria-label="Dismiss notification">Dismiss</button>
+                    <button type="button" class="mt-2 text-xs underline dismiss-btn" aria-label="Dismiss notification">Dismiss</button>
                 `;
                 errorDiv.querySelector('.dismiss-btn').addEventListener('click', () => errorDiv.remove());
                 document.body.appendChild(errorDiv);

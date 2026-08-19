@@ -369,21 +369,21 @@ function displayImportHistory() {
 
                 <!-- Actions -->
                 <div class="flex space-x-2 ml-4">
-                    <button data-action="viewDetails" data-id="${item.id}" class="bg-primary text-primary-foreground px-3 py-1 rounded text-sm hover:bg-primary transition-colors" aria-label="View import details">
+                    <button type="button" data-action="viewDetails" data-id="${item.id}" class="bg-primary text-primary-foreground px-3 py-1 rounded text-sm hover:bg-primary transition-colors" aria-label="View import details">
                         <i data-lucide="eye" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>View
                     </button>
                     ${item.status === 'running' ? `
-                    <button data-action="viewProgress" data-id="${item.batch_job_id}" class="bg-primary text-primary-foreground px-3 py-1 rounded text-sm hover:bg-primary transition-colors" aria-label="View import progress">
+                    <button type="button" data-action="viewProgress" data-id="${item.batch_job_id}" class="bg-primary text-primary-foreground px-3 py-1 rounded text-sm hover:bg-primary transition-colors" aria-label="View import progress">
                         <i data-lucide="trending-up" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Progress
                     </button>
                     ` : ''}
                     ${item.can_rollback ? `
-                    <button data-action="rollbackImport" data-id="${item.id}" class="bg-warning text-primary-foreground px-3 py-1 rounded text-sm hover:bg-warning transition-colors" aria-label="Rollback import">
+                    <button type="button" data-action="rollbackImport" data-id="${item.id}" class="bg-warning text-primary-foreground px-3 py-1 rounded text-sm hover:bg-warning transition-colors" aria-label="Rollback import">
                         <i data-lucide="rotate-ccw" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Rollback
                     </button>
                     ` : ''}
                     ${item.status === 'partial' && item.records_failed > 0 ? `
-                    <button data-action="retryFailed" data-id="${item.id}" class="bg-warning text-primary-foreground px-3 py-1 rounded text-sm hover:bg-warning transition-colors" aria-label="Retry failed records">
+                    <button type="button" data-action="retryFailed" data-id="${item.id}" class="bg-warning text-primary-foreground px-3 py-1 rounded text-sm hover:bg-warning transition-colors" aria-label="Retry failed records">
                         <i data-lucide="rotate-cw" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Retry Failed
                     </button>
                     ` : ''}

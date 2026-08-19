@@ -7,7 +7,7 @@
                 <p class="text-sm text-muted-foreground mt-1">{{ solution.name }} · Solution #{{ solution.id }}</p>
             </div>
             <div class="flex items-center gap-3">
-                <button x-show="fileList.length > 0" x-cloak @click="ideShowSetup = false"
+                <button type="button" x-show="fileList.length > 0" x-cloak @click="ideShowSetup = false"
                         class="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors">
                     <i data-lucide="code-2" class="h-4 w-4"></i> Back to IDE
                 </button>
@@ -167,7 +167,7 @@
                                       x-text="acceptedProposalCount + ' accepted'"></span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <button x-show="pendingProposalCount > 0" @click="batchAcceptProposals()" :disabled="docAccepting"
+                                <button type="button" x-show="pendingProposalCount > 0" @click="batchAcceptProposals()" :disabled="docAccepting"
                                         class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-2xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                                     <svg x-show="docAccepting" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                     <i x-show="!docAccepting" data-lucide="check-check" class="h-3 w-3"></i>

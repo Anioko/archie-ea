@@ -141,7 +141,7 @@
                     We haven't generated any architectural recommendations for your portfolio. This typically requires more application mapping data.
                 </p>
                 <div class="flex items-center justify-center gap-3">
-                    <button id="startAnalysisEmpty" class="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-2" aria-label="Action">
+                    <button type="button" id="startAnalysisEmpty" class="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-2" aria-label="Action">
                         <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i> Run Discovery Scan
                     </button>
                     <a href="{{ url_for('unified_applications.application_list') }}" class="px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors inline-flex items-center gap-2">
@@ -264,7 +264,7 @@
         </div>
         <h3 class="text-lg font-semibold mb-2">On-Demand Analysis</h3>
         <p class="text-sm text-muted-foreground mb-4">Trigger a new AI-powered analysis of your architecture</p>
-        <button id="startAnalysis" 
+        <button type="button" id="startAnalysis" 
                 class="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors" aria-label="Action">
             Start Analysis
         </button>

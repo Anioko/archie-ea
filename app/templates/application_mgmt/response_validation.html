@@ -212,7 +212,7 @@ function renderComparison(comparisons) {
         <td class="py-3 px-4 text-center">${statusIcon}</td>
         <td class="py-3 px-4 text-center">
           ${item.status === 'conflict' ?
-            `<button data-action="openResolutionModal" data-id="${idx}" class="text-primary hover:underline text-sm" aria-label="Action">Resolve</button>` :
+            `<button type="button" data-action="openResolutionModal" data-id="${idx}" class="text-primary hover:underline text-sm" aria-label="Action">Resolve</button>` :
             '<span class="text-muted-foreground text-sm">-</span>'
           }
         </td>

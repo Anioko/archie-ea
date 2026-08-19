@@ -25,7 +25,7 @@
           <h2 id="my-modal-title" class="text-lg font-semibold">Modal Title</h2>
           <p id="my-modal-description" class="text-sm text-muted-foreground mt-0.5">Modal description</p>
         </div>
-        <button data-modal-close="my-modal" aria-label="Close modal" class="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center">
+        <button type="button" data-modal-close="my-modal" aria-label="Close modal" class="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center">
           <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
         </button>
       </div>
@@ -157,5 +157,5 @@ function myModalData() {
 # AFTER:  <div hidden id="my-modal" data-modal="my-modal">
 #
 # BEFORE: <button type="button" @click="Platform.modal.close('my-modal')">
-# AFTER:  <button data-modal-close="my-modal">
+# AFTER:  <button type="button" data-modal-close="my-modal">
 #}

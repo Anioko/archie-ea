@@ -406,7 +406,7 @@
         <div style="display:flex;gap:16px;align-items:center;"><!-- inline-style-ok -->
             <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}">← Back</a>
             <a href="{{ url_for('solution_design.export_solution_blueprint', solution_id=solution.id) }}" style="color:#fbbf24;"><!-- inline-style-ok -->Technical Blueprint</a>
-            <button id="btn-print-executive">Print / Save as PDF</button>
+            <button type="button" id="btn-print-executive">Print / Save as PDF</button>
         </div>
     </div>
     <div style="height:56px;" class="no-print"></div>

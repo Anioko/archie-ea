@@ -677,7 +677,7 @@
           <i data-lucide="bot" class="h-4 w-4 text-primary" aria-hidden="true"></i>Generate ArchiMate with AI
         </a>
         {% if archimate_form_config.enabled %}
-        <button data-modal-open="add-archimate-link-modal"
+        <button type="button" data-modal-open="add-archimate-link-modal"
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Add ArchiMate relationship">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Relationship
         </button>
@@ -884,7 +884,7 @@
           <h3 class="text-lg font-semibold">Mapped Capabilities</h3>
           <p class="text-sm text-muted-foreground">{{ capabilities | length }} {% if capabilities | length == 1 %}capability{% else %}capabilities{% endif %} linked to this application</p>
         </div>
-        <button data-modal-open="add-capability-modal"
+        <button type="button" data-modal-open="add-capability-modal"
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Map a capability to this application">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Map Capability
         </button>
@@ -1048,7 +1048,7 @@
       <div class="flex flex-col space-y-1.5 p-6 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 class="text-lg font-semibold">Vendor Footprint</h3>
         {% if vendor_summary.has_archimate %}
-        <button data-modal-open="add-vendor-modal"
+        <button type="button" data-modal-open="add-vendor-modal"
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Add vendor product">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Vendor Product
         </button>

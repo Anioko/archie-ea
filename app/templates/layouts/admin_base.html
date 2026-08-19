@@ -388,7 +388,7 @@
         },
         exit() { this.open = false; }
     }">
-        <button id="guided-mode-trigger"
+        <button type="button" id="guided-mode-trigger"
                 x-show="steps.length > 0" x-cloak
                 @click="open = !open"
                 class="fixed bottom-6 right-6 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90 transition-opacity"
