@@ -63,6 +63,9 @@ def test_cmp11_quick_add_searches_catalog_by_name():
     assert "/archimate/api/elements/search?limit=10&q=" in src, \
         "doQuickAddSearch must query the catalog search API"
     assert "_existing" in src, "results must distinguish existing elements from new types"
+    # CMP-11 no-flash: palette matches shown synchronously + loading + stale guard.
+    assert "self.quickAddLoading = true" in src, "must set loading so the empty-state doesn't flash"
+    assert "self._quickAddToken" in src, "must ignore stale out-of-order responses"
     overlays = (JS.parents[1] / "templates" / "archimate" / "partials"
                 / "_composer_overlays.html").read_text(encoding="utf-8")
     assert "No matching element types found" not in overlays, \
@@ -109,11 +112,17 @@ def test_cmp10_menus_use_opacity_only_transition():
     assert "x-transition.opacity" in toolbar
 
 
-def test_cmp14_hover_brings_element_to_front():
-    """Hovering an element brings it to front so its ports beat an overlap."""
+def test_cmp14_hover_raises_only_on_overlap_and_keeps_links_on_top():
+    """Hover raises the element ONLY when it overlaps a neighbour (so its ports
+    beat the overlap), and re-raises links so relationships never hide behind a
+    raised element. The first version raised on every hover with deep:true, which
+    reshuffled z-order across the whole diagram and hid arrows under boxes."""
     src = _read("archimate/composer.js")
-    assert "cellView.model.toFront({ deep: true })" in src, \
-        "element:mouseenter must bring the hovered element to front for port access"
+    assert "_overlapsAnyElement(cellView.model)" in src, \
+        "hover must gate toFront on actual overlap, not fire on every hover"
+    assert "cellView.model.toFront({ deep: true })" not in src, \
+        "the unconditional deep toFront-on-every-hover must be gone"
+    assert "_raiseLinks" in src, "links must be re-raised so relationships stay on top"
 
 
 def test_cmp07_single_save_indicator():

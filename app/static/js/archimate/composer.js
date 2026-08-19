@@ -2067,13 +2067,19 @@ function composerApp() {
             /* ── Port affordance discovery hint (ENT-120) ── */
             this.paper.on('element:mouseenter', function(cellView) {
                 if (self.mode === 'view') return;
-                /* CMP-14: bring the hovered element to front so its connection
-                   ports sit ABOVE any overlapping neighbour. Without this, a port
-                   drag begun over an overlap grabbed and moved the underlying
-                   element instead of starting a link. Locked cells are left in
-                   place. */
-                if (cellView && cellView.model && !self._lockedCells[cellView.model.id]) {
-                    cellView.model.toFront({ deep: true });
+                /* CMP-14 (revised): only raise the hovered element when it
+                   ACTUALLY overlaps a neighbour — the case where its ports would
+                   otherwise sit under another box. Raising on every hover (the
+                   first version) reshuffled z-order across the whole diagram as
+                   the mouse moved and pushed elements above the relationship
+                   links, so arrows blinked out under whatever box was hovered.
+                   We also keep links on top afterward so relationships never hide
+                   behind a raised element, and use a shallow toFront (no deep) to
+                   avoid dragging embedded children around. */
+                if (cellView && cellView.model && !self._lockedCells[cellView.model.id]
+                        && self._overlapsAnyElement(cellView.model)) {
+                    cellView.model.toFront();
+                    self._raiseLinks();
                 }
                 let el = cellView.el;
                 if (el) {
@@ -3157,21 +3163,46 @@ function composerApp() {
            element lands somewhere visible. Deliberate drag-drops keep their
            cursor coordinates unless they'd land exactly on an existing node. */
         _placementFor: function(x, y) {
-            const STEP = 32;      // diagonal cascade step (~half a grid box)
-            const NEAR = 24;      // treat within this many px as "same spot"
+            /* CMP-08 (revised): nudge a new element off an ALREADY-OCCUPIED spot
+               so consecutive keyboard quick-adds don't stack. Kept deliberately
+               conservative after the first version could walk an element up to
+               ~1900px off-screen: only treat a near-exact coincidence (12px) as
+               occupied, cascade at most a few steps, and if it still can't find a
+               clear spot, return the ORIGINAL point rather than flinging the
+               element far away. */
+            const STEP = 28;      // diagonal cascade step
+            const NEAR = 12;      // near-exact coincidence only (was 24)
+            const MAX_STEPS = 8;  // cap the cascade (was 60 -> ~1900px)
             const els = (this.graph && this.graph.getElements) ? this.graph.getElements() : [];
-            let px = x, py = y, guard = 0;
             const occupied = function(cx, cy) {
                 return els.some(function(el) {
                     const p = el.position();
                     return Math.abs(p.x - cx) < NEAR && Math.abs(p.y - cy) < NEAR;
                 });
             };
-            while (occupied(px, py) && guard < 60) {
-                px += STEP; py += STEP;
-                guard++;
-            }
+            let px = x, py = y, guard = 0;
+            while (occupied(px, py) && guard < MAX_STEPS) { px += STEP; py += STEP; guard++; }
+            if (occupied(px, py)) return { x: x, y: y };  // gave up — keep the intended point
             return { x: px, y: py };
+        },
+
+        /* CMP-14: does this element's bbox intersect any other element's bbox? */
+        _overlapsAnyElement: function(model) {
+            if (!this.graph) return false;
+            let b = model.getBBox();
+            return this.graph.getElements().some(function(other) {
+                if (other.id === model.id) return false;
+                let o = other.getBBox();
+                return b.x < o.x + o.width && b.x + b.width > o.x &&
+                       b.y < o.y + o.height && b.y + b.height > o.y;
+            });
+        },
+
+        /* CMP-14: keep relationship links painted above elements so a raised
+           element never hides the arrows terminating at or crossing it. */
+        _raiseLinks: function() {
+            if (!this.graph) return;
+            this.graph.getLinks().forEach(function(link) { link.toFront(); });
         },
 
         pickElement: function(item) {
@@ -4835,10 +4866,19 @@ function composerApp() {
                 }
             }
 
-            /* Query the catalog for existing elements matching the name. */
+            /* CMP-11 (revised): show the synchronous PALETTE matches IMMEDIATELY
+               so the results panel is never empty while the catalog request is in
+               flight — the first version left quickAddResults empty during the
+               fetch, so the "No matching elements" empty-state + create UI flashed
+               on every keystroke. We also set quickAddLoading and carry a request
+               token so a slow earlier response can't overwrite a newer query. */
+            self.quickAddResults = paletteMatches.slice(0, 15);
+            self.quickAddLoading = true;
+            let token = (self._quickAddToken = (self._quickAddToken || 0) + 1);
             let url = '/archimate/api/elements/search?limit=10&q=' + encodeURIComponent(q);
             Platform.fetch.get(url, null, { silent: true })
             .then(function(resp) {
+                if (token !== self._quickAddToken) return;  /* stale response — ignore */
                 let data = (resp && resp.data) || resp || [];
                 let existing = (Array.isArray(data) ? data : [])
                     .filter(function(el) { return el && el.id && !self.canvasElements[el.id]; })
@@ -4850,11 +4890,13 @@ function composerApp() {
                     });
                 /* Existing elements first (reuse beats duplicate), then types. */
                 self.quickAddResults = existing.concat(paletteMatches).slice(0, 15);
+                self.quickAddLoading = false;
             })
             .catch(function() {
-                /* Catalog unreachable — still offer palette types so the user
-                   is never stranded. */
+                if (token !== self._quickAddToken) return;
+                /* Catalog unreachable — keep the palette types already shown. */
                 self.quickAddResults = paletteMatches.slice(0, 15);
+                self.quickAddLoading = false;
             });
         },
 
