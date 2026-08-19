@@ -65,11 +65,11 @@ class TestOEFExportValidation:
         assert schema_location is not None
         
         # Should use ArchiMate 3.2 namespace consistently
-        assert "http://www.opengroup.org/xsd/archimate/3.2/" in schema_location
+        assert "http://www.opengroup.org/xsd/archimate/3.0/" in schema_location
         assert "archimate3_Model.xsd" in schema_location
         
         # Check root element namespace
-        assert root.tag == "{http://www.opengroup.org/xsd/archimate/3.2/}model"
+        assert root.tag == "{http://www.opengroup.org/xsd/archimate/3.0/}model"
 
     def test_oef_xml_well_formed(self, sample_viewpoint_dict):
         """Test that exported OEF XML is well-formed."""
@@ -80,7 +80,7 @@ class TestOEFExportValidation:
         assert root is not None
         
         # Should have required elements
-        name_elem = root.find(".//{http://www.opengroup.org/xsd/archimate/3.2/}name")
+        name_elem = root.find(".//{http://www.opengroup.org/xsd/archimate/3.0/}name")
         assert name_elem is not None
         assert name_elem.text == "Test Viewpoint"
 
@@ -93,7 +93,7 @@ class TestOEFExportValidation:
         assert root is not None
         
         # Should have layout coordinates in nodes
-        nodes = root.findall(".//{http://www.opengroup.org/xsd/archimate/3.2/}node")
+        nodes = root.findall(".//{http://www.opengroup.org/xsd/archimate/3.0/}node")
         assert len(nodes) == 2
         
         # Check that nodes have position attributes
@@ -108,7 +108,7 @@ class TestOEFExportValidation:
         xml_content = to_open_exchange_xml(sample_viewpoint_dict)
         root = etree.fromstring(xml_content.encode('utf-8'))
         
-        elements = root.findall(".//{http://www.opengroup.org/xsd/archimate/3.2/}element")
+        elements = root.findall(".//{http://www.opengroup.org/xsd/archimate/3.0/}element")
         assert len(elements) == 2
         
         # Check element types
@@ -121,7 +121,7 @@ class TestOEFExportValidation:
         xml_content = to_open_exchange_xml(sample_viewpoint_dict)
         root = etree.fromstring(xml_content.encode('utf-8'))
         
-        relationships = root.findall(".//{http://www.opengroup.org/xsd/archimate/3.2/}relationship")
+        relationships = root.findall(".//{http://www.opengroup.org/xsd/archimate/3.0/}relationship")
         assert len(relationships) == 1
         
         rel = relationships[0]

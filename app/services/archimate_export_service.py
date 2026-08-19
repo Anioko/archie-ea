@@ -6,57 +6,26 @@ into a standards-compliant ArchiMate Open Exchange XML document.
 
 Spec ref: The Open Group ArchiMate 3.2 Exchange File Format (October 2022)
 """
-import logging
-import time
 import xml.etree.ElementTree as ET
-from functools import wraps
 from typing import Any, Dict, List
 from xml.dom import minidom
 
-logger = logging.getLogger(__name__)
 
-
-_OEF_NS = "http://www.opengroup.org/xsd/archimate/3.2/"
+# QA 3.5: The Open Group ArchiMate Model Exchange File Format keeps the
+# `.../archimate/3.0/` namespace URI across ArchiMate 3.0/3.1/3.2 — there is no
+# `3.2/` namespace or XSD at that host. Archi (the reference tool) and the
+# official validator both use the 3.0 namespace with `archimate3_Model.xsd`.
+# The bug was a 3.0 namespace declaration paired with a 3.1 *diagram-only* XSD
+# in schemaLocation; fix by pointing schemaLocation at the model XSD under the
+# same 3.0 namespace so strict validators accept the document.
+_OEF_NS = "http://www.opengroup.org/xsd/archimate/3.0/"
 _XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 _XSI_SCHEMA_LOC = (
-    "http://www.opengroup.org/xsd/archimate/3.2/ "
-    "http://www.opengroup.org/xsd/archimate/3.2/archimate3_Model.xsd"
+    "http://www.opengroup.org/xsd/archimate/3.0/ "
+    "http://www.opengroup.org/xsd/archimate/3.0/archimate3_Model.xsd"
 )
 
 
-def _retry_on_failure(max_retries=3, delay=1.0, backoff=2.0):
-    """Decorator to retry function calls with exponential backoff on failure."""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            last_exception = None
-            current_delay = delay
-            
-            for attempt in range(max_retries + 1):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_exception = e
-                    if attempt == max_retries:
-                        logger.error(
-                            "Export function %s failed after %d attempts: %s",
-                            func.__name__, max_retries + 1, str(e)
-                        )
-                        break
-                    
-                    logger.warning(
-                        "Export function %s failed on attempt %d/%d: %s. Retrying in %.1fs...",
-                        func.__name__, attempt + 1, max_retries + 1, str(e), current_delay
-                    )
-                    time.sleep(current_delay)
-                    current_delay *= backoff
-            
-            raise last_exception
-        return wrapper
-    return decorator
-
-
-@_retry_on_failure(max_retries=3, delay=0.5, backoff=2.0)
 def to_open_exchange_xml(viewpoint_dict: Dict[str, Any]) -> str:
     """
     Converts a viewpoint dictionary into ArchiMate 3.2 Open Exchange Format XML.
@@ -165,7 +134,6 @@ def to_open_exchange_xml(viewpoint_dict: Dict[str, Any]) -> str:
     return _pretty_print(root)
 
 
-@_retry_on_failure(max_retries=3, delay=0.5, backoff=2.0)
 def load_viewpoint_dict(viewpoint_id: int) -> Dict[str, Any]:
     """Load a SavedDiagram by ID into the canonical viewpoint dict used by every
     composer exporter (OEF, Mermaid, Lucid, Archi).
@@ -228,7 +196,6 @@ def load_viewpoint_dict(viewpoint_id: int) -> Dict[str, Any]:
     }
 
 
-@_retry_on_failure(max_retries=3, delay=0.5, backoff=2.0)
 def export_saved_viewpoint(viewpoint_id: int) -> str:
     """Load a SavedDiagram by ID and export it as ArchiMate Exchange Format XML.
 
@@ -237,7 +204,6 @@ def export_saved_viewpoint(viewpoint_id: int) -> str:
     return _export_with_layout(load_viewpoint_dict(viewpoint_id))
 
 
-@_retry_on_failure(max_retries=3, delay=0.5, backoff=2.0)
 def _export_with_layout(viewpoint_dict: Dict[str, Any]) -> str:
     """Like to_open_exchange_xml but includes x/y/w/h on diagram nodes."""
     ET.register_namespace("", _OEF_NS)
