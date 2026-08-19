@@ -31,6 +31,39 @@ from app.models.archimate_metamodel import ArchiMateRelationshipRule, MetamodelV
 # ARCH-016: ArchiMate 3.2 metamodel validation constants
 # ---------------------------------------------------------------------------
 
+# Composer-QA 3.2 / 3.3: the validator compared un-normalized values and fired
+# false-positive warnings/errors on entirely valid models.
+#   - relationship types are stored short-form and mixed-case ("realization",
+#     "Realization", "Flow"), but the rule lists use "RealizationRelationship";
+#     `rel.type not in allowed` was therefore ALWAYS true.
+#   - element layers are stored as "implementation & migration", but the tables
+#     key on "implementation"; the lookup missed and reported the element (and
+#     any cross-layer rule for it) as invalid.
+# Both are fixed by normalizing before comparison, here in one place.
+
+_LAYER_ALIASES = {
+    "implementation & migration": "implementation",
+    "implementation and migration": "implementation",
+    "implementation&migration": "implementation",
+    "implementation/migration": "implementation",
+    "physical": "physical",
+}
+
+
+def _norm_layer(layer: str) -> str:
+    """Canonical lowercase layer key (maps 'implementation & migration' etc.)."""
+    key = (layer or "").strip().lower()
+    return _LAYER_ALIASES.get(key, key)
+
+
+def _norm_rel(rel_type: str) -> str:
+    """Canonical short relationship name: lowercase, no 'Relationship' suffix.
+
+    Maps 'RealizationRelationship', 'Realization' and 'realization' all to
+    'realization', so a rules table written either way compares correctly.
+    """
+    return (rel_type or "").strip().lower().replace("relationship", "")
+
 # Cross-layer relationship constraints (lowercase layer keys matching DB values).
 # Format: {(source_layer, target_layer): [allowed_relationship_types]}
 LAYER_RELATIONSHIP_RULES = {
@@ -569,11 +602,14 @@ class ArchiMateValidationService:
             issues.append({'severity': 'error', 'message': f'Source element {rel.source_id} not found'})
         if not target:
             issues.append({'severity': 'error', 'message': f'Target element {rel.target_id} not found'})
-        if source and target and source.layer != target.layer:
-            src_layer = (source.layer or '').lower()
-            tgt_layer = (target.layer or '').lower()
+        if source and target and _norm_layer(source.layer) != _norm_layer(target.layer):
+            src_layer = _norm_layer(source.layer)
+            tgt_layer = _norm_layer(target.layer)
             allowed = LAYER_RELATIONSHIP_RULES.get((src_layer, tgt_layer))
-            if allowed is not None and rel.type not in allowed:
+            # 3.2: compare normalized short names so "realization" matches
+            # "RealizationRelationship" — the old raw membership test never did.
+            allowed_norm = {_norm_rel(a) for a in (allowed or [])}
+            if allowed is not None and _norm_rel(rel.type) not in allowed_norm:
                 if allowed:
                     issues.append({
                         'severity': 'warning',
@@ -628,8 +664,13 @@ class ArchiMateValidationService:
         }
 
     def _is_valid_type_for_layer(self, element_type: str, layer: str) -> bool:
-        """Return True if element_type belongs to the given layer per ArchiMate 3.2."""
-        return element_type in LAYER_TYPES.get((layer or '').lower(), [])
+        """Return True if element_type belongs to the given layer per ArchiMate 3.2.
+
+        3.3: normalize the layer name ('implementation & migration' -> the
+        'implementation' table key) so a valid element like WorkPackage is not
+        falsely flagged.
+        """
+        return element_type in LAYER_TYPES.get(_norm_layer(layer), [])
 
 
 # Convenience functions for common use cases
