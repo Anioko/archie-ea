@@ -1,4 +1,4 @@
-"""QA-CMP-004: Seed the 14 standard + 2 custom ArchiMate 3.2 viewpoints.
+"""QA-CMP-004: Seed the 25 standard ArchiMate 3.2 viewpoints.
 
 Run via Flask CLI:
     flask seed-viewpoints
@@ -16,7 +16,7 @@ from app import db
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# 14 standard ArchiMate 3.2 viewpoints + 2 custom (Security, Requirements Realization)
+# 25 standard ArchiMate 3.2 viewpoints
 # Reference: The Open Group ArchiMate 3.2 Specification, Chapter 14
 # ---------------------------------------------------------------------------
 _STANDARD_VIEWPOINTS = [
@@ -1062,7 +1062,7 @@ _STANDARD_VIEWPOINTS = [
             "Implementation and Deployment",
         ],
     },
-    # Additional missing standard viewpoints from ArchiMate 3.2 specification
+    # Additional standard viewpoints from ArchiMate 3.2 specification
     {
         "standard_number": 17,
         "name": "Introductory",
@@ -1368,7 +1368,7 @@ def seed_viewpoints():
 @click.command("seed-viewpoints")
 @with_appcontext
 def seed_viewpoints_command():
-    """Seed the 20 ArchiMate viewpoints (18 standard + 2 custom, idempotent)."""
+    """Seed the 25 ArchiMate viewpoints (all standard, idempotent)."""
     created, updated = seed_viewpoints()
     click.echo(f"Viewpoints seeded: {created} created, {updated} updated.")
 

@@ -219,7 +219,7 @@ def to_archi(vp: Dict[str, Any]) -> str:
         f"{{{_ARCHI_NS}}}model",
         attrib={
             f"{{{_XSI_NS}}}schemaLocation": (
-                f"{_ARCHI_NS} http://www.archimatetool.com/archimate"
+                f"{_ARCHI_NS} http://www.archimatetool.com/archimate/archimate.xsd"
             ),
             "name": vp.get("viewpoint_name", "ARCHIE Model"),
             "id": "model-1",
