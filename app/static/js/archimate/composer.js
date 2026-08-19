@@ -2415,7 +2415,10 @@ function composerApp() {
                         graph: self.graph.toJSON(),
                         timestamp: Date.now(),
                         elementCount: self.elementCount,
-                        solutionId: self.solutionId
+                        solutionId: self.solutionId,
+                        // Preserve the diagram's identity so a restore updates the
+                        // existing row rather than POSTing a duplicate on the next save.
+                        currentSavedVpId: self.currentSavedVpId || null
                     }));
                 } catch (e) {
                     /* C-03: this used to warn only to the console — invisible

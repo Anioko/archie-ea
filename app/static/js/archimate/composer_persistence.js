@@ -240,6 +240,9 @@ let ComposerPersistence = (function() {
                     self._autosaveLabel = 'just now';
                     self._saveFailed = false;
                     self._autoSaveFailCount = 0;
+                    // Server copy is current — drop the redundant local snapshot so a
+                    // deleted-then-restored diagram cannot re-materialise (see saveViewpoint).
+                    self._clearAutosave();
                 }
             })
             .catch(function() {
@@ -314,6 +317,9 @@ let ComposerPersistence = (function() {
                     self._autosaveLabel = 'just now';
                     self._saveFailed = false;
                     self._autoSaveFailCount = 0;
+                    // Now persisted server-side under a real id; the local snapshot has
+                    // served its purpose and must not linger to re-create a deleted row.
+                    self._clearAutosave();
                 }
             })
             .catch(function() {
@@ -437,6 +443,11 @@ let ComposerPersistence = (function() {
                         self.lastSavedAt = Date.now();
                         self._autosaveLabel = 'just now';
                         self.statusText = 'Saved: ' + (data.name || name.trim());
+                        // CMP: the diagram is now safely in the DB, so the localStorage
+                        // crash-recovery snapshot is redundant. Clearing it here stops a
+                        // later "restore auto-save" from resurrecting a diagram that was
+                        // subsequently deleted (which re-POSTed it as a brand-new row).
+                        self._clearAutosave();
                         self.loadViewpointTabs();
                     } else {
                         self.statusText = 'Save failed: ' + (data.error || 'unknown');
@@ -770,6 +781,9 @@ let ComposerPersistence = (function() {
                     this.graph.fromJSON(data.graph);
                     this.elementCount = this.graph.getElements().length;
                     this.relCount = this.graph.getLinks().length;
+                    // Re-adopt the saved diagram's id (when the snapshot carried one) so
+                    // the next save PUTs to that row instead of creating a duplicate.
+                    if (data.currentSavedVpId) this.currentSavedVpId = data.currentSavedVpId;
                     _toast('success', 'Restored ' + this.elementCount + ' elements from auto-save');
                 }
             } catch (e) {
