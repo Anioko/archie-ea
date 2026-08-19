@@ -15,7 +15,7 @@ _OEF_NS = "http://www.opengroup.org/xsd/archimate/3.0/"
 _XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 _XSI_SCHEMA_LOC = (
     "http://www.opengroup.org/xsd/archimate/3.0/ "
-    "http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd"
+    "http://www.opengroup.org/xsd/archimate/3.0/archimate3_Model.xsd"
 )
 
 
