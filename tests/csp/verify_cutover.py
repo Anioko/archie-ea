@@ -13,7 +13,20 @@ import os, threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PAGES = ["/archimate/composer", "/enterprise/capability-map/", "/stakeholders/map"]
+PAGES = [
+    "/archimate/composer",
+    "/enterprise/capability-map/",
+    "/stakeholders/map",
+    "/architecture/dashboard",
+    "/dashboard/",
+    "/solutions/",
+    "/applications/",
+    "/applications/rationalization/workbench",
+    "/codegen/workflow-designer",
+    "/ai-chat/chat",
+    "/admin/dashboard",
+    "/vendors/",
+]
 
 
 def _boot_app():
