@@ -318,6 +318,25 @@ def gate_fetch_guards(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_ui_contract(baseline: int) -> Result:
+    """The UI/UX audit's finish-level rules, ratcheted so they cannot regress.
+
+    Counts native alert/confirm/prompt, inline onclick= handlers, <button>s with
+    no type=, and arbitrary text-[Npx] sizes across templates and JS. A ratchet:
+    the number may only fall, so a fix lowers the bar and a new violation fails
+    the build. Escape hatch: `ui-contract-ok: <reason>`.
+    """
+    proc = _run([sys.executable, "scripts/check_ui_contract.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("ui-contract", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_ui_contract.py to list them"
+    return Result("ui-contract", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 def gate_error_signalling() -> Result:
     """API error paths that answer a failure with HTTP 200. MUST BE ZERO.
 
@@ -1145,6 +1164,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_fetch_guards(baseline.get("fetch_guards", 107)),
              remediation="run scripts/check_fetch_guards.py; add if (!resp.ok) throw, "
                          "and make the catch tell the user",
+             tags=["static", "ui"]),
+        Gate("ui-contract", "no new native dialogs / onclick= / typeless buttons / arbitrary px-type (DESIGN.md)",
+             "ratchet", lambda: gate_ui_contract(baseline.get("ui_contract", 1969)),
+             remediation="run scripts/check_ui_contract.py; use Platform modals, Alpine @click, "
+                         "add type= to buttons, and text-xs instead of text-[Npx]",
              tags=["static", "ui"]),
         Gate("error-signalling", "no API error path that answers 200", "zero",
              gate_error_signalling,
