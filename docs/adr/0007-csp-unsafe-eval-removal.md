@@ -1,6 +1,6 @@
 # ADR 0007 — Removing `unsafe-eval` from the CSP (ARCH-070)
 
-- **Status:** Accepted — strategy proven AND evaluator built + verified; production cutover is the last gated step (see "Execution")
+- **Status:** Accepted — strategy proven, evaluator built and verified against the real app; only the atomic production cutover remains (see "Execution" step 5)
 - **Date:** 2026-08-18
 - **Owner decision:** delivery/tech lead (per the standing "own the decision" instruction)
 
@@ -92,19 +92,28 @@ handlers.
      `$refs/$dispatch/$watch/$root/$el` + x-for/x-model/@click compound & method
      handlers, **0 CSP violations, 0 page errors**), (C) stock Alpine with eval
      allowed works (sanity). **RESULT: PASS.**
-4. **[next — gated] Real-app-page smoke** — the headless proof uses a synthetic
-   page; before cutover, load a sample of REAL rendered app pages (composer,
-   dashboard, capability-map) with the adapter active under the eval-blocked
-   CSP, to catch anything specific to `Alpine.data()` components or plugins.
-5. **[next] Wire into the page load order** (before `alpine.min.js`, on
-   `alpine:init`) and **drop `'unsafe-eval'`** from `app/_bootstrap/security.py`,
-   flipping `test_unsafe_eval_still_present_and_documented` to assert absence.
-6. **[last] Deploy + verify live.**
+4. **[done] Real-app-page smoke** — `tests/csp/verify_real_pages.py` boots the
+   REAL Flask app, authenticates, loads composer + dashboard + capability-map,
+   and checks **every Alpine expression in the live rendered DOM**. It found and
+   fixed three genuine evaluator gaps the corpus tests missed (multi-statement
+   `if`-handler terminators, object `get`/`set` accessors, `//` and `/* */`
+   comments in method bodies), then went green: **1,099 live-DOM expressions, 0
+   parse failures, 0 divergences vs native eval.** Gated by
+   `tests/csp/test_csp_evaluator.py::test_real_app_pages_parse_and_evaluate`.
+5. **[next — the cutover] Single atomic change** (no dark flag): wire the two
+   `app/static/js/csp/` scripts into the page load order in
+   `app/templates/partials/_head.html` (deferred, before `alpine.min.js`) AND
+   **drop `'unsafe-eval'`** from `app/_bootstrap/security.py`, flipping
+   `test_unsafe_eval_still_present_and_documented` to assert absence. One commit,
+   because a half-state (evaluator active but eval still allowed, or vice-versa)
+   is exactly the dark intermediate the repo's no-dark-features gate forbids.
+6. **[last] Deploy + verify live** — reload real pages on the droplet and confirm
+   0 CSP violations, 0 Alpine errors, interactivity intact.
 
-`'unsafe-eval'` stays in the running CSP until steps 4–5 are done. The evaluator
-and adapter are committed but **not yet wired into the page load order**, so
-nothing in production is affected yet — activating them for every page is itself
-the risk the step-4 smoke exists to gate, independent of when the directive drops.
+`'unsafe-eval'` stays in the running CSP until step 5. The evaluator, adapter and
+all three verification layers are committed; they are **not yet wired into the
+page load order**, so production is unaffected. Step 5 is the outward-facing
+cutover — done as one deliberate, monitored deploy.
 
 ## Why not just do the 8,523 rewrites anyway
 

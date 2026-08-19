@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location("g", ROOT / "scripts" / "check_alpine_csp_grammar.py")
 _g = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_g)
 
-EVAL_JS = (ROOT / "dev_csp" / "evaluator.js").read_text(encoding="utf-8")
+EVAL_JS = (ROOT / "app" / "static" / "js" / "csp" / "csp-evaluator.js").read_text(encoding="utf-8")
 
 # ── correctness battery: (expr, scope, expected) ────────────────────────────
 BATTERY = [

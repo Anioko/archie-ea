@@ -46,3 +46,15 @@ def test_evaluator_covers_corpus_and_matches_native_eval():
 def test_alpine_works_under_csp_without_unsafe_eval():
     m = _load("verify_alpine_integration", HERE / "verify_alpine_integration.py")
     assert m.main() == 0, "Alpine+CSPExpr failed under a CSP without unsafe-eval"
+
+
+@pytest.mark.skipif(
+    "TEST_DATABASE_URL" not in __import__("os").environ,
+    reason="real-app smoke needs a database (TEST_DATABASE_URL)")
+def test_real_app_pages_parse_and_evaluate():
+    """Boot the real app, load real rendered pages, and check every Alpine
+    expression in the live DOM parses and matches native eval (0 divergences)."""
+    import os
+    os.environ.setdefault("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
+    m = _load("verify_real_pages", HERE / "verify_real_pages.py")
+    assert m.main() == 0, "CSP evaluator failed against real rendered app pages"

@@ -38,6 +38,9 @@
     while (i < n) {
       var c = s[i];
       if (/\s/.test(c)) { i++; continue; }
+      // comments (a method body inside x-data may carry them)
+      if (c === '/' && s[i + 1] === '/') { i += 2; while (i < n && s[i] !== '\n') i++; continue; }
+      if (c === '/' && s[i + 1] === '*') { i += 2; while (i < n && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
       // regex literal (only where a value is expected)
       if (c === '/' && (prev === null || REGEX_PREV[prev.val])) {
         var j = i + 1, inClass = false, ok = false;
@@ -151,8 +154,18 @@
     eat: function (v) { if (!this.isPunc(v)) throw new SyntaxError('expected ' + v + ' got ' + JSON.stringify(this.peek().val)); return this.next(); },
 
     program: function () {
+      // Strict statement list: items are ';'-separated (empty statements ok). A
+      // separator is REQUIRED between items, so two juxtaposed expressions with
+      // no ';' (e.g. a Tailwind x-transition class-string "opacity-0 scale-95")
+      // are correctly rejected as non-JS rather than mis-parsed. The earlier
+      // `if(c) f(); g()` bug was stmtOrBlock eating the ';', not a missing-
+      // separator rule — fixed there, so this stays strict.
       var body = [this.topItem()];
-      while (this.isPunc(';')) { this.next(); if (this.peek().type === 'eof') break; body.push(this.topItem()); }
+      while (this.isPunc(';')) {
+        while (this.isPunc(';')) this.next();
+        if (this.peek().type === 'eof') break;
+        body.push(this.topItem());
+      }
       if (this.peek().type !== 'eof') throw new SyntaxError('trailing ' + JSON.stringify(this.peek().val));
       return { t: 'program', body: body };
     },
@@ -220,7 +233,7 @@
     },
     block: function () {
       this.eat('{'); var body = [];
-      while (!this.isPunc('}')) { body.push(this.statement()); if (this.isPunc(';')) this.next(); }
+      while (!this.isPunc('}')) { body.push(this.statement()); while (this.isPunc(';')) this.next(); }
       this.eat('}'); return body;
     },
     statement: function () {
@@ -247,8 +260,11 @@
       return { t: 'exprstmt', expr: this.seq() };
     },
     stmtOrBlock: function () {
+      // Do NOT consume a trailing ';' here — the enclosing statement list
+      // (program / block) owns terminators, so an if-consequent leaves the ';'
+      // for the outer loop and the following statement is not swallowed.
       if (this.isPunc('{')) return { t: 'block', body: this.block() };
-      var st = this.statement(); if (this.isPunc(';')) this.next(); return st;
+      return this.statement();
     },
     ternary: function () {
       var test = this.binary(0);
@@ -356,6 +372,23 @@
         if (this.isPunc('...')) { this.next(); props.push({ kind: 'spread', value: this.assign() }); }
         else {
           var computed = false, key;
+          // get/set accessor: `get name() { ... }` / `set name(v) { ... }`.
+          // Only treat as an accessor when followed by a property name (not
+          // `get:` shorthand or `get()` method literally named "get").
+          if ((this.val() === 'get' || this.val() === 'set') &&
+              (this.t[this.i + 1].type === 'name' || this.t[this.i + 1].type === 'str' ||
+               (this.t[this.i + 1].type === 'punc' && this.t[this.i + 1].val === '['))) {
+            var acc = this.next().val;  // 'get' | 'set'
+            var akComputed = false, akey;
+            if (this.isPunc('[')) { this.next(); akey = this.assign(); this.eat(']'); akComputed = true; }
+            else { var akt = this.next(); akey = { t: 'lit', v: akt.val }; }
+            var aparams = []; this.eat('(');
+            if (!this.isPunc(')')) { aparams.push(this.param()); while (this.isPunc(',')) { this.next(); aparams.push(this.param()); } }
+            this.eat(')'); var abody = this.block();
+            props.push({ kind: acc, key: akey, computed: akComputed, value: { t: 'func', params: aparams, body: abody } });
+            if (this.isPunc(',')) this.next();
+            continue;
+          }
           if (this.isPunc('[')) { this.next(); key = this.assign(); this.eat(']'); computed = true; }
           else { var kt = this.peek(); this.next(); key = { t: 'lit', v: kt.type === 'num' ? kt.val : kt.val }; }
           if (this.isPunc('(')) { // method shorthand
@@ -389,8 +422,11 @@
       case 'id': return readId(node.name, scope, ctx);
       case 'array': { var arr = []; node.elements.forEach(function (el) { if (el.t === 'hole') arr.push(undefined); else if (el.t === 'spread') { var sp = ev(el.arg, scope, ctx); for (var x of sp) arr.push(x); } else arr.push(ev(el, scope, ctx)); }); return arr; }
       case 'object': { var o = {}; node.props.forEach(function (pr) {
-        if (pr.kind === 'spread') { Object.assign(o, ev(pr.value, scope, ctx)); }
-        else { var k = pr.computed ? ev(pr.key, scope, ctx) : pr.key.v; o[k] = ev(pr.value, scope, ctx); }
+        if (pr.kind === 'spread') { Object.assign(o, ev(pr.value, scope, ctx)); return; }
+        var k = pr.computed ? ev(pr.key, scope, ctx) : pr.key.v;
+        if (pr.kind === 'get') { Object.defineProperty(o, k, { get: makeFn(pr.value, scope, ctx), enumerable: true, configurable: true }); return; }
+        if (pr.kind === 'set') { Object.defineProperty(o, k, { set: makeFn(pr.value, scope, ctx), enumerable: true, configurable: true }); return; }
+        o[k] = ev(pr.value, scope, ctx);
       }); return o; }
       case 'member': { var obj = ev(node.obj, scope, ctx); if ((node.optional) && (obj === null || obj === undefined)) return undefined; var key = node.computed ? ev(node.prop, scope, ctx) : node.prop.v; return obj == null ? undefined : obj[key]; }
       case 'unary': {
@@ -476,18 +512,19 @@
     return function () {
       var callArgs = arguments;
       var fctx = { locals: Object.create((ctx && ctx.locals) || null), _ret: false, _retVal: undefined };
+      // `this`: arrows inherit lexically (Alpine binds x-data methods' `this` to
+      // the reactive component at call time); function/method exprs get the JS
+      // runtime `this`. Exposing it as a local lets `this.foo` resolve via readId.
+      if (node.t !== 'arrow') fctx.locals['this'] = this;
       params.forEach(function (p, idx) {
         if (p.rest) { fctx.locals[p.name] = Array.prototype.slice.call(callArgs, idx); }
         else { var v = callArgs[idx]; if (v === undefined && p.def) v = ev(p.def, scope, fctx); fctx.locals[p.name] = v; }
       });
-      // arrow with `this` from enclosing (Alpine data); function() gets called this
       var body = node.body;
       if (node.t === 'arrow') {
         if (body.t === 'block') { ev(body, scope, fctx); return fctx._retVal; }
         return ev(body, scope, fctx);
       }
-      // function expr: `this` binding
-      var prevThis = scope; // functions in Alpine use `this` = component; our scope IS the merged proxy
       ev({ t: 'block', body: body }, scope, fctx);
       return fctx._retVal;
     };
