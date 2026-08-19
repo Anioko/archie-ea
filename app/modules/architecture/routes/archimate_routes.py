@@ -725,6 +725,22 @@ def _run_diagram_import(preview):
     if ai_added:
         report["ai_accepted"] = ai_added
 
+    # On commit, materialise a viewable diagram: an auto-laid-out SavedDiagram
+    # over the imported elements, so the import lands ON the canvas, not only in
+    # the catalog. Best-effort — a layout failure never fails the import itself.
+    if not preview and report.get("diagram_element_ids"):
+        try:
+            diagram = _saved_diagram_from_import(
+                report.get("model_name") or "Imported diagram",
+                report["diagram_element_ids"])
+            if diagram is not None:
+                report["saved_diagram_id"] = diagram.id
+                report["composer_url"] = (
+                    f"/archimate/composer?viewpoint_id={diagram.id}")
+        except Exception:  # noqa: BLE001 - the elements are already saved
+            current_app.logger.exception(
+                "import committed but building its SavedDiagram failed")
+
     # On preview, offer AI suggestions for the gaps the deterministic pass left,
     # when the user opted in. Advisory only; the import above stands on its own,
     # so a missing/failed provider never fails the request.
@@ -741,6 +757,70 @@ def _run_diagram_import(preview):
                                                "and was skipped: " + str(exc)[:120]}
 
     return jsonify(report), 200
+
+
+def _saved_diagram_from_import(name, element_ids):
+    """Create an auto-laid-out SavedDiagram over the just-imported elements.
+
+    Groups elements into layer bands and grids them (same layout the
+    create-diagram-from-elements endpoint uses), then adds every ArchiMate
+    relationship whose endpoints are both on the diagram, so flows render too.
+    Returns the SavedDiagram, or None when nothing resolvable was passed.
+    """
+    from app.models.archimate_core import (  # noqa: PLC0415
+        ArchiMateElement, ArchiMateRelationship, SavedDiagram,
+        SavedDiagramElement, SavedDiagramRelationship,
+    )
+
+    ids = [i for i in (element_ids or []) if i is not None]
+    if not ids:
+        return None
+    els = ArchiMateElement.query.filter(ArchiMateElement.id.in_(ids)).all()
+    if not els:
+        return None
+
+    diagram = SavedDiagram(
+        name=name,
+        description=f"Auto-generated from {len(els)} imported elements",
+        created_by=current_user.id if current_user.is_authenticated else None,
+    )
+    db.session.add(diagram)
+    db.session.flush()
+
+    layer_order = ["motivation", "strategy", "business", "application",
+                   "technology", "physical", "implementation", "other"]
+    by_layer = {}
+    for el in els:
+        by_layer.setdefault((el.layer or "other").lower(), []).append(el)
+
+    elem_w, elem_h, gap_x, gap_y, layer_gap, cols = 180, 64, 30, 20, 40, 4
+    y_offset = 40
+    for layer_name in layer_order + [k for k in by_layer if k not in layer_order]:
+        layer_elements = by_layer.pop(layer_name, [])
+        if not layer_elements:
+            continue
+        for idx, el in enumerate(layer_elements):
+            db.session.add(SavedDiagramElement(
+                diagram_id=diagram.id, element_id=el.id,
+                position_x=40 + (idx % cols) * (elem_w + gap_x),
+                position_y=y_offset + (idx // cols) * (elem_h + gap_y),
+                width=elem_w, height=elem_h, rendering_mode="black_box",
+            ))
+        rows = (len(layer_elements) + cols - 1) // cols
+        y_offset += rows * (elem_h + gap_y) + layer_gap
+
+    # Every relationship both of whose endpoints are on this diagram.
+    id_set = {el.id for el in els}
+    rels = ArchiMateRelationship.query.filter(
+        ArchiMateRelationship.source_id.in_(id_set),
+        ArchiMateRelationship.target_id.in_(id_set),
+    ).all()
+    for r in rels:
+        db.session.add(SavedDiagramRelationship(
+            diagram_id=diagram.id, relationship_id=r.id))
+
+    db.session.commit()
+    return diagram
 
 
 def _apply_accepted_suggestions(transformed, accepted_json):

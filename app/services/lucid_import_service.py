@@ -298,6 +298,13 @@ def import_payload(payload, org_id, dedupe="name-type", link_applications=True,
             out[row["verdict"]] = out.get(row["verdict"], 0) + 1
         return out
 
+    # Ordered, de-duplicated DB ids of every element now in this diagram, plus
+    # the relationships between them — enough to render it on the composer canvas.
+    seen_el = set()
+    report["diagram_element_ids"] = [
+        r[2] for r in element_rows
+        if r[2] is not None and not (r[2] in seen_el or seen_el.add(r[2]))
+    ]
     report["counts"] = {
         "elements": _tally(report["elements"]),
         "relationships": _tally(report["relationships"]),
