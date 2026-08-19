@@ -431,7 +431,7 @@
         <div>
           <h2 class="text-lg font-semibold">Entity Matching Assistant</h2>
           <p class="text-sm text-muted-foreground">
-            <span x-text="currentPersona.replace('_', ' ').title()"></span> • 
+            <span x-text="currentPersona.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())"></span> •
             <span x-text="currentDomain"></span> Domain
           </p>
         </div>
