@@ -707,6 +707,14 @@ def _run_diagram_import(preview):
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
 
+    # On commit, fold in the AI suggestions the architect explicitly accepted in
+    # the review screen (and ONLY those) before anything is written. Nothing the
+    # model proposed reaches the repository without a human tick.
+    ai_added = None
+    if not preview:
+        ai_added = _apply_accepted_suggestions(
+            transformed, request.form.get("accepted_suggestions"))
+
     report = import_payload(
         transformed, org_id=org_id, dedupe=dedupe,
         link_applications=request.form.get("link_applications") != "0",
@@ -714,7 +722,98 @@ def _run_diagram_import(preview):
         preview=preview,
     )
     report["success"] = True
+    if ai_added:
+        report["ai_accepted"] = ai_added
+
+    # On preview, offer AI suggestions for the gaps the deterministic pass left,
+    # when the user opted in. Advisory only; the import above stands on its own,
+    # so a missing/failed provider never fails the request.
+    if preview and request.form.get("ai_assist") == "1":
+        from app.services.import_ai_assist import (  # noqa: PLC0415
+            suggest_import_completions,
+        )
+        try:
+            report["suggestions"] = suggest_import_completions(transformed)
+        except Exception as exc:  # noqa: BLE001 - advisory extra, never fatal
+            current_app.logger.exception("import AI-assist pass failed")
+            report["suggestions"] = {"available": False,
+                                     "reason": "AI assist hit an unexpected error "
+                                               "and was skipped: " + str(exc)[:120]}
+
     return jsonify(report), 200
+
+
+def _apply_accepted_suggestions(transformed, accepted_json):
+    """Merge human-accepted AI suggestions into the transformer output in place.
+
+    Returns a small tally for the report, or None when nothing was accepted.
+    Accepted retypes become new elements; accepted relationships become new
+    edges. Everything is validated again server-side — the client cannot post
+    an element id or relationship the transformer did not surface as a gap.
+    """
+    if not accepted_json:
+        return None
+    try:
+        accepted = json.loads(accepted_json)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(accepted, dict):
+        return None
+
+    skipped = transformed.get("skipped") or {}
+    skipped_shape_ids = {s.get("id") for s in (skipped.get("shapes") or [])}
+    skipped_by_id = {s.get("id"): s for s in (skipped.get("shapes") or [])}
+    elements = transformed.setdefault("elements", [])
+    known_ids = {e.get("id") for e in elements if e.get("id")}
+    relationships = transformed.setdefault("relationships", [])
+
+    added_elements = 0
+    for item in accepted.get("retype") or []:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get("id")
+        ptype = item.get("proposed_type")
+        # Server-side gate: only a shape the transformer actually skipped, and
+        # not one already present, can be added this way.
+        if sid not in skipped_shape_ids or sid in known_ids or not ptype:
+            continue
+        src = skipped_by_id.get(sid) or {}
+        elements.append({
+            "id": sid,
+            "identifier": sid,
+            "name": item.get("name") or src.get("name") or "(unnamed)",
+            "type": ptype,
+            "layer": item.get("layer") or "other",
+            "description": None,
+            "custom_properties": {"lucid_type_source": "ai-assist",
+                                  "ai_rationale": (item.get("rationale") or "")[:240]},
+        })
+        known_ids.add(sid)
+        added_elements += 1
+
+    added_relationships = 0
+    existing_pairs = {(r.get("source_id"), r.get("target_id"), r.get("type"))
+                      for r in relationships}
+    for item in accepted.get("relationships") or []:
+        if not isinstance(item, dict):
+            continue
+        s, t = item.get("source_id"), item.get("target_id")
+        rtype = (item.get("rel_type") or "").strip().lower()
+        if s not in known_ids or t not in known_ids or s == t or not rtype:
+            continue
+        if (s, t, rtype) in existing_pairs:
+            continue
+        relationships.append({
+            "id": None, "identifier": None, "type": rtype,
+            "source_id": s, "target_id": t,
+            "description": "AI-assisted: " + (item.get("rationale") or "")[:200],
+        })
+        existing_pairs.add((s, t, rtype))
+        added_relationships += 1
+
+    if not added_elements and not added_relationships:
+        return None
+    return {"elements": added_elements, "relationships": added_relationships}
 
 
 @archimate_bp.route("/import/diagram", methods=["GET"])

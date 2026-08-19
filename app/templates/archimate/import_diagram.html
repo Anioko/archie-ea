@@ -89,6 +89,22 @@
             </div>
         </div>
 
+        <div class="mt-4 rounded-lg border border-border bg-muted/20 p-4">
+            <label class="flex items-start gap-2 text-sm text-foreground">
+                <input type="checkbox" x-model="aiAssist" class="mt-0.5 rounded border-input">
+                <span>
+                    <span class="font-medium">Ask AI to fill the gaps</span>
+                    <span class="block text-xs text-muted-foreground mt-0.5">
+                        After the deterministic import, an AI pass proposes a type for
+                        shapes it could not recognise and recovers relationships it had
+                        to drop. Suggestions appear below the preview — nothing is saved
+                        until you tick it and press Import. Needs an LLM key configured;
+                        if none is set, the import still runs and this is simply skipped.
+                    </span>
+                </span>
+            </label>
+        </div>
+
         <div class="mt-6 flex flex-wrap items-center gap-3">
             <button @click="preview()" :disabled="!file || busy"
                     class="inline-flex items-center gap-2 rounded-md border border-input bg-background
@@ -137,6 +153,81 @@
         <template x-for="w in report.warnings" :key="w">
             <div class="rounded-lg border border-border bg-muted/40 p-3 mb-2 text-xs text-muted-foreground"
                  x-text="w"></div>
+        </template>
+
+        {# ── AI-assist suggestions (advisory; only ticked ones are imported) ── #}
+        <template x-if="report.suggestions">
+        <div class="rounded-xl border border-primary/40 bg-primary/5 overflow-hidden mt-4 mb-2">
+            <div class="bg-primary/10 px-5 py-2 border-b border-primary/20 flex items-center gap-2">
+                <span class="text-xs font-semibold text-foreground">AI suggestions for the gaps</span>
+                <span class="text-[11px] text-muted-foreground">tick to include on Import — nothing here is saved otherwise</span>
+            </div>
+
+            <template x-if="!report.suggestions.available">
+                <div class="px-5 py-3 text-xs text-muted-foreground" x-text="report.suggestions.reason"></div>
+            </template>
+
+            <template x-if="report.suggestions.available">
+            <div class="p-4 space-y-4">
+                <template x-if="report.suggestions.note">
+                    <p class="text-xs text-muted-foreground" x-text="report.suggestions.note"></p>
+                </template>
+
+                <div x-show="report.suggestions.retype && report.suggestions.retype.length" x-cloak>
+                    <p class="text-xs font-medium text-foreground mb-1.5">
+                        Untyped shapes — propose a type
+                        (<span x-text="report.suggestions.retype.length"></span>)
+                    </p>
+                    <table class="w-full text-sm">
+                        <tbody>
+                            <template x-for="(s, i) in report.suggestions.retype" :key="'rt'+i">
+                                <tr class="border-t border-border/60">
+                                    <td class="px-2 py-1.5 w-8">
+                                        <input type="checkbox" x-model="s.accepted" class="rounded border-input">
+                                    </td>
+                                    <td class="px-2 py-1.5 text-foreground" x-text="s.name"></td>
+                                    <td class="px-2 py-1.5 text-xs">
+                                        <span class="rounded bg-muted px-1.5 py-0.5 text-foreground" x-text="s.proposed_type"></span>
+                                    </td>
+                                    <td class="px-2 py-1.5 text-xs text-muted-foreground" x-text="s.rationale"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div x-show="report.suggestions.relationships && report.suggestions.relationships.length" x-cloak>
+                    <p class="text-xs font-medium text-foreground mb-1.5">
+                        Recovered relationships
+                        (<span x-text="report.suggestions.relationships.length"></span>)
+                    </p>
+                    <table class="w-full text-sm">
+                        <tbody>
+                            <template x-for="(s, i) in report.suggestions.relationships" :key="'rl'+i">
+                                <tr class="border-t border-border/60">
+                                    <td class="px-2 py-1.5 w-8">
+                                        <input type="checkbox" x-model="s.accepted" class="rounded border-input">
+                                    </td>
+                                    <td class="px-2 py-1.5 text-foreground" x-text="s.source_name"></td>
+                                    <td class="px-2 py-1.5 text-xs text-muted-foreground">
+                                        <span class="rounded bg-muted px-1.5 py-0.5" x-text="s.rel_type"></span>
+                                    </td>
+                                    <td class="px-2 py-1.5 text-foreground" x-text="s.target_name"></td>
+                                    <td class="px-2 py-1.5 text-xs text-muted-foreground" x-text="s.rationale"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="text-[11px] text-muted-foreground pt-1">
+                    AI proposals are validated server-side against the ArchiMate 3.2
+                    vocabulary and the elements actually imported. Re-run Preview to change
+                    the file; ticked items are written when you press Import.
+                </p>
+            </div>
+            </template>
+        </div>
         </template>
 
         <div class="rounded-xl border border-border bg-card overflow-hidden mt-4">
@@ -188,6 +279,7 @@ function diagramImport() {
         dedupe: 'name-type',
         linkApplications: true,
         createApplications: false,
+        aiAssist: false,
         report: null,
         committed: false,
         busy: false,
@@ -225,15 +317,37 @@ function diagramImport() {
             fd.append('dedupe', this.dedupe);
             fd.append('link_applications', this.linkApplications ? '1' : '0');
             fd.append('create_applications', this.createApplications ? '1' : '0');
+            fd.append('ai_assist', this.aiAssist ? '1' : '0');
             return fd;
         },
 
-        async _send(url) {
+        // Collect only the suggestions the user actually ticked, in the shape
+        // the commit endpoint re-validates and folds in.
+        _acceptedSuggestions() {
+            const s = this.report && this.report.suggestions;
+            if (!s || !s.available) return null;
+            const retype = (s.retype || []).filter(r => r.accepted).map(r => ({
+                id: r.id, name: r.name, proposed_type: r.proposed_type,
+                layer: r.layer, rationale: r.rationale,
+            }));
+            const relationships = (s.relationships || []).filter(r => r.accepted).map(r => ({
+                source_id: r.source_id, target_id: r.target_id,
+                rel_type: r.rel_type, rationale: r.rationale,
+            }));
+            if (!retype.length && !relationships.length) return null;
+            return { retype, relationships };
+        },
+
+        async _send(url, extra) {
             this.busy = true; this.error = '';
             try {
+                const body = this._body();
+                if (extra) {
+                    Object.keys(extra).forEach(k => body.append(k, extra[k]));
+                }
                 const token = document.querySelector('meta[name=csrf-token]');
                 const res = await fetch(url, {
-                    method: 'POST', credentials: 'same-origin', body: this._body(),
+                    method: 'POST', credentials: 'same-origin', body: body,
                     headers: token ? { 'X-CSRFToken': token.content } : {},
                 });
                 const data = await res.json();
@@ -255,7 +369,9 @@ function diagramImport() {
 
         async commit() {
             this.mode = 'commit';
-            const data = await this._send('/archimate/api/import/diagram/commit');
+            const accepted = this._acceptedSuggestions();
+            const extra = accepted ? { accepted_suggestions: JSON.stringify(accepted) } : null;
+            const data = await this._send('/archimate/api/import/diagram/commit', extra);
             if (data) { this.report = data; this.committed = true; }
         },
     };

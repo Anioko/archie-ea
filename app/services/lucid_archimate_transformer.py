@@ -253,6 +253,12 @@ class LucidArchiMateTransformer:
         annotations = 0
         legend_swatches = 0
         unmapped_classes: set = set()
+        # Structured record of what the deterministic pass could not type/place,
+        # so an opt-in AI-assist step can propose types and relationships for
+        # exactly these gaps (and only these) for human review. Counts alone,
+        # which is all the warnings carry, give an LLM nothing to reason over.
+        skipped_shapes: List[Dict[str, Any]] = []
+        skipped_relationships: List[Dict[str, Any]] = []
         inferred_event_type = self._infer_event_element_type(pages)
         # Only needed to decide container-vs-leaf for fallback typing.
         container_ids = (
@@ -325,6 +331,13 @@ class LucidArchiMateTransformer:
                     fallback_used += 1
                 if not element_type:
                     unmapped_classes.add(lucid_class or "(no class)")
+                    skipped_shapes.append({
+                        "id": identifier,
+                        "name": name,
+                        "lucid_class": lucid_class or None,
+                        "reason": "no ArchiMate type could be resolved from the "
+                                  "shape's class or stereotype",
+                    })
                     continue
 
                 lucid_stereotype = self._extract_shape_stereotype(shape)
@@ -381,6 +394,13 @@ class LucidArchiMateTransformer:
                     stroke_data_available=stroke_data_available)
                 if relationship is None:
                     skipped_relationship_count += 1
+                    src, tgt = self._resolve_line_endpoints(line)
+                    skipped_relationships.append({
+                        "id": line.get("id"),
+                        "label": self._extract_line_label(line),
+                        "source_id": src,
+                        "target_id": tgt,
+                    })
                     continue
                 relationships.append(relationship)
 
@@ -465,6 +485,10 @@ class LucidArchiMateTransformer:
             "layout_hints": {},
             "warnings": self._unique(warnings),
             "errors": [],
+            "skipped": {
+                "shapes": skipped_shapes,
+                "relationships": skipped_relationships,
+            },
         }
 
     @classmethod
