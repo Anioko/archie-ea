@@ -63,7 +63,7 @@ command -v git >/dev/null || die "git not found"
 command -v ssh >/dev/null || die "ssh not found"
 
 # ── 1. clean tree ─────────────────────────────────────────────────────────────
-if [ -n "$(git status --porcelain | grep -vE 'verify_static_out|HANDOFF-aider' || true)" ]; then
+if [ -n "$(git status --porcelain | grep -vE 'verify_static_out|HANDOFF-aider|scratch_'  || true)" ]; then
   die "working tree is dirty — commit or stash before deploying (deploy ships committed code only).
 $(git status --short)"
 fi
