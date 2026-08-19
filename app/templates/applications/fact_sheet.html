@@ -1,0 +1,233 @@
+{% extends 'layouts/admin_base.html' %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/metrics_card.html" import metrics_card %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/status_badge.html" import status_badge_auto %}
+
+{% block title %}{{ app.name }} — Fact Sheet{% endblock %}
+
+{# A definition row: label + value, with an em-dash when the value is missing.
+   Never render blank or 0 for an unknown value (DESIGN.md system-of-record rule). #}
+{% macro drow(label, value) %}
+<div class="flex items-start justify-between gap-4 py-2.5 border-t border-border first:border-t-0">
+  <dt class="text-sm text-muted-foreground">{{ label }}</dt>
+  <dd class="text-sm text-foreground font-medium text-right">
+    {%- if value is not none and (value | string) | trim != '' -%}{{ value }}{%- else -%}<span class="text-muted-foreground">&mdash;</span>{%- endif -%}
+  </dd>
+</div>
+{% endmacro %}
+
+{% macro panel(title, icon) %}
+<section data-slot="card" class="rounded-xl border border-border bg-card shadow-sm">
+  <header class="flex items-center gap-2 px-6 py-4 border-b border-border">
+    <i data-lucide="{{ icon }}" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+    <h2 class="text-sm font-semibold text-foreground tracking-tight">{{ title }}</h2>
+  </header>
+  <div class="px-6 py-4">{{ caller() }}</div>
+</section>
+{% endmacro %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+
+  {{ page_header(
+      title=app.name,
+      description='Fact sheet — the single source of truth for this application.',
+      breadcrumbs=[
+        {'label': 'Applications', 'href': url_for('unified_applications.application_list')},
+        {'label': app.name, 'href': url_for('unified_applications.application_detail', id=app.id)},
+        {'label': 'Fact sheet'}
+      ]
+  ) }}
+
+  {# ── Top band: completeness + headline signals ──────────────────────── #}
+  <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+
+    {# Completeness ring — the score that shames the gaps #}
+    <div data-slot="card" class="rounded-xl border border-border bg-card shadow-sm p-6 flex items-center gap-5">
+      {% set ring = 'text-success' if completeness.band == 'good' else 'text-warning' if completeness.band == 'warn' else 'text-destructive' %}
+      <div class="relative shrink-0" style="width:76px;height:76px"> {# inline-style-ok: fixed ring geometry #}
+        <svg viewBox="0 0 36 36" class="w-full h-full -rotate-90">
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" class="text-muted/40" stroke-width="3"></circle>
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" class="{{ ring }}" stroke-width="3"
+                  stroke-linecap="round" stroke-dasharray="{{ completeness.pct }} 100"></circle>
+        </svg>
+        <div class="absolute inset-0 flex items-center justify-center">
+          <span class="text-lg font-bold tabular-nums text-foreground">{{ completeness.pct }}<span class="text-xs">%</span></span>
+        </div>
+      </div>
+      <div>
+        <p class="text-sm font-medium text-foreground">Record completeness</p>
+        <p class="text-xs text-muted-foreground mt-0.5">{{ completeness.filled }} of {{ completeness.of }} key fields recorded</p>
+      </div>
+    </div>
+
+    {{ metrics_card(
+        title='Total cost of ownership',
+        value=('{:,.0f}'.format(app.total_cost_of_ownership) if app.total_cost_of_ownership else '—'),
+        icon='banknote',
+        footer_text='License/yr: ' ~ ('{:,.0f}'.format(app.license_cost_annual) if app.license_cost_annual else '—')
+    ) }}
+
+    {{ metrics_card(
+        title='Business criticality',
+        value=(app.business_criticality | capitalize if app.business_criticality else '—'),
+        icon='shield-alert',
+        footer_text=('DR enabled' if app.disaster_recovery_enabled else 'No DR recorded')
+    ) }}
+
+    {# Lifecycle / end-of-life signal #}
+    {% set lc = lifecycle %}
+    <div data-slot="card" class="rounded-xl border shadow-sm p-6
+        {{ 'border-destructive/40 bg-destructive/5' if lc.tone == 'crit' else 'border-warning/40 bg-warning/5' if lc.tone == 'warn' else 'border-border bg-card' }}">
+      <div class="flex items-center gap-2">
+        <i data-lucide="{{ 'alarm-clock' if lc.is_sunset else 'circle-check' }}" class="h-4 w-4 {{ 'text-destructive' if lc.tone == 'crit' else 'text-warning' if lc.tone == 'warn' else 'text-success' }}" aria-hidden="true"></i>
+        <p class="text-sm font-medium text-foreground">Lifecycle</p>
+      </div>
+      <p class="text-2xl font-bold text-foreground mt-2">{{ lc.stage | capitalize if lc.stage else '—' }}</p>
+      <p class="text-xs mt-1 {{ 'text-destructive-emphasis' if lc.tone == 'crit' else 'text-warning-emphasis' if lc.tone == 'warn' else 'text-muted-foreground' }}">
+        {%- if lc.days_left is not none and lc.days_left >= 0 -%}Retires in {{ lc.days_left }} days
+        {%- elif lc.days_left is not none -%}Retirement date passed
+        {%- elif lc.is_sunset -%}Flagged for sunset
+        {%- else -%}No retirement planned{%- endif -%}
+      </p>
+    </div>
+  </div>
+
+  {# ── Gaps to fill — only when the record is incomplete ───────────────── #}
+  {% if completeness.missing %}
+  <div class="rounded-xl border border-warning/40 bg-warning/5 px-5 py-4 mb-6 flex items-start gap-3">
+    <i data-lucide="clipboard-list" class="h-4 w-4 text-warning shrink-0 mt-0.5" aria-hidden="true"></i>
+    <div>
+      <p class="text-sm font-medium text-foreground">Missing to reach a complete record</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        {% for m in completeness.missing %}
+        <span class="text-xs text-warning-emphasis bg-warning/10 border border-warning/20 rounded px-2 py-0.5">{{ m }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Detail panels ──────────────────────────────────────────────────── #}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+
+    {% call panel('Identity & ownership', 'id-card') %}
+    <dl>
+      {{ drow('Type', app.component_type) }}
+      {{ drow('Application owner', app.application_owner) }}
+      {{ drow('Business owner', app.business_owner) }}
+      {{ drow('Technical owner', app.technical_owner) }}
+      {{ drow('Business domain', app.business_domain) }}
+      {{ drow('Vendor', app.vendor_name) }}
+    </dl>
+    {% endcall %}
+
+    {% call panel('Technology', 'cpu') %}
+    <dl>
+      {{ drow('Technology stack', app.technology_stack) }}
+      {{ drow('Primary database', app.primary_database) }}
+      {{ drow('Deployment model', app.deployment_model) }}
+      {{ drow('Cloud provider', app.cloud_provider) }}
+      {{ drow('Deployment region', app.deployment_region) }}
+      {{ drow('Technology age', (app.technology_age_years ~ ' yrs') if app.technology_age_years is not none else none) }}
+    </dl>
+    {% endcall %}
+
+    {% call panel('Security & compliance', 'lock') %}
+    <dl>
+      {{ drow('Data classification', app.data_classification) }}
+      {{ drow('Encryption at rest', 'Yes' if app.encryption_at_rest else ('No' if app.encryption_at_rest is not none else none)) }}
+      {{ drow('Encryption in transit', 'Yes' if app.encryption_in_transit else ('No' if app.encryption_in_transit is not none else none)) }}
+      {{ drow('Availability target', (app.availability_target ~ '%') if app.availability_target is not none else none) }}
+      {{ drow('SLA availability', (app.sla_availability_percentage ~ '%') if app.sla_availability_percentage is not none else none) }}
+      {{ drow('Compliance', app.compliance_requirements) }}
+    </dl>
+    {% endcall %}
+
+    {% call panel('Risk posture', 'shield-alert') %}
+    <dl>
+      {{ drow('Business risk', app.business_risk | capitalize if app.business_risk else none) }}
+      {{ drow('Technical risk', app.technical_risk | capitalize if app.technical_risk else none) }}
+      {{ drow('Vendor risk', app.vendor_risk | capitalize if app.vendor_risk else none) }}
+      {{ drow('Obsolescence risk', app.obsolescence_risk | capitalize if app.obsolescence_risk else none) }}
+    </dl>
+    {% endcall %}
+
+    {% call panel('Business capabilities realised', 'layers') %}
+      {% if capabilities %}
+      <ul class="divide-y divide-border -my-1">
+        {% for cap in capabilities %}
+        <li class="flex items-center justify-between gap-3 py-2.5">
+          <span class="text-sm text-foreground">{{ cap.name }}</span>
+          {% if cap.support_level %}{{ status_badge_auto(cap.support_level) }}{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+        {{ empty_state(icon='layers', title='No capabilities mapped', description='This application is not yet linked to any business capability.', padding='py-8') }}
+      {% endif %}
+    {% endcall %}
+  </div>
+
+  {# ── Dependencies (the ArchiMate graph, blast-radius) ───────────────── #}
+  {% call panel('Dependencies', 'git-fork') %}
+    {% if not dependencies.linked %}
+      {{ empty_state(icon='unlink', title='Not linked to the ArchiMate model', description='Generate or link an ArchiMate element to see what this application depends on and what depends on it.', padding='py-8') }}
+    {% elif not dependencies.upstream and not dependencies.downstream %}
+      {{ empty_state(icon='git-fork', title='No relationships recorded', description='This element has no incoming or outgoing ArchiMate relationships yet.', padding='py-8') }}
+    {% else %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Depended on by ({{ dependencies.upstream | length }})</p>
+        {% if dependencies.upstream %}
+        <ul class="space-y-1.5">
+          {% for d in dependencies.upstream %}
+          <li class="flex items-center gap-2 text-sm">
+            <i data-lucide="arrow-left" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
+            <span class="text-foreground">{{ d.name }}</span>
+            <span class="text-xs text-muted-foreground">· {{ d.rel }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="text-sm text-muted-foreground">&mdash;</p>{% endif %}
+      </div>
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Depends on ({{ dependencies.downstream | length }})</p>
+        {% if dependencies.downstream %}
+        <ul class="space-y-1.5">
+          {% for d in dependencies.downstream %}
+          <li class="flex items-center gap-2 text-sm">
+            <i data-lucide="arrow-right" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
+            <span class="text-foreground">{{ d.name }}</span>
+            <span class="text-xs text-muted-foreground">· {{ d.rel }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="text-sm text-muted-foreground">&mdash;</p>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  {% endcall %}
+
+  {# ── Appears in diagrams ────────────────────────────────────────────── #}
+  <div class="mt-4">
+  {% call panel('Appears in diagrams', 'workflow') %}
+    {% if diagrams %}
+    <div class="flex flex-wrap gap-2">
+      {% for d in diagrams %}
+      <a href="{{ url_for('archimate.composer_page') }}?viewpoint_id={{ d.id }}"
+         class="inline-flex items-center gap-2 text-sm text-foreground bg-muted hover:bg-accent border border-border rounded-lg px-3 py-1.5 transition-colors">
+        <i data-lucide="workflow" class="h-3.5 w-3.5 text-primary" aria-hidden="true"></i>
+        {{ d.name }}
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+      {{ empty_state(icon='workflow', title='Not on any diagram', description='This application does not yet appear on a saved ArchiMate diagram.', padding='py-8') }}
+    {% endif %}
+  {% endcall %}
+  </div>
+
+</div>
+{% endblock %}

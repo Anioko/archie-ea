@@ -466,6 +466,9 @@
                 <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
                   data-testid="btn-view-{{ app.id }}"
                   class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium hover:bg-accent transition-colors">View</a>
+                <a href="{{ url_for('unified_applications.application_fact_sheet', id=app.id) }}"
+                  data-testid="btn-factsheet-{{ app.id }}" title="Fact sheet — single source of truth"
+                  class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium hover:bg-accent transition-colors">Fact sheet</a>
                 <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
                   data-testid="btn-edit-{{ app.id }}"
                   class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium hover:bg-accent transition-colors">Edit</a>

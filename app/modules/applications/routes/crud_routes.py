@@ -313,6 +313,22 @@ def application_detail(id):
     return render_application_detail(id)
 
 
+@unified_applications_bp.route("/<int:id>/fact-sheet")
+@login_required
+def application_fact_sheet(id):
+    """Fact Sheet — one consolidated, single-source-of-truth page per application.
+
+    Pulls identity, ownership, cost, technology, security/lifecycle posture, the
+    capabilities it realises, its ArchiMate dependencies, and the diagrams it
+    appears on into one view, with a completeness score over the key fields.
+    """
+    from app.services.application_fact_sheet import build_fact_sheet  # noqa: PLC0415
+
+    app_obj = ApplicationComponent.query.get_or_404(id)
+    sheet = build_fact_sheet(app_obj)
+    return render_template("applications/fact_sheet.html", **sheet)
+
+
 @unified_applications_bp.route("/<int:id>/generate-archimate", methods=["POST"])
 @login_required
 @rate_limit(10, "1h")  # LLM-003: Limit expensive AI operations to 10/hour
