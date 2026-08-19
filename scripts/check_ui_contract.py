@@ -44,9 +44,33 @@ _NATIVE_DEF = re.compile(
 _ONCLICK = re.compile(r"\sonclick\s*=\s*\"")
 # arbitrary pixel type off the scale
 _PXTYPE = re.compile(r"text-\[\d+px\]")
-# a <button ...> opening tag (across lines), to check for a type=
-_BUTTON = re.compile(r"<button\b[^>]*?>", re.DOTALL)
 _HAS_TYPE = re.compile(r"\btype\s*=")
+
+
+def _button_tags(s: str):
+    """Yield (start, end, tag_text) for each <button …> opening tag, respecting
+    quotes so a '>' inside an attribute value (e.g. @click="a > b") does not end
+    the tag early — the naive regex did, which both under-typed the codemod and
+    mis-counted the gate."""
+    i = 0
+    while True:
+        j = s.find("<button", i)
+        if j < 0:
+            return
+        k = j + 7
+        q = None
+        while k < len(s):
+            ch = s[k]
+            if q:
+                if ch == q:
+                    q = None
+            elif ch in "\"'":
+                q = ch
+            elif ch == ">":
+                break
+            k += 1
+        yield j, k + 1, s[j:k + 1]
+        i = k + 1
 
 
 def _hatched(line: str, prev: str) -> bool:
@@ -94,12 +118,11 @@ def _scan_buttons(path: Path):
     """button-no-type — tag-oriented (a button tag may span several lines)."""
     out = []
     text = path.read_text(encoding="utf-8", errors="replace")
-    for m in _BUTTON.finditer(text):
-        tag = m.group(0)
+    for start, _end, tag in _button_tags(text):
         if _HAS_TYPE.search(tag):
             continue
         # locate line number + honour the escape hatch on that line / line above
-        upto = text[: m.start()]
+        upto = text[:start]
         lineno = upto.count("\n") + 1
         lines = text.splitlines()
         line = lines[lineno - 1] if lineno - 1 < len(lines) else ""
