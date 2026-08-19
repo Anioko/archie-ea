@@ -11,7 +11,7 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
         {{ page_header(title='Business Capabilities', description='Capability taxonomy and hierarchy') }}
         {% if can_edit %}
-        <button type="button" onclick="openCapCreate()"
+        <button type="button" data-action="openCapCreate"
             class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 shrink-0"
             aria-label="New Capability">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> New Capability
@@ -32,10 +32,10 @@
     <!-- Level filter -->
     <div class="mb-4 flex flex-wrap gap-2 items-center">
         <span class="text-sm text-muted-foreground">Filter by level:</span>
-        <button type="button" onclick="filterLevel(0)" id="btn-all"
+        <button type="button" data-action="filterLevel" data-level="0" id="btn-all"
             class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-primary text-primary-foreground" aria-label="All levels">All</button>
         {% for lvl in [1,2,3,4,5] %}
-        <button type="button" onclick="filterLevel({{ lvl }})" id="btn-{{ lvl }}"
+        <button type="button" data-action="filterLevel" data-level="{{ lvl }}" id="btn-{{ lvl }}"
             class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-background text-foreground hover:bg-muted" aria-label="Level {{ lvl }}">Level {{ lvl }}</button>
         {% endfor %}
     </div>
@@ -57,13 +57,13 @@
                 <div class="flex items-center gap-1 shrink-0 ml-2">
                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">L{{ cap.level|default(1) }}</span>
                     {% if can_edit %}
-                    <button type="button" onclick="openCapEdit(this.closest('.cap-card'))"
+                    <button type="button" data-action="openCapEdit"
                         class="p-1 rounded hover:bg-muted text-muted-foreground" aria-label="Edit {{ cap.name|e }}">
                         <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
                     {% endif %}
                     {% if can_delete %}
-                    <button type="button" onclick="deleteCap({{ cap.id }}, this.closest('.cap-card').dataset.capName)"
+                    <button type="button" data-action="deleteCap" data-cap-id="{{ cap.id }}"
                         class="p-1 rounded hover:bg-destructive/10 text-destructive-emphasis" aria-label="Delete {{ cap.name|e }}">
                         <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
@@ -138,9 +138,9 @@
       </div>
     </div>
     <div class="flex justify-end gap-2 mt-5">
-      <button type="button" onclick="document.getElementById('cap-dialog').close()"
+      <button type="button" data-action="closeCapDialog"
         class="h-9 px-4 rounded-md text-sm border border-border hover:bg-muted">Cancel</button>
-      <button type="button" id="cap-save" onclick="submitCap()"
+      <button type="button" id="cap-save" data-action="submitCap"
         class="h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90">Save</button>
     </div>
   </div>
@@ -242,5 +242,18 @@ async function deleteCap(id, name) {
         capToast('Delete failed: ' + (e.message || e), true);
     }
 }
-</script>
+
+/* CSP-safe: delegate the page actions instead of inline onclick= (DESIGN.md). */
+document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-action]');
+    if (!el) return;
+    var a = el.getAttribute('data-action');
+    if (a === 'openCapCreate') return openCapCreate();
+    if (a === 'submitCap') return submitCap();
+    if (a === 'filterLevel') return filterLevel(Number(el.getAttribute('data-level')));
+    if (a === 'openCapEdit') return openCapEdit(el.closest('.cap-card'));
+    if (a === 'deleteCap') { var c = el.closest('.cap-card'); return deleteCap(el.getAttribute('data-cap-id'), c && c.dataset.capName); }
+    if (a === 'closeCapDialog') { var d = document.getElementById('cap-dialog'); if (d) d.close(); }
+});
+
 {% endblock %}

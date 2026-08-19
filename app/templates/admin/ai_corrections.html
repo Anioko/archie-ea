@@ -111,7 +111,7 @@
                                         <!-- Correct button -->
                                         <button
                                             type="button"
-                                            onclick="markCorrect({{ row.element_id }})"
+                                            data-action="markCorrect" data-eid="{{ row.element_id }}"
                                             class="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/30 text-success-emphasis px-2.5 py-1 text-xs font-medium hover:bg-success/20 transition-colors"
                                             aria-label="Mark element {{ row.element_id }} as correct">
                                             <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
@@ -121,7 +121,7 @@
                                         <!-- Fix inline form -->
                                         <button
                                             type="button"
-                                            onclick="toggleFixForm({{ row.element_id }})"
+                                            data-action="toggleFixForm" data-eid="{{ row.element_id }}"
                                             class="inline-flex items-center gap-1 rounded-md bg-warning/10 border border-warning/30 text-warning-emphasis px-2.5 py-1 text-xs font-medium hover:bg-warning/20 transition-colors"
                                             aria-label="Fix element {{ row.element_id }}">
                                             <i data-lucide="edit-2" class="h-3 w-3" aria-hidden="true"></i>
@@ -155,14 +155,14 @@
                                             <div class="flex gap-2">
                                                 <button
                                                     type="button"
-                                                    onclick="submitFix({{ row.element_id }})"
+                                                    data-action="submitFix" data-eid="{{ row.element_id }}"
                                                     class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-xs font-medium hover:bg-primary/90 transition-colors"
                                                     aria-label="Submit fix for element {{ row.element_id }}">
                                                     Submit Fix
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onclick="toggleFixForm({{ row.element_id }})"
+                                                    data-action="toggleFixForm" data-eid="{{ row.element_id }}"
                                                     class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
                                                     aria-label="Cancel fix for element {{ row.element_id }}">
                                                     Cancel
@@ -277,5 +277,14 @@ function submitFix(elementId) {
     })
     .catch(err => console.error('Request failed:', err));
 }
+
+/* CSP-safe: delegate the row actions instead of inline onclick= (DESIGN.md). */
+document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-action]');
+    if (!el) return;
+    var fns = { markCorrect: markCorrect, toggleFixForm: toggleFixForm, submitFix: submitFix };
+    var fn = fns[el.getAttribute('data-action')];
+    if (fn) fn(el.getAttribute('data-eid'));
+});
 </script>
 {% endblock %}
