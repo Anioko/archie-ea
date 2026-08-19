@@ -9,11 +9,11 @@ Source: the 17 Aug 2026 QA remediation register (160 active findings).
 | | Count |
 |---|---|
 | Findings total | 160 |
-| Fixed and evidenced | 146 |
-| Still open | 2 |
+| Fixed and evidenced | 147 |
+| Still open | 1 |
 | Closed but unevidenced (blocks the gate) | 0 |
 | Of the fixed: verified by eye only | 47 |
-| Live in production | 146 |
+| Live in production | 147 |
 
 A finding counts as fixed only when its commit is recorded **and** it carries evidence. Work that is partly done stays open with a note — "mostly done" is open.
 
@@ -21,7 +21,6 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 
 | ID | Sev | Finding | Status |
 |---|---|---|---|
-| ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | PARTIAL: style-src unsafe-inline removed; script-src keeps unsafe-eval behind nonce + strict-dynamic. [2026-08-18 STRATEGY PROVEN — see docs/adr/0007-csp-unsafe-eval-removal.md] Reframed from the 8,523-expression alpinejs-csp rewrite to replacing Alpine's evaluator via Alpine.setEvaluator (exported in 3.14.3) with a CSP-safe interpreter, so unsafe-eval drops with ZERO template rewrites. Feasibility proven: scripts/check_alpine_csp_grammar.py parses 99.92% of the live expression corpus (10 residual of 11,856, mostly extraction artifacts). Remaining: write the JS evaluator (mirrors the proven grammar), browser-verify, drop unsafe-eval + flip the test. Stays OPEN until the evaluator is live and verified. |
 | ARCH-064 | S3 | Large server-rendered HTML payloads without pagination | PARTIAL and measured: /architecture/dashboard 187,069 -> 169,857 bytes. /capability-map/ 481,749 -> 482,243 — dedup does NOT reduce page weight because the macro still renders all three modals; the 1,225-line premise was also wrong (~380). Real reduction needs lazy-loading the closed modals, not deduplication. |
 
 ## Fixed
@@ -70,6 +69,7 @@ A finding counts as fixed only when its commit is recorded **and** it carries ev
 | ARCH-021 | S2 | Approval queue creates duplicates of the same operation | `f147872` | test:tests/test_approval_governance.py | yes | yes |
 | ARCH-050 | S2 | /architecture/element/<id> returns HTTP 200 for every input, including invalid ones | `6aaf0b5` | test:tests/test_arch050_element_route_404.py | no | yes |
 | ARCH-051 | S2 | State-changing endpoints accept requests with no CSRF token | `77ea694` | test:tests/test_csrf_and_bulk_delete_security.py; test:tests/test_csrf_coverage.py; manual:prod-probe 2026-08-18 unauth token-less writes to /applications/create, /applications/bulk-delete, /arb/reviews/create, /ai-chat/approvals/999999/approve, DELETE /architecture/elements/999999 — all rejected 400 error_type:csrf before auth/business logic (bulk-delete regression confirmed closed) | yes | yes |
+| ARCH-070 | S2 | Content Security Policy permits both unsafe-inline and unsafe-eval | `f1903fb` | test:tests/csp/test_csp_evaluator.py; manual:prod 2026-08-19 CSP header script-src has nonce+strict-dynamic, NO unsafe-eval; login-page Alpine inits with 0 CSP violations | yes | yes |
 | ARCH-090 | S2 | No testing at representative enterprise scale | `9c716ea` | manual:scripts/benchmark_scale.py harness, validated at small scale only | no | yes |
 | ARCH-091 | S2 | Enterprise identity, tenancy and RBAC unverified | `(harness)` | test:tests/test_rbac_and_sso_posture.py | no | yes |
 | ARCH-100 | S2 | Data-heavy views use card lists instead of a data grid | `055cec4` | test:tests/test_applications_list_shell.py | no | yes |

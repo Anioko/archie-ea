@@ -10,7 +10,10 @@ Runs three configurations:
   B. Alpine + CSPExpr evaluator   -> expected WORKING (proves the fix)
   C. same as B but CSP INCLUDES unsafe-eval -> sanity: stock path works there
 """
-import threading, functools, http.server, socket
+import threading
+import functools
+import http.server
+import socket
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -60,20 +63,24 @@ def make_handler(mode, csp_eval):
                 self.send_response(200)
                 self.send_header("Content-Type", "application/javascript")
                 self.send_header("Content-Length", str(len(data)))
-                self.end_headers(); self.wfile.write(data); return
+                self.end_headers()
+                self.wfile.write(data)
+                return
             data = html.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.send_header("Content-Security-Policy", csp)
             self.send_header("Content-Length", str(len(data)))
-            self.end_headers(); self.wfile.write(data)
+            self.end_headers()
+            self.wfile.write(data)
     return H
 
 
 def serve(handler):
     srv = http.server.HTTPServer(("127.0.0.1", 0), handler)
     port = srv.server_address[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
     return srv, port
 
 
@@ -82,21 +89,27 @@ def run_case(pw, mode, csp_eval, label):
     try:
         b = pw.chromium.launch(headless=True)
         pg = b.new_page()
-        errs, csp = [], []
+        errs = []
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.add_init_script("document.addEventListener('securitypolicyviolation',e=>{window.__c=window.__c||[];window.__c.push(e.violatedDirective+'/'+(e.blockedURI||'inline'))})")
         pg.goto(f"http://127.0.0.1:{port}/", wait_until="load")
         pg.wait_for_timeout(500)
-        greet = pg.inner_text("#greet")
         # drive interactions
         try:
-            pg.click("#inc"); pg.wait_for_timeout(30)
-            pg.click("#add5"); pg.wait_for_timeout(30)
-            pg.click("#toggle"); pg.wait_for_timeout(30)
-            pg.fill("#model", "Bob"); pg.wait_for_timeout(30)
-            pg.click("#self"); pg.wait_for_timeout(30)
-            pg.click("#useref"); pg.wait_for_timeout(30)
-            pg.click("#fire"); pg.wait_for_timeout(30)
+            pg.click("#inc")
+            pg.wait_for_timeout(30)
+            pg.click("#add5")
+            pg.wait_for_timeout(30)
+            pg.click("#toggle")
+            pg.wait_for_timeout(30)
+            pg.fill("#model", "Bob")
+            pg.wait_for_timeout(30)
+            pg.click("#self")
+            pg.wait_for_timeout(30)
+            pg.click("#useref")
+            pg.wait_for_timeout(30)
+            pg.click("#fire")
+            pg.wait_for_timeout(30)
         except Exception:
             pass
         state = pg.evaluate("""() => ({

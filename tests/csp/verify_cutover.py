@@ -9,7 +9,8 @@ pages including a d3 page, and asserts:
   - Alpine actually initialized (an x-data element got _x_dataStack), i.e. the
     CSP-safe evaluator drove real interactivity, not a silently-inert page.
 """
-import os, threading
+import os
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,10 +51,12 @@ def _seed(app):
     with app.app_context():
         org = Organization.query.first() or Organization(name="Cut", slug="cut-" + uuid.uuid4().hex[:6])
         if not org.id:
-            db.session.add(org); db.session.flush()
+            db.session.add(org)
+            db.session.flush()
         u = User(email=f"cut-{uuid.uuid4().hex[:8]}@example.com", first_name="Cut", last_name="Over",
                  confirmed=True, organization_id=org.id, password_hash=generate_password_hash("x"))
-        db.session.add(u); db.session.commit()
+        db.session.add(u)
+        db.session.commit()
         return u.id
 
 
@@ -74,13 +77,14 @@ def main():
             pg = ctx.new_page()
             with app.test_request_context():
                 from flask import session as _s
-                _s["_user_id"] = str(uid); _s["_fresh"] = True
+                _s["_user_id"] = str(uid)
+                _s["_fresh"] = True
                 from flask.sessions import SecureCookieSessionInterface
                 cookie = SecureCookieSessionInterface().get_signing_serializer(app).dumps(dict(_s))
             ctx.add_cookies([{"name": app.config.get("SESSION_COOKIE_NAME", "session"), "value": cookie, "url": base}])
 
             for path in PAGES:
-                viol, perr = [], []
+                perr = []
                 pg.on("pageerror", lambda e, _p=perr: _p.append(str(e)))
                 pg.add_init_script("document.addEventListener('securitypolicyviolation',e=>{window.__v=window.__v||[];window.__v.push(e.violatedDirective+'|'+(e.blockedURI||'inline'))})")
                 resp = pg.goto(base + path, wait_until="load", timeout=20000)

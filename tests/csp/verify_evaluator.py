@@ -7,13 +7,16 @@ Three checks in real chromium via Playwright:
   3. Differential: for pure (side-effect-free) expressions, compare the
      evaluator's result to the browser's own native eval on the same scope.
 """
-import json, re, importlib.util
+import json
+import re
+import importlib.util
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location("g", ROOT / "scripts" / "check_alpine_csp_grammar.py")
-_g = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_g)
+_g = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_g)
 
 EVAL_JS = (ROOT / "app" / "static" / "js" / "csp" / "csp-evaluator.js").read_text(encoding="utf-8")
 

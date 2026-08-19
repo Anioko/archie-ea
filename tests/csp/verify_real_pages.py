@@ -10,7 +10,9 @@ extracts EVERY Alpine directive expression present in the live rendered DOM
 This validates the evaluator against actual rendered app markup and real
 component data, complementing the synthetic integration test.
 """
-import os, threading, importlib.util
+import os
+import threading
+import importlib.util
 from pathlib import Path
 from werkzeug.serving import make_server
 
@@ -39,11 +41,14 @@ def _seed_login_user(app):
     with app.app_context():
         org = Organization.query.first()
         if not org:
-            org = Organization(name="Smoke", slug="smoke-" + uuid.uuid4().hex[:6]); db.session.add(org); db.session.flush()
+            org = Organization(name="Smoke", slug="smoke-" + uuid.uuid4().hex[:6])
+            db.session.add(org)
+            db.session.flush()
         email = f"csp-smoke-{uuid.uuid4().hex[:8]}@example.com"
         u = User(email=email, first_name="Csp", last_name="Smoke", confirmed=True,
                  organization_id=org.id, password_hash=generate_password_hash("x"))
-        db.session.add(u); db.session.commit()
+        db.session.add(u)
+        db.session.commit()
         return u.id
 
 
@@ -75,8 +80,12 @@ def main():
     uid = _seed_login_user(app)
     srv = make_server("127.0.0.1", 0, app, threaded=True)
     port = srv.socket.getsockname()[1]
-    t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
-    total_exprs = 0; parse_fail = []; diverge = []; pages_ok = []
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    total_exprs = 0
+    parse_fail = []
+    diverge = []
+    pages_ok = []
     try:
         with sync_playwright() as p:
             b = p.chromium.launch(headless=True)
@@ -102,7 +111,8 @@ def main():
                 try:
                     resp = pg.goto(base + path, wait_until="domcontentloaded", timeout=15000)
                 except Exception as e:
-                    pages_ok.append((path, f"nav-error {e}")); continue
+                    pages_ok.append((path, f"nav-error {e}"))
+                    continue
                 code = resp.status if resp else 0
                 # Many real pages redirect to login when unauthenticated; that's fine —
                 # we still extract whatever Alpine markup rendered (login page has some).
@@ -128,7 +138,8 @@ def main():
                         }
                         return {pf, dv};
                     }""", exprs)
-                parse_fail += res["pf"]; diverge += res["dv"]
+                parse_fail += res["pf"]
+                diverge += res["dv"]
                 pages_ok.append((path, f"http={code} exprs={len(exprs)} parsefail={len(res['pf'])} diverge={len(res['dv'])}"))
             b.close()
     finally:

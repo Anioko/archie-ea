@@ -23,7 +23,8 @@ def _has_browser():
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
-            b = p.chromium.launch(headless=True); b.close()
+            b = p.chromium.launch(headless=True)
+            b.close()
         return True
     except Exception:
         return False
@@ -34,7 +35,8 @@ pytestmark = pytest.mark.skipif(not _has_browser(), reason="no chromium for Play
 
 def _load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
-    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
     return m
 
 

@@ -1,8 +1,8 @@
 {
   "_comment": "Task log for the 17 Aug 2026 QA remediation register. The qa-register gate in scripts/verify.py FAILS while any finding is open OR any closed finding lacks evidence, so verify.py cannot go green - and nothing can deploy - until the register is genuinely finished. A finding is 'closed' only when its fix is committed AND it carries evidence. Evidence kinds: test:<path> (automated, strongest), gate:<name> (mechanically prevents recurrence), manual:<what> (human/browser only - counted and reported separately because it does not survive a refactor). 'reviewed' means a separate adversarial reviewer examined the diff. 'deployed' is set only once the fix is live in production. Partially fixed findings stay OPEN with a note - 'mostly done' is open.",
   "total": 160,
-  "closed": 146,
-  "open": 2,
+  "closed": 147,
+  "open": 1,
   "findings": [
     {
       "id": "A-06",
@@ -100,12 +100,15 @@
       "id": "ARCH-070",
       "severity": "S2",
       "title": "Content Security Policy permits both unsafe-inline and unsafe-eval",
-      "status": "open",
-      "note": "PARTIAL: style-src unsafe-inline removed; script-src keeps unsafe-eval behind nonce + strict-dynamic. [2026-08-18 STRATEGY PROVEN — see docs/adr/0007-csp-unsafe-eval-removal.md] Reframed from the 8,523-expression alpinejs-csp rewrite to replacing Alpine's evaluator via Alpine.setEvaluator (exported in 3.14.3) with a CSP-safe interpreter, so unsafe-eval drops with ZERO template rewrites. Feasibility proven: scripts/check_alpine_csp_grammar.py parses 99.92% of the live expression corpus (10 residual of 11,856, mostly extraction artifacts). Remaining: write the JS evaluator (mirrors the proven grammar), browser-verify, drop unsafe-eval + flip the test. Stays OPEN until the evaluator is live and verified.",
-      "fix_commit": "",
-      "evidence": [],
+      "status": "closed",
+      "note": "CLOSED 2026-08-19: replaced Alpine new Function() evaluator with a CSP-safe interpreter (app/static/js/csp/, via Alpine.setEvaluator, wired in _head.html) and dropped 'unsafe-eval' from the production script-src. Verified end-to-end: evaluator matches native eval on 10,819 pure expressions (0 divergences), real rendered pages run with 0 CSP violations, and live prod CSP header confirms unsafe-eval gone with Alpine working. ADR 0007; commits f1903fb/984fb68.",
+      "fix_commit": "f1903fb",
+      "evidence": [
+        "test:tests/csp/test_csp_evaluator.py",
+        "manual:prod 2026-08-19 CSP header script-src has nonce+strict-dynamic, NO unsafe-eval; login-page Alpine inits with 0 CSP violations"
+      ],
       "reviewed": true,
-      "deployed": false
+      "deployed": true
     },
     {
       "id": "ARCH-090",
