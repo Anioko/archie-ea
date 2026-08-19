@@ -53,6 +53,14 @@
         crossorigin="anonymous"></script>
 <script defer src="/static/vendor/alpine-collapse.min.js"
         crossorigin="anonymous"></script>
+<!-- ARCH-070: CSP-safe evaluator + Alpine adapter. Loaded (deferred) BEFORE
+     alpine.min.js so the adapter's alpine:init listener is registered before
+     Alpine starts; it registers a hand-written expression interpreter via
+     Alpine.setEvaluator so Alpine never calls new Function(), letting script-src
+     drop 'unsafe-eval'. Verified in tests/csp/. First-party, so no SRI (matches
+     the other app JS). -->
+<script defer src="{{ url_for('static', filename='js/csp/csp-evaluator.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/csp/alpine-csp-adapter.js') }}"></script>
 <!-- Alpine.js (pinned) -->
 <script defer src="/static/vendor/alpine.min.js"
         integrity="sha384-iZD2X8o1Zdq0HR5H/7oa8W30WS4No+zWCKUPD7fHRay9I1Gf+C4F8sVmw7zec1wW"

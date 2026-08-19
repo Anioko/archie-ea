@@ -169,33 +169,35 @@ def test_injection_hardening_directives_are_present(app):
 
 
 # --------------------------------------------------------------------------
-# ARCH-070 remaining half: 'unsafe-eval'
+# ARCH-070: 'unsafe-eval' REMOVED (closed 2026-08-19)
 # --------------------------------------------------------------------------
 #
-# script-src already carries a nonce + 'strict-dynamic' with NO
-# 'unsafe-inline'. 'unsafe-eval' is the one directive still open, required
-# by the standard Alpine.js build's `new Function(...)` expression
-# evaluation. Swapping to the CSP-compatible Alpine build was measured
-# (scripts/check_alpine_csp_compat.py) and rejected for now: 8,523 of
-# 17,997 Alpine directive expressions (47%) use JS the CSP build cannot
-# evaluate. These tests pin that this remains a *documented, reviewed*
-# exception rather than something that silently regresses or silently
-# gets "fixed" by deleting the measurement.
+# script-src carries a nonce + 'strict-dynamic', NO 'unsafe-inline', and NO
+# LONGER 'unsafe-eval'. Alpine's new Function() evaluator was replaced by the
+# CSP-safe interpreter in app/static/js/csp/ (registered via
+# Alpine.setEvaluator, wired in _head.html), so no Alpine expression needs
+# eval. Verified end-to-end in tests/csp/ (evaluator vs native eval: 0
+# divergences on 10,819 expressions; real rendered pages run with 0 CSP
+# violations under this policy; ADR 0007). These tests now pin that the
+# directive stays GONE and does not silently return.
 
 
-def test_unsafe_eval_still_present_and_documented(app):
-    """If this ever flips, either Alpine's CSP build shipped (delete this
-    test and the comment above it) or the directive regressed silently
-    (fix it). It must not just disappear quietly either way."""
+def test_unsafe_eval_is_absent(app):
+    """unsafe-eval must NOT return to script-src. If it does, either the CSP
+    evaluator regressed (fix it) or someone re-added the directive without
+    cause. See ADR 0007 and app/_bootstrap/security.py."""
     policy = _production_csp(app)
-    assert "'unsafe-eval'" in policy, (
-        "unsafe-eval was removed from script-src without following the "
-        "documented swap path (vendor alpinejs-csp, rewrite incompatible "
-        "expressions) - see app/_bootstrap/security.py ARCH-070 comment"
+    script_src = policy.split("script-src", 1)[1].split(";", 1)[0]
+    assert "'unsafe-eval'" not in script_src, (
+        "unsafe-eval reappeared in script-src — ARCH-070 removed it; the CSP-safe "
+        "Alpine evaluator (app/static/js/csp/, tests/csp/) makes it unnecessary"
     )
-    assert "'unsafe-inline'" not in policy.split("script-src", 1)[1].split(";", 1)[0], (
-        "script-src must not regain unsafe-inline alongside unsafe-eval"
+    assert "'unsafe-inline'" not in script_src, (
+        "script-src must not gain unsafe-inline"
     )
+    # The nonce + strict-dynamic backbone must remain.
+    assert "'strict-dynamic'" in script_src
+    assert "'nonce-" in script_src
 
 
 def test_alpine_csp_compat_scanner_runs_and_reports_the_measured_split(app):

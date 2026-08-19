@@ -194,7 +194,18 @@ def init_security(app):
             # nonce'd script running" rather than arbitrary injected markup.
             csp_directives = [
                 "default-src 'self'",
-                f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' 'strict-dynamic' "
+                # ARCH-070: 'unsafe-eval' REMOVED. Alpine's new Function() evaluator
+                # is replaced by the CSP-safe interpreter in app/static/js/csp/
+                # (wired in _head.html via Alpine.setEvaluator), so no Alpine
+                # expression needs eval. Verified end-to-end in tests/csp/: the
+                # evaluator matches native eval on 10,819 pure expressions with 0
+                # divergences, and real rendered pages (composer/dashboard/
+                # capability-map) run with 0 CSP violations under this policy.
+                # d3-dsv's new Function() row parser is never reached (no page
+                # calls d3.csv/tsv/dsvParse — only SVG/force/scale/zoom APIs), and
+                # CodeMirror loads as ES modules from esm.sh (no eval), so nothing
+                # else on the write surface needs the directive either.
+                f"script-src 'self' 'nonce-{nonce}' 'strict-dynamic' "
                 "https://esm.sh",  # CodeMirror 6 ES module imports
                 # ARCH-070. The blanket style-src 'unsafe-inline' is gone,
                 # split into the two directives it was conflating:
