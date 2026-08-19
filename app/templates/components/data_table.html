@@ -44,7 +44,7 @@ if (!window._dataTableEngine) {
             sortOrder: 'asc',
             currentPage: 1,
             perPage: config.perPage || 10,
-            selectedRows: new Set(),
+            selectedRows: [],
             facetFilters: {},
             _filterOpen: {},
 
@@ -93,7 +93,7 @@ if (!window._dataTableEngine) {
                 return this.filteredRows.slice(start, start + this.perPage);
             },
             get allSelected() {
-                return this.paginatedRows.length > 0 && this.paginatedRows.every(function(r) { return this.selectedRows.has(r.id); }.bind(this));
+                return this.paginatedRows.length > 0 && this.paginatedRows.every(function(r) { return this.selectedRows.includes(r.id); }.bind(this));
             },
             get hasActiveFilters() {
                 if (this.search) return true;
@@ -110,18 +110,22 @@ if (!window._dataTableEngine) {
                 this.currentPage = 1;
             },
             toggleSelect(id) {
-                if (this.selectedRows.has(id)) this.selectedRows.delete(id);
-                else this.selectedRows.add(id);
-                this.selectedRows = new Set(this.selectedRows);
+                // Array, not Set: Alpine observes array reassignment reliably;
+                // it does not observe Set add/delete (DESIGN.md), so the header
+                // checkbox and bulk bar failed to react with a Set.
+                if (this.selectedRows.includes(id)) this.selectedRows = this.selectedRows.filter(function(x) { return x !== id; });
+                else this.selectedRows = this.selectedRows.concat([id]);
             },
             toggleSelectAll() {
                 let self = this;
+                let ids = self.paginatedRows.map(function(r) { return r.id; });
                 if (self.allSelected) {
-                    self.paginatedRows.forEach(function(r) { self.selectedRows.delete(r.id); });
+                    self.selectedRows = self.selectedRows.filter(function(x) { return ids.indexOf(x) === -1; });
                 } else {
-                    self.paginatedRows.forEach(function(r) { self.selectedRows.add(r.id); });
+                    let merged = self.selectedRows.slice();
+                    ids.forEach(function(id) { if (merged.indexOf(id) === -1) merged.push(id); });
+                    self.selectedRows = merged;
                 }
-                self.selectedRows = new Set(self.selectedRows);
             },
             toggleFacet(columnKey, value) {
                 if (!this.facetFilters[columnKey]) this.facetFilters[columnKey] = new Set();
@@ -261,12 +265,12 @@ if (!window._dataTableEngine) {
     {# ══════════════════════════════════════════════════════════════ #}
     {# TABLE                                                         #}
     {# ══════════════════════════════════════════════════════════════ #}
-    <div class="overflow-hidden rounded-md border border-border">
+    <div class="overflow-auto max-h-[70vh] rounded-md border border-border">
         <table class="w-full caption-bottom text-sm" role="table">
-            <thead class="[&_tr]:border-b">
+            <thead class="[&_tr]:border-b sticky top-0 z-20">
                 <tr class="border-b border-border bg-muted/50">
                     {% if row_selection %}
-                    <th class="h-10 w-10 px-3 align-middle">
+                    <th class="h-10 w-10 px-3 align-middle bg-card">
                         <span class="flex h-4 w-4 items-center justify-center rounded-sm border border-input cursor-pointer"
                               :class="allSelected ? 'bg-primary border-primary text-primary-foreground' : ''"
                               @click="toggleSelectAll()" role="checkbox" :aria-checked="allSelected" tabindex="0">
@@ -275,7 +279,7 @@ if (!window._dataTableEngine) {
                     </th>
                     {% endif %}
                     {% for col in columns %}
-                    <th class="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-xs {{ col.get('class', '') }}">
+                    <th class="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-xs bg-card {{ col.get('class', '') }}">
                         {% if sortable and col.get('sortable', false) %}
                         <button type="button" @click="sortBy('{{ col.key }}')"
                                 class="inline-flex items-center gap-1.5 -ml-2 h-8 px-2 rounded-md hover:bg-accent transition-colors data-[state=open]:bg-accent"
@@ -297,7 +301,7 @@ if (!window._dataTableEngine) {
                     </th>
                     {% endfor %}
                     {% if actions %}
-                    <th class="h-10 w-10 px-3 text-right align-middle font-medium text-muted-foreground text-xs">
+                    <th class="h-10 w-10 px-3 text-right align-middle font-medium text-muted-foreground text-xs bg-card">
                         <span class="sr-only">Actions</span>
                     </th>
                     {% endif %}
@@ -316,13 +320,13 @@ if (!window._dataTableEngine) {
                 {# Rows #}
                 <template x-for="row in paginatedRows" :key="row.id">
                     <tr class="border-b border-border transition-colors hover:bg-muted/50"
-                        :class="selectedRows.has(row.id) ? 'bg-muted/50' : ''">
+                        :class="selectedRows.includes(row.id) ? 'bg-muted/50' : ''">
                         {% if row_selection %}
                         <td class="w-10 px-3 py-2 align-middle">
                             <span class="flex h-4 w-4 items-center justify-center rounded-sm border border-input cursor-pointer"
-                                  :class="selectedRows.has(row.id) ? 'bg-primary border-primary text-primary-foreground' : ''"
-                                  @click="toggleSelect(row.id)" role="checkbox" :aria-checked="selectedRows.has(row.id)" tabindex="0">
-                                <svg x-show="selectedRows.has(row.id)" x-cloak class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                  :class="selectedRows.includes(row.id) ? 'bg-primary border-primary text-primary-foreground' : ''"
+                                  @click="toggleSelect(row.id)" role="checkbox" :aria-checked="selectedRows.includes(row.id)" tabindex="0">
+                                <svg x-show="selectedRows.includes(row.id)" x-cloak class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                             </span>
                         </td>
                         {% endif %}
@@ -417,7 +421,7 @@ if (!window._dataTableEngine) {
         {# Selected rows count #}
         {% if row_selection %}
         <div class="flex-1 text-sm text-muted-foreground">
-            <span x-text="selectedRows.size"></span> of <span x-text="filteredRows.length"></span> row(s) selected.
+            <span x-text="selectedRows.length"></span> of <span x-text="filteredRows.length"></span> row(s) selected.
         </div>
         {% else %}
         <div class="flex-1 text-sm text-muted-foreground">
