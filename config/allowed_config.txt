@@ -19,4 +19,3 @@ USE_READ_REPLICA_FOR_DASHBOARD  # infra perf (read replica)
 OTEL_ENABLED                    # observability (OpenTelemetry export)
 MAIL_USE_TLS                    # SMTP transport
 MAIL_USE_SSL                    # SMTP transport
-CSP_SAFE_EVALUATOR              # security migration toggle: load CSP-safe Alpine evaluator so unsafe-eval can drop (ADR 0007); staged rollout, not a user feature
