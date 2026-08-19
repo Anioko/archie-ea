@@ -64,13 +64,13 @@
             <div class="inline-flex items-center rounded-md border border-input bg-background text-sm">
                 <span class="px-3 py-2 text-muted-foreground border-r border-input">Depth</span>
                 <template x-for="d in [1, 2, 3]" :key="d">
-                    <button @click="setDepth(d)"
+                    <button type="button" @click="setDepth(d)"
                             :class="maxDepth === d ? 'bg-foreground text-background' : 'hover:bg-accent'"
                             class="px-3 py-2 text-sm font-medium transition-colors" x-text="d"></button>
                 </template>
-                <button @click="expandAll()" class="px-3 py-2 text-sm font-medium border-l border-input hover:bg-accent transition-colors">All</button>
+                <button type="button" @click="expandAll()" class="px-3 py-2 text-sm font-medium border-l border-input hover:bg-accent transition-colors">All</button>
             </div>
-            <button @click="addRoot()" class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+            <button type="button" @click="addRoot()" class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                 <i data-lucide="plus" class="w-4 h-4"></i> Add Root
             </button>
         </div>
@@ -83,7 +83,7 @@
             <div x-show="nodeCount === 0 && !loading" x-cloak class="flex flex-col items-center justify-center py-24 text-center">
                 <i data-lucide="tree-pine" class="w-12 h-12 text-muted-foreground/40 mb-4"></i>
                 <p class="text-lg font-medium text-muted-foreground">No items yet</p>
-                <button @click="addRoot()" class="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <button type="button" @click="addRoot()" class="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                     <i data-lucide="plus" class="w-4 h-4"></i> Add First Item
                 </button>
             </div>
@@ -104,7 +104,7 @@
                 <div class="p-5 space-y-5">
                     <div class="flex items-start justify-between">
                         <h2 class="text-lg font-semibold" x-text="selected.name"></h2>
-                        <button @click="selected = null" class="text-muted-foreground hover:text-foreground">
+                        <button type="button" @click="selected = null" class="text-muted-foreground hover:text-foreground">
                             <i data-lucide="x" class="w-4 h-4"></i>
                         </button>
                     </div>
@@ -120,10 +120,10 @@
                     </div>
 
                     <div class="flex items-center justify-between pt-2 border-t border-border">
-                        <button @click="confirmDelete()" class="text-sm text-muted-foreground hover:text-destructive-emphasis transition-colors">Delete</button>
+                        <button type="button" @click="confirmDelete()" class="text-sm text-muted-foreground hover:text-destructive-emphasis transition-colors">Delete</button>
                         <div class="flex gap-2">
-                            <button @click="startAddChild()" class="px-3 py-1.5 text-sm rounded-md border border-input hover:bg-accent transition-colors">Add Child</button>
-                            <button @click="startEdit()" class="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">Edit</button>
+                            <button type="button" @click="startAddChild()" class="px-3 py-1.5 text-sm rounded-md border border-input hover:bg-accent transition-colors">Add Child</button>
+                            <button type="button" @click="startEdit()" class="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">Edit</button>
                         </div>
                     </div>
                 </div>
@@ -133,7 +133,7 @@
                 <div class="p-5 space-y-4">
                     <div class="flex items-center justify-between">
                         <h2 class="text-lg font-semibold" x-text="editForm.id ? 'Edit' : 'New Item'"></h2>
-                        <button aria-label="Close" @click="cancelEdit()" class="text-muted-foreground hover:text-foreground">
+                        <button type="button" aria-label="Close" @click="cancelEdit()" class="text-muted-foreground hover:text-foreground">
                             <i data-lucide="x" class="w-4 h-4"></i>
                         </button>
                     </div>
@@ -155,8 +155,8 @@
                         </template>
                     </div>
                     <div class="flex justify-end gap-2 pt-2 border-t border-border">
-                        <button @click="cancelEdit()" class="px-3 py-1.5 text-sm rounded-md border border-input hover:bg-accent transition-colors">Cancel</button>
-                        <button @click="saveEdit()" :disabled="!editForm.name?.trim()" class="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">Save</button>
+                        <button type="button" @click="cancelEdit()" class="px-3 py-1.5 text-sm rounded-md border border-input hover:bg-accent transition-colors">Cancel</button>
+                        <button type="button" @click="saveEdit()" :disabled="!editForm.name?.trim()" class="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">Save</button>
                     </div>
                 </div>
             </template>
@@ -166,9 +166,9 @@
     <!-- Context menu -->
     <div x-show="ctx.show" x-cloak @click.away="ctx.show = false" @keydown.escape.window="ctx.show = false"
          class="ctx-menu" :style="`top:${ctx.y}px; left:${ctx.x}px`">
-        <button @click="startAddChild(); ctx.show = false"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Child</button>
-        <button @click="startEdit(); ctx.show = false"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit</button>
-        <button class="ctx-danger" @click="confirmDelete(); ctx.show = false"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete</button>
+        <button type="button" @click="startAddChild(); ctx.show = false"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Child</button>
+        <button type="button" @click="startEdit(); ctx.show = false"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit</button>
+        <button type="button" class="ctx-danger" @click="confirmDelete(); ctx.show = false"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete</button>
     </div>
 
     <!-- Delete confirmation -->
@@ -177,8 +177,8 @@
             <h3 class="text-base font-semibold">Delete Item</h3>
             <p class="text-sm text-muted-foreground mt-2">Delete <strong x-text="selected?.name"></strong>? Children will be reparented.</p>
             <div class="flex justify-end gap-2 mt-4">
-                <button @click="showDeleteConfirm = false" class="px-3 py-1.5 text-sm rounded-md border border-input hover:bg-accent transition-colors">Cancel</button>
-                <button @click="doDelete()" class="px-3 py-1.5 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors">Delete</button>
+                <button type="button" @click="showDeleteConfirm = false" class="px-3 py-1.5 text-sm rounded-md border border-input hover:bg-accent transition-colors">Cancel</button>
+                <button type="button" @click="doDelete()" class="px-3 py-1.5 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors">Delete</button>
             </div>
         </div>
     </div>

@@ -163,7 +163,7 @@ function llmRecommendationsComponent(dashboard) {
                         Generate context-aware strategic recommendations using your configured LLM provider
                     </p>
                 </div>
-                <button 
+                <button type="button" 
                     @click="generateRecommendations()"
                     :disabled="loading"
                     class="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:bg-muted-foreground/40 text-primary-foreground font-medium rounded-lg transition-colors" aria-label="Generate recommendations">
@@ -215,7 +215,7 @@ function llmRecommendationsComponent(dashboard) {
                                     </div>
                                 </template>
                                 <template x-if="!rec.user_rating">
-                                    <button 
+                                    <button type="button" 
                                         @click="openRatingModal(rec)"
                                         class="text-sm text-primary hover:text-primary font-medium" aria-label="Rate this recommendation">
                                         Rate this
@@ -307,12 +307,12 @@ function llmRecommendationsComponent(dashboard) {
             
             <!-- Actions -->
             <div class="flex items-center gap-3">
-                <button 
+                <button type="button" 
                     @click="rateRecommendation(ratingRecommendation.id)"
                     class="flex-1 px-4 py-2 bg-primary hover:bg-primary text-primary-foreground font-medium rounded-lg transition-colors" aria-label="Submit rating">
                     Submit Rating
                 </button>
-                <button 
+                <button type="button" 
                     @click="ratingRecommendation = null; resetRatingForm()"
                     class="px-4 py-2 border border-border hover:bg-muted text-foreground/80 font-medium rounded-lg transition-colors" aria-label="Cancel rating">
                     Cancel

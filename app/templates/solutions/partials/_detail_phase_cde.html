@@ -17,7 +17,7 @@
                             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                             <i data-lucide="plus" class="w-3.5 h-3.5" aria-hidden="true"></i> Link Product
                         </button>
-                        <button @click="generatePhase('C')"
+                        <button type="button" @click="generatePhase('C')"
                                 :disabled="generateLoading === 'C'"
                                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-warning/30 text-warning-emphasis rounded-md hover:bg-warning/10 disabled:opacity-50"
                                 aria-label="Generate missing Phase C elements">
@@ -53,11 +53,11 @@
                             <p class="text-xs text-muted-foreground">All required elements already exist. Phase is complete.</p>
                         </template>
                         <div class="flex gap-2 pt-2 border-t border-warning/20" x-show="generatePreview.count > 0">
-                            <button @click="confirmGenerate()" :disabled="generateLoading"
+                            <button type="button" @click="confirmGenerate()" :disabled="generateLoading"
                                     class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
                                 <span x-text="generateLoading ? 'Creating...' : 'Confirm'"></span>
                             </button>
-                            <button @click="cancelGenerate()"
+                            <button type="button" @click="cancelGenerate()"
                                     class="px-3 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent">Cancel</button>
                         </div>
                     </div>
@@ -66,7 +66,7 @@
                     <div class="mt-2 text-xs text-destructive-emphasis flex items-center gap-1">
                         <i data-lucide="alert-circle" class="h-3 w-3" aria-hidden="true"></i>
                         <span x-text="generateError"></span>
-                        <button @click="generateError = null" class="ml-1 underline">dismiss</button>
+                        <button type="button" @click="generateError = null" class="ml-1 underline">dismiss</button>
                     </div>
                 </template>
 
@@ -277,7 +277,7 @@
                                         <td class="px-3 py-2 font-medium text-foreground border-r border-border text-xs" x-text="app.name" :title="app.type"></td>
                                         <template x-for="dobj in dataObjects" :key="'cell-' + app.id + '-' + dobj.id">
                                             <td class="text-center px-1 py-1">
-                                                <button
+                                                <button type="button"
                                                     @click="toggleAccess(app.id, dobj.id)"
                                                     class="w-full px-2 py-1 rounded text-xs font-medium border transition-colors cursor-pointer"
                                                     :class="accessClass(app.id, dobj.id)"
@@ -484,10 +484,10 @@
                                         <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
                                     </div>
                                     <div class="flex items-center gap-1 shrink-0">
-                                        <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
+                                        <button type="button" @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                             <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                         </button>
-                                        <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
+                                        <button type="button" @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                             <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                         </button>
                                     </div>

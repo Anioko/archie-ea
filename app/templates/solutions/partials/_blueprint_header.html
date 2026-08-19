@@ -295,7 +295,7 @@ function archieShowBanner(msg, type) {
                      style="width: {{ pct }}%"></div>
             </div>
             {# Percentage #}
-            <span class="text-[11px] font-medium mt-0.5
+            <span class="text-2xs font-medium mt-0.5
                 {% if pct >= 80 %}text-success
                 {% elif pct >= 40 %}text-warning
                 {% elif pct >= 1 %}text-destructive
@@ -308,7 +308,7 @@ function archieShowBanner(msg, type) {
     {# ── Not-started quick-add row ── #}
     {% if _qa_ns.zero %}
     <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-border/40 overflow-x-auto scrollbar-thin">
-        <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0 leading-none">Quick add:</span>
+        <span class="text-2xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0 leading-none">Quick add:</span>
         {% for _qs_id, _qs_lbl in _qa_ns.zero %}
         <button type="button"
                 @click="
@@ -352,14 +352,14 @@ function archieShowBanner(msg, type) {
     <div x-data="copilotInsights({{ solution.id }})" x-init="load()">
         <template x-if="insights.length > 0">
             <div class="flex items-start gap-2 flex-wrap mt-2 pt-2 border-t border-border/50">
-                <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mt-1.5 shrink-0">Insights</span>
+                <span class="text-2xs font-semibold text-muted-foreground uppercase tracking-wide mt-1.5 shrink-0">Insights</span>
                 <template x-for="insight in insights" :key="insight.id">
                     <div :class="severityClasses(insight.severity)"
                          class="flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs font-medium">
                         <span x-text="insight.title" class="max-w-[280px] truncate"></span>
-                        <button @click="discuss(insight)"
+                        <button type="button" @click="discuss(insight)"
                                 class="underline decoration-dotted shrink-0 hover:no-underline">Discuss</button>
-                        <button @click="dismiss(insight)"
+                        <button type="button" @click="dismiss(insight)"
                                 class="opacity-50 hover:opacity-100 shrink-0 ml-0.5">✕</button>
                     </div>
                 </template>

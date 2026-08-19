@@ -11,7 +11,7 @@
     <template x-for="elem in (sectionElements['application_cooperation'] || [])" :key="elem.element_id || elem.id">
         <div class="border border-border rounded-lg overflow-hidden">
             {# Header: collapsible #}
-            <button
+            <button type="button"
                 class="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
                 x-on:click="toggleSpecExpanded(elem.element_id || elem.id)"
             >
@@ -42,13 +42,13 @@
             <div x-show="specExpanded[elem.element_id || elem.id]" x-collapse class="border-t border-border">
                 {# Tab bar #}
                 <div class="flex border-b border-border">
-                    <button class="px-4 py-2 text-xs font-medium transition-colors"
+                    <button type="button" class="px-4 py-2 text-xs font-medium transition-colors"
                             :class="(activeSpecTab[elem.element_id || elem.id] || 'fields') === 'fields' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'"
                             x-on:click="setSpecTab(elem.element_id || elem.id, 'fields')">Data Model</button>
-                    <button class="px-4 py-2 text-xs font-medium transition-colors"
+                    <button type="button" class="px-4 py-2 text-xs font-medium transition-colors"
                             :class="activeSpecTab[elem.element_id || elem.id] === 'api_contract' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'"
                             x-on:click="setSpecTab(elem.element_id || elem.id, 'api_contract')">API Contract</button>
-                    <button class="px-4 py-2 text-xs font-medium transition-colors"
+                    <button type="button" class="px-4 py-2 text-xs font-medium transition-colors"
                             :class="activeSpecTab[elem.element_id || elem.id] === 'business_rules' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'"
                             x-on:click="setSpecTab(elem.element_id || elem.id, 'business_rules')">Business Rules</button>
                 </div>
@@ -59,14 +59,14 @@
                         <span class="text-xs text-muted-foreground"
                               x-text="'Version ' + ((componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data) ? (componentSpecs[elem.element_id || elem.id].spec_data.fields_version || 0) : 0)"></span>
                         <div class="flex gap-2">
-                            <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                            <button type="button" class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
                                     x-on:click="inferSpec(elem.element_id || elem.id)"
                                     :disabled="specLoading[elem.element_id || elem.id]">
                                 <span x-show="!specLoading[elem.element_id || elem.id]">Infer Fields</span>
                                 <span x-show="specLoading[elem.element_id || elem.id]">Inferring...</span>
                             </button>
                             <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.fields_status === 'proposed'">
-                                <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-success hover:bg-success/90 text-primary-foreground rounded-md transition-colors"
+                                <button type="button" class="inline-flex items-center px-3 py-1 text-xs font-medium bg-success hover:bg-success/90 text-primary-foreground rounded-md transition-colors"
                                         x-on:click="confirmSpec(elem.element_id || elem.id, 'fields')">Confirm</button>
                             </template>
                         </div>
@@ -111,14 +111,14 @@
                         <span class="text-xs text-muted-foreground"
                               x-text="'Version ' + ((componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data) ? (componentSpecs[elem.element_id || elem.id].spec_data.api_contract_version || 0) : 0)"></span>
                         <div class="flex gap-2">
-                            <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                            <button type="button" class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
                                     x-on:click="inferSpec(elem.element_id || elem.id)"
                                     :disabled="specLoading[elem.element_id || elem.id]">
                                 <span x-show="!specLoading[elem.element_id || elem.id]">Infer Contract</span>
                                 <span x-show="specLoading[elem.element_id || elem.id]">Inferring...</span>
                             </button>
                             <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.api_contract_status === 'proposed'">
-                                <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-success hover:bg-success/90 text-primary-foreground rounded-md transition-colors"
+                                <button type="button" class="inline-flex items-center px-3 py-1 text-xs font-medium bg-success hover:bg-success/90 text-primary-foreground rounded-md transition-colors"
                                         x-on:click="confirmSpec(elem.element_id || elem.id, 'api_contract')">Confirm</button>
                             </template>
                         </div>
@@ -172,7 +172,7 @@
                     <div class="flex justify-between items-center mb-3">
                         <span class="text-xs text-muted-foreground">Business Rules</span>
                         <div class="flex gap-2">
-                            <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                            <button type="button" class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
                                     x-on:click="inferSpec(elem.element_id || elem.id)"
                                     :disabled="specLoading[elem.element_id || elem.id]">
                                 <span x-show="!specLoading[elem.element_id || elem.id]">Infer Rules</span>
@@ -197,7 +197,7 @@
                                         <p class="text-xs text-muted-foreground" x-text="rule.description || rule.condition || ''"></p>
                                     </div>
                                     <template x-if="rule.status === 'proposed'">
-                                        <button class="shrink-0 ml-3 inline-flex items-center px-2 py-1 text-xs font-medium bg-success hover:bg-success/90 text-primary-foreground rounded-md transition-colors"
+                                        <button type="button" class="shrink-0 ml-3 inline-flex items-center px-2 py-1 text-xs font-medium bg-success hover:bg-success/90 text-primary-foreground rounded-md transition-colors"
                                                 x-on:click="confirmSpec(elem.element_id || elem.id, 'business_rules', rule.id || rule.name)">Confirm</button>
                                     </template>
                                 </div>

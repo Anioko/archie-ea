@@ -7,8 +7,8 @@
         <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-success inline-block"></span>Benefits &amp; Organization Impact</h3>
         <div class="sad-actions">
             <div class="flex gap-2">
-                <button @click="openEntityModal('benefit_realization')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Benefit</button>
-                <button @click="openEntityModal('org_impact')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Org Impact</button>
+                <button type="button" @click="openEntityModal('benefit_realization')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Benefit</button>
+                <button type="button" @click="openEntityModal('org_impact')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Org Impact</button>
             </div>
         </div>
     </div>
@@ -37,8 +37,8 @@
                                 <td class="py-2 px-3 text-right font-mono" :class="{'text-success-emphasis': item.current_value >= item.target_value, 'text-foreground': true}" x-text="item.current_value != null ? Number(item.current_value).toLocaleString() : '\u2014'"></td>
                                 <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.status === 'on_track', 'text-destructive-emphasis': item.status === 'at_risk', 'text-muted-foreground': item.status === 'not_started'}" x-text="item.status?.replace('_', ' ')"></span></td>
                                 <td class="sad-actions py-2 px-3 text-right">
-                                    <button @click="openEntityModal('benefit_realization', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                    <button @click="confirmDeleteEntity('benefit_realization', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                                    <button type="button" @click="openEntityModal('benefit_realization', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                    <button type="button" @click="confirmDeleteEntity('benefit_realization', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                                 </td>
                             </tr>
                         </template>
@@ -66,8 +66,8 @@
                                3 tiers a single success/warning pair can express without collapsing
                                distinct readiness levels onto the same hue. design-tokens-ok #}
                             <span :class="{'text-emerald-600': item.change_readiness === 'ready', 'text-amber-600': item.change_readiness === 'partially_ready', 'text-destructive': item.change_readiness === 'not_ready', 'text-muted-foreground': item.change_readiness === 'unknown'}" class="text-xs" x-text="item.change_readiness?.replace('_', ' ')"></span> {# design-tokens-ok: 4-tier RAG scale #}
-                            <button @click="openEntityModal('org_impact', item)" class="text-primary hover:underline text-xs">Edit</button>
-                            <button @click="confirmDeleteEntity('org_impact', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                            <button type="button" @click="openEntityModal('org_impact', item)" class="text-primary hover:underline text-xs">Edit</button>
+                            <button type="button" @click="confirmDeleteEntity('org_impact', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                         </div>
                     </div>
                 </template>

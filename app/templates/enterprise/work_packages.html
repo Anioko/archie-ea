@@ -100,7 +100,7 @@
             </th>
             <th class="w-12 h-12 px-3 text-left align-middle font-medium text-muted-foreground tabular-nums" scope="col">#</th>
             <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">
-              <button class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('name')">
+              <button type="button" class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('name')">
                 Name
                 <i data-lucide="arrow-up-down" class="h-3.5 w-3.5"></i>
               </button>
@@ -186,20 +186,20 @@
         of <span class="font-medium text-foreground" x-text="totalItems"></span> items
       </p>
       <nav class="flex items-center gap-1" aria-label="Pagination">
-        <button class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 :disabled="!hasPrev" @click="prevPage()" aria-label="Previous page">
           <i data-lucide="chevron-left" class="h-4 w-4"></i>
         </button>
         <template x-for="(pg, idx) in getVisiblePages()" :key="'pg-' + idx">
           <span>
-            <button x-show="pg !== '...'" x-cloak
+            <button type="button" x-show="pg !== '...'" x-cloak
                     class="min-w-[2rem] h-8 rounded-md text-sm font-medium transition-colors"
                     :class="pg === page ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'"
                     @click="goToPage(pg)" x-text="pg"></button>
             <span x-show="pg === '...'" x-cloak class="min-w-[2rem] h-8 inline-flex items-center justify-center text-sm text-muted-foreground">&hellip;</span>
           </span>
         </template>
-        <button class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 :disabled="!hasNext" @click="nextPage()" aria-label="Next page">
           <i data-lucide="chevron-right" class="h-4 w-4"></i>
         </button>

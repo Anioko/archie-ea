@@ -20,7 +20,7 @@
         <textarea x-model="changeRequestText" rows="4"
                   placeholder="e.g., Add a Priority field to orders. High priority should skip approval for amounts under $10K."
                   class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
-        <button @click="submitChangeRequest()" :disabled="!changeRequestText || changeRequestProcessing"
+        <button type="button" @click="submitChangeRequest()" :disabled="!changeRequestText || changeRequestProcessing"
                 class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
             <i data-lucide="sparkles" class="w-4 h-4" aria-hidden="true"></i>
             <span x-text="changeRequestProcessing ? 'Analysing impact...' : 'Analyse Impact'"></span>
@@ -74,7 +74,7 @@
                 </template>
 
                 {# Apply Button #}
-                <button @click="applyChangeRequest()" :disabled="applyingChange"
+                <button type="button" @click="applyChangeRequest()" :disabled="applyingChange"
                         class="inline-flex items-center gap-2 px-4 py-2 bg-success text-primary-foreground rounded-lg text-sm font-medium hover:bg-success/90 disabled:opacity-50">
                     <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i>
                     <span x-text="applyingChange ? 'Deploying...' : 'Accept & Deploy Changes'"></span>
@@ -123,7 +123,7 @@
                                   }"
                                   x-text="ver.status"></span>
                             <template x-if="ver.status !== 'live'">
-                                <button @click="rollbackToVersion(ver.version_number)"
+                                <button type="button" @click="rollbackToVersion(ver.version_number)"
                                         class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-warning-emphasis hover:text-warning-emphasis/80 border border-warning/30 rounded-md hover:bg-warning/10">
                                     <i data-lucide="undo-2" class="w-3 h-3" aria-hidden="true"></i>
                                     Rollback

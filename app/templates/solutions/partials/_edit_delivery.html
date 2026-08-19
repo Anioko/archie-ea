@@ -104,10 +104,10 @@
                 <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
                 <span x-show="commentCount('archimate') > 0" x-text="commentCount('archimate')" class="text-xs bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
             </button>
-            <button @click="openManageModal('archimate_element')" class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent transition-colors" aria-label="Browse ArchiMate repository">
+            <button type="button" @click="openManageModal('archimate_element')" class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent transition-colors" aria-label="Browse ArchiMate repository">
                 <i data-lucide="library" class="w-3.5 h-3.5" aria-hidden="true"></i> Browse Repository
             </button>
-            <button @click="syncArchimate()" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+            <button type="button" @click="syncArchimate()" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
                     :disabled="syncing" aria-label="Sync to repository button">
                 <template x-if="!syncing"><span>Sync to Repository</span></template>
                 <template x-if="syncing"><span>Syncing...</span></template>
@@ -135,13 +135,13 @@
                             </div>
                             <div class="flex flex-wrap gap-1.5 p-2 flex-1">
                                 <template x-for="(el, ei) in group.elements" :key="el.id || ei">
-                                    <button @click="scrollToArchimateElement(el.id)"
+                                    <button type="button" @click="scrollToArchimateElement(el.id)"
                                             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border cursor-pointer hover:shadow-sm transition-shadow"
                                             :style="'background-color:' + _layerColors[group.layer] + '40; border-color:' + _layerColors[group.layer] + '80; color:' + _layerTextColors[group.layer]"
                                             :title="el.name + ' (' + (el.relationship || 'linked') + ')'">
                                         <span x-text="el.name.length > 22 ? el.name.substring(0,20) + '...' : el.name"></span>
                                          <span x-show="el.relationship" x-cloak
-                                              class="inline-flex items-center px-1 py-0 rounded text-[8px] font-medium opacity-70 border"
+                                              class="inline-flex items-center px-1 py-0 rounded text-2xs font-medium opacity-70 border"
                                               :style="'border-color:' + _layerColors[group.layer] + '60'"
                                               x-text="(el.relationship || '').substring(0,3)"></span>
                                     </button>
@@ -292,14 +292,14 @@
                     <template x-if="roleResults.length > 0">
                         <div class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                             <template x-for="u in roleResults" :key="u.id">
-                                <button @click="selectRoleUser(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
+                                <button type="button" @click="selectRoleUser(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
                                     <span x-text="u.name" class="font-medium"></span>
                                     <span x-text="u.email" class="text-xs text-muted-foreground"></span>
                                 </button>
                             </template>
                         </div>
                     </template>
-                    <button aria-label="Close" @click="cancelEditRole()" class="absolute right-1 top-1 p-0.5 text-muted-foreground hover:text-foreground">
+                    <button type="button" aria-label="Close" @click="cancelEditRole()" class="absolute right-1 top-1 p-0.5 text-muted-foreground hover:text-foreground">
                         <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
                     </button>
                 </div>
@@ -313,7 +313,7 @@
 
         {# Submit to ARB (draft only) #}
         <div class="mt-4" x-show="canSubmitArb && governanceStatus === 'draft'" x-cloak>
-            <button @click="submitToArb()" :disabled="submittingArb"
+            <button type="button" @click="submitToArb()" :disabled="submittingArb"
                     class="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 <template x-if="submittingArb">
                     <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
@@ -332,7 +332,7 @@
                 <p class="text-sm text-foreground">{{ solution.arb_rejection_reason }}</p>
             </div>
             {% endif %}
-            <button @click="openResubmitModal()"
+            <button type="button" @click="openResubmitModal()"
                     class="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4" aria-hidden="true"></i>
                 Resubmit to ARB

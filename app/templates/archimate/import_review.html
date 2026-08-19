@@ -33,7 +33,7 @@
          class="rounded-xl border border-destructive bg-card p-12 text-center">
         <p class="text-lg font-semibold text-destructive-emphasis">The review queue could not be read</p>
         <p class="text-sm text-muted-foreground mt-1" x-text="loadError"></p>
-        <button @click="load()"
+        <button type="button" @click="load()"
                 class="mt-4 text-xs underline text-muted-foreground hover:text-foreground">
             Try again
         </button>
@@ -45,7 +45,7 @@
         <p class="text-sm text-muted-foreground mt-1">
             Every inferred element and relationship has been reviewed.
         </p>
-        <button @click="includeReviewed = true; load()"
+        <button type="button" @click="includeReviewed = true; load()"
                 class="mt-4 text-xs underline text-muted-foreground hover:text-foreground">
             Show items already reviewed
         </button>
@@ -56,7 +56,7 @@
         {# Confidence bands, worst first. #}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
             <template x-for="g in groups" :key="g.reason">
-                <button @click="activeReason = (activeReason === g.reason ? '' : g.reason)"
+                <button type="button" @click="activeReason = (activeReason === g.reason ? '' : g.reason)"
                         :class="activeReason === g.reason ? 'ring-2 ring-primary' : ''"
                         class="rounded-xl border border-border bg-card p-4 text-left hover:bg-accent transition-colors">
                     <div class="flex items-center gap-2 mb-1">
@@ -78,7 +78,7 @@
             </label>
             <span class="text-sm text-muted-foreground" x-text="selected.length + ' selected'"></span>
 
-            <button @click="accept()" :disabled="!selected.length"
+            <button type="button" @click="accept()" :disabled="!selected.length"
                     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium
                            bg-primary text-primary-foreground disabled:opacity-50 transition-colors">
                 Confirm as correct
@@ -92,7 +92,7 @@
                     <option :value="t" x-text="t"></option>
                 </template>
             </select>
-            <button @click="retype()" :disabled="!retypeTo || !selectedElements.length"
+            <button type="button" @click="retype()" :disabled="!retypeTo || !selectedElements.length"
                     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium
                            border border-input bg-background hover:bg-accent disabled:opacity-50 transition-colors">
                 Apply to <span x-text="selectedElements.length"></span> element(s)

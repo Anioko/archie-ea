@@ -3,7 +3,7 @@
    Controlled by Alpine.store('copilot'). #}
 
 {# Toggle button (always visible) #}
-<button @click="$store.copilot.toggle()"
+<button type="button" @click="$store.copilot.toggle()"
         class="fixed right-4 top-1/2 -translate-y-1/2 z-40 p-2 rounded-l-lg bg-card border border-r-0 border-border shadow-md hover:bg-accent transition-colors"
         :class="$store.copilot.sidebarOpen ? 'hidden' : ''"
         title="AI Copilot">
@@ -39,7 +39,7 @@
               x-text="$store.copilot.count + ' suggestions'"></span>
       </template>
     </div>
-    <button @click="$store.copilot.toggle()"
+    <button type="button" @click="$store.copilot.toggle()"
             class="text-muted-foreground hover:text-foreground transition-colors">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -49,7 +49,7 @@
 
   {# Enhance All button #}
   <div class="px-4 py-2 border-b border-border flex-shrink-0">
-    <button @click="$store.copilot.reviewStep(solutionId, currentStep, _gatherStepData(currentStep))"
+    <button type="button" @click="$store.copilot.reviewStep(solutionId, currentStep, _gatherStepData(currentStep))"
             :disabled="$store.copilot.loading"
             class="w-full px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary rounded-md hover:bg-primary/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
       <template x-if="$store.copilot.loading">
@@ -114,12 +114,12 @@
           {# Actions #}
           <div class="flex items-center gap-2">
             <template x-if="suggestion.suggested_value">
-              <button @click="$store.copilot.acceptSuggestion(suggestion)"
+              <button type="button" @click="$store.copilot.acceptSuggestion(suggestion)"
                       class="px-2 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors">
                 Accept
               </button>
             </template>
-            <button @click="$store.copilot.rejectSuggestion(suggestion)"
+            <button type="button" @click="$store.copilot.rejectSuggestion(suggestion)"
                     class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
               Dismiss
             </button>
@@ -142,7 +142,7 @@
                 }
              "
              class="flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-ring focus:outline-none placeholder:text-muted-foreground" aria-label="Ask about this step...">
-      <button @click="
+      <button type="button" @click="
                 const q = $refs.copilotQuestion.value.trim();
                 if (q) {
                     $store.copilot.reviewField(solutionId, currentStep, '_question', q);

@@ -26,13 +26,13 @@
       <!-- Tabs -->
       <div class="border-b">
         <div class="flex space-x-1 px-6">
-          <button @click="switchImportTab('excel')" id="tab-excel" class="tab-button active px-4 py-3 font-medium text-sm border-b-2 border-primary text-primary" aria-label="Upload Excel file tab">
+          <button type="button" @click="switchImportTab('excel')" id="tab-excel" class="tab-button active px-4 py-3 font-medium text-sm border-b-2 border-primary text-primary" aria-label="Upload Excel file tab">
             Upload Excel
           </button>
-          <button @click="switchImportTab('manual')" id="tab-manual" class="tab-button px-4 py-3 font-medium text-sm border-b-2 border-transparent text-muted-foreground hover:text-muted-foreground" aria-label="Manual entry tab">
+          <button type="button" @click="switchImportTab('manual')" id="tab-manual" class="tab-button px-4 py-3 font-medium text-sm border-b-2 border-transparent text-muted-foreground hover:text-muted-foreground" aria-label="Manual entry tab">
             Manual Entry
           </button>
-          <button @click="switchImportTab('history')" id="tab-history" class="tab-button px-4 py-3 font-medium text-sm border-b-2 border-transparent text-muted-foreground hover:text-muted-foreground" aria-label="Import history tab">
+          <button type="button" @click="switchImportTab('history')" id="tab-history" class="tab-button px-4 py-3 font-medium text-sm border-b-2 border-transparent text-muted-foreground hover:text-muted-foreground" aria-label="Import history tab">
             Import History
           </button>
         </div>
@@ -51,7 +51,7 @@
                    ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
                 <label for="excel-file-input">Field</label>
     <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv,.json" class="hidden" @change="handleExcelFileSelect(event)">
-                <button @click="document.getElementById('excel-file-input').click()" class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary" aria-label="Choose file to upload">
+                <button type="button" @click="document.getElementById('excel-file-input').click()" class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary" aria-label="Choose file to upload">
                   <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                   </svg>
@@ -152,21 +152,21 @@
                 <div class="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
                   <p class="text-sm text-primary font-medium mb-2">Choose Analysis Type:</p>
                   <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-                    <button @click="analyzeImportFile('streaming')" class="px-3 py-2 bg-success text-primary-foreground rounded-md text-sm font-medium hover:bg-success flex items-center justify-center gap-2" aria-label="Run streaming analysis">
+                    <button type="button" @click="analyzeImportFile('streaming')" class="px-3 py-2 bg-success text-primary-foreground rounded-md text-sm font-medium hover:bg-success flex items-center justify-center gap-2" aria-label="Run streaming analysis">
                       <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                       <div class="text-left">
                         <div class="font-medium">Streaming Analysis</div>
                         <div class="text-xs opacity-90">Real-time progress</div>
                       </div>
                     </button>
-                    <button @click="analyzeImportFile('standard')" class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary flex items-center justify-center gap-2" aria-label="Run standard analysis">
+                    <button type="button" @click="analyzeImportFile('standard')" class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary flex items-center justify-center gap-2" aria-label="Run standard analysis">
                       <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
                       <div class="text-left">
                         <div class="font-medium">Standard Analysis</div>
                         <div class="text-xs opacity-90">Simple & reliable</div>
                       </div>
                     </button>
-                    <button @click="analyzeImportFile('direct')" class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary flex items-center justify-center gap-2" aria-label="Run direct import">
+                    <button type="button" @click="analyzeImportFile('direct')" class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary flex items-center justify-center gap-2" aria-label="Run direct import">
                       <span>⚡</span>
                       <div class="text-left">
                         <div class="font-medium">Direct Import</div>
@@ -179,11 +179,11 @@
                 <!-- Action Buttons -->
                 <div class="flex justify-between items-center gap-2">
                   <div class="flex gap-2">
-                    <button @click="closeApplicationImportModal()" class="px-4 py-2 border border-input rounded-md text-sm font-medium text-muted-foreground hover:bg-accent" aria-label="Cancel import">
+                    <button type="button" @click="closeApplicationImportModal()" class="px-4 py-2 border border-input rounded-md text-sm font-medium text-muted-foreground hover:bg-accent" aria-label="Cancel import">
                       Cancel
                     </button>
                   </div>
-                  <button id="import-applications-btn" @click="processExcelImport()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary hidden" aria-label="Import applications">
+                  <button type="button" id="import-applications-btn" @click="processExcelImport()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary hidden" aria-label="Import applications">
                     Import Applications
                   </button>
                 </div>
@@ -220,7 +220,7 @@
                   <option value="skip">Skip (Keep existing)</option>
                   <option value="duplicate">Duplicate (Create new)</option>
                 </select>
-                <button @click="addManualEntryRow()" class="px-4 py-2 bg-success text-primary-foreground rounded-md text-sm font-medium hover:bg-success" aria-label="Add manual entry row">
+                <button type="button" @click="addManualEntryRow()" class="px-4 py-2 bg-success text-primary-foreground rounded-md text-sm font-medium hover:bg-success" aria-label="Add manual entry row">
                   Add Row
                 </button>
               </div>
@@ -264,10 +264,10 @@
             </div>
 
             <div class="flex justify-end gap-2">
-              <button @click="closeApplicationImportModal()" class="px-4 py-2 border border-input rounded-md text-sm font-medium text-muted-foreground hover:bg-accent" aria-label="Cancel manual entry">
+              <button type="button" @click="closeApplicationImportModal()" class="px-4 py-2 border border-input rounded-md text-sm font-medium text-muted-foreground hover:bg-accent" aria-label="Cancel manual entry">
                 Cancel
               </button>
-              <button @click="processManualImport($event)" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary" aria-label="Import manual entries">
+              <button type="button" @click="processManualImport($event)" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary" aria-label="Import manual entries">
                 Import Applications
               </button>
             </div>

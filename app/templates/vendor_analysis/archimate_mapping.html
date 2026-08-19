@@ -246,12 +246,12 @@
             Use this analysis to identify and resolve vendor-ArchiMate mapping inconsistencies
         </div>
         <div class="flex gap-2">
-            <button @click="exportAnalysis()"
+            <button type="button" @click="exportAnalysis()"
                     class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary transition-colors" aria-label="Export">
                 <i data-lucide="download" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
                 Export Analysis
             </button>
-            <button @click="window.print()"
+            <button type="button" @click="window.print()"
                     class="px-3 py-2 bg-muted-foreground text-primary-foreground rounded-md text-sm hover:bg-foreground/80 transition-colors" aria-label="Action">
                 <i data-lucide="printer" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
                 Print Report

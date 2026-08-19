@@ -45,7 +45,7 @@
                 <p class="text-base font-semibold text-foreground">Ready to generate your project</p>
                 <p class="text-sm text-muted-foreground mt-1">Click below to generate a complete, deterministic project scaffold from your approved architecture.</p>
             </div>
-            <button @click="generateCode()"
+            <button type="button" @click="generateCode()"
                     class="inline-flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 <i data-lucide="zap" class="w-4 h-4" aria-hidden="true"></i>
                 Generate Code
@@ -63,7 +63,7 @@
 
             <div class="grid grid-cols-2 gap-3">
                 {# Python / FastAPI — API only, no frontend #}
-                <button @click="codegenLanguage = 'python-fastapi'"
+                <button type="button" @click="codegenLanguage = 'python-fastapi'"
                         :class="codegenLanguage === 'python-fastapi'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -79,7 +79,7 @@
                 </button>
 
                 {# Python / Flask — API only, no frontend #}
-                <button @click="codegenLanguage = 'python-flask'"
+                <button type="button" @click="codegenLanguage = 'python-flask'"
                         :class="codegenLanguage === 'python-flask'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -95,7 +95,7 @@
                 </button>
 
                 {# Go / Chi #}
-                <button @click="codegenLanguage = 'go-chi'"
+                <button type="button" @click="codegenLanguage = 'go-chi'"
                         :class="codegenLanguage === 'go-chi'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -111,7 +111,7 @@
                 </button>
 
                 {# Java / Spring Boot #}
-                <button @click="codegenLanguage = 'java-spring-boot'"
+                <button type="button" @click="codegenLanguage = 'java-spring-boot'"
                         :class="codegenLanguage === 'java-spring-boot'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -127,7 +127,7 @@
                 </button>
 
                 {# Salesforce / Apex #}
-                <button @click="codegenLanguage = 'salesforce-apex'"
+                <button type="button" @click="codegenLanguage = 'salesforce-apex'"
                         :class="codegenLanguage === 'salesforce-apex'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -143,7 +143,7 @@
                 </button>
 
                 {# Full-Stack — FastAPI backend + Next.js 14 #}
-                <button @click="codegenLanguage = 'react-shadcn'"
+                <button type="button" @click="codegenLanguage = 'react-shadcn'"
                         :class="codegenLanguage === 'react-shadcn'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -159,7 +159,7 @@
                 </button>
 
                 {# Full-Stack — Flask backend + Next.js 14 #}
-                <button @click="codegenLanguage = 'flask-nextjs'"
+                <button type="button" @click="codegenLanguage = 'flask-nextjs'"
                         :class="codegenLanguage === 'flask-nextjs'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -175,7 +175,7 @@
                 </button>
 
                 {# Full-Stack — Flask backend + React SPA (Vite) #}
-                <button @click="codegenLanguage = 'flask-react'"
+                <button type="button" @click="codegenLanguage = 'flask-react'"
                         :class="codegenLanguage === 'flask-react'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -196,7 +196,7 @@
             <div class="grid grid-cols-2 gap-3">
 
                 {# SAP CAP #}
-                <button @click="codegenLanguage = 'sap-cap'"
+                <button type="button" @click="codegenLanguage = 'sap-cap'"
                         :class="codegenLanguage === 'sap-cap'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -212,7 +212,7 @@
                 </button>
 
                 {# SAP BTP Integration Suite #}
-                <button @click="codegenLanguage = 'sap-btp-integration'"
+                <button type="button" @click="codegenLanguage = 'sap-btp-integration'"
                         :class="codegenLanguage === 'sap-btp-integration'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -228,7 +228,7 @@
                 </button>
 
                 {# Azure Bicep #}
-                <button @click="codegenLanguage = 'azure-bicep'"
+                <button type="button" @click="codegenLanguage = 'azure-bicep'"
                         :class="codegenLanguage === 'azure-bicep'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -244,7 +244,7 @@
                 </button>
 
                 {# Azure Logic App #}
-                <button @click="codegenLanguage = 'azure-logic-app'"
+                <button type="button" @click="codegenLanguage = 'azure-logic-app'"
                         :class="codegenLanguage === 'azure-logic-app'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -260,7 +260,7 @@
                 </button>
 
                 {# Power Platform Solution #}
-                <button @click="codegenLanguage = 'power-platform-solution'"
+                <button type="button" @click="codegenLanguage = 'power-platform-solution'"
                         :class="codegenLanguage === 'power-platform-solution'
                             ? 'border-primary bg-primary/5 ring-1 ring-primary'
                             : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -280,7 +280,7 @@
             <div class="space-y-2">
                 <p class="text-sm font-medium text-foreground">Generation mode</p>
                 <div class="grid grid-cols-2 gap-3">
-                    <button @click="codegenMode = 'genome'"
+                    <button type="button" @click="codegenMode = 'genome'"
                             :class="codegenMode === 'genome'
                                 ? 'border-primary bg-primary/5 ring-1 ring-primary'
                                 : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -293,7 +293,7 @@
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-success/10 text-success-emphasis border border-success/30 shrink-0">Recommended</span>
                         </template>
                     </button>
-                    <button @click="codegenMode = 'hybrid'"
+                    <button type="button" @click="codegenMode = 'hybrid'"
                             :class="codegenMode === 'hybrid'
                                 ? 'border-primary bg-primary/5 ring-1 ring-primary'
                                 : 'border-border hover:border-primary/40 hover:bg-muted/50'"
@@ -345,7 +345,7 @@
             </div>
 
             {# Generate button — all languages including full-stack #}
-            <button @click="generateCode()" :disabled="codegenLoading"
+            <button type="button" @click="generateCode()" :disabled="codegenLoading"
                     class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
                 <template x-if="codegenLoading">
                     <span class="flex items-center gap-2">
@@ -386,7 +386,7 @@
                 {# Quality Genome Score (genome mode only) #}
                 <div x-show="codegenResult && codegenResult.quality_score" x-cloak class="space-y-2">
                     <div class="flex items-center justify-between">
-                        <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Quality Genome Score</p>
+                        <p class="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Quality Genome Score</p>
                         <span class="text-sm font-semibold"
                               :class="{
                                   'text-success-emphasis': (codegenResult?.quality_score || 0) >= 85,
@@ -410,7 +410,7 @@
 
                 {# Services list #}
                 <div x-show="codegenResult && codegenResult.services && codegenResult.services.length > 0" x-cloak>
-                    <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Services</p>
+                    <p class="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Services</p>
                     <div class="grid grid-cols-2 gap-2">
                         <template x-for="svc in (codegenResult ? codegenResult.services : [])" :key="svc.name">
                             <div class="flex items-center justify-between px-3 py-2 rounded-md bg-muted/50 text-xs">
@@ -424,7 +424,7 @@
                 {# Run / Preview buttons #}
                 <div class="space-y-2 pt-2">
                     {# Docker — live backend #}
-                    <button @click="runDockerPreview()"
+                    <button type="button" @click="runDockerPreview()"
                             :disabled="dockerPreviewLoading"
                             class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
                         <template x-if="dockerPreviewLoading">
@@ -449,7 +449,7 @@
                     <p x-show="dockerPreviewError" x-cloak class="text-xs text-destructive-emphasis px-1" x-text="dockerPreviewError"></p>
 
                     {# StackBlitz — live frontend (full-stack only) #}
-                    <button x-show="codegenResult && codegenResult._fullstack" x-cloak
+                    <button type="button" x-show="codegenResult && codegenResult._fullstack" x-cloak
                             @click="openStackBlitz()"
                             :disabled="stackblitzLoading"
                             class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border border-input bg-card text-foreground rounded-md hover:bg-accent transition-colors disabled:opacity-50">
@@ -469,12 +469,12 @@
 
                     {# Download + Regenerate row #}
                     <div class="flex items-center gap-2 pt-1">
-                        <button @click="downloadCode()"
+                        <button type="button" @click="downloadCode()"
                                 class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
                             <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i>
                             Download ZIP
                         </button>
-                        <button aria-label="Refresh" @click="codegenResult = null; codegenBundleId = null; codegenError = null; dockerPreviewUrl = null; dockerPreviewError = null"
+                        <button type="button" aria-label="Refresh" @click="codegenResult = null; codegenBundleId = null; codegenError = null; dockerPreviewUrl = null; dockerPreviewError = null"
                                 class="px-3 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
                             <i data-lucide="refresh-cw" class="w-4 h-4" aria-hidden="true"></i>
                         </button>
@@ -490,7 +490,7 @@
 
             {# What's included #}
             <div class="bg-card border border-border rounded-lg p-6 space-y-3">
-                <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">What's included in the ZIP</p>
+                <p class="text-2xs font-medium text-muted-foreground uppercase tracking-wider">What's included in the ZIP</p>
                 <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted-foreground">
                     <span class="flex items-center gap-2"><svg class="w-3 h-3 text-success shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Route handlers per service</span>
                     <span class="flex items-center gap-2"><svg class="w-3 h-3 text-success shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Data models from field specs</span>
@@ -516,7 +516,7 @@
                     <p class="text-sm text-muted-foreground max-w-md mx-auto">
                         Launch your application with a live URL, API documentation, and a PostgreSQL database — no setup required.
                     </p>
-                    <button @click="deployToCloud()"
+                    <button type="button" @click="deployToCloud()"
                             class="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
                         <i data-lucide="rocket" class="w-4 h-4" aria-hidden="true"></i>
                         Deploy
@@ -571,7 +571,7 @@
                     </div>
                     <div class="flex items-center justify-between pt-2 border-t border-border">
                         <span class="text-xs text-muted-foreground" x-text="'Version ' + (deployVersion || 1)"></span>
-                        <button @click="destroyDeployment()"
+                        <button type="button" @click="destroyDeployment()"
                                 class="text-xs text-destructive-emphasis underline hover:text-destructive-emphasis/80">Stop deployment</button>
                     </div>
                 </div>
@@ -586,7 +586,7 @@
                     <h3 class="text-base font-semibold text-foreground">Deployment failed</h3>
                     <p class="text-sm text-muted-foreground" x-text="deployError"></p>
                     <div class="flex gap-2 justify-center">
-                        <button @click="deployToCloud()"
+                        <button type="button" @click="deployToCloud()"
                                 class="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
                             <i data-lucide="refresh-cw" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             Retry

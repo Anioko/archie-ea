@@ -10,7 +10,7 @@
              (ARCH-103: two hamburgers stacked when the sidebar was closed on mobile). -->
 
         <!-- Desktop sidebar collapse trigger (shadcn SidebarTrigger pattern) -->
-        <button x-data
+        <button type="button" x-data
                 @click="$store.sidebar.toggle()"
                 class="hidden lg:flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sidebar-collapse-btn"
                 :title="$store.sidebar.collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'"

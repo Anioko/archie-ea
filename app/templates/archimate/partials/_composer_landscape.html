@@ -13,7 +13,7 @@
             <i data-lucide="grid-3x3" class="w-5 h-5 text-primary"></i>
             <span class="font-semibold">Landscape Map</span>
             <div class="flex-1"></div>
-            <button aria-label="Close" @click="closeLandscapeView()" class="p-1 rounded hover:bg-muted transition-colors">
+            <button type="button" aria-label="Close" @click="closeLandscapeView()" class="p-1 rounded hover:bg-muted transition-colors">
                 <i data-lucide="x" class="w-4 h-4"></i>
             </button>
         </div>
@@ -44,7 +44,7 @@
             <span x-show="landscapeLoading" x-cloak class="text-xs text-muted-foreground animate-pulse">Loading...</span>
 
             {# Legend #}
-            <div class="ml-auto flex items-center gap-2 text-[10px]">
+            <div class="ml-auto flex items-center gap-2 text-2xs">
                 <span class="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200">1</span> {# design-tokens-ok: 4-tier density scale, not a pass/fail pair #}
                 <span class="px-1.5 py-0.5 rounded bg-info/10 border border-info/20">2</span>
                 <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-200">3-4</span> {# design-tokens-ok: 4-tier density scale #}
@@ -78,7 +78,7 @@
                                         <td class="border border-border px-1 py-1 text-center"
                                             :class="landscapeCell(row.id, col.id) ? landscapeHeatColor(landscapeCell(row.id, col.id).count) : ''">
                                             <template x-if="landscapeCell(row.id, col.id)">
-                                                <span class="text-[10px] font-bold"
+                                                <span class="text-2xs font-bold"
                                                       :title="(landscapeCell(row.id, col.id).types || []).join(', ')"
                                                       x-text="landscapeCell(row.id, col.id).count"></span>
                                             </template>

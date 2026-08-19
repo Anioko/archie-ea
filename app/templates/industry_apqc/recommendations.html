@@ -71,12 +71,12 @@
                     <p class="text-muted-foreground">{{ rec.recommendation_description }}</p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click="acceptRecommendation({{ rec.id }})"
+                    <button type="button" @click="acceptRecommendation({{ rec.id }})"
                             class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-success/10 text-success-emphasis hover:bg-success/20 text-sm" aria-label="Action">
                         <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
                         Accept
                     </button>
-                    <button @click="rejectRecommendation({{ rec.id }})"
+                    <button type="button" @click="rejectRecommendation({{ rec.id }})"
                             class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20 text-sm" aria-label="Reject">
                         <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
                         Reject

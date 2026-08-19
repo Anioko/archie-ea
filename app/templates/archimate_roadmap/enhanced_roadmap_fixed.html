@@ -73,23 +73,23 @@
 
         <!-- Action Buttons -->
         <div class="mt-6 flex flex-wrap gap-4">
-            <button @click="applyFilters"
+            <button type="button" @click="applyFilters"
                     class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary transition-colors" aria-label="Filter">
                 Apply Filters
             </button>
-            <button @click="resetFilters"
+            <button type="button" @click="resetFilters"
                     class="bg-muted-foreground text-primary-foreground px-4 py-2 rounded-md hover:bg-muted-foreground transition-colors" aria-label="Filter">
                 Reset Filters
             </button>
-            <button @click="exportData('csv')"
+            <button type="button" @click="exportData('csv')"
                     class="bg-success text-primary-foreground px-4 py-2 rounded-md hover:bg-success transition-colors" aria-label="Export">
                 Export CSV
             </button>
-            <button @click="exportData('png')"
+            <button type="button" @click="exportData('png')"
                     class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary transition-colors" aria-label="Export">
                 Export PNG
             </button>
-            <button @click="openWorkPackageModal()"
+            <button type="button" @click="openWorkPackageModal()"
                     class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary transition-colors" aria-label="Open">
                 Add Work Package
             </button>
@@ -175,8 +175,8 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground" x-text="'$' + workPackage.investment_cost + 'K'"></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                <button @click="editWorkPackage(workPackage)" class="text-primary hover:text-primary/80 mr-3" aria-label="Edit">Edit</button>
-                                <button @click="deleteWorkPackage(workPackage.id)" class="text-destructive-emphasis hover:text-destructive-emphasis" aria-label="Delete">Delete</button>
+                                <button type="button" @click="editWorkPackage(workPackage)" class="text-primary hover:text-primary/80 mr-3" aria-label="Edit">Edit</button>
+                                <button type="button" @click="deleteWorkPackage(workPackage.id)" class="text-destructive-emphasis hover:text-destructive-emphasis" aria-label="Delete">Delete</button>
                             </td>
                         </tr>
                     </template>

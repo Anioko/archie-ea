@@ -7,7 +7,7 @@
 <div class="p-6 max-w-5xl mx-auto" x-data="epicHierarchy()" x-init="init()">
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-foreground">Epic → Story → Sub-task Hierarchy</h1>
-    <button
+    <button type="button"
       @click="showEpicForm = !showEpicForm"
       class="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium">
       + Add Epic
@@ -25,8 +25,8 @@
         class="flex-1 px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         @keydown.enter="createEpic()"
        aria-label="Epic title"/>
-      <button @click="createEpic()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90">Create</button>
-      <button @click="showEpicForm = false; newEpicTitle = ''" class="px-4 py-2 bg-muted text-foreground rounded-md text-sm hover:bg-muted">Cancel</button>
+      <button type="button" @click="createEpic()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90">Create</button>
+      <button type="button" @click="showEpicForm = false; newEpicTitle = ''" class="px-4 py-2 bg-muted text-foreground rounded-md text-sm hover:bg-muted">Cancel</button>
     </div>
     <p x-show="epicError" x-cloak x-text="epicError" class="mt-2 text-destructive-emphasis text-xs"></p>
   </div>
@@ -50,7 +50,7 @@
                  :style="`width: ${epic.total_points > 0 ? Math.round(epic.completed_points / epic.total_points * 100) : 0}%`">
             </div>
           </div>
-          <button
+          <button type="button"
             @click.stop="openStoryForm(epic)"
             class="ml-2 px-2 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90">
             + Story
@@ -76,8 +76,8 @@
                 placeholder="pts"
                 class="w-16 px-2 py-1.5 border border-border rounded text-sm focus:outline-none"
                aria-label="pts"/>
-              <button @click="createStory(epic)" class="px-3 py-1.5 bg-success text-primary-foreground rounded text-xs hover:bg-success/90">Add</button>
-              <button @click="storyForm.epicId = null" class="px-3 py-1.5 bg-muted text-foreground rounded text-xs">Cancel</button>
+              <button type="button" @click="createStory(epic)" class="px-3 py-1.5 bg-success text-primary-foreground rounded text-xs hover:bg-success/90">Add</button>
+              <button type="button" @click="storyForm.epicId = null" class="px-3 py-1.5 bg-muted text-foreground rounded text-xs">Cancel</button>
             </div>
             <p x-show="storyForm.error" x-cloak x-text="storyForm.error" class="mt-1 text-destructive-emphasis text-xs"></p>
           </div>
@@ -93,7 +93,7 @@
                   <input type="checkbox" :checked="story.dod_complete" disabled class="rounded" />
                   DoD
                 </label>
-                <button
+                <button type="button"
                   @click.stop="openSubtaskForm(story)"
                   class="px-2 py-0.5 bg-muted text-foreground rounded text-xs hover:bg-muted">
                   + Sub-task
@@ -112,8 +112,8 @@
                       class="flex-1 px-3 py-1 border border-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                       @keydown.enter="createSubtask(story)"
                      aria-label="Sub-task title"/>
-                    <button @click="createSubtask(story)" class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90">Add</button>
-                    <button @click="subtaskForm.storyId = null" class="px-3 py-1 bg-muted text-foreground rounded text-xs">Cancel</button>
+                    <button type="button" @click="createSubtask(story)" class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90">Add</button>
+                    <button type="button" @click="subtaskForm.storyId = null" class="px-3 py-1 bg-muted text-foreground rounded text-xs">Cancel</button>
                   </div>
                   <p x-show="subtaskForm.error" x-cloak x-text="subtaskForm.error" class="mt-1 text-destructive-emphasis text-xs"></p>
                 </div>

@@ -46,10 +46,10 @@ Parameters:
                 <div class="flex flex-wrap items-center gap-3">
                     <!-- View Toggle -->
                     <div class="flex items-center space-x-2 bg-muted rounded-lg p-1" title="Switch between auto-detected gaps and saved roadmap items">
-                        <button id="roadmap-view-auto-{{ container_id }}" @click="setRoadmapView{{ container_id }}('auto')" class="px-3 py-1.5 text-sm rounded-md bg-card shadow-sm font-medium text-muted-foreground transition-all" aria-label="Action">
+                        <button type="button" id="roadmap-view-auto-{{ container_id }}" @click="setRoadmapView{{ container_id }}('auto')" class="px-3 py-1.5 text-sm rounded-md bg-card shadow-sm font-medium text-muted-foreground transition-all" aria-label="Action">
                             Auto-Detected
                         </button>
-                        <button id="roadmap-view-saved-{{ container_id }}" @click="setRoadmapView{{ container_id }}('saved')" class="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:text-foreground transition-all" aria-label="Save">
+                        <button type="button" id="roadmap-view-saved-{{ container_id }}" @click="setRoadmapView{{ container_id }}('saved')" class="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:text-foreground transition-all" aria-label="Save">
                             Saved Roadmap
                         </button>
                     </div>
@@ -67,11 +67,11 @@ Parameters:
                     <!-- Navigation Controls -->
                     <div id="hierarchy-controls-{{ container_id }}" class="flex items-center gap-2">
                         <div class="flex items-center space-x-1 bg-muted rounded-lg p-1">
-                            <button @click="expandAllRoadmapRows{{ container_id }}()" class="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Expand All (Ctrl+E)">
+                            <button type="button" @click="expandAllRoadmapRows{{ container_id }}()" class="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Expand All (Ctrl+E)">
                                 <i data-lucide="chevrons-down" class="w-4 h-4 inline mr-1"></i>
                                 Expand All
                             </button>
-                            <button @click="collapseAllRoadmapRows{{ container_id }}()" class="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Collapse All (Ctrl+Shift+E)">
+                            <button type="button" @click="collapseAllRoadmapRows{{ container_id }}()" class="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Collapse All (Ctrl+Shift+E)">
                                 <i data-lucide="chevrons-up" class="w-4 h-4 inline mr-1"></i>
                                 Collapse All
                             </button>
@@ -80,7 +80,7 @@ Parameters:
                     </div>
 
                     <!-- Jump to Today -->
-                    <button @click="jumpToToday{{ container_id }}()" class="px-3 py-1.5 bg-warning/5 border border-warning/20 text-warning-emphasis rounded-md hover:bg-warning/10 text-sm font-medium transition-all" title="Jump to today's date on timeline (Ctrl+T)">
+                    <button type="button" @click="jumpToToday{{ container_id }}()" class="px-3 py-1.5 bg-warning/5 border border-warning/20 text-warning-emphasis rounded-md hover:bg-warning/10 text-sm font-medium transition-all" title="Jump to today's date on timeline (Ctrl+T)">
                         <i data-lucide="calendar-check" class="w-4 h-4 inline mr-1"></i>
                         Today
                     </button>
@@ -89,14 +89,14 @@ Parameters:
 
                     {% if show_add_capability %}
                     <!-- Action Buttons -->
-                    <button @click="openQuickAddModal{{ container_id }}()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary text-sm font-medium transition-all" title="Add a new capability to the roadmap">
+                    <button type="button" @click="openQuickAddModal{{ container_id }}()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary text-sm font-medium transition-all" title="Add a new capability to the roadmap">
                         <i data-lucide="plus" class="w-4 h-4 inline mr-1"></i>
                         Add Capability
                     </button>
                     {% endif %}
 
                     {% if show_convert_button %}
-                    <button @click="openConvertModal{{ container_id }}()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary text-sm font-medium transition-all" title="Convert selected gaps to roadmap items">
+                    <button type="button" @click="openConvertModal{{ container_id }}()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary text-sm font-medium transition-all" title="Convert selected gaps to roadmap items">
                         <i data-lucide="save" class="w-4 h-4 inline mr-1"></i>
                         Convert to Roadmap
                     </button>
@@ -104,26 +104,26 @@ Parameters:
 
                     <!-- Export Dropdown -->
                     <div class="relative" id="export-dropdown-{{ container_id }}">
-                        <button @click="toggleRoadmapExportMenu{{ container_id }}()" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success text-sm font-medium flex items-center transition-all" title="Export roadmap in various formats">
+                        <button type="button" @click="toggleRoadmapExportMenu{{ container_id }}()" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success text-sm font-medium flex items-center transition-all" title="Export roadmap in various formats">
                             <i data-lucide="download" class="w-4 h-4 mr-1"></i>
                             Export
                             <i data-lucide="chevron-down" class="w-4 h-4 ml-1"></i>
                         </button>
                         <div id="roadmap-export-menu-{{ container_id }}" class="hidden absolute right-0 mt-2 w-48 bg-card rounded-md shadow-lg z-50 border border-border">
                             <div class="py-1">
-                                <button @click="exportRoadmap{{ container_id }}('pdf')" class="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent flex items-center" aria-label="Export">
+                                <button type="button" @click="exportRoadmap{{ container_id }}('pdf')" class="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent flex items-center" aria-label="Export">
                                     <i data-lucide="file-text" class="w-4 h-4 mr-2"></i>
                                     Export as PDF
                                 </button>
-                                <button @click="exportRoadmap{{ container_id }}('png')" class="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent flex items-center" aria-label="Export">
+                                <button type="button" @click="exportRoadmap{{ container_id }}('png')" class="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent flex items-center" aria-label="Export">
                                     <i data-lucide="image" class="w-4 h-4 mr-2"></i>
                                     Export as PNG
                                 </button>
-                                <button @click="exportRoadmap{{ container_id }}('csv')" class="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent flex items-center" aria-label="Export">
+                                <button type="button" @click="exportRoadmap{{ container_id }}('csv')" class="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent flex items-center" aria-label="Export">
                                     <i data-lucide="file-down" class="w-4 h-4 mr-2"></i>
                                     Export as CSV
                                 </button>
-                                <button @click="exportRoadmap{{ container_id }}('excel')" class="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent flex items-center" aria-label="Export">
+                                <button type="button" @click="exportRoadmap{{ container_id }}('excel')" class="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent flex items-center" aria-label="Export">
                                     <i data-lucide="file-spreadsheet" class="w-4 h-4 mr-2"></i>
                                     Export as Excel
                                 </button>
@@ -135,16 +135,16 @@ Parameters:
 
                     <!-- Timeline Zoom Controls -->
                     <div class="flex items-center space-x-1 bg-muted rounded-lg p-1" title="Change timeline zoom level">
-                        <button @click="setTimelineZoom{{ container_id }}('day')" id="zoom-day-{{ container_id }}" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="View timeline by day">
+                        <button type="button" @click="setTimelineZoom{{ container_id }}('day')" id="zoom-day-{{ container_id }}" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="View timeline by day">
                             Day
                         </button>
-                        <button @click="setTimelineZoom{{ container_id }}('week')" id="zoom-week-{{ container_id }}" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="View timeline by week">
+                        <button type="button" @click="setTimelineZoom{{ container_id }}('week')" id="zoom-week-{{ container_id }}" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="View timeline by week">
                             Week
                         </button>
-                        <button @click="setTimelineZoom{{ container_id }}('month')" id="zoom-month-{{ container_id }}" class="px-2 py-1 text-xs rounded bg-card shadow-sm font-medium text-muted-foreground transition-all" title="View timeline by month (default)">
+                        <button type="button" @click="setTimelineZoom{{ container_id }}('month')" id="zoom-month-{{ container_id }}" class="px-2 py-1 text-xs rounded bg-card shadow-sm font-medium text-muted-foreground transition-all" title="View timeline by month (default)">
                             Month
                         </button>
-                        <button @click="setTimelineZoom{{ container_id }}('quarter')" id="zoom-quarter-{{ container_id }}" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="View timeline by quarter">
+                        <button type="button" @click="setTimelineZoom{{ container_id }}('quarter')" id="zoom-quarter-{{ container_id }}" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="View timeline by quarter">
                             Quarter
                         </button>
                     </div>
@@ -154,19 +154,19 @@ Parameters:
                     <!-- Timeline Range Controls -->
                     <div class="flex items-center space-x-1 bg-muted rounded-lg p-1" title="Set timeline range (number of years displayed)">
                         <span class="px-1 text-xs font-medium text-muted-foreground">Range:</span>
-                        <button @click="setTimelineRangeWidget{{ container_id }}(1)" data-timeline-range-{{ container_id }}="1" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Show 1 year">
+                        <button type="button" @click="setTimelineRangeWidget{{ container_id }}(1)" data-timeline-range-{{ container_id }}="1" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Show 1 year">
                             1Y
                         </button>
-                        <button @click="setTimelineRangeWidget{{ container_id }}(2)" data-timeline-range-{{ container_id }}="2" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Show 2 years">
+                        <button type="button" @click="setTimelineRangeWidget{{ container_id }}(2)" data-timeline-range-{{ container_id }}="2" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Show 2 years">
                             2Y
                         </button>
-                        <button @click="setTimelineRangeWidget{{ container_id }}(4)" data-timeline-range-{{ container_id }}="4" class="px-2 py-1 text-xs rounded bg-card shadow-sm font-medium text-muted-foreground transition-all" title="Show 4 years (default)">
+                        <button type="button" @click="setTimelineRangeWidget{{ container_id }}(4)" data-timeline-range-{{ container_id }}="4" class="px-2 py-1 text-xs rounded bg-card shadow-sm font-medium text-muted-foreground transition-all" title="Show 4 years (default)">
                             4Y
                         </button>
-                        <button @click="setTimelineRangeWidget{{ container_id }}(6)" data-timeline-range-{{ container_id }}="6" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Show 6 years">
+                        <button type="button" @click="setTimelineRangeWidget{{ container_id }}(6)" data-timeline-range-{{ container_id }}="6" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Show 6 years">
                             6Y
                         </button>
-                        <button @click="setTimelineRangeWidget{{ container_id }}(10)" data-timeline-range-{{ container_id }}="10" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Show 10 years">
+                        <button type="button" @click="setTimelineRangeWidget{{ container_id }}(10)" data-timeline-range-{{ container_id }}="10" class="px-2 py-1 text-xs rounded font-medium text-muted-foreground hover:bg-card hover:shadow-sm transition-all" title="Show 10 years">
                             10Y
                         </button>
                     </div>
@@ -311,11 +311,11 @@ Parameters:
                     Search & Filters
                 </h3>
                 <div class="flex items-center space-x-2">
-                    <button @click="clearAllFilters{{ container_id }}()" class="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-all" aria-label="Filter">
+                    <button type="button" @click="clearAllFilters{{ container_id }}()" class="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-all" aria-label="Filter">
                         <i data-lucide="x" class="w-4 h-4 inline mr-1"></i>
                         Clear All
                     </button>
-                    <button @click="toggleFilterPanel{{ container_id }}()" id="filter-toggle-btn-{{ container_id }}" class="px-3 py-1.5 text-sm bg-primary/5 text-primary hover:bg-primary/10 rounded-md transition-all" aria-label="Toggle">
+                    <button type="button" @click="toggleFilterPanel{{ container_id }}()" id="filter-toggle-btn-{{ container_id }}" class="px-3 py-1.5 text-sm bg-primary/5 text-primary hover:bg-primary/10 rounded-md transition-all" aria-label="Toggle">
                         <i data-lucide="chevron-up" class="w-4 h-4 inline mr-1"></i>
                         Hide Filters
                     </button>
@@ -403,7 +403,7 @@ Parameters:
                            class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 </div>
                 <div class="flex items-end">
-                    <button @click="applyCustomTimelineRange{{ container_id }}()"
+                    <button type="button" @click="applyCustomTimelineRange{{ container_id }}()"
                             class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium transition-all"
                             title="Apply custom start and end dates to the timeline">
                         <i data-lucide="check" class="w-4 h-4 inline mr-1"></i>

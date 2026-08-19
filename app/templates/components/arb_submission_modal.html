@@ -171,14 +171,14 @@ x-effect="document.getElementById('arb-submission') && document.getElementById('
 
     <!-- Footer -->
     <div class="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border">
-        <button
+        <button type="button"
             @click="Platform.modal.close('arb-submission')"
             :disabled="loading"
             class="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-input rounded-lg hover:bg-accent transition-colors disabled:opacity-50"
          aria-label="Close">
             Cancel
         </button>
-        <button
+        <button type="button"
             @click="submitToARB()"
             :disabled="loading"
             class="px-6 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"

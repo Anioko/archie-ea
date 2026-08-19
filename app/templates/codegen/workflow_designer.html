@@ -75,7 +75,7 @@
         <div class="border-t border-border mt-2 p-3">
             <h3 class="text-xs font-semibold text-foreground mb-2">Templates</h3>
             <template x-for="tpl in templates" :key="tpl.id">
-                <button @click="loadTemplate(tpl.id)"
+                <button type="button" @click="loadTemplate(tpl.id)"
                         class="w-full text-left px-2 py-1.5 rounded-md text-xs text-foreground hover:bg-accent transition-colors mb-1">
                     <span x-text="tpl.name" class="font-medium"></span>
                     <span x-text="tpl.description" class="block text-xs text-muted-foreground truncate"></span>
@@ -91,14 +91,14 @@
             <input type="text" x-model="workflowName" placeholder="Workflow name..."
                    class="rounded-md border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring w-64" aria-label="Workflow name...">
             <div class="flex-1"></div>
-            <button @click="compileWorkflow()" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <button type="button" @click="compileWorkflow()" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2l8 6-8 6z"/></svg>
                 Compile to n8n
             </button>
-            <button @click="saveWorkflow()" class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors">
+            <button type="button" @click="saveWorkflow()" class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors">
                 Save
             </button>
-            <button @click="clearCanvas()" class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive-emphasis transition-colors">
+            <button type="button" @click="clearCanvas()" class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive-emphasis transition-colors">
                 Clear
             </button>
         </div>
@@ -118,7 +118,7 @@
             <div class="p-3">
                 <div class="flex items-center justify-between mb-3">
                     <h3 class="text-sm font-semibold text-foreground">Properties</h3>
-                    <button @click="selectedStep = null" class="text-muted-foreground hover:text-foreground">
+                    <button type="button" @click="selectedStep = null" class="text-muted-foreground hover:text-foreground">
                         <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>
                     </button>
                 </div>
@@ -257,7 +257,7 @@
                         </div>
                     </template>
 
-                    <button @click="deleteSelectedStep()"
+                    <button type="button" @click="deleteSelectedStep()"
                             class="w-full mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive-emphasis hover:bg-destructive/20 transition-colors">
                         Delete Step
                     </button>

@@ -56,7 +56,7 @@
             </div>
             <h3 class="text-sm font-semibold text-foreground">{{ opt.name }}</h3>
             <p class="text-xs text-muted-foreground mt-1 mb-3">{{ opt.summary }}</p>
-            <div class="flex items-center gap-3 text-[11px] text-muted-foreground mb-3">
+            <div class="flex items-center gap-3 text-2xs text-muted-foreground mb-3">
                 <span class="inline-flex items-center gap-1"><i data-lucide="banknote" class="h-3 w-3"></i> {{ opt.cost_band|title }} cost</span>
                 <span class="inline-flex items-center gap-1"><i data-lucide="clock" class="h-3 w-3"></i> {{ opt.timeline_months }} mo</span>
                 <span class="inline-flex items-center gap-1">
@@ -64,8 +64,8 @@
                     <span class="{% if opt.risk == 'high' %}text-destructive-emphasis{% elif opt.risk == 'medium' %}text-warning-emphasis{% else %}text-success-emphasis{% endif %}">{{ opt.risk|title }} risk</span>
                 </span>
             </div>
-            {% if opt.pros %}<p class="text-[11px] font-semibold text-success-emphasis mb-0.5">Pros</p><ul class="text-[11px] text-muted-foreground space-y-0.5 mb-2">{% for p in opt.pros[:4] %}<li class="flex gap-1"><i data-lucide="plus" class="h-3 w-3 text-success shrink-0 mt-0.5"></i>{{ p }}</li>{% endfor %}</ul>{% endif %}
-            {% if opt.cons %}<p class="text-[11px] font-semibold text-warning-emphasis mb-0.5">Trade-offs</p><ul class="text-[11px] text-muted-foreground space-y-0.5">{% for c in opt.cons[:4] %}<li class="flex gap-1"><i data-lucide="minus" class="h-3 w-3 text-warning shrink-0 mt-0.5"></i>{{ c }}</li>{% endfor %}</ul>{% endif %}
+            {% if opt.pros %}<p class="text-2xs font-semibold text-success-emphasis mb-0.5">Pros</p><ul class="text-2xs text-muted-foreground space-y-0.5 mb-2">{% for p in opt.pros[:4] %}<li class="flex gap-1"><i data-lucide="plus" class="h-3 w-3 text-success shrink-0 mt-0.5"></i>{{ p }}</li>{% endfor %}</ul>{% endif %}
+            {% if opt.cons %}<p class="text-2xs font-semibold text-warning-emphasis mb-0.5">Trade-offs</p><ul class="text-2xs text-muted-foreground space-y-0.5">{% for c in opt.cons[:4] %}<li class="flex gap-1"><i data-lucide="minus" class="h-3 w-3 text-warning shrink-0 mt-0.5"></i>{{ c }}</li>{% endfor %}</ul>{% endif %}
         </div>
         {% endfor %}
     </div>
@@ -91,7 +91,7 @@
                 ('Consequences', adr.consequences, 'git-branch')
             ] %}
             <div>
-                <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><i data-lucide="{{ icon }}" class="h-3.5 w-3.5"></i> {{ label }}</p>
+                <p class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><i data-lucide="{{ icon }}" class="h-3.5 w-3.5"></i> {{ label }}</p>
                 <p class="text-sm text-foreground mt-1 leading-relaxed">{{ field }}</p>
             </div>
             {% endfor %}
@@ -101,7 +101,7 @@
             </div>
         </div>
         <div class="px-5 py-3 border-t border-border bg-muted/10 flex items-center justify-between">
-            <p class="text-[11px] text-muted-foreground">Proposed by the AI Solution Architect · you decide, the ARB disposes</p>
+            <p class="text-2xs text-muted-foreground">Proposed by the AI Solution Architect · you decide, the ARB disposes</p>
             <div class="flex items-center gap-2">
                 <button type="button" @click="setStatus('rejected')" :disabled="busy"
                         class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent">

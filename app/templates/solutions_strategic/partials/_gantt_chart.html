@@ -62,7 +62,7 @@
             <i data-lucide="alert-circle" class="w-8 h-8 text-destructive mx-auto mb-2" aria-hidden="true"></i>
             <p class="text-sm font-medium text-destructive-emphasis mb-2">Failed to load Gantt chart</p>
             <p class="text-xs text-muted-foreground mb-3" x-text="error"></p>
-            <button @click="loadGanttData()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+            <button type="button" @click="loadGanttData()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" aria-hidden="true"></i> Retry
             </button>
         </div>
@@ -117,13 +117,13 @@
         <div class="flex items-center gap-2">
             {# Zoom Controls #}
             <div class="flex items-center gap-1 border-l border-border pl-2">
-                <button @click="zoomOut()" :disabled="zoomLevel <= 1" 
+                <button type="button" @click="zoomOut()" :disabled="zoomLevel <= 1" 
                         class="p-1 rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         title="Zoom out" aria-label="Zoom out">
                     <i data-lucide="zoom-out" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
                 </button>
                 <span class="text-xs text-muted-foreground min-w-[2.5rem] text-center" x-text="zoomLevel + 'x'"></span>
-                <button @click="zoomIn()" :disabled="zoomLevel >= 4" 
+                <button type="button" @click="zoomIn()" :disabled="zoomLevel >= 4" 
                         class="p-1 rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         title="Zoom in" aria-label="Zoom in">
                     <i data-lucide="zoom-in" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
@@ -132,11 +132,11 @@
 
             {# Granularity Toggle #}
             <div class="flex items-center gap-1 pl-2 border-l border-border">
-                <button @click="setGranularity('week')" 
+                <button type="button" @click="setGranularity('week')" 
                         :class="granularity === 'week' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent'"
                         class="px-2 py-1 rounded-md text-xs font-medium transition-colors"
                         title="Week granularity">Week</button>
-                <button @click="setGranularity('month')" 
+                <button type="button" @click="setGranularity('month')" 
                         :class="granularity === 'month' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent'"
                         class="px-2 py-1 rounded-md text-xs font-medium transition-colors"
                         title="Month granularity">Month</button>
@@ -145,12 +145,12 @@
             {# Export #}
             <template x-if="showExport">
                 <div class="flex items-center gap-1 pl-2 border-l border-border">
-                    <button @click="exportChart('png')" :disabled="exporting" 
+                    <button type="button" @click="exportChart('png')" :disabled="exporting" 
                             class="p-1 rounded-md hover:bg-accent disabled:opacity-50 transition-colors"
                             title="Export as PNG" aria-label="Export as PNG">
                         <i data-lucide="download" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
                     </button>
-                    <button @click="showExportMenu = !showExportMenu" 
+                    <button type="button" @click="showExportMenu = !showExportMenu" 
                             class="p-1 rounded-md hover:bg-accent transition-colors"
                             title="Export options" aria-label="Export options">
                         <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true"></i>
@@ -163,13 +163,13 @@
     {# Export Menu (hidden) #}
     <div x-show="showExportMenu" @click.away="showExportMenu = false" x-cloak
          class="absolute top-12 right-4 z-40 rounded-lg border border-border bg-card shadow-lg p-2 space-y-1">
-        <button @click="exportChart('png')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
+        <button type="button" @click="exportChart('png')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
             Export as PNG
         </button>
-        <button @click="exportChart('svg')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
+        <button type="button" @click="exportChart('svg')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
             Export as SVG
         </button>
-        <button @click="exportChart('csv')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
+        <button type="button" @click="exportChart('csv')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
             Export as CSV
         </button>
     </div>
@@ -333,7 +333,7 @@
                         <h3 class="font-semibold text-foreground" x-text="selectedTask.name"></h3>
                         <p class="text-xs text-muted-foreground mt-1" x-text="selectedTask.group"></p>
                     </div>
-                    <button @click="selectedTask = null" class="p-1 hover:bg-accent rounded-md">
+                    <button type="button" @click="selectedTask = null" class="p-1 hover:bg-accent rounded-md">
                         <i data-lucide="x" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
                     </button>
                 </div>
@@ -395,7 +395,7 @@
                         <h4 class="font-medium text-foreground">Dependencies</h4>
                         <div class="space-y-1">
                             <template x-for="depId in selectedTask.dependencies" :key="depId">
-                                <button @click="selectTaskById(depId)"
+                                <button type="button" @click="selectTaskById(depId)"
                                         class="w-full text-left px-2 py-1 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors"
                                         x-text="getTaskNameById(depId)"></button>
                             </template>
@@ -414,7 +414,7 @@
                 {# Reschedule (draft mode only) #}
                 <template x-if="allowReschedule">
                     <div class="space-y-2 text-sm pt-2 border-t border-border">
-                        <button @click="enableRescheduleMode(selectedTask)"
+                        <button type="button" @click="enableRescheduleMode(selectedTask)"
                                 class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                             <i data-lucide="move" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             Reschedule

@@ -109,7 +109,7 @@
                 </div>
 
                 <div class="flex gap-3">
-                    <button @click="uploadFile()" :disabled="!file || uploading"
+                    <button type="button" @click="uploadFile()" :disabled="!file || uploading"
                         class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 disabled:opacity-50">
                         <span x-show="!uploading" x-cloak>
                             <span x-text="detectedMode === 'Document (AI Analysis)' ? 'Analyse & Extract Elements' : 'Upload & Create Elements'"></span>
@@ -139,7 +139,7 @@
 
                     {# Action buttons #}
                     <div x-show="result?.element_ids?.length > 0" x-cloak class="flex gap-3">
-                        <button @click="createDiagram()"
+                        <button type="button" @click="createDiagram()"
                             :disabled="creatingDiagram"
                             class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 disabled:opacity-50">
                             <span x-show="!creatingDiagram" x-cloak>

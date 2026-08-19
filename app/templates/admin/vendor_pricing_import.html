@@ -101,7 +101,7 @@
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click="rejectAll()"
+                    <button type="button" @click="rejectAll()"
                             class="inline-flex items-center justify-center rounded-md text-sm font-medium
                                    ring-offset-background transition-colors
                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
@@ -110,7 +110,7 @@
                         <i data-lucide="x-circle" class="h-4 w-4 mr-1.5"></i>
                         Discard All
                     </button>
-                    <button @click="confirmAll()"
+                    <button type="button" @click="confirmAll()"
                             :disabled="confirming"
                             class="inline-flex items-center justify-center rounded-md text-sm font-medium
                                    ring-offset-background transition-colors
@@ -163,7 +163,7 @@
                                 <span x-show="!item.discount_percent" class="text-muted-foreground">—</span>
                             </td>
                             <td class="px-4 py-3 text-right">
-                                <button @click="removeItem(idx)"
+                                <button type="button" @click="removeItem(idx)"
                                         class="inline-flex items-center justify-center rounded-md text-xs font-medium
                                                border border-destructive/50 text-destructive-emphasis hover:bg-destructive/10
                                                h-7 px-2 transition-colors">

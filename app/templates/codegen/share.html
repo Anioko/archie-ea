@@ -48,7 +48,7 @@
     <!-- Stats row -->
     <div class="grid grid-cols-3 gap-4">
         <div class="rounded-xl border border-background/10 bg-background/5 px-4 py-3">
-            <p class="text-[11px] text-primary-foreground/40 uppercase tracking-wider font-semibold mb-1">Language</p>
+            <p class="text-2xs text-primary-foreground/40 uppercase tracking-wider font-semibold mb-1">Language</p>
             <p class="text-sm font-semibold text-primary-foreground">
                 {% if language == 'python-fastapi' %}Python / FastAPI
                 {% elif language == 'go-chi' %}Go / Chi
@@ -59,11 +59,11 @@
             </p>
         </div>
         <div class="rounded-xl border border-background/10 bg-background/5 px-4 py-3">
-            <p class="text-[11px] text-primary-foreground/40 uppercase tracking-wider font-semibold mb-1">Files</p>
+            <p class="text-2xs text-primary-foreground/40 uppercase tracking-wider font-semibold mb-1">Files</p>
             <p class="text-sm font-semibold text-primary-foreground">{{ file_count }} generated</p>
         </div>
         <div class="rounded-xl border border-background/10 bg-background/5 px-4 py-3">
-            <p class="text-[11px] text-primary-foreground/40 uppercase tracking-wider font-semibold mb-1">Architecture</p>
+            <p class="text-2xs text-primary-foreground/40 uppercase tracking-wider font-semibold mb-1">Architecture</p>
             <p class="text-sm font-semibold text-primary-foreground">{{ arch_summary or 'Full solution' }}</p>
         </div>
     </div>

@@ -98,7 +98,7 @@
                     class="rounded border-input text-primary focus:ring-ring">
                 <span class="text-sm font-medium">Business-critical system</span>
             </label>
-            <button @click="runAnalysis()"
+            <button type="button" @click="runAnalysis()"
                 :disabled="!form.problem.trim() || loading"
                 class="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 <template x-if="loading">
@@ -224,7 +224,7 @@
                             </a>
                         </template>
                         <template x-if="!savedSolutions[rec.option_type]">
-                            <button @click="saveAsSolution(rec)"
+                            <button type="button" @click="saveAsSolution(rec)"
                                 :disabled="savingOption === rec.option_type"
                                 class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-input bg-background text-sm font-medium hover:border-primary/50 hover:bg-muted/30 transition-colors disabled:opacity-50">
                                 <template x-if="savingOption === rec.option_type">

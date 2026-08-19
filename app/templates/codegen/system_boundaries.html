@@ -12,7 +12,7 @@
                 Group solutions into microservice systems — generate docker-compose, Terraform, contracts, and client SDKs.
             </p>
         </div>
-        <button @click="createOpen = true"
+        <button type="button" @click="createOpen = true"
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">
             <i data-lucide="plus" class="h-4 w-4"></i>
             New System Boundary
@@ -40,7 +40,7 @@
         <p class="text-sm text-muted-foreground mb-4">
             Create a boundary, add 2+ solutions, then generate docker-compose and inter-service contracts.
         </p>
-        <button @click="createOpen = true"
+        <button type="button" @click="createOpen = true"
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">
             <i data-lucide="plus" class="h-4 w-4"></i>
             Create First Boundary
@@ -67,14 +67,14 @@
                               class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/20">
                             <i data-lucide="check" class="h-3 w-3"></i> Generated
                         </span>
-                        <button @click="generateArtifacts(b.id)"
+                        <button type="button" @click="generateArtifacts(b.id)"
                                 class="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 transition-colors"
                                 :disabled="(b.solution_count || 0) < 2"
                                 :class="(b.solution_count || 0) < 2 ? 'opacity-50 cursor-not-allowed' : ''">
                             <i data-lucide="play" class="h-3 w-3"></i>
                             Generate
                         </button>
-                        <button aria-label="Delete" @click="deleteBoundary(b.id)"
+                        <button type="button" aria-label="Delete" @click="deleteBoundary(b.id)"
                                 class="inline-flex items-center rounded-md border border-destructive/20 bg-destructive/5 p-1.5 text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                             <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
                         </button>
@@ -98,7 +98,7 @@
                                       x-text="svc.role"></span>
                                 <span x-show="!svc.has_codegen" x-cloak
                                       class="text-xs text-warning-emphasis">⚠ no code</span>
-                                <button aria-label="Remove" @click="removeSolution(b.id, svc.solution_id)"
+                                <button type="button" aria-label="Remove" @click="removeSolution(b.id, svc.solution_id)"
                                         class="text-muted-foreground hover:text-destructive-emphasis transition-colors ml-0.5">
                                     <i data-lucide="x" class="h-3 w-3"></i>
                                 </button>
@@ -106,7 +106,7 @@
                         </template>
 
                         <!-- Add solution -->
-                        <button @click="addSolutionOpen = b.id"
+                        <button type="button" @click="addSolutionOpen = b.id"
                                 class="inline-flex items-center gap-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors">
                             <i data-lucide="plus" class="h-3.5 w-3.5"></i>
                             Add service
@@ -129,12 +129,12 @@
                             <option value="producer">producer</option>
                             <option value="consumer">consumer</option>
                         </select>
-                        <button @click="addSolution(b.id)"
+                        <button type="button" @click="addSolution(b.id)"
                                 :disabled="!addSolutionId"
                                 class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
                             Add
                         </button>
-                        <button @click="addSolutionOpen = null; addSolutionId = ''"
+                        <button type="button" @click="addSolutionOpen = null; addSolutionId = ''"
                                 class="text-muted-foreground hover:text-foreground transition-colors">
                             <i data-lucide="x" class="h-4 w-4"></i>
                         </button>
@@ -147,7 +147,7 @@
                         <span class="text-xs text-muted-foreground">
                             Generated <span x-text="b.generated_at ? new Date(b.generated_at).toLocaleString() : ''"></span>
                         </span>
-                        <button @click="viewArtifacts(b.id)"
+                        <button type="button" @click="viewArtifacts(b.id)"
                                 class="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                             <i data-lucide="eye" class="h-3 w-3"></i>
                             View Artifacts
@@ -179,11 +179,11 @@
                 </div>
             </div>
             <div class="flex items-center justify-end gap-2 mt-4">
-                <button @click="createOpen = false"
+                <button type="button" @click="createOpen = false"
                         class="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                     Cancel
                 </button>
-                <button @click="createBoundary()" :disabled="!newName.trim() || creating"
+                <button type="button" @click="createBoundary()" :disabled="!newName.trim() || creating"
                         class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
                     <svg x-show="creating" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -203,30 +203,30 @@
             <!-- Modal header -->
             <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
                 <h2 class="text-base font-semibold text-foreground" x-text="artifactsBoundary ? artifactsBoundary.name + ' — Artifacts' : ''"></h2>
-                <button @click="artifactsBoundary = null" class="text-muted-foreground hover:text-foreground">
+                <button type="button" @click="artifactsBoundary = null" class="text-muted-foreground hover:text-foreground">
                     <i data-lucide="x" class="h-4 w-4"></i>
                 </button>
             </div>
             <!-- Tab bar -->
             <div class="flex border-b border-border shrink-0 px-5 gap-4">
-                <button @click="artifactsTab = 'compose'"
+                <button type="button" @click="artifactsTab = 'compose'"
                         class="py-2.5 text-sm font-medium border-b-2 transition-colors"
                         :class="artifactsTab === 'compose' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
                     docker-compose.yml
                 </button>
-                <button @click="artifactsTab = 'nginx'"
+                <button type="button" @click="artifactsTab = 'nginx'"
                         class="py-2.5 text-sm font-medium border-b-2 transition-colors"
                         :class="artifactsTab === 'nginx' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
                     nginx.conf
                 </button>
-                <button @click="artifactsTab = 'contracts'"
+                <button type="button" @click="artifactsTab = 'contracts'"
                         class="py-2.5 text-sm font-medium border-b-2 transition-colors"
                         :class="artifactsTab === 'contracts' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
                     Contracts
                     <span class="ml-1 text-xs text-muted-foreground"
                           x-text="artifactsBoundary && artifactsBoundary.generated_artifacts ? '(' + (artifactsBoundary.generated_artifacts.contracts || []).length + ')' : ''"></span>
                 </button>
-                <button @click="artifactsTab = 'sdks'"
+                <button type="button" @click="artifactsTab = 'sdks'"
                         class="py-2.5 text-sm font-medium border-b-2 transition-colors"
                         :class="artifactsTab === 'sdks' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
                     Client SDKs
@@ -238,7 +238,7 @@
                 <div x-show="artifactsTab === 'compose'" x-cloak>
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs text-muted-foreground font-mono">docker-compose.yml</span>
-                        <button @click="copyToClipboard(artifactsBoundary.generated_artifacts.docker_compose)"
+                        <button type="button" @click="copyToClipboard(artifactsBoundary.generated_artifacts.docker_compose)"
                                 class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                             <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
                         </button>
@@ -250,7 +250,7 @@
                 <div x-show="artifactsTab === 'nginx'" x-cloak>
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs text-muted-foreground font-mono">nginx.conf</span>
-                        <button @click="copyToClipboard(artifactsBoundary.generated_artifacts.nginx_conf)"
+                        <button type="button" @click="copyToClipboard(artifactsBoundary.generated_artifacts.nginx_conf)"
                                 class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                             <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
                         </button>
@@ -294,7 +294,7 @@
                             <div>
                                 <div class="flex items-center justify-between mb-2">
                                     <span class="text-xs text-muted-foreground font-mono" x-text="filename"></span>
-                                    <button @click="copyToClipboard(code)"
+                                    <button type="button" @click="copyToClipboard(code)"
                                             class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                                         <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
                                     </button>

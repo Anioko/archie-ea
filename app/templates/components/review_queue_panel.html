@@ -14,7 +14,7 @@
           <span id="review-pending-count" class="text-primary font-bold">0</span>
           <span id="review-breakdown" class="text-xs text-muted-foreground ml-2"></span>
         </div>
-        <button @click="closeReviewQueue()" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close review queue">
+        <button type="button" @click="closeReviewQueue()" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close review queue">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
@@ -50,13 +50,13 @@
         </div>
 
         <div class="flex gap-2">
-          <button @click="selectHighConfidence()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium" aria-label="Select high confidence mappings">
+          <button type="button" @click="selectHighConfidence()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium" aria-label="Select high confidence mappings">
             ⚡ Select High Confidence (≥70%)
           </button>
-          <button @click="bulkApproveSelected()" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success font-medium" aria-label="Approve selected mappings">
+          <button type="button" @click="bulkApproveSelected()" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success font-medium" aria-label="Approve selected mappings">
             ✓ Approve Selected
           </button>
-          <button @click="bulkRejectSelected()" class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-destructive font-medium" aria-label="Reject selected mappings">
+          <button type="button" @click="bulkRejectSelected()" class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-destructive font-medium" aria-label="Reject selected mappings">
             ✗ Reject Selected
           </button>
         </div>
@@ -84,10 +84,10 @@
         <span id="review-selected-count">0</span> items selected
       </div>
       <div class="flex gap-3">
-        <button @click="closeReviewQueue()" class="px-6 py-2 border border-border rounded-md hover:bg-muted font-medium" aria-label="Cancel review">
+        <button type="button" @click="closeReviewQueue()" class="px-6 py-2 border border-border rounded-md hover:bg-muted font-medium" aria-label="Cancel review">
           Cancel
         </button>
-        <button @click="confirmReviewedMappings()" class="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium" aria-label="Confirm and import reviewed mappings">
+        <button type="button" @click="confirmReviewedMappings()" class="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium" aria-label="Confirm and import reviewed mappings">
           Confirm & Import
         </button>
       </div>
@@ -285,11 +285,11 @@ function renderReviewQueue(items) {
 
           <!-- Actions -->
           <div class="flex gap-2">
-            <button @click="approveReviewItem(${item.id})"
+            <button type="button" @click="approveReviewItem(${item.id})"
                     class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success text-sm font-medium" aria-label="Approve this mapping">
               ✓ Approve
             </button>
-            <button @click="rejectReviewItem(${item.id})"
+            <button type="button" @click="rejectReviewItem(${item.id})"
                     class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-destructive text-sm font-medium" aria-label="Reject this mapping">
               ✗ Reject
             </button>

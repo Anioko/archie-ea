@@ -7,7 +7,7 @@
         {% for tab in tabs %}
             {% set count = tab.get('count', none) %}
             {% set is_empty = count is not none and count == 0 %}
-            <button
+            <button type="button"
                 @click="activeTab = '{{ tab.id }}'; {% if app_id %}window.history.pushState({}, '', '{{ url_for(request.endpoint, id=app_id, tab=tab.id) }}'){% endif %}"
                 :class="activeTab === '{{ tab.id }}' ? 'border-primary text-primary' : '{% if is_empty %}border-transparent text-muted-foreground/40 hover:text-muted-foreground{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %}'"
                 class="shrink-0 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

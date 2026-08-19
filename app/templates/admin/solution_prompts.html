@@ -16,7 +16,7 @@
         </div>
         <div class="flex items-center gap-2">
             <span x-show="loading" x-cloak class="text-sm text-muted-foreground">Loading...</span>
-            <button @click="loadPrompts()"
+            <button type="button" @click="loadPrompts()"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium
  ring-offset-background transition-colors
  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
@@ -80,7 +80,7 @@
                             </td>
                             <td class="px-4 py-3 text-right">
                                 <div class="flex items-center justify-end gap-2">
-                                    <button @click="openEdit(prompt)"
+                                    <button type="button" @click="openEdit(prompt)"
                                             class="inline-flex items-center justify-center rounded-md text-sm font-medium
  ring-offset-background transition-colors
  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
@@ -89,7 +89,7 @@
                                         <i data-lucide="pencil" class="h-3.5 w-3.5 mr-1.5"></i>
                                         Edit
                                     </button>
-                                    <button x-show="prompt.has_override" x-cloak
+                                    <button type="button" x-show="prompt.has_override" x-cloak
                                             @click="openReset(prompt)"
                                             class="inline-flex items-center justify-center rounded-md text-sm font-medium
  ring-offset-background transition-colors

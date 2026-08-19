@@ -9,7 +9,7 @@
 
 {% macro _ea_workflows_actions() %}
 <div class="flex flex-wrap items-center gap-2" data-testid="page-actions">
-    <button @click="seedWorkflows()" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-sm font-medium" aria-label="Seed default workflows">
+    <button type="button" @click="seedWorkflows()" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-sm font-medium" aria-label="Seed default workflows">
         <i data-lucide="database" class="h-4 w-4" aria-hidden="true"></i>
         <span class="hidden sm:inline">Seed Defaults</span>
     </button>
@@ -121,12 +121,12 @@
                             </td>
                             <td class="px-4 py-3 text-right">
                                 {% if defn %}
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-success/10 text-success-emphasis">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-success/10 text-success-emphasis">
                                     <span class="h-1.5 w-1.5 rounded-full bg-success"></span>
                                     Active
                                 </span>
                                 {% else %}
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-muted text-muted-foreground">
                                     Not seeded
                                 </span>
                                 {% endif %}
@@ -164,7 +164,7 @@
                             {% endif %}
                         </div>
                         {% if defn %}
-                        <button @click="startWorkflow('{{ wf_code }}')"
+                        <button type="button" @click="startWorkflow('{{ wf_code }}')"
                                 class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-medium"
                                 aria-label="Start {{ name }}">
                             <i data-lucide="play" class="h-3 w-3" aria-hidden="true"></i>
@@ -538,7 +538,7 @@
                                    class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 border border-border hover:border-primary/50 hover:bg-muted/50 transition-colors shrink-0">
                                     <span class="h-2 w-2 rounded-full shrink-0" :class="phaseColor(phase.status)"></span>
                                     <span class="text-xs font-medium text-foreground truncate max-w-[120px]" x-text="phase.togaf_phase || phase.workflow_name"></span>
-                                    <span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium shrink-0"
+                                    <span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-2xs font-medium shrink-0"
                                           :class="phaseBadgeClass(phase.status)"
                                           x-text="phase.status.replace('_', ' ')"></span>
                                 </a>

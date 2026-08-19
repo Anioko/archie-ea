@@ -209,7 +209,7 @@
                     <h3 class="text-sm font-semibold text-foreground">Assess Impact</h3>
                 </div>
                 <p class="text-xs text-muted-foreground">Auto-query linked capabilities and decisions to build an impact assessment list.</p>
-                <button @click="assessImpact()"
+                <button type="button" @click="assessImpact()"
                         :disabled="assessLoading"
                         id="btn-assess-impact"
                         class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
@@ -233,7 +233,7 @@
                     <option value="{{ d }}" {% if cr.disposition == d %}selected{% endif %}>{{ d | replace('_', ' ') | title }}</option>
                     {% endfor %}
                 </select>
-                <button @click="setDisposition()"
+                <button type="button" @click="setDisposition()"
                         :disabled="dispositionLoading"
                         id="btn-set-disposition"
                         class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-warning px-3 py-2 text-sm font-medium text-warning-foreground hover:bg-warning/90 disabled:opacity-50 transition-colors">
@@ -254,7 +254,7 @@
                           placeholder="Describe the scope and outcome of this change…"
                           rows="4"
                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Describe the scope and outcome of this change…"></textarea>
-                <button @click="issueNotice()"
+                <button type="button" @click="issueNotice()"
                         :disabled="noticeLoading"
                         id="btn-issue-notice"
                         class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-success px-3 py-2 text-sm font-medium text-success-foreground hover:bg-success/90 disabled:opacity-50 transition-colors">

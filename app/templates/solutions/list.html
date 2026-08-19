@@ -192,13 +192,13 @@
                 <thead>
                     <tr class="border-b border-border/50 bg-muted/30">
                         <th class="px-5 py-3.5 w-10"><input type="checkbox" data-select-all="solution-table" class="h-4 w-4 rounded border-input" aria-label="Select all solutions"></th>
-                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Solution</th>
-                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Phase & Status</th>
-                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Design Maturity</th>
-                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Architecture Scope</th>
-                        <th class="px-5 py-3.5 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Arch. Score</th>
-                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Next Action</th>
-                        <th class="px-5 py-3.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
+                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Solution</th>
+                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Phase & Status</th>
+                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Design Maturity</th>
+                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Architecture Scope</th>
+                        <th class="px-5 py-3.5 text-center text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Arch. Score</th>
+                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Next Action</th>
+                        <th class="px-5 py-3.5 text-right text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border/50">
@@ -218,7 +218,7 @@
                                 <div class="space-y-1.5">
                                     <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}" class="text-sm font-semibold text-foreground hover:text-primary transition-colors">{{ solution.name }}</a>
                                     <p class="text-xs text-muted-foreground leading-relaxed">{{ solution.description[:90] if solution.description else 'No summary yet.' }}{% if solution.description and solution.description|length > 90 %}...{% endif %}</p>
-                                    <div class="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                    <div class="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
                                         <span class="px-2 py-0.5 rounded bg-muted/50">{{ solution.business_domain or 'No domain' }}</span>
                                         <span class="px-2 py-0.5 rounded bg-muted/50">{{ solution.solution_type|replace('_', ' ')|title if solution.solution_type else 'Type not set' }}</span>
                                         <span class="text-muted-foreground/60">Lead: {{ ws.owner_display or 'Unassigned' }}</span>
@@ -284,7 +284,7 @@
                                             stroke-dasharray="{{ _score }}, 100"
                                             class="{{ 'text-success-emphasis' if _score >= 80 else ('text-warning' if _score >= 40 else 'text-destructive') }}"/>
                                   </svg>
-                                  <span class="absolute text-[11px] font-bold leading-none">{{ _score }}%</span>
+                                  <span class="absolute text-2xs font-bold leading-none">{{ _score }}%</span>
                                 </div>
                                 <span class="text-xs text-muted-foreground">{{ _cs.get('filled_count', 0) }}/{{ _cs.get('total', 14) }}</span>
                               </div>

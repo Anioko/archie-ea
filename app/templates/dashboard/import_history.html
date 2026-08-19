@@ -104,7 +104,7 @@
             </div>
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-1">&nbsp;</label>
-                <button @click="applyFilters()" class="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary transition-colors" aria-label="Apply filters to history">
+                <button type="button" @click="applyFilters()" class="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary transition-colors" aria-label="Apply filters to history">
                     <i data-lucide="filter" class="inline h-4 w-4 mr-2" aria-hidden="true"></i>Apply Filters
                 </button>
             </div>
@@ -141,7 +141,7 @@
     <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 shadow-lg rounded-lg bg-card">
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-xl font-bold text-foreground">Import Details</h2>
-            <button @click="closeDetailsModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+            <button type="button" @click="closeDetailsModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
                 <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
             </button>
         </div>
@@ -157,7 +157,7 @@
     <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-lg bg-card">
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-xl font-bold text-foreground">Confirm Rollback</h2>
-            <button @click="closeRollbackModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+            <button type="button" @click="closeRollbackModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
                 <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
             </button>
         </div>
@@ -179,10 +179,10 @@
         </div>
 
         <div class="flex justify-end space-x-3 mt-6">
-            <button @click="closeRollbackModal()" class="bg-muted text-foreground/80 px-4 py-2 rounded-lg hover:bg-muted-foreground/40 transition-colors" aria-label="Close">
+            <button type="button" @click="closeRollbackModal()" class="bg-muted text-foreground/80 px-4 py-2 rounded-lg hover:bg-muted-foreground/40 transition-colors" aria-label="Close">
                 Cancel
             </button>
-            <button @click="confirmRollback()" class="bg-destructive text-primary-foreground px-4 py-2 rounded-lg hover:bg-destructive transition-colors" aria-label="Confirm rollback of import">
+            <button type="button" @click="confirmRollback()" class="bg-destructive text-primary-foreground px-4 py-2 rounded-lg hover:bg-destructive transition-colors" aria-label="Confirm rollback of import">
                 <i data-lucide="rotate-ccw" class="inline h-4 w-4 mr-2" aria-hidden="true"></i>Rollback Import
             </button>
         </div>

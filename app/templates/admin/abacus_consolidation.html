@@ -72,7 +72,7 @@
 
             <!-- Actions -->
             <div class="flex gap-2">
-                <button
+                <button type="button"
                     @click="bulkMergeSelected()"
                     :disabled="selectedPairs.length === 0"
                     class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary disabled:bg-muted disabled:cursor-not-allowed"
@@ -80,7 +80,7 @@
                     Merge Selected (<span x-text="selectedPairs.length"></span>)
                 </button>
 
-                <button
+                <button type="button"
                     @click="autoMergeHighConfidence()"
                     class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success"
                 >
@@ -193,13 +193,13 @@
                                     >
                                         Compare
                                     </a>
-                                    <button
+                                    <button type="button"
                                         @click="mergePair(candidate.abacus_id, candidate.manual_id)"
                                         class="text-success-emphasis hover:text-success-emphasis text-sm font-medium"
                                     >
                                         Merge
                                     </button>
-                                    <button
+                                    <button type="button"
                                         @click="rejectPair(candidate.abacus_id, candidate.manual_id)"
                                         class="text-destructive-emphasis hover:text-destructive-emphasis text-sm font-medium"
                                      aria-label="Reject">

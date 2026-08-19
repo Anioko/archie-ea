@@ -102,7 +102,7 @@
                 <div class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold mb-3">1</div>
                 <p class="text-sm font-medium text-foreground mb-1">Score Your Portfolio</p>
                 <p class="text-xs text-muted-foreground mb-3">You have {{ stats.total_applications|dash }} apps. Score them using the TIME framework.</p>
-                <button @click="scorePortfolio()" :disabled="isScoring"
+                <button type="button" @click="scorePortfolio()" :disabled="isScoring"
                         class="inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-4 disabled:opacity-50">
                     <span x-show="isScoring" x-cloak class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block mr-1.5"></span>
                     Score Portfolio
@@ -226,7 +226,7 @@
         <i data-lucide="clock" class="h-5 w-5 text-warning flex-shrink-0"></i>
         <p class="text-sm text-muted-foreground">
             Scores are <span class="font-semibold text-foreground" x-text="lastScoredDaysAgo"></span> days old.
-            <button @click="scorePortfolio()" class="text-primary hover:underline ml-1">Re-run scoring</button>
+            <button type="button" @click="scorePortfolio()" class="text-primary hover:underline ml-1">Re-run scoring</button>
             to reflect recent changes.
         </p>
     </div>
@@ -255,7 +255,7 @@
                 <div class="flex flex-col items-center py-8 text-center">
                     <i data-lucide="bar-chart" class="h-10 w-10 text-muted-foreground/40 mb-3"></i>
                     <p class="text-sm text-muted-foreground mb-3">No applications scored yet. Score your portfolio to see health distribution.</p>
-                    <button @click="scorePortfolio()" :disabled="isScoring"
+                    <button type="button" @click="scorePortfolio()" :disabled="isScoring"
                             class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 disabled:opacity-50">
                         <span x-show="isScoring" x-cloak class="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span>
                         Score Portfolio
@@ -273,7 +273,7 @@
                 <div class="text-sm text-destructive-emphasis flex items-center gap-2">
                     <i data-lucide="alert-circle" class="h-4 w-4"></i>
                     <span>Failed to load.</span>
-                    <button @click="load()" class="text-primary hover:underline text-xs">Retry</button>
+                    <button type="button" @click="load()" class="text-primary hover:underline text-xs">Retry</button>
                 </div>
             </template>
         </div>
@@ -300,7 +300,7 @@
                 <div class="flex flex-col items-center py-8 text-center">
                     <i data-lucide="pie-chart" class="h-10 w-10 text-muted-foreground/40 mb-3"></i>
                     <p class="text-sm text-muted-foreground mb-3">Score your portfolio to see disposition breakdown.</p>
-                    <button @click="scorePortfolio()" :disabled="isScoring"
+                    <button type="button" @click="scorePortfolio()" :disabled="isScoring"
                             class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 disabled:opacity-50">
                         Score Portfolio
                     </button>
@@ -317,7 +317,7 @@
                 <div class="text-sm text-destructive-emphasis flex items-center gap-2">
                     <i data-lucide="alert-circle" class="h-4 w-4"></i>
                     <span>Failed to load.</span>
-                    <button @click="load()" class="text-primary hover:underline text-xs">Retry</button>
+                    <button type="button" @click="load()" class="text-primary hover:underline text-xs">Retry</button>
                 </div>
             </template>
         </div>
@@ -335,7 +335,7 @@
             <div class="flex flex-col items-center justify-center py-12 text-center">
                 <i data-lucide="scatter-chart" class="h-12 w-12 text-muted-foreground/40 mb-4"></i>
                 <p class="text-sm text-muted-foreground mb-3">Score your portfolio to see the TIME quadrant visualization.</p>
-                <button @click="scorePortfolio()" :disabled="isScoring"
+                <button type="button" @click="scorePortfolio()" :disabled="isScoring"
                         class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 disabled:opacity-50">
                     Score Portfolio
                 </button>
@@ -468,7 +468,7 @@
     <h2 class="text-lg font-semibold text-foreground mb-4">Quick Actions</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {# RATA-004: Score Portfolio button #}
-        <button @click="scorePortfolio()"
+        <button type="button" @click="scorePortfolio()"
                 :disabled="isScoring"
                 class="rounded-xl border bg-card p-5 text-left hover:border-primary/50 hover:shadow-sm transition-all group">
             <div class="flex items-start gap-3">
@@ -491,7 +491,7 @@
             </div>
         </button>
 
-        <button @click="showDetectionModal = true"
+        <button type="button" @click="showDetectionModal = true"
                 class="rounded-xl border bg-card p-5 text-left hover:border-primary/50 hover:shadow-sm transition-all group">
             <div class="flex items-start gap-3">
                 <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 transition-colors">
@@ -504,7 +504,7 @@
             </div>
         </button>
 
-        <button @click="autoResolveExact()"
+        <button type="button" @click="autoResolveExact()"
                 :disabled="autoResolveLoading"
                 class="rounded-xl border bg-card p-5 text-left hover:border-primary/50 hover:shadow-sm transition-all group">
             <div class="flex items-start gap-3">
@@ -558,7 +558,7 @@
         </a>
 
         {# RATA-018: Export Business Case button #}
-        <button @click="showExportModal = true" x-show="hasScores" x-cloak
+        <button type="button" @click="showExportModal = true" x-show="hasScores" x-cloak
                 class="rounded-xl border bg-card p-5 text-left hover:border-primary/50 hover:shadow-sm transition-all group">
             <div class="flex items-start gap-3">
                 <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 transition-colors">
@@ -594,9 +594,9 @@
                 </div>
             </div>
             <div class="flex justify-end gap-2 mt-5">
-                <button @click="showExportModal = false"
+                <button type="button" @click="showExportModal = false"
                         class="px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted">Cancel</button>
-                <button @click="doExport()"
+                <button type="button" @click="doExport()"
                         :disabled="exportLoading"
                         class="px-4 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                     <span x-show="exportLoading" x-cloak class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block mr-1"></span>

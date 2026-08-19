@@ -26,7 +26,7 @@
                             <p class="text-sm font-medium text-foreground" x-text="suggestion.template_name"></p>
                             <p class="text-xs text-muted-foreground" x-text="suggestion.description + ' — ' + suggestion.entity + ' (' + suggestion.matched_fields.join(', ') + ')'"></p>
                         </div>
-                        <button @click="applyRuleTemplate(suggestion)"
+                        <button type="button" @click="applyRuleTemplate(suggestion)"
                                 class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 shrink-0">
                             <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i>
                             Add
@@ -67,7 +67,7 @@
         <p class="text-xs text-muted-foreground">Describe a rule in plain English:</p>
         <textarea x-model="nlRuleInput" rows="3" placeholder="e.g., When a customer has more than 3 overdue orders, block new orders and notify the account manager"
                   class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
-        <button @click="submitCustomRule()" :disabled="!nlRuleInput || nlRuleLoading"
+        <button type="button" @click="submitCustomRule()" :disabled="!nlRuleInput || nlRuleLoading"
                 class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
             <i data-lucide="sparkles" class="w-4 h-4" aria-hidden="true"></i>
             <span x-text="nlRuleLoading ? 'Interpreting...' : 'Interpret Rule'"></span>

@@ -9,7 +9,7 @@
             <span class="w-2 h-2 rounded-full bg-primary inline-block"></span>
             Investment Phases
         </h3>
-        <div class="sad-actions"><button @click="openEntityModal('investment_phase')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Phase</button></div>
+        <div class="sad-actions"><button type="button" @click="openEntityModal('investment_phase')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Phase</button></div>
     </div>
     <template x-if="sadInvestmentPhases.length > 0">
         <div class="overflow-x-auto">
@@ -33,8 +33,8 @@
                             <td class="py-2 px-3 text-muted-foreground" x-text="item.funding_source || '\u2014'"></td>
                             <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.status === 'approved', 'text-warning-emphasis': item.status === 'pending', 'text-primary': item.status === 'in_progress'}" x-text="item.status"></span></td>
                             <td class="py-2 px-3 text-right sad-actions">
-                                <button @click="openEntityModal('investment_phase', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                <button @click="confirmDeleteEntity('investment_phase', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                                <button type="button" @click="openEntityModal('investment_phase', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                <button type="button" @click="confirmDeleteEntity('investment_phase', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                             </td>
                         </tr>
                     </template>

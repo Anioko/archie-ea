@@ -18,7 +18,7 @@
                       file:text-sm file:font-medium file:bg-primary file:text-primary-foreground
                       hover:file:bg-primary/90 cursor-pointer" />
       </label>
-      <button @click="uploadPreview()"
+      <button type="button" @click="uploadPreview()"
               :disabled="!selectedFile || loading"
               class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium
                      bg-primary text-primary-foreground hover:bg-primary/90
@@ -130,7 +130,7 @@
         <option value="create_all">Create All (allow duplicates)</option>
       </select>
 
-      <button @click="executeImport()"
+      <button type="button" @click="executeImport()"
               :disabled="importing"
               class="ml-auto inline-flex items-center px-4 py-2 rounded-md text-sm font-medium
                      bg-primary text-primary-foreground hover:bg-primary/90

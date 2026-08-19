@@ -147,13 +147,13 @@
     <div x-data="{ activeTab: 'direct' }">
         <div class="border-b mb-4">
             <nav class="flex space-x-8">
-                <button @click="activeTab = 'direct'"
+                <button type="button" @click="activeTab = 'direct'"
                         :class="activeTab === 'direct' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:border-border'"
                         class="border-b-2 px-1 py-4 text-sm font-medium" aria-label="Direct Impact">
                     Direct Impact
                     <span class="ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-xs bg-muted">{{ analysis.direct_impacts | length }}</span>
                 </button>
-                <button @click="activeTab = 'all'"
+                <button type="button" @click="activeTab = 'all'"
                         :class="activeTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:border-border'"
                         class="border-b-2 px-1 py-4 text-sm font-medium" aria-label="All Impact">
                     All Impact

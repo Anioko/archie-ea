@@ -38,12 +38,12 @@
         </div>
 
         <div class="flex gap-2">
-            <button @click="resumeAnalysis"
+            <button type="button" @click="resumeAnalysis"
                     class="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Resume analysis">
                 <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
                 Resume Analysis
             </button>
-            <button @click="exportSession"
+            <button type="button" @click="exportSession"
                     class="inline-flex items-center gap-2 h-10 px-4 rounded-lg border border-input hover:bg-accent transition-colors text-sm font-medium" aria-label="Export">
                 <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
                 Export
@@ -54,37 +54,37 @@
     <!-- Tabs -->
     <div class="border-b border-border mb-6">
         <nav class="flex gap-6">
-            <button @click="activeTab = 'overview'"
+            <button type="button" @click="activeTab = 'overview'"
                     :class="activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show overview tab">
                 Overview
             </button>
-            <button @click="activeTab = 'problem'"
+            <button type="button" @click="activeTab = 'problem'"
                     :class="activeTab === 'problem' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show problem definition tab">
                 Problem Definition
             </button>
-            <button @click="activeTab = 'motivational'"
+            <button type="button" @click="activeTab = 'motivational'"
                     :class="activeTab === 'motivational' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show motivational elements tab">
                 Motivational Elements
             </button>
-            <button @click="activeTab = 'recommendations'"
+            <button type="button" @click="activeTab = 'recommendations'"
                     :class="activeTab === 'recommendations' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show recommendations tab">
                 Recommendations
             </button>
-            <button @click="activeTab = 'options_analysis'; if (!analysisLoaded) loadAnalysisResults()"
+            <button type="button" @click="activeTab = 'options_analysis'; if (!analysisLoaded) loadAnalysisResults()"
                     :class="activeTab === 'options_analysis' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show options analysis tab">
                 Options Analysis
             </button>
-            <button @click="activeTab = 'ai_design'"
+            <button type="button" @click="activeTab = 'ai_design'"
                     :class="activeTab === 'ai_design' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show AI design tab">
                 AI Design
             </button>
-            <button @click="activeTab = 'versions'"
+            <button type="button" @click="activeTab = 'versions'"
                     :class="activeTab === 'versions' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show versions tab">
                 Versions ({{ session.versions|length }})
@@ -460,7 +460,7 @@
                     Run a multi-criteria options analysis to compare Buy, Build, Reuse, and Hybrid approaches
                     based on your problem definition, budget, and timeline constraints.
                 </p>
-                <button @click="runOptionsAnalysis()"
+                <button type="button" @click="runOptionsAnalysis()"
                         :disabled="!hasProblemDefinition"
                         class="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Run options analysis">
                     <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
@@ -482,7 +482,7 @@
                         <p class="text-sm text-muted-foreground mt-1"
                            x-text="analysisResults.length + ' options analyzed and ranked by score'"></p>
                     </div>
-                    <button @click="runOptionsAnalysis()"
+                    <button type="button" @click="runOptionsAnalysis()"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-input hover:bg-accent transition-colors text-sm font-medium" aria-label="Re-run options analysis">
                         <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i>
                         Re-run Analysis
@@ -577,7 +577,7 @@
 
                                 <!-- Pros -->
                                 <div x-show="rec.pros && rec.pros.length > 0" x-cloak>
-                                    <button @click="rec._showPros = !rec._showPros"
+                                    <button type="button" @click="rec._showPros = !rec._showPros"
                                             class="flex items-center gap-1 text-sm font-semibold text-success-emphasis mb-2 hover:underline" aria-label="Toggle pros list">
                                         <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform"
                                            :class="rec._showPros ? 'rotate-180' : ''"></i>
@@ -595,7 +595,7 @@
 
                                 <!-- Cons -->
                                 <div x-show="rec.cons && rec.cons.length > 0" x-cloak>
-                                    <button @click="rec._showCons = !rec._showCons"
+                                    <button type="button" @click="rec._showCons = !rec._showCons"
                                             class="flex items-center gap-1 text-sm font-semibold text-destructive-emphasis mb-2 hover:underline" aria-label="Toggle cons list">
                                         <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform"
                                            :class="rec._showCons ? 'rotate-180' : ''"></i>
@@ -629,7 +629,7 @@
 
                 <!-- Scenario What-If Controls -->
                 <div class="bg-card rounded-lg border border-border p-6" x-data="{ showScenario: false }">
-                    <button @click="showScenario = !showScenario" class="flex items-center justify-between w-full text-left" aria-label="Toggle what-if scenario analysis">
+                    <button type="button" @click="showScenario = !showScenario" class="flex items-center justify-between w-full text-left" aria-label="Toggle what-if scenario analysis">
                         <h3 class="text-lg font-bold flex items-center gap-2">
                             <i data-lucide="sliders-horizontal" class="h-5 w-5 text-warning" aria-hidden="true"></i>
                             What-If Scenario Analysis
@@ -698,7 +698,7 @@
                                       :class="scenarioWeightSum === 100 ? 'text-success-emphasis' : 'text-destructive-emphasis'"
                                       x-text="scenarioWeightSum + '%'"></span>
                             </div>
-                            <button @click="recalculateScenario()"
+                            <button type="button" @click="recalculateScenario()"
                                     :disabled="scenarioWeightSum !== 100 || scenarioLoading"
                                     class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-warning text-primary-foreground hover:bg-warning transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Recalculate scenario rankings">
                                 <svg class="h-4 w-4" :class="scenarioLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -754,7 +754,7 @@
                     <span class="font-medium">Analysis Error</span>
                 </div>
                 <p class="text-sm text-destructive-emphasis mt-1" x-text="analysisError"></p>
-                <button @click="analysisError = null"
+                <button type="button" @click="analysisError = null"
                         class="mt-2 text-sm text-destructive-emphasis hover:underline" aria-label="Dismiss analysis error">Dismiss</button>
             </div>
         </template>
@@ -797,7 +797,7 @@
                             <p class="text-sm text-muted-foreground">ArchiMate elements across all 6 layers</p>
                         </div>
                     </div>
-                    <button @click="generateAIElements()"
+                    <button type="button" @click="generateAIElements()"
                             :disabled="!hasProblemDefinition || aiLoading.elements"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate architecture elements">
                         <svg x-show="aiLoading.elements" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -819,7 +819,7 @@
                     </div>
                     <template x-for="layer in ['motivation', 'strategy', 'business', 'application', 'technology', 'implementation']" :key="layer">
                         <div x-show="aiElements[layer] && aiElements[layer].length > 0" x-cloak>
-                            <button @click="aiExpandedLayers[layer] = !aiExpandedLayers[layer]"
+                            <button type="button" @click="aiExpandedLayers[layer] = !aiExpandedLayers[layer]"
                                     class="flex items-center justify-between w-full text-left p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors" aria-label="Toggle architecture layer details">
                                 <div class="flex items-center gap-2">
                                     <svg class="w-4 h-4 text-muted-foreground transition-transform" :class="aiExpandedLayers[layer] ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -874,7 +874,7 @@
                             <p class="text-sm text-muted-foreground">Match architecture patterns from the pattern library</p>
                         </div>
                     </div>
-                    <button @click="detectAIPatterns()"
+                    <button type="button" @click="detectAIPatterns()"
                             :disabled="!hasProblemDefinition || aiLoading.patterns"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-success text-primary-foreground hover:bg-success disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Detect architecture patterns">
                         <svg x-show="aiLoading.patterns" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -927,7 +927,7 @@
                                 <!-- Pattern elements (collapsed) -->
                                 <template x-if="pattern.is_match">
                                     <div class="mt-3" x-data="{ showElems: false }">
-                                        <button @click="showElems = !showElems" class="text-xs text-success-emphasis hover:underline flex items-center gap-1" aria-label="Toggle pattern elements">
+                                        <button type="button" @click="showElems = !showElems" class="text-xs text-success-emphasis hover:underline flex items-center gap-1" aria-label="Toggle pattern elements">
                                             <svg class="w-3 h-3 transition-transform" :class="showElems ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                                             </svg>
@@ -963,7 +963,7 @@
                             <p class="text-sm text-muted-foreground">Functional, non-functional, and constraint requirements</p>
                         </div>
                     </div>
-                    <button @click="generateAIRequirements()"
+                    <button type="button" @click="generateAIRequirements()"
                             :disabled="!hasProblemDefinition || aiLoading.requirements"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate requirements">
                         <svg x-show="aiLoading.requirements" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -1056,7 +1056,7 @@
                             <p class="text-sm text-muted-foreground">Work packages organized by implementation phase</p>
                         </div>
                     </div>
-                    <button @click="generateAIRoadmap()"
+                    <button type="button" @click="generateAIRoadmap()"
                             :disabled="!hasProblemDefinition || aiLoading.roadmap"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-warning text-primary-foreground hover:bg-warning disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate implementation roadmap">
                         <svg x-show="aiLoading.roadmap" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">

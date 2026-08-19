@@ -52,7 +52,7 @@
         {# Context #}
         <div>
             <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-context">Context</label>
-            <p class="text-[11px] text-muted-foreground mb-1">Why was this decision needed? What forces are at play?</p>
+            <p class="text-2xs text-muted-foreground mb-1">Why was this decision needed? What forces are at play?</p>
             <textarea id="adr-context"
                       x-data
                       :value="window._decisionsSection ? window._decisionsSection.form.context : ''"
@@ -67,7 +67,7 @@
             <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-decision">
                 Decision <span class="text-destructive-emphasis" aria-hidden="true">*</span>
             </label>
-            <p class="text-[11px] text-muted-foreground mb-1">What was decided? State it clearly and unambiguously.</p>
+            <p class="text-2xs text-muted-foreground mb-1">What was decided? State it clearly and unambiguously.</p>
             <textarea id="adr-decision"
                       x-data
                       :value="window._decisionsSection ? window._decisionsSection.form.decision : ''"
@@ -81,7 +81,7 @@
         {# Rationale #}
         <div>
             <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-rationale">Rationale</label>
-            <p class="text-[11px] text-muted-foreground mb-1">Why was this option chosen over the alternatives?</p>
+            <p class="text-2xs text-muted-foreground mb-1">Why was this option chosen over the alternatives?</p>
             <textarea id="adr-rationale"
                       x-data
                       :value="window._decisionsSection ? window._decisionsSection.form.rationale : ''"
@@ -109,7 +109,7 @@
                 <label class="text-xs font-medium text-foreground">Alternatives Considered</label>
                 <button type="button"
                         @click="_s.addAlternative()"
-                        class="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors">
+                        class="inline-flex items-center gap-1 text-2xs font-medium text-primary hover:text-primary/80 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                     Add option
                 </button>

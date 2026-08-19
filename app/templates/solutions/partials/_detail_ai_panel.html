@@ -606,7 +606,7 @@
                                @keydown.enter="extractRelationships()"
                                placeholder="e.g. The web frontend calls the order service which accesses the order database"
                                class="flex-1 text-sm rounded-md border border-input bg-background px-3 py-1.5" aria-label="Describe architecture relationships in natural language">
-                        <button @click="extractRelationships()" :disabled="relChatLoading || !relChatMsg.trim()"
+                        <button type="button" @click="extractRelationships()" :disabled="relChatLoading || !relChatMsg.trim()"
                                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
                             <template x-if="relChatLoading">
                                 <div class="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-primary-foreground"></div>
@@ -629,7 +629,7 @@
                             <span class="text-xs font-medium text-muted-foreground">
                                 <span x-text="relChatProposals.length"></span> relationship<span x-show="relChatProposals.length !== 1" x-cloak>s</span> found
                             </span>
-                            <button @click="acceptChatProposals()" :disabled="relChatAccepting || !relChatProposals.some(p => p.checked)"
+                            <button type="button" @click="acceptChatProposals()" :disabled="relChatAccepting || !relChatProposals.some(p => p.checked)"
                                     class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
                                 Accept Selected
                             </button>

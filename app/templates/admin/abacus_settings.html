@@ -139,7 +139,7 @@
             <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card" x-data="syncStatusPanel()">
                 <div class="p-4 sm:p-6 border-b flex items-center justify-between">
                     <h3 class="text-lg font-semibold">Sync Job Status</h3>
-                    <button x-show="isStale" @click="clearStaleJobs()" x-cloak
+                    <button type="button" x-show="isStale" @click="clearStaleJobs()" x-cloak
                             class="text-xs px-2.5 py-1 rounded-md bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20 font-medium">
                         Clear Stale Job
                     </button>
@@ -629,7 +629,7 @@
                         </table>
                     </div>
                     <div class="flex items-center gap-3 mt-4 pt-4 border-t">
-                        <button @click="saveMappings()"
+                        <button type="button" @click="saveMappings()"
                                 :disabled="saving"
                                 class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                             <span x-show="!saving">Save Mappings</span>

@@ -104,25 +104,25 @@
     <!-- Tabs -->
     <div class="border-b">
         <nav class="flex space-x-8" aria-label="Governance tabs">
-            <button
+            <button type="button"
                 @click="activeTab = 'principles'"
                 :class="activeTab === 'principles' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                 class="border-b-2 px-1 py-4 text-sm font-medium transition-colors">
                 Architecture Principles
             </button>
-            <button
+            <button type="button"
                 @click="activeTab = 'standards'"
                 :class="activeTab === 'standards' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                 class="border-b-2 px-1 py-4 text-sm font-medium transition-colors">
                 Technology Standards
             </button>
-            <button
+            <button type="button"
                 @click="activeTab = 'reviews'"
                 :class="activeTab === 'reviews' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                 class="border-b-2 px-1 py-4 text-sm font-medium transition-colors">
                 ARB Reviews
             </button>
-            <button
+            <button type="button"
                 @click="activeTab = 'roadmap'"
                 :class="activeTab === 'roadmap' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                 class="border-b-2 px-1 py-4 text-sm font-medium transition-colors">
@@ -135,7 +135,7 @@
     <div x-show="activeTab === 'principles'" class="space-y-4">
         <div class="flex items-center justify-between">
             <h2 class="text-xl font-semibold">Architecture Principles</h2>
-            <button @click="openCreatePrincipleModal()"
+            <button type="button" @click="openCreatePrincipleModal()"
                 class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                 <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Principle
             </button>
@@ -162,7 +162,7 @@
     <div x-show="activeTab === 'standards'" class="space-y-4">
         <div class="flex items-center justify-between">
             <h2 class="text-xl font-semibold">Technology Standards</h2>
-            <button @click="openCreateStandardModal()"
+            <button type="button" @click="openCreateStandardModal()"
                 class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                 <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Standard
             </button>

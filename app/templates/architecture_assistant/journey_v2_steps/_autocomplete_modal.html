@@ -26,7 +26,7 @@
             </template>
           </p>
         </div>
-        <button @click="$store.autocomplete.dismiss()"
+        <button type="button" @click="$store.autocomplete.dismiss()"
                 class="text-muted-foreground hover:text-foreground transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -112,20 +112,20 @@
     {# Footer actions #}
     <div class="px-6 py-4 border-t border-border flex items-center justify-between flex-shrink-0">
       <div class="flex items-center gap-3">
-        <button @click="$store.autocomplete.selectAll()"
+        <button type="button" @click="$store.autocomplete.selectAll()"
                 class="text-xs text-primary hover:underline">Select all</button>
-        <button @click="$store.autocomplete.deselectAll()"
+        <button type="button" @click="$store.autocomplete.deselectAll()"
                 class="text-xs text-muted-foreground hover:underline">Deselect all</button>
         <span class="text-xs text-muted-foreground">
           <span x-text="$store.autocomplete.selectedCount"></span>/<span x-text="$store.autocomplete.totalCount"></span> selected
         </span>
       </div>
       <div class="flex items-center gap-2">
-        <button @click="$store.autocomplete.dismiss()"
+        <button type="button" @click="$store.autocomplete.dismiss()"
                 class="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
           Cancel
         </button>
-        <button @click="$store.autocomplete.applySelected()"
+        <button type="button" @click="$store.autocomplete.applySelected()"
                 :disabled="$store.autocomplete.selectedCount === 0 || $store.autocomplete.loading"
                 class="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
           Accept selected (<span x-text="$store.autocomplete.selectedCount"></span>)

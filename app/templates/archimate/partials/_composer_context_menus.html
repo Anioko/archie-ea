@@ -191,24 +191,24 @@
                 </p>
             </div>
             <div class="p-3 space-y-1">
-                <button @click="confirmNesting('composition')"
+                <button type="button" @click="confirmNesting('composition')"
                         class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent transition-colors flex items-center gap-2">
                     <span class="w-4 h-4 rounded-sm border border-foreground bg-foreground/10 flex-shrink-0"></span>
                     <span><span class="font-medium">Composition</span> <span class="text-muted-foreground">— part-of (strong ownership)</span></span>
                 </button>
-                <button @click="confirmNesting('aggregation')"
+                <button type="button" @click="confirmNesting('aggregation')"
                         class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent transition-colors flex items-center gap-2">
                     <span class="w-4 h-4 rounded-sm border border-foreground flex-shrink-0"></span>
                     <span><span class="font-medium">Aggregation</span> <span class="text-muted-foreground">— groups (shared)</span></span>
                 </button>
-                <button @click="confirmNesting('grouping')"
+                <button type="button" @click="confirmNesting('grouping')"
                         class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent transition-colors flex items-center gap-2">
                     <span class="w-4 h-4 rounded-sm border border-dashed border-muted-foreground flex-shrink-0"></span>
                     <span><span class="font-medium">Grouping</span> <span class="text-muted-foreground">— visual only (no model relationship)</span></span>
                 </button>
             </div>
             <div class="px-4 pb-3">
-                <button @click="cancelNesting()" class="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1.5">Cancel</button>
+                <button type="button" @click="cancelNesting()" class="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1.5">Cancel</button>
             </div>
         </div>
     </div>
@@ -223,9 +223,9 @@
                 </p>
             </div>
             <div class="flex items-center justify-end gap-2 p-3">
-                <button @click="cancelBulkDelete()"
+                <button type="button" @click="cancelBulkDelete()"
                         class="px-3 py-1.5 text-xs rounded-md border border-border bg-background text-foreground hover:bg-accent transition-colors">Cancel</button>
-                <button @click="confirmBulkDelete()"
+                <button type="button" @click="confirmBulkDelete()"
                         class="px-3 py-1.5 text-xs rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors font-medium">Delete</button>
             </div>
         </div>

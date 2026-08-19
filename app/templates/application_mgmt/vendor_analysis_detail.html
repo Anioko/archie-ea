@@ -335,14 +335,14 @@
               <p class="text-sm font-medium text-foreground">
                 <span x-text="allCapabilities.length"></span> capabilities selected
               </p>
-              <button @click="clearCapabilities()" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">Clear All</button>
+              <button type="button" @click="clearCapabilities()" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">Clear All</button>
             </div>
             <div class="flex flex-wrap gap-1.5">
               <template x-for="cap in allCapabilities" :key="cap.id + '-' + cap._level">
                 <span class="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded text-xs font-medium group">
                   <span class="px-1 py-0 bg-primary/20 rounded text-xs font-bold" x-text="cap._level || 'L?'"></span>
                   <span x-text="cap.name"></span>
-                  <button @click="removeCapability(cap)" class="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove capability">
+                  <button type="button" @click="removeCapability(cap)" class="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove capability">
                     <i data-lucide="x" class="h-3 w-3"></i>
                   </button>
                 </span>
@@ -473,14 +473,14 @@
               <p class="text-sm font-medium text-foreground">
                 <span x-text="allProcesses.length"></span> processes selected
               </p>
-              <button @click="clearProcesses()" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">Clear All</button>
+              <button type="button" @click="clearProcesses()" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">Clear All</button>
             </div>
             <div class="flex flex-wrap gap-1.5">
               <template x-for="proc in allProcesses" :key="proc.id + '-' + proc._level">
                 <span class="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded text-xs font-medium group">
                   <span class="font-mono text-xs text-muted-foreground" x-text="proc.process_code || ''"></span>
                   <span x-text="proc.process_name || proc.name || ''"></span>
-                  <button @click="removeProcess(proc)" class="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove process">
+                  <button type="button" @click="removeProcess(proc)" class="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove process">
                     <i data-lucide="x" class="h-3 w-3"></i>
                   </button>
                 </span>
@@ -529,7 +529,7 @@
             <h3 class="text-lg font-semibold text-foreground">Vendor Discovery</h3>
             <p class="text-sm text-muted-foreground mt-0.5">Find vendors that match your selected architecture scope</p>
           </div>
-          <button @click="discoverVendorsUnified()" :disabled="!hasSelections() || loadingVendors"
+          <button type="button" @click="discoverVendorsUnified()" :disabled="!hasSelections() || loadingVendors"
             class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
             <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="loadingVendors" x-cloak></i>
             <i data-lucide="search" class="h-4 w-4" x-show="!loadingVendors" x-cloak></i>
@@ -562,7 +562,7 @@
                       :class="vendorMatchPct(v) >= 80 ? 'bg-success' : vendorMatchPct(v) >= 50 ? 'bg-warning' : 'bg-primary'"
                       :style="'width:' + vendorMatchPct(v) + '%'"></div>
                   </div>
-                  <p class="text-[11px] text-muted-foreground mt-1" x-text="vendorMatchPct(v) + '% coverage'"></p>
+                  <p class="text-2xs text-muted-foreground mt-1" x-text="vendorMatchPct(v) + '% coverage'"></p>
                 </div>
               </label>
             </template>
@@ -581,10 +581,10 @@
 
       <!-- Setup Actions -->
       <div class="flex justify-end gap-3">
-        <button @click="saveDraft()" class="px-4 py-2 border border-border rounded-md text-sm font-medium hover:bg-muted">
+        <button type="button" @click="saveDraft()" class="px-4 py-2 border border-border rounded-md text-sm font-medium hover:bg-muted">
           <i data-lucide="save" class="h-4 w-4 inline mr-1"></i> Save Draft
         </button>
-        <button @click="attemptSwitchTab('scoring')" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">
+        <button type="button" @click="attemptSwitchTab('scoring')" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">
           Next: Scoring <i data-lucide="arrow-right" class="h-4 w-4 inline ml-1"></i>
         </button>
       </div>
@@ -612,7 +612,7 @@
               <option value="risk_averse">Risk-Averse</option>
               <option value="strategic">Strategic Alignment</option>
             </select>
-            <button @click="resetWeights()" class="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-muted text-muted-foreground" title="Reset to defaults">
+            <button type="button" @click="resetWeights()" class="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-muted text-muted-foreground" title="Reset to defaults">
               <i data-lucide="rotate-ccw" class="h-3.5 w-3.5 inline"></i>
             </button>
           </div>
@@ -622,7 +622,7 @@
             <div class="grid grid-cols-12 gap-4 items-center">
               <div class="col-span-3">
                 <label class="text-sm font-medium text-foreground" x-text="weightLabels[key]"></label>
-                <p class="text-[11px] text-muted-foreground mt-0.5" x-text="weightDescriptions[key]"></p>
+                <p class="text-2xs text-muted-foreground mt-0.5" x-text="weightDescriptions[key]"></p>
               </div>
               <div class="col-span-7">
                 <input type="range" min="0" max="100" step="5"
@@ -693,10 +693,10 @@
 
       <!-- Run Analysis Action -->
       <div class="flex justify-between items-center">
-        <button @click="attemptSwitchTab('setup')" class="px-4 py-2 border border-border rounded-md text-sm hover:bg-muted">
+        <button type="button" @click="attemptSwitchTab('setup')" class="px-4 py-2 border border-border rounded-md text-sm hover:bg-muted">
           <i data-lucide="arrow-left" class="h-4 w-4 inline mr-1"></i> Back to Setup
         </button>
-        <button @click="runAnalysis()" :disabled="weightTotal !== 100 || runningAnalysis"
+        <button type="button" @click="runAnalysis()" :disabled="weightTotal !== 100 || runningAnalysis"
           class="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
           <i data-lucide="play" class="h-4 w-4" x-show="!runningAnalysis" x-cloak></i>
           <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="runningAnalysis" x-cloak></i>
@@ -716,7 +716,7 @@
     <div x-show="!loadingComparison" x-cloak class="space-y-6">
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-semibold text-foreground">Vendor Comparison Matrix</h3>
-        <button @click="loadComparison()" class="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted">
+        <button type="button" @click="loadComparison()" class="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted">
           <i data-lucide="refresh-cw" class="h-4 w-4 inline mr-1"></i> Refresh
         </button>
       </div>
@@ -920,7 +920,7 @@
                   <span class="text-xs text-muted-foreground">Required</span>
                 </label>
               </div>
-              <button @click="addRequirement()" :disabled="!newReqName.trim()"
+              <button type="button" @click="addRequirement()" :disabled="!newReqName.trim()"
                 class="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap">
                 <i data-lucide="plus" class="h-3.5 w-3.5 inline mr-1"></i> Add
               </button>
@@ -965,7 +965,7 @@
                       <template x-for="v in comparisonVendors" :key="v.id">
                         <td class="px-3 py-2 text-center">
                           <div class="flex items-center justify-center gap-0.5">
-                            <button @click="cycleFulfillment(req.id, v.id)"
+                            <button type="button" @click="cycleFulfillment(req.id, v.id)"
                               class="w-7 h-7 rounded-md flex items-center justify-center transition-colors border"
                               :class="{
                                 'bg-success/15 border-success/40 text-success-emphasis hover:bg-success/25': getFulfillment(req, v.id) === 'met',
@@ -991,7 +991,7 @@
                         </td>
                       </template>
                       <td class="px-3 py-2 text-center">
-                        <button @click="deleteRequirement(req.id)" class="text-muted-foreground hover:text-destructive-emphasis transition-colors" title="Delete requirement">
+                        <button type="button" @click="deleteRequirement(req.id)" class="text-muted-foreground hover:text-destructive-emphasis transition-colors" title="Delete requirement">
                           <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
                         </button>
                       </td>
@@ -1050,12 +1050,12 @@
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Save Current Weights as Scenario</label>
                 <div class="flex gap-2">
                   <input type="text" x-model="saveScenarioName" placeholder="e.g. Baseline" class="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground" aria-label="Save Current Weights as Scenario">
-                  <button @click="saveCurrentAsScenario()" :disabled="!saveScenarioName.trim()" class="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
+                  <button type="button" @click="saveCurrentAsScenario()" :disabled="!saveScenarioName.trim()" class="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
                     <i data-lucide="save" class="h-3.5 w-3.5 inline mr-1"></i>Save
                   </button>
                 </div>
               </div>
-              <button @click="showNewScenarioForm = !showNewScenarioForm" class="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted">
+              <button type="button" @click="showNewScenarioForm = !showNewScenarioForm" class="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted">
                 <i data-lucide="plus" class="h-3.5 w-3.5 inline mr-1"></i>New Scenario
               </button>
             </div>
@@ -1080,11 +1080,11 @@
                 </template>
               </div>
               <div class="flex gap-2">
-                <button @click="createScenario()" :disabled="!newScenarioName.trim() || newScenarioWeightTotal !== 100"
+                <button type="button" @click="createScenario()" :disabled="!newScenarioName.trim() || newScenarioWeightTotal !== 100"
                   class="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
                   Create Scenario
                 </button>
-                <button @click="showNewScenarioForm = false" class="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted">Cancel</button>
+                <button type="button" @click="showNewScenarioForm = false" class="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted">Cancel</button>
               </div>
             </div>
 
@@ -1110,7 +1110,7 @@
                         <div class="flex items-center justify-center gap-1">
                           <span x-text="s.scenario_name"></span>
                           <span x-show="s.is_baseline" class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30">Base</span>
-                          <button @click="deleteScenario(s.id)" class="ml-1 text-muted-foreground/50 hover:text-destructive-emphasis transition-colors" title="Delete scenario">
+                          <button type="button" @click="deleteScenario(s.id)" class="ml-1 text-muted-foreground/50 hover:text-destructive-emphasis transition-colors" title="Delete scenario">
                             <i data-lucide="x" class="h-3 w-3"></i>
                           </button>
                         </div>
@@ -1170,10 +1170,10 @@
       </div>
 
       <div class="flex justify-between items-center">
-        <button @click="attemptSwitchTab('scoring')" class="px-4 py-2 border border-border rounded-md text-sm hover:bg-muted">
+        <button type="button" @click="attemptSwitchTab('scoring')" class="px-4 py-2 border border-border rounded-md text-sm hover:bg-muted">
           <i data-lucide="arrow-left" class="h-4 w-4 inline mr-1"></i> Back to Scoring
         </button>
-        <button @click="attemptSwitchTab('decision')" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+        <button type="button" @click="attemptSwitchTab('decision')" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
           :disabled="rankedVendors.length === 0">
           Next: Decision <i data-lucide="arrow-right" class="h-4 w-4 inline ml-1"></i>
         </button>
@@ -1260,7 +1260,7 @@
               placeholder="Explain the reasoning behind this decision..." aria-label="Rationale"></textarea>
           </div>
           <div class="flex gap-3">
-            <button @click="confirmDecision()" :disabled="!decision.status || !decision.rationale.trim()"
+            <button type="button" @click="confirmDecision()" :disabled="!decision.status || !decision.rationale.trim()"
               class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
               <i data-lucide="stamp" class="h-4 w-4"></i> Submit Decision
             </button>
@@ -1393,7 +1393,7 @@
               <h4 class="font-semibold text-foreground">CSV</h4>
             </div>
             <p class="text-sm text-muted-foreground mb-4">Comparison data for Excel analysis</p>
-            <button @click="exportCSV()" :disabled="!analysis.id"
+            <button type="button" @click="exportCSV()" :disabled="!analysis.id"
               class="w-full px-3 py-2 bg-success text-primary-foreground rounded-md text-sm hover:bg-success/90 disabled:opacity-50">
               <i data-lucide="download" class="h-4 w-4 inline mr-1"></i> Download CSV
             </button>

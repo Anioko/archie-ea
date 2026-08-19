@@ -185,19 +185,19 @@ Usage:
                 {% if subtitle %}<p class="text-sm text-muted-foreground">{{ subtitle }}</p>{% endif %}
             </div>
             <div class="flex items-center gap-2">
-                <button @click="expandAllArchimateRows{{ container_id }}()" class="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-all" aria-label="Expand all rows">
+                <button type="button" @click="expandAllArchimateRows{{ container_id }}()" class="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-all" aria-label="Expand all rows">
                     <i data-lucide="chevrons-down" class="w-4 h-4 inline mr-1"></i>Expand All
                 </button>
-                <button @click="collapseAllArchimateRows{{ container_id }}()" class="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-all" aria-label="Collapse all rows">
+                <button type="button" @click="collapseAllArchimateRows{{ container_id }}()" class="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-all" aria-label="Collapse all rows">
                     <i data-lucide="chevrons-up" class="w-4 h-4 inline mr-1"></i>Collapse All
                 </button>
                 <div class="relative">
-                    <button @click="$el.nextElementSibling.classList.toggle('hidden')" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success text-sm font-medium flex items-center" aria-label="Export options">
+                    <button type="button" @click="$el.nextElementSibling.classList.toggle('hidden')" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success text-sm font-medium flex items-center" aria-label="Export options">
                         <i data-lucide="download" class="w-4 h-4 mr-1"></i>Export
                     </button>
                     <div class="hidden absolute right-0 mt-2 w-48 bg-card rounded-md shadow-lg z-50 border border-border">
-                        <button @click="exportArchimateGantt{{ container_id }}('pdf')" class="w-full text-left px-4 py-2 text-sm hover:bg-accent" aria-label="Export as PDF">Export as PDF</button>
-                        <button @click="exportArchimateGantt{{ container_id }}('csv')" class="w-full text-left px-4 py-2 text-sm hover:bg-accent" aria-label="Export as CSV">Export as CSV</button>
+                        <button type="button" @click="exportArchimateGantt{{ container_id }}('pdf')" class="w-full text-left px-4 py-2 text-sm hover:bg-accent" aria-label="Export as PDF">Export as PDF</button>
+                        <button type="button" @click="exportArchimateGantt{{ container_id }}('csv')" class="w-full text-left px-4 py-2 text-sm hover:bg-accent" aria-label="Export as CSV">Export as CSV</button>
                     </div>
                 </div>
             </div>

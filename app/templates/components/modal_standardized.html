@@ -156,6 +156,6 @@ function myModalData() {
 # BEFORE: <div [alpine-show]="open" id="my-modal">
 # AFTER:  <div hidden id="my-modal" data-modal="my-modal">
 #
-# BEFORE: <button @click="Platform.modal.close('my-modal')">
+# BEFORE: <button type="button" @click="Platform.modal.close('my-modal')">
 # AFTER:  <button data-modal-close="my-modal">
 #}

@@ -11,7 +11,7 @@
     <template x-for="elem in (sectionElements['data_information'] || [])" :key="elem.element_id || elem.id">
         <div class="border border-border rounded-lg overflow-hidden">
             {# Header: collapsible #}
-            <button
+            <button type="button"
                 class="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
                 x-on:click="toggleContractExpanded(elem.element_id || elem.id)"
             >
@@ -40,7 +40,7 @@
             <div x-show="contractExpanded[elem.element_id || elem.id]" x-collapse class="border-t border-border p-4">
                 <div class="flex justify-between items-center mb-3">
                     <span class="text-xs text-muted-foreground">Integration contracts with other elements</span>
-                    <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                    <button type="button" class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
                             x-on:click="suggestIntegrationContract(elem.element_id || elem.id)"
                             :disabled="contractLoading[elem.element_id || elem.id]">
                         <span x-show="!contractLoading[elem.element_id || elem.id]">Suggest Contracts</span>

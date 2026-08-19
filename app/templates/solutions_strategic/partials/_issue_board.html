@@ -22,7 +22,7 @@
       <p class="text-sm text-muted-foreground">Track P0/P1/P2 issues blocking solution delivery</p>
     </div>
     <div class="flex items-center gap-2">
-      <button @click="showCreateForm = true" class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+      <button type="button" @click="showCreateForm = true" class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
         + New Issue
       </button>
     </div>
@@ -31,17 +31,17 @@
   {# Filters and Sorting #}
   <div class="flex flex-wrap gap-3 pb-4 border-b">
     <div class="flex gap-2">
-      <button @click="toggleFilter('priority', 'P0')" 
+      <button type="button" @click="toggleFilter('priority', 'P0')" 
               :class="filters.priority.includes('P0') ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-muted text-muted-foreground'"
               class="px-3 py-1 rounded-full text-xs font-medium hover:opacity-80">
         P0 Only
       </button>
-      <button @click="toggleFilter('priority', 'P1')" 
+      <button type="button" @click="toggleFilter('priority', 'P1')" 
               :class="filters.priority.includes('P1') ? 'bg-warning/10 text-warning-emphasis' : 'bg-muted text-muted-foreground'"
               class="px-3 py-1 rounded-full text-xs font-medium hover:opacity-80">
         P1 Only
       </button>
-      <button @click="toggleFilter('priority', 'P2')" 
+      <button type="button" @click="toggleFilter('priority', 'P2')" 
               :class="filters.priority.includes('P2') ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
               class="px-3 py-1 rounded-full text-xs font-medium hover:opacity-80">
         P2 Only
@@ -49,12 +49,12 @@
     </div>
 
     <div class="flex gap-2 ml-auto">
-      <button @click="quickFilter = 'unresolved'" 
+      <button type="button" @click="quickFilter = 'unresolved'" 
               :class="quickFilter === 'unresolved' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
               class="px-3 py-1 rounded-full text-xs font-medium hover:opacity-80">
         Unresolved
       </button>
-      <button @click="quickFilter = 'mine'" 
+      <button type="button" @click="quickFilter = 'mine'" 
               :class="quickFilter === 'mine' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
               class="px-3 py-1 rounded-full text-xs font-medium hover:opacity-80">
         Assigned to Me
@@ -229,7 +229,7 @@
             </div>
 
             <div class="flex flex-col gap-2">
-              <button @click="manuallyEscalate(issue)" x-show="issue.status !== 'ESCALATED' && issue.status !== 'RESOLVED'" x-cloak
+              <button type="button" @click="manuallyEscalate(issue)" x-show="issue.status !== 'ESCALATED' && issue.status !== 'RESOLVED'" x-cloak
                       class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-primary-foreground hover:bg-destructive/90 h-8 px-3 py-1 whitespace-nowrap">
                 Escalate Now
               </button>
@@ -250,7 +250,7 @@
   <div class="bg-background rounded-t-lg sm:rounded-lg shadow-lg w-full sm:w-full max-w-2xl max-h-[80vh] overflow-y-auto relative">
     <div class="sticky top-0 bg-background border-b p-4 flex items-center justify-between">
       <h2 class="text-xl font-bold" x-text="selectedIssue?.title || 'Issue Details'"></h2>
-      <button @click="showDetailModal = false" class="text-muted-foreground hover:text-foreground">✕</button>
+      <button type="button" @click="showDetailModal = false" class="text-muted-foreground hover:text-foreground">✕</button>
     </div>
 
     <div x-show="selectedIssue" x-cloak class="p-6 space-y-6">
@@ -320,17 +320,17 @@
 
       {# Action Buttons #}
       <div class="flex gap-2 pt-4 border-t">
-        <button @click="transitionIssue(selectedIssue, 'IN_PROGRESS')" 
+        <button type="button" @click="transitionIssue(selectedIssue, 'IN_PROGRESS')" 
                 x-show="selectedIssue?.status === 'NEW'" x-cloak
                 class="flex-1 inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9">
           Start Working
         </button>
-        <button @click="transitionIssue(selectedIssue, 'RESOLVED')" 
+        <button type="button" @click="transitionIssue(selectedIssue, 'RESOLVED')" 
                 x-show="selectedIssue?.status === 'IN_PROGRESS'" x-cloak
                 class="flex-1 inline-flex items-center justify-center rounded-md text-sm font-medium bg-success text-success-foreground hover:bg-success/90 h-9">
           Mark Resolved
         </button>
-        <button @click="manuallyEscalate(selectedIssue)" 
+        <button type="button" @click="manuallyEscalate(selectedIssue)" 
                 x-show="selectedIssue?.status !== 'ESCALATED' && selectedIssue?.status !== 'RESOLVED' && selectedIssue?.priority === 'P0'" x-cloak
                 class="flex-1 inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-primary-foreground hover:bg-destructive/90 h-9">
           Escalate

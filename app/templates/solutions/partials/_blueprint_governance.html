@@ -17,7 +17,7 @@
         <div x-data="{ railOpen: false }">
         <button type="button" @click="railOpen = !railOpen" :aria-expanded="railOpen"
                 class="w-full flex items-center justify-between text-left mb-1">
-            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Platform Setup</h3>
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Platform Setup</h3>
             <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="railOpen ? 'rotate-180' : ''"></i>
         </button>
         <div x-show="railOpen" x-cloak class="pt-2">
@@ -113,7 +113,7 @@
     {# 1. Blueprint Completeness Ring                                      #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Completeness</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Completeness</h3>
 
         <div class="flex flex-col items-center">
             {# Circular score ring #}
@@ -158,7 +158,7 @@
     <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="{ railOpen: false }">
         <button type="button" @click="railOpen = !railOpen" :aria-expanded="railOpen"
                 class="w-full flex items-center justify-between text-left">
-            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">ADM Phase Completion ({{ phase_checklist|length }} phases)</h3>
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">ADM Phase Completion ({{ phase_checklist|length }} phases)</h3>
             <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="railOpen ? 'rotate-180' : ''"></i>
         </button>
 
@@ -186,7 +186,7 @@
     {# 3. Next Actions                                                     #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Next Actions</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Next Actions</h3>
 
         {% if next_actions %}
         <div class="space-y-2">
@@ -221,7 +221,7 @@
     {# 4. Governance Status                                                #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Governance Status</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Governance Status</h3>
 
         {# Review status badge #}
         <div class="mb-3">
@@ -267,7 +267,7 @@
                             <div class="flex items-start gap-1.5">
                                 <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                                       :class="c.passed ? 'bg-success/20' : (c.required ? 'border border-destructive/50' : 'border border-border')">
-                                    <span class="text-[11px] leading-none"
+                                    <span class="text-2xs leading-none"
                                           :class="c.passed ? 'text-success-emphasis' : (c.required ? 'text-destructive-emphasis/60' : 'text-muted-foreground/50')"
                                           x-text="c.passed ? '\u2713' : '\u25CB'"></span>
                                 </span>
@@ -275,7 +275,7 @@
                                     <span class="text-xs"
                                           :class="c.passed ? 'text-muted-foreground line-through' : (c.required ? 'text-foreground' : 'text-muted-foreground')"
                                           x-text="c.label"></span>
-                                    <span x-show="!c.required" class="text-[11px] text-muted-foreground/60 ml-1">(optional)</span>
+                                    <span x-show="!c.required" class="text-2xs text-muted-foreground/60 ml-1">(optional)</span>
                                 </div>
                             </div>
                         </template>
@@ -361,7 +361,7 @@
     {% if gov_status == 'arb_review' and arb_review_id is defined and arb_review_id %}
     <div class="rounded-xl border border-primary/30 bg-primary/5 shadow-sm p-4"
          x-data="arbReviewPanel({{ solution.id }}, {{ arb_review_id }})">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-primary/80 mb-3">ARB Review</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-primary/80 mb-3">ARB Review</h3>
         <p class="text-xs text-muted-foreground mb-3">This blueprint is pending ARB approval. Review it and record your decision.</p>
 
         <div class="space-y-2">
@@ -442,7 +442,7 @@
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-info/20 bg-info/5 shadow-sm p-4"
          x-data="{ aiGenerating: false, aiMsg: '', aiSuccess: false }">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-info-emphasis/80 mb-3">AI Generation</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-info-emphasis/80 mb-3">AI Generation</h3>
         <p class="text-xs text-muted-foreground mb-3 leading-relaxed">Generate a complete architecture draft across all TOGAF phases from the problem statement.</p>
         <button type="button"
                 @click="
@@ -472,7 +472,7 @@
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4">
         {# Export section #}
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Export</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Export</h3>
 
         <div class="space-y-1.5 mb-4">
             {# Export PDF #}
@@ -488,7 +488,7 @@
                     class="w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground cursor-not-allowed opacity-50">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
                 Export PowerPoint
-                <span class="ml-auto text-[11px] text-muted-foreground/60">Soon</span>
+                <span class="ml-auto text-2xs text-muted-foreground/60">Soon</span>
             </button>
 
             {# Export ArchiMate XML #}
@@ -503,7 +503,7 @@
         <div class="border-t border-border my-3"></div>
 
         {# Development section #}
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Development</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Development</h3>
 
         <div class="space-y-1.5">
             {# Generate API Specs #}
@@ -558,7 +558,7 @@
             {# GitHub repo link (hidden until push completes) #}
             <div class="bp-github-repo-info hidden rounded-lg border border-info/20 bg-info/5 p-2">
                 <span class="text-xs text-muted-foreground block mb-0.5">Repository:</span>
-                <a id="bp-github-repo-link" href="#" target="_blank" class="text-[11px] text-info-emphasis hover:underline truncate block"></a>
+                <a id="bp-github-repo-link" href="#" target="_blank" class="text-2xs text-info-emphasis hover:underline truncate block"></a>
             </div>
 
             {# Run Tests (hidden until generation completes) #}
@@ -581,7 +581,7 @@
     <div id="setup-integration-contracts" class="rounded-xl border border-border bg-card shadow-sm" x-data="integrationContractsPanel({{ solution.id }})">
         <button type="button" @click="expanded = !expanded"
                 class="w-full flex items-center justify-between p-4 text-left">
-            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Integration Contracts</h3>
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Integration Contracts</h3>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
                  :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -597,10 +597,10 @@
                             <div class="flex items-center justify-between mb-1">
                                 <span class="text-xs font-medium text-foreground" x-text="c.name"></span>
                                 <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button @click="editContract(c)" class="text-muted-foreground hover:text-foreground" title="Edit">
+                                    <button type="button" @click="editContract(c)" class="text-muted-foreground hover:text-foreground" title="Edit">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                     </button>
-                                    <button @click="deleteContract(c.id)" class="text-muted-foreground hover:text-destructive-emphasis" title="Delete">
+                                    <button type="button" @click="deleteContract(c.id)" class="text-muted-foreground hover:text-destructive-emphasis" title="Delete">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                     </button>
                                 </div>
@@ -849,7 +849,7 @@
     <div id="setup-identity-provider" class="rounded-xl border border-border bg-card shadow-sm" x-data="identityProvider({{ solution.id }})">
         <button type="button" @click="expanded = !expanded"
                 class="w-full flex items-center justify-between p-4 text-left">
-            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Identity Provider</h3>
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Identity Provider</h3>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
                  :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -916,10 +916,10 @@
                 <div class="space-y-1.5">
                     <template x-for="(mapping, idx) in roleMappings" :key="idx">
                         <div class="flex items-center gap-1.5">
-                            <input type="text" x-model="mapping.idp_group" placeholder="IdP Group" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Role Mapping"/>
+                            <input type="text" x-model="mapping.idp_group" placeholder="IdP Group" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-2xs text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Role Mapping"/>
                             <span class="text-xs text-muted-foreground">&#8594;</span>
-                            <input type="text" x-model="mapping.app_role" placeholder="App Role" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="App Role"/>
-                            <button @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive-emphasis shrink-0">
+                            <input type="text" x-model="mapping.app_role" placeholder="App Role" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-2xs text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="App Role"/>
+                            <button type="button" @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive-emphasis shrink-0">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
@@ -1038,7 +1038,7 @@
     <div id="setup-infrastructure" class="rounded-xl border border-border bg-card shadow-sm" x-data="infrastructureConfig({{ solution.id }})">
         <button type="button" @click="expanded = !expanded"
                 class="w-full flex items-center justify-between p-4 text-left">
-            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Infrastructure</h3>
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Infrastructure</h3>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
                  :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -1194,27 +1194,27 @@
                         <div class="grid grid-cols-2 gap-1.5">
                             <label class="flex items-center gap-1.5 cursor-pointer">
                                 <input type="checkbox" value="saga" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-foreground">Saga</span>
+                                <span class="text-2xs text-foreground">Saga</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
                                 <input type="checkbox" value="event_sourcing" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-foreground">Event Sourcing</span>
+                                <span class="text-2xs text-foreground">Event Sourcing</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
                                 <input type="checkbox" value="api_gateway" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-foreground">API Gateway</span>
+                                <span class="text-2xs text-foreground">API Gateway</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
                                 <input type="checkbox" value="service_mesh" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-foreground">Service Mesh</span>
+                                <span class="text-2xs text-foreground">Service Mesh</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
                                 <input type="checkbox" value="cqrs" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-foreground">CQRS</span>
+                                <span class="text-2xs text-foreground">CQRS</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
                                 <input type="checkbox" value="circuit_breaker" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-foreground">Circuit Breaker</span>
+                                <span class="text-2xs text-foreground">Circuit Breaker</span>
                             </label>
                         </div>
                     </div>
@@ -1378,7 +1378,7 @@
     {# 5d. Cloud Cost Estimator                                            #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="costEstimator({{ solution.id }})">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cloud Cost Estimate</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cloud Cost Estimate</h3>
 
         {# Estimate button #}
         <button type="button"
@@ -1419,9 +1419,9 @@
                     <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Breakdown</h4>
                     <div class="space-y-1">
                         <template x-for="item in result.breakdown" :key="item.service">
-                            <div class="flex items-center justify-between text-[11px]">
+                            <div class="flex items-center justify-between text-2xs">
                                 <div class="flex items-center gap-1.5 min-w-0">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-muted/60 text-muted-foreground shrink-0" x-text="item.category"></span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium bg-muted/60 text-muted-foreground shrink-0" x-text="item.category"></span>
                                     <span class="text-foreground truncate" x-text="item.service"></span>
                                 </div>
                                 <span class="text-foreground font-medium shrink-0 ml-2" x-text="'$' + item.monthly_usd.toFixed(2)"></span>
@@ -1443,13 +1443,13 @@
                 </div>
 
                 {# Source badge #}
-                <div class="text-[11px] text-muted-foreground/50 text-right" x-text="'Source: ' + (result.source || 'estimate')"></div>
+                <div class="text-2xs text-muted-foreground/50 text-right" x-text="'Source: ' + (result.source || 'estimate')"></div>
             </div>
         </template>
 
         {# Error state #}
         <template x-if="error">
-            <div class="text-[11px] text-destructive-emphasis" x-text="error"></div>
+            <div class="text-2xs text-destructive-emphasis" x-text="error"></div>
         </template>
     </div>
 
@@ -1486,7 +1486,7 @@
     {# 5b. Compliance Monitor (CODEGEN-06)                                #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="complianceMonitor({{ solution.id }})">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Compliance Monitor</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Compliance Monitor</h3>
 
         {# Service URL input #}
         <div class="mb-2">
@@ -1534,7 +1534,7 @@
                 {# Missing endpoints #}
                 <template x-if="result.missing_endpoints && result.missing_endpoints.length > 0">
                     <div>
-                        <button @click="showMissing = !showMissing" class="text-xs text-destructive-emphasis hover:underline cursor-pointer">
+                        <button type="button" @click="showMissing = !showMissing" class="text-xs text-destructive-emphasis hover:underline cursor-pointer">
                             <span x-text="result.missing_endpoints.length + ' missing endpoint(s)'"></span>
                             <span x-text="showMissing ? '[-]' : '[+]'"></span>
                         </button>
@@ -1551,7 +1551,7 @@
                 {# Schema mismatches #}
                 <template x-if="result.schema_mismatches && result.schema_mismatches.length > 0">
                     <div>
-                        <button @click="showSchema = !showSchema" class="text-xs text-warning-emphasis hover:underline cursor-pointer">
+                        <button type="button" @click="showSchema = !showSchema" class="text-xs text-warning-emphasis hover:underline cursor-pointer">
                             <span x-text="result.schema_mismatches.length + ' schema mismatch(es)'"></span>
                             <span x-text="showSchema ? '[-]' : '[+]'"></span>
                         </button>
@@ -1559,7 +1559,7 @@
                             <template x-for="sm in result.schema_mismatches" :key="sm.method + sm.path">
                                 <div class="text-xs text-muted-foreground font-mono pl-2 border-l-2 border-warning/30">
                                     <span x-text="sm.method + ' ' + sm.path"></span>
-                                    <span class="block text-[11px] text-muted-foreground/70" x-text="sm.details"></span>
+                                    <span class="block text-2xs text-muted-foreground/70" x-text="sm.details"></span>
                                 </div>
                             </template>
                         </div>
@@ -1569,7 +1569,7 @@
                 {# SLA violations #}
                 <template x-if="result.sla_violations && result.sla_violations.length > 0">
                     <div>
-                        <button @click="showSla = !showSla" class="text-xs text-warning-emphasis hover:underline cursor-pointer">
+                        <button type="button" @click="showSla = !showSla" class="text-xs text-warning-emphasis hover:underline cursor-pointer">
                             <span x-text="result.sla_violations.length + ' SLA violation(s)'"></span>
                             <span x-text="showSla ? '[-]' : '[+]'"></span>
                         </button>

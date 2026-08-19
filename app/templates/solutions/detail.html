@@ -88,7 +88,7 @@
 <div class="bg-success/10 border-b border-success/30 text-success-emphasis px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
   <span><strong>Programme created.</strong> Your architecture blueprint is ready &mdash; fill in sections below to build it out.</span>
-  <button @click="show = false" class="ml-auto text-success-emphasis hover:text-success-emphasis" aria-label="Dismiss">
+  <button type="button" @click="show = false" class="ml-auto text-success-emphasis hover:text-success-emphasis" aria-label="Dismiss">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
   </button>
 </div>
@@ -128,11 +128,11 @@
         <div class="min-w-0">
           <div class="flex items-center gap-3 mb-1">
             <h2 class="text-xl font-bold text-foreground">{{ solution.name }}</h2>
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold {{ status_badge_class }}">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-2xs font-semibold {{ status_badge_class }}">
               <span class="w-1.5 h-1.5 rounded-full {{ status_dot_class }}"></span>{{ (solution.governance_status or 'Draft') | replace('_', ' ') | title }}
             </span>
             {# Submit to ARB (moved from sidebar) #}
-            <button @click="submitToArb()"
+            <button type="button" @click="submitToArb()"
                     :disabled="!canSubmitArb || submittingArb || governanceStatus === 'arb_review' || governanceStatus === 'approved'"
                     x-show="canSubmitArb && governanceStatus !== 'approved'" x-cloak
                     class="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -157,7 +157,7 @@
                      class="absolute right-0 top-full mt-2 z-30 w-80 bg-background border border-border rounded-lg shadow-xl p-4 space-y-3">
                     <div class="flex items-center justify-between">
                         <span class="text-sm font-semibold" x-text="result && result.bundle_id ? 'Product Generated' : 'Generation Failed'"></span>
-                        <button @click="result = null; error = null" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                        <button type="button" @click="result = null; error = null" class="text-muted-foreground hover:text-foreground" aria-label="Close">
                             <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
                         </button>
                     </div>
@@ -170,7 +170,7 @@
                                 <p>Spec Maturity: <span class="text-foreground" x-text="Math.round((result.spec_maturity || 0) * 100) + '%'"></span></p>
                             </div>
                             <div class="flex gap-2 mt-3">
-                                <button @click="runTests()" :disabled="running"
+                                <button type="button" @click="runTests()" :disabled="running"
                                         class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-input bg-background hover:bg-accent"
                                         :class="running ? 'opacity-50' : ''">
                                     <i data-lucide="play" class="w-3 h-3" aria-hidden="true" x-show="!running"></i>
@@ -196,7 +196,7 @@
                                 <span x-text="testResult.test_summary.failed + ' failed'" class="text-destructive-emphasis"></span>
                             </p>
                             <template x-for="f in (testResult.failures || []).slice(0, 5)" :key="f.test_name">
-                                <p class="text-[11px] text-muted-foreground">
+                                <p class="text-2xs text-muted-foreground">
                                     <span class="font-mono" x-text="f.test_name"></span>:
                                     <span x-text="f.error.substring(0, 60)"></span>
                                     <span x-show="f.expected_in_wave1" class="text-warning-emphasis">(expected in Wave 1)</span>
@@ -249,7 +249,7 @@
                                 <h3 class="text-lg font-semibold">API Contract — Field Review</h3>
                                 <p class="text-sm text-muted-foreground mt-0.5">AI-proposed fields from your architecture. Confirm, edit, or remove before generating.</p>
                             </div>
-                            <button @click="showPanel = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                            <button type="button" @click="showPanel = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
                                 <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -289,7 +289,7 @@
                                                 <template x-for="(field, fi) in elem.fields" :key="fi">
                                                     <tr class="border-b border-border/50 hover:bg-muted/20">
                                                         <td class="py-1.5">
-                                                            <button @click="elem.fields.splice(fi, 1)" class="text-muted-foreground hover:text-destructive-emphasis" aria-label="Remove field">
+                                                            <button type="button" @click="elem.fields.splice(fi, 1)" class="text-muted-foreground hover:text-destructive-emphasis" aria-label="Remove field">
                                                                 <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
                                                             </button>
                                                         </td>
@@ -309,7 +309,7 @@
                                             </tbody>
                                         </table>
                                         <div class="flex gap-2 pt-2">
-                                            <button @click="confirmElement(elemId)"
+                                            <button type="button" @click="confirmElement(elemId)"
                                                     :disabled="elem.confirming"
                                                     class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                                                 <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i>
@@ -330,7 +330,7 @@
                                 <span x-text="confirmedCount + '/' + Object.keys(elements).length + ' elements confirmed'"></span>
                             </div>
                             <div class="flex gap-2">
-                                <button @click="showPanel = false" class="px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent">Cancel</button>
+                                <button type="button" @click="showPanel = false" class="px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent">Cancel</button>
                                 <a :href="'{{ url_for('solution_design.api_download_specs', solution_id=solution.id) }}'"
                                    @click.prevent="downloadSpecs()"
                                    :class="downloading ? 'opacity-50 pointer-events-none' : ''"
@@ -595,26 +595,26 @@
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 pt-5 border-t border-border">
         <div>
-          <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Owner</p>
+          <p class="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Owner</p>
           <p class="text-sm font-medium text-foreground">{{ solution.solution_owner or 'Not assigned' }}</p>
         </div>
         <div>
-          <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">ADM Phase</p>
+          <p class="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">ADM Phase</p>
           <p class="text-sm font-medium text-foreground">Phase {{ solution.adm_phase or 'A' }}</p>
         </div>
         <div>
-          <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Linked</p>
+          <p class="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Linked</p>
           <div class="flex flex-wrap gap-1.5">
-            {% if capabilities_json %}<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">{{ capabilities_json | length }} cap</span>{% endif %}
-            {% if applications %}<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">{{ applications | length }} app</span>{% endif %}
-            {% if archimate_elements %}<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">{{ archimate_elements | length }} elem</span>{% endif %}
+            {% if capabilities_json %}<span class="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">{{ capabilities_json | length }} cap</span>{% endif %}
+            {% if applications %}<span class="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">{{ applications | length }} app</span>{% endif %}
+            {% if archimate_elements %}<span class="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">{{ archimate_elements | length }} elem</span>{% endif %}
             {% if not capabilities_json and not applications and not archimate_elements %}
               <span class="text-xs text-muted-foreground">None yet</span>
             {% endif %}
           </div>
         </div>
         <div>
-          <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Created</p>
+          <p class="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Created</p>
           <p class="text-sm font-medium text-foreground">{{ solution.created_at.strftime('%b %d, %Y') if solution.created_at else 'Unknown' }}</p>
         </div>
       </div>
@@ -625,21 +625,21 @@
     {# ══════════════════════════════════════════════════════════════ #}
     <div id="sec-2" data-section="sec-2" class="flex items-center gap-2 flex-wrap">
       <span class="text-xs font-medium text-muted-foreground">View as:</span>
-      <button data-persona="arb" @click="activePersona = activePersona === 'arb' ? '' : 'arb'; if (activePersona === 'arb') activeTab = 'governance'"
+      <button type="button" data-persona="arb" @click="activePersona = activePersona === 'arb' ? '' : 'arb'; if (activePersona === 'arb') activeTab = 'governance'"
               :class="activePersona === 'arb' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-input hover:bg-accent'"
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">ARB</button>
-      <button data-persona="architect" @click="activePersona = activePersona === 'architect' ? '' : 'architect'; if (activePersona === 'architect') activeTab = 'infosys'"
+      <button type="button" data-persona="architect" @click="activePersona = activePersona === 'architect' ? '' : 'architect'; if (activePersona === 'architect') activeTab = 'infosys'"
               :class="activePersona === 'architect' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-input hover:bg-accent'"
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">Architect</button>
-      <button data-persona="executive" @click="activePersona = activePersona === 'executive' ? '' : 'executive'; if (activePersona === 'executive') activeTab = 'vision'"
+      <button type="button" data-persona="executive" @click="activePersona = activePersona === 'executive' ? '' : 'executive'; if (activePersona === 'executive') activeTab = 'vision'"
               :class="activePersona === 'executive' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-input hover:bg-accent'"
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">Executive</button>
-      <button data-persona="developer" @click="activePersona = activePersona === 'developer' ? '' : 'developer'; if (activePersona === 'developer') activeTab = 'infosys'"
+      <button type="button" data-persona="developer" @click="activePersona = activePersona === 'developer' ? '' : 'developer'; if (activePersona === 'developer') activeTab = 'infosys'"
               :class="activePersona === 'developer' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-input hover:bg-accent'"
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">Developer</button>
       <span x-show="activePersona" x-cloak class="text-xs text-muted-foreground ml-1">
         — showing <span x-text="activePersona" class="font-medium text-foreground capitalize"></span> view
-        <button @click="activePersona = ''" class="ml-1 text-muted-foreground hover:text-foreground underline">reset</button>
+        <button type="button" @click="activePersona = ''" class="ml-1 text-muted-foreground hover:text-foreground underline">reset</button>
       </span>
     </div>
 
@@ -682,14 +682,14 @@
           <p class="text-sm font-semibold text-foreground mb-1">Generate Architecture from Problem Statement</p>
           <p class="text-xs text-muted-foreground mb-3">AI will analyze your problem statement and generate drivers, goals, constraints, requirements, risks, options, and migration plateaus across all TOGAF phases. You can review and edit everything after.</p>
           <div class="flex items-center gap-2">
-            <button @click="generateDraft()"
+            <button type="button" @click="generateDraft()"
                     :disabled="aiGenerating"
                     class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
               <svg x-show="!aiGenerating" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
               <svg x-show="aiGenerating" x-cloak class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <span x-text="aiGenerating ? 'Generating architecture...' : 'Generate Architecture'"></span>
             </button>
-            <button @click="aiDismissed = true" class="text-xs text-muted-foreground hover:text-foreground">I'll add manually</button>
+            <button type="button" @click="aiDismissed = true" class="text-xs text-muted-foreground hover:text-foreground">I'll add manually</button>
           </div>
           <template x-if="aiResult">
             <div class="mt-3 p-3 rounded-lg bg-success/10 border border-success/20">
@@ -722,7 +722,7 @@
         ]
       }">
         <template x-for="tab in tabs" :key="tab.key">
-          <button @click="activeTab = tab.key"
+          <button type="button" @click="activeTab = tab.key"
                   class="relative px-4 py-2.5 text-sm font-medium transition-colors rounded-t-md whitespace-nowrap"
                   :class="activeTab === tab.key ? 'text-foreground bg-card border border-border border-b-transparent -mb-px' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'">
             <span x-text="tab.label"></span>
@@ -790,19 +790,19 @@
           <p class="text-sm font-semibold text-foreground">Strategic Context</p>
           <div class="ml-auto flex gap-1 items-center">
             {% if llm_available %}
-            <button @click="generateDraft()" :disabled="aiGenerating"
-                    class="text-[11px] text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
+            <button type="button" @click="generateDraft()" :disabled="aiGenerating"
+                    class="text-2xs text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
               <svg x-show="!aiGenerating" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
               <svg x-show="aiGenerating" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <span x-text="aiGenerating ? 'Generating...' : 'Generate'"></span>
             </button>
             <span class="text-muted-foreground/30">|</span>
             {% endif %}
-            <button @click="openAdd('driver')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Driver</button>
+            <button type="button" @click="openAdd('driver')" class="text-2xs text-primary/70 hover:text-primary font-medium">+ Driver</button>
             <span class="text-muted-foreground/30">|</span>
-            <button @click="openAdd('goal')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Goal</button>
+            <button type="button" @click="openAdd('goal')" class="text-2xs text-primary/70 hover:text-primary font-medium">+ Goal</button>
             <span class="text-muted-foreground/30">|</span>
-            <button @click="openAdd('constraint')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Constraint</button>
+            <button type="button" @click="openAdd('constraint')" class="text-2xs text-primary/70 hover:text-primary font-medium">+ Constraint</button>
           </div>
         </div>
 
@@ -924,9 +924,9 @@
         {% else %}
         <p class="text-sm text-muted-foreground">No drivers, goals, or constraints yet &mdash;
           {% if llm_available %}
-          <button @click="generateDraft()" :disabled="aiGenerating" class="text-info-emphasis hover:underline font-medium">generate from problem statement</button> or
+          <button type="button" @click="generateDraft()" :disabled="aiGenerating" class="text-info-emphasis hover:underline font-medium">generate from problem statement</button> or
           {% endif %}
-          <button @click="openAdd('driver')" class="text-primary hover:underline">add manually</button>
+          <button type="button" @click="openAdd('driver')" class="text-primary hover:underline">add manually</button>
         </p>
         {% endif %}
       </div>
@@ -958,7 +958,7 @@
           <div class="w-1 h-5 rounded-full bg-info"></div>
           <p class="text-sm font-semibold text-foreground">Requirements</p>
           <span class="text-xs text-muted-foreground">({{ requirements_list | length }})</span>
-          <button @click="openAdd('requirement')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
+          <button type="button" @click="openAdd('requirement')" class="ml-auto text-2xs text-primary/70 hover:text-primary font-medium">+ Add</button>
         </div>
         {% if requirements_list %}
         <div class="rounded-xl border border-border bg-card overflow-hidden">
@@ -989,7 +989,7 @@
           </table>
         </div>
         {% else %}
-        <p class="text-sm text-muted-foreground">No requirements defined yet &mdash; <button @click="openAdd('requirement')" class="text-primary hover:underline">add a requirement</button></p>
+        <p class="text-sm text-muted-foreground">No requirements defined yet &mdash; <button type="button" @click="openAdd('requirement')" class="text-primary hover:underline">add a requirement</button></p>
         {% endif %}
       </div>
 
@@ -1247,8 +1247,8 @@
             Add Element
           </button>
           {% if llm_available %}
-          <button @click="generateSection('architecture')" :disabled="sectionGenerating.architecture"
-                  class="ml-auto text-[11px] text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
+          <button type="button" @click="generateSection('architecture')" :disabled="sectionGenerating.architecture"
+                  class="ml-auto text-2xs text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
             <svg x-show="!sectionGenerating.architecture" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
             <svg x-show="sectionGenerating.architecture" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             <span x-text="sectionGenerating.architecture ? 'Generating...' : 'Generate'"></span>
@@ -1294,10 +1294,10 @@
           {% if (e.get('layer') or '') | lower == 'technology' %}{% set ns.tech = ns.tech + 1 %}{% endif %}
         {% endfor %}
         <div class="flex flex-wrap gap-2 mb-4">
-          <button @click="activeLayer = 'all'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">All ({{ archimate_elements | length }})</button>
-          {% if ns.biz %}<button @click="activeLayer = 'business'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'business' ? 'bg-success text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Business ({{ ns.biz }})</button>{% endif %}
-          {% if ns.app %}<button @click="activeLayer = 'application'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'application' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Application ({{ ns.app }})</button>{% endif %}
-          {% if ns.tech %}<button @click="activeLayer = 'technology'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'technology' ? 'bg-info text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Technology ({{ ns.tech }})</button>{% endif %}
+          <button type="button" @click="activeLayer = 'all'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">All ({{ archimate_elements | length }})</button>
+          {% if ns.biz %}<button type="button" @click="activeLayer = 'business'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'business' ? 'bg-success text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Business ({{ ns.biz }})</button>{% endif %}
+          {% if ns.app %}<button type="button" @click="activeLayer = 'application'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'application' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Application ({{ ns.app }})</button>{% endif %}
+          {% if ns.tech %}<button type="button" @click="activeLayer = 'technology'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'technology' ? 'bg-info text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Technology ({{ ns.tech }})</button>{% endif %}
         </div>
 
         {# Elements list #}
@@ -1364,15 +1364,15 @@
           <p class="text-sm font-semibold text-foreground">Solution Options</p>
           <div class="ml-auto flex gap-1 items-center">
             {% if llm_available %}
-            <button @click="generateSection('variants')" :disabled="sectionGenerating.variants"
-                    class="text-[11px] text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
+            <button type="button" @click="generateSection('variants')" :disabled="sectionGenerating.variants"
+                    class="text-2xs text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
               <svg x-show="!sectionGenerating.variants" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
               <svg x-show="sectionGenerating.variants" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <span x-text="sectionGenerating.variants ? 'Generating...' : 'Generate Options'"></span>
             </button>
             <span class="text-muted-foreground/30">|</span>
             {% endif %}
-            <button @click="openAdd('option')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Add Option</button>
+            <button type="button" @click="openAdd('option')" class="text-2xs text-primary/70 hover:text-primary font-medium">+ Add Option</button>
           </div>
         </div>
 
@@ -1421,9 +1421,9 @@
         {% else %}
         <p class="text-sm text-muted-foreground">No solution options evaluated yet &mdash;
           {% if llm_available %}
-          <button @click="generateSection('variants')" :disabled="sectionGenerating.variants" class="text-info-emphasis hover:underline font-medium">generate options with AI</button> or
+          <button type="button" @click="generateSection('variants')" :disabled="sectionGenerating.variants" class="text-info-emphasis hover:underline font-medium">generate options with AI</button> or
           {% endif %}
-          <button @click="openAdd('option')" class="text-primary hover:underline">add manually</button>
+          <button type="button" @click="openAdd('option')" class="text-primary hover:underline">add manually</button>
         </p>
         {% endif %}
       </div>
@@ -1471,15 +1471,15 @@
           {% endif %}
           <div class="ml-auto flex gap-1 items-center">
             {% if llm_available %}
-            <button @click="generateSection('implementation')" :disabled="sectionGenerating.implementation"
-                    class="text-[11px] text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
+            <button type="button" @click="generateSection('implementation')" :disabled="sectionGenerating.implementation"
+                    class="text-2xs text-info-emphasis/70 hover:text-info-emphasis font-medium disabled:opacity-50 inline-flex items-center gap-1">
               <svg x-show="!sectionGenerating.implementation" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
               <svg x-show="sectionGenerating.implementation" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <span x-text="sectionGenerating.implementation ? 'Generating...' : 'Generate'"></span>
             </button>
             <span class="text-muted-foreground/30">|</span>
             {% endif %}
-            <button @click="openAdd('plateau')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Add Plateau</button>
+            <button type="button" @click="openAdd('plateau')" class="text-2xs text-primary/70 hover:text-primary font-medium">+ Add Plateau</button>
           </div>
         </div>
 
@@ -1513,9 +1513,9 @@
         {% else %}
         <p class="text-sm text-muted-foreground">No migration roadmap defined yet &mdash;
           {% if llm_available %}
-          <button @click="generateSection('implementation')" :disabled="sectionGenerating.implementation" class="text-info-emphasis hover:underline font-medium">generate with AI</button> or
+          <button type="button" @click="generateSection('implementation')" :disabled="sectionGenerating.implementation" class="text-info-emphasis hover:underline font-medium">generate with AI</button> or
           {% endif %}
-          <button @click="openAdd('plateau')" class="text-primary hover:underline">add manually</button>
+          <button type="button" @click="openAdd('plateau')" class="text-primary hover:underline">add manually</button>
         </p>
         {% endif %}
       </div>
@@ -1608,7 +1608,7 @@
           <div class="w-1 h-5 rounded-full bg-destructive"></div>
           <p class="text-sm font-semibold text-foreground">Risk Register</p>
           <span class="text-xs text-muted-foreground">({{ risks_list | length }})</span>
-          <button @click="openAdd('risk')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
+          <button type="button" @click="openAdd('risk')" class="ml-auto text-2xs text-primary/70 hover:text-primary font-medium">+ Add</button>
         </div>
         {% if risks_list and not adr_list %}
         <div class="rounded-lg border border-warning/20 bg-warning/5 px-4 py-2.5 mb-4 flex items-start gap-2">
@@ -1662,7 +1662,7 @@
           </table>
         </div>
         {% else %}
-        <p class="text-sm text-muted-foreground">No risks identified yet &mdash; <button @click="openAdd('risk')" class="text-primary hover:underline">add a risk</button></p>
+        <p class="text-sm text-muted-foreground">No risks identified yet &mdash; <button type="button" @click="openAdd('risk')" class="text-primary hover:underline">add a risk</button></p>
         {% endif %}
       </div>
 
@@ -1802,7 +1802,7 @@
             {% if chain.gap %}
             <p class="text-xs text-muted-foreground mt-1.5">
               Broken at: <span class="text-foreground/70">{{ chain.gap }}</span> &mdash;
-              <button class="text-primary hover:underline" @click="activeTab = '{{ chain.tab }}'">go to {{ chain.tab | title }} tab</button>
+              <button type="button" class="text-primary hover:underline" @click="activeTab = '{{ chain.tab }}'">go to {{ chain.tab | title }} tab</button>
             </p>
             {% endif %}
           </div>
@@ -1824,7 +1824,7 @@
          @click.stop>
       <div class="flex items-center justify-between px-6 py-4 border-b border-border">
         <h3 class="text-base font-semibold text-foreground" x-text="modal.title"></h3>
-        <button @click="modal.open = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+        <button type="button" @click="modal.open = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
@@ -1862,9 +1862,9 @@
         <p x-show="modal.error" x-cloak class="text-xs text-destructive-emphasis" x-text="modal.error"></p>
       </div>
       <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
-        <button @click="modal.open = false"
+        <button type="button" @click="modal.open = false"
                 class="px-3 py-1.5 text-xs font-medium rounded-md border border-input text-foreground hover:bg-accent transition-colors">Cancel</button>
-        <button @click="saveEntity()"
+        <button type="button" @click="saveEntity()"
                 :disabled="modal.saving"
                 class="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
           <span x-show="!modal.saving" x-text="'Add ' + modal.title.replace('Add ', '')"></span>
@@ -1889,7 +1889,7 @@
       <h3 class="text-sm font-semibold text-foreground" x-text="'Comments — ' + sectionLabel"></h3>
       <p class="text-xs text-muted-foreground mt-0.5" x-text="comments.length + ' comment' + (comments.length === 1 ? '' : 's')"></p>
     </div>
-    <button @click="open = false" class="p-1.5 rounded-lg hover:bg-muted transition-colors" aria-label="Close comments">
+    <button type="button" @click="open = false" class="p-1.5 rounded-lg hover:bg-muted transition-colors" aria-label="Close comments">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
   </div>
@@ -1927,13 +1927,13 @@
             </div>
           </template>
         </div>
-        <button @click="startReply(c.id)" class="text-xs text-primary hover:underline" x-show="replyTo !== c.id">Reply</button>
+        <button type="button" @click="startReply(c.id)" class="text-xs text-primary hover:underline" x-show="replyTo !== c.id">Reply</button>
         <div x-show="replyTo === c.id" class="pt-1 space-y-2">
           <textarea x-model="replyText" rows="2" placeholder="Write a reply..."
                     class="w-full text-xs rounded-lg border border-border bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label="Write a reply..."></textarea>
           <div class="flex gap-2">
-            <button @click="submitReply(c.id)" :disabled="submitting" class="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50">Reply</button>
-            <button @click="replyTo = null; replyText = ''" class="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground">Cancel</button>
+            <button type="button" @click="submitReply(c.id)" :disabled="submitting" class="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50">Reply</button>
+            <button type="button" @click="replyTo = null; replyText = ''" class="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground">Cancel</button>
           </div>
         </div>
       </div>
@@ -1943,7 +1943,7 @@
   <div class="p-4 border-t border-border shrink-0 space-y-2">
     <textarea x-model="newComment" rows="3" placeholder="Add a comment on this section..."
               class="w-full text-sm rounded-lg border border-border bg-background px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label="Add a comment on this section..."></textarea>
-    <button @click="submitComment()" :disabled="submitting || !newComment.trim()"
+    <button type="button" @click="submitComment()" :disabled="submitting || !newComment.trim()"
             class="w-full text-sm font-medium rounded-lg bg-primary text-primary-foreground py-2 disabled:opacity-50 hover:bg-primary/90 transition-colors">
       <span x-show="!submitting">Post Comment</span>
       <span x-show="submitting" x-cloak>Posting...</span>
@@ -2119,7 +2119,7 @@ function openSectionComments(section, label) {
     <div class="bg-card rounded-xl border border-border shadow-2xl w-full max-w-md" @click.away="open = false">
         <div class="flex items-center justify-between px-5 py-4 border-b border-border">
             <h2 class="text-sm font-semibold text-foreground">Add ArchiMate Element</h2>
-            <button @click="open = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+            <button type="button" @click="open = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>

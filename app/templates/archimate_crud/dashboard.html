@@ -30,16 +30,16 @@
                class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
                 <i data-lucide="activity" class="h-4 w-4" aria-hidden="true"></i> Health
             </a>
-            <button @click="runValidation()" :disabled="validating"
+            <button type="button" @click="runValidation()" :disabled="validating"
                 class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50" aria-label="Run validation">
                 <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
                 <span x-text="validating ? 'Validating...' : 'Run Validation'"></span>
             </button>
-            <button @click="openAiGenerateModal()" data-testid="btn-ai-generate-element"
+            <button type="button" @click="openAiGenerateModal()" data-testid="btn-ai-generate-element"
                 class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent" aria-label="Generate element with AI">
                 <i data-lucide="sparkles" class="h-4 w-4" aria-hidden="true"></i> Generate with AI
             </button>
-            <button @click="openCreateModal()"
+            <button type="button" @click="openCreateModal()"
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" aria-label="Open">
                 <i data-lucide="plus" class="h-4 w-4 mr-2" aria-hidden="true"></i>
                 Create Element
@@ -67,7 +67,7 @@
                 'implementation': 'wrench'
             } %}
             {% for layer_key, layer_info in layer_config.items() %}
-            <button
+            <button type="button"
                 @click="switchTab('{{ layer_key }}')"
                 :class="activeTab === '{{ layer_key }}'
  ? 'border-primary text-primary'
@@ -231,25 +231,25 @@
             <option value="50">50 / page</option>
             <option value="100">100 / page</option>
         </select>
-        <button @click="bulkMode = !bulkMode; if(!bulkMode){ selectedIds = []; selectAll = false; }"
+        <button type="button" @click="bulkMode = !bulkMode; if(!bulkMode){ selectedIds = []; selectAll = false; }"
             :class="bulkMode ? 'bg-accent text-accent-foreground' : ''"
             class="inline-flex items-center gap-2 px-3 py-2 border rounded-md text-sm hover:bg-accent" aria-label="Action">
             <i data-lucide="check-square" class="h-4 w-4" aria-hidden="true"></i>
             Bulk
         </button>
-        <button @click="groupByType = !groupByType; collapsedTypes = {}; loadElements()"
+        <button type="button" @click="groupByType = !groupByType; collapsedTypes = {}; loadElements()"
             :class="groupByType ? 'bg-accent text-accent-foreground' : ''"
             class="inline-flex items-center gap-2 px-3 py-2 border rounded-md text-sm hover:bg-accent" aria-label="Toggle type grouping">
             <i data-lucide="rows-3" class="h-4 w-4" aria-hidden="true"></i>
             Group
         </button>
-        <button x-cloak x-show="hasAltView" @click="toggleViewMode()"
+        <button type="button" x-cloak x-show="hasAltView" @click="toggleViewMode()"
             :class="currentViewMode !== 'table' ? 'bg-accent text-accent-foreground' : ''"
             class="inline-flex items-center gap-2 px-3 py-2 border rounded-md text-sm hover:bg-accent" aria-label="Toggle view mode">
             <i :data-lucide="currentViewMode === 'table' ? 'layout-grid' : 'list'" class="h-4 w-4" aria-hidden="true"></i>
             <span x-text="currentViewMode === 'table' ? 'Rich View' : 'Table'"></span>
         </button>
-        <button data-testid="advanced-toggle" @click="showAdvanced = !showAdvanced"
+        <button type="button" data-testid="advanced-toggle" @click="showAdvanced = !showAdvanced"
             :class="showAdvanced ? 'bg-accent text-accent-foreground' : ''"
             class="inline-flex items-center gap-2 px-3 py-2 border rounded-md text-sm hover:bg-accent" aria-label="Toggle advanced filters">
             <i data-lucide="sliders-horizontal" class="h-4 w-4" aria-hidden="true"></i>
@@ -261,15 +261,15 @@
     <div x-cloak x-show="bulkMode && selectedIds.length > 0" x-transition
          class="flex items-center gap-4 p-3 bg-muted/30 border rounded-lg">
         <span class="text-sm font-medium" x-text="selectedIds.length + ' selected'"></span>
-        <button @click="bulkDeleteSelected()"
+        <button type="button" @click="bulkDeleteSelected()"
             class="text-sm text-destructive-emphasis hover:underline flex items-center gap-1" aria-label="Delete">
             <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i> Delete
         </button>
-        <button @click="bulkExportSelected()"
+        <button type="button" @click="bulkExportSelected()"
             class="text-sm text-primary hover:underline flex items-center gap-1" aria-label="Export">
             <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i> Export
         </button>
-        <button @click="selectedIds = []; selectAll = false"
+        <button type="button" @click="selectedIds = []; selectAll = false"
             class="text-sm text-muted-foreground hover:underline ml-auto" aria-label="Action">Clear</button>
     </div>
 
@@ -330,7 +330,7 @@
         <span data-testid="active-filter-badge"
               class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full border border-primary/20">
             <span x-text="typeFilter ? formatTypeName(typeFilter) : (searchQuery ? '&quot;' + searchQuery + '&quot;' : sourceFilter)"></span>
-            <button @click="clearAllFilters()" class="ml-1 hover:text-destructive-emphasis" aria-label="Clear filter">
+            <button type="button" @click="clearAllFilters()" class="ml-1 hover:text-destructive-emphasis" aria-label="Clear filter">
                 <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
             </button>
         </span>
@@ -489,10 +489,10 @@
                                             <i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i>
                                         </a>
                                     </template>
-                                    <button @click="openEditModal(el)" class="text-primary hover:text-primary/80" title="Edit">
+                                    <button type="button" @click="openEditModal(el)" class="text-primary hover:text-primary/80" title="Edit">
                                         <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
                                     </button>
-                                    <button @click="confirmDelete(el)" class="text-destructive-emphasis hover:text-destructive-emphasis/80" title="Delete">
+                                    <button type="button" @click="confirmDelete(el)" class="text-destructive-emphasis hover:text-destructive-emphasis/80" title="Delete">
                                         <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -508,7 +508,7 @@
                             <i data-lucide="inbox" class="h-10 w-10" aria-hidden="true"></i>
                             <p class="text-lg font-medium">No elements found</p>
                             <p class="text-sm" x-cloak x-show="searchQuery || typeFilter">Try adjusting your search or filter.</p>
-                            <button x-cloak x-show="!searchQuery && !typeFilter" @click="openCreateModal()"
+                            <button type="button" x-cloak x-show="!searchQuery && !typeFilter" @click="openCreateModal()"
                                 class="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" aria-label="Open">
                                 <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Create Element
                             </button>
@@ -527,13 +527,13 @@
             of <span x-text="pagination.total"></span> results
         </div>
         <div class="flex gap-2">
-            <button @click="goToPage(pagination.page - 1)" :disabled="!pagination.has_prev"
+            <button type="button" @click="goToPage(pagination.page - 1)" :disabled="!pagination.has_prev"
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 disabled:opacity-50 disabled:pointer-events-none" aria-label="Action">
                 Previous
             </button>
             <span class="inline-flex items-center px-3 text-sm text-muted-foreground"
                   x-text="pagination.page + ' / ' + pagination.pages"></span>
-            <button @click="goToPage(pagination.page + 1)" :disabled="!pagination.has_next"
+            <button type="button" @click="goToPage(pagination.page + 1)" :disabled="!pagination.has_next"
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 disabled:opacity-50 disabled:pointer-events-none" aria-label="Action">
                 Next
             </button>
@@ -557,7 +557,7 @@
          @keydown.escape.window="showHealthPanel = false">
         <div class="flex items-center justify-between p-4 border-b">
             <h2 class="text-lg font-semibold">Repository Health</h2>
-            <button @click="showHealthPanel = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+            <button type="button" @click="showHealthPanel = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
                 <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
             </button>
         </div>
@@ -571,7 +571,7 @@
          @keydown.escape.window="closeDetailPanel()">
         <div class="flex items-center justify-between p-4 border-b">
             <h2 class="text-lg font-semibold" x-text="detailElement ? detailElement.name : 'Element Detail'"></h2>
-            <button @click="closeDetailPanel()" class="text-muted-foreground hover:text-foreground" aria-label="Close detail panel">
+            <button type="button" @click="closeDetailPanel()" class="text-muted-foreground hover:text-foreground" aria-label="Close detail panel">
                 <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
             </button>
         </div>
@@ -606,7 +606,7 @@
                     </div>
                 </div>
                 <div class="flex gap-2">
-                    <button data-testid="detail-edit-btn" @click="startDetailEdit()"
+                    <button type="button" data-testid="detail-edit-btn" @click="startDetailEdit()"
                             class="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" aria-label="Edit element">
                         <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i> Edit
                     </button>
@@ -649,11 +649,11 @@
                               placeholder="Optional description" aria-label="Description"></textarea>
                 </div>
                 <div class="flex gap-2">
-                    <button data-testid="detail-save-btn" @click="saveDetailEdit()" :disabled="detailSaving"
+                    <button type="button" data-testid="detail-save-btn" @click="saveDetailEdit()" :disabled="detailSaving"
                             class="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 disabled:opacity-50" aria-label="Save changes">
                         <span x-text="detailSaving ? 'Saving...' : 'Save'"></span>
                     </button>
-                    <button @click="detailEditing = false"
+                    <button type="button" @click="detailEditing = false"
                             class="px-3 py-1.5 border rounded-md text-sm hover:bg-accent" aria-label="Cancel edit">Cancel</button>
                 </div>
             </div>
@@ -739,7 +739,7 @@
         <div class="bg-background border rounded-lg shadow-lg w-full max-w-lg mx-4 p-6" @click.stop tabindex="-1">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-bold" x-text="editingElement ? 'Edit Element' : 'Create Element'"></h2>
-                <button @click="Platform.modal.close('archimate-form-modal')" aria-label="Close" class="text-muted-foreground hover:text-foreground">
+                <button type="button" @click="Platform.modal.close('archimate-form-modal')" aria-label="Close" class="text-muted-foreground hover:text-foreground">
                     <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
                 </button>
             </div>
@@ -828,7 +828,7 @@
         <div class="bg-background border rounded-lg shadow-lg w-full max-w-lg mx-4 p-6" @click.stop tabindex="-1">
             <div class="flex items-center justify-between mb-4">
                 <h2 id="ai-generate-modal-title" class="text-xl font-bold">Generate Element with AI</h2>
-                <button @click="Platform.modal.close('ai-generate-modal')" aria-label="Close" class="text-muted-foreground hover:text-foreground">
+                <button type="button" @click="Platform.modal.close('ai-generate-modal')" aria-label="Close" class="text-muted-foreground hover:text-foreground">
                     <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
                 </button>
             </div>

@@ -244,19 +244,19 @@
                     {# Aggregate Stats #}
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Avg Confidence</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Avg Confidence</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="formatPercent(confidence.data.aggregate.avg_confidence)"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Min Confidence</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Min Confidence</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="formatPercent(confidence.data.aggregate.min_confidence)"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Max Confidence</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Max Confidence</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="formatPercent(confidence.data.aggregate.max_confidence)"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Pairs Analyzed</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Pairs Analyzed</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="confidence.data.pair_count"></p>
                         </div>
                     </div>
@@ -330,19 +330,19 @@
                     {# Merge Summary #}
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Matching</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Fields Matching</p>
                             <p class="text-lg font-semibold text-success-emphasis mt-1" x-text="mergePreview.data.merge_summary.fields_matching"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Conflicting</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Fields Conflicting</p>
                             <p class="text-lg font-semibold text-warning-emphasis mt-1" x-text="mergePreview.data.merge_summary.fields_conflicting"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Missing</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Fields Missing</p>
                             <p class="text-lg font-semibold text-muted-foreground mt-1" x-text="mergePreview.data.merge_summary.fields_missing"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Total Compared</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Total Compared</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="mergePreview.data.merge_summary.total_fields_compared"></p>
                         </div>
                     </div>
@@ -409,23 +409,23 @@
                     {# Total Impact Summary #}
                     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Processes Affected</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Processes Affected</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="impact.data.total_impact.processes_affected"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Capabilities Affected</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Capabilities Affected</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="impact.data.total_impact.capabilities_affected"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Integrations</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Integrations</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="impact.data.total_impact.integrations_affected"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Users Affected</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Users Affected</p>
                             <p class="text-lg font-semibold text-foreground mt-1" x-text="formatNumber(impact.data.total_impact.total_users_affected)"></p>
                         </div>
                         <div class="rounded-lg border border-input bg-background p-3">
-                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Consolidation Risk</p>
+                            <p class="text-2xs uppercase tracking-wide text-muted-foreground">Consolidation Risk</p>
                             <p class="text-lg font-semibold mt-1"
                                :class="{'text-destructive-emphasis': impact.data.consolidation_risk === 'high', 'text-warning-emphasis': impact.data.consolidation_risk === 'medium', 'text-success-emphasis': impact.data.consolidation_risk === 'low'}"
                                x-text="(impact.data.consolidation_risk || 'unknown').charAt(0).toUpperCase() + (impact.data.consolidation_risk || 'unknown').slice(1)"></p>

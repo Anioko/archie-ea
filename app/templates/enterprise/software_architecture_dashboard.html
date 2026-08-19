@@ -109,13 +109,13 @@
                         <td class="px-6 py-3">
                             <div class="font-medium text-foreground">{{ component.name }}</div>
                             {% if component.vendor_name %}
-                            <div class="text-[11px] text-muted-foreground mt-0.5">{{ component.vendor_name }}</div>
+                            <div class="text-2xs text-muted-foreground mt-0.5">{{ component.vendor_name }}</div>
                             {% endif %}
                         </td>
                         <!-- Type badge -->
                         <td class="px-6 py-3">
                             {% if component.component_type %}
-                            <span class="px-2 py-0.5 bg-muted text-muted-foreground rounded text-[11px] border border-border whitespace-nowrap">
+                            <span class="px-2 py-0.5 bg-muted text-muted-foreground rounded text-2xs border border-border whitespace-nowrap">
                                 {{ component.component_type | replace('_', ' ') | title }}
                             </span>
                             {% else %}
@@ -126,19 +126,19 @@
                         <td class="px-6 py-3">
                             {% set ls = component.lifecycle_status %}
                             {% if ls in ('production', 'operational') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-success/10 text-success-emphasis border-success/30">
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-success/10 text-success-emphasis border-success/30">
                                 {{ ls | title }}
                             </span>
                             {% elif ls in ('development', 'testing', 'planning') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-info/10 text-primary border-primary/20">
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-info/10 text-primary border-primary/20">
                                 {{ ls | title }}
                             </span>
                             {% elif ls in ('deprecated', 'retirement', 'retired') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-warning/10 text-warning-emphasis border-warning/30">
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-warning/10 text-warning-emphasis border-warning/30">
                                 {{ ls | title }}
                             </span>
                             {% elif ls %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-muted text-muted-foreground border-border">
                                 {{ ls | title }}
                             </span>
                             {% else %}
@@ -163,7 +163,7 @@
                                 </span>
                                 {% endif %}
                                 {% if not component.technology_stack %}
-                                <span class="text-muted-foreground italic text-[11px]">—</span>
+                                <span class="text-muted-foreground italic text-2xs">—</span>
                                 {% endif %}
                             </div>
                         </td>
@@ -171,16 +171,16 @@
                         <td class="px-6 py-3">
                             {% set crit = component.criticality %}
                             {% if crit == 'mission_critical' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-destructive/10 text-destructive-emphasis border-destructive/20">Mission Critical</span>
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-destructive/10 text-destructive-emphasis border-destructive/20">Mission Critical</span>
                             {# 4-tier criticality RAG (mission_critical/high/medium/low) — high and medium kept as distinct raw shades since both would otherwise collapse onto the single warning token #}
                             {% elif crit == 'high' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">High</span> {# token-migration-ok #}
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-orange-500/10 text-orange-700 border-orange-200">High</span> {# token-migration-ok #}
                             {% elif crit == 'medium' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-yellow-500/10 text-amber-700 border-amber-200">Medium</span> {# token-migration-ok #}
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-yellow-500/10 text-amber-700 border-amber-200">Medium</span> {# token-migration-ok #}
                             {% elif crit == 'low' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">Low</span>
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-muted text-muted-foreground border-border">Low</span>
                             {% elif crit %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">{{ crit | title }}</span>
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-muted text-muted-foreground border-border">{{ crit | title }}</span>
                             {% else %}
                             <span class="text-muted-foreground italic text-xs">—</span>
                             {% endif %}

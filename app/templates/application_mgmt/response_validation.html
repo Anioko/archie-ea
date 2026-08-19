@@ -41,7 +41,7 @@
           <option value="{{ app.id }}">{{ app.name }}</option>
           {% endfor %}
         </select>
-        <button @click="resolveAllConflicts()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" id="resolve-all-btn" disabled aria-label="Action">
+        <button type="button" @click="resolveAllConflicts()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" id="resolve-all-btn" disabled aria-label="Action">
           Resolve All
         </button>
       </div>
@@ -134,8 +134,8 @@
         </div>
       </div>
       <div class="flex justify-end gap-3 mt-6">
-        <button @click="closeResolutionModal()" class="px-4 py-2 border rounded-md hover:bg-accent" aria-label="Close">Cancel</button>
-        <button @click="confirmResolution()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Confirm">Confirm</button>
+        <button type="button" @click="closeResolutionModal()" class="px-4 py-2 border rounded-md hover:bg-accent" aria-label="Close">Cancel</button>
+        <button type="button" @click="confirmResolution()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Confirm">Confirm</button>
       </div>
     </div>
   </div>

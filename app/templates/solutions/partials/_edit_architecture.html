@@ -57,10 +57,10 @@
                             <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
-                            <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
+                            <button type="button" @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                 <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
-                            <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
+                            <button type="button" @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -87,10 +87,10 @@
                             <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
-                            <button @click="acceptRequirement(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
+                            <button type="button" @click="acceptRequirement(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                 <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
-                            <button @click="dismissRequirement(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
+                            <button type="button" @click="dismissRequirement(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -210,7 +210,7 @@
                 <span class="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full"
                       x-text="linkedArchimateElements.length + ' elements'"></span>
             </h3>
-            <button @click="loadLinkedArchimateElements()"
+            <button type="button" @click="loadLinkedArchimateElements()"
                     class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
                     :disabled="linkedArchimateLoading">
                 <i data-lucide="refresh-cw" class="w-3 h-3" :class="{'animate-spin': linkedArchimateLoading}"></i>
@@ -232,7 +232,7 @@
                                 <span class="text-sm text-foreground font-medium truncate" x-text="el.name || el.element_name || ('Element #' + el.element_id)"></span>
                                 <span class="text-xs text-muted-foreground truncate hidden sm:block" x-cloak x-show="el.notes" x-text="el.notes"></span>
                             </div>
-                            <button @click="removeLinkedArchimateElement(el.mapping_id)"
+                            <button type="button" @click="removeLinkedArchimateElement(el.mapping_id)"
                                     class="ml-2 shrink-0 text-xs text-destructive-emphasis/70 hover:text-destructive-emphasis flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <i data-lucide="x" class="w-3 h-3"></i>
                                 Remove
@@ -466,7 +466,7 @@
                             <td class="px-3 py-2 font-medium text-foreground border-r border-border text-xs" x-text="app.name" :title="app.type"></td>
                             <template x-for="dobj in dataObjects" :key="'cell-' + app.id + '-' + dobj.id">
                                 <td class="text-center px-1 py-1">
-                                    <button
+                                    <button type="button"
                                         @click="toggleAccess(app.id, dobj.id)"
                                         class="w-full px-2 py-1 rounded text-xs font-medium border transition-colors cursor-pointer"
                                         :class="accessClass(app.id, dobj.id)"
@@ -645,10 +645,10 @@
                             <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
-                            <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
+                            <button type="button" @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
                                 <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
-                            <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
+                            <button type="button" @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive-emphasis" title="Dismiss">
                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             </button>
                         </div>

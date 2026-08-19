@@ -17,7 +17,7 @@
   <nav class="mb-8 flex items-center justify-between">
     <template x-for="(step, idx) in steps" :key="step.num">
       <div class="flex items-center" :class="idx < steps.length - 1 ? 'flex-1' : ''">
-        <button @click="if (completedSteps.includes(step.num) || step.num === currentStep) currentStep = step.num"
+        <button type="button" @click="if (completedSteps.includes(step.num) || step.num === currentStep) currentStep = step.num"
                 class="flex flex-col items-center gap-1.5">
           <span class="flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold transition-all border"
                 :class="{
@@ -28,7 +28,7 @@
             <span x-show="completedSteps.includes(step.num) && step.num !== currentStep" x-cloak>&check;</span>
             <span x-show="!completedSteps.includes(step.num) || step.num === currentStep" x-text="step.num"></span>
           </span>
-          <span class="text-[11px] font-medium whitespace-nowrap hidden sm:block"
+          <span class="text-2xs font-medium whitespace-nowrap hidden sm:block"
                 :class="step.num === currentStep ? 'text-foreground' : 'text-muted-foreground'"
                 x-text="step.label"></span>
         </button>
@@ -181,13 +181,13 @@
             <div class="flex-1 space-y-3">
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div class="sm:col-span-2">
-                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Driver name *</label>
+                  <label class="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Driver name *</label>
                   <input type="text" x-model="driver.name"
                          class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                          placeholder="e.g. SAP ECC 6.0 End-of-Life" aria-label="Driver name">
                 </div>
                 <div>
-                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Type</label>
+                  <label class="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Type</label>
                   <select x-model="driver.type" class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Type">
                     <option value="internal">Internal</option>
                     <option value="external">External</option>
@@ -198,13 +198,13 @@
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div class="sm:col-span-2">
-                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">KPI / Measurable target</label>
+                  <label class="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">KPI / Measurable target</label>
                   <input type="text" x-model="driver.kpi"
                          class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                          placeholder="e.g. Migrate before Q4 2027, reduce close cycle to 3 days" aria-label="KPI / Measurable target">
                 </div>
                 <div>
-                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Urgency</label>
+                  <label class="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Urgency</label>
                   <select x-model="driver.urgency" class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Urgency">
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
@@ -215,20 +215,20 @@
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Benefit owner</label>
+                  <label class="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Benefit owner</label>
                   <input type="text" x-model="driver.owner"
                          class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                          placeholder="Role or name (e.g. Group CFO)" aria-label="Benefit owner">
                 </div>
                 <div>
-                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Quantified benefit</label>
+                  <label class="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Quantified benefit</label>
                   <input type="text" x-model="driver.benefit"
                          class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                          placeholder="e.g. £1.1M risk avoidance, £800K efficiency" aria-label="Quantified benefit">
                 </div>
               </div>
             </div>
-            <button @click="removeDriver(idx)" x-show="form.drivers.length > 1"
+            <button type="button" @click="removeDriver(idx)" x-show="form.drivers.length > 1"
                     class="mt-1 p-1.5 rounded-md text-muted-foreground hover:text-destructive-emphasis hover:bg-destructive/10 transition-colors shrink-0">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -237,7 +237,7 @@
       </template>
     </div>
 
-    <button @click="addDriver()"
+    <button type="button" @click="addDriver()"
             class="w-full rounded-xl border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors px-5 py-3 text-sm flex items-center justify-center gap-2">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
       Add strategic driver
@@ -253,13 +253,13 @@
                    class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                    placeholder="Goal name (e.g. Reduce month-end close from 10 days to 3 days)" aria-label="Goal name (e.g. Reduce month-end close from 10 days to 3 days)">
           </div>
-          <button @click="removeGoal(idx)" x-show="form.goals.length > 1"
+          <button type="button" @click="removeGoal(idx)" x-show="form.goals.length > 1"
                   class="p-1.5 mt-1 rounded-md text-muted-foreground hover:text-destructive-emphasis hover:bg-destructive/10 transition-colors shrink-0">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
       </template>
-      <button @click="addGoal()" class="text-xs text-primary hover:underline">+ Add goal</button>
+      <button type="button" @click="addGoal()" class="text-xs text-primary hover:underline">+ Add goal</button>
     </div>
   </section>
 
@@ -304,7 +304,7 @@
             <p class="text-sm font-semibold text-foreground" x-text="cap.name"></p>
             <p class="text-xs text-muted-foreground" x-text="(cap.domain || '') + (cap.level ? ' · Level ' + cap.level : '')"></p>
           </div>
-          <button @click="removeCapability(idx)"
+          <button type="button" @click="removeCapability(idx)"
                   class="text-xs text-muted-foreground hover:text-destructive-emphasis transition-colors px-2 py-1">Remove</button>
         </div>
       </template>
@@ -354,7 +354,7 @@
         <template x-for="(app, idx) in form.applications" :key="app.id">
           <div class="px-5 py-3 flex items-center justify-between">
             <p class="text-sm font-medium text-foreground" x-text="app.name"></p>
-            <button @click="removeApplication(idx)"
+            <button type="button" @click="removeApplication(idx)"
                     class="text-xs text-muted-foreground hover:text-destructive-emphasis transition-colors px-2 py-1">Remove</button>
           </div>
         </template>
@@ -469,19 +469,19 @@
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
       <div class="rounded-xl border border-border bg-card py-4">
         <p class="text-2xl font-bold text-foreground" x-text="validDrivers().length"></p>
-        <p class="text-[11px] text-muted-foreground mt-0.5">Strategic drivers</p>
+        <p class="text-2xs text-muted-foreground mt-0.5">Strategic drivers</p>
       </div>
       <div class="rounded-xl border border-border bg-card py-4">
         <p class="text-2xl font-bold text-foreground" x-text="form.goals.filter(g => g.name.trim()).length"></p>
-        <p class="text-[11px] text-muted-foreground mt-0.5">Programme goals</p>
+        <p class="text-2xs text-muted-foreground mt-0.5">Programme goals</p>
       </div>
       <div class="rounded-xl border border-success/20 bg-success/5 py-4">
         <p class="text-2xl font-bold text-success" x-text="form.capabilities.length"></p>
-        <p class="text-[11px] text-muted-foreground mt-0.5">Capabilities in scope</p>
+        <p class="text-2xs text-muted-foreground mt-0.5">Capabilities in scope</p>
       </div>
       <div class="rounded-xl border border-border bg-card py-4">
         <p class="text-2xl font-bold text-foreground" x-text="form.applications.length"></p>
-        <p class="text-[11px] text-muted-foreground mt-0.5">Applications mapped</p>
+        <p class="text-2xs text-muted-foreground mt-0.5">Applications mapped</p>
       </div>
     </div>
 
@@ -507,20 +507,20 @@
 
   {# ── Navigation footer ───────────────────────────────────────── #}
   <div class="flex items-center justify-between pt-6 mt-6 border-t border-border">
-    <button @click="prevStep()"
+    <button type="button" @click="prevStep()"
             :class="currentStep === 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-accent'"
             class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-input bg-card text-foreground transition-colors">
       &larr; Previous
     </button>
     <div class="flex items-center gap-3">
       <span class="text-xs text-muted-foreground" x-text="'Step ' + currentStep + ' of 6'"></span>
-      <button @click="nextStep()"
+      <button type="button" @click="nextStep()"
               :disabled="!canAdvance()"
               :class="currentStep === 6 ? 'hidden' : canAdvance() ? 'hover:bg-primary/90' : 'opacity-40 cursor-not-allowed'"
               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground transition-colors">
         Continue &rarr;
       </button>
-      <button x-show="currentStep === 6" @click="submitProgramme()"
+      <button type="button" x-show="currentStep === 6" @click="submitProgramme()"
               :disabled="submitting"
               class="inline-flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
         <span x-show="!submitting">Create Programme</span>

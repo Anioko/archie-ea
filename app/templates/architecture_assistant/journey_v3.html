@@ -268,7 +268,7 @@
             </div>
             {# Inline entity counts — compact row #}
             <div x-show="capabilities.length > 0 || (architectureResult && architectureResult.total)" x-cloak
-                 class="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground">
+                 class="flex items-center gap-4 mt-2 text-2xs text-muted-foreground">
                 <template x-if="domainsPopulated">
                     <div class="flex items-center gap-4">
                         <span><span class="font-semibold text-foreground" x-text="domainCoverage"></span>/7 domains</span>
@@ -503,11 +503,11 @@
                                 <p class="text-foreground/80" x-text="approval.summary || approval.tool"></p>
                                 <div class="flex gap-2 pt-1">
                                     <button type="button" @click="approveAction(approval)"
-                                            class="px-2.5 py-1 rounded bg-primary text-primary-foreground text-[11px] font-medium hover:bg-primary/90 transition-colors">
+                                            class="px-2.5 py-1 rounded bg-primary text-primary-foreground text-2xs font-medium hover:bg-primary/90 transition-colors">
                                         Approve
                                     </button>
                                     <button type="button" @click="approval.dismissed = true"
-                                            class="px-2.5 py-1 rounded border border-input text-[11px] font-medium hover:bg-accent transition-colors">
+                                            class="px-2.5 py-1 rounded border border-input text-2xs font-medium hover:bg-accent transition-colors">
                                         Dismiss
                                     </button>
                                 </div>

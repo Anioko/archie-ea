@@ -12,7 +12,7 @@
                 <!-- Errors badge -->
                 <template x-if="errors.length > 0">
                     <div class="relative" x-data="errorsBadgeDropdown()">
-                        <button @click="open=!open" class="h-7 px-2.5 flex items-center gap-1.5 text-xs font-medium text-destructive-emphasis border border-destructive/30 rounded-md hover:bg-destructive/10 transition-colors">
+                        <button type="button" @click="open=!open" class="h-7 px-2.5 flex items-center gap-1.5 text-xs font-medium text-destructive-emphasis border border-destructive/30 rounded-md hover:bg-destructive/10 transition-colors">
                             <i data-lucide="alert-circle" class="h-3 w-3"></i>
                             <span x-text="errors.length + ' error' + (errors.length>1?'s':'')"></span>
                         </button>
@@ -21,7 +21,7 @@
                                 <div class="flex items-start gap-2 text-xs text-destructive-emphasis">
                                     <i data-lucide="alert-circle" class="h-3 w-3 mt-0.5 shrink-0"></i>
                                     <span x-text="err.text" class="flex-1"></span>
-                                    <button @click="errors=errors.filter(e=>e.id!==err.id)" class="shrink-0 hover:text-destructive-emphasis"><i data-lucide="x" class="h-3 w-3"></i></button>
+                                    <button type="button" @click="errors=errors.filter(e=>e.id!==err.id)" class="shrink-0 hover:text-destructive-emphasis"><i data-lucide="x" class="h-3 w-3"></i></button>
                                 </div>
                             </template>
                         </div>
@@ -38,18 +38,18 @@
                 </div>
 
                 <!-- Version button -->
-                <button @click="rightTab='history'" x-show="versionLabel" x-cloak
+                <button type="button" @click="rightTab='history'" x-show="versionLabel" x-cloak
                         class="h-7 px-2.5 text-xs font-medium text-muted-foreground border border-border rounded-md hover:bg-accent hover:text-foreground transition-colors"
                         x-text="versionLabel"></button>
 
                 <!-- Back to Setup -->
-                <button @click="ideShowSetup = true; phase = Math.max(phase, 3)"
+                <button type="button" @click="ideShowSetup = true; phase = Math.max(phase, 3)"
                         class="h-7 px-2.5 text-xs font-medium text-muted-foreground border border-border rounded-md hover:bg-accent hover:text-foreground transition-colors">
                     Setup
                 </button>
 
                 <!-- Save as Template -->
-                <button @click="saveTemplateModal = true; newTemplateName = solutionName + ' template'; newTemplateDesc = ''"
+                <button type="button" @click="saveTemplateModal = true; newTemplateName = solutionName + ' template'; newTemplateDesc = ''"
                         x-show="fileList.length > 0" x-cloak
                         class="h-7 px-2.5 text-xs font-medium text-muted-foreground border border-border rounded-md hover:bg-accent hover:text-foreground transition-colors flex items-center gap-1.5">
                     <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z"/></svg>
@@ -58,7 +58,7 @@
 
                 <!-- Share link -->
                 <div x-show="fileList.length > 0" x-cloak x-data="{sharing:false, shareUrl:'', copied:false}">
-                    <button x-show="!shareUrl"
+                    <button type="button" x-show="!shareUrl"
                             @click="sharing=true;
                                 fetch('/solutions/'+solutionId+'/codegen/share',{
                                     method:'POST',
@@ -75,7 +75,7 @@
                     <div x-show="shareUrl" x-cloak class="flex items-center gap-1.5">
                         <input :value="shareUrl" readonly
                                class="h-7 px-2 text-xs font-mono bg-info/5 border border-info/30 rounded-md text-info-emphasis w-48 focus:outline-none"/>
-                        <button @click="navigator.clipboard.writeText(shareUrl).then(()=>{copied=true;setTimeout(()=>copied=false,2000);})"
+                        <button type="button" @click="navigator.clipboard.writeText(shareUrl).then(()=>{copied=true;setTimeout(()=>copied=false,2000);})"
                                 class="h-7 px-2 text-xs border border-border rounded-md hover:bg-accent transition-colors text-muted-foreground flex items-center gap-1">
                             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
                             <span x-text="copied ? 'Copied!' : 'Copy'"></span>
@@ -99,7 +99,7 @@
                 <!-- Push to Git (COM-018) -->
                 <div x-show="fileList.length > 0" x-cloak
                      x-data="{pushing:false, prUrl:'', pushErr:''}">
-                    <button x-show="!prUrl"
+                    <button type="button" x-show="!prUrl"
                             @click="pushing=true; pushErr='';
                                 fetch('/solutions/'+solutionId+'/codegen/push-to-git',{
                                     method:'POST',
@@ -124,7 +124,7 @@
                 </div>
 
                 <!-- AI Chat toggle (Ctrl+I / ⌘I) -->
-                <button @click="$dispatch('wb-chat-toggle')"
+                <button type="button" @click="$dispatch('wb-chat-toggle')"
                         title="AI Chat (Ctrl+I)"
                         class="h-7 px-2.5 text-xs font-medium border rounded-md transition-colors flex items-center gap-1.5 text-info-emphasis border-info/30 bg-info/5 hover:bg-info/10">
                     <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -134,7 +134,7 @@
                 </button>
 
                 <!-- ▶ PREVIEW — opens full-screen modal showing Web/Mobile/Admin/API surfaces -->
-                <button @click="previewModal = true; previewModalTab = (fileList.some(f => f.startsWith('frontend/')) ? 'web' : fileList.some(f => f.startsWith('mobile/')) ? 'mobile' : 'admin')"
+                <button type="button" @click="previewModal = true; previewModalTab = (fileList.some(f => f.startsWith('frontend/')) ? 'web' : fileList.some(f => f.startsWith('mobile/')) ? 'mobile' : 'admin')"
                         x-show="fileList.length > 0" x-cloak
                         title="Full-screen preview (Web · Mobile · Admin · API)"
                         class="h-7 px-3 text-xs font-semibold border-2 rounded-md transition-colors flex items-center gap-1.5 text-info-emphasis border-info/50 bg-info/8 hover:bg-info/15 hover:border-info/70">
@@ -146,7 +146,7 @@
                 </button>
 
                 <!-- Re-Generate -->
-                <button @click="generate()" :disabled="generating"
+                <button type="button" @click="generate()" :disabled="generating"
                         class="h-7 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center gap-1.5">
                     <svg x-show="generating" class="w-3 h-3 wb-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
                     <svg x-show="!generating" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347c-.75.412-1.667-.13-1.667-.986V5.653Z"/></svg>
@@ -183,7 +183,7 @@
         <div x-show="generating" x-cloak class="shrink-0 border-b border-border bg-primary/5 px-4 py-2">
             <div class="flex items-center gap-3">
                 <svg class="w-3.5 h-3.5 text-primary wb-spin shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
-                <span class="text-[11px] font-medium text-foreground shrink-0" x-text="generateLabel || 'Building…'"></span>
+                <span class="text-2xs font-medium text-foreground shrink-0" x-text="generateLabel || 'Building…'"></span>
                 <div class="flex items-center gap-2 flex-1 overflow-hidden">
                     <template x-for="key in promptGroups" :key="key">
                         <div class="flex items-center gap-1 text-xs">
@@ -203,7 +203,7 @@
              class="shrink-0 border-b border-success/30 bg-success/8 px-4 py-2 flex items-center gap-2 text-xs text-success-emphasis">
             <i data-lucide="check-circle-2" class="h-3.5 w-3.5 shrink-0"></i>
             <span x-text="successMsg" class="flex-1"></span>
-            <button @click="successMsg=''" class="text-success-emphasis hover:text-success-emphasis/80"><i data-lucide="x" class="h-3 w-3"></i></button>
+            <button type="button" @click="successMsg=''" class="text-success-emphasis hover:text-success-emphasis/80"><i data-lucide="x" class="h-3 w-3"></i></button>
         </div>
 
         <!-- ── 3-pane layout ── -->
@@ -219,15 +219,15 @@
                         <input type="text" x-model="fileFilter" placeholder="Filter files…" class="bg-transparent flex-1 outline-none text-foreground placeholder:text-muted-foreground text-xs" aria-label="Filter files…">
                     </div>
                     <div class="flex items-center gap-1">
-                        <button @click="createFile()" title="New file"
+                        <button type="button" @click="createFile()" title="New file"
                                 class="h-6 px-2 text-xs font-medium border border-border rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex items-center gap-1">
                             <i data-lucide="file-plus" class="h-3 w-3"></i> New
                         </button>
-                        <button @click="searchFiles()" title="Search across files"
+                        <button type="button" @click="searchFiles()" title="Search across files"
                                 class="h-6 px-2 text-xs font-medium border border-border rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex items-center gap-1">
                             <i data-lucide="search" class="h-3 w-3"></i> Find
                         </button>
-                        <button @click="toggleLeftPanel()" title="Collapse file tree"
+                        <button type="button" @click="toggleLeftPanel()" title="Collapse file tree"
                                 class="h-6 px-1.5 text-xs font-medium border border-border rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex items-center ml-auto">
                             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7"/></svg>
                         </button>
@@ -244,8 +244,8 @@
                             <div class="fitem flex items-center gap-1.5 px-2 py-0.5" @click="expandedDirs[category] = !expandedDirs[category]">
                                 <svg class="w-3 h-3 text-muted-foreground shrink-0 transition-transform" :class="expandedDirs[category] !== false ? 'rotate-90' : ''" fill="currentColor" viewBox="0 0 20 20"><path d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"/></svg>
                                 <svg class="w-3.5 h-3.5 text-primary/70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-                                <span class="text-[11px] font-medium text-muted-foreground flex-1 truncate" x-text="category + '/'"></span>
-                                <span class="text-[9px] text-muted-foreground/40" x-text="files.length"></span>
+                                <span class="text-2xs font-medium text-muted-foreground flex-1 truncate" x-text="category + '/'"></span>
+                                <span class="text-2xs text-muted-foreground/40" x-text="files.length"></span>
                             </div>
                             <!-- Files — use x-show (not x-if) so x-for scope inherits `files` from outer x-for -->
                             <div class="ml-4" x-show="expandedDirs[category] !== false">
@@ -255,14 +255,14 @@
                                          @click="selectFile(path)"
                                          @contextmenu.prevent="$refs['ctx_' + path.replaceAll('/','_')]?.classList.toggle('hidden')">
                                         <svg class="w-3 h-3 shrink-0 text-muted-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-                                        <span class="fname text-[11px] flex-1 truncate text-foreground/80" x-text="path.split('/').pop()"></span>
+                                        <span class="fname text-2xs flex-1 truncate text-foreground/80" x-text="path.split('/').pop()"></span>
                                         <!-- Status dots -->
                                         <span x-show="editedFiles.includes(path)" class="w-1.5 h-1.5 rounded-full bg-warning shrink-0" title="Manually edited"></span>
                                         <!-- Inline action buttons (visible on hover) -->
                                         <div class="hidden group-hover:flex items-center gap-0.5 shrink-0">
-                                            <button @click.stop="renameFile(path)" title="Rename / Move" class="w-4 h-4 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50"><i data-lucide="pencil" class="h-2.5 w-2.5"></i></button>
-                                            <button @click.stop="duplicateFile(path)" title="Duplicate" class="w-4 h-4 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50"><i data-lucide="copy" class="h-2.5 w-2.5"></i></button>
-                                            <button @click.stop="deleteFile(path)" title="Delete" class="w-4 h-4 rounded flex items-center justify-center text-muted-foreground hover:text-destructive-emphasis hover:bg-destructive/10"><i data-lucide="trash-2" class="h-2.5 w-2.5"></i></button>
+                                            <button type="button" @click.stop="renameFile(path)" title="Rename / Move" class="w-4 h-4 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50"><i data-lucide="pencil" class="h-2.5 w-2.5"></i></button>
+                                            <button type="button" @click.stop="duplicateFile(path)" title="Duplicate" class="w-4 h-4 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50"><i data-lucide="copy" class="h-2.5 w-2.5"></i></button>
+                                            <button type="button" @click.stop="deleteFile(path)" title="Delete" class="w-4 h-4 rounded flex items-center justify-center text-muted-foreground hover:text-destructive-emphasis hover:bg-destructive/10"><i data-lucide="trash-2" class="h-2.5 w-2.5"></i></button>
                                         </div>
                                     </div>
                                 </template>
@@ -296,7 +296,7 @@
                 <div class="absolute inset-y-0 w-0.5 bg-border group-hover:bg-primary/50 transition-colors" :class="dragging === 'left' ? 'bg-primary/60' : ''"></div>
                 <!-- expand button when fully collapsed -->
                 <template x-if="leftW === 0">
-                    <button @click.stop="toggleLeftPanel()"
+                    <button type="button" @click.stop="toggleLeftPanel()"
                             class="absolute left-0.5 top-1/2 -translate-y-1/2 z-10 w-4 h-8 rounded-r bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center shadow-sm"
                             title="Expand file tree">
                         <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7"/></svg>
@@ -310,19 +310,19 @@
                 <!-- Tab bar -->
                 <div class="shrink-0 h-9 border-b border-border bg-card flex items-end px-0 overflow-x-auto ide-scroll">
                     <template x-for="tab in openTabs" :key="tab.path">
-                        <div class="group flex items-center gap-1.5 px-3 h-8 border-r border-border text-[11px] cursor-pointer whitespace-nowrap transition-colors shrink-0"
+                        <div class="group flex items-center gap-1.5 px-3 h-8 border-r border-border text-2xs cursor-pointer whitespace-nowrap transition-colors shrink-0"
                              :class="selectedFile === tab.path ? 'bg-background text-foreground border-t-2 border-t-primary -mb-px' : 'text-muted-foreground hover:text-foreground'"
                              @click="selectFile(tab.path)">
                             <span x-text="tab.name"></span>
                             <span x-show="dirtyFiles[tab.path]" class="w-1.5 h-1.5 rounded-full bg-warning ml-0.5 shrink-0" title="Unsaved changes"></span>
-                            <button @click.stop="closeTab(tab.path)"
+                            <button type="button" @click.stop="closeTab(tab.path)"
                                     class="ml-0.5 w-3.5 h-3.5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-all shrink-0 text-muted-foreground hover:text-foreground">
                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                             </button>
                         </div>
                     </template>
                     <!-- Placeholder when no tabs open -->
-                    <div x-show="openTabs.length === 0" class="px-3 h-8 flex items-center text-[11px] text-muted-foreground/40 italic">
+                    <div x-show="openTabs.length === 0" class="px-3 h-8 flex items-center text-2xs text-muted-foreground/40 italic">
                         Click a file to open
                     </div>
                 </div>
@@ -339,20 +339,20 @@
                         <!-- Unsaved dot -->
                         <span x-show="editorDirty" x-cloak class="w-2 h-2 rounded-full bg-warning shrink-0" title="Unsaved changes"></span>
                         <!-- Edit with AI -->
-                        <button x-show="selectedFile && hasLlm" x-cloak @click="patchOpen = !patchOpen"
+                        <button type="button" x-show="selectedFile && hasLlm" x-cloak @click="patchOpen = !patchOpen"
                                 :class="patchOpen ? 'bg-info/10 text-info-emphasis border-info/30' : 'bg-background text-muted-foreground border-border hover:text-foreground'"
                                 class="h-6 px-2 text-xs font-medium border rounded hover:bg-info/10 transition-colors flex items-center gap-1">
                             <i data-lucide="sparkles" class="h-3 w-3"></i> Edit with AI
                         </button>
                         <!-- Save -->
-                        <button x-show="selectedFile && editorDirty" x-cloak @click="saveFile()" :disabled="fileSaving"
+                        <button type="button" x-show="selectedFile && editorDirty" x-cloak @click="saveFile()" :disabled="fileSaving"
                                 class="h-6 px-2.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-1">
                             <svg x-show="fileSaving" class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <i x-show="!fileSaving" data-lucide="save" class="h-3 w-3"></i>
                             <span x-text="fileSaving ? 'Saving…' : 'Save'"></span>
                         </button>
                         <!-- Delete -->
-                        <button aria-label="Delete" x-show="selectedFile" x-cloak @click="deleteFile(selectedFile)"
+                        <button type="button" aria-label="Delete" x-show="selectedFile" x-cloak @click="deleteFile(selectedFile)"
                                 class="h-6 px-2 rounded text-xs font-medium border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 hover:bg-destructive/5 transition-colors flex items-center gap-1">
                             <i data-lucide="trash-2" class="h-3 w-3"></i>
                         </button>
@@ -365,7 +365,7 @@
                     <input type="text" x-model="patchInstruction" @keydown.enter="patchFile()" :disabled="patchRunning"
                            placeholder="Describe your change… e.g. 'add rate limiting to all POST endpoints'"
                            class="flex-1 text-xs border border-input rounded-md px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-info" aria-label="Describe your change… e.g. 'add rate limiting to all POST endpoints'"/>
-                    <button @click="patchFile()" :disabled="patchRunning || !patchInstruction.trim()"
+                    <button type="button" @click="patchFile()" :disabled="patchRunning || !patchInstruction.trim()"
                             class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-info text-primary-foreground text-xs font-medium hover:bg-info disabled:opacity-50 transition-colors shrink-0">
                         <svg x-show="patchRunning" class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                         <i x-show="!patchRunning" data-lucide="wand-2" class="h-3 w-3"></i>
@@ -378,8 +378,8 @@
                     <div class="px-3 py-2 bg-muted/30 flex items-center justify-between">
                         <span class="text-xs font-medium text-foreground flex items-center gap-1.5"><i data-lucide="git-diff" class="h-3.5 w-3.5 text-muted-foreground"></i> Review AI changes before applying</span>
                         <div class="flex gap-2">
-                            <button @click="confirmPatch()" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-success text-primary-foreground text-xs font-medium hover:bg-success transition-colors"><i data-lucide="check" class="h-3 w-3"></i> Apply</button>
-                            <button @click="patchDiff = null" class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-border text-xs text-muted-foreground hover:text-foreground transition-colors">Discard</button>
+                            <button type="button" @click="confirmPatch()" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-success text-primary-foreground text-xs font-medium hover:bg-success transition-colors"><i data-lucide="check" class="h-3 w-3"></i> Apply</button>
+                            <button type="button" @click="patchDiff = null" class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-border text-xs text-muted-foreground hover:text-foreground transition-colors">Discard</button>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 max-h-52 overflow-hidden">
@@ -418,20 +418,20 @@
                          class="absolute z-50 flex items-center gap-0.5 p-1 rounded-lg bg-popover border border-border shadow-lg text-xs"
                          :style="`top:${aiMenuTop}px; left:${aiMenuLeft}px; max-width:280px`"
                          @mousedown.prevent>
-                        <button @click="aiEditSelection('edit')"
+                        <button type="button" @click="aiEditSelection('edit')"
                                 class="px-2 py-1 rounded hover:bg-info/10 text-info-emphasis flex items-center gap-1 whitespace-nowrap">
                             <i data-lucide="sparkles" class="h-3 w-3"></i> Edit
                         </button>
-                        <button @click="aiEditSelection('fix')"
+                        <button type="button" @click="aiEditSelection('fix')"
                                 class="px-2 py-1 rounded hover:bg-warning/10 text-warning-emphasis flex items-center gap-1">
                             <i data-lucide="wrench" class="h-3 w-3"></i> Fix
                         </button>
-                        <button @click="aiEditSelection('refactor')"
+                        <button type="button" @click="aiEditSelection('refactor')"
                                 class="px-2 py-1 rounded hover:bg-info/10 text-primary flex items-center gap-1">
                             <i data-lucide="paintbrush" class="h-3 w-3"></i> Refactor
                         </button>
                         <div class="w-px h-4 bg-border mx-0.5"></div>
-                        <button @click="aiSelectionMenu = false" class="p-1 text-muted-foreground hover:text-foreground rounded">
+                        <button type="button" @click="aiSelectionMenu = false" class="p-1 text-muted-foreground hover:text-foreground rounded">
                             <i data-lucide="x" class="h-3 w-3"></i>
                         </button>
                     </div>
@@ -461,14 +461,14 @@
                 <!-- Tab bar -->
                 <div class="shrink-0 border-b border-border flex overflow-x-auto ide-scroll">
                     <template x-for="t in [{key:'preview',label:'Preview'},{key:'quality',label:'Quality'},{key:'history',label:'History'},{key:'deploy',label:'Deploy'},{key:'ai',label:'AI'},{key:'templates',label:'Templates'},{key:'search',label:'Search'}]" :key="t.key">
-                        <button @click="rightTab = t.key"
+                        <button type="button" @click="rightTab = t.key"
                                 class="px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 shrink-0"
                                 :class="rightTab === t.key ? 'text-foreground border-primary' : 'text-muted-foreground border-transparent hover:text-foreground'">
                             <span x-text="t.label"></span>
                         </button>
                     </template>
                     <!-- Expand / collapse toggle -->
-                    <button @click="toggleRightWide()"
+                    <button type="button" @click="toggleRightWide()"
                             class="ml-auto mr-1 shrink-0 w-6 h-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                             :title="rightW <= 360 ? 'Expand panel' : 'Collapse panel'">
                         <svg class="w-3.5 h-3.5 transition-transform" :class="rightW > 360 ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
@@ -487,7 +487,7 @@
                                 See all four app surfaces — Web App, Mobile, Admin UI and API Docs — each with device frames and launch controls.
                             </p>
                         </div>
-                        <button @click="previewModal = true; previewModalTab = (fileList.some(f => f.startsWith('frontend/')) ? 'web' : fileList.some(f => f.startsWith('mobile/')) ? 'mobile' : 'admin')"
+                        <button type="button" @click="previewModal = true; previewModalTab = (fileList.some(f => f.startsWith('frontend/')) ? 'web' : fileList.some(f => f.startsWith('mobile/')) ? 'mobile' : 'admin')"
                                 :disabled="!fileList.length"
                                 class="w-full h-10 text-sm font-semibold rounded-xl border-2 border-info/60 bg-info hover:bg-info/90 text-primary-foreground transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -506,7 +506,7 @@
                             {key:'admin',  icon:'settings',   label:'Admin UI',  note:'Generated CRUD dashboard',    check:''},
                             {key:'api',    icon:'file-text',  label:'API Docs',  note:'Swagger / OpenAPI',           check:''}
                         ]" :key="surf.key">
-                            <button @click="previewModal = true; previewModalTab = surf.key"
+                            <button type="button" @click="previewModal = true; previewModalTab = surf.key"
                                     x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                     :disabled="!!(surf.check && !fileList.some(f => f.startsWith(surf.check)))"
                                     class="w-full flex items-center gap-3 rounded-lg border border-border bg-card hover:bg-accent p-2.5 transition-colors disabled:opacity-40 text-left">
@@ -523,7 +523,7 @@
                     </div>
                     <!-- No files warning -->
                     <div x-show="!fileList.length" x-cloak
-                         class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-[11px] text-warning-emphasis">
+                         class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-2xs text-warning-emphasis">
                         Generate code first, then preview your app here.
                     </div>
                 </div>
@@ -560,9 +560,9 @@
                                 </div>
                                 <div>
                                     <p class="text-sm font-semibold text-foreground">Structural quality</p>
-                                    <p class="text-[11px] text-muted-foreground mt-0.5">Six weighted dimensions (schema, tests, flows, traceability, rules, domain fidelity)</p>
+                                    <p class="text-2xs text-muted-foreground mt-0.5">Six weighted dimensions (schema, tests, flows, traceability, rules, domain fidelity)</p>
                                     <template x-if="qualityDetails">
-                                        <p class="text-[11px] text-muted-foreground mt-0.5" x-text="(qualityDetails.class_count||0) + ' classes · ' + (qualityDetails.flow_count||0) + ' flows · ' + (qualityDetails.test_file_count||0) + ' test files'"></p>
+                                        <p class="text-2xs text-muted-foreground mt-0.5" x-text="(qualityDetails.class_count||0) + ' classes · ' + (qualityDetails.flow_count||0) + ' flows · ' + (qualityDetails.test_file_count||0) + ' test files'"></p>
                                     </template>
                                 </div>
                             </div>
@@ -623,18 +623,18 @@
                                         <div class="group rounded-lg px-2.5 py-2 border border-transparent hover:border-border transition-colors"
                                              :class="(qualityDetails[dim.key]||0) < 100 ? 'hover:bg-muted/30' : ''">
                                             <div class="flex items-center justify-between mb-1">
-                                                <span class="text-[11px] text-foreground/80" x-text="dim.label"></span>
+                                                <span class="text-2xs text-foreground/80" x-text="dim.label"></span>
                                                 <div class="flex items-center gap-1.5">
-                                                    <span class="text-[11px] font-semibold"
+                                                    <span class="text-2xs font-semibold"
                                                           :class="(qualityDetails[dim.key]||0) >= 80 ? 'text-success' : (qualityDetails[dim.key]||0) >= 60 ? 'text-warning' : 'text-destructive'"
                                                           x-text="Math.round(qualityDetails[dim.key]||0) + '%'"></span>
                                                     <!-- Fix with AI button — visible when score < 100% -->
                                                     <template x-if="(qualityDetails[dim.key]||0) < 100">
-                                                        <button
+                                                        <button type="button"
                                                             @click="fixDimension(dim.key, dim.label)"
                                                             :disabled="!!(dimFix[dim.key] && dimFix[dim.key].loading)"
                                                             :title="'Fix: ' + dim.hint"
-                                                            class="flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-all"
+                                                            class="flex items-center gap-0.5 text-2xs font-semibold px-1.5 py-0.5 rounded border transition-all"
                                                             :class="(dimFix[dim.key] && dimFix[dim.key].loading)
  ? 'border-primary/30 text-primary/60 cursor-wait'
  : 'border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60 cursor-pointer'">
@@ -648,7 +648,7 @@
                                                         </button>
                                                     </template>
                                                     <template x-if="(qualityDetails[dim.key]||0) >= 100">
-                                                        <span class="text-[9px] font-semibold text-success-emphasis px-1.5 py-0.5 rounded border border-success/30 bg-success/10">✓ Perfect</span>
+                                                        <span class="text-2xs font-semibold text-success-emphasis px-1.5 py-0.5 rounded border border-success/30 bg-success/10">✓ Perfect</span>
                                                     </template>
                                                 </div>
                                             </div>
@@ -671,7 +671,7 @@
                             <!-- Recommendations -->
                             <template x-if="qualityDetails && qualityDetails.recommendations && qualityDetails.recommendations.length > 0">
                                 <div>
-                                    <p class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recommendations</p>
+                                    <p class="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recommendations</p>
                                     <div class="space-y-1.5">
                                         <template x-for="(rec, i) in qualityDetails.recommendations" :key="i">
                                             <div class="rounded-lg overflow-hidden"
@@ -691,12 +691,12 @@
                                                     <template x-if="(rec.icon||'warning') !== 'error' && (rec.icon||'warning') !== 'info'">
                                                         <svg class="w-3 h-3 text-warning shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z"/></svg>
                                                     </template>
-                                                    <span class="text-[11px] text-foreground/80 leading-relaxed flex-1"
+                                                    <span class="text-2xs text-foreground/80 leading-relaxed flex-1"
                                                           x-text="typeof rec === 'string' ? rec : rec.text"></span>
-                                                    <button @click="fixRecommendation(rec, i)"
+                                                    <button type="button" @click="fixRecommendation(rec, i)"
                                                             :disabled="!!(recFix[i] && recFix[i].loading)"
                                                             title="Ask AI to implement this recommendation"
-                                                            class="shrink-0 flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            class="shrink-0 flex items-center gap-0.5 text-2xs font-semibold px-1.5 py-0.5 rounded border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                                             :class="(recFix[i] && recFix[i].loading)
  ? 'border-primary/30 text-primary/60 cursor-wait'
  : 'border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60 cursor-pointer'">
@@ -724,20 +724,20 @@
                             <!-- Blueprint Compliance violations -->
                             <template x-if="qualityDetails && qualityDetails.blueprint_violations && qualityDetails.blueprint_violations.length > 0">
                                 <div>
-                                    <p class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Blueprint Compliance</p>
+                                    <p class="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Blueprint Compliance</p>
                                     <div class="space-y-1.5">
                                         <template x-for="(v, vi) in qualityDetails.blueprint_violations" :key="vi">
                                             <div class="flex items-start gap-2 px-3 py-2 rounded-lg"
                                                  :class="v.severity === 'error' ? 'bg-destructive/5 border border-destructive/20' : 'bg-warning/5 border border-warning/20'">
-                                                <span class="shrink-0 text-[9px] font-bold uppercase px-1 py-0.5 rounded"
+                                                <span class="shrink-0 text-2xs font-bold uppercase px-1 py-0.5 rounded"
                                                       :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-warning/10 text-warning-emphasis'"
                                                       x-text="v.severity"></span>
                                                 <div class="flex-1 min-w-0">
-                                                    <p class="text-[11px] font-medium text-foreground leading-snug" x-text="v.constraint"></p>
+                                                    <p class="text-2xs font-medium text-foreground leading-snug" x-text="v.constraint"></p>
                                                     <p class="text-xs text-muted-foreground leading-snug mt-0.5" x-text="v.finding"></p>
                                                 </div>
-                                                <button @click="patchViolation(v.constraint)"
-                                                        class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-colors"
+                                                <button type="button" @click="patchViolation(v.constraint)"
+                                                        class="shrink-0 text-2xs font-semibold px-1.5 py-0.5 rounded border transition-colors"
                                                         :class="v.severity === 'error' ? 'border-destructive/50 text-destructive-emphasis hover:bg-destructive/10' : 'border-warning/50 text-warning-emphasis hover:bg-warning/10'"
                                                         title="Auto-patch this violation">Patch</button>
                                             </div>
@@ -749,8 +749,8 @@
                             <!-- Per-file trace markers (drill-down) -->
                             <template x-if="qualityDetails && qualityDetails.artifact_file_signals && qualityDetails.artifact_file_signals.length > 0">
                                 <div x-data="{ filesOpen: false, fileFilter: '' }">
-                                    <button @click="filesOpen = !filesOpen"
-                                            class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-background/50 hover:bg-accent transition-colors text-[11px]">
+                                    <button type="button" @click="filesOpen = !filesOpen"
+                                            class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-background/50 hover:bg-accent transition-colors text-2xs">
                                         <span class="font-semibold text-foreground">Files &amp; trace markers</span>
                                         <div class="flex items-center gap-2">
                                             <span class="text-muted-foreground" x-text="qualityDetails.artifact_file_signals.length + ' files'"></span>
@@ -766,7 +766,7 @@
                                                     <span class="text-muted-foreground w-16 shrink-0 truncate" x-text="row.group"></span>
                                                     <span class="flex-1 font-mono truncate text-foreground/90" x-text="row.path"></span>
                                                     <span class="text-muted-foreground shrink-0" x-text="row.line_count + ' ln'"></span>
-                                                    <span class="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-medium"
+                                                    <span class="shrink-0 px-1.5 py-0.5 rounded text-2xs font-medium"
                                                           :class="row.has_trace_marker ? 'bg-success/15 text-success-emphasis border border-success/30' : 'bg-muted text-muted-foreground border border-border'"
                                                           x-text="row.has_trace_marker ? 'trace' : '—'"></span>
                                                 </div>
@@ -779,8 +779,8 @@
                             <!-- Per-class breakdown -->
                             <template x-if="qualityDetails && qualityDetails.classes && qualityDetails.classes.length > 0">
                                 <div x-data="classBreakdownPanel()">
-                                    <button @click="open = !open"
-                                            class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-background/50 hover:bg-accent transition-colors text-[11px]">
+                                    <button type="button" @click="open = !open"
+                                            class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-background/50 hover:bg-accent transition-colors text-2xs">
                                         <span class="font-semibold text-foreground">Class Breakdown</span>
                                         <div class="flex items-center gap-2">
                                             <span class="text-muted-foreground" x-text="qualityDetails.classes.length + ' classes'"></span>
@@ -791,11 +791,11 @@
                                         <template x-for="cls in qualityDetails.classes" :key="cls.name">
                                             <div class="px-3 py-2 rounded-lg border border-border bg-background/30 flex items-center gap-2">
                                                 <div class="flex-1 min-w-0">
-                                                    <p class="text-[11px] font-medium text-foreground truncate" x-text="cls.name"></p>
+                                                    <p class="text-2xs font-medium text-foreground truncate" x-text="cls.name"></p>
                                                     <p class="text-xs text-muted-foreground" x-text="(cls.method_count||0) + ' methods · ' + (cls.field_count||0) + ' fields'"></p>
                                                 </div>
                                                 <div class="text-right shrink-0">
-                                                    <p class="text-[11px] font-bold"
+                                                    <p class="text-2xs font-bold"
                                                        :class="(cls.score||0) >= 80 ? 'text-success' : (cls.score||0) >= 60 ? 'text-warning' : 'text-destructive'"
                                                        x-text="(cls.score||0) + '%'"></p>
                                                     <div class="w-14 h-1 rounded-full bg-muted mt-0.5">
@@ -813,7 +813,7 @@
                             <!-- Test execution results (success OR failure with no summary) -->
                             <template x-if="verifyResult && !verifyResult.success && !verifyResult.summary">
                                 <div class="px-3 py-2.5 rounded-lg border bg-warning/5 border-warning/20">
-                                    <p class="text-[11px] font-semibold mb-1 text-warning-emphasis">Test Runner — Preflight Failed</p>
+                                    <p class="text-2xs font-semibold mb-1 text-warning-emphasis">Test Runner — Preflight Failed</p>
                                     <p class="text-xs text-warning-emphasis leading-snug break-all" x-text="verifyResult.message || 'Unknown error'"></p>
                                 </div>
                             </template>
@@ -821,14 +821,14 @@
                             <template x-if="verifyResult && verifyResult.summary">
                                 <div class="px-3 py-2.5 rounded-lg border"
                                      :class="verifyResult.success && (verifyResult.summary.failed||0) === 0 && (verifyResult.summary.errors||0) === 0 ? 'bg-success/5 border-success/20' : 'bg-warning/5 border-warning/20'">
-                                    <p class="text-[11px] font-semibold mb-1"
+                                    <p class="text-2xs font-semibold mb-1"
                                        :class="verifyResult.success && (verifyResult.summary.failed||0) === 0 && (verifyResult.summary.errors||0) === 0 ? 'text-success-emphasis' : 'text-warning-emphasis'">
                                         Test Run Results
                                     </p>
                                     <template x-if="verifyResult.message">
                                         <p class="text-xs text-warning-emphasis mb-1.5 leading-snug break-all" x-text="verifyResult.message"></p>
                                     </template>
-                                    <div class="flex gap-3 text-[11px]">
+                                    <div class="flex gap-3 text-2xs">
                                         <span class="text-success-emphasis font-medium" x-text="(verifyResult.summary.passed||0) + ' passed'"></span>
                                         <template x-if="(verifyResult.summary.failed||0) > 0">
                                             <span class="text-destructive-emphasis font-medium" x-text="(verifyResult.summary.failed||0) + ' failed'"></span>
@@ -843,10 +843,10 @@
 
                             <!-- Refresh + Run Tests buttons -->
                             <div class="flex gap-1.5">
-                                <button @click="loadQuality()" class="flex-1 h-8 text-xs font-medium text-muted-foreground border border-border rounded-lg hover:bg-accent transition-colors flex items-center justify-center gap-1.5">
+                                <button type="button" @click="loadQuality()" class="flex-1 h-8 text-xs font-medium text-muted-foreground border border-border rounded-lg hover:bg-accent transition-colors flex items-center justify-center gap-1.5">
                                     <i data-lucide="refresh-cw" class="h-3 w-3"></i> Refresh Score
                                 </button>
-                                <button @click="verify()"
+                                <button type="button" @click="verify()"
                                         :disabled="verifying || !fileList.length"
                                         class="flex-1 h-8 text-xs font-medium border rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
                                         :class="verifying ? 'border-info/50 text-info-emphasis bg-info/5' : 'border-success/50 text-success-emphasis hover:bg-success/5'">
@@ -863,8 +863,8 @@
                             <!-- Live verify log (shown while running) -->
                             <template x-if="verifying && verifyLog.length > 0">
                                 <div class="rounded-lg border border-border bg-background/50 overflow-hidden">
-                                    <p class="text-[9px] font-semibold text-muted-foreground px-2 py-1 border-b border-border uppercase tracking-wider">Docker output</p>
-                                    <div class="max-h-32 overflow-y-auto ide-scroll p-2 font-mono text-[9px] text-muted-foreground space-y-0.5">
+                                    <p class="text-2xs font-semibold text-muted-foreground px-2 py-1 border-b border-border uppercase tracking-wider">Docker output</p>
+                                    <div class="max-h-32 overflow-y-auto ide-scroll p-2 font-mono text-2xs text-muted-foreground space-y-0.5">
                                         <template x-for="(line, li) in verifyLog.slice(-30)" :key="li">
                                             <div x-text="line" class="leading-relaxed"></div>
                                         </template>
@@ -893,9 +893,9 @@
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-1.5 mb-0.5">
-                                        <span class="text-[11px] font-semibold text-foreground" x-text="entry.language || entry.mode || 'Generation'"></span>
+                                        <span class="text-2xs font-semibold text-foreground" x-text="entry.language || entry.mode || 'Generation'"></span>
                                         <span class="text-xs text-muted-foreground" x-text="entry.generated_at ? new Date(entry.generated_at).toLocaleDateString() : ''"></span>
-                                        <span x-show="idx === 0" class="ml-auto text-[9px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded">CURRENT</span>
+                                        <span x-show="idx === 0" class="ml-auto text-2xs font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded">CURRENT</span>
                                     </div>
                                     <div class="flex items-center gap-2 text-xs text-muted-foreground">
                                         <span x-text="(entry.file_count || 0) + ' files'"></span>
@@ -922,18 +922,18 @@
                             <i data-lucide="github" class="h-6 w-6 text-muted-foreground/40 mx-auto mb-2"></i>
                             <p class="text-xs text-muted-foreground">Push to GitHub to enable PR integration and drift tracking.</p>
                             <template x-if="!config.repo_name">
-                                <button @click="ideShowSetup = true" class="text-xs text-primary hover:underline">
+                                <button type="button" @click="ideShowSetup = true" class="text-xs text-primary hover:underline">
                                     Configure repository in Setup →
                                 </button>
                             </template>
                         </div>
-                        <div x-show="githubUrl" x-cloak class="rounded-xl border border-border bg-background/50 divide-y divide-border text-[11px]">
+                        <div x-show="githubUrl" x-cloak class="rounded-xl border border-border bg-background/50 divide-y divide-border text-2xs">
                             <div class="px-3 py-2.5 flex items-center justify-between"><span class="text-muted-foreground">Repository</span><a :href="githubUrl" target="_blank" class="text-primary hover:underline font-mono truncate max-w-[160px]" x-text="githubUrl.replace('https://github.com/','')"></a></div>
                             <div x-show="githubPrUrl" x-cloak class="px-3 py-2.5 flex items-center justify-between"><span class="text-muted-foreground">Pull Request</span><a :href="githubPrUrl" target="_blank" class="text-primary hover:underline">View PR →</a></div>
                             <div x-show="githubSha" x-cloak class="px-3 py-2.5 flex items-center justify-between"><span class="text-muted-foreground">Last commit</span><span class="font-mono text-muted-foreground" x-text="githubSha.substring(0,7)"></span></div>
                         </div>
                         <div class="mt-2.5 flex gap-2">
-                            <button @click="deploy()" :disabled="deploying" class="flex-1 h-8 text-xs font-semibold rounded-lg border border-border hover:bg-accent transition-colors text-foreground flex items-center justify-center gap-2">
+                            <button type="button" @click="deploy()" :disabled="deploying" class="flex-1 h-8 text-xs font-semibold rounded-lg border border-border hover:bg-accent transition-colors text-foreground flex items-center justify-center gap-2">
                                 <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
                                 <span x-text="deploying ? 'Pushing…' : 'Push to GitHub'"></span>
                                 <svg x-show="deploying" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
@@ -950,12 +950,12 @@
                             <span x-show="driftReport && driftReport.status === 'drifted'" x-cloak class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"><i data-lucide="alert-triangle" class="h-3 w-3"></i> Drifted</span>
                         </div>
                         <div class="flex gap-2">
-                            <button @click="scanDrift()" :disabled="driftScanning" class="h-7 px-2.5 text-xs font-medium text-muted-foreground border border-border rounded-md hover:bg-accent disabled:opacity-50 transition-colors flex items-center gap-1">
+                            <button type="button" @click="scanDrift()" :disabled="driftScanning" class="h-7 px-2.5 text-xs font-medium text-muted-foreground border border-border rounded-md hover:bg-accent disabled:opacity-50 transition-colors flex items-center gap-1">
                                 <svg x-show="driftScanning" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                 <i x-show="!driftScanning" data-lucide="scan-search" class="h-3 w-3"></i>
                                 <span x-text="driftScanning ? 'Scanning…' : 'Scan Drift'"></span>
                             </button>
-                            <button x-show="driftReport && driftReport.status === 'drifted'" x-cloak @click="importDrift()" :disabled="driftImporting" class="h-7 px-2.5 text-xs font-medium text-warning-emphasis border border-warning/30 bg-warning/5 rounded-md hover:bg-warning/10 disabled:opacity-50 transition-colors flex items-center gap-1">
+                            <button type="button" x-show="driftReport && driftReport.status === 'drifted'" x-cloak @click="importDrift()" :disabled="driftImporting" class="h-7 px-2.5 text-xs font-medium text-warning-emphasis border border-warning/30 bg-warning/5 rounded-md hover:bg-warning/10 disabled:opacity-50 transition-colors flex items-center gap-1">
                                 <i data-lucide="download" class="h-3 w-3"></i>
                                 <span x-text="driftImporting ? 'Accepting…' : 'Accept as Baseline'"></span>
                             </button>
@@ -977,7 +977,7 @@
                         <!-- Config row -->
                         <div class="flex gap-2 mb-2">
                             <select x-model="iacRegion"
-                                    class="flex-1 h-7 px-2 rounded-md border border-border bg-background text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" aria-label="Iac Region">
+                                    class="flex-1 h-7 px-2 rounded-md border border-border bg-background text-2xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" aria-label="Iac Region">
                                 <option value="eu-west-1">EU West 1 (Ireland)</option>
                                 <option value="eu-west-2">EU West 2 (London)</option>
                                 <option value="eu-central-1">EU Central 1 (Frankfurt)</option>
@@ -986,7 +986,7 @@
                                 <option value="ap-southeast-1">AP Southeast 1 (Singapore)</option>
                             </select>
                             <select x-model="iacEnvironment"
-                                    class="w-28 h-7 px-2 rounded-md border border-border bg-background text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" aria-label="Iac Environment">
+                                    class="w-28 h-7 px-2 rounded-md border border-border bg-background text-2xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" aria-label="Iac Environment">
                                 <option value="staging">staging</option>
                                 <option value="production">production</option>
                                 <option value="dev">dev</option>
@@ -995,7 +995,7 @@
 
                         <!-- Resource summary (shown after generation) -->
                         <template x-if="iacResult && iacResult.resource_summary">
-                            <div class="rounded-xl border border-border bg-background/50 divide-y divide-border/50 mb-2 text-[11px]">
+                            <div class="rounded-xl border border-border bg-background/50 divide-y divide-border/50 mb-2 text-2xs">
                                 <div class="px-3 py-2 flex items-center justify-between"><span class="text-muted-foreground">ECS Services</span><span class="font-medium" x-text="iacResult.resource_summary.ecs_services || 1"></span></div>
                                 <div x-show="iacResult.resource_summary.rds_instances > 0" x-cloak class="px-3 py-2 flex items-center justify-between"><span class="text-muted-foreground">RDS Instances</span><span class="font-medium" x-text="iacResult.resource_summary.rds_instances"></span></div>
                                 <div x-show="iacResult.resource_summary.elasticache_clusters > 0" x-cloak class="px-3 py-2 flex items-center justify-between"><span class="text-muted-foreground">ElastiCache</span><span class="font-medium" x-text="iacResult.resource_summary.elasticache_clusters"></span></div>
@@ -1014,7 +1014,7 @@
                             No Technology layer elements linked. Add ArchiMate Node, SystemSoftware, or Artifact elements to this solution to generate tailored Terraform.
                         </div>
 
-                        <button @click="generateIac()" :disabled="iacGenerating"
+                        <button type="button" @click="generateIac()" :disabled="iacGenerating"
                                 class="w-full h-8 text-xs font-semibold rounded-lg border border-warning/30 bg-warning/8 hover:bg-warning/15 text-warning-emphasis disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="iacGenerating" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <svg x-show="!iacGenerating" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
@@ -1026,7 +1026,7 @@
                             <div class="mt-2 space-y-1">
                                 <p class="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium mb-1">Generated files</p>
                                 <template x-for="f in iacResult.files" :key="f">
-                                    <button @click="selectFile(f)"
+                                    <button type="button" @click="selectFile(f)"
                                             class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors text-xs"
                                             :class="selectedFile === f ? 'bg-primary/5 text-primary' : 'text-muted-foreground'">
                                         <svg class="w-2.5 h-2.5 shrink-0 text-warning" fill="currentColor" viewBox="0 0 16 16"><path d="M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2Z"/></svg>
@@ -1088,7 +1088,7 @@
                                                     View Pull Request
                                                 </a>
                                             </template>
-                                            <p class="text-[9px] text-muted-foreground font-mono" x-text="'Branch: ' + iacDeployResult.branch"></p>
+                                            <p class="text-2xs text-muted-foreground font-mono" x-text="'Branch: ' + iacDeployResult.branch"></p>
                                         </div>
                                     </template>
                                 </div>
@@ -1116,7 +1116,7 @@
                              class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive-emphasis mb-2"
                              x-text="dockerError"></div>
                         <div x-show="!dockerRunning" x-cloak>
-                            <button @click="dockerPreview()" :disabled="dockerBuilding || !fileList.length"
+                            <button type="button" @click="dockerPreview()" :disabled="dockerBuilding || !fileList.length"
                                     class="w-full h-8 text-xs font-semibold rounded-lg border border-info/30 bg-info/8 hover:bg-info/15 text-info-emphasis disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                                 <svg x-show="dockerBuilding" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                 <svg x-show="!dockerBuilding" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z"/></svg>
@@ -1129,7 +1129,7 @@
                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
                                 Open /docs
                             </a>
-                            <button @click="dockerStop()"
+                            <button type="button" @click="dockerStop()"
                                     class="h-8 px-3 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors">
                                 Stop
                             </button>
@@ -1151,7 +1151,7 @@
                             <div class="w-1 h-5 rounded-full bg-success"></div>
                             <p class="text-sm font-semibold text-foreground">Download</p>
                         </div>
-                        <button @click="download()" class="w-full h-8 text-xs font-semibold rounded-lg bg-muted hover:bg-accent transition-colors flex items-center justify-center gap-2 text-foreground border border-border">
+                        <button type="button" @click="download()" class="w-full h-8 text-xs font-semibold rounded-lg bg-muted hover:bg-accent transition-colors flex items-center justify-center gap-2 text-foreground border border-border">
                             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
                             Download ZIP (<span x-text="fileList.length"></span> files)
                         </button>
@@ -1167,14 +1167,14 @@
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30">Instant · No GitHub needed</span>
                         </div>
                         <p class="text-xs text-muted-foreground mb-2.5 leading-relaxed">Opens the generated Next.js frontend in <strong>StackBlitz WebContainers</strong> — a real Node.js environment running entirely in your browser. See your app live in ~30 seconds with no local setup.</p>
-                        <button @click="openStackBlitz()" :disabled="stackBlitzLoading || !fileList.length"
+                        <button type="button" @click="openStackBlitz()" :disabled="stackBlitzLoading || !fileList.length"
                                 class="w-full h-9 text-xs font-semibold rounded-lg border border-info/30 bg-info/10 hover:bg-info/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="stackBlitzLoading" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <!-- StackBlitz bolt icon -->
                             <svg x-show="!stackBlitzLoading" class="w-3.5 h-3.5" viewBox="0 0 28 28" fill="currentColor"><path d="M14.5 2L4 16h9.5L12 26l12-14h-9.5z"/></svg>
                             <span x-text="stackBlitzLoading ? 'Uploading to StackBlitz…' : 'Open in StackBlitz'"></span>
                         </button>
-                        <p class="text-[9px] text-muted-foreground/60 text-center mt-1.5">Powered by StackBlitz WebContainers · No account required</p>
+                        <p class="text-2xs text-muted-foreground/60 text-center mt-1.5">Powered by StackBlitz WebContainers · No account required</p>
                     </div>
 
                     <!-- Deploy to Railway (always visible when files exist + GitHub pushed) -->
@@ -1247,13 +1247,13 @@
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
                                 Open in Tab
                             </a>
-                            <button @click="showEmbed = !showEmbed"
+                            <button type="button" @click="showEmbed = !showEmbed"
                                     :class="showEmbed ? 'bg-primary text-primary-foreground' : 'bg-info/10 text-primary'"
                                     class="flex-1 h-7 px-2.5 text-xs font-semibold rounded-md border border-info/30 hover:bg-info/20 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3"/></svg>
                                 Simulator
                             </button>
-                            <button @click="showQr = !showQr"
+                            <button type="button" @click="showQr = !showQr"
                                     :class="showQr ? 'bg-primary text-primary-foreground' : 'bg-info/10 text-primary'"
                                     class="h-7 px-2.5 text-xs font-semibold rounded-md border border-info/30 hover:bg-info/20 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zm0 9.75c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zm9.75-9.75c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z"/></svg>
@@ -1277,7 +1277,7 @@
                         </div>
 
                         <!-- Upload button -->
-                        <button @click="
+                        <button type="button" @click="
                             snacking = true; snackError = ''; snackUrl = ''; snackId = '';
                             fetch('/solutions/' + solutionId + '/codegen/expo-snack', {
                                 method: 'POST',
@@ -1319,13 +1319,13 @@
                         <div x-show="!archDiagramTotal && !archDiagramLoading && !archDiagramError" x-cloak
                              class="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-5 text-center mb-2">
                             <p class="text-xs text-muted-foreground mb-2.5">Render the ArchiMate element diagram from the Architecture Journey.</p>
-                            <button @click="loadArchDiagram()"
+                            <button type="button" @click="loadArchDiagram()"
                                     class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium bg-info/10 text-info-emphasis border border-info/20 hover:bg-info/20 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5"/></svg>
                                 Load Diagram
                             </button>
                         </div>
-                        <div x-show="archDiagramLoading" x-cloak class="flex items-center justify-center py-6 gap-2 text-[11px] text-muted-foreground">
+                        <div x-show="archDiagramLoading" x-cloak class="flex items-center justify-center py-6 gap-2 text-2xs text-muted-foreground">
                             <svg class="w-4 h-4 animate-spin text-info" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             Loading elements…
                         </div>
@@ -1343,7 +1343,7 @@
                         </div>
                         <div class="flex flex-wrap gap-1.5">
                             <template x-for="key in promptGroups" :key="key">
-                                <button @click="regenerate(key)" :disabled="promptGroupStatus[key] === 'running'"
+                                <button type="button" @click="regenerate(key)" :disabled="promptGroupStatus[key] === 'running'"
                                         class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-background hover:bg-muted disabled:opacity-50 transition-colors"
                                         :class="promptGroupStatus[key] === 'error' ? 'border-destructive/30 text-destructive-emphasis' : 'text-muted-foreground hover:text-foreground'">
                                     <svg x-show="promptGroupStatus[key]==='running'" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
@@ -1362,7 +1362,7 @@
                             <div class="w-5 h-5 rounded bg-warning/15 flex items-center justify-center shrink-0">
                                 <svg class="w-3 h-3 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"/></svg>
                             </div>
-                            <p class="text-[11px] font-semibold text-foreground">Edit Architecture (Genome)</p>
+                            <p class="text-2xs font-semibold text-foreground">Edit Architecture (Genome)</p>
                         </div>
                         <p class="text-xs text-muted-foreground mb-2">Describe a change in plain English. The genome will be patched and affected files regenerated.</p>
                         <textarea
@@ -1370,12 +1370,12 @@
                             :disabled="genomePatchRunning"
                             placeholder="e.g. Add export to CSV on the referrals list"
                             rows="2"
-                            class="w-full px-2.5 py-2 text-[11px] rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-warning resize-none disabled:opacity-50" aria-label="e.g. Add export to CSV on the referrals list"></textarea>
+                            class="w-full px-2.5 py-2 text-2xs rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-warning resize-none disabled:opacity-50" aria-label="e.g. Add export to CSV on the referrals list"></textarea>
                         <div class="flex items-center gap-2 mt-2">
-                            <button
+                            <button type="button"
                                 @click="genomePatch()"
                                 :disabled="genomePatchRunning || !genomePatchInstruction.trim()"
-                                class="flex-1 h-7 text-[11px] font-semibold rounded-md bg-warning text-primary-foreground hover:bg-warning disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors">
+                                class="flex-1 h-7 text-2xs font-semibold rounded-md bg-warning text-primary-foreground hover:bg-warning disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg x-show="genomePatchRunning" class="w-3 h-3 wb-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
                                 <span x-text="genomePatchRunning ? 'Patching…' : 'Apply to Architecture'"></span>
                             </button>
@@ -1394,12 +1394,12 @@
                                         </template>
                                     </div>
                                     <div class="flex gap-2">
-                                        <button @click="applyGenomePatch()" :disabled="genomePatchApplying"
+                                        <button type="button" @click="applyGenomePatch()" :disabled="genomePatchApplying"
                                             class="flex-1 h-7 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-1 transition-colors">
                                             <svg x-show="genomePatchApplying" class="w-3 h-3 wb-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
                                             <span x-text="genomePatchApplying ? 'Regenerating…' : 'Confirm & Regenerate'"></span>
                                         </button>
-                                        <button @click="genomePatchResult = null; genomePatchInstruction = ''"
+                                        <button type="button" @click="genomePatchResult = null; genomePatchInstruction = ''"
                                             class="px-3 h-7 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors">
                                             Discard
                                         </button>
@@ -1411,8 +1411,8 @@
                     <!-- AI-powered intelligences (POST /codegen/intelligence) -->
                     <div class="shrink-0 p-3 border-b border-border bg-primary/5 space-y-2">
                         <div class="flex items-center justify-between gap-2">
-                            <p class="text-[11px] font-semibold text-foreground">AI-powered intelligences</p>
-                            <span class="text-[9px] text-muted-foreground uppercase tracking-wider">Advisory</span>
+                            <p class="text-2xs font-semibold text-foreground">AI-powered intelligences</p>
+                            <span class="text-2xs text-muted-foreground uppercase tracking-wider">Advisory</span>
                         </div>
                         <p class="text-xs text-muted-foreground leading-relaxed">
                             Run specialized analyses: gap coach, requirements-to-tests, traceability, triage, NFR posture, regeneration order, and journey tips.
@@ -1471,20 +1471,20 @@
                                 <div class="w-4 h-4 rounded bg-info/15 flex items-center justify-center shrink-0">
                                     <svg class="w-2.5 h-2.5 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
                                 </div>
-                                <span class="text-[11px] font-semibold text-info-emphasis">Intent Planner</span>
+                                <span class="text-2xs font-semibold text-info-emphasis">Intent Planner</span>
                                 <span class="text-xs text-muted-foreground">AI-native change planning</span>
                             </div>
                             <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m19 9-7 7-7-7"/></svg>
                         </button>
                         <div x-show="expanded" x-collapse class="p-3 pt-1 bg-info/3 space-y-2">
                         <div class="flex items-center justify-between">
-                            <p class="text-[11px] font-semibold text-info-emphasis sr-only">Intent Planner</p>
+                            <p class="text-2xs font-semibold text-info-emphasis sr-only">Intent Planner</p>
                         </div>
                         <div class="flex items-center gap-2">
                             <input x-model="intentInstruction" @keydown.enter="buildIntentPlan()" :disabled="intentPlanning"
                                    placeholder="Describe the change goal..."
-                                   class="flex-1 bg-input rounded-lg px-3 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:border-primary/50 transition-colors" aria-label="Describe the change goal..."/>
-                            <button @click="buildIntentPlan()" :disabled="intentPlanning || !intentInstruction.trim()"
+                                   class="flex-1 bg-input rounded-lg px-3 py-1.5 text-2xs text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:border-primary/50 transition-colors" aria-label="Describe the change goal..."/>
+                            <button type="button" @click="buildIntentPlan()" :disabled="intentPlanning || !intentInstruction.trim()"
                                     class="h-7 px-2.5 rounded-lg bg-info/15 text-info-emphasis border border-info/30 hover:bg-info/25 disabled:opacity-50 transition-colors text-xs font-semibold flex items-center gap-1.5">
                                 <svg x-show="intentPlanning" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                 <i x-show="!intentPlanning" data-lucide="sparkles" class="h-3 w-3"></i>
@@ -1494,8 +1494,8 @@
 
                         <div x-show="intentPlan" x-cloak class="rounded-lg border border-info/20 bg-background/80 p-2.5 space-y-2">
                             <div class="flex items-start justify-between gap-2">
-                                <p class="text-[11px] text-foreground/90 leading-relaxed" x-text="intentPlan && intentPlan.summary"></p>
-                                <span class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider"
+                                <p class="text-2xs text-foreground/90 leading-relaxed" x-text="intentPlan && intentPlan.summary"></p>
+                                <span class="shrink-0 text-2xs font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider"
                                       :class="(intentPlan && intentPlan.risk) === 'high' ? 'text-destructive-emphasis border-destructive/40 bg-destructive/5' : (intentPlan && intentPlan.risk) === 'medium' ? 'text-warning-emphasis border-warning/40 bg-warning/5' : 'text-success-emphasis border-success/40 bg-success/5'"
                                       x-text="(intentPlan && intentPlan.risk) ? (intentPlan.risk + ' risk') : 'low risk'"></span>
                             </div>
@@ -1504,7 +1504,7 @@
                                 <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Impacted files</p>
                                 <div class="flex flex-wrap gap-1">
                                     <template x-for="(f, fi) in (intentPlan && intentPlan.impacted_files ? intentPlan.impacted_files : [])" :key="fi">
-                                        <button @click="openPlannedFile(f)"
+                                        <button type="button" @click="openPlannedFile(f)"
                                                 class="inline-flex items-center gap-1 rounded border border-border bg-muted/30 px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted transition-colors max-w-[220px]"
                                                 :title="f">
                                             <i data-lucide="file-code-2" class="h-2.5 w-2.5 shrink-0"></i>
@@ -1522,11 +1522,11 @@
                             </div>
 
                             <div class="pt-1 flex items-center gap-2">
-                                <button @click="useIntentAsChatInstruction()"
+                                <button type="button" @click="useIntentAsChatInstruction()"
                                         class="h-6 px-2 rounded border border-primary/30 bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors">
                                     Use in AI Chat
                                 </button>
-                                <button @click="runIntentVerifyLoop()"
+                                <button type="button" @click="runIntentVerifyLoop()"
                                         :disabled="intentVerifyRunning"
                                         class="h-6 px-2 rounded border border-success/30 bg-success/10 text-success-emphasis text-xs font-semibold hover:bg-success/20 disabled:opacity-50 transition-colors inline-flex items-center gap-1">
                                     <svg x-show="intentVerifyRunning" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
@@ -1538,7 +1538,7 @@
                             <div x-show="intentVerify && intentVerify.steps && intentVerify.steps.length" x-cloak class="pt-1 space-y-1.5 border-t border-border/70">
                                 <div class="flex items-center justify-between">
                                     <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Verification status</p>
-                                    <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider"
+                                    <span class="text-2xs font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider"
                                           :class="intentVerify && intentVerify.overall === 'pass' ? 'text-success-emphasis border-success/40 bg-success/5' : intentVerify && intentVerify.overall === 'warn' ? 'text-warning-emphasis border-warning/40 bg-warning/5' : 'text-muted-foreground border-border bg-muted/30'"
                                           x-text="intentVerify && intentVerify.overall ? intentVerify.overall : 'pending'"></span>
                                 </div>
@@ -1559,7 +1559,7 @@
                             <div x-show="intentPlan" x-cloak class="rounded-md border border-border bg-muted/15 px-2 py-1.5 space-y-1">
                                 <div class="flex items-center justify-between">
                                     <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Governance metrics</p>
-                                    <span class="text-[9px] text-muted-foreground"
+                                    <span class="text-2xs text-muted-foreground"
                                           x-text="'Override rate ' + Number(intentGateStats.override_rate || 0).toFixed(1) + '%'"></span>
                                 </div>
                                 <div class="grid grid-cols-4 gap-1 text-xs">
@@ -1589,7 +1589,7 @@
                                     Override enabled: AI changes can proceed despite verification warnings.
                                     <span x-show="chatOverrideReason" x-cloak x-text="' Reason: ' + chatOverrideReason"></span>
                                 </span>
-                                <button @click="clearChatOverride()" class="underline font-medium">Disable</button>
+                                <button type="button" @click="clearChatOverride()" class="underline font-medium">Disable</button>
                             </div>
                         </div>
                         </div><!-- /x-collapse -->
@@ -1603,22 +1603,22 @@
                                 <svg class="w-3 h-3 text-info shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 1-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"/></svg>
                                 <span>Using <span class="font-medium text-foreground/70 capitalize" x-text="activeProvider"></span></span>
                                 <template x-if="activeModel">
-                                    <span class="font-mono text-[9px] bg-muted/60 px-1.5 py-0.5 rounded border border-border/50" x-text="activeModel"></span>
+                                    <span class="font-mono text-2xs bg-muted/60 px-1.5 py-0.5 rounded border border-border/50" x-text="activeModel"></span>
                                 </template>
                             </div>
                         </template>
-                        <div class="rounded-lg bg-muted/40 px-3 py-2 text-[11px] text-foreground/80">
+                        <div class="rounded-lg bg-muted/40 px-3 py-2 text-2xs text-foreground/80">
                             <p class="font-medium text-info mb-1">AI Assistant</p>
                             <p>Ask me to modify the codebase. For example: "add JWT auth", "add pagination to list endpoints", "add a search filter to all GET routes".</p>
                         </div>
                         <template x-for="(msg, idx) in chatHistory" :key="idx">
-                            <div class="rounded-lg px-3 py-2 text-[11px]"
+                            <div class="rounded-lg px-3 py-2 text-2xs"
                                  :class="msg.role === 'user' ? 'bg-primary/10 text-foreground ml-4' : 'bg-muted/40 text-foreground/80 mr-4'">
                                 <p class="font-medium mb-1" :class="msg.role === 'user' ? 'text-primary' : 'text-info'" x-text="msg.role === 'user' ? 'You' : 'Workbench'"></p>
                                 <template x-if="msg.diffs && msg.diffs.length">
                                     <div class="flex flex-wrap gap-1 mt-0.5">
                                         <template x-for="(d, di) in msg.diffs" :key="di">
-                                            <button @click="selectFile(d.path)"
+                                            <button type="button" @click="selectFile(d.path)"
                                                     class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-primary/20 bg-primary/5 hover:bg-primary/15 text-xs font-mono text-primary transition-colors"
                                                     :title="d.path">
                                                 <i data-lucide="file-diff" class="h-2.5 w-2.5 shrink-0"></i>
@@ -1634,7 +1634,7 @@
                         <!-- Previous instruction suggestions -->
                         <div x-show="chatSuggestions.length > 0 && !chatInstruction" x-cloak class="flex flex-wrap gap-1.5 pt-1">
                             <template x-for="(sug, si) in chatSuggestions" :key="si">
-                                <button @click="useSuggestion(sug)" class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors truncate max-w-[180px]" :title="sug">
+                                <button type="button" @click="useSuggestion(sug)" class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors truncate max-w-[180px]" :title="sug">
                                     <i data-lucide="clock" class="h-2.5 w-2.5 shrink-0"></i>
                                     <span class="truncate" x-text="sug"></span>
                                 </button>
@@ -1650,11 +1650,11 @@
                                    placeholder="Override reason (required, min 12 chars)"
                                    class="w-full bg-background rounded border border-warning/30 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-warning/60 transition-colors" aria-label="Override reason (required, min 12 chars)"/>
                             <div class="flex items-center gap-2">
-                                <button @click="runIntentVerifyLoop()" :disabled="intentVerifyRunning"
+                                <button type="button" @click="runIntentVerifyLoop()" :disabled="intentVerifyRunning"
                                         class="h-6 px-2 rounded border border-success/30 bg-success/10 text-success-emphasis text-xs font-semibold hover:bg-success/20 disabled:opacity-50 transition-colors">
                                     Run Verify Loop
                                 </button>
-                                <button @click="enableChatOverride()" :disabled="(chatOverrideReason || '').trim().length < 12"
+                                <button type="button" @click="enableChatOverride()" :disabled="(chatOverrideReason || '').trim().length < 12"
                                         class="h-6 px-2 rounded border border-warning/30 bg-warning/10 text-warning-emphasis text-xs font-semibold hover:bg-warning/20 transition-colors">
                                     Override
                                 </button>
@@ -1663,8 +1663,8 @@
                         <div class="flex items-center gap-2">
                             <input x-model="chatInstruction" @keydown.enter="chatRegenerate()" :disabled="chatSending"
                                    placeholder="Describe the change…"
-                                   class="flex-1 bg-input rounded-lg px-3 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:border-primary/50 transition-colors" aria-label="Describe the change…"/>
-                            <button @click="chatRegenerate()" :disabled="chatSending || !chatInstruction.trim() || isChatBlockedByVerify()"
+                                   class="flex-1 bg-input rounded-lg px-3 py-1.5 text-2xs text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:border-primary/50 transition-colors" aria-label="Describe the change…"/>
+                            <button type="button" @click="chatRegenerate()" :disabled="chatSending || !chatInstruction.trim() || isChatBlockedByVerify()"
                                     class="h-7 w-7 flex items-center justify-center rounded-lg bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 disabled:opacity-50 transition-colors shrink-0">
                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 12 6-6 6 6M12 6v12"/></svg>
                             </button>
@@ -1683,11 +1683,11 @@
                             <div class="shrink-0 px-3 py-2 border-b border-border flex items-center justify-between gap-2">
                                 <div class="flex items-center gap-2 min-w-0">
                                     <i data-lucide="search" class="h-3 w-3 text-muted-foreground shrink-0"></i>
-                                    <span class="text-[11px] font-mono truncate text-foreground" x-text='"\"" + searchResults.query + "\""'></span>
+                                    <span class="text-2xs font-mono truncate text-foreground" x-text='"\"" + searchResults.query + "\""'></span>
                                 </div>
                                 <div class="flex items-center gap-2 shrink-0">
                                     <span class="text-xs text-muted-foreground" x-text="searchResults.total_files + ' file(s)'"></span>
-                                    <button @click="searchResults = null; rightTab = 'ai'"
+                                    <button type="button" @click="searchResults = null; rightTab = 'ai'"
                                             class="h-5 w-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                                         <i data-lucide="x" class="h-3 w-3"></i>
                                     </button>
@@ -1697,17 +1697,17 @@
                                 <div x-show="searchResults.results && searchResults.results.length === 0" class="text-center py-6 text-xs text-muted-foreground">No matches found.</div>
                                 <template x-for="file in (searchResults.results || [])" :key="file.path">
                                     <div class="rounded-lg border border-border overflow-hidden">
-                                        <button @click="selectFile(file.path)"
+                                        <button type="button" @click="selectFile(file.path)"
                                                 class="w-full px-2.5 py-1.5 flex items-center gap-2 bg-muted/30 hover:bg-muted/60 transition-colors text-left">
                                             <i data-lucide="file" class="h-3 w-3 text-muted-foreground shrink-0"></i>
                                             <span class="text-xs font-mono text-foreground truncate flex-1" x-text="file.path.split('/').pop()"></span>
-                                            <span class="text-[9px] text-muted-foreground shrink-0" x-text="file.match_count + ' match' + (file.match_count !== 1 ? 'es' : '')"></span>
+                                            <span class="text-2xs text-muted-foreground shrink-0" x-text="file.match_count + ' match' + (file.match_count !== 1 ? 'es' : '')"></span>
                                         </button>
                                         <div class="divide-y divide-border/50">
                                             <template x-for="(m, mi) in file.matches" :key="mi">
-                                                <button @click="selectFile(file.path)"
+                                                <button type="button" @click="selectFile(file.path)"
                                                         class="w-full px-2.5 py-1 text-left hover:bg-primary/5 transition-colors flex items-start gap-2">
-                                                    <span class="text-[9px] text-muted-foreground/60 font-mono shrink-0 w-7 text-right pt-px" x-text="m.line"></span>
+                                                    <span class="text-2xs text-muted-foreground/60 font-mono shrink-0 w-7 text-right pt-px" x-text="m.line"></span>
                                                     <span class="text-xs font-mono text-foreground/80 truncate" x-text="m.text"></span>
                                                 </button>
                                             </template>
@@ -1734,7 +1734,7 @@
                             {key:'expo', label:'Mobile'},
                             {key:'salesforce', label:'Salesforce'}
                         ]" :key="cat.key">
-                            <button @click="templateFilter = cat.key"
+                            <button type="button" @click="templateFilter = cat.key"
                                     class="h-6 px-2.5 text-xs font-medium rounded-full border transition-colors"
                                     :class="templateFilter === cat.key ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:border-border/80'"
                                     x-text="cat.label"></button>
@@ -1747,7 +1747,7 @@
                         <!-- Empty state -->
                         <div x-show="filteredTemplateSets().length === 0" class="rounded-xl border border-dashed border-border/50 p-6 text-center mt-2">
                             <svg class="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z"/></svg>
-                            <p class="text-[11px] text-muted-foreground">No template sets yet.</p>
+                            <p class="text-2xs text-muted-foreground">No template sets yet.</p>
                             <p x-show="fileList.length > 0" x-cloak class="text-xs text-muted-foreground/60 mt-1">Use "Save as Template" above to capture your current generation.</p>
                             <p x-show="fileList.length === 0" x-cloak class="text-xs text-muted-foreground/60 mt-1">Generate code first, then save it as a reusable template.</p>
                         </div>
@@ -1760,16 +1760,16 @@
                                 <div class="p-3">
                                     <div class="flex items-start gap-2">
                                         <!-- Active indicator + select -->
-                                        <button @click="config.template_set_id = (config.template_set_id === tmpl.id ? null : tmpl.id)"
+                                        <button type="button" @click="config.template_set_id = (config.template_set_id === tmpl.id ? null : tmpl.id)"
                                                 class="shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full border-2 transition-colors"
                                                 :class="config.template_set_id === tmpl.id ? 'border-primary bg-primary' : 'border-muted-foreground/40 hover:border-primary/60'">
                                         </button>
                                         <div class="flex-1 min-w-0">
-                                            <p class="text-[11px] font-semibold text-foreground truncate" x-text="tmpl.name"></p>
+                                            <p class="text-2xs font-semibold text-foreground truncate" x-text="tmpl.name"></p>
                                             <p x-show="tmpl.description" x-cloak class="text-xs text-muted-foreground mt-0.5 line-clamp-2" x-text="tmpl.description"></p>
                                         </div>
                                         <div class="flex items-center gap-1 shrink-0">
-                                            <span class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border" x-text="tmpl.language"></span>
+                                            <span class="text-2xs font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border" x-text="tmpl.language"></span>
                                         </div>
                                     </div>
 
@@ -1779,13 +1779,13 @@
                                         <span class="text-xs text-muted-foreground/50" x-show="tmpl.created_at" x-cloak x-text="new Date(tmpl.created_at).toLocaleDateString()"></span>
                                         <div class="ml-auto flex items-center gap-1">
                                             <!-- Preview toggle -->
-                                            <button @click="toggleTemplatePreview(tmpl.id)"
-                                                    class="h-5 px-1.5 text-[9px] font-medium rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center gap-1">
+                                            <button type="button" @click="toggleTemplatePreview(tmpl.id)"
+                                                    class="h-5 px-1.5 text-2xs font-medium rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center gap-1">
                                                 <svg class="w-2.5 h-2.5 transition-transform" :class="templatePreviewId === tmpl.id ? 'rotate-180' : ''" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3.5l3 3 3-3"/></svg>
                                                 Files
                                             </button>
                                             <!-- Delete -->
-                                            <button @click="deleteTemplateSet(tmpl.id)"
+                                            <button type="button" @click="deleteTemplateSet(tmpl.id)"
                                                     class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors flex items-center justify-center">
                                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1h4M1.5 2.5h7l-.75 6H2.25l-.75-6ZM4 4.5v2.5M6 4.5v2.5"/><path d="M1.5 2.5h7" stroke="currentColor" stroke-width=".5" fill="none"/></svg>
                                             </button>
@@ -1802,7 +1802,7 @@
                                         <div class="flex items-center gap-2 px-3 py-1.5 border-b border-border/50 last:border-0">
                                             <svg class="w-2.5 h-2.5 text-muted-foreground/50 shrink-0" fill="currentColor" viewBox="0 0 16 16"><path d="M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2Z"/></svg>
                                             <span class="text-xs text-foreground/80 font-mono truncate flex-1" x-text="f.template_name"></span>
-                                            <span class="text-[9px] text-muted-foreground shrink-0" x-text="'v' + (f.version || 1)"></span>
+                                            <span class="text-2xs text-muted-foreground shrink-0" x-text="'v' + (f.version || 1)"></span>
                                         </div>
                                     </template>
                                 </div>
@@ -1858,7 +1858,7 @@
 
                     <!-- ── Header bar ── -->
                     <div class="shrink-0 h-12 border-b border-border bg-card flex items-center px-4 gap-2 shadow-sm z-10">
-                        <button @click="previewModal = false"
+                        <button type="button" @click="previewModal = false"
                                 class="h-7 px-3 text-xs font-medium border rounded-md flex items-center gap-1.5 text-muted-foreground border-border hover:text-foreground hover:bg-accent transition-colors">
                             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
@@ -1874,7 +1874,7 @@
                                 {key:'admin',  icon:'settings',   label:'Admin UI'},
                                 {key:'api',    icon:'file-text',  label:'API Docs'}
                             ]" :key="tab.key">
-                                <button @click="previewModalTab = tab.key"
+                                <button type="button" @click="previewModalTab = tab.key"
                                         x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                         class="inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-xs font-semibold transition-all"
                                         :class="previewModalTab === tab.key
@@ -1892,7 +1892,7 @@
                                 {key:'tablet',  ico:'tablet',     title:'Tablet (768 px)'},
                                 {key:'phone',   ico:'smartphone', title:'Phone (390 px)'}
                             ]" :key="d.key">
-                                <button @click="previewDevice = d.key" :title="d.title"
+                                <button type="button" @click="previewDevice = d.key" :title="d.title"
                                         x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                         class="h-7 w-9 rounded text-sm transition-all flex items-center justify-center"
                                         :class="previewDevice === d.key
@@ -1910,7 +1910,7 @@
                             </svg>
                             New tab
                         </a>
-                        <button @click="previewModal = false"
+                        <button type="button" @click="previewModal = false"
                                 class="ml-1 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -1928,22 +1928,22 @@
                                 <!-- WEB sidebar -->
                                 <div x-show="previewModalTab === 'web'">
                                     <p class="text-xs font-semibold text-foreground mb-2">Web App Preview</p>
-                                    <p class="text-[11px] text-muted-foreground leading-relaxed mb-3">Launch the generated frontend app in a cloud IDE or locally via Docker.</p>
-                                    <div x-show="!hasFrontend" class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-[11px] text-warning-emphasis">
+                                    <p class="text-2xs text-muted-foreground leading-relaxed mb-3">Launch the generated frontend app in a cloud IDE or locally via Docker.</p>
+                                    <div x-show="!hasFrontend" class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-2xs text-warning-emphasis">
                                         No <code class="font-mono">frontend/</code> files yet. Re-generate with React, Next.js, or Vue.
                                     </div>
                                     <div x-show="hasFrontend" class="space-y-2">
-                                        <button @click="showWebCmd = !showWebCmd"
+                                        <button type="button" @click="showWebCmd = !showWebCmd"
                                                 class="inline-flex items-center justify-center gap-1.5 w-full h-8 text-xs font-medium rounded-lg border border-info/40 bg-info/8 hover:bg-info/15 text-info-emphasis transition-colors">
                                             <i data-lucide="folder" class="w-3.5 h-3.5"></i> Local dev instructions
                                         </button>
                                         <div x-show="showWebCmd" x-cloak class="rounded-lg border border-info/30 bg-info/60 p-2.5">
                                             <div class="relative">
-                                                <pre class="bg-background/80 rounded px-2 py-1.5 font-mono text-[9px] border border-info/30 whitespace-pre-wrap">cd frontend
+                                                <pre class="bg-background/80 rounded px-2 py-1.5 font-mono text-2xs border border-info/30 whitespace-pre-wrap">cd frontend
 npm install
 npm run dev</pre>
-                                                <button @click="navigator.clipboard.writeText('cd frontend\nnpm install\nnpm run dev'); snackCopied='web'; setTimeout(()=>snackCopied='',1500)"
-                                                        class="absolute top-1 right-1 h-5 px-1.5 text-[9px] rounded border border-info/30 bg-background text-info-emphasis"
+                                                <button type="button" @click="navigator.clipboard.writeText('cd frontend\nnpm install\nnpm run dev'); snackCopied='web'; setTimeout(()=>snackCopied='',1500)"
+                                                        class="absolute top-1 right-1 h-5 px-1.5 text-2xs rounded border border-info/30 bg-background text-info-emphasis"
                                                         x-text="snackCopied==='web' ? '✓' : 'Copy'"></button>
                                             </div>
                                         </div>
@@ -1953,12 +1953,12 @@ npm run dev</pre>
                                 <!-- MOBILE sidebar -->
                                 <div x-show="previewModalTab === 'mobile'">
                                     <p class="text-xs font-semibold text-foreground mb-2">Mobile App Preview</p>
-                                    <p class="text-[11px] text-muted-foreground leading-relaxed mb-3">Upload source to Expo Snack for an instant mobile simulator.</p>
-                                    <div x-show="!hasMobile" class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-[11px] text-warning-emphasis">
+                                    <p class="text-2xs text-muted-foreground leading-relaxed mb-3">Upload source to Expo Snack for an instant mobile simulator.</p>
+                                    <div x-show="!hasMobile" class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-2xs text-warning-emphasis">
                                         No <code class="font-mono">mobile/</code> files yet. Re-generate with Expo or React Native.
                                     </div>
                                     <div x-show="hasMobile" class="space-y-2">
-                                        <button x-show="!snacking && !snackUrl"
+                                        <button type="button" x-show="!snacking && !snackUrl"
                                                 @click="snacking=true; snackError='';
                                                         fetch('/solutions/' + solutionId + '/codegen/expo-snack',
                                                               {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':document.cookie.match(/csrftoken=([^;]+)/)?.[1]||''}})
@@ -1970,12 +1970,12 @@ npm run dev</pre>
                                             <svg x-show="snacking" class="w-4 h-4 wb-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
                                             <span x-text="snacking ? 'Uploading…' : 'Launch Expo Snack'"></span>
                                         </button>
-                                        <p x-show="snackError" x-cloak class="text-[11px] text-destructive-emphasis bg-destructive/5 border border-destructive/20 rounded-lg p-2.5" x-text="snackError"></p>
+                                        <p x-show="snackError" x-cloak class="text-2xs text-destructive-emphasis bg-destructive/5 border border-destructive/20 rounded-lg p-2.5" x-text="snackError"></p>
                                         <div x-show="snackUrl" x-cloak class="space-y-2">
                                             <a :href="snackUrl" target="_blank" class="block text-xs text-info-emphasis hover:underline break-all" x-text="snackUrl"></a>
                                             <div class="flex gap-2">
-                                                <button @click="showQr = !showQr" class="flex-1 h-7 text-xs font-medium rounded-lg border border-border hover:bg-accent transition-colors" x-text="showQr ? 'Hide QR' : 'QR Code'"></button>
-                                                <button @click="navigator.clipboard.writeText(snackUrl); snackCopied='url'; setTimeout(()=>snackCopied='',1500)" class="flex-1 h-7 text-xs font-medium rounded-lg border border-border hover:bg-accent transition-colors" x-text="snackCopied==='url' ? '✓ Copied' : 'Copy URL'"></button>
+                                                <button type="button" @click="showQr = !showQr" class="flex-1 h-7 text-xs font-medium rounded-lg border border-border hover:bg-accent transition-colors" x-text="showQr ? 'Hide QR' : 'QR Code'"></button>
+                                                <button type="button" @click="navigator.clipboard.writeText(snackUrl); snackCopied='url'; setTimeout(()=>snackCopied='',1500)" class="flex-1 h-7 text-xs font-medium rounded-lg border border-border hover:bg-accent transition-colors" x-text="snackCopied==='url' ? '✓ Copied' : 'Copy URL'"></button>
                                             </div>
                                             <img x-show="showQr" x-cloak :src="'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(snackUrl)" alt="Snack QR code" class="mx-auto w-32 h-32 rounded-lg border border-border shadow-sm mt-1">
                                         </div>
@@ -1985,7 +1985,7 @@ npm run dev</pre>
                                 <!-- ADMIN sidebar -->
                                 <div x-show="previewModalTab === 'admin'">
                                     <p class="text-xs font-semibold text-foreground mb-2">Admin UI Preview</p>
-                                    <p class="text-[11px] text-muted-foreground leading-relaxed mb-3">Live preview of the generated admin dashboard and CRUD screens.</p>
+                                    <p class="text-2xs text-muted-foreground leading-relaxed mb-3">Live preview of the generated admin dashboard and CRUD screens.</p>
                                     <a :href="'/solutions/' + solutionId + '/codegen/preview/admin'" target="_blank"
                                        class="w-full h-8 text-xs font-medium rounded-lg border border-border hover:bg-accent transition-colors flex items-center justify-center gap-1.5 text-muted-foreground">
                                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -2001,10 +2001,10 @@ npm run dev</pre>
                                 <!-- API sidebar -->
                                 <div x-show="previewModalTab === 'api'">
                                     <p class="text-xs font-semibold text-foreground mb-2">API Documentation</p>
-                                    <p class="text-[11px] text-muted-foreground leading-relaxed mb-3">Interactive Swagger / OpenAPI docs for the generated backend API.</p>
+                                    <p class="text-2xs text-muted-foreground leading-relaxed mb-3">Interactive Swagger / OpenAPI docs for the generated backend API.</p>
                                     <div x-show="!previewActive && !swaggerActive" class="space-y-2">
-                                        <div class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-[11px] text-warning-emphasis">Start the preview container to load live API docs.</div>
-                                        <button @click="swaggerStarting=true;
+                                        <div class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-2xs text-warning-emphasis">Start the preview container to load live API docs.</div>
+                                        <button type="button" @click="swaggerStarting=true;
                                                         fetch('/solutions/'+solutionId+'/codegen/preview/start',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.cookie.match(/csrftoken=([^;]+)/)?.[1]||''}})
                                                         .then(r=>r.json())
                                                         .then(d=>{ if(d.swagger_url||d.url){swaggerUrl=d.swagger_url||d.url; swaggerActive=true;} swaggerStarting=false; })
@@ -2016,7 +2016,7 @@ npm run dev</pre>
                                         </button>
                                     </div>
                                     <div x-show="previewActive || swaggerActive" class="space-y-2">
-                                        <div class="flex items-center gap-2 text-[11px] text-success-emphasis bg-success/10 border border-success/30 rounded-lg p-2.5">
+                                        <div class="flex items-center gap-2 text-2xs text-success-emphasis bg-success/10 border border-success/30 rounded-lg p-2.5">
                                             <span class="w-2 h-2 rounded-full bg-success animate-pulse shrink-0"></span>
                                             Container active
                                         </div>
@@ -2047,7 +2047,7 @@ npm run dev</pre>
                                                 <p class="text-xs text-muted-foreground">Cloud IDE with hot-reload — no install required</p>
                                             </div>
                                         </div>
-                                        <button @click="launchStackBlitz()" :disabled="sbLaunching"
+                                        <button type="button" @click="launchStackBlitz()" :disabled="sbLaunching"
                                                 style="background-color: rgb(2,132,199);"
                                                 class="w-full h-11 text-sm font-semibold rounded-lg hover:brightness-90 disabled:opacity-60 text-primary-foreground transition-colors flex items-center justify-center gap-2">
                                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
@@ -2064,7 +2064,7 @@ npm run dev</pre>
                                         </div>
                                         <div class="relative">
                                             <pre class="bg-muted rounded-lg px-4 py-3 font-mono text-sm border border-border whitespace-pre-wrap">docker build -t app-preview . && docker run -p 3000:3000 app-preview</pre>
-                                            <button @click="navigator.clipboard.writeText('docker build -t app-preview . && docker run -p 3000:3000 app-preview'); showWebCmd='dcopied'; setTimeout(()=>showWebCmd=false,1500)"
+                                            <button type="button" @click="navigator.clipboard.writeText('docker build -t app-preview . && docker run -p 3000:3000 app-preview'); showWebCmd='dcopied'; setTimeout(()=>showWebCmd=false,1500)"
                                                     class="absolute top-2 right-2 h-6 px-2 text-xs rounded border border-border bg-background text-muted-foreground hover:text-foreground"
                                                     x-text="showWebCmd==='dcopied' ? '✓ Copied' : 'Copy'"></button>
                                         </div>

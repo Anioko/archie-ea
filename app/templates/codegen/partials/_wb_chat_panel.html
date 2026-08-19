@@ -31,7 +31,7 @@
     </div>
     <div class="flex items-center gap-1">
       <!-- Wide/narrow toggle -->
-      <button
+      <button type="button"
         @click="chatWide = !chatWide"
         class="text-[var(--color-muted)] hover:text-[var(--color-text)] p-0.5 rounded"
         :title="chatWide ? 'Narrow' : 'Expand'"
@@ -40,7 +40,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
         </svg>
       </button>
-      <button
+      <button type="button"
         @click="isOpen = false"
         class="text-[var(--color-muted)] hover:text-[var(--color-text)] p-0.5"
       >
@@ -63,9 +63,9 @@
         <p class="text-xs">Describe a change, ask for an explanation, or request new functionality.</p>
         <div class="mt-4 space-y-1 text-xs text-left">
           <p class="text-[var(--color-muted)]">Try:</p>
-          <button @click="setInput('Add pagination to the list endpoint')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Add pagination to the list endpoint"</button>
-          <button @click="setInput('Add a status field with draft/active/archived states')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Add a status field with draft/active/archived states"</button>
-          <button @click="setInput('Explain what this file does')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Explain what this file does"</button>
+          <button type="button" @click="setInput('Add pagination to the list endpoint')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Add pagination to the list endpoint"</button>
+          <button type="button" @click="setInput('Add a status field with draft/active/archived states')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Add a status field with draft/active/archived states"</button>
+          <button type="button" @click="setInput('Explain what this file does')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Explain what this file does"</button>
         </div>
       </div>
     </template>
@@ -93,14 +93,14 @@
                   </div>
                   <pre class="p-2 text-xs font-mono overflow-x-auto max-h-40 bg-muted text-foreground/90" x-text="patch.diff.substring(0, 800) + (patch.diff.length > 800 ? '\n...' : '')"></pre>
                   <div class="flex gap-1 p-1.5 bg-[var(--color-surface-tertiary)]">
-                    <button
+                    <button type="button"
                       @click="applyPatch(msg, patch, pi)"
                       :disabled="patch.applied"
                       :class="patch.applied ? 'bg-success cursor-default' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'"
                       class="px-2.5 py-1 text-primary-foreground text-xs font-semibold rounded"
                       x-text="patch.applied ? '✓ Applied' : 'Accept'"
                     ></button>
-                    <button
+                    <button type="button"
                       @click="msg.patches.splice(pi, 1)"
                       :disabled="patch.applied"
                       class="px-2.5 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] text-xs rounded hover:bg-destructive/5 hover:border-destructive/30 hover:text-destructive-emphasis"
@@ -109,7 +109,7 @@
                 </div>
               </template>
               <template x-if="msg.patches.length > 1 && !msg.allApplied">
-                <button
+                <button type="button"
                   @click="applyAllPatches(msg)"
                   class="w-full px-2 py-1.5 bg-success hover:bg-success/90 text-primary-foreground text-xs font-semibold rounded"
                   x-text="`Accept All (${msg.patches.length} files)`"
@@ -143,7 +143,7 @@
         :disabled="isStreaming"
         x-ref="input"
        aria-label="Ask about this code or request a change... (Enter to send, Shift+Enter for newline)"></textarea>
-      <button
+      <button type="button"
         @click="send()"
         :disabled="!input.trim() || isStreaming"
         class="p-2 rounded-lg text-primary-foreground flex-shrink-0"

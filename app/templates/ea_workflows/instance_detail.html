@@ -63,7 +63,7 @@
                 <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 Export JSON
             </a>
-            <button @click="window.print()"
+            <button type="button" @click="window.print()"
                     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-input bg-background hover:border-primary/50 text-sm font-medium transition-colors">
                 <i data-lucide="printer" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 Print
@@ -117,7 +117,7 @@
                     {{ reject_btn() }}
                     {% endif %}
                     {% if instance.status == 'failed' %}
-                    <button @click="retryWorkflow()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors">
+                    <button type="button" @click="retryWorkflow()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors">
                         <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i> Retry
                     </button>
                     {% endif %}
@@ -631,7 +631,7 @@
                                     {% else %}
                                     <i data-lucide="circle" class="h-2.5 w-2.5 text-muted-foreground shrink-0" aria-hidden="true"></i>
                                     {% endif %}
-                                    <span class="text-[9px] truncate {% if crit.score == crit.max %}text-foreground{% else %}text-muted-foreground{% endif %}">{{ crit_name|replace('_',' ') }}</span>
+                                    <span class="text-2xs truncate {% if crit.score == crit.max %}text-foreground{% else %}text-muted-foreground{% endif %}">{{ crit_name|replace('_',' ') }}</span>
                                 </div>
                                 {% endfor %}
                             </div>
@@ -698,7 +698,7 @@
                         <i data-lucide="terminal" class="h-5 w-5 text-muted-foreground" aria-hidden="true"></i>
                         <h2 class="text-base font-semibold text-muted-foreground">Execution Log</h2>
                     </div>
-                    <button @click="showLog = !showLog" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-input hover:bg-muted text-xs font-medium transition-colors">
+                    <button type="button" @click="showLog = !showLog" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-input hover:bg-muted text-xs font-medium transition-colors">
                         <i data-lucide="chevron-down" class="h-3 w-3 transition-transform" :class="showLog ? 'rotate-180' : ''" aria-hidden="true"></i>
                         <span x-text="showLog ? 'Hide' : 'Show Steps'"></span>
                     </button>
@@ -825,16 +825,16 @@
             <div class="rounded-xl border-2 border-input bg-background p-5 no-print" x-data="deliverablesPanel()">
                 <h3 class="text-sm font-semibold mb-3">Export & Share</h3>
                 <div class="grid grid-cols-2 gap-1.5 mb-3">
-                    <button @click="printReport()" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border-2 border-input hover:border-primary/40 hover:bg-muted text-xs font-medium transition-colors" title="Print or save as PDF">
+                    <button type="button" @click="printReport()" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border-2 border-input hover:border-primary/40 hover:bg-muted text-xs font-medium transition-colors" title="Print or save as PDF">
                         <i data-lucide="printer" class="h-3.5 w-3.5" aria-hidden="true"></i> Print / PDF
                     </button>
-                    <button @click="exportJSON()" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border-2 border-input hover:border-primary/40 hover:bg-muted text-xs font-medium transition-colors" title="Export as JSON">
+                    <button type="button" @click="exportJSON()" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border-2 border-input hover:border-primary/40 hover:bg-muted text-xs font-medium transition-colors" title="Export as JSON">
                         <i data-lucide="braces" class="h-3.5 w-3.5" aria-hidden="true"></i> JSON
                     </button>
-                    <button @click="exportCSV()" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border-2 border-input hover:border-primary/40 hover:bg-muted text-xs font-medium transition-colors" title="Export as CSV">
+                    <button type="button" @click="exportCSV()" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border-2 border-input hover:border-primary/40 hover:bg-muted text-xs font-medium transition-colors" title="Export as CSV">
                         <i data-lucide="table-2" class="h-3.5 w-3.5" aria-hidden="true"></i> CSV
                     </button>
-                    <button @click="copyShareLink()" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border-2 border-input hover:border-primary/40 hover:bg-muted text-xs font-medium transition-colors">
+                    <button type="button" @click="copyShareLink()" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border-2 border-input hover:border-primary/40 hover:bg-muted text-xs font-medium transition-colors">
                         <i data-lucide="link" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         <span x-text="copied ? 'Copied!' : 'Share'"></span>
                     </button>
@@ -907,7 +907,7 @@
                 </div>
                 <div class="flex flex-wrap items-center justify-end gap-2 shrink-0 no-print">
                     {% if instance.workflow_code == 'ADM_PHASE_A_VISION' and instance.status == 'completed' %}
-                    <button @click="openInSolutionComposer()" :disabled="composerLoading"
+                    <button type="button" @click="openInSolutionComposer()" :disabled="composerLoading"
                             class="inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Create ArchiMate canvas from this Architecture Vision">
                         <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true" x-show="!composerLoading" x-cloak></i>
@@ -927,10 +927,10 @@
                     {{ reject_btn('Reject', size='md', responsive=true) }}
                     {% endif %}
                     {% if instance.status == 'failed' %}
-                    <button @click="retryWorkflow()" class="inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"><i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i><span class="hidden sm:inline">Retry</span></button>
+                    <button type="button" @click="retryWorkflow()" class="inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"><i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i><span class="hidden sm:inline">Retry</span></button>
                     {% endif %}
                     {% if instance.status in ['running', 'waiting_approval', 'pending'] %}
-                    <button @click="openCancelDialog()" class="inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg border-2 border-destructive/50 text-destructive-emphasis font-medium text-sm hover:bg-destructive/10 transition-colors"><i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i><span class="hidden sm:inline">Cancel</span></button>
+                    <button type="button" @click="openCancelDialog()" class="inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg border-2 border-destructive/50 text-destructive-emphasis font-medium text-sm hover:bg-destructive/10 transition-colors"><i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i><span class="hidden sm:inline">Cancel</span></button>
                     {% endif %}
                 </div>
             </div>
@@ -972,7 +972,7 @@
         <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-destructive-emphasis" x-text="failureSummary"></p>
         </div>
-        <button @click="showFailureBanner = false" class="shrink-0 p-1 rounded hover:bg-destructive/10 transition-colors" aria-label="Dismiss">
+        <button type="button" @click="showFailureBanner = false" class="shrink-0 p-1 rounded hover:bg-destructive/10 transition-colors" aria-label="Dismiss">
             <i data-lucide="x" class="h-4 w-4 text-destructive" aria-hidden="true"></i>
         </button>
     </div>
@@ -1733,7 +1733,7 @@
                         {% for d in _adm_deliverables %}
                         <div class="rounded-lg border border-input bg-background p-3">
                             <div class="text-xs font-medium text-muted-foreground mb-1">{{ d.step|replace('_', ' ')|title }}</div>
-                            <pre class="text-[11px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-words max-h-32 overflow-y-auto">{{ d.data|tojson(indent=2) }}</pre>
+                            <pre class="text-2xs text-muted-foreground overflow-x-auto whitespace-pre-wrap break-words max-h-32 overflow-y-auto">{{ d.data|tojson(indent=2) }}</pre>
                         </div>
                         {% endfor %}
                     </div>
@@ -1883,10 +1883,10 @@
                                 </details>
                                 {% endif %}
                                 <div class="flex items-center gap-2 pt-1">
-                                    <button @click="retryWorkflow()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                                    <button type="button" @click="retryWorkflow()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                                         <i data-lucide="rotate-ccw" class="h-3 w-3" aria-hidden="true"></i> Retry
                                     </button>
-                                    <button @click="openCancelDialog()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium border border-destructive/30 text-destructive-emphasis hover:bg-destructive/10 transition-colors">
+                                    <button type="button" @click="openCancelDialog()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium border border-destructive/30 text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                                         <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i> Cancel Run
                                     </button>
                                 </div>
@@ -1930,7 +1930,7 @@
                             <details class="text-xs" open>
                                 <summary class="cursor-pointer font-medium text-muted-foreground hover:text-foreground">Output data</summary>
                                 {% set output_json = exec_step.output_data | tojson(indent=2) %}
-                                <pre class="mt-2 p-3 rounded-lg bg-muted/50 text-[11px] overflow-x-auto max-h-48 overflow-y-auto border border-input/50">{{ output_json[:3000] }}</pre>
+                                <pre class="mt-2 p-3 rounded-lg bg-muted/50 text-2xs overflow-x-auto max-h-48 overflow-y-auto border border-input/50">{{ output_json[:3000] }}</pre>
                             </details>
                             {% endif %}
 
@@ -1990,7 +1990,7 @@
                             <template x-if="matchedArtifact('{{ name }}')">
                                 <details class="mt-3 text-xs">
                                     <summary class="cursor-pointer font-medium text-muted-foreground hover:text-foreground">View content</summary>
-                                    <pre class="mt-2 p-3 rounded bg-muted/50 overflow-x-auto text-[11px] max-h-48 overflow-y-auto"
+                                    <pre class="mt-2 p-3 rounded bg-muted/50 overflow-x-auto text-2xs max-h-48 overflow-y-auto"
                                          x-text="JSON.stringify(matchedArtifact('{{ name }}').content || matchedArtifact('{{ name }}'), null, 2)"></pre>
                                 </details>
                             </template>
@@ -2012,7 +2012,7 @@
                                 <div class="text-sm font-medium mb-1" x-text="art.title || art.workflow_name || 'Untitled'"></div>
                                 <details class="text-xs">
                                     <summary class="cursor-pointer font-medium text-muted-foreground hover:text-foreground">View full content</summary>
-                                    <pre class="mt-2 p-3 rounded bg-muted/50 overflow-x-auto text-[11px]" x-text="JSON.stringify(art.content || art, null, 2)"></pre>
+                                    <pre class="mt-2 p-3 rounded bg-muted/50 overflow-x-auto text-2xs" x-text="JSON.stringify(art.content || art, null, 2)"></pre>
                                 </details>
                             </div>
                         </template>
@@ -2034,7 +2034,7 @@
                                 {% for item in _wft022_ns.items %}
                                 <details class="rounded-lg border-2 border-input bg-muted/30 p-3">
                                     <summary class="cursor-pointer text-sm font-medium">{{ item.step_name }}</summary>
-                                    <pre class="mt-2 p-2 rounded bg-background text-[11px] overflow-x-auto max-h-40 overflow-y-auto">{{ item.output_data|tojson(indent=2) }}</pre>
+                                    <pre class="mt-2 p-2 rounded bg-background text-2xs overflow-x-auto max-h-40 overflow-y-auto">{{ item.output_data|tojson(indent=2) }}</pre>
                                 </details>
                                 {% endfor %}
                             </div>
@@ -2101,7 +2101,7 @@
                 <div class="flex items-center justify-between mb-3">
                     <h3 class="text-sm font-semibold">Run Details</h3>
                     {# Watch toggle #}
-                    <button @click="toggleWatch()" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors"
+                    <button type="button" @click="toggleWatch()" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors"
                             :class="isWatching ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
                             :title="isWatching ? 'Stop watching this run' : 'Watch this run for notifications'">
                         <i :data-lucide="isWatching ? 'bell-ring' : 'bell'" class="h-3.5 w-3.5" aria-hidden="true"></i>

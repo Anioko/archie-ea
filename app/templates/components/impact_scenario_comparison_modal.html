@@ -314,7 +314,7 @@
 
                 <!-- Footer -->
                 <div class="sticky bottom-0 bg-background flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
-                    <button
+                    <button type="button"
                         @click="exportToCSV()"
                         :disabled="selectedScenarios.length === 0"
                         class="inline-flex items-center gap-2 px-4 py-2 bg-background border border-border text-foreground/80 font-medium rounded-lg hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -322,7 +322,7 @@
                         <i data-lucide="download" class="h-4 w-4"></i>
                         Export to CSV
                     </button>
-                    <button
+                    <button type="button"
                         @click="closeScenarioModal()"
                         class="inline-flex items-center gap-2 px-4 py-2 bg-muted-foreground hover:bg-foreground/80 text-primary-foreground font-medium rounded-lg transition-colors"
                      aria-label="Close">

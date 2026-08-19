@@ -11,7 +11,7 @@
     <template x-for="elem in (sectionElements['deployment_view'] || [])" :key="elem.element_id || elem.id">
         <div class="border border-border rounded-lg overflow-hidden">
             {# Header: collapsible #}
-            <button
+            <button type="button"
                 class="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
                 x-on:click="toggleDeployExpanded(elem.element_id || elem.id)"
             >
@@ -45,7 +45,7 @@
                     <span class="text-xs text-muted-foreground"
                           x-text="'Version ' + ((deploymentSpecs[elem.element_id || elem.id] && deploymentSpecs[elem.element_id || elem.id].deployment) ? (deploymentSpecs[elem.element_id || elem.id].deployment.version || 0) : 0)"></span>
                     <div class="flex gap-2">
-                        <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                        <button type="button" class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
                                 x-on:click="suggestDeploymentSpec(elem.element_id || elem.id)"
                                 :disabled="deployLoading[elem.element_id || elem.id]">
                             <span x-show="!deployLoading[elem.element_id || elem.id]">Suggest Spec</span>

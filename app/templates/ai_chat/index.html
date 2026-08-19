@@ -383,7 +383,7 @@ x-cloak>
                 <button type="button" id="tab-alerts" @click="switchSidebarTab('alerts')"
                     class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors relative">
                     Alerts
-                    <span id="alert-badge" class="hidden absolute top-2.5 right-3 h-4 w-4 bg-destructive text-destructive-foreground text-[9px] rounded-full items-center justify-center font-bold border-2 border-muted/30">0</span>
+                    <span id="alert-badge" class="hidden absolute top-2.5 right-3 h-4 w-4 bg-destructive text-destructive-foreground text-2xs rounded-full items-center justify-center font-bold border-2 border-muted/30">0</span>
                 </button>
                 <button type="button" id="tab-history" @click="switchSidebarTab('history'); loadSessionList()"
                     class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
@@ -1013,7 +1013,7 @@ x-cloak>
                             <summary class="cursor-pointer text-muted-foreground hover:text-foreground select-none">
                                 View technical detail
                             </summary>
-                            <pre class="mt-1 whitespace-pre-wrap break-all rounded-md bg-muted/50 border border-border px-2 py-1.5 text-[11px] text-muted-foreground" x-text="JSON.stringify(item.operation_payload, null, 2)"></pre>
+                            <pre class="mt-1 whitespace-pre-wrap break-all rounded-md bg-muted/50 border border-border px-2 py-1.5 text-2xs text-muted-foreground" x-text="JSON.stringify(item.operation_payload, null, 2)"></pre>
                         </details>
 
                         {# $store.approvals.*, not the bare facade getter: the Alpine.data facade

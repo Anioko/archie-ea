@@ -126,7 +126,7 @@
        class="rounded-lg border border-border bg-card p-5 shadow-sm">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-foreground" x-text="selectedDomain?.name"></h2>
-      <button @click="selectedDomain = null"
+      <button type="button" @click="selectedDomain = null"
               class="rounded-sm p-1 text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Close detail panel">
         <i data-lucide="x" class="h-4 w-4"></i>

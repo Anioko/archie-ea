@@ -219,7 +219,7 @@ document.addEventListener('alpine:init', () => {
     <div class="bg-card border border-border rounded-xl p-5">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-sm font-semibold text-foreground">Filters</h2>
-            <button @click="resetFilters()"
+            <button type="button" @click="resetFilters()"
                     class="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Reset all
             </button>
@@ -293,7 +293,7 @@ document.addEventListener('alpine:init', () => {
         <div x-cloak x-show="!loading && error" class="flex flex-col items-center justify-center py-24 gap-3">
             <i data-lucide="alert-triangle" class="h-10 w-10 text-destructive" aria-hidden="true"></i>
             <p class="text-sm text-muted-foreground" x-text="error"></p>
-            <button @click="loadData()"
+            <button type="button" @click="loadData()"
                     class="mt-1 inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-border bg-background hover:bg-muted transition-colors">
                 <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i> Retry
             </button>
@@ -315,7 +315,7 @@ document.addEventListener('alpine:init', () => {
              class="flex flex-col items-center justify-center py-24 gap-3">
             <i data-lucide="table-2" class="h-10 w-10 text-muted-foreground" aria-hidden="true"></i>
             <p class="text-sm font-medium text-foreground">No data matches your filters</p>
-            <button @click="resetFilters()" class="text-xs text-primary hover:underline">Clear filters</button>
+            <button type="button" @click="resetFilters()" class="text-xs text-primary hover:underline">Clear filters</button>
         </div>
 
         <!-- Matrix table -->
@@ -338,7 +338,7 @@ document.addEventListener('alpine:init', () => {
                     <!-- Product sub-header row -->
                     <tr>
                         <template x-for="col in vendorProducts" :key="'sub-' + col.vendor + '::' + col.product">
-                            <th class="bg-muted/60 border-r border-b border-border px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground whitespace-nowrap max-w-[96px] overflow-hidden text-ellipsis"
+                            <th class="bg-muted/60 border-r border-b border-border px-2 py-1.5 text-center text-2xs font-medium text-muted-foreground whitespace-nowrap max-w-[96px] overflow-hidden text-ellipsis"
                                 :title="col.product"
                                 x-text="col.product"></th>
                         </template>
@@ -371,7 +371,7 @@ document.addEventListener('alpine:init', () => {
                 <span x-text="capabilities.length"></span> capabilities ×
                 <span x-text="vendors.reduce((a, v) => a + v.products.length, 0)"></span> products
             </p>
-            <button @click="exportCSV()"
+            <button type="button" @click="exportCSV()"
                     class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
                 <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 Export CSV
@@ -418,7 +418,7 @@ document.addEventListener('alpine:init', () => {
                           x-text="'Maturity ' + $store.matrixModal.data?.maturity_level + '/5'"></span>
                 </div>
             </div>
-            <button @click="$store.matrixModal.open = false" aria-label="Close"
+            <button type="button" @click="$store.matrixModal.open = false" aria-label="Close"
                     class="shrink-0 h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted transition-colors text-muted-foreground">
                 <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
             </button>
@@ -515,7 +515,7 @@ document.addEventListener('alpine:init', () => {
 
         <!-- Modal footer -->
         <div class="px-6 py-3 border-t border-border flex justify-end shrink-0">
-            <button @click="$store.matrixModal.open = false"
+            <button type="button" @click="$store.matrixModal.open = false"
                     class="px-4 py-2 text-sm rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors">
                 Close
             </button>

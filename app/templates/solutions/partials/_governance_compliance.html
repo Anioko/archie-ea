@@ -6,10 +6,10 @@
     <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-primary inline-block"></span>Governance &amp; Compliance</h3>
         <div class="sad-actions flex flex-wrap gap-2">
-            <button @click="openEntityModal('governance_exception')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Exception</button>
-            <button @click="openEntityModal('compliance_mapping')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Compliance</button>
-            <button @click="openEntityModal('change_request')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Change</button>
-            <button @click="openEntityModal('feasibility_review')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Review</button>
+            <button type="button" @click="openEntityModal('governance_exception')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Exception</button>
+            <button type="button" @click="openEntityModal('compliance_mapping')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Compliance</button>
+            <button type="button" @click="openEntityModal('change_request')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Change</button>
+            <button type="button" @click="openEntityModal('feasibility_review')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Review</button>
         </div>
     </div>
     {# Governance Exceptions #}
@@ -25,8 +25,8 @@
                         </div>
                         <div class="sad-actions flex items-center gap-2 ml-4">
                             <span :class="{'bg-success/10 text-success-emphasis border-success/30': item.approved, 'bg-warning/10 text-warning-emphasis border-warning/30': !item.approved}" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border" x-text="item.status"></span>
-                            <button @click="openEntityModal('governance_exception', item)" class="text-primary hover:underline text-xs">Edit</button>
-                            <button @click="confirmDeleteEntity('governance_exception', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                            <button type="button" @click="openEntityModal('governance_exception', item)" class="text-primary hover:underline text-xs">Edit</button>
+                            <button type="button" @click="confirmDeleteEntity('governance_exception', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                         </div>
                     </div>
                 </template>
@@ -54,8 +54,8 @@
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.element_name || '\u2014'"></td>
                                 <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.verification_status === 'verified', 'text-destructive-emphasis': item.verification_status === 'non_compliant', 'text-warning-emphasis': item.verification_status === 'partial', 'text-muted-foreground': item.verification_status === 'not_assessed'}" x-text="item.verification_status?.replace('_', ' ')"></span></td>
                                 <td class="sad-actions py-2 px-3 text-right">
-                                    <button @click="openEntityModal('compliance_mapping', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                    <button @click="confirmDeleteEntity('compliance_mapping', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                                    <button type="button" @click="openEntityModal('compliance_mapping', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                    <button type="button" @click="confirmDeleteEntity('compliance_mapping', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                                 </td>
                             </tr>
                         </template>
@@ -80,8 +80,8 @@
                         </div>
                         <div class="sad-actions flex items-center gap-2 ml-4">
                             <span :class="{'text-success-emphasis': item.decision === 'approved', 'text-destructive-emphasis': item.decision === 'rejected', 'text-warning-emphasis': item.decision === 'pending'}" class="text-xs font-medium" x-text="item.decision"></span>
-                            <button @click="openEntityModal('change_request', item)" class="text-primary hover:underline text-xs">Edit</button>
-                            <button @click="confirmDeleteEntity('change_request', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                            <button type="button" @click="openEntityModal('change_request', item)" class="text-primary hover:underline text-xs">Edit</button>
+                            <button type="button" @click="confirmDeleteEntity('change_request', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                         </div>
                     </div>
                 </template>
@@ -111,8 +111,8 @@
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.confidence_level"></td>
                                 <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.recommendation === 'proceed', 'text-destructive-emphasis': item.recommendation === 'stop', 'text-warning-emphasis': item.recommendation === 'conditional'}" x-text="item.recommendation"></span></td>
                                 <td class="sad-actions py-2 px-3 text-right">
-                                    <button @click="openEntityModal('feasibility_review', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                    <button @click="confirmDeleteEntity('feasibility_review', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                                    <button type="button" @click="openEntityModal('feasibility_review', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                    <button type="button" @click="confirmDeleteEntity('feasibility_review', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                                 </td>
                             </tr>
                         </template>
@@ -129,7 +129,7 @@
 <div class="mt-7">
     <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-primary inline-block"></span>Compliance Gap Analysis</h3>
-        <button @click="loadComplianceGap()"
+        <button type="button" @click="loadComplianceGap()"
                 x-show="!complianceGapLoaded && !complianceGapLoading" x-cloak
                 class="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
             <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>

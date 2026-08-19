@@ -80,7 +80,7 @@
       </a>
 
       <!-- Run Detection Button -->
-      <button @click="scrollToDetection()"
+      <button type="button" @click="scrollToDetection()"
               class="inline-flex items-center justify-center h-10 px-5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm hover:shadow-md"
               aria-label="Scroll to run detection panel">
         <svg class="w-4 h-4 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -119,7 +119,7 @@
   <div class="bg-background rounded-lg border border-border p-5 shadow-sm mb-6" x-data="executiveSummary()" x-init="load()">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-foreground">Executive Summary</h2>
-      <button @click="load()" class="text-xs text-muted-foreground hover:text-foreground transition-colors" aria-label="Refresh executive summary">Refresh</button>
+      <button type="button" @click="load()" class="text-xs text-muted-foreground hover:text-foreground transition-colors" aria-label="Refresh executive summary">Refresh</button>
     </div>
     <div x-show="loaded" x-cloak>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -420,7 +420,7 @@
         <h2 class="text-sm font-semibold">Decision Workbench</h2>
         <span class="ml-1 text-xs text-muted-foreground font-normal">— triage scored applications by readiness, disposition, and confidence</span>
       </div>
-      <button @click="clearFilters()"
+      <button type="button" @click="clearFilters()"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
               aria-label="Clear all workbench filters">
         <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
@@ -563,28 +563,28 @@
                     rows="1"
                     class="flex-1 min-w-[180px] max-w-xs rounded-md border border-input bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
                     aria-label="Bulk action notes"></textarea>
-          <button @click="executeBulkAction('approve')"
+          <button type="button" @click="executeBulkAction('approve')"
                   :disabled="bulkProcessing"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Bulk approve selected applications"><!-- token-migration-ok -->
             <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i>
             Approve Selected
           </button>
-          <button @click="executeBulkAction('defer')"
+          <button type="button" @click="executeBulkAction('defer')"
                   :disabled="bulkProcessing"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30 hover:bg-warning/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Bulk defer selected applications"><!-- token-migration-ok -->
             <i data-lucide="clock" class="w-3 h-3" aria-hidden="true"></i>
             Defer Selected
           </button>
-          <button @click="executeBulkAction('request_data')"
+          <button type="button" @click="executeBulkAction('request_data')"
                   :disabled="bulkProcessing"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/30 hover:bg-info/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Bulk request data for selected applications">
             <i data-lucide="file-question" class="w-3 h-3" aria-hidden="true"></i>
             Request Data
           </button>
-          <button @click="selectedIds = []; selectAll = false; bulkResult = null"
+          <button type="button" @click="selectedIds = []; selectAll = false; bulkResult = null"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent transition-colors"
                   aria-label="Clear selection">
             <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
@@ -677,13 +677,13 @@
           Page <span x-text="page"></span> of <span x-text="Math.ceil(total / per_page)"></span>
         </span>
         <div class="flex items-center gap-2">
-          <button @click="prevPage()"
+          <button type="button" @click="prevPage()"
                   :disabled="page <= 1"
                   class="inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background text-sm hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Previous page">
             <i data-lucide="chevron-left" class="w-4 h-4" aria-hidden="true"></i>
           </button>
-          <button @click="nextPage()"
+          <button type="button" @click="nextPage()"
                   :disabled="page >= Math.ceil(total / per_page)"
                   class="inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background text-sm hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Next page">
@@ -862,7 +862,7 @@
         </div>
 
         <!-- Run Button -->
-        <button id="run-detection-btn" @click="runDetection()" class="w-full h-14 inline-flex items-center justify-center gap-2 rounded-xl text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md hover:shadow-lg disabled:pointer-events-none disabled:opacity-50" aria-label="Run duplicate detection">
+        <button type="button" id="run-detection-btn" @click="runDetection()" class="w-full h-14 inline-flex items-center justify-center gap-2 rounded-xl text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md hover:shadow-lg disabled:pointer-events-none disabled:opacity-50" aria-label="Run duplicate detection">
           <span class="normal-state inline-flex items-center">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
@@ -930,7 +930,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
                 </svg>
               </a>
-              <button @click="location.reload()" class="inline-flex items-center justify-center h-12 px-6 rounded-md text-base font-semibold border border-success/30 bg-background hover:bg-success/5 transition-colors shadow-sm" aria-label="Refresh detection statistics">
+              <button type="button" @click="location.reload()" class="inline-flex items-center justify-center h-12 px-6 rounded-md text-base font-semibold border border-success/30 bg-background hover:bg-success/5 transition-colors shadow-sm" aria-label="Refresh detection statistics">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                 </svg>
@@ -948,7 +948,7 @@
     <h2 class="text-2xl font-semibold tracking-tight">Quick Actions</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <!-- 1. Run Detection (Detect step) -->
-      <button @click="document.getElementById('detection-panel').scrollIntoView({behavior:'smooth'})" class="group relative overflow-hidden rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-left" aria-label="Scroll to detection panel">
+      <button type="button" @click="document.getElementById('detection-panel').scrollIntoView({behavior:'smooth'})" class="group relative overflow-hidden rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-left" aria-label="Scroll to detection panel">
         <div class="p-5">
           <div class="flex items-start gap-3 mb-4">
             <div class="h-12 w-12 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -963,7 +963,7 @@
       </button>
 
       <!-- 2. Score Portfolio (Score step) — NEW -->
-      <button id="score-portfolio-btn" @click="scorePortfolio()" class="group relative overflow-hidden rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-left" aria-label="Score entire portfolio">
+      <button type="button" id="score-portfolio-btn" @click="scorePortfolio()" class="group relative overflow-hidden rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-left" aria-label="Score entire portfolio">
         <div class="p-5">
           <div class="flex items-start gap-3 mb-4">
             <div class="h-12 w-12 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -978,7 +978,7 @@
       </button>
 
       <!-- 3. Auto-Resolve Exact Matches (Plan step) -->
-      <button id="auto-resolve-btn" @click="autoResolveExact()" class="group relative overflow-hidden rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-left" aria-label="Auto-resolve exact matches">
+      <button type="button" id="auto-resolve-btn" @click="autoResolveExact()" class="group relative overflow-hidden rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-left" aria-label="Auto-resolve exact matches">
         <div class="p-5">
           <div class="flex items-start gap-3 mb-4">
             <div class="h-12 w-12 rounded-lg bg-destructive flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -1057,7 +1057,7 @@
             <div id="options-app-dropdown" role="listbox" class="hidden absolute z-50 w-full mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto"></div>
           </div>
           <div class="flex items-end gap-2">
-            <button id="analyze-options-btn" @click="analyzeOptions()"
+            <button type="button" id="analyze-options-btn" @click="analyzeOptions()"
                     class="h-10 px-4 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary transition-all shadow-sm" aria-label="Analyze options for selected application">
               <i data-lucide="bar-chart-3" class="w-4 h-4 inline mr-1" aria-hidden="true"></i>
               Analyze Options
@@ -1131,7 +1131,7 @@
               <p class="text-xs text-muted-foreground mb-3">Advance this recommendation through the review workflow.</p>
               <div class="flex flex-wrap gap-2 mb-3">
                 <template x-for="action in allowedTransitions" :key="action">
-                  <button
+                  <button type="button"
                     @click="openTransitionDialog(action)"
                     :aria-label="'Transition review to ' + statusLabel(action)"
                     class="h-8 px-3 rounded-md text-xs font-semibold border transition-colors"
@@ -1177,7 +1177,7 @@
                             class="w-full px-3 py-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none" aria-label="Add context for this decision…"></textarea>
                 </div>
                 <div class="flex gap-2">
-                  <button @click="submitTransition()"
+                  <button type="button" @click="submitTransition()"
                           :disabled="transitionLoading || !reviewerName.trim()"
                           class="h-8 px-4 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                           :aria-label="'Confirm ' + statusLabel(pendingAction) + ' transition'">
@@ -1187,7 +1187,7 @@
                       Saving…
                     </span>
                   </button>
-                  <button @click="cancelTransition()"
+                  <button type="button" @click="cancelTransition()"
                           class="h-8 px-3 rounded-md text-xs font-medium border border-input hover:bg-accent transition-colors"
                           aria-label="Cancel transition">
                     Cancel
@@ -1228,7 +1228,7 @@
                     <span x-show="arbDecisionNotes" x-cloak class="block mt-1 text-muted-foreground" x-text="arbDecisionNotes"></span>
                   </div>
                   <!-- Submit button -->
-                  <button x-show="!submissionStatus || submissionStatus === 'rejected'" x-cloak
+                  <button type="button" x-show="!submissionStatus || submissionStatus === 'rejected'" x-cloak
                           @click="submitToArb()" :disabled="submitting"
                           class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                     <span x-show="!submitting" x-cloak>Submit to ARB</span>
@@ -1274,7 +1274,7 @@
               <div class="flex-1">
                 <h4 class="font-semibold mb-1">Generate Business Case</h4>
                 <p class="text-sm text-muted-foreground mb-3">Create a comprehensive business case document for the recommended option.</p>
-                <button id="generate-bc-btn" @click="generateBusinessCase()"
+                <button type="button" id="generate-bc-btn" @click="generateBusinessCase()"
                         class="h-9 px-4 rounded-md text-sm font-semibold bg-success text-primary-foreground hover:bg-success transition-colors shadow-sm" aria-label="Generate business case document">
                   Generate Business Case
                 </button>
@@ -1303,7 +1303,7 @@
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
-        <button id="dep-risk-load-btn" @click="loadPortfolioDependencies()"
+        <button type="button" id="dep-risk-load-btn" @click="loadPortfolioDependencies()"
                 class="h-9 px-4 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
                 aria-label="Load dependency risk data">
           <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -1381,7 +1381,7 @@
   <div id="dep-impact-detail-panel" class="hidden mt-4 rounded-xl border bg-card shadow-sm" aria-live="polite" aria-label="Dependency impact detail">
     <div class="p-5 border-b flex items-center justify-between">
       <h3 class="font-semibold text-base" id="dep-impact-panel-title">Dependency Impact</h3>
-      <button @click="document.getElementById('dep-impact-detail-panel').classList.add('hidden')"
+      <button type="button" @click="document.getElementById('dep-impact-detail-panel').classList.add('hidden')"
               class="h-7 w-7 rounded-md flex items-center justify-center hover:bg-accent transition-colors"
               aria-label="Close dependency impact panel">
         <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -1902,12 +1902,12 @@
             <div id="impact-app-dropdown" role="listbox" class="hidden absolute z-50 w-full mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto"></div>
           </div>
           <div class="flex items-end gap-2">
-            <button id="check-blockers-btn" @click="checkRetirementBlockers()"
+            <button type="button" id="check-blockers-btn" @click="checkRetirementBlockers()"
                     class="h-10 px-4 rounded-md text-sm font-semibold bg-warning text-primary-foreground hover:bg-warning transition-colors shadow-sm" aria-label="Check retirement blockers for selected application">
               <i data-lucide="alert-triangle" class="w-4 h-4 inline mr-1" aria-hidden="true"></i>
               Check Blockers
             </button>
-            <button id="blast-radius-btn" @click="checkBlastRadius()"
+            <button type="button" id="blast-radius-btn" @click="checkBlastRadius()"
                     class="h-10 px-4 rounded-md text-sm font-semibold bg-destructive text-primary-foreground hover:bg-destructive transition-colors shadow-sm" aria-label="Calculate blast radius for selected application">
               <i data-lucide="target" class="w-4 h-4 inline mr-1" aria-hidden="true"></i>
               Blast Radius
@@ -2034,7 +2034,7 @@
           <p class="text-sm"><span class="font-medium">By:</span> <span x-text="overrideActor"></span></p>
           <p class="text-sm"><span class="font-medium">Rationale:</span> <span x-text="overrideRationale"></span></p>
           <p class="text-sm"><span class="font-medium">Expires:</span> <span x-text="overrideExpiry"></span></p>
-          <button @click="removeOverride()" class="mt-2 inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90">
+          <button type="button" @click="removeOverride()" class="mt-2 inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90">
             Remove Override
           </button>
         </div>
@@ -2063,7 +2063,7 @@
             <label class="block text-sm font-medium text-foreground mb-1">Expiry (days)</label>
             <input type="number" x-model.number="form.expiry_days" min="1" max="365" class="w-32 rounded-md border border-input bg-background px-3 py-2 text-sm"  aria-label="Expiry (days)"/>
           </div>
-          <button @click="createOverride()" :disabled="!canSubmit || submitting"
+          <button type="button" @click="createOverride()" :disabled="!canSubmit || submitting"
                   class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             <span x-show="!submitting" x-cloak>Create Override</span>
             <span x-show="submitting" x-cloak>Creating…</span>
@@ -2121,7 +2121,7 @@
             </div>
           </div>
         </div>
-        <button @click="loadDossier()"
+        <button type="button" @click="loadDossier()"
                 :disabled="!selectedAppId || loading"
                 class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm"
                 aria-label="Load decision dossier for selected application">
@@ -2533,7 +2533,7 @@
 
         <!-- Save button -->
         <div class="flex justify-end">
-          <button @click="saveBenefits()"
+          <button type="button" @click="saveBenefits()"
                   :disabled="submitting"
                   class="inline-flex items-center justify-center h-10 px-6 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
             <span x-show="!submitting" x-cloak>Save Benefits</span>
@@ -2630,7 +2630,7 @@
                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
           </div>
           <div class="flex items-center gap-3">
-            <button @click="createRoadmapItem()"
+            <button type="button" @click="createRoadmapItem()"
                     :disabled="!form.owner.trim() || submitting"
                     class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
               <span x-show="!submitting" x-cloak>

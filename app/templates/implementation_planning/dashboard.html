@@ -100,11 +100,11 @@
             </div>
             
             <div class="flex justify-end gap-2 mt-6">
-                <button @click="showExportModal = false"
+                <button type="button" @click="showExportModal = false"
                         class="px-4 py-2 border border-input bg-background rounded-md hover:bg-accent" aria-label="Export">
                     Cancel
                 </button>
-                <button @click="performExport()"
+                <button type="button" @click="performExport()"
                         class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Export">
                     Export
                 </button>

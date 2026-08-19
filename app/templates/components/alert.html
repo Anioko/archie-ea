@@ -21,7 +21,7 @@
             {{ caller() }}
         </div>
         {% if dismissible %}
-            <button @click="isVisible = false" class="absolute top-4 right-4 rounded-md p-1 hover:bg-accent transition-colors" aria-label="Dismiss alert">
+            <button type="button" @click="isVisible = false" class="absolute top-4 right-4 rounded-md p-1 hover:bg-accent transition-colors" aria-label="Dismiss alert">
                 <i data-lucide="x" class="h-4 w-4"></i>
             </button>
         {% endif %}

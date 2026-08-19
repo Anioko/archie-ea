@@ -9,8 +9,8 @@
             Quality Attributes &amp; SLAs
         </h3>
         <div class="sad-actions flex gap-2">
-            <button @click="openEntityModal('quality_attribute')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Attribute</button>
-            <button @click="openEntityModal('sla')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ SLA</button>
+            <button type="button" @click="openEntityModal('quality_attribute')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Attribute</button>
+            <button type="button" @click="openEntityModal('sla')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ SLA</button>
         </div>
     </div>
     {# Quality Attributes sub-section #}
@@ -36,8 +36,8 @@
                                 <td class="py-2 px-3 text-muted-foreground" x-text="item.current_value || '\u2014'"></td>
                                 <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.test_status === 'passed', 'text-destructive-emphasis': item.test_status === 'failed', 'text-muted-foreground': item.test_status === 'not_tested'}" x-text="item.test_status?.replace('_', ' ')"></span></td>
                                 <td class="py-2 px-3 text-right sad-actions">
-                                    <button @click="openEntityModal('quality_attribute', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                    <button @click="confirmDeleteEntity('quality_attribute', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                                    <button type="button" @click="openEntityModal('quality_attribute', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                    <button type="button" @click="confirmDeleteEntity('quality_attribute', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                                 </td>
                             </tr>
                         </template>
@@ -71,8 +71,8 @@
                                 <td class="py-2 px-3 text-center font-mono" x-text="item.rpo_hours || '\u2014'"></td>
                                 <td class="py-2 px-3"><span :class="{'text-success-emphasis': item.status === 'active', 'text-muted-foreground': item.status === 'draft'}" x-text="item.status"></span></td>
                                 <td class="py-2 px-3 text-right sad-actions">
-                                    <button @click="openEntityModal('sla', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                    <button @click="confirmDeleteEntity('sla', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
+                                    <button type="button" @click="openEntityModal('sla', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                    <button type="button" @click="confirmDeleteEntity('sla', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                                 </td>
                             </tr>
                         </template>

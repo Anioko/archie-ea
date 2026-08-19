@@ -141,7 +141,7 @@
     {# ── Persona Tabs ────────────────────────────────────── #}
     <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 w-fit">
         {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('architect', 'Architect'), ('business', 'Business')] %}
-        <button @click="activeRole = '{{ role_key }}'"
+        <button type="button" @click="activeRole = '{{ role_key }}'"
                 :class="activeRole === '{{ role_key }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
                 class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">
             {{ role_label }}
@@ -209,8 +209,8 @@
                             {% set pct_int = pct|int %}
                             <div>
                                 <div class="flex items-center justify-between mb-1">
-                                    <span class="text-[11px] text-muted-foreground">{{ label }}</span>
-                                    <span class="text-[11px] font-semibold {% if pct_int >= 50 %}text-success-emphasis{% elif pct_int >= 20 %}text-warning-emphasis{% else %}text-destructive-emphasis{% endif %}">{{ pct }}%</span>
+                                    <span class="text-2xs text-muted-foreground">{{ label }}</span>
+                                    <span class="text-2xs font-semibold {% if pct_int >= 50 %}text-success-emphasis{% elif pct_int >= 20 %}text-warning-emphasis{% else %}text-destructive-emphasis{% endif %}">{{ pct }}%</span>
                                 </div>
                                 <div class="h-1.5 w-full bg-muted rounded-full overflow-hidden">
                                     <div class="h-full rounded-full {% if pct_int >= 50 %}bg-success{% elif pct_int >= 20 %}bg-warning{% else %}bg-destructive{% endif %}"

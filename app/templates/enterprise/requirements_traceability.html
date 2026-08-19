@@ -69,16 +69,16 @@
                         data-cap-id="{{ req.capability_id or '' }}">
                         <td class="px-4 py-3 text-xs">
                             {% if req.driver_id and driver_map.get(req.driver_id) %}
-                                <span class="inline-flex items-center rounded-full bg-destructive/10 text-destructive-emphasis px-2 py-0.5 text-[11px] font-medium" title="{{ driver_map[req.driver_id] }}">{{ driver_map[req.driver_id]|truncate(30) }}</span>
+                                <span class="inline-flex items-center rounded-full bg-destructive/10 text-destructive-emphasis px-2 py-0.5 text-2xs font-medium" title="{{ driver_map[req.driver_id] }}">{{ driver_map[req.driver_id]|truncate(30) }}</span>
                             {% else %}
-                                <span class="text-muted-foreground italic text-[11px]">—</span>
+                                <span class="text-muted-foreground italic text-2xs">—</span>
                             {% endif %}
                         </td>
                         <td class="px-4 py-3 text-xs">
                             {% if req.goal_id and goal_map.get(req.goal_id) %}
-                                <span class="inline-flex items-center rounded-full bg-success/10 text-success-emphasis px-2 py-0.5 text-[11px] font-medium" title="{{ goal_map[req.goal_id] }}">{{ goal_map[req.goal_id]|truncate(30) }}</span>
+                                <span class="inline-flex items-center rounded-full bg-success/10 text-success-emphasis px-2 py-0.5 text-2xs font-medium" title="{{ goal_map[req.goal_id] }}">{{ goal_map[req.goal_id]|truncate(30) }}</span>
                             {% else %}
-                                <span class="text-muted-foreground italic text-[11px]">—</span>
+                                <span class="text-muted-foreground italic text-2xs">—</span>
                             {% endif %}
                         </td>
                         <td class="px-4 py-3 text-xs" data-cell="capability">
@@ -96,7 +96,7 @@
                                 </div>
                             {% else %}
                                 <button type="button"
-                                        class="inline-flex items-center gap-1 text-muted-foreground hover:text-primary italic text-[11px] transition-colors group"
+                                        class="inline-flex items-center gap-1 text-muted-foreground hover:text-primary italic text-2xs transition-colors group"
                                         title="Link to a capability"
                                         @click="openLinkCapModal({{ req.id }}, null, null)">
                                     <i data-lucide="link" class="h-3 w-3 opacity-50 group-hover:opacity-100" aria-hidden="true"></i>
@@ -117,7 +117,7 @@
                         </td>
                         <td class="px-4 py-3 text-xs">
                             {% if req.togaf_phase %}
-                            <span class="inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-medium">Phase {{ req.togaf_phase }}</span>
+                            <span class="inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-2xs font-medium">Phase {{ req.togaf_phase }}</span>
                             {% else %}
                             <span class="text-muted-foreground">—</span>
                             {% endif %}
@@ -136,7 +136,7 @@
                             {% endif %}
                         </td>
                         <td class="px-4 py-3">
-                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium
                                 {% if req.status == 'Implemented' %}bg-success/10 text-success-emphasis
                                 {% elif req.status == 'Approved' %}bg-primary/10 text-primary
                                 {% elif req.status == 'Refined' %}bg-primary/10 text-primary
@@ -329,7 +329,7 @@
                 let cell = row.querySelector('[data-cell="capability"]');
                 if (!cell) return;
                 if (!capId) {
-                    cell.innerHTML = '<button type="button" class="inline-flex items-center gap-1 text-muted-foreground hover:text-primary italic text-[11px] transition-colors group" title="Link to a capability" @click="openLinkCapModal(' + reqId + ', null, null)"><i data-lucide="link" class="h-3 w-3 opacity-50 group-hover:opacity-100" aria-hidden="true"></i> Link capability</button>';
+                    cell.innerHTML = '<button type="button" class="inline-flex items-center gap-1 text-muted-foreground hover:text-primary italic text-2xs transition-colors group" title="Link to a capability" @click="openLinkCapModal(' + reqId + ', null, null)"><i data-lucide="link" class="h-3 w-3 opacity-50 group-hover:opacity-100" aria-hidden="true"></i> Link capability</button>';
                     if (window.lucide) lucide.createIcons();
                     // re-attach Alpine click (fallback: use onclick)
                     let btn = cell.querySelector('button');

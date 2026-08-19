@@ -27,12 +27,12 @@ ArchiMate 3.2 Compatible with 5-year timeline support
             
             <!-- View Mode -->
             <div class="flex border border-input rounded-md">
-                <button @click="viewMode = 'gantt'" 
+                <button type="button" @click="viewMode = 'gantt'" 
                         :class="viewMode === 'gantt' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'"
                         class="px-3 py-1 text-sm rounded-l-md" aria-label="Switch to Gantt view">
                     Gantt
                 </button>
-                <button @click="viewMode = 'list'" 
+                <button type="button" @click="viewMode = 'list'" 
                         :class="viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'"
                         class="px-3 py-1 text-sm rounded-r-md border-l border-input" aria-label="Switch to list view">
                     List
@@ -41,7 +41,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
             
             <!-- Export Options -->
             <div class="relative" x-data="{ exportOpen: false }">
-                <button @click="exportOpen = !exportOpen" 
+                <button type="button" @click="exportOpen = !exportOpen" 
                         class="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" aria-label="Export options">
                     <i data-lucide="download" class="h-4 w-4"></i>
                     Export
@@ -54,13 +54,13 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                      x-transition:leave-start="opacity-100 transform scale-100"
                      x-transition:leave-end="opacity-0 transform scale-95"
                      class="absolute right-0 mt-2 w-48 bg-popover border border-border rounded-md shadow-lg z-50">
-                    <button @click="exportToCSV()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to CSV">
+                    <button type="button" @click="exportToCSV()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to CSV">
                         Export to CSV
                     </button>
-                    <button @click="exportToPNG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to PNG">
+                    <button type="button" @click="exportToPNG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to PNG">
                         Export to PNG
                     </button>
-                    <button @click="exportToJPG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to JPG">
+                    <button type="button" @click="exportToJPG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to JPG">
                         Export to JPG
                     </button>
                 </div>
@@ -279,11 +279,11 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
-                                    <button @click="editWorkPackage(workPackage)" 
+                                    <button type="button" @click="editWorkPackage(workPackage)" 
                                             class="text-primary hover:text-primary/80" aria-label="Edit">
                                         <i data-lucide="edit" class="h-4 w-4"></i>
                                     </button>
-                                    <button @click="deleteWorkPackage(workPackage)" 
+                                    <button type="button" @click="deleteWorkPackage(workPackage)" 
                                             class="text-destructive-emphasis hover:text-destructive-emphasis/80" aria-label="Delete">
                                         <i data-lucide="trash-2" class="h-4 w-4"></i>
                                     </button>
@@ -298,7 +298,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
 
     <!-- Add Work Package Button -->
     <div class="fixed bottom-6 right-6">
-        <button @click="showAddModal = true" 
+        <button type="button" @click="showAddModal = true" 
                 class="flex items-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90" aria-label="Add work package">
             <i data-lucide="plus" class="h-5 w-5"></i>
             Add Work Package

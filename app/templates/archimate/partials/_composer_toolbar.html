@@ -209,7 +209,7 @@
                         {% if viewpoint_counts is defined and viewpoint_counts.get(vp.id, -1) == 0 %}style="opacity: 0.4"{% endif %}>
                     {{ vp.name }}
                     {% if viewpoint_counts is defined and vp.id in viewpoint_counts %}
-                    <span class="ml-auto text-[10px] text-muted-foreground">({{ viewpoint_counts[vp.id] }})</span>
+                    <span class="ml-auto text-2xs text-muted-foreground">({{ viewpoint_counts[vp.id] }})</span>
                     {% endif %}
                 </button>
                 {% endfor %}
@@ -251,7 +251,7 @@
         </div>
 
         {# REQ-CMP-003: Always-visible save status indicator #}
-        <div class="flex items-center gap-1 text-[10px] min-w-[90px]" x-cloak>
+        <div class="flex items-center gap-1 text-2xs min-w-[90px]" x-cloak>
             <template x-if="_saveState === 'saving'">
                 <span class="flex items-center gap-1 text-primary">
                     <svg class="w-3 h-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
@@ -288,7 +288,7 @@
             <span class="toolbar-overflow-secondary">Submit for Review</span>
         </button>
         <span x-show="viewpointReviewStatus" x-cloak
-              class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+              class="inline-flex items-center px-2 py-0.5 rounded-md text-2xs font-medium"
               :class="{
                   'bg-warning/10 text-warning-emphasis border border-warning/30': viewpointReviewStatus === 'submitted',
                   'bg-success/10 text-success-emphasis border border-success/30': viewpointReviewStatus === 'approved',
@@ -312,10 +312,10 @@
         <div x-show="validationErrors > 0 || validationWarnings > 0" x-cloak
              class="flex items-center gap-1 text-xs">
             <span x-show="validationErrors > 0" x-cloak
-                  class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-destructive/10 text-destructive-emphasis"
+                  class="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-bold bg-destructive/10 text-destructive-emphasis"
                   x-text="validationErrors + ' error' + (validationErrors > 1 ? 's' : '')"></span>
             <span x-show="validationWarnings > 0" x-cloak
-                  class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-warning/10 text-warning-emphasis"
+                  class="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-bold bg-warning/10 text-warning-emphasis"
                   x-text="validationWarnings + ' warning' + (validationWarnings > 1 ? 's' : '')"></span>
         </div>
 
@@ -379,7 +379,7 @@
         <template x-if="mode === 'edit'">
             <button type="button" class="toolbar-btn" @click="openQuickAdd()" title="Quick add (Ctrl+K)">
                 <i data-lucide="search" class="w-3.5 h-3.5"></i>
-                <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl+K</span>
+                <span class="text-2xs px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl+K</span>
             </button>
         </template>
 
@@ -492,7 +492,7 @@
                         </div>
                     </template>
                     <template x-if="!customStyleTemplates || customStyleTemplates.length === 0">
-                        <div class="px-3 py-1 text-[10px] text-muted-foreground italic">No custom templates yet</div>
+                        <div class="px-3 py-1 text-2xs text-muted-foreground italic">No custom templates yet</div>
                     </template>
                     <div class="toolbar-dropdown-sep"></div>
                     <button type="button" class="toolbar-dropdown-item" @click="styleTemplateSaveOpen = true; styleDropdownOpen = false"
@@ -830,15 +830,15 @@
         {# Wave 10: Quality score badge #}
         <template x-if="qualityScore">
             <div class="flex items-center gap-1 ml-auto mr-2">
-                <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border"
+                <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-2xs font-medium border"
                      :class="qualityScore.overall >= 80 ? 'bg-success/10 text-success-emphasis border-success/30' : qualityScore.overall >= 50 ? 'bg-warning/10 text-warning-emphasis border-warning/30' : 'bg-destructive/10 text-destructive-emphasis border-destructive/30'">
                     <span x-text="'Quality: ' + qualityScore.overall + '%'"></span>
                 </div>
-                <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] text-muted-foreground border border-border">
+                <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs text-muted-foreground border border-border">
                     <span x-text="'V:' + qualityScore.validity + '%'"></span>
                 </div>
                 <template x-if="staleCount > 0">
-                    <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-warning/10 text-warning-emphasis border border-warning/30 animate-pulse"
+                    <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30 animate-pulse"
                          x-text="staleCount + ' stale'"></div>
                 </template>
             </div>

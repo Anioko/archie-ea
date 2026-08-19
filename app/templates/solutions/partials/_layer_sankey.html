@@ -39,13 +39,13 @@
 
     {# Mode selector #}
     <div class="flex items-center gap-1.5 mb-2 flex-wrap">
-      <span class="text-[11px] text-muted-foreground font-medium mr-0.5">Colour by</span>
+      <span class="text-2xs text-muted-foreground font-medium mr-0.5">Colour by</span>
       <template x-for="m in modes" :key="m.id">
-        <button @click="setMode(m.id)"
+        <button type="button" @click="setMode(m.id)"
                 :class="mode === m.id
                   ? 'bg-foreground text-background border-foreground'
                   : 'bg-background text-muted-foreground border-border hover:border-foreground/40'"
-                class="px-1.5 py-0.5 rounded border text-[11px] font-medium transition-colors"
+                class="px-1.5 py-0.5 rounded border text-2xs font-medium transition-colors"
                 x-text="m.label"></button>
       </template>
     </div>
@@ -55,13 +55,13 @@
       <template x-for="item in activeLegend" :key="item.label">
         <div class="flex items-center gap-1">
           <span class="w-2 h-2 rounded-sm shrink-0" :style="`background:${item.color}`"></span>
-          <span class="text-[11px] text-muted-foreground" x-text="item.label"></span>
+          <span class="text-2xs text-muted-foreground" x-text="item.label"></span>
         </div>
       </template>
     </div>
 
     {# Column headers #}
-    <div class="flex text-[11px] font-medium text-muted-foreground mb-1 px-1">
+    <div class="flex text-2xs font-medium text-muted-foreground mb-1 px-1">
       <template x-for="col in columnLabels" :key="col.name">
         <div class="flex-1 text-center truncate" x-text="col.name"></div>
       </template>
@@ -71,7 +71,7 @@
     <div x-ref="svg" class="w-full rounded-lg border border-border bg-card overflow-x-auto"></div>
 
     {# Stats #}
-    <div class="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+    <div class="flex items-center gap-3 mt-1.5 text-2xs text-muted-foreground">
       <span x-text="`${nodes.length} elements`"></span>
       <span x-text="`${links.length} relationships`"></span>
     </div>

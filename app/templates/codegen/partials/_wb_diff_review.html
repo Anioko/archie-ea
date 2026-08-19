@@ -18,17 +18,17 @@
         <p class="text-xs text-[var(--color-muted)]" x-text="`${patches.length} file${patches.length !== 1 ? 's' : ''} to change`"></p>
       </div>
       <div class="flex gap-2">
-        <button
+        <button type="button"
           @click="rejectAll()"
           class="px-3 py-1.5 text-sm border border-[var(--color-border)] rounded-lg text-[var(--color-text)] hover:bg-destructive/5 hover:border-destructive/30 hover:text-destructive-emphasis"
         >Reject All</button>
-        <button
+        <button type="button"
           @click="acceptAll()"
           class="px-3 py-1.5 text-sm bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-primary-foreground rounded-lg font-medium"
           :disabled="isApplying"
           x-text="isApplying ? 'Applying...' : `Accept All (${patches.length})`"
         ></button>
-        <button @click="close()" class="text-[var(--color-muted)] hover:text-[var(--color-text)] p-1">
+        <button type="button" @click="close()" class="text-[var(--color-muted)] hover:text-[var(--color-text)] p-1">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
           </svg>
@@ -39,7 +39,7 @@
     {# File tabs #}
     <div class="flex gap-1 px-4 pt-2 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface-secondary)]">
       <template x-for="(patch, i) in patches" :key="i">
-        <button
+        <button type="button"
           @click="activeIndex = i"
           :class="activeIndex === i
             ? 'border-b-2 border-[var(--color-primary)] text-[var(--color-primary)]'
@@ -70,14 +70,14 @@
           </template>
         </div>
         <div class="flex gap-2">
-          <button
+          <button type="button"
             @click="acceptOne(activeIndex)"
             :disabled="patches[activeIndex]?.applied || isApplying"
             class="px-3 py-1 text-xs font-semibold text-primary-foreground rounded"
             :class="patches[activeIndex]?.applied ? 'bg-success cursor-default' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'"
             x-text="patches[activeIndex]?.applied ? '✓ Applied' : 'Accept this file'"
           ></button>
-          <button
+          <button type="button"
             @click="rejectOne(activeIndex)"
             :disabled="patches[activeIndex]?.applied"
             class="px-3 py-1 text-xs border border-[var(--color-border)] rounded text-[var(--color-text)] hover:border-destructive/30 hover:text-destructive-emphasis"

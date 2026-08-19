@@ -19,7 +19,7 @@
         title='Seed Management',
         description='View seed data status and trigger seeding operations'
     ) }}
-        <button @click="seedAll()"
+        <button type="button" @click="seedAll()"
                 :disabled="seeding"
                 class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" aria-label="Action">
             <i data-lucide="database" class="h-4 w-4" x-show="!seeding" x-cloak></i>
@@ -85,7 +85,7 @@
                         </div>
                     </div>
                     <!-- Seed button -->
-                    <button @click="seedCategory(cat.key)"
+                    <button type="button" @click="seedCategory(cat.key)"
                             :disabled="seedingKey === cat.key"
                             class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ml-4" aria-label="Action">
                         <i data-lucide="play" class="h-3.5 w-3.5" x-show="seedingKey !== cat.key" x-cloak></i>

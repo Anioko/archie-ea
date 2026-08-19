@@ -417,7 +417,7 @@
 
     <!-- Footer -->
     <div class="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border">
-        <button
+        <button type="button"
             @click="createInitiative()"
             x-show="risk && risk.mitigation" x-cloak
             class="inline-flex items-center gap-2 px-4 py-2 border border-input text-foreground font-medium rounded-lg hover:bg-accent transition-colors"
@@ -425,7 +425,7 @@
             <i data-lucide="briefcase" class="h-4 w-4"></i>
             Create Initiative
         </button>
-        <button
+        <button type="button"
             @click="saveMitigation()"
             :disabled="saving"
             class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -433,7 +433,7 @@
             <i data-lucide="save" class="h-4 w-4"></i>
             <span x-text="saving ? 'Saving...' : 'Save Mitigation Plan'"></span>
         </button>
-        <button
+        <button type="button"
             @click="Platform.modal.close('risk-detail')"
             class="inline-flex items-center gap-2 px-4 py-2 bg-muted text-foreground font-medium rounded-lg hover:bg-muted/80 transition-colors"
          aria-label="Close">

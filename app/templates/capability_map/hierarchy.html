@@ -21,11 +21,11 @@
             <h1 class="text-3xl font-bold tracking-tight">Capability Hierarchy</h1>
         </div>
         <div class="flex items-center space-x-4">
-            <button @click="expandAll()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button type="button" @click="expandAll()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <i data-lucide="maximize-2" class="w-4 h-4 inline mr-1"></i>
                 Expand All
             </button>
-            <button @click="collapseAll()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button type="button" @click="collapseAll()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <i data-lucide="minimize-2" class="w-4 h-4 inline mr-1"></i>
                 Collapse All
             </button>
@@ -37,13 +37,13 @@
     <div class="bg-card rounded-lg shadow border p-4">
         <div class="flex items-center flex-wrap gap-3">
             <span class="text-sm font-medium text-foreground mr-2">Filter by Level:</span>
-            <button @click="levelFilter = 0"
+            <button type="button" @click="levelFilter = 0"
                     class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
                     :class="levelFilter === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">
                 All Levels
             </button>
             <template x-for="lvl in [1, 2, 3, 4, 5]" :key="lvl">
-                <button @click="levelFilter = lvl"
+                <button type="button" @click="levelFilter = lvl"
                         class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors gap-1.5"
                         :class="levelFilter === lvl ? getLevelBadgeClassActive(lvl) : 'bg-muted text-muted-foreground hover:text-foreground'">
                     <span class="inline-block w-2 h-2 rounded-full" :class="getLevelDotColor(lvl)"></span>
@@ -439,7 +439,7 @@ function hierarchyView() {
                 html += '      </div>';
 
                 if (hasExpandable) {
-                    html += '      <button @click="toggleCapability(\'' + this.escapeHtml(cap.name).replace(/'/g, "\\'") + '\')" class="text-muted-foreground hover:text-foreground flex-shrink-0 p-1">';
+                    html += '      <button type="button" @click="toggleCapability(\'' + this.escapeHtml(cap.name).replace(/'/g, "\\'") + '\')" class="text-muted-foreground hover:text-foreground flex-shrink-0 p-1">';
                     html += '        <i data-lucide="chevron-down" class="w-4 h-4 transition-transform ' + chevronRotateClass + '"></i>';
                     html += '      </button>';
                 }

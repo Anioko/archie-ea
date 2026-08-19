@@ -239,7 +239,7 @@
                         <div class="flex items-center justify-between px-5 py-3 hover:bg-accent/30 transition-colors">
                             <div class="flex items-center gap-3 min-w-0">
                                 <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                                    <span class="text-[11px] font-bold text-primary">{{ (user.first_name or user.email)[0].upper() }}</span>
+                                    <span class="text-2xs font-bold text-primary">{{ (user.first_name or user.email)[0].upper() }}</span>
                                 </div>
                                 <div class="min-w-0">
                                     <p class="text-sm font-medium text-foreground truncate">
@@ -277,7 +277,7 @@
                             </div>
                             <div>
                                 <h3 class="text-sm font-semibold text-foreground">API Keys</h3>
-                                <p class="text-[11px] text-muted-foreground">Integration status</p>
+                                <p class="text-2xs text-muted-foreground">Integration status</p>
                             </div>
                         </div>
                         <a href="{{ url_for('admin.api_settings') }}" class="text-xs font-medium text-primary hover:text-primary/80 transition-colors">Configure →</a>

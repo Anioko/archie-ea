@@ -207,7 +207,7 @@
                             <div class="px-4 py-2.5 flex items-center justify-between gap-3">
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center gap-2">
-                                        <span class="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider"
+                                        <span class="inline-flex items-center px-1 py-0.5 rounded text-2xs font-bold uppercase tracking-wider"
                                               :class="getDomainBadgeClass(el.acm_domain)"
                                               x-text="el.acm_domain"></span>
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
@@ -249,7 +249,7 @@
                                         </template>
                                     </select>
                                     <template x-if="!el.plateau_phase">
-                                        <span class="text-[9px] text-warning-emphasis font-medium">No plateau</span>
+                                        <span class="text-2xs text-warning-emphasis font-medium">No plateau</span>
                                     </template>
                                     {# Implementation status inline select #}
                                     <select x-model="el.implementation_status"

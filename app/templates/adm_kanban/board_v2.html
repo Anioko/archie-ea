@@ -62,7 +62,7 @@
             </a>
             {# View mode toggle: flat columns vs swimlane rows #}
             <div class="flex items-center gap-0.5 rounded-md border border-border p-0.5">
-                <button @click="viewMode = 'flat'"
+                <button type="button" @click="viewMode = 'flat'"
                         :class="viewMode === 'flat' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
                         class="px-2 py-1 rounded text-xs font-medium transition-colors"
                         title="Flat Kanban columns">
@@ -70,7 +70,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
                 </button>
-                <button @click="viewMode = 'swimlane'"
+                <button type="button" @click="viewMode = 'swimlane'"
                         :class="viewMode === 'swimlane' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
                         class="px-2 py-1 rounded text-xs font-medium transition-colors"
                         title="Swimlane: ADM phases as rows">
@@ -80,7 +80,7 @@
                 </button>
             </div>
             {# Sprint Planning button #}
-            <button @click="$dispatch('open-sprint-panel')"
+            <button type="button" @click="$dispatch('open-sprint-panel')"
                     class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded border border-primary/80 hover:bg-primary/90 transition-colors"
                     aria-label="Open Sprint Planning panel"
                     title="Sprint Planning — manage sprints and assign cards">
@@ -96,7 +96,7 @@
 
     {# -- Phase Tabs (flat mode only) ------------------------------------ #}
     <div x-show="viewMode === 'flat'" x-cloak class="flex flex-wrap gap-1 border-b border-border pb-2">
-        <button @click="filters.phase = 'all'; reload()"
+        <button type="button" @click="filters.phase = 'all'; reload()"
                 :class="filters.phase === 'all'
  ? 'bg-primary text-primary-foreground'
  : 'bg-muted text-muted-foreground hover:bg-muted/80'"
@@ -105,7 +105,7 @@
             <span class="ml-1 opacity-70" x-text="'(' + totalCardCount + ')'"></span>
         </button>
         <template x-for="phase in phases" :key="phase.code">
-            <button @click="filters.phase = phase.code; reload()"
+            <button type="button" @click="filters.phase = phase.code; reload()"
                     :class="filters.phase === phase.code
  ? 'bg-primary text-primary-foreground'
  : 'bg-muted text-muted-foreground hover:bg-muted/80'"
@@ -114,7 +114,7 @@
                 <span class="ml-1 opacity-70"
                       x-text="'(' + (phaseCounts[phase.code] || 0) + ')'"></span>
                 <template x-if="phaseDeliverables[phase.code] && phaseDeliverables[phase.code].total > 0">
-                    <span class="ml-1 text-[9px] font-semibold opacity-80"
+                    <span class="ml-1 text-2xs font-semibold opacity-80"
                           x-text="'✓' + phaseDeliverables[phase.code].checked + '/' + phaseDeliverables[phase.code].total"></span>
                 </template>
             </button>
@@ -128,7 +128,7 @@
     </div>
     <div x-show="error && !loading" x-cloak class="p-8 text-center">
         <p class="text-sm text-destructive-emphasis" x-text="error"></p>
-        <button @click="reload()" class="mt-2 text-xs text-primary hover:underline">Retry</button>
+        <button type="button" @click="reload()" class="mt-2 text-xs text-primary hover:underline">Retry</button>
     </div>
 
     {# -- Empty State ---------------------------------------------------- #}
@@ -239,7 +239,7 @@
                                     <div class="flex items-center gap-0.5">
                                         <template x-for="p in phases.filter(function(ph){ return 'ABCDEFGH'.indexOf(ph.code) !== -1; })" :key="p.code">
                                             <div class="flex items-center">
-                                                <div class="w-3 h-3 rounded-full text-[7px] font-bold flex items-center justify-center"
+                                                <div class="w-3 h-3 rounded-full text-2xs font-bold flex items-center justify-center"
                                                      :class="card.meta.adm_completed.includes(p.code)
  ? 'bg-primary text-primary-foreground'
  : card.meta.adm_current === p.code
@@ -340,13 +340,13 @@
                                 {# Row 1: avatar + owner name + app count #}
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-1.5 min-w-0">
-                                        <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[9px] font-bold flex items-center justify-center"
+                                        <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-2xs font-bold flex items-center justify-center"
                                               x-text="(() => { const o = (card.owner || 'U'); const parts = o.split('@')[0].split(/[\s._-]/); return (parts[0] || '').charAt(0).toUpperCase() + (parts[1] || '').charAt(0).toUpperCase(); })()"></span>
                                         <span class="text-xs text-muted-foreground truncate"
                                               x-text="(card.owner || 'Unassigned').split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); })"></span>
                                     </div>
                                     <span x-show="card.meta && card.meta.app_count > 0" x-cloak
-                                          class="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] text-muted-foreground"
+                                          class="flex-shrink-0 inline-flex items-center gap-0.5 text-2xs text-muted-foreground"
                                           :title="card.meta.app_count + ' linked applications'">
                                         <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z"/></svg>
                                         <span x-text="card.meta.app_count"></span>
@@ -356,7 +356,7 @@
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-2">
                                         <span x-show="card.due_date" x-cloak
-                                              class="inline-flex items-center gap-0.5 text-[9px]"
+                                              class="inline-flex items-center gap-0.5 text-2xs"
                                               :class="isOverdue(card.due_date)
  ? 'text-destructive-emphasis font-semibold'
  : 'text-muted-foreground'">
@@ -364,7 +364,7 @@
                                             <span x-text="formatDate(card.due_date)"></span>
                                         </span>
                                         <span x-show="card.meta && card.meta.days_in_column != null" x-cloak
-                                              class="inline-flex items-center gap-0.5 text-[9px]"
+                                              class="inline-flex items-center gap-0.5 text-2xs"
                                               :class="(card.meta?.days_in_column || 0) > 14
  ? 'text-destructive'
  : (card.meta?.days_in_column || 0) > 7
@@ -375,7 +375,7 @@
                                             <span x-text="(card.meta?.days_in_column || 0) + 'd'"></span>
                                         </span>
                                     </div>
-                                    <a :href="card.link_url" class="text-[9px] text-primary hover:underline"
+                                    <a :href="card.link_url" class="text-2xs text-primary hover:underline"
                                        x-text="card.link_label || 'Open'" @click.stop></a>
                                 </div>
                             </div>
@@ -383,7 +383,7 @@
                     </template>
                 </div>
                 {# Flat-mode column add button #}
-                <button @click="openCreateTask(null, col.id)"
+                <button type="button" @click="openCreateTask(null, col.id)"
                         class="mt-1 w-full py-1.5 text-xs text-muted-foreground/40 hover:text-primary hover:bg-primary/5 rounded transition-colors flex items-center justify-center gap-1">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -453,7 +453,7 @@
                               x-text="'⏱ ' + phaseCycleAvg(phase.code) + 'd'"></span>
                     </template>
                     {# Deliverable checklist badge #}
-                    <button @click.stop="toggleDeliverableDropdown($event, phase.code)"
+                    <button type="button" @click.stop="toggleDeliverableDropdown($event, phase.code)"
                             @mouseenter="loadPhaseDeliverables(phase.code)"
                             class="ml-1 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold transition-colors"
                             :class="deliverableBadgeClass(phase.code)"
@@ -483,7 +483,7 @@
                 <template x-if="expandedDeliverablePhase === phase.code">
                     <div class="mb-2 mx-1 p-3 rounded-md border border-border bg-card shadow-sm text-xs"
                          @click.stop>
-                        <p class="font-semibold text-foreground mb-2 text-[11px]">
+                        <p class="font-semibold text-foreground mb-2 text-2xs">
                             TOGAF Deliverables — Phase <span x-text="phase.code"></span>
                         </p>
                         <template x-if="phaseDeliverables[phase.code] && phaseDeliverables[phase.code].loading">
@@ -497,7 +497,7 @@
                                                :checked="item.checked"
                                                @change="toggleDeliverable(item.id, phase.code, $event.target.checked)"
                                                class="mt-0.5 shrink-0 accent-primary">
-                                        <span class="text-[11px] leading-snug"
+                                        <span class="text-2xs leading-snug"
                                               :class="item.checked ? 'line-through text-muted-foreground' : 'text-foreground'"
                                               x-text="item.name"></span>
                                     </label>
@@ -544,7 +544,7 @@
                                             ARB
                                           </span>
                                         </template>
-                                        <p class="text-[11px] font-semibold text-foreground leading-tight line-clamp-2"
+                                        <p class="text-2xs font-semibold text-foreground leading-tight line-clamp-2"
                                            x-text="card.title"></p>
                                         <p x-show="card.owner" x-cloak
                                            class="text-xs text-muted-foreground mt-1 truncate"
@@ -553,7 +553,7 @@
                                 </template>
 
                                 {# Inline add — visible in all cells, reveals on hover #}
-                                <button @click="openCreateTask(phase.code, col.id)"
+                                <button type="button" @click="openCreateTask(phase.code, col.id)"
                                         class="w-full py-1.5 text-xs text-muted-foreground/40 group-hover/cell:text-primary group-hover/cell:bg-primary/5 rounded transition-colors flex items-center justify-center gap-1">
                                     <svg class="w-3 h-3 opacity-0 group-hover/cell:opacity-100 transition-opacity" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -593,13 +593,13 @@
                     <option :value="col.id" x-text="col.label"></option>
                 </template>
             </select>
-            <button @click="bulkMove()" :disabled="!bulkMoveTarget"
+            <button type="button" @click="bulkMove()" :disabled="!bulkMoveTarget"
                     class="h-7 px-3 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors disabled:opacity-50">
                 Move
             </button>
         </div>
         <div class="h-4 w-px bg-border"></div>
-        <button @click="clearSelection()"
+        <button type="button" @click="clearSelection()"
                 class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
             Cancel
         </button>
@@ -624,7 +624,7 @@
              @click.stop>
             <div class="flex items-center justify-between px-5 py-4 border-b border-border">
                 <h2 id="create-task-title" class="text-sm font-semibold text-foreground">New Architecture Task</h2>
-                <button @click="show = false"
+                <button type="button" @click="show = false"
                         class="p-1 text-muted-foreground hover:text-foreground rounded"
                         aria-label="Close">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -991,11 +991,11 @@
                 </div>
             </div>
             <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-                <button @click="show = false"
+                <button type="button" @click="show = false"
                         class="h-8 px-3 text-xs font-medium bg-muted text-muted-foreground rounded hover:bg-muted/80 transition-colors">
                     Cancel
                 </button>
-                <button @click="submit()"
+                <button type="button" @click="submit()"
                         :disabled="loading"
                         class="h-8 px-3 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors disabled:opacity-50">
                     <span x-show="!loading" x-cloak>Create Task</span>
@@ -1040,7 +1040,7 @@
                         <p class="text-sm text-muted-foreground mt-1" x-show="card && card.description" x-cloak
                            x-text="card ? card.description : ''"></p>
                     </div>
-                    <button @click="card = null"
+                    <button type="button" @click="card = null"
                             class="mt-0.5 p-1 rounded text-muted-foreground hover:text-foreground transition-colors shrink-0">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
@@ -1054,7 +1054,7 @@
                    Section 1: Core Details (title, description, phase, status)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section1Open = !section1Open"
+                    <button type="button" @click="section1Open = !section1Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             aria-expanded="true"
                             :aria-expanded="section1Open">
@@ -1079,7 +1079,7 @@
                                     <div class="w-32 shrink-0 px-3 py-2.5 text-muted-foreground bg-muted/40">Status</div>
                                     <div class="flex-1 px-3 py-2.5 flex flex-wrap gap-1.5">
                                         <template x-for="col in columns" :key="col.id">
-                                            <button @click="moveCard(col.id)"
+                                            <button type="button" @click="moveCard(col.id)"
                                                     class="px-2 py-0.5 text-xs rounded border transition-colors"
                                                     :class="card && card.column === col.id
  ? 'bg-foreground text-background border-foreground font-medium'
@@ -1177,7 +1177,7 @@
                    Section 2: Architecture Context (ArchiMate, layer, element type)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section2Open = !section2Open"
+                    <button type="button" @click="section2Open = !section2Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             :aria-expanded="section2Open">
                         <span class="text-sm font-semibold text-foreground">Architecture Context</span>
@@ -1277,7 +1277,7 @@
                    Section 3: Requirements & Motivation (typeahead pickers)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section3Open = !section3Open"
+                    <button type="button" @click="section3Open = !section3Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             :aria-expanded="section3Open">
                         <div class="flex items-center gap-2">
@@ -1436,7 +1436,7 @@
                    Section 4: Planning & Tracking (dates, points, assignee, labels)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section4Open = !section4Open"
+                    <button type="button" @click="section4Open = !section4Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             :aria-expanded="section4Open">
                         <span class="text-sm font-semibold text-foreground">Planning & Tracking</span>
@@ -1498,7 +1498,7 @@
                    Section 5: Governance (acceptance criteria, ARB, phase gate, solution meta)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section5Open = !section5Open"
+                    <button type="button" @click="section5Open = !section5Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             :aria-expanded="section5Open">
                         <div class="flex items-center gap-2">
@@ -1735,13 +1735,13 @@
                     {# Delete (task cards) #}
                     <template x-if="card && card.card_type === 'task' && !editMode">
                         <div class="flex items-center gap-2">
-                            <button @click="confirmDelete = true" x-show="!confirmDelete" x-cloak
+                            <button type="button" @click="confirmDelete = true" x-show="!confirmDelete" x-cloak
                                     class="text-sm text-muted-foreground hover:text-destructive-emphasis transition-colors">Delete</button>
                             <div x-show="confirmDelete" x-cloak class="flex items-center gap-2">
                                 <span class="text-xs text-destructive-emphasis">Delete?</span>
-                                <button @click="deleteCard()"
+                                <button type="button" @click="deleteCard()"
                                         class="px-2 py-1 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90">Yes</button>
-                                <button @click="confirmDelete = false"
+                                <button type="button" @click="confirmDelete = false"
                                         class="px-2 py-1 text-xs rounded border border-border hover:bg-muted">No</button>
                             </div>
                         </div>
@@ -1750,26 +1750,26 @@
                 <div class="flex items-center gap-2">
                     <template x-if="card && card.card_type === 'task' && editMode">
                         <div class="flex items-center gap-2">
-                            <button @click="editMode = false"
+                            <button type="button" @click="editMode = false"
                                     class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">Cancel</button>
-                            <button @click="saveEdit()"
+                            <button type="button" @click="saveEdit()"
                                     class="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">Save</button>
                         </div>
                     </template>
                     <template x-if="card && card.card_type === 'task' && !editMode">
                         <div class="flex items-center gap-2">
-                            <button @click="pushToGantt()"
+                            <button type="button" @click="pushToGantt()"
                                     :disabled="ganttPushLoading"
                                     class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors"
                                     :class="ganttPushLoading ? 'opacity-50 cursor-wait' : ''">
                                 <span x-show="!ganttPushLoading" x-cloak>Push to Gantt</span>
                                 <span x-show="ganttPushLoading" x-cloak>Pushing…</span>
                             </button>
-                            <button @click="startEdit()"
+                            <button type="button" @click="startEdit()"
                                     class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">Edit</button>
                         </div>
                     </template>
-                    <button @click="card = null"
+                    <button type="button" @click="card = null"
                             class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">Close</button>
                 </div>
             </div>
@@ -2123,7 +2123,7 @@
         {# Panel header #}
         <div class="flex items-center justify-between px-4 py-3 border-b border-border">
             <h2 class="text-sm font-semibold text-foreground">Sprint Planning</h2>
-            <button @click="open = false; $store.modal.close('sprint-planning-panel')"
+            <button type="button" @click="open = false; $store.modal.close('sprint-planning-panel')"
                     class="text-muted-foreground hover:text-foreground transition-colors"
                     aria-label="Close Sprint Planning panel">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -2182,7 +2182,7 @@
                 <div class="space-y-1">
                     <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">All Sprints</p>
                     <template x-for="sprint in sprints" :key="sprint.id">
-                        <button @click="activeSprint = sprint"
+                        <button type="button" @click="activeSprint = sprint"
                                 class="w-full text-left px-3 py-2 rounded-md border text-xs transition-colors"
                                 :class="activeSprint && activeSprint.id === sprint.id
  ? 'border-primary bg-primary/5 text-foreground'
@@ -2195,7 +2195,7 @@
             </template>
 
             {# Create sprint toggle #}
-            <button @click="showCreateForm = !showCreateForm"
+            <button type="button" @click="showCreateForm = !showCreateForm"
                     class="w-full px-3 py-2 text-xs font-medium rounded-md border border-dashed border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
                 <span x-text="showCreateForm ? '− Cancel' : '+ Create Sprint'"></span>
             </button>

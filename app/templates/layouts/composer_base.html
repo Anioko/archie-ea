@@ -57,7 +57,7 @@
                 });
             }
          }">
-        <button x-show="!isDesktop && !$store.sidebar.open" x-cloak
+        <button type="button" x-show="!isDesktop && !$store.sidebar.open" x-cloak
                 @click="$store.sidebar.open = true"
                 class="fixed top-4 left-4 z-[60] lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-background text-foreground shadow-sm hover:bg-accent transition-colors"
                 aria-controls="admin-sidebar"

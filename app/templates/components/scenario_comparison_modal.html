@@ -232,7 +232,7 @@
                                     <option :value="cap.id" x-text="cap.name"></option>
                                 </template>
                             </select>
-                            <button
+                            <button type="button"
                                 @click="removeScenario(index)"
                                 :disabled="!selectedIds[index]"
                                 class="p-2 text-muted-foreground hover:text-destructive-emphasis disabled:opacity-30 disabled:cursor-not-allowed"
@@ -244,7 +244,7 @@
                 </template>
             </div>
             <div class="mt-3 flex justify-end">
-                <button @click="clearAll()" class="text-sm text-muted-foreground hover:text-foreground" aria-label="Action">
+                <button type="button" @click="clearAll()" class="text-sm text-muted-foreground hover:text-foreground" aria-label="Action">
                     Clear All
                 </button>
             </div>
@@ -380,7 +380,7 @@
             </span>
         </div>
         <div class="flex items-center gap-3">
-            <button
+            <button type="button"
                 @click="exportComparison()"
                 :disabled="scenarios.filter(s => s).length === 0"
                 class="inline-flex items-center gap-2 px-4 py-2 border border-input text-foreground font-medium rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -388,7 +388,7 @@
                 <i data-lucide="download" class="h-4 w-4"></i>
                 Export CSV
             </button>
-            <button
+            <button type="button"
                 @click="Platform.modal.close('scenario-comparison')"
                 class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors"
              aria-label="Close">

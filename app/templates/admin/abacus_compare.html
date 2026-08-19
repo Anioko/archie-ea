@@ -251,7 +251,7 @@
 
         <!-- Action Buttons -->
         <div class="flex gap-3">
-            <button
+            <button type="button"
                 @click="if ((await Platform.modal.confirm('Are you sure? This cannot be undone.'))) {
                     fetch('{{ url_for("abacus_consolidation.merge_capabilities") }}', {
                         method: 'POST',
@@ -282,7 +282,7 @@
                 Cancel
             </a>
 
-            <button
+            <button type="button"
                 @click="(function(){ const tmpl = '{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}'; fetch(tmpl.replace('/0/0','/{{ abacus_cap.id }}/{{ manual_cap.id }}'), { method:'POST', headers:{'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} }).then(function(r){ if (!r.ok) { throw new Error('Reject merge failed: ' + r.status); } window.location.href='{{ url_for("abacus_consolidation.index") }}'; }).catch(function(){ Platform.toast.error('Failed to mark as not duplicate.'); }); })()"
                 class="ml-auto px-6 py-2 bg-destructive/10 text-destructive-emphasis rounded-md hover:bg-destructive/20 font-medium"
              aria-label="Action">

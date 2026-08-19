@@ -146,19 +146,19 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
             <div id="bulk-action-bar" data-testid="bulk-action-bar" x-show="selectedIds.length > 0" x-cloak x-transition
                  class="flex items-center gap-4 p-3 mb-4 bg-muted/30 border rounded-lg">
                 <span class="text-sm font-medium" x-text="selectedIds.length + ' selected'"></span>
-                <button @click="bulkSubmitToARB()"
+                <button type="button" @click="bulkSubmitToARB()"
                     class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                     aria-label="Submit selected to ARB">
                     <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
                     <span x-text="'Submit ' + selectedIds.length + ' to ARB'"></span>
                 </button>
-                <button @click="exportSelected()"
+                <button type="button" @click="exportSelected()"
                     class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                     aria-label="Export selected as CSV">
                     <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
                     Export CSV
                 </button>
-                <button @click="selectedIds = []; selectAll = false"
+                <button type="button" @click="selectedIds = []; selectAll = false"
                     class="text-sm text-muted-foreground hover:underline ml-auto"
                     aria-label="Clear selection">Clear</button>
             </div>
@@ -238,7 +238,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                 <td class="p-4 text-sm text-muted-foreground" x-text="cap.recommendation"></td>
                                 <td class="p-4">
                                     <div class="flex items-center gap-2">
-                                        <button
+                                        <button type="button"
                                             @click="$dispatch('open-roi-calculator', normalizeCapability(cap))"
                                             class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-success-emphasis hover:text-success-emphasis bg-success/5 hover:bg-success/10 rounded-md transition-colors"
                                             title="Calculate ROI"
@@ -246,7 +246,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                             <i data-lucide="calculator" class="h-3 w-3" aria-hidden="true"></i>
                                             Calculate ROI
                                         </button>
-                                        <button
+                                        <button type="button"
                                             @click="$dispatch('open-arb-submission-modal', normalizeCapability(cap))"
                                             class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-primary hover:text-primary bg-primary/5 hover:bg-primary/10 rounded-md transition-colors"
                                             title="Submit to Architecture Review Board"
@@ -275,7 +275,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                     of <span x-text="filteredItems.length"></span> capabilities
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click="currentPage--; syncSelectAll()" :disabled="currentPage === 1"
+                    <button type="button" @click="currentPage--; syncSelectAll()" :disabled="currentPage === 1"
                         class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 disabled:opacity-50 disabled:pointer-events-none"
                         aria-label="Previous page">
                         <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
@@ -283,7 +283,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                     </button>
                     <span class="inline-flex items-center px-3 text-sm text-muted-foreground"
                           x-text="currentPage + ' / ' + totalPages"></span>
-                    <button @click="currentPage++; syncSelectAll()" :disabled="currentPage === totalPages"
+                    <button type="button" @click="currentPage++; syncSelectAll()" :disabled="currentPage === totalPages"
                         class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 disabled:opacity-50 disabled:pointer-events-none"
                         aria-label="Next page">
                         Next

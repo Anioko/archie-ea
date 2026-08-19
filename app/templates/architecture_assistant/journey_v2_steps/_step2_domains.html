@@ -99,14 +99,14 @@
                              fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
                         </svg>
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-bold uppercase tracking-wider"
                               :class="getDomainBadgeClass(code)" x-text="code"></span>
                         <span class="text-sm font-medium text-foreground" x-text="getDomainName(code)"></span>
                         <span class="text-xs text-muted-foreground"
                               x-text="'(' + getDomainElementCount(code) + ')'"></span>
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium"
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium"
                               :class="{
                                   {# design-tokens-ok: 3-tier legend, info is already 'important' so 'differentiating' keeps a distinct hue #}'bg-purple-500/10 text-purple-600 border border-purple-500/20': getDomainTier(code) === 'differentiating',
                                   'bg-info/10 text-info border border-info/20': getDomainTier(code) === 'important',
@@ -124,7 +124,7 @@
                             </div>
                         </template>
                         <template x-if="getDomainStatus(code) === 'not_applicable'">
-                            <span class="text-[9px] text-warning-emphasis font-medium">N/A</span>
+                            <span class="text-2xs text-warning-emphasis font-medium">N/A</span>
                         </template>
                     </div>
                 </button>
@@ -167,7 +167,7 @@
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
                                         </svg>
                                         {# Source badge #}
-                                        <span class="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-medium flex-shrink-0 mt-0.5"
+                                        <span class="inline-flex items-center px-1 py-0.5 rounded text-2xs font-medium flex-shrink-0 mt-0.5"
                                               :class="{
                                                   'bg-muted text-muted-foreground': el.source === 'baseline',
                                                   {# design-tokens-ok: 5-source legend, info is already 'cross_domain' so 'llm' keeps a distinct hue #}'bg-purple-100 text-purple-600': el.source === 'llm',
@@ -177,7 +177,7 @@
                                               }"
                                               x-text="el.source === 'industry_overlay' ? 'Ins.' : (el.source === 'cross_domain' ? 'Chain' : el.source)"></span>
                                         {# Type badge #}
-                                        <span class="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-medium bg-info/10 text-info-emphasis flex-shrink-0 mt-0.5"
+                                        <span class="inline-flex items-center px-1 py-0.5 rounded text-2xs font-medium bg-info/10 text-info-emphasis flex-shrink-0 mt-0.5"
                                               x-text="el.archimate_type"></span>
                                         {# Name + description (full, not truncated) #}
                                         <div class="min-w-0">
@@ -188,7 +188,7 @@
                                     <div class="flex items-center gap-1 flex-shrink-0 ml-2">
                                         {# Property score indicator #}
                                         <span x-show="getTemplatesForElement(el.archimate_type).length > 0"
-                                              class="text-[8px] text-muted-foreground"
+                                              class="text-2xs text-muted-foreground"
                                               x-text="getElementPropertyScore(code, el.id, el.archimate_type).pct + '%'"></span>
                                         <template x-if="el.status === 'proposed' && !el.waived">
                                             <div class="flex items-center gap-0.5" @click.stop>
@@ -218,7 +218,7 @@
                                             </div>
                                         </template>
                                         <template x-if="el.waived">
-                                            <span class="text-[8px] text-warning-emphasis">waived</span>
+                                            <span class="text-2xs text-warning-emphasis">waived</span>
                                         </template>
                                     </div>
                                 </div>
@@ -267,16 +267,16 @@
 
                                                 {# Source badges #}
                                                 <span x-show="getPropertySource(code, el.id, tmpl.property_key) === 'llm'"
-                                                      class="text-[8px] text-purple-500 flex-shrink-0 inline-flex items-center gap-0.5">{# design-tokens-ok: matches the AI/LLM-source purple used throughout this panel #}<i data-lucide="sparkles" class="w-2 h-2"></i> AI</span>
+                                                      class="text-2xs text-purple-500 flex-shrink-0 inline-flex items-center gap-0.5">{# design-tokens-ok: matches the AI/LLM-source purple used throughout this panel #}<i data-lucide="sparkles" class="w-2 h-2"></i> AI</span>
                                                 <span x-show="getPropertySource(code, el.id, tmpl.property_key) === 'suggested'"
-                                                      class="text-[8px] text-info-emphasis flex-shrink-0">draft</span>
+                                                      class="text-2xs text-info-emphasis flex-shrink-0">draft</span>
                                                 <span x-show="getPropertySource(code, el.id, tmpl.property_key) === 'default'"
-                                                      class="text-[8px] text-muted-foreground flex-shrink-0">auto</span>
+                                                      class="text-2xs text-muted-foreground flex-shrink-0">auto</span>
                                             </div>
                                         </template>
 
                                         {# Property completeness #}
-                                        <div class="text-[9px] text-muted-foreground pt-1 border-t border-border/30"
+                                        <div class="text-2xs text-muted-foreground pt-1 border-t border-border/30"
                                              x-text="'&#9679; ' + getElementPropertyScore(code, el.id, el.archimate_type).filled + '/' + getElementPropertyScore(code, el.id, el.archimate_type).total + ' properties filled (' + getElementPropertyScore(code, el.id, el.archimate_type).pct + '%)'">
                                         </div>
                                     </div>
@@ -365,13 +365,13 @@
                                 {# Capability context — shown after confirmation if context was returned #}
                                 <template x-if="domainsData[code] && domainsData[code].capability_context && domainsData[code].capability_context.total">
                                     <div class="flex flex-wrap gap-1">
-                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-info/10 text-info border border-info/20"
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium bg-info/10 text-info border border-info/20"
                                               x-text="domainsData[code].capability_context.total + ' capabilities'"></span>
                                         <span x-show="domainsData[code].capability_context.foundational_count > 0"
-                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-success/10 text-success-emphasis border border-success/20"
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium bg-success/10 text-success-emphasis border border-success/20"
                                               x-text="domainsData[code].capability_context.foundational_count + ' foundational'"></span>
                                         <span x-show="domainsData[code].capability_context.differentiating_count > 0"
-                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 text-purple-600 border border-purple-500/20"{# design-tokens-ok: matches the differentiating-tier purple used earlier in this panel #}
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium bg-purple-500/10 text-purple-600 border border-purple-500/20"{# design-tokens-ok: matches the differentiating-tier purple used earlier in this panel #}
                                               x-text="domainsData[code].capability_context.differentiating_count + ' differentiating'"></span>
                                     </div>
                                 </template>

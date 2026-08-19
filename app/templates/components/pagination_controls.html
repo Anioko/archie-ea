@@ -34,7 +34,7 @@
     <!-- Page Controls -->
     <div class="flex items-center gap-2">
         <!-- First Page -->
-        <button 
+        <button type="button" 
             @click="{{ current_page_model }} = 1"
             :disabled="{{ current_page_model }} === 1"
             class="inline-flex items-center justify-center h-9 w-9 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
@@ -44,7 +44,7 @@
         </button>
         
         <!-- Previous Page -->
-        <button 
+        <button type="button" 
             @click="{{ current_page_model }}--"
             :disabled="{{ current_page_model }} === 1"
             class="inline-flex items-center justify-center h-9 w-9 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
@@ -62,7 +62,7 @@
         </div>
         
         <!-- Next Page -->
-        <button 
+        <button type="button" 
             @click="{{ current_page_model }}++"
             :disabled="{{ current_page_model }} === {{ total_pages_model }}"
             class="inline-flex items-center justify-center h-9 w-9 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
@@ -72,7 +72,7 @@
         </button>
         
         <!-- Last Page -->
-        <button 
+        <button type="button" 
             @click="{{ current_page_model }} = {{ total_pages_model }}"
             :disabled="{{ current_page_model }} === {{ total_pages_model }}"
             class="inline-flex items-center justify-center h-9 w-9 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
