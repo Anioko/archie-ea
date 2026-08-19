@@ -793,7 +793,10 @@ def _saved_diagram_from_import(name, element_ids):
     for el in els:
         by_layer.setdefault((el.layer or "other").lower(), []).append(el)
 
-    elem_w, elem_h, gap_x, gap_y, layer_gap, cols = 180, 64, 30, 20, 40, 4
+    # Match the composer's rendered node size (200x130) with generous gaps, or
+    # rows overlap: the renderer draws 130px-tall boxes, so a 64px row pitch
+    # stacked every element on the next. Column/row pitch here are 260x200.
+    elem_w, elem_h, gap_x, gap_y, layer_gap, cols = 200, 130, 60, 70, 90, 4
     y_offset = 40
     for layer_name in layer_order + [k for k in by_layer if k not in layer_order]:
         layer_elements = by_layer.pop(layer_name, [])
@@ -6308,12 +6311,14 @@ def api_create_diagram_from_elements():
     db.session.add(diagram)
     db.session.flush()
 
-    # Position elements in a grid, grouped by layer
+    # Position elements in a grid, grouped by layer. Dimensions match the
+    # composer's rendered node (200x130) so rows do not overlap; see
+    # _saved_diagram_from_import for the same fix.
     y_offset = 40
     cols_per_row = 4
-    elem_w, elem_h = 180, 64
-    gap_x, gap_y = 30, 20
-    layer_gap = 40
+    elem_w, elem_h = 200, 130
+    gap_x, gap_y = 60, 70
+    layer_gap = 90
 
     for layer_name in layer_order:
         layer_elements = by_layer.pop(layer_name, [])
