@@ -1062,6 +1062,255 @@ _STANDARD_VIEWPOINTS = [
             "Implementation and Deployment",
         ],
     },
+    # Additional missing standard viewpoints from ArchiMate 3.2 specification
+    {
+        "standard_number": 17,
+        "name": "Introductory",
+        "viewpoint_type": "stakeholder",
+        "description": (
+            "Shows a general, high-level overview of the enterprise architecture, "
+            "suitable for introducing the architecture to new stakeholders."
+        ),
+        "purpose": (
+            "Providing an accessible introduction to the enterprise architecture "
+            "for stakeholders unfamiliar with ArchiMate modeling."
+        ),
+        "concerns": [
+            "Architecture overview",
+            "Stakeholder communication",
+            "High-level understanding",
+        ],
+        "typical_stakeholders": [
+            "Business Executive",
+            "Board Member",
+            "New Team Member",
+            "External Stakeholder",
+        ],
+        "includes_strategy_layer": True,
+        "includes_business_layer": True,
+        "includes_application_layer": True,
+        "includes_technology_layer": True,
+        "includes_physical_layer": False,
+        "includes_motivation_layer": True,
+        "includes_implementation_layer": False,
+        "allowed_element_types": [
+            "BusinessActor",
+            "BusinessProcess",
+            "BusinessService",
+            "ApplicationComponent",
+            "ApplicationService",
+            "Node",
+            "Goal",
+            "Driver",
+            "Capability",
+        ],
+        "allowed_relationship_types": [
+            "serving",
+            "realization",
+            "assignment",
+            "association",
+            "composition",
+            "aggregation",
+        ],
+        "typical_usage_scenario": (
+            "Use when presenting architecture to executives or new stakeholders "
+            "who need a simplified, high-level view."
+        ),
+        "example_questions": [
+            "What does our architecture look like at a high level?",
+            "How do our main systems support business goals?",
+        ],
+        "related_viewpoints": [
+            "Layered",
+            "Motivation",
+        ],
+    },
+    {
+        "standard_number": 18,
+        "name": "Goal Realization",
+        "viewpoint_type": "stakeholder",
+        "description": (
+            "Shows how goals are realized by outcomes, and how outcomes "
+            "are achieved through principles, requirements, and constraints."
+        ),
+        "purpose": (
+            "Designing, deciding, and informing about goal achievement "
+            "and the means to realize strategic objectives."
+        ),
+        "concerns": [
+            "Goal achievement",
+            "Strategic alignment",
+            "Outcome delivery",
+            "Success measurement",
+        ],
+        "typical_stakeholders": [
+            "Strategy Manager",
+            "Enterprise Architect",
+            "Program Manager",
+            "Business Executive",
+        ],
+        "includes_strategy_layer": True,
+        "includes_business_layer": False,
+        "includes_application_layer": False,
+        "includes_technology_layer": False,
+        "includes_physical_layer": False,
+        "includes_motivation_layer": True,
+        "includes_implementation_layer": False,
+        "allowed_element_types": [
+            "Goal",
+            "Outcome",
+            "Principle",
+            "Requirement",
+            "Constraint",
+            "Driver",
+            "Assessment",
+            "Value",
+        ],
+        "allowed_relationship_types": [
+            "realization",
+            "influence",
+            "association",
+            "aggregation",
+            "composition",
+        ],
+        "typical_usage_scenario": (
+            "Use when planning how to achieve strategic goals and "
+            "measuring progress towards desired outcomes."
+        ),
+        "example_questions": [
+            "How will we achieve this strategic goal?",
+            "What outcomes indicate goal success?",
+            "Which principles guide goal realization?",
+        ],
+        "related_viewpoints": [
+            "Motivation",
+            "Strategy",
+        ],
+    },
+    {
+        "standard_number": 19,
+        "name": "Course of Action",
+        "viewpoint_type": "stakeholder",
+        "description": (
+            "Shows courses of action and how they contribute to the "
+            "realization of goals through work packages and deliverables."
+        ),
+        "purpose": (
+            "Planning and tracking strategic initiatives and their "
+            "contribution to organizational goals."
+        ),
+        "concerns": [
+            "Strategic initiatives",
+            "Action planning",
+            "Goal contribution",
+            "Initiative coordination",
+        ],
+        "typical_stakeholders": [
+            "Strategy Manager",
+            "Program Manager",
+            "Enterprise Architect",
+            "Portfolio Manager",
+        ],
+        "includes_strategy_layer": True,
+        "includes_business_layer": False,
+        "includes_application_layer": False,
+        "includes_technology_layer": False,
+        "includes_physical_layer": False,
+        "includes_motivation_layer": True,
+        "includes_implementation_layer": True,
+        "allowed_element_types": [
+            "CourseOfAction",
+            "Goal",
+            "Outcome",
+            "WorkPackage",
+            "Deliverable",
+            "Capability",
+            "Resource",
+        ],
+        "allowed_relationship_types": [
+            "realization",
+            "association",
+            "assignment",
+            "triggering",
+            "composition",
+            "aggregation",
+        ],
+        "typical_usage_scenario": (
+            "Use when planning strategic initiatives and tracking "
+            "their progress towards goal achievement."
+        ),
+        "example_questions": [
+            "Which initiatives support this goal?",
+            "What work packages deliver this course of action?",
+            "How do initiatives coordinate with each other?",
+        ],
+        "related_viewpoints": [
+            "Strategy",
+            "Project",
+        ],
+    },
+    {
+        "standard_number": 20,
+        "name": "Program & Portfolio Management",
+        "viewpoint_type": "stakeholder",
+        "description": (
+            "Shows programs, projects, and their relationships to "
+            "strategic goals and business capabilities."
+        ),
+        "purpose": (
+            "Managing portfolios of projects and programs to ensure "
+            "strategic alignment and resource optimization."
+        ),
+        "concerns": [
+            "Portfolio alignment",
+            "Program coordination",
+            "Resource allocation",
+            "Strategic delivery",
+        ],
+        "typical_stakeholders": [
+            "Portfolio Manager",
+            "Program Manager",
+            "PMO",
+            "Enterprise Architect",
+        ],
+        "includes_strategy_layer": True,
+        "includes_business_layer": True,
+        "includes_application_layer": False,
+        "includes_technology_layer": False,
+        "includes_physical_layer": False,
+        "includes_motivation_layer": True,
+        "includes_implementation_layer": True,
+        "allowed_element_types": [
+            "WorkPackage",
+            "Deliverable",
+            "Goal",
+            "Outcome",
+            "Capability",
+            "BusinessFunction",
+            "CourseOfAction",
+        ],
+        "allowed_relationship_types": [
+            "realization",
+            "assignment",
+            "association",
+            "composition",
+            "aggregation",
+            "triggering",
+        ],
+        "typical_usage_scenario": (
+            "Use when managing project portfolios and ensuring "
+            "programs deliver strategic value."
+        ),
+        "example_questions": [
+            "Which projects support which capabilities?",
+            "How do programs align with strategic goals?",
+            "What is the portfolio's strategic impact?",
+        ],
+        "related_viewpoints": [
+            "Project",
+            "Strategy",
+        ],
+    },
 ]
 
 
@@ -1090,7 +1339,7 @@ def _apply_viewpoint_fields(target, vp_data):
 
 
 def seed_viewpoints():
-    """Upsert the 16 ArchiMate viewpoints (14 standard + 2 custom). Returns (created, updated) counts."""
+    """Upsert the 20 ArchiMate viewpoints (18 standard + 2 custom). Returns (created, updated) counts."""
     try:
         from app.models.archimate_viewpoint import ArchiMateViewpoint
     except ImportError:
@@ -1112,14 +1361,14 @@ def seed_viewpoints():
             created += 1
 
     db.session.commit()
-    logger.info("QA-CMP-004: Seeded viewpoints - created=%d, updated=%d", created, updated)
+    logger.info("QA-CMP-004: Seeded viewpoints - created=%d, updated=%d (total: %d)", created, updated, len(_STANDARD_VIEWPOINTS))
     return created, updated
 
 
 @click.command("seed-viewpoints")
 @with_appcontext
 def seed_viewpoints_command():
-    """Seed the 16 ArchiMate viewpoints (14 standard + 2 custom, idempotent)."""
+    """Seed the 20 ArchiMate viewpoints (18 standard + 2 custom, idempotent)."""
     created, updated = seed_viewpoints()
     click.echo(f"Viewpoints seeded: {created} created, {updated} updated.")
 
