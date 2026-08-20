@@ -458,7 +458,10 @@ def overview():
 
     # ENH-002: Architecture Health Score (weighted composite)
     # Phase Maturity 40% + Risk 30% + Capability Coverage 20% + Governance 10%
-    health_score = 0
+    # None, not 0: a health score of 0 and "we could not compute a health score"
+    # are different facts, and 0 is the more alarming of the two to a reader who
+    # cannot tell them apart.
+    health_score = None
     health_components = {}
     try:
         # Phase Maturity (avg solution maturity, 0-100)
@@ -479,34 +482,55 @@ def overview():
         persona_metrics.get("cto", {}).get("risk_counts", {})
         sol_ids_with_risks = persona_metrics.get("cto", {}).get("sol_ids_with_risks", set())
         mature_sols = [s for s in solutions if (getattr(s, "maturity_current", 0) or 0) > 0]
-        coverage_score = round(len([s for s in mature_sols if s.id in sol_ids_with_risks]) / max(len(mature_sols), 1) * 100)
-        risk_health = coverage_score
+        # max(len(...), 1) was a fake denominator: with no mature solutions it
+        # divided by a 1 that does not exist and reported a confident 0% risk
+        # health. Nothing to measure is None, which renders as an em dash.
+        risk_health = (
+            round(len([s for s in mature_sols if s.id in sol_ids_with_risks]) / len(mature_sols) * 100)
+            if mature_sols
+            else None
+        )
 
         # Capability Coverage (% of L1 capabilities with at least 1 app)
         covered = len([c for c in capability_health if c.get("coverage_status") != "gap"])
-        total_caps = len(capability_health) or 1
-        cap_coverage = round(covered / total_caps * 100)
+        cap_coverage = round(covered / len(capability_health) * 100) if capability_health else None
 
         # Governance (% of solutions past draft)
-        total_sols = persona_metrics.get("cto", {}).get("total_solutions", 0) or 1
+        total_sols = persona_metrics.get("cto", {}).get("total_solutions", 0)
         arb = persona_metrics.get("cto", {}).get("arb_pipeline", {})
         governed = arb.get("approved", 0) + arb.get("pending", 0)
-        gov_health = min(100, round(governed / total_sols * 100))
+        # Same fake-denominator problem as risk health: "or 1" turned an empty
+        # portfolio into 0% governed rather than "no portfolio to govern".
+        gov_health = min(100, round(governed / total_sols * 100)) if total_sols else None
 
-        health_score = round(
-            phase_maturity * 0.4 +
-            risk_health * 0.3 +
-            cap_coverage * 0.2 +
-            gov_health * 0.1
-        )
         health_components = {
             "phase_maturity": phase_maturity,
             "risk_health": risk_health,
             "capability_coverage": cap_coverage,
             "governance": gov_health,
         }
+        # Re-weight over whatever could actually be measured, so one unmeasurable
+        # component drags the composite down instead of being scored as zero.
+        # None when nothing at all could be measured.
+        _weights = {
+            "phase_maturity": 0.4,
+            "risk_health": 0.3,
+            "capability_coverage": 0.2,
+            "governance": 0.1,
+        }
+        _available = {k: v for k, v in health_components.items() if v is not None}
+        _total_weight = sum(_weights[k] for k in _available)
+        health_score = (
+            round(sum(_available[k] * _weights[k] for k in _available) / _total_weight)
+            if _total_weight
+            else None
+        )
     except Exception as exc:
         logger.warning("ENH-002: health score computation failed: %s", exc)
+        # Leave health_score None. A failed computation must not surface as a
+        # score of 0, which reads as a measured verdict on the estate.
+        health_score = None
+        health_components = {}
 
     # Data Coverage strip — real per-field coverage of the application portfolio.
     # Single aggregate query; percentages match DATA_REALITY.md definitions.

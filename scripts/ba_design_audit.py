@@ -21,6 +21,17 @@ SCREENS = [
     ("maturity-search", "/capability-maturity/search"),
     ("capability-map", "/capability-map/"),
     ("dashboard", "/dashboard/overview"),
+    ("capability-health", "/strategic/capability-health"),
+    ("applications", "/applications/"),
+    ("archimate-elements", "/archimate/elements"),
+    ("value-streams", "/value-streams/"),
+    ("stakeholder-map", "/stakeholders/map"),
+    ("gap-analysis", "/enterprise/implementation/gap-analysis"),
+    ("roadmap", "/capability-roadmap"),
+    ("work-packages", "/enterprise/implementation/work-packages"),
+    ("portfolio", "/portfolio/"),
+    ("arb-dashboard", "/arb/"),
+    ("all-modules", "/modules"),
 ]
 
 
@@ -72,7 +83,12 @@ def audit(page, name: str, url: str, out_dir: Path) -> dict:
     if metrics["docScrollW"] > metrics["clientW"] + 4:
         flags.append("horizontal overflow — the page scrolls sideways")
     if metrics["bodyChars"] < 400:
-        flags.append(f"page has almost no content ({metrics['bodyChars']} chars)")
+        # A 404 renders ~158 chars and 36% fill. Reporting that as a design flaw
+        # sends someone to restyle a page that was never reached.
+        flags.append(
+            f"page has almost no content ({metrics['bodyChars']} chars) — "
+            "check this URL resolves before treating it as a layout problem"
+        )
     return {"name": name, "url": url, "flags": flags, "metrics": metrics, "shot": str(shot)}
 
 
