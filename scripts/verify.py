@@ -51,6 +51,28 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+def _force_utf8_console() -> None:
+    """Make this script's own output survive a non-UTF-8 Windows console.
+
+    On Windows ``sys.stdout.encoding`` follows the ANSI code page (cp1252 here)
+    even when the terminal is set to UTF-8, so printing a gate's evidence text
+    raises UnicodeEncodeError for anything outside cp1252 -- a check mark, a box
+    rule -- and an em dash silently degrades to a mojibake byte. Either way the
+    *reporting* of a result breaks the run, which is precisely backwards: a gate
+    must never fail because of how its message is spelled. Reconfiguring to
+    utf-8 with errors="replace" makes output lossy at worst, never fatal.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                # Redirected to something that cannot be reconfigured; the
+                # caller still gets output, just in the original encoding.
+                pass
+
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE_PATH = REPO_ROOT / "verification_baseline.json"
 
@@ -1309,6 +1331,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="re-measure ratchets and write verification_baseline.json")
     args = parser.parse_args(argv)
 
+    _force_utf8_console()
     os.chdir(REPO_ROOT)
     baseline = load_baseline()
     gates = build_gates(baseline)

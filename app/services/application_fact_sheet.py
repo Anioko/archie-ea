@@ -90,18 +90,30 @@ def _lifecycle_signal(app: Any) -> Dict[str, Any]:
 
 
 def _capabilities(app_id: int, org_id: Optional[int]) -> List[Dict[str, Any]]:
-    """Business capabilities this application realises, with support level."""
-    try:
-        from app.models.application_capability import (  # noqa: PLC0415
-            ApplicationCapabilityMapping,
+    """Business capabilities this application realises, with support level.
+
+    Imports are deliberately unguarded: a missing model module is a defect, and
+    swallowing it would render "no capabilities mapped" — indistinguishable from
+    a truthful empty result on a page branded a single source of truth.
+    """
+    from app.models.application_capability import (  # noqa: PLC0415
+        ApplicationCapabilityMapping,
+    )
+    from app.models.business_capabilities import BusinessCapability  # noqa: PLC0415
+
+    # ApplicationCapabilityMapping carries organization_id but does NOT inherit
+    # TenantMixin, so do_orm_execute injects no tenant predicate — it must be
+    # scoped by hand or the join reads every organisation's mappings.
+    if org_id is None:
+        raise ValueError(
+            "application has no organization_id; refusing to run an unscoped "
+            "ApplicationCapabilityMapping query"
         )
-        from app.models.business_capabilities import BusinessCapability  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
-        return []
     q = (db.session.query(ApplicationCapabilityMapping, BusinessCapability)
          .join(BusinessCapability,
                BusinessCapability.id == ApplicationCapabilityMapping.business_capability_id)
-         .filter(ApplicationCapabilityMapping.application_component_id == app_id))
+         .filter(ApplicationCapabilityMapping.application_component_id == app_id)
+         .filter(ApplicationCapabilityMapping.organization_id == org_id))
     out = []
     for mapping, cap in q.all():
         out.append({
@@ -147,12 +159,11 @@ def _diagrams(app: Any) -> List[Dict[str, Any]]:
     el_id = getattr(app, "archimate_element_id", None)
     if not el_id:
         return []
-    try:
-        from app.models.archimate_core import (  # noqa: PLC0415
-            SavedDiagram, SavedDiagramElement,
-        )
-    except Exception:  # noqa: BLE001
-        return []
+    # Unguarded for the same reason as _capabilities: an import failure here is a
+    # defect, and returning [] would read on the page as "appears in no diagrams".
+    from app.models.archimate_core import (  # noqa: PLC0415
+        SavedDiagram, SavedDiagramElement,
+    )
     q = (db.session.query(SavedDiagram)
          .join(SavedDiagramElement, SavedDiagramElement.diagram_id == SavedDiagram.id)
          .filter(SavedDiagramElement.element_id == el_id).distinct())
