@@ -67,6 +67,11 @@ else:
     # Feature models that were defined but never imported here, so create_all() skipped
     # their tables -> routes querying them returned UndefinedTable 500s on a fresh install.
     from .import_history import *  # noqa
+    # BA-B1: artefact_share_links. Imported here so create_all() builds the
+    # table on a fresh install and reconcile-schema sees the mapped model on an
+    # existing one — every column below the primary key is nullable or has a
+    # default, so an ADD-only reconcile can apply it.
+    from .artefact_share import ArtefactShareLink  # noqa: F401
     from .sso_config import *  # noqa
     from .gdpr_request import *  # noqa
     from .subscription import *  # noqa

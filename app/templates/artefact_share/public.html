@@ -1,0 +1,271 @@
+{# Public, read-only view of one shared artefact (BA-B1).
+
+   Extends public_base.html, which has no sidebar and no application navigation:
+   a viewer of this page has no account and must be able to reach nothing but
+   this artefact. There are deliberately no links into the app, no forms, and no
+   edit controls anywhere below — the only interactive control is Print.
+
+   Every class used here already appears in the committed tailwind-output.css
+   (the level ramp is copied verbatim from capability_maturity/heatmap.html), so
+   the page renders without a Tailwind rebuild.
+#}
+{% extends 'layouts/public_base.html' %}
+
+{% block title %}{{ artefact_title }}{% endblock %}
+
+{% macro level_classes(level) -%}
+{%- if level == 1 -%}bg-destructive/10 text-destructive-emphasis border-destructive/30
+{%- elif level == 2 -%}bg-warning/15 text-warning-emphasis border-warning/30
+{%- elif level == 3 -%}bg-info/10 text-info-emphasis border-info/30
+{%- elif level == 4 -%}bg-success/15 text-success-emphasis border-success/30
+{%- elif level == 5 -%}bg-success/40 text-success-emphasis border-success/50
+{%- else -%}bg-muted/30 text-muted-foreground border-dashed border-muted-foreground/30
+{%- endif -%}
+{%- endmacro %}
+
+{% macro level_cell(level, assessed) -%}
+<span class="share-cell inline-flex h-8 w-8 items-center justify-center rounded-md border text-sm font-semibold {{ level_classes(level if assessed else None) }}"
+      {% if not assessed %}title="Not assessed"{% endif %}>{% if assessed and level is not none %}{{ level }}{% else %}—{% endif %}</span>
+{%- endmacro %}
+
+{% macro stat(label, value, hint='') -%}
+<div class="rounded-lg border border-border bg-card px-4 py-3">
+  <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{{ label }}</p>
+  <p class="mt-1 text-2xl font-bold text-foreground">{{ value }}</p>
+  {% if hint %}<p class="mt-0.5 text-xs text-muted-foreground">{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% block extra_css %}
+<style>
+  /* Leadership prints these for steering packs. Tailwind's `print:` variants
+     are not in the committed build, so this is plain CSS. */
+  @media print {
+    .share-noprint { display: none !important; }
+    .share-cell { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    tr { break-inside: avoid; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-5xl px-6 py-8 space-y-8">
+
+  {# ── Header: what this is, whose it is, and how old it is ───────────────── #}
+  <header class="border-b border-border pb-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {% if organization_name %}{{ organization_name }} · {% endif %}Shared architecture artefact
+        </p>
+        <h1 class="mt-1 text-2xl font-bold text-foreground">{{ artefact_title }}</h1>
+        <p class="mt-2 text-sm text-muted-foreground">
+          Generated {{ generated_at|format_datetime('medium') }} UTC ·
+          Link created {{ link.created_at|format_datetime('medium') }} UTC
+        </p>
+      </div>
+      <div class="flex items-center gap-2 share-noprint">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+          <i data-lucide="eye" class="h-3.5 w-3.5"></i> Read-only
+        </span>
+        <button type="button"
+                data-action="print-artefact"
+                class="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+          <i data-lucide="printer" class="h-4 w-4"></i> Print
+        </button>
+      </div>
+    </div>
+    <p class="mt-4 text-sm text-muted-foreground">
+      This page is a point-in-time view shared by the architecture team. It shows this
+      artefact only — nothing else in the platform is reachable from here — and the link
+      can be revoked by its owner at any time.
+    </p>
+  </header>
+
+  {% if data is none %}
+    <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-6 text-center">
+      <p class="text-sm font-medium text-destructive-emphasis">This artefact could not be loaded.</p>
+      <p class="mt-1 text-sm text-muted-foreground">
+        Nothing is shown rather than a partial or estimated view. Please ask the person
+        who shared this link to regenerate it.
+      </p>
+    </div>
+
+  {# ── Capability maturity heatmap ─────────────────────────────────────────── #}
+  {% elif artefact_type == 'maturity_heatmap' %}
+    <section class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {{ stat('Capabilities', data.total_count) }}
+      {{ stat('Assessed', data.assessed_count, 'of ' ~ data.total_count) }}
+      {{ stat('Average current', data.avg_current|round(1)|dash if data.avg_current is not none else '—') }}
+      {{ stat('Average target', data.avg_target|round(1)|dash if data.avg_target is not none else '—') }}
+    </section>
+
+    <section class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Maturity scale</p>
+      <div class="mt-3 flex flex-wrap items-center gap-4">
+        {% for level, label in data.scale %}
+        <span class="inline-flex items-center gap-2 text-sm text-foreground">
+          <span class="share-cell inline-flex h-6 w-6 items-center justify-center rounded-md border text-xs font-semibold {{ level_classes(level) }}">{{ level }}</span>
+          {{ label }}
+        </span>
+        {% endfor %}
+        <span class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+          <span class="inline-flex h-6 w-6 items-center justify-center rounded-md border text-xs font-semibold {{ level_classes(None) }}">—</span>
+          Not assessed
+        </span>
+      </div>
+    </section>
+
+    {% for group in data.groups %}
+    <section class="rounded-lg border border-border bg-card overflow-hidden">
+      <div class="border-b border-border px-4 py-3">
+        <h2 class="text-lg font-semibold text-foreground">{{ group.name }}</h2>
+        <p class="text-sm text-muted-foreground">{{ group.capabilities|length }} capabilities</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <caption class="sr-only">{{ group.name }} capability maturity</caption>
+          <thead>
+            <tr class="border-b border-border text-left">
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Capability</th>
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Current</th>
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Target</th>
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Gap</th>
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Assessed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cap in group.capabilities %}
+            <tr class="border-b border-border last:border-0">
+              <td class="px-4 py-2 text-foreground">{{ cap.name }}</td>
+              <td class="px-4 py-2">{{ level_cell(cap.current, cap.assessed) }}</td>
+              <td class="px-4 py-2">{{ level_cell(cap.target, cap.assessed) }}</td>
+              <td class="px-4 py-2 text-foreground">{{ cap.gap|dash }}</td>
+              <td class="px-4 py-2 text-muted-foreground">
+                {{ cap.assessed_on|format_datetime('medium') if cap.assessed_on else '—' }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% else %}
+      <p class="rounded-lg border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+        No capabilities have been recorded yet.
+      </p>
+    {% endfor %}
+
+  {# ── Capability map ──────────────────────────────────────────────────────── #}
+  {% elif artefact_type == 'capability_map' %}
+    <section class="grid grid-cols-2 gap-4">
+      {{ stat('Capabilities', data.total_count) }}
+      {{ stat('Domains', data.domain_count) }}
+    </section>
+
+    {% for group in data.groups %}
+    <section class="rounded-lg border border-border bg-card">
+      <div class="border-b border-border px-4 py-3">
+        <h2 class="text-lg font-semibold text-foreground">{{ group.name }}</h2>
+        <p class="text-sm text-muted-foreground">{{ group.capabilities|length }} capabilities</p>
+      </div>
+      <div class="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+        {% for cap in group.capabilities %}
+        <article class="rounded-lg border border-border bg-background p-3">
+          <div class="flex items-start justify-between gap-2">
+            <h3 class="text-sm font-semibold text-foreground">{{ cap.name }}</h3>
+            <span class="shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+              L{{ cap.level|dash }}
+            </span>
+          </div>
+          {% if cap.description %}
+          <p class="mt-1 text-sm text-muted-foreground">{{ cap.description|truncate(140) }}</p>
+          {% endif %}
+          <p class="mt-2 text-xs text-muted-foreground">
+            {{ cap.category or '—' }}{% if cap.strategic_importance %} · {{ cap.strategic_importance|capitalize }} importance{% endif %}
+          </p>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% else %}
+      <p class="rounded-lg border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+        No capabilities have been recorded yet.
+      </p>
+    {% endfor %}
+
+  {# ── Capability roadmap ──────────────────────────────────────────────────── #}
+  {% elif artefact_type == 'capability_roadmap' %}
+    <section class="grid grid-cols-2 gap-4">
+      {{ stat('Roadmap items', data.total_count) }}
+      {{ stat('Capabilities covered', data.capability_count) }}
+    </section>
+
+    {% for horizon in data.horizons %}
+    <section class="rounded-lg border border-border bg-card">
+      <div class="border-b border-border px-4 py-3">
+        <h2 class="text-lg font-semibold text-foreground">
+          {% if horizon.year %}{{ horizon.year }}{% else %}Unscheduled{% endif %}
+        </h2>
+        <p class="text-sm text-muted-foreground">{{ horizon.items|length }} items</p>
+      </div>
+      <ul class="divide-y divide-border">
+        {% for item in horizon.items %}
+        <li class="px-4 py-3">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-foreground">{{ item.name }}</p>
+              <p class="text-sm text-muted-foreground">
+                {{ item.capability or '—' }}{% if item.roadmap_type %} · {{ item.roadmap_type|replace('_', ' ')|capitalize }}{% endif %}
+              </p>
+            </div>
+            {% if item.status %}
+            <span class="shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+              {{ item.status|replace('_', ' ')|capitalize }}
+            </span>
+            {% endif %}
+          </div>
+          <dl class="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div>
+              <dt class="text-muted-foreground">Start</dt>
+              <dd class="text-foreground">{{ item.start_date.strftime('%d %b %Y') if item.start_date else '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">Target</dt>
+              <dd class="text-foreground">{{ item.target_completion_date.strftime('%d %b %Y') if item.target_completion_date else '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">Phase</dt>
+              <dd class="text-foreground">{{ item.current_phase|capitalize if item.current_phase else '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">Maturity</dt>
+              <dd class="text-foreground">
+                {{ item.current_maturity_level|dash }} &rarr; {{ item.target_maturity_level|dash }}
+              </dd>
+            </div>
+          </dl>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% else %}
+      <p class="rounded-lg border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+        No roadmap items have been recorded yet.
+      </p>
+    {% endfor %}
+  {% endif %}
+
+  <footer class="border-t border-border pt-4 text-xs text-muted-foreground">
+    Shared read-only from {{ config.APP_NAME }}. Figures shown are as recorded at the time
+    stated above; a dash means the value has not been assessed, not zero.
+  </footer>
+</div>
+
+<script>
+  document.addEventListener('click', function (event) {
+    const trigger = event.target.closest('[data-action="print-artefact"]');
+    if (trigger) { window.print(); }
+  });
+</script>
+{% endblock %}

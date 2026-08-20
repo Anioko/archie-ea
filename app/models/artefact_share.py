@@ -61,11 +61,16 @@ class ArtefactShareLink(db.Model):
 
     label = db.Column(db.String(200))
 
-    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    #: server_default as well as a Python default: `flask reconcile-schema` is
+    #: ADD-only and keeps a declared server_default, so a NOT NULL column can
+    #: still be added to a table that already has rows.
+    created_at = db.Column(
+        db.DateTime, default=utcnow, server_default=db.func.now(), nullable=False
+    )
     #: Set to revoke. Non-NULL means the token stops resolving immediately.
     revoked_at = db.Column(db.DateTime)
     last_viewed_at = db.Column(db.DateTime)
-    view_count = db.Column(db.Integer, default=0, nullable=False)
+    view_count = db.Column(db.Integer, default=0, server_default="0", nullable=False)
 
     @property
     def is_active(self) -> bool:
