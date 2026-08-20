@@ -154,3 +154,66 @@ def test_cmp03_audit_failure_not_toasted():
     # The old code toasted 'Failed to log audit event' inside the catch.
     assert "Failed to log audit event" not in src, \
         "audit-log failures must be silent (fire-and-forget), not toasted"
+
+
+def test_ba04_pdf_export_is_one_click_and_vendored():
+    """BA-04: the Export dropdown must offer a real PDF, from a vendored library.
+
+    Iain Burgess asked for leadership-consumable output. 'Print Friendly' is a
+    style template, not an export — it still needs a manual browser print step.
+    The PDF path must be wired to exportPdf() and jsPDF must be served locally,
+    because the air-gap gate forbids a CDN.
+    """
+    toolbar = (JS.parents[1] / "templates" / "archimate" / "partials"
+               / "_composer_toolbar.html").read_text(encoding="utf-8")
+    assert "exportPdf()" in toolbar, "the Export dropdown must call exportPdf()"
+
+    composer_html = (JS.parents[1] / "templates" / "archimate"
+                     / "composer.html").read_text(encoding="utf-8")
+    assert "/static/vendor/jspdf.umd.min.js" in composer_html, \
+        "jsPDF must be loaded from the vendored copy, never a CDN"
+
+    vendor = JS.parents[1] / "static" / "vendor" / "jspdf.umd.min.js"
+    assert vendor.is_file(), "the vendored jsPDF bundle must be present"
+
+
+def test_ba04_pdf_export_surfaces_failure_and_cannot_emit_empty_file():
+    """exportPdf must never silently no-op or save a blank page.
+
+    The original version returned bare on four paths, reported the rest only in
+    the status bar, had no img.onerror, and no try/catch around the jsPDF calls
+    — so a rasterisation failure in front of a customer produced nothing at all.
+    """
+    src = _read("archimate/composer_persistence.js")
+    start = src.index("exportPdf: function()")
+    body = src[start:src.index("exportReport: function()", start)]
+
+    assert "img.onerror" in body, \
+        "a failed SVG rasterisation must be handled, not left as a silent no-op"
+    assert "} catch (err) {" in body, \
+        "the jsPDF render must be wrapped so an exception reaches the user"
+    assert "_toast('error'" in body, \
+        "failures must surface via Platform.toast, not only statusText"
+    # No bare `return;` escape hatches that tell the user nothing.
+    assert "if (!svgEl) return;" not in body, \
+        "silent bare returns must be replaced by a reported failure"
+    # An empty rasterisation must be rejected rather than embedded.
+    assert "imgData.length < 1000" in body, \
+        "an empty toDataURL result must abort rather than produce a blank PDF"
+    assert "MAX_CANVAS_PX" in body, \
+        "canvas size must be clamped below the browser limit that yields 'data:,'"
+
+
+def test_ba04_pdf_output_is_leadership_readable():
+    """The PDF must carry a title and a date on a standard ISO page, landscape
+    for wide diagrams — not a raw canvas-sized sheet and not app chrome."""
+    src = _read("archimate/composer_persistence.js")
+    start = src.index("exportPdf: function()")
+    body = src[start:src.index("exportReport: function()", start)]
+
+    assert "doc.text(String(titleText)" in body, "the title must be drawn into the PDF"
+    assert "generatedAt.toLocaleString()" in body, "the generation date must appear"
+    assert "'landscape'" in body and "'portrait'" in body, \
+        "orientation must follow the diagram aspect ratio"
+    assert "aspect > 2.2 ? 'a3' : 'a4'" in body, \
+        "the page must be a standard ISO size, not the raw canvas dimensions"

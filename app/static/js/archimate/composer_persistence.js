@@ -987,20 +987,35 @@ let ComposerPersistence = (function() {
             img.src = url;
         },
 
+        /* BA-04: one-click, leadership-readable PDF of the current diagram.
+           Renders onto a standard ISO page (A4, or A3 when the diagram is very
+           wide) with a real title and generation date drawn as PDF text — not a
+           screenshot of the app chrome, and no manual browser print step.
+           Every failure path is surfaced via _toast; there is no silent no-op. */
         exportPdf: function() {
-            if (!this.paper) return;
-            let jsPDFLib = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-            if (!jsPDFLib) { this.statusText = 'PDF library not loaded'; return; }
-            let svgEl = this.paper.el.querySelector('svg');
-            if (!svgEl) return;
+            let self = this;
+            function fail(msg) {
+                self.statusText = 'PDF export failed: ' + msg;
+                _toast('error', 'PDF export failed — ' + msg);
+            }
 
-            let titleText = this.activeViewpointName || 'Architecture Diagram';
-            let titleHeight = 40;
-            let pad = 40;
-            let exportScale = 2;
+            if (!this.paper || !this.graph) { fail('the canvas is not ready yet'); return; }
+            let jsPDFLib = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+            if (!jsPDFLib) { fail('the PDF library did not load'); return; }
+            let svgEl = this.paper.el.querySelector('svg');
+            if (!svgEl) { fail('the diagram surface could not be read'); return; }
 
             let graphBBox = this.graph.getBBox();
-            if (!graphBBox || graphBBox.width === 0) { this.statusText = 'Nothing to export'; return; }
+            if (!graphBBox || !graphBBox.width || !graphBBox.height) {
+                self.statusText = 'Nothing on the canvas to export';
+                _toast('warning', 'Add elements to the canvas before exporting a PDF.');
+                return;
+            }
+
+            let titleText = this.activeViewpointName || 'Architecture Diagram';
+            let generatedAt = new Date();
+            let pad = 40;
+
             let paperScale = this.paper.scale();
             let paperTrans = this.paper.translate();
             let vx = paperTrans.tx + graphBBox.x * paperScale.sx - pad;
@@ -1008,10 +1023,18 @@ let ComposerPersistence = (function() {
             let vw = graphBBox.width  * paperScale.sx + pad * 2;
             let vh = graphBBox.height * paperScale.sy + pad * 2;
 
+            /* Render at 2x for print sharpness, but clamp so we never exceed the
+               browser canvas limit — past it toDataURL yields "data:," and the
+               PDF would embed an empty image. */
+            let MAX_CANVAS_PX = 8000;
+            let exportScale = Math.min(2, MAX_CANVAS_PX / Math.max(vw, vh));
+            if (!(exportScale > 0)) { fail('the diagram is too large to rasterise'); return; }
+
             let canvas = document.createElement('canvas');
             canvas.width  = Math.round(vw * exportScale);
-            canvas.height = Math.round((vh + titleHeight) * exportScale);
+            canvas.height = Math.round(vh * exportScale);
             let ctx = canvas.getContext('2d');
+            if (!ctx) { fail('this browser did not provide a 2D canvas'); return; }
             ctx.scale(exportScale, exportScale);
 
             let svgClone = svgEl.cloneNode(true);
@@ -1025,29 +1048,86 @@ let ComposerPersistence = (function() {
             let img = new Image();
             let blob = new Blob([new XMLSerializer().serializeToString(svgClone)], { type: 'image/svg+xml' });
             let url = URL.createObjectURL(blob);
-            let self = this;
+
+            self.statusText = 'Generating PDF…';
+
+            img.onerror = function() {
+                URL.revokeObjectURL(url);
+                fail('the diagram could not be rasterised');
+            };
 
             img.onload = function() {
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, vw, vh + titleHeight);
-                ctx.fillStyle = '#1e293b';
-                ctx.font = 'bold 16px Inter, sans-serif';
-                ctx.textAlign = 'left';
-                ctx.fillText(titleText, 16, 26);
-                ctx.drawImage(img, 0, titleHeight);
-                URL.revokeObjectURL(url);
+                try {
+                    /* Flatten onto white — a transparent PNG would print grey. */
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, vw, vh);
+                    ctx.drawImage(img, 0, 0);
 
-                let imgData = canvas.toDataURL('image/jpeg', 0.95);
-                let MM_PER_PX = 0.264583;
-                let pdfW = Math.round(canvas.width * MM_PER_PX * 10) / 10;
-                let pdfH = Math.round(canvas.height * MM_PER_PX * 10) / 10;
-                let orientation = pdfW > pdfH ? 'landscape' : 'portrait';
+                    let imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    if (!imgData || imgData.length < 1000) {
+                        throw new Error('the rasterised diagram came back empty');
+                    }
 
-                let doc = new jsPDFLib({ orientation: orientation, unit: 'mm', format: [pdfW, pdfH] });
-                doc.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
-                let safeName = titleText.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 60);
-                doc.save(safeName + '.pdf');
-                self.statusText = 'PDF exported';
+                    /* Standard ISO page. Wide diagrams get A3 landscape so the
+                       elements stay legible once scaled to fit. */
+                    let aspect = vw / vh;
+                    let format = aspect > 2.2 ? 'a3' : 'a4';
+                    let orientation = aspect >= 1 ? 'landscape' : 'portrait';
+                    let doc = new jsPDFLib({ orientation: orientation, unit: 'mm', format: format });
+
+                    let pw = doc.internal.pageSize.getWidth();
+                    let ph = doc.internal.pageSize.getHeight();
+                    let margin = 12;
+                    let headerBottom = 26;
+                    let footerTop = ph - 10;
+
+                    /* Title + date as real PDF text — selectable and crisp. */
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(16);
+                    doc.setTextColor(30, 41, 59);
+                    doc.text(String(titleText), margin, 14, { maxWidth: pw - 2 * margin });
+
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(9);
+                    doc.setTextColor(100, 116, 139);
+                    doc.text(generatedAt.toLocaleString(), margin, 20);
+
+                    /* Fit the diagram into the remaining area, preserving aspect.
+                       Cap at 2x natural size so we never upscale past what we
+                       actually rendered. */
+                    let MM_PER_PX = 0.264583;
+                    let natW = vw * MM_PER_PX;
+                    let natH = vh * MM_PER_PX;
+                    let availW = pw - 2 * margin;
+                    let availH = footerTop - headerBottom - 4;
+                    let fit = Math.min(availW / natW, availH / natH, 2);
+                    let drawW = natW * fit;
+                    let drawH = natH * fit;
+                    let drawX = margin + (availW - drawW) / 2;
+                    let drawY = headerBottom + (availH - drawH) / 2;
+
+                    doc.addImage(imgData, 'JPEG', drawX, drawY, drawW, drawH);
+
+                    doc.setFontSize(8);
+                    doc.setTextColor(148, 163, 184);
+                    doc.text('A.R.C.H.I.E.', margin, footerTop + 4);
+                    doc.text(
+                        'Elements: ' + self.graph.getElements().length +
+                        '   Relationships: ' + self.graph.getLinks().length,
+                        pw - margin, footerTop + 4, { align: 'right' }
+                    );
+
+                    let safeName = String(titleText).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 60) || 'diagram';
+                    let stamp = generatedAt.toISOString().substring(0, 10);
+                    doc.save(safeName + '_' + stamp + '.pdf');
+
+                    self.statusText = 'PDF exported';
+                    _toast('success', 'PDF exported');
+                } catch (err) {
+                    fail(err && err.message ? err.message : String(err));
+                } finally {
+                    URL.revokeObjectURL(url);
+                }
             };
             img.src = url;
         },
