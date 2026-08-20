@@ -59,13 +59,73 @@ rebuild has to run *after* the W0-6 template edits or it goes stale again.
 
 | ID | Task | Audit ref | Status |
 |---|---|---|---|
-| W1-1 | Enumerate all 25 defined-but-unregistered blueprints with exact file paths | FC-01 | TODO |
+| W1-1 | Enumerate all 25 defined-but-unregistered blueprints with exact file paths | FC-01 | **DONE** — see findings below. Audit's 25 = definition *sites*; **23 distinct blueprints**. |
 | W1-2 | Register `gdpr_bp` after a security review of its routes — GDPR export/erasure is written, secured, has a model and a table, and is unreachable | FC-01 | TODO |
 | W1-3 | Add an authz test proving the GDPR export + erasure endpoints resolve and enforce self-or-admin | FC-01 | TODO |
-| W1-4 | **Delete** the remaining 24. Priority: `signup_routes.py` (unauthenticated `invite_member` taking `org_id` from the URL and `inviter_id` from the body — org-boundary privilege escalation in six lines) and `analytics_routes.py` (unauthenticated admin dashboard, event endpoint accepting an arbitrary `user_id`) | SEC-02 | TODO |
+| W1-4 | **Delete** the remaining 20 (not 24 — see W1-1 findings; 3 are registered via non-symbolic paths and 1 is live under another parent). Priority: `signup_routes.py` (unauthenticated `invite_member` taking `org_id` from the URL and `inviter_id` from the body — org-boundary privilege escalation in six lines) and `analytics_routes.py` (unauthenticated admin dashboard, event endpoint accepting an arbitrary `user_id`) | SEC-02 | TODO |
 | W1-5 | Land a `verify.py` gate: **blueprints defined == blueprints registered**, ratcheted at 0, so the class cannot return | audit ethic | TODO |
 
 W1-4 removes the code referencing `/billing/setup` and `plan="starter"` (not a valid `SubscriptionPlan` member). That deletion is in scope; building a replacement billing flow is not.
+
+---
+
+### W1-1 findings — verified 20 Aug 2026
+
+Method: AST scan of every `.py` under `app/` — **205 `Blueprint(...)` definition sites**
+against **277 `register_blueprint(...)` call sites** — then manual resolution of the
+three registration paths a symbol diff cannot see. Both `USE_*_GUARDRAILS` tiers and
+every `register(app)` entrypoint were walked.
+
+**Verified: 25 unregistered definition sites, collapsing to 23 distinct blueprints.**
+123 unreachable routes, **14 of them carrying no auth decorator of any kind**.
+
+**Four corrections to the audit — deleting on the audit's list as written would
+have removed working code:**
+
+| Blueprint | Why it must NOT be deleted |
+|---|---|
+| `application_api_bp` (`app/api/application_routes.py:43`) | Registered via `_safe_register(lambda: ...)` — invisible to a symbol diff |
+| `admin_security_bp` (`app/modules/admin/security_routes.py:31`) | Registered via the `_register_optional_standalone` spec list |
+| `main` (`app/main/views.py:26`) | Registered through the aliased re-export `from app.main import main as main_blueprint` |
+| `lucidchart_import_bp` (`.../lucidchart_import_routes.py:20`) | Its 4 routes ARE live — `archimate_routes.py:34` calls `register_lucidchart_import_routes(archimate_bp)`. Delete the unused blueprint *object* only; deleting the module removes working OAuth import. |
+
+**Confirmed as real, and both genuinely unauthenticated — but LATENT, not live**
+(they are unregistered, so unreachable in production; this is why W1-4 is a deletion
+task and not an incident):
+
+- `signup_routes.py::invite_member` — `POST /api/orgs/<int:org_id>/invite`, no
+  `@login_required`, no `current_user`, no membership check. `org_id` comes from the
+  path and `inviter_id` from the body, both attacker-chosen: an anonymous caller could
+  mint a member in **any** tenant. Its sibling `/register` is equally open and also
+  broken (passes `plan="starter"`, not a valid `SubscriptionPlan`; redirects to the
+  non-existent `/billing/setup`). Template exists, so it would render if wired.
+- `analytics_routes.py` — `GET /admin/analytics` renders the admin dashboard with no
+  auth; `POST /api/analytics/event` takes `user_id` wholesale from the body, so anyone
+  could forge analytics attributed to any user. Service and template both exist.
+
+**`gdpr_bp` — the audit is right, this is a compliance gap, not dead code.** All three
+routes are already guarded (`@login_required` + `_forbid_unless_self_or_platform_admin`
+on export/status; `@platform_admin_required` on erasure, which deliberately refuses
+self-service). `app/models/gdpr_request.py` (`gdpr_requests`) and
+`app/services/gdpr_service.py` both exist. Written, secured, and unreachable. → W1-2.
+
+**Also worth wiring rather than deleting:** `phase_e` and `phase_h`
+(`/api/ea/phase-e`, `/api/ea/phase-h`) — TOGAF phases A, B, F and G are all
+registered; E and H are the only holes. And `user_role` (`admin.user_info` already
+links to it).
+
+**Two stale referrers must be fixed alongside their deletions**, or they leave dangling
+links: `blueprints.py:451` claims `options_analysis_bp` is "covered by
+v2/unified_vendor_api" (those routes do not exist under v2), and
+`sidebar_discovery_service.py:182` advertises `/tech-debt`, which 404s.
+
+**W1-5 gate design:** match on the *resolved* set, not bare symbol names, or the gate
+reports three false positives on day one. Ratchet at 0 only after `gdpr_bp` is wired and
+the deletions land; interim baseline 23.
+
+**If `backtesting_bp` (#6) is wired up rather than deleted**, its three undecorated
+routes must be decorated first — `/backtesting/summary` is a POST that batch-processes
+solutions.
 
 ---
 
