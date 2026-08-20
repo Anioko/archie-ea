@@ -2,14 +2,12 @@
 Monitoring Package
 
 Provides comprehensive monitoring infrastructure for the A.R.C.H.I.E. platform including:
-- Health check endpoints
 - Metrics collection and aggregation
 - Alerting and notification system
 - Security event monitoring
 - Operational dashboards
 """
 
-from .health_routes import monitoring_bp
 from .metrics_service import MetricsService, metrics_service
 from .alerting_service import AlertingService, alerting_service
 from .security_monitoring import SecurityMonitoringService, security_monitoring_service
@@ -27,7 +25,6 @@ from .metrics_decorator import (
 )
 
 __all__ = [
-    'monitoring_bp',
     'MetricsService',
     'metrics_service',
     'AlertingService',

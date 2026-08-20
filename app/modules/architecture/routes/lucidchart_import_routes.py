@@ -17,12 +17,6 @@ from app.services.lucidchart_connector_service import (
 from app.utils.response_helpers import api_error, api_success
 
 
-lucidchart_import_bp = Blueprint(
-    "lucidchart_import",
-    __name__,
-    url_prefix="/archimate/lucidchart",
-)
-
 _service = LucidchartConnectorService()
 _transformer = LucidArchiMateTransformer()
 
@@ -60,21 +54,13 @@ def _callback_url() -> str:
     """External OAuth callback URL.
 
     These handlers are registered as aliases on ``archimate_bp`` (via
-    ``register_lucidchart_import_routes``); the standalone ``lucidchart_import``
-    blueprint is not always registered. Build the URL for whichever endpoint
-    actually exists so the OAuth start does not 500 with a BuildError once a
-    connector config is present. The resolved URL is the redirect URI to
-    register with the Lucid OAuth app.
+    ``register_lucidchart_import_routes``). Resolve through that endpoint; the
+    resolved URL is the redirect URI to register with the Lucid OAuth app.
     """
-    for endpoint in (
-        "archimate.api_lucidchart_auth_callback",
-        "lucidchart_import.lucidchart_oauth_callback",
-    ):
-        try:
-            return url_for(endpoint, _external=True)
-        except BuildError:
-            continue
-    raise BuildError("lucidchart auth callback", {}, "GET")
+    try:
+        return url_for("archimate.api_lucidchart_auth_callback", _external=True)
+    except BuildError:
+        raise BuildError("lucidchart auth callback", {}, "GET")
 
 
 def _needs_auth_response() -> tuple:
@@ -171,7 +157,6 @@ def _load_uploaded_payload() -> dict:
     return payload
 
 
-@lucidchart_import_bp.route("/auth/start", methods=["GET"])
 @login_required
 def lucidchart_oauth_start():
     org_id, org_error = _current_org_id_or_error()
@@ -191,7 +176,6 @@ def lucidchart_oauth_start():
     return api_success({"authorization_url": authorization_url, "state": state})
 
 
-@lucidchart_import_bp.route("/auth/callback", methods=["GET"])
 @login_required
 def lucidchart_oauth_callback():
     org_id, org_error = _current_org_id_or_error()
@@ -231,7 +215,6 @@ def lucidchart_oauth_callback():
     )
 
 
-@lucidchart_import_bp.route("/documents", methods=["GET"])
 @login_required
 def lucidchart_list_documents():
     org_id, org_error = _current_org_id_or_error()
@@ -249,7 +232,6 @@ def lucidchart_list_documents():
     return api_success({"needs_auth": False, "documents": documents})
 
 
-@lucidchart_import_bp.route("/documents/<string:document_id>/contents", methods=["GET"])
 @login_required
 def lucidchart_document_contents(document_id: str):
     org_id, org_error = _current_org_id_or_error()
@@ -332,5 +314,3 @@ def register_lucidchart_import_routes(bp: Blueprint) -> None:
         transformed = transformer.transform_document(payload)
         return _import_payload_response(transformed)
 
-
-register_lucidchart_import_routes(lucidchart_import_bp)

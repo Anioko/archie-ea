@@ -1,6 +1,6 @@
 {
   "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
-  "_note": "updated 2026-08-14 (merge: fe-qa wave25 + ai-enablement wave)",
+  "_note": "updated 2026-08-20 (W1-4 blueprint deletions)",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -14,7 +14,7 @@
     "fetch_guards": 0,
     "sidebar_links": 26,
     "design_tokens_extended": 12,
-    "shell_conformance": 159,
+    "shell_conformance": 158,
     "raw_fetch_sites": 919,
     "ui_contract": 27
   }

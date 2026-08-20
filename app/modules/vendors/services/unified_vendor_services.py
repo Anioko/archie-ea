@@ -1097,19 +1097,3 @@ def get_unified_vendor_services():
     if not hasattr(get_unified_vendor_services, "_instance"):
         get_unified_vendor_services._instance = UnifiedVendorServices()
     return get_unified_vendor_services._instance
-
-
-# Create blueprint for unified vendor routes
-from flask import Blueprint
-
-unified_vendor_bp = Blueprint("unified_vendor", __name__, url_prefix="/vendors")
-
-
-@unified_vendor_bp.route("/status")
-def status():
-    """Get status of all vendor services."""
-    try:
-        services = get_unified_vendor_services()
-        return services.get_service_status()
-    except Exception as e:
-        return {"error": str(e)}, 500

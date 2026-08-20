@@ -155,14 +155,6 @@ class SidebarDiscoveryService:
             "route_prefix": "/maturity",
             "priority": 75,
         },
-        {
-            "id": "tech-debt",
-            "name": "Technical Debt",
-            "icon": "AlertTriangle",
-            "url": "/tech-debt",
-            "route_prefix": "/tech-debt",
-            "priority": 80,
-        },
     ]
     
     # Route file mappings
@@ -179,7 +171,6 @@ class SidebarDiscoveryService:
         "/auto-dashboard": ["dashboard_routes.py", "auto_dashboard_routes.py"],
         "/capabilities": ["capability_routes.py"],
         "/maturity": ["maturity_routes.py"],
-        "/tech-debt": ["tech_debt_routes.py"],
     }
     
     # Template directory mappings
@@ -196,7 +187,6 @@ class SidebarDiscoveryService:
         "/auto-dashboard": "auto_dashboard/",
         "/capabilities": "capabilities/",
         "/maturity": "maturity/",
-        "/tech-debt": "tech_debt/",
     }
     
     def __init__(self, project_root: Optional[str] = None):

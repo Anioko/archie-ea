@@ -448,7 +448,10 @@ def _register_vendors(app, csrf):
             )
     # BPM-002: Tier 3 legacy fallback removed. USE_VENDORS_GUARDRAILS=True (Tier 1) is the
     # only active path. All 12 vendor blueprint families are registered via vendors v2 module.
-    # vendor_analysis_bp, vendor_mdm_bp, options_analysis_bp are covered by v2/unified_vendor_api.
+    # vendor_analysis_bp and vendor_mdm_bp are covered by v2/unified_vendor_api.
+    # options_analysis_bp is NOT: its routes do not exist under v2 and the blueprint is
+    # registered nowhere, so those endpoints are unreachable. Wire it up or delete it
+    # (deferred as a judgement call; see the W1-1 findings in the diligence register).
     # Neither feature flag is enabled: the v2 (guardrail) vendor module is not mounted.
     # Vendor routes are still served by the always-on unified vendor blueprints, so this
     # is the expected default — not a failure. Set USE_VENDORS_GUARDRAILS=true to opt into v2.

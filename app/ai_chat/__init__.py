@@ -1,23 +1,7 @@
-from .routes import ai_chat
+"""Legacy ``app.ai_chat`` package.
 
-try:
-    from .entity_matching_routes import entity_matching_bp
-except ImportError:
-    # Create a dummy blueprint if entity_matching_routes doesn't exist
-    from flask import Blueprint
-
-    entity_matching_bp = Blueprint("entity_matching", __name__)
-
-try:
-    from .business_output_routes import business_output_bp
-except ImportError:
-    from flask import Blueprint
-
-    business_output_bp = Blueprint("business_output", __name__)
-
-try:
-    from .data_interaction_routes import data_interaction_bp
-except ImportError:
-    from flask import Blueprint
-
-    data_interaction_bp = Blueprint("data_interaction", __name__)
+The flat blueprints that lived here (``ai_chat``, ``entity_matching``,
+``business_output``, and the ``data_interaction`` stub) were never registered and
+are superseded by ``app.modules.ai_chat``. They were deleted; only
+``element_field_mapper`` remains, which ``app.modules.ai_chat`` still imports.
+"""

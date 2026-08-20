@@ -124,15 +124,6 @@ API_REGISTRY: Dict[str, BlueprintInfo] = {
         notes="Legacy vendor routes - consolidate into vendors_api",
         consolidate_into="vendors_api",
     ),
-    "enhanced_vendor": BlueprintInfo(
-        name="enhanced_vendor",
-        module="app.api.enhanced_vendor_api",
-        url_prefix="/api/enhanced-vendor",
-        status=BlueprintStatus.DEPRECATED,
-        endpoints_count=10,
-        notes="Enhanced features - merge into vendors_api",
-        consolidate_into="vendors_api",
-    ),
     # ========================================================================
     # DUPLICATE DETECTION - UNIFIED SYSTEM
     # ========================================================================
@@ -155,15 +146,6 @@ API_REGISTRY: Dict[str, BlueprintInfo] = {
         status=BlueprintStatus.ACTIVE,
         endpoints_count=18,
         notes="PRIMARY AI chat - multi-domain chat service",
-    ),
-    "ai_chat": BlueprintInfo(
-        name="ai_chat",
-        module="app.ai_chat",
-        url_prefix="/ai-chat",
-        status=BlueprintStatus.DEPRECATED,
-        endpoints_count=12,
-        notes="Legacy AI chat routes - already consolidated",
-        consolidate_into="unified_ai_chat",
     ),
     # ========================================================================
     # ENTERPRISE ARCHITECTURE - CONSOLIDATION TARGET
@@ -429,19 +411,13 @@ CONSOLIDATION_TARGETS = {
     },
     "vendors": {
         "keep": "vendors_api",
-        "consolidate": ["vendors", "enhanced_vendor"],
+        "consolidate": ["vendors"],
         "priority": "HIGH",
         "estimated_effort": "2 days",
     },
     "duplicate_detection": {
         "keep": "unified_duplicate",
         "consolidate": ["duplicate_detection"],
-        "priority": "COMPLETED",
-        "estimated_effort": "0 days",
-    },
-    "ai_chat": {
-        "keep": "unified_ai_chat",
-        "consolidate": ["ai_chat"],
         "priority": "COMPLETED",
         "estimated_effort": "0 days",
     },
