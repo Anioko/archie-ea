@@ -17,13 +17,13 @@ Status legend: TODO / DOING / DONE / DROPPED (with reason).
 
 | ID | Task | Audit ref | Status |
 |---|---|---|---|
-| W0-1 | Fast-forward local `main` and `origin/main` to `5bc3ce7` so every clone reflects what runs | §09 | **DONE (local)** — local `main` ff'd ab523e5→5bc3ce7, verified true ancestor, 0 ahead. `origin/main` push pending W0-7. |
+| W0-1 | Fast-forward local `main` and `origin/main` to `5bc3ce7` so every clone reflects what runs | §09 | **DONE** — local `main` ff'd ab523e5→5bc3ce7 then to `b68e0f7c`; `origin/main` pushed b81a476f→b68e0f7c (113 commits, verified ff). Clones now reflect what runs. |
 | W0-2 | Fix `verify.py` UnicodeEncodeError on the cp1252 Windows console (reconfigure stdout to UTF-8 at entry) | CQ-06 | **DONE** `b08da8a` — reproduced (`'✓'` → UnicodeEncodeError, `—` → mojibake); `_force_utf8_console()` at `main()` entry; re-verified under forced cp1252. |
 | W0-3 | Reproduce the 3 red gates at `5bc3ce7` and record the exact output as evidence | CQ-01 | **DONE** — evidence below. Note it is **4 red, not 3**: `css-build` also fails. |
 | W0-4 | Fix `tenant-scoping`: `application_fact_sheet.py:101` unscoped query | CQ-01 | **DONE** `b08da8a` — gate 1→0. |
 | W0-5 | Fix `silent-data`: `application_fact_sheet.py:99,154` broad `except` returning `[]` — must surface the error, not render "no capabilities" on a screen branded the single source of truth | CQ-01/CQ-02 | **DONE** `b08da8a` — gate 2→0. |
 | W0-6 | Close QA finding ARCH-064 (capability-map 482KB, architecture dashboard 170KB) — lazy-load the macro's modals instead of rendering all of them | CQ-01/PF-02/UX-02 | **DONE** `b2bd44e` — /capability-map/ 436,618→368,193 bytes (−15.7%). QA register 160/160. |
-| W0-7 | Full `verify.py --tag static` green (every gate, never a subset), then deploy and confirm the live site serves | standing rule | **GREEN — 30 passed, 0 failed, 0 skipped.** Deploy in progress. |
+| W0-7 | Full `verify.py --tag static` green (every gate, never a subset), then deploy and confirm the live site serves | standing rule | **DONE** — 30 passed, 0 failed, 0 skipped. Deployed `b68e0f7c` as `deploy-20260820-b68e0f7c`; health local=200 public=200, server healthy. **Wave 0 exit criterion met: the deployed commit passes its own gates.** |
 
 **Exit criterion: the deployed commit passes its own gates.** Nothing else starts first — a ratchet that ships red once becomes advisory.
 
