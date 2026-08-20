@@ -512,6 +512,15 @@ def _register_always_on_apis(app, csrf):
     # callers are unaffected by requiring the token here.
 
 
+    # GDPR data-subject API (export / erasure / status).
+    # Routes carry their own full "/api/gdpr/..." paths, so no url_prefix here.
+    # Deliberately NOT csrf-exempt: the erasure route is a POST driven from the
+    # browser session, and the front-end fetch wrapper already sends X-CSRFToken.
+    from app.modules.compliance.gdpr_routes import gdpr_bp
+
+    app.register_blueprint(gdpr_bp)
+    app.logger.info("[BLUEPRINT] GDPR data-subject API registered at /api/gdpr")
+
     # Unified Enterprise Architecture
     from app.routes.unified_enterprise_routes import enterprise_bp
 

@@ -25,8 +25,9 @@ class GDPRService:
 
     @staticmethod
     def delete_user_data(user_id, requester_id):
-        # tenant-scoping-ok: caller route has no auth at all (pre-existing,
-        # out of scope here) -- no org context to scope by; see report.
+        # tenant-scoping-ok: erasure is cross-organisation by design and the only caller
+        # (gdpr_bp.delete_user_data) is @platform_admin_required. User is not a
+        # TenantMixin model, so no filter is injected here either way.
         user = User.query.get(user_id)
         if not user:
             return False
@@ -34,9 +35,20 @@ class GDPRService:
         user.email = None
         user.first_name = None
         user.last_name = None
-        user.deleted_at = datetime.utcnow()
-        # Set status if present
-        if hasattr(user, "status"):
+        # Destroy every credential that could still authenticate this account.
+        # Nulling the email alone is not erasure: app/auth/sso.py resolves an SSO
+        # login by (external_id, sso_provider) *before* it ever looks at the email,
+        # so an "erased" subject could sign straight back in, and the retained
+        # password hash is itself credential material we are asked to delete.
+        user.password_hash = None
+        user.external_id = None
+        user.sso_provider = None
+        # Tombstone columns are optional on this schema — assigning an attribute
+        # that is not mapped would silently persist nothing and then read back as
+        # a plausible-looking value on export.
+        if hasattr(type(user), "deleted_at"):
+            user.deleted_at = datetime.utcnow()
+        if hasattr(type(user), "status"):
             user.status = "deleted"
         db.session.add(user)
         db.session.commit()
