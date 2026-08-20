@@ -1,0 +1,174 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Capability Maturity Heatmap{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Maturity Heatmap', 'current': true}
+]) }}
+{% endblock %}
+
+{#
+  Colour is carried by literal classes below so the committed tailwind-output.css
+  contains them. Unassessed capabilities are deliberately NOT on the 1-5 colour
+  ramp: they are a dashed, muted cell rendering an em dash.
+#}
+{% macro level_classes(level) -%}
+{%- if level == 1 -%}bg-destructive/10 text-destructive-emphasis border-destructive/30
+{%- elif level == 2 -%}bg-warning/15 text-warning-emphasis border-warning/30
+{%- elif level == 3 -%}bg-info/10 text-info-emphasis border-info/30
+{%- elif level == 4 -%}bg-success/15 text-success-emphasis border-success/30
+{%- elif level == 5 -%}bg-success/40 text-success-emphasis border-success/50
+{%- else -%}bg-muted/30 text-muted-foreground border-dashed border-muted-foreground/30
+{%- endif -%}
+{%- endmacro %}
+
+{% macro level_cell(level, assessed) -%}
+<span class="inline-flex h-8 w-8 items-center justify-center rounded-md border text-sm font-semibold {{ level_classes(level if assessed else None) }}"
+      {% if not assessed %}title="Not assessed"{% endif %}>
+  {% if assessed and level is not none %}{{ level }}{% else %}—{% endif %}
+</span>
+{%- endmacro %}
+
+{% block head %}
+<style>
+  /* Print-friendliness: the heatmap is routinely exported for steering packs.
+     Tailwind's `print:` variants are not in the committed build, so this is
+     plain CSS rather than utility classes. */
+  @media print {
+    .maturity-noprint { display: none !important; }
+    .maturity-sheet { break-inside: auto; }
+    .maturity-sheet tr { break-inside: avoid; }
+    .maturity-cell { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% from 'components/page_header.html' import page_header %}
+<div class="p-6 space-y-6">
+
+  {{ page_header(
+      title='Capability Maturity Heatmap',
+      description='Current versus target maturity on a 1–5 scale, grouped by category.',
+      actions=[
+          {'text': 'Edit assessments', 'href': url_for('maturity_management.search_capabilities'), 'variant': 'outline'},
+          {'text': 'Frameworks', 'href': url_for('maturity_management.frameworks_overview'), 'variant': 'default'}
+      ]
+  ) }}
+
+  {% if load_error %}
+  <div class="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive-emphasis">
+    {{ load_error }}
+  </div>
+  {% endif %}
+
+  {# Coverage — a plain count, so the reader knows how much of the estate this represents. #}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Assessed</p>
+      <p class="text-2xl font-bold text-foreground">
+        {% if assessed_count is not none and total_count is not none %}{{ assessed_count }} / {{ total_count }}{% else %}—{% endif %}
+      </p>
+      <p class="text-xs text-muted-foreground">capabilities with a recorded assessment date</p>
+    </div>
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Not assessed</p>
+      <p class="text-2xl font-bold text-foreground">
+        {% if unassessed_count is not none %}{{ unassessed_count }}{% else %}—{% endif %}
+      </p>
+      <p class="text-xs text-muted-foreground">shown as — below, not as Level 1</p>
+    </div>
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Average current</p>
+      <p class="text-2xl font-bold text-foreground">
+        {% if avg_current is not none %}{{ '%.1f'|format(avg_current) }}{% else %}—{% endif %}
+      </p>
+      <p class="text-xs text-muted-foreground">across assessed capabilities only</p>
+    </div>
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Average target</p>
+      <p class="text-2xl font-bold text-foreground">
+        {% if avg_target is not none %}{{ '%.1f'|format(avg_target) }}{% else %}—{% endif %}
+      </p>
+      <p class="text-xs text-muted-foreground">across assessed capabilities only</p>
+    </div>
+  </div>
+
+  {# Legend #}
+  <div class="rounded-lg border border-border bg-card p-4">
+    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">How to read this</p>
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+      {% for level, label in scale %}
+      <div class="flex items-center gap-2">
+        <span class="maturity-cell inline-flex h-6 w-6 items-center justify-center rounded-md border text-xs font-semibold {{ level_classes(level) }}">{{ level }}</span>
+        <span class="text-sm text-foreground">{{ label }}</span>
+      </div>
+      {% endfor %}
+      <div class="flex items-center gap-2">
+        <span class="maturity-cell inline-flex h-6 w-6 items-center justify-center rounded-md border text-xs font-semibold {{ level_classes(None) }}">—</span>
+        <span class="text-sm text-foreground">Not assessed</span>
+      </div>
+    </div>
+    <p class="text-sm text-muted-foreground mt-3">
+      <span class="font-medium text-foreground">Gap</span> is target minus current. A positive gap means the
+      capability is below where it needs to be. Where no assessment has been recorded, every column shows — ;
+      nothing on this page is inferred.
+    </p>
+  </div>
+
+  {# Heatmap #}
+  {% if groups %}
+    {% for group in groups %}
+    <div class="rounded-lg border border-border bg-card overflow-hidden maturity-sheet">
+      <div class="px-4 py-3 border-b border-border bg-muted/30">
+        <h2 class="text-lg font-semibold text-foreground">{{ group.name }}</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border text-left">
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Capability</th>
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Current</th>
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Target</th>
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Gap</th>
+              <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Assessed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cap in group.capabilities %}
+            <tr class="border-b border-border last:border-0 {% if not cap.assessed %}bg-muted/10{% endif %}">
+              <th scope="row" class="px-4 py-2 text-left font-medium text-foreground">
+                <a class="hover:text-primary" href="{{ url_for('maturity_management.edit_capability_maturity', capability_id=cap.id) }}">{{ cap.name }}</a>
+              </th>
+              <td class="px-4 py-2 maturity-cell">{{ level_cell(cap.current, cap.assessed) }}</td>
+              <td class="px-4 py-2 maturity-cell">{{ level_cell(cap.target, cap.assessed) }}</td>
+              <td class="px-4 py-2 font-medium {% if cap.gap is none %}text-muted-foreground{% elif cap.gap > 0 %}text-destructive-emphasis{% else %}text-success-emphasis{% endif %}">
+                {% if cap.gap is none %}—{% else %}{{ '+' if cap.gap > 0 }}{{ cap.gap }}{% endif %}
+              </td>
+              <td class="px-4 py-2 text-muted-foreground">
+                {% if cap.assessed_on %}{{ cap.assessed_on.strftime('%d %b %Y') }}{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+  {% elif not load_error %}
+    {% from 'components/empty_state.html' import empty_state %}
+    {{ empty_state(
+        icon='grid-3x3',
+        title='No capabilities yet',
+        description='Once business capabilities exist, their maturity assessments appear here.',
+        cta_label='Capability map',
+        cta_href=url_for('capability_map.index')
+    ) }}
+  {% endif %}
+
+</div>
+{% endblock %}

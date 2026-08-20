@@ -26,7 +26,11 @@
                    class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
                     ← Back to Dashboard
                 </a>
-                <a href="{{ url_for('maturity_management.batch_update_maturity') }}" 
+                <a href="{{ url_for('maturity_management.maturity_heatmap') }}"
+                   class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                    Heatmap
+                </a>
+                <a href="{{ url_for('maturity_management.batch_update_maturity') }}"
                    class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">
                     Batch Update
                 </a>
