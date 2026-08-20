@@ -396,11 +396,29 @@ _MY_WORK_LINKS = {
         _link("Investment Analysis", "architecture.investment_priorities", "target"),
     ],
     ROLE_BUSINESS_ARCHITECT: [
+        # BA-A1/A2. This persona had 4 links against a budget of 27 while
+        # enterprise_architect had 13, so most of what a business architect
+        # needs existed and was reachable only by typing a URL. An evaluating
+        # architect concluded outright that capability maturity, gap analysis
+        # and strategy-to-execution were not built. They are; 350 routes serve
+        # them. Nothing below is a new page — every endpoint already ships and
+        # is already in another persona's zones.
         _link("Capability Map", "capability_map.index", "map"),
+        # Points at the heatmap, NOT frameworks_overview. That was the only
+        # maturity link this persona had, it is labelled "Frameworks" rather
+        # than "Maturity", and it lands on the one maturity page that renders
+        # near-empty (the framework taxonomy does not match the categories the
+        # data actually carries — BA-12). Clicking the single maturity link and
+        # finding nothing is precisely why maturity was reported as missing.
+        _link("Capability Maturity", "maturity_management.maturity_heatmap", "thermometer"),
         _link("Value Streams", "value_stream.index", "waypoints"),
-        # S-11 remainder: directory-only, never in a sidebar zone.
         _link("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
-        _link("Capability Frameworks", "maturity_management.frameworks_overview", "layers"),
+        _link("Gap Analysis", "enterprise.gap_analysis", "search-x"),
+        _link("Roadmaps", "main.capability_roadmap", "milestone"),
+        _link("Work Packages", "enterprise.work_packages", "package"),
+        _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
+        _link("Capability Health", "strategic.capability_health", "activity"),
+        _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
     ],
     ROLE_PORTFOLIO_MANAGER: [
         # S-11 / ARCH-122: /portfolio/ is a complete programme-management
