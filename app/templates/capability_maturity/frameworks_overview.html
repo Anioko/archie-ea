@@ -61,8 +61,11 @@
                         <p class="text-xs text-muted-foreground">Capabilities</p>
                     </div>
                     <div>
-                        <p class="text-2xl font-bold {{ colors.icon_text }}">{{ "%.1f"|format(stats[4] or 0) }}</p>
-                        <p class="text-xs text-muted-foreground">Avg Current</p>
+                        {# AVG() over unassessed capabilities is NULL. "or 0" printed that
+                           as 0.0 — not a valid level on a 1-5 scale, and indistinguishable
+                           from a measured score. Unassessed reads as an em dash. #}
+                        <p class="text-2xl font-bold {{ colors.icon_text }}">{{ "%.1f"|format(stats[4]) if stats[4] is not none else "—" }}</p>
+                        <p class="text-xs text-muted-foreground">{{ "Avg Current" if stats[4] is not none else "Not assessed" }}</p>
                     </div>
                 </div>
 
@@ -130,12 +133,12 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-foreground">{{ stats[2] }}</td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                                    {{ "%.1f"|format(stats[4] or 0) }}
+                                    {{ "%.1f"|format(stats[4]) if stats[4] is not none else "—" }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
-                                    {{ "%.1f"|format(stats[5] or 0) }}
+                                    {{ "%.1f"|format(stats[5]) if stats[5] is not none else "—" }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
@@ -146,7 +149,7 @@
                                                  style="width: {{ ((stats[4] or 0) / 5 * 100)|round }}%"></div>
                                         </div>
                                     </div>
-                                    <span class="text-xs text-muted-foreground">{{ ((stats[4] or 0) / 5 * 100)|round }}%</span>
+                                    <span class="text-xs text-muted-foreground">{{ ((stats[4] / 5 * 100)|round ~ "%") if stats[4] is not none else "—" }}</span>
                                 </div>
                             </td>
                         </tr>

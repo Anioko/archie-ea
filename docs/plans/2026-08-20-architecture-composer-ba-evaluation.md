@@ -67,6 +67,18 @@ date. Backfill is **BA-11** and should run before anyone demos a maturity number
 `FrameworkClassifier` expects (`Accounting`, `Treasury Management`, ...). So the
 framework rollups have nothing to group by. Logged as **BA-12**.
 
+### Which organisation you demo matters — measured in production
+
+    org 1 : 191 capabilities, ALL of them capability *tiers*
+            (operational / tactical / supporting / strategic)
+    org 7 :  51 capabilities, ALL of them business *domains*
+            (Finance & Controlling, Sales & Channel Management, ...)
+
+Verified by logging into org 1 in production: the frameworks page renders exactly
+one card, "Maturity Classifications — 191 capabilities". The eight business
+domains BA-12 mapped live in **org 7**. Demo the org whose data matches the story
+you are telling; for a commercial-leadership conversation that is org 7.
+
 ### Demo guidance — production data, verified 20 Aug
 
 Prod holds: 5 orgs, 23 users, **270 capabilities** (242 categorised), 603 ArchiMate
