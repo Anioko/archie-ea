@@ -804,6 +804,252 @@ def maturity_heatmap():
     )
 
 
+
+# -- Capability Line of Sight -------------------------------------------------
+#
+# The one screen that answers a leader's three questions about a single
+# capability, in order: how good are we, who owns it, what are we doing about it.
+#
+# Everything below is read from what is already modelled. Nothing is inferred:
+# where the estate has no answer, the view says so in a sentence rather than
+# rendering a zero or a blank, because "0 initiatives" and "we never linked any"
+# are different facts and a leadership review must be able to tell them apart.
+#
+# Linkage notes (what is genuinely modelled today):
+#   * Ownership is BusinessCapability.business_owner / it_owner -- free-text
+#     names on the capability itself. There is no capability-to-User FK.
+#   * There is no WorkPackage -> BusinessCapability foreign key. Work packages
+#     reach a capability two ways, both used here:
+#       (a) an ArchiMateRelationship between the capability's element and the
+#           work package's element -- the ArchiMate backbone, either direction;
+#       (b) WorkPackage.capability_id -> UnifiedCapability sharing the same
+#           archimate_element_id as this capability.
+#   * Goals and Drivers are likewise reached through the ArchiMate relationship
+#     graph. Neither model carries organization_id, so the traversal is scoped
+#     by starting from ArchiMateElement/ArchiMateRelationship, which are
+#     TenantMixin models and therefore filtered by do_orm_execute.
+
+_LOS_LIMIT = 25
+
+
+def _los_related_element_ids(element_id):
+    """Element ids one ArchiMate relationship away from *element_id*, either way.
+
+    ArchiMateRelationship is tenant-scoped, so this traversal cannot cross an
+    organization boundary.
+    """
+    from app.models.models import ArchiMateRelationship
+
+    if not element_id:
+        return []
+
+    rels = ArchiMateRelationship.query.filter(
+        db.or_(
+            ArchiMateRelationship.source_id == element_id,
+            ArchiMateRelationship.target_id == element_id,
+        )
+    ).all()
+
+    ids = set()
+    for rel in rels:
+        if rel.source_id and rel.source_id != element_id:
+            ids.add(rel.source_id)
+        if rel.target_id and rel.target_id != element_id:
+            ids.add(rel.target_id)
+    return sorted(ids)
+
+
+@maturity_management.route("/capability-maturity/<int:capability_id>/line-of-sight")
+@login_required
+def capability_line_of_sight(capability_id):
+    """Line of sight for one capability: maturity, ownership, and what is being done.
+
+    Tenant scoping is the ORM's (ADR 0003): every model read here is either a
+    TenantMixin model -- BusinessCapability, WorkPackage, ArchiMateRelationship,
+    ApplicationComponent, SavedDiagram -- or is reached only through one. The
+    single exception is ApplicationCapabilityMapping, which carries
+    organization_id but does NOT inherit TenantMixin, so it is filtered by hand.
+    """
+    from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import SavedDiagram, SavedDiagramElement
+    from app.models.capability_models import BusinessCapability
+    from app.models.implementation_migration import WorkPackage
+    from app.models.motivation import Driver, Goal
+    from app.models.unified_capability import UnifiedCapability
+
+    capability = BusinessCapability.query.filter_by(id=capability_id).first()
+    if capability is None:
+        # A capability belonging to another organization is filtered out by the
+        # tenant predicate and is indistinguishable from one that never existed --
+        # which is the correct answer to give either way.
+        flash("That capability could not be found.", "error")
+        return redirect(url_for("maturity_management.maturity_heatmap"))
+
+    # -- 1. How good are we? ----------------------------------------------
+    # maturity_assessment_date is the ONLY proof an assessment happened.
+    assessed = capability.maturity_assessment_date is not None
+    current = capability.current_maturity_level if assessed else None
+    target = capability.target_maturity_level if assessed else None
+    gap = (target - current) if (current is not None and target is not None) else None
+
+    maturity = {
+        "assessed": assessed,
+        "current": current,
+        "target": target,
+        "gap": gap,
+        "assessed_on": capability.maturity_assessment_date,
+        "notes": (capability.maturity_assessment_notes or "").strip() or None,
+        "current_label": dict(MATURITY_SCALE).get(current),
+        "target_label": dict(MATURITY_SCALE).get(target),
+    }
+
+    # -- 2. Who owns it? --------------------------------------------------
+    ownership = {
+        "business_owner": (capability.business_owner or "").strip() or None,
+        "it_owner": (capability.it_owner or "").strip() or None,
+        "governance_model": (capability.governance_model or "").strip() or None,
+    }
+    ownership["has_owner"] = bool(ownership["business_owner"] or ownership["it_owner"])
+
+    element_id = capability.archimate_element_id
+    related_ids = _los_related_element_ids(element_id)
+
+    # -- 3. What are we doing about it? -----------------------------------
+    work_packages = []
+    seen_wp = set()
+
+    def _add_work_packages(rows):
+        for wp in rows:
+            if wp.id in seen_wp:
+                continue
+            seen_wp.add(wp.id)
+            work_packages.append(
+                {
+                    "id": wp.id,
+                    "name": wp.name,
+                    "status": (wp.status or "").replace("_", " ").strip() or None,
+                    "priority": (wp.priority or "").strip() or None,
+                    "start_date": wp.start_date,
+                    "target_date": wp.target_date,
+                    # 0% complete on a planned package is a real measurement;
+                    # a NULL is "nobody has reported progress". Keep them apart.
+                    "percent_complete": wp.percent_complete,
+                }
+            )
+
+    if related_ids:
+        _add_work_packages(
+            WorkPackage.query.filter(WorkPackage.archimate_element_id.in_(related_ids))
+            .order_by(WorkPackage.name)
+            .limit(_LOS_LIMIT)
+            .all()
+        )
+
+    if element_id:
+        unified_ids = [
+            row.id
+            for row in UnifiedCapability.query.filter_by(
+                archimate_element_id=element_id
+            ).all()
+        ]
+        if unified_ids:
+            _add_work_packages(
+                WorkPackage.query.filter(WorkPackage.capability_id.in_(unified_ids))
+                .order_by(WorkPackage.name)
+                .limit(_LOS_LIMIT)
+                .all()
+            )
+
+    # -- Supporting evidence: applications --------------------------------
+    # ApplicationCapabilityMapping carries organization_id but is NOT a
+    # TenantMixin model, so do_orm_execute does not filter it. The predicate
+    # below is the isolation for this query.
+    applications = []
+    org_id = getattr(g, "current_org_id", None)
+    mapping_q = ApplicationCapabilityMapping.query.filter(
+        ApplicationCapabilityMapping.business_capability_id == capability.id
+    )
+    if org_id is not None:
+        mapping_q = mapping_q.filter(
+            ApplicationCapabilityMapping.organization_id == org_id
+        )
+    mappings = mapping_q.limit(_LOS_LIMIT).all()
+    if mappings:
+        # ApplicationComponent IS tenant-scoped, so this second query is
+        # filtered by the ORM and cannot resurrect a foreign application.
+        components = {
+            comp.id: comp
+            for comp in ApplicationComponent.query.filter(
+                ApplicationComponent.id.in_([m.application_component_id for m in mappings])
+            ).all()
+        }
+        for mapping in mappings:
+            comp = components.get(mapping.application_component_id)
+            if comp is None:
+                continue
+            applications.append(
+                {
+                    "id": comp.id,
+                    "name": comp.name,
+                    "lifecycle_status": (comp.lifecycle_status or "").strip() or None,
+                    "criticality": (comp.business_criticality or "").strip() or None,
+                    "support_level": (mapping.support_level or "").strip() or None,
+                    "coverage": mapping.coverage_percentage,
+                }
+            )
+        applications.sort(key=lambda a: (a["name"] or "").lower())
+
+    # -- Supporting evidence: strategy this capability serves --------------
+    goals = []
+    drivers = []
+    if related_ids:
+        goals = [
+            {"id": row.id, "name": row.name}
+            for row in Goal.query.filter(Goal.archimate_element_id.in_(related_ids))
+            .order_by(Goal.name)
+            .limit(_LOS_LIMIT)
+            .all()
+        ]
+        drivers = [
+            {"id": row.id, "name": row.name}
+            for row in Driver.query.filter(Driver.archimate_element_id.in_(related_ids))
+            .order_by(Driver.name)
+            .limit(_LOS_LIMIT)
+            .all()
+        ]
+
+    # -- Supporting evidence: diagrams it appears on -----------------------
+    diagrams = []
+    if element_id:
+        diagram_ids = [
+            row.diagram_id
+            for row in SavedDiagramElement.query.filter_by(element_id=element_id).all()
+        ]
+        if diagram_ids:
+            diagrams = [
+                {"id": row.id, "name": row.name, "viewpoint": row.viewpoint_type}
+                for row in SavedDiagram.query.filter(SavedDiagram.id.in_(diagram_ids))
+                .order_by(SavedDiagram.name)
+                .limit(_LOS_LIMIT)
+                .all()
+            ]
+
+    return render_template(
+        "capability_maturity/line_of_sight.html",
+        capability=capability,
+        maturity=maturity,
+        ownership=ownership,
+        work_packages=work_packages,
+        applications=applications,
+        goals=goals,
+        drivers=drivers,
+        diagrams=diagrams,
+        scale=MATURITY_SCALE,
+        is_modelled=element_id is not None,
+    )
+
+
 # ── Capability Maturity CSV Import ────────────────────────────────────────────
 
 @maturity_management.route("/capability-maturity/import-csv", methods=["POST"])

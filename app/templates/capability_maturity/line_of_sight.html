@@ -1,0 +1,352 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}{{ capability.name }} — Line of Sight{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Maturity Heatmap', 'href': url_for('maturity_management.maturity_heatmap')},
+    {'text': 'Line of Sight', 'current': true}
+]) }}
+{% endblock %}
+
+{#
+  Line of sight for one capability.
+
+  Order is the argument: how good are we, who owns it, what are we doing about
+  it — the three questions a leader actually asks — then the evidence underneath.
+
+  Absence is rendered as a sentence, never as 0 or a blank cell. "No initiative
+  is currently improving this capability" is a finding a steering group can act
+  on; an empty table is not. Colour is carried by literal classes so the
+  committed tailwind-output.css contains them.
+#}
+
+{% macro level_classes(level) -%}
+{%- if level == 1 -%}bg-destructive/10 text-destructive-emphasis border-destructive/30
+{%- elif level == 2 -%}bg-warning/15 text-warning-emphasis border-warning/30
+{%- elif level == 3 -%}bg-info/10 text-info-emphasis border-info/30
+{%- elif level == 4 -%}bg-success/15 text-success-emphasis border-success/30
+{%- elif level == 5 -%}bg-success/40 text-success-emphasis border-success/50
+{%- else -%}bg-muted/30 text-muted-foreground border-dashed border-muted-foreground/30
+{%- endif -%}
+{%- endmacro %}
+
+{% macro level_block(level, label, caption) -%}
+<div class="flex flex-col gap-1">
+  <span class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{{ caption }}</span>
+  <div class="flex items-center gap-3">
+    <span class="inline-flex h-12 w-12 items-center justify-center rounded-lg border text-xl font-bold {{ level_classes(level) }}">
+      {% if level is not none %}{{ level }}{% else %}—{% endif %}
+    </span>
+    <span class="text-sm font-medium text-foreground">{{ label or '—' }}</span>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro not_known(text) -%}
+<div class="rounded-lg border border-dashed border-muted-foreground/40 bg-muted/20 p-4">
+  <p class="text-sm font-medium text-foreground">{{ text }}</p>
+</div>
+{%- endmacro %}
+
+{% macro pill(text) -%}
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">{{ text }}</span>
+{%- endmacro %}
+
+{% block content %}
+{% from 'components/page_header.html' import page_header %}
+<div class="p-6 space-y-6">
+
+  {{ page_header(
+      title=capability.name,
+      description='One capability, three answers: how good are we, who owns it, and what is being done about it.',
+      actions=[
+          {'text': 'Back to heatmap', 'href': url_for('maturity_management.maturity_heatmap'), 'variant': 'outline'},
+          {'text': 'Edit assessment', 'href': url_for('maturity_management.edit_capability_maturity', capability_id=capability.id), 'variant': 'default'}
+      ]
+  ) }}
+
+  {# Identity strip — what this capability is, before any judgement about it. #}
+  <div class="rounded-lg border border-border bg-card p-4 flex flex-wrap items-center gap-2">
+    {% if capability.code %}{{ pill(capability.code) }}{% endif %}
+    {{ pill('Category: ' ~ (capability.category or '—')) }}
+    {{ pill('Domain: ' ~ (capability.business_domain or '—')) }}
+    {{ pill('Strategic importance: ' ~ (capability.strategic_importance or '—')) }}
+    {% if not is_modelled %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
+      Not linked to an ArchiMate element
+    </span>
+    {% endif %}
+  </div>
+
+  {# ── The three questions, above the fold ─────────────────────────────── #}
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+
+    {# 1. How good are we? #}
+    <section class="rounded-lg border border-border bg-card flex flex-col">
+      <div class="px-5 py-4 border-b border-border">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Question 1</p>
+        <h2 class="text-lg font-semibold text-foreground">How good are we?</h2>
+      </div>
+      <div class="p-5 space-y-4 flex-1">
+        {% if maturity.assessed %}
+          <div class="flex items-center gap-4 flex-wrap">
+            {{ level_block(maturity.current, maturity.current_label, 'Current') }}
+            <i data-lucide="arrow-right" class="h-5 w-5 text-muted-foreground shrink-0"></i>
+            {{ level_block(maturity.target, maturity.target_label, 'Target') }}
+          </div>
+
+          {# The 1–5 scale, with current and target marked, so the gap is spatial. #}
+          <div class="flex gap-1">
+            {% for lvl, lbl in scale %}
+            <div class="flex-1">
+              <div class="h-2 rounded-sm border {{ level_classes(lvl if (maturity.current is not none and lvl <= maturity.current) else None) }}"></div>
+              <p class="mt-1 text-center text-xs {% if maturity.target == lvl %}font-semibold text-foreground{% else %}text-muted-foreground{% endif %}">
+                {{ lvl }}{% if maturity.target == lvl %} ◆{% endif %}
+              </p>
+            </div>
+            {% endfor %}
+          </div>
+
+          <div class="rounded-lg border border-border bg-muted/30 p-3">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gap to target</p>
+            <p class="text-2xl font-bold {% if maturity.gap is none %}text-muted-foreground{% elif maturity.gap > 0 %}text-destructive-emphasis{% else %}text-success-emphasis{% endif %}">
+              {% if maturity.gap is none %}—{% else %}{{ '+' if maturity.gap > 0 }}{{ maturity.gap }}{% endif %}
+            </p>
+            <p class="text-xs text-muted-foreground">
+              {% if maturity.gap is none %}
+                Only one end of the scale was recorded, so the gap cannot be computed.
+              {% elif maturity.gap > 0 %}
+                {{ maturity.gap }} level{{ 's' if maturity.gap > 1 }} below where this capability needs to be.
+              {% elif maturity.gap == 0 %}
+                At target.
+              {% else %}
+                Above the recorded target.
+              {% endif %}
+            </p>
+          </div>
+
+          <p class="text-sm text-muted-foreground">
+            Assessed {{ maturity.assessed_on.strftime('%d %b %Y') }}.
+          </p>
+          {% if maturity.notes %}
+          <p class="text-sm text-foreground border-l-2 border-border pl-3">{{ maturity.notes }}</p>
+          {% endif %}
+        {% else %}
+          {{ not_known('This capability has never been assessed.') }}
+          <p class="text-sm text-muted-foreground">
+            No assessment date is recorded, so no maturity level is shown — not even a provisional one.
+            An unassessed capability is not a Level 1 capability, and this page will not imply that it is.
+          </p>
+          <a class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2"
+             href="{{ url_for('maturity_management.edit_capability_maturity', capability_id=capability.id) }}">
+            Record an assessment
+          </a>
+        {% endif %}
+      </div>
+    </section>
+
+    {# 2. Who owns it? #}
+    <section class="rounded-lg border border-border bg-card flex flex-col">
+      <div class="px-5 py-4 border-b border-border">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Question 2</p>
+        <h2 class="text-lg font-semibold text-foreground">Who owns it?</h2>
+      </div>
+      <div class="p-5 space-y-4 flex-1">
+        {% if ownership.has_owner %}
+          <div class="space-y-3">
+            <div class="flex items-start gap-3">
+              <i data-lucide="user" class="h-5 w-5 text-muted-foreground mt-0.5 shrink-0"></i>
+              <div>
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Business owner</p>
+                <p class="text-base font-semibold text-foreground">{{ ownership.business_owner or '—' }}</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <i data-lucide="server" class="h-5 w-5 text-muted-foreground mt-0.5 shrink-0"></i>
+              <div>
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">IT owner</p>
+                <p class="text-base font-semibold text-foreground">{{ ownership.it_owner or '—' }}</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <i data-lucide="scale" class="h-5 w-5 text-muted-foreground mt-0.5 shrink-0"></i>
+              <div>
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Governance model</p>
+                <p class="text-base font-semibold text-foreground">{{ ownership.governance_model or '—' }}</p>
+              </div>
+            </div>
+          </div>
+          {% if not ownership.business_owner %}
+          <p class="text-sm text-muted-foreground">No business owner is recorded — only an IT owner.</p>
+          {% elif not ownership.it_owner %}
+          <p class="text-sm text-muted-foreground">No IT owner is recorded — only a business owner.</p>
+          {% endif %}
+        {% else %}
+          {{ not_known('No owner recorded.') }}
+          <p class="text-sm text-muted-foreground">
+            Neither a business owner nor an IT owner has been recorded against this capability.
+            Nobody is accountable for closing its gap.
+          </p>
+        {% endif %}
+      </div>
+    </section>
+
+    {# 3. What are we doing about it? #}
+    <section class="rounded-lg border border-border bg-card flex flex-col">
+      <div class="px-5 py-4 border-b border-border">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Question 3</p>
+        <h2 class="text-lg font-semibold text-foreground">What are we doing about it?</h2>
+      </div>
+      <div class="p-5 space-y-3 flex-1">
+        {% if work_packages %}
+          <p class="text-sm text-muted-foreground">
+            {{ work_packages|length }} initiative{{ 's' if work_packages|length != 1 }} linked to this capability.
+          </p>
+          <ul class="space-y-2">
+            {% for wp in work_packages %}
+            <li class="rounded-lg border border-border p-3">
+              <p class="text-sm font-medium text-foreground">{{ wp.name }}</p>
+              <div class="mt-1.5 flex flex-wrap items-center gap-2">
+                {{ pill(wp.status|title if wp.status else 'Status —') }}
+                {{ pill(wp.priority|title if wp.priority else 'Priority —') }}
+                <span class="text-xs text-muted-foreground">
+                  {% if wp.target_date %}Due {{ wp.target_date.strftime('%d %b %Y') }}{% else %}Due —{% endif %}
+                </span>
+                <span class="text-xs text-muted-foreground">
+                  {% if wp.percent_complete is not none %}{{ wp.percent_complete }}% complete{% else %}Progress —{% endif %}
+                </span>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          {{ not_known('No initiative is currently improving this capability.') }}
+          <p class="text-sm text-muted-foreground">
+            {% if is_modelled %}
+              No work package is linked to this capability, either directly or through the
+              ArchiMate model. If work is under way, it has not been modelled.
+            {% else %}
+              This capability is not linked to an ArchiMate element, so no work package can be
+              traced to it. Link it to an element before the roadmap can reach it.
+            {% endif %}
+          </p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  {# ── The evidence underneath ─────────────────────────────────────────── #}
+  <div class="pt-2">
+    <h2 class="text-lg font-semibold text-foreground">Supporting evidence</h2>
+    <p class="text-sm text-muted-foreground">What the model already records about this capability.</p>
+  </div>
+
+  {# Applications — a table, because there can be many and the columns matter. #}
+  <section class="rounded-lg border border-border bg-card overflow-hidden">
+    <div class="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+      <i data-lucide="layers" class="h-4 w-4 text-muted-foreground"></i>
+      <h3 class="text-base font-semibold text-foreground">Applications supporting it</h3>
+    </div>
+    {% if applications %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border text-left">
+            <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Application</th>
+            <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Support level</th>
+            <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Coverage</th>
+            <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Lifecycle</th>
+            <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Criticality</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for app_row in applications %}
+          <tr class="border-b border-border last:border-0">
+            <th scope="row" class="px-4 py-2 text-left font-medium text-foreground">{{ app_row.name }}</th>
+            <td class="px-4 py-2 text-muted-foreground">{{ app_row.support_level|title if app_row.support_level else '—' }}</td>
+            <td class="px-4 py-2 text-muted-foreground">{% if app_row.coverage is not none %}{{ app_row.coverage }}%{% else %}—{% endif %}</td>
+            <td class="px-4 py-2 text-muted-foreground">{{ app_row.lifecycle_status|title if app_row.lifecycle_status else '—' }}</td>
+            <td class="px-4 py-2 text-muted-foreground">{{ app_row.criticality|title if app_row.criticality else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-5">
+      {{ not_known('No application is mapped to this capability.') }}
+      <p class="mt-3 text-sm text-muted-foreground">
+        Nothing in the application portfolio has been recorded as supporting it. That may mean the
+        capability is delivered by people and process, or that the mapping has not been done.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  {# Strategy and views — three equal columns, each always rendered. #}
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+
+    <section class="rounded-lg border border-border bg-card flex flex-col">
+      <div class="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <i data-lucide="target" class="h-4 w-4 text-muted-foreground"></i>
+        <h3 class="text-base font-semibold text-foreground">Goals it serves</h3>
+      </div>
+      <div class="p-4 flex-1">
+        {% if goals %}
+        <ul class="space-y-2">
+          {% for goal in goals %}
+          <li class="text-sm text-foreground border-l-2 border-border pl-3">{{ goal.name }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No goal is linked to this capability, so it cannot be traced to a stated intent.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="rounded-lg border border-border bg-card flex flex-col">
+      <div class="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <i data-lucide="compass" class="h-4 w-4 text-muted-foreground"></i>
+        <h3 class="text-base font-semibold text-foreground">Drivers behind it</h3>
+      </div>
+      <div class="p-4 flex-1">
+        {% if drivers %}
+        <ul class="space-y-2">
+          {% for driver in drivers %}
+          <li class="text-sm text-foreground border-l-2 border-border pl-3">{{ driver.name }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No driver is linked to this capability, so nothing records why it matters.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="rounded-lg border border-border bg-card flex flex-col">
+      <div class="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <i data-lucide="git-branch" class="h-4 w-4 text-muted-foreground"></i>
+        <h3 class="text-base font-semibold text-foreground">Diagrams it appears on</h3>
+      </div>
+      <div class="p-4 flex-1">
+        {% if diagrams %}
+        <ul class="space-y-2">
+          {% for diagram in diagrams %}
+          <li class="text-sm text-foreground border-l-2 border-border pl-3">
+            {{ diagram.name }}
+            <span class="text-muted-foreground">— {{ diagram.viewpoint or '—' }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-muted-foreground">This capability does not appear on any saved diagram.</p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+</div>
+{% endblock %}

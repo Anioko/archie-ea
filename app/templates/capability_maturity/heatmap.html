@@ -142,7 +142,10 @@
             {% for cap in group.capabilities %}
             <tr class="border-b border-border last:border-0 {% if not cap.assessed %}bg-muted/10{% endif %}">
               <th scope="row" class="px-4 py-2 text-left font-medium text-foreground">
-                <a class="hover:text-primary" href="{{ url_for('maturity_management.edit_capability_maturity', capability_id=cap.id) }}">{{ cap.name }}</a>
+                {# The row's name opens the line-of-sight view — maturity, owner and
+                   the initiatives acting on it — rather than the edit form. Editing
+                   stays reachable from there and from the header action above. #}
+                <a class="hover:text-primary" href="{{ url_for('maturity_management.capability_line_of_sight', capability_id=cap.id) }}">{{ cap.name }}</a>
               </th>
               <td class="px-4 py-2 maturity-cell">{{ level_cell(cap.current, cap.assessed) }}</td>
               <td class="px-4 py-2 maturity-cell">{{ level_cell(cap.target, cap.assessed) }}</td>
