@@ -183,6 +183,21 @@ solutions.
 
 ---
 
+## Wave BA — Business Architecture for leadership (Iain / September deadline)
+
+Tracked in full in `2026-08-20-architecture-composer-ba-evaluation.md`.
+Hands-on evaluation of Architecture Composer, 20 Aug 2026. Deadline: the
+September leadership meeting with Andy.
+
+Critical path **BA-01 -> BA-02 -> BA-03 -> BA-04**. Two findings change the size
+of the job: the capability maturity 1-5 scale (current, target, computed gap)
+**already exists** at `business_capabilities.py:60-63` and merely is not
+surfaced or populated, and `WorkPackage` already exists in the model. BA-01 is a
+**P0 data-loss bug** - autosave fails after retry exhaustion on freshly
+generated diagrams (`composer_persistence.js:255`).
+
+BA-05, BA-08, BA-09 and BA-10 are owner/product decisions, not engineering ones.
+
 ## Housekeeping
 
 | ID | Task | Audit ref | Status |
