@@ -1,5 +1,6 @@
 {% extends "layouts/admin_base.html" %}
 {% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
 
 {% block title %}Frameworks Overview{% endblock %}
 
@@ -34,12 +35,33 @@
         ]
     ) }}
 
-    <!-- Framework Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {% for framework_key, framework_data in all_frameworks.items() %}
-        {% set stats = framework_stats[framework_key] %}
-        {% set colors = color_map.get(framework_data.color, color_map['blue']) %}
+    {# Partition BEFORE laying out. Filtering inside the loop left the grid at
+       lg:grid-cols-4 regardless of how many cards survived, so a single
+       populated framework rendered as one quarter-width card marooned in three
+       columns of white space — the page looked broken rather than sparse. #}
+    {% set populated = [] %}
+    {% set unpopulated = [] %}
+    {% for framework_key, framework_data in all_frameworks.items() %}
+        {% set stats = framework_stats.get(framework_key) %}
         {% if stats and stats[0] > 0 %}
+            {% set _ = populated.append((framework_key, framework_data, stats)) %}
+        {% else %}
+            {% set _ = unpopulated.append((framework_key, framework_data)) %}
+        {% endif %}
+    {% endfor %}
+    {# Literal class strings, never 'lg:grid-cols-' ~ n. tailwind-output.css is
+       committed pre-built, so a class assembled at render time is not in the
+       stylesheet and silently does nothing — the same trap the color_map above
+       exists to avoid. #}
+    {% set _cols_map = {1: 'lg:grid-cols-1', 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3'} %}
+    {% set cols = _cols_map.get(populated|length, 'lg:grid-cols-4') %}
+
+    {% if populated %}
+    <!-- Framework Grid — column count follows the number of populated frameworks -->
+    <div class="grid grid-cols-1 md:grid-cols-2 {{ cols }} gap-6 mb-8">
+        {% for framework_key, framework_data, stats in populated %}
+        {% set colors = color_map.get(framework_data.color, color_map['blue']) %}
+        {% if True %}
         <a href="{{ url_for('maturity_management.framework_dashboard', framework_key=framework_key) }}"
            class="block bg-card rounded-lg shadow hover:shadow-lg transition-shadow duration-200 border border-border">
             <div class="p-6">
@@ -91,6 +113,35 @@
         {% endif %}
         {% endfor %}
     </div>
+    {% else %}
+    <div class="mb-8">
+        {{ empty_state(
+            icon='layers',
+            title='No capabilities are mapped to a framework yet',
+            description='Frameworks group capabilities by business domain. Once capabilities carry a category, they appear here with their maturity coverage.'
+        ) }}
+    </div>
+    {% endif %}
+
+    {# Frameworks with nothing mapped are listed rather than hidden. Hiding them
+       made "this framework has no capabilities" indistinguishable from "this
+       framework does not exist", which is the question a business architect
+       defining their framework is actually asking. #}
+    {% if unpopulated %}
+    <div class="bg-card rounded-lg border border-border p-4 mb-8">
+        <p class="text-sm font-medium text-foreground mb-1">Not yet mapped</p>
+        <p class="text-xs text-muted-foreground mb-3">
+            These frameworks exist but no capability currently carries a category in them.
+        </p>
+        <div class="flex flex-wrap gap-2">
+            {% for framework_key, framework_data in unpopulated %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-muted text-muted-foreground">
+                {{ framework_data.name }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Framework Comparison -->
     <div class="bg-card rounded-lg shadow border border-border">
