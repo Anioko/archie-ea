@@ -60,7 +60,7 @@ rebuild has to run *after* the W0-6 template edits or it goes stale again.
 | ID | Task | Audit ref | Status |
 |---|---|---|---|
 | W1-1 | Enumerate all 25 defined-but-unregistered blueprints with exact file paths | FC-01 | **DONE** — see findings below. Audit's 25 = definition *sites*; **23 distinct blueprints**. |
-| W1-2 | Register `gdpr_bp` after a security review of its routes — GDPR export/erasure is written, secured, has a model and a table, and is unreachable | FC-01 | **DONE** `de44242` — registered; review found **two real defects, both fixed** (see below). |
+| W1-2 | Register `gdpr_bp` after a security review of its routes — GDPR export/erasure is written, secured, has a model and a table, and is unreachable | FC-01 | **DONE** `de44242` — registered; review found **two real defects, both fixed** (see below). **Deployed `91ebaaf0`** — verified live: `/api/gdpr/export/1` → 401 (registered + guarded) vs a control path → 404. |
 | W1-3 | Add an authz test proving the GDPR export + erasure endpoints resolve and enforce self-or-admin | FC-01 | **DONE** `de44242` — `tests/test_gdpr_authz.py`, 11 tests, all passing. |
 | W1-4 | **Delete** the remaining 20 (not 24 — see W1-1 findings; 3 are registered via non-symbolic paths and 1 is live under another parent). Priority: `signup_routes.py` (unauthenticated `invite_member` taking `org_id` from the URL and `inviter_id` from the body — org-boundary privilege escalation in six lines) and `analytics_routes.py` (unauthenticated admin dashboard, event endpoint accepting an arbitrary `user_id`) | SEC-02 | TODO |
 | W1-5 | Land a `verify.py` gate: **blueprints defined == blueprints registered**, ratcheted at 0, so the class cannot return | audit ethic | TODO |
