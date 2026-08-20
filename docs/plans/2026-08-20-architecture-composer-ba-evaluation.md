@@ -8,6 +8,73 @@ commercial leadership team**.
 
 **Verdict: strong ArchiMate modelling engine, not yet a leadership-facing product.**
 
+> **MEETING WITH IAIN IS TOMORROW (21 Aug 2026), not September.** September is
+> the leadership meeting with Andy. Status as of tonight is in "What is fixed
+> tonight" below — read that before the register.
+
+## What is fixed tonight, and what to say
+
+**BA-01 autosave data loss — FIXED (`a2783a5`), deployed.** Reproduced against a
+real database first. Two canvas cells referencing one element produced a
+duplicate `element_id`, violating `uq_diagram_element`; an unhandled
+`IntegrityError` became a 500; the client retried the identical payload forever,
+so work was never saved while the UI said "retrying". The demo is safe now.
+
+**BA-02 — the maturity feature is NOT missing. It is a whole registered module.**
+This is the biggest correction to the evaluation. Live in production right now
+(302 = exists and requires login; a control path returns 404):
+
+| URL | What it does |
+|---|---|
+| `/capability-maturity/frameworks` | framework overview with counts, avg current/target, progress |
+| `/capability-maturity/search` | find capabilities to assess |
+| `/capability-maturity/edit/<id>` | set current and target maturity on one capability |
+| `/capability-maturity/batch-update` | assess many at once |
+| `/capability-maturity/framework/<key>` | per-framework dashboard |
+| `/capability-maturity/import-csv` | bulk import an assessment |
+
+The evaluation looked inside **Architecture Composer**, where maturity genuinely
+is not surfaced. The module lives elsewhere in the app and was never reached.
+
+**Why it looked dead:** `frameworks_overview()` had its statistics query gutted —
+it built a parameter placeholder string and a params dict, discarded both, and
+left `framework_stats` empty. Every card is guarded by
+`{% if stats and stats[0] > 0 %}`, so the page rendered blank. Fixed in `7f4e8d3`.
+
+### The finding to take into the meeting
+
+Every capability was showing a maturity score nobody had ever set. Measured:
+
+```
+1508 of 1508 capabilities at current=1, target=3
+   0 of 1508 with maturity_assessment_date set
+   0 with maturity_gap populated
+```
+
+`current_maturity_level` defaulted to `1` and `target_maturity_level` to `3`, so
+an unassessed capability was indistinguishable from an assessed one. A maturity
+dashboard would have told leadership the entire estate sits at Level 1 against a
+target of 3 — a fabricated gap analysis with no way for the reader to tell.
+
+Defaults removed (`7f4e8d3`): unassessed now reads NULL and renders as an em dash.
+**This fixes new rows only — the 1508 existing rows still carry the defaulted
+1/3.** They are safely identifiable because all 1508 have a NULL assessment
+date. Backfill is **BA-11** and should run before anyone demos a maturity number.
+
+**Also blocking real framework dashboards:** every capability in the database has
+`category = NULL`, and new ones are created with `category = data.get("type",
+"operational")`, which does not match the APQC-style taxonomy
+`FrameworkClassifier` expects (`Accounting`, `Treasury Management`, ...). So the
+framework rollups have nothing to group by. Logged as **BA-12**.
+
+**Honest position for tomorrow:** the modelling engine and the maturity module
+are both real and better than the evaluation concluded. What is missing is
+populated data (BA-11, BA-12) and the leadership-facing presentation layer
+(BA-04 PDF, BA-05 sharing, BA-08 one-page view). Iain's own sequence — start
+with capability maps and maturity, let leadership define what is useful — still
+holds; the tooling underneath is further along than it looked.
+
+
 ## What genuinely works
 
 - A first-class **Capability Map starter template** already chaining
@@ -56,8 +123,8 @@ and the owner's to settle, not engineering's.
 
 | ID | Task | Kind | Status |
 |---|---|---|---|
-| BA-01 | **Autosave fails on a freshly generated diagram** — `composer_persistence.js:255` raises "Auto-save failed after multiple attempts" after retry exhaustion. Data loss on exactly the AI-generated diagrams this workflow depends on. Reproduce, find the failing write, fix. | **P0 bug** | TODO |
-| BA-02 | Surface `current_maturity_level` / `target_maturity_level` / `maturity_gap` on the capability element and make the existing "Maturity" view toggle render them (colour-coded heatmap). Columns already exist — this is presentation. | Engineering | TODO |
+| BA-01 | ✅ **FIXED `a2783a5`, deployed.** Autosave failed on a freshly generated diagram — `composer_persistence.js:255` raises "Auto-save failed after multiple attempts" after retry exhaustion. Data loss on exactly the AI-generated diagrams this workflow depends on. Reproduce, find the failing write, fix. | **P0 bug** | **DONE** |
+| BA-02 | ✅ **PARTLY DONE `7f4e8d3`** — the module already existed and is live; its gutted stats query is restored and the fabricated 1/3 defaults are removed. Remaining: surface maturity on the Composer capability element. Originally: surface `current_maturity_level` / `target_maturity_level` / `maturity_gap` on the capability element and make the existing "Maturity" view toggle render them (colour-coded heatmap). Columns already exist — this is presentation. | Engineering | TODO |
 | BA-03 | Teach the AI generator to populate the maturity columns when asked. Today it silently ignores an explicit maturity request, which reads as "the tool cannot do it". | Engineering | TODO |
 | BA-04 | **PDF export.** Toolbar offers PNG/SVG and a "Print Friendly" mode needing a manual browser print. A leadership artifact needs one button. | Engineering | TODO |
 | BA-05 | **A shareable read-only link.** Today the only "share" is submitting to the ARB — a governance workflow, not a way to circulate a view. Needs an authz decision on scope (org-only vs tokened link). | Engineering + **OWNER** on scope | TODO |
@@ -66,6 +133,8 @@ and the owner's to settle, not engineering's.
 | BA-08 | A one-page capability-to-strategy view and a curated "all Business Architecture" library view — today there is only a per-diagram canvas plus global element search. | **OWNER** (what leadership needs) | TODO |
 | BA-09 | KPI/metric dashboard concept — no dashboard or tile view exists. Note `Metric` is already an ArchiMate motivation entity in this codebase, so check the model before designing. | **OWNER** then engineering | TODO |
 | BA-10 | Products & services catalogue and policy/governance register views — only partially covered today (a `Service` element; a "Security Architecture" template touching constraints/policies). | **OWNER** on scope | TODO |
+| BA-11 | **Backfill the 1508 capabilities carrying the defaulted maturity 1/3.** All have a NULL `maturity_assessment_date`, so they are safely identifiable as never-assessed. NULL them so the dashboard stops reporting a gap analysis nobody performed. Do this before any maturity number is shown to leadership. | **P1 data** | TODO |
+| BA-12 | **`category` is NULL on every capability**, and new ones get `data.get("type", "operational")`, which does not match the APQC-style taxonomy `FrameworkClassifier` expects. So framework rollups have nothing to group by and stay empty even with the query fixed. Either populate `category` from the classifier or change the rollup to group by what the data actually carries. | **P1** | TODO |
 
 ## Recommendation
 
