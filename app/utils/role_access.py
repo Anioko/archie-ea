@@ -360,6 +360,17 @@ _MY_WORK_LINKS = {
         _link("Programmes", "solution_design.programmes_list", "git-merge"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
+        # BA-A3 (21 Aug 2026): the /business-architecture landing page is
+        # deliberately NOT here. enterprise_architect renders 26 sidebar links,
+        # which is the `sidebar_links` ratchet's baseline exactly — adding a
+        # 27th trips the gate, and raising a ratchet is a regression, not a
+        # cleanup. The page is not lost to this persona: EA's zones already
+        # carry Capability Map, Gap Analysis, Work Packages, Traceability
+        # Matrix, Capability Health, Roadmaps and Data Architecture directly,
+        # which is most of what the landing page fronts, and platform_admin —
+        # the default enterprise_role for any user who never picked one — does
+        # carry the link. Give EA this link only in the same change that
+        # retires one of its existing 13 My-work links.
         _link("Portfolio", "portfolio.index", "layout-dashboard"),
         _link("Capability Map", "capability_map.index", "map"),
         _link("Elements", "archimate_crud.dashboard", "table"),
@@ -403,6 +414,12 @@ _MY_WORK_LINKS = {
         # and strategy-to-execution were not built. They are; 350 routes serve
         # them. Nothing below is a new page — every endpoint already ships and
         # is already in another persona's zones.
+        #
+        # BA-A3. The front door, deliberately first: the persona's problem was
+        # never that a page was missing, it was that twelve outputs were spread
+        # over five generic zones with no page that presents them as one
+        # practice. /business-architecture is that page.
+        _link("Business Architecture", "business_architecture.index", "compass"),
         _link("Capability Map", "capability_map.index", "map"),
         # Points at the heatmap, NOT frameworks_overview. That was the only
         # maturity link this persona had, it is labelled "Frameworks" rather
@@ -475,6 +492,12 @@ _MY_WORK_LINKS = {
     ROLE_PLATFORM_ADMIN: [
         _link("Solutions", "solution_design.list_solutions", "wrench"),
         _link("Portfolio", "portfolio.index", "layout-dashboard"),
+        # BA-A3. platform_admin is the default enterprise_role for every user
+        # who has not picked one during onboarding (see the column comment in
+        # app/models/user.py), so a page that exists only for the two architect
+        # roles is invisible to most real accounts. Rendered total for this
+        # role goes 25 -> 26, still under SIDEBAR_LINK_BUDGET (27).
+        _link("Business Architecture", "business_architecture.index", "compass"),
     ],
 }
 

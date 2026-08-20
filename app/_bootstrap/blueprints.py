@@ -196,9 +196,22 @@ def _register_optional_standalone(app):
         ("app.modules.business_model_canvas.routes", "business_model_bp", "/business-model"),
         ("app.modules.organization.routes", "organization_bp", "/organization"),
         ("app.modules.business_case.routes", "business_case_bp", "/business-case"),
+        # The Business Architecture practice landing page — one front door to
+        # the twelve BA outputs, all of which already ship scattered across
+        # five generic sidebar zones.
+        (
+            "app.modules.business_architecture.routes",
+            "business_architecture_bp",
+            "/business-architecture",
+        ),
         # ARCH-124: Tech Radar — adopt/trial/assess/hold over the existing
         # Technology-layer ArchiMateElement catalogue.
         ("app.modules.tech_radar.routes", "tech_radar_bp", "/technology/radar"),
+        # BA-B1: revocable, read-only share links for capability artefacts. Its
+        # public route (/shared/<token>) is the only unauthenticated page here —
+        # scope comes from the share row, never from the URL. See the module
+        # docstring in app/modules/sharing/routes.py.
+        ("app.modules.sharing.routes", "artefact_share_bp", None),
         # ARCH-123 (Data Lineage) is NOT a new blueprint: it extends the
         # existing app.modules.architecture.routes.data_architecture_routes
         # (blueprint "data_architecture", already registered elsewhere) with

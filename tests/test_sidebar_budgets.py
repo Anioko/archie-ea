@@ -146,6 +146,10 @@ def test_enterprise_architect_my_work_membership():
     Coordinator review of the sidebar rewrite; membership amended
     accordingly."""
     assert _my_work_labels(ROLE_ENTERPRISE_ARCHITECT) == [
+        # BA-A3 (21 Aug 2026): "Business Architecture" is deliberately absent
+        # here — this role renders 26 links, exactly the sidebar_links ratchet
+        # baseline, so a 27th would trip the gate. See the comment on this
+        # role's entry in app/utils/role_access.py.
         "Portfolio",
         "Capability Map",
         "Elements",
@@ -180,12 +184,29 @@ def test_cto_my_work_membership():
 def test_business_architect_my_work_membership():
     """S-11 remainder: Stakeholder Map and Capability Frameworks were real,
     working pages reachable only from /modules/, never from any sidebar
-    zone."""
+    zone.
+
+    BA-A1/A2 (20 Aug 2026): the persona carried 4 links against a budget of
+    27 while enterprise_architect carried 13, so most of what a business
+    architect needs was reachable only by typing a URL. "Capability
+    Frameworks" was replaced by "Capability Maturity" pointing at the
+    heatmap — frameworks_overview is the one maturity page that renders
+    near-empty, and it was this persona's only maturity link.
+
+    BA-A3 (21 Aug 2026): the /business-architecture practice landing page
+    added first, as the front door to all twelve BA outputs."""
     assert _my_work_labels(ROLE_BUSINESS_ARCHITECT) == [
+        "Business Architecture",
         "Capability Map",
+        "Capability Maturity",
         "Value Streams",
         "Stakeholder Map",
-        "Capability Frameworks",
+        "Gap Analysis",
+        "Roadmaps",
+        "Work Packages",
+        "Traceability Matrix",
+        "Capability Health",
+        "Data Architecture",
     ]
 
 
@@ -259,8 +280,14 @@ def test_platform_admin_zone_link_total_is_pinned():
     S-11 remainder (18 Aug 2026): 23 -> 24. "Batch Import" added to the admin
     zone — the only S-11-remainder module platform_admin shares; the other
     nine landed in EA / business_architect / portfolio_manager My-work zones.
+
+    BA-A3 (21 Aug 2026): 24 -> 25. "Business Architecture" added to this
+    role's My work. platform_admin is the default enterprise_role for any
+    user who never picked one, so a page limited to the two architect roles
+    would be invisible to most real accounts. Rendered total 25 -> 26, still
+    under SIDEBAR_LINK_BUDGET (27).
     """
-    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 24
+    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 25
 
 
 def test_get_sidebar_zones_resolves_role():
