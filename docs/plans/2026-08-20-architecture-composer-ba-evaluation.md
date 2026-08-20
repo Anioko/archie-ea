@@ -213,7 +213,7 @@ artefact**.
 
 | ID | Task | Why |
 |---|---|---|
-| B1 | Revocable read-only share links for capability map, maturity heatmap and roadmap. **The pattern already exists** — `app/modules/codegen/routes/share_routes.py`, `_generate_share_token()`, 32-char URL-safe | Copy a proven mechanism, do not invent one |
+| B1 | Revocable read-only share links for capability map, maturity heatmap and roadmap. **PARTIAL — `app/models/artefact_share.py` exists as UNWIRED groundwork (`12878095` era): no routes, no registration, not imported, so it creates no table.** It is deliberately not a `TenantMixin` model and documents why: the row must resolve on an unauthenticated request where `g.current_org_id` is None and the automatic filter is a no-op, so `organization_id` is explicit and the public route derives scope from the row. **Finish or delete it — do not leave it.** The pattern to follow is `app/modules/codegen/routes/share_routes.py`, `_generate_share_token()`. | Engineering | **PARTIAL** |
 | B2 | PDF for the heatmap and capability map (Composer PDF is done and verified) | The format Iain asked about directly |
 | B3 | A one-page-per-area leadership view: how good are we, who owns it, what are we doing | What Andy's team actually consumes in a 20-minute review |
 
