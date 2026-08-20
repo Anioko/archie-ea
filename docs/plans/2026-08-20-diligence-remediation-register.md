@@ -22,8 +22,8 @@ Status legend: TODO / DOING / DONE / DROPPED (with reason).
 | W0-3 | Reproduce the 3 red gates at `5bc3ce7` and record the exact output as evidence | CQ-01 | **DONE** — evidence below. Note it is **4 red, not 3**: `css-build` also fails. |
 | W0-4 | Fix `tenant-scoping`: `application_fact_sheet.py:101` unscoped query | CQ-01 | **DONE** `b08da8a` — gate 1→0. |
 | W0-5 | Fix `silent-data`: `application_fact_sheet.py:99,154` broad `except` returning `[]` — must surface the error, not render "no capabilities" on a screen branded the single source of truth | CQ-01/CQ-02 | **DONE** `b08da8a` — gate 2→0. |
-| W0-6 | Close QA finding ARCH-064 (capability-map 482KB, architecture dashboard 170KB) — lazy-load the macro's modals instead of rendering all of them | CQ-01/PF-02/UX-02 | DOING |
-| W0-7 | Full `verify.py --tag static` green (every gate, never a subset), then deploy and confirm the live site serves | standing rule | TODO — blocked on W0-6 + `css-build` rebuild (must run last, after template edits) |
+| W0-6 | Close QA finding ARCH-064 (capability-map 482KB, architecture dashboard 170KB) — lazy-load the macro's modals instead of rendering all of them | CQ-01/PF-02/UX-02 | **DONE** `b2bd44e` — /capability-map/ 436,618→368,193 bytes (−15.7%). QA register 160/160. |
+| W0-7 | Full `verify.py --tag static` green (every gate, never a subset), then deploy and confirm the live site serves | standing rule | **GREEN — 30 passed, 0 failed, 0 skipped.** Deploy in progress. |
 
 **Exit criterion: the deployed commit passes its own gates.** Nothing else starts first — a ratchet that ships red once becomes advisory.
 
