@@ -1,0 +1,141 @@
+# Diligence Remediation Register — 20 Aug 2026
+
+Source: Technical Due Diligence audit of commit `5bc3ce7` (deployed tip), 20 Aug 2026.
+Scope exclusion set by the owner: **all billing / monetisation items are OUT OF SCOPE**
+(MON-01, MON-02, plan enforcement, seat limits, Stripe, usage metering for spend).
+
+Baseline verified in-repo 20 Aug 2026:
+- `HEAD`/`main` = `ab523e5`, 176 commits behind deployed `5bc3ce7`; `origin/main` 108 behind. No divergence.
+- `fix/green-gates` and `fix/qa-register-100` exist but sit AT `5bc3ce7` with 0 commits ahead — unstarted.
+- All work branches from `5bc3ce7`, not from `main`.
+
+Status legend: TODO / DOING / DONE / DROPPED (with reason).
+
+---
+
+## Wave 0 — Restore the invariant (blocks everything else)
+
+| ID | Task | Audit ref | Status |
+|---|---|---|---|
+| W0-1 | Fast-forward local `main` and `origin/main` to `5bc3ce7` so every clone reflects what runs | §09 | **DONE (local)** — local `main` ff'd ab523e5→5bc3ce7, verified true ancestor, 0 ahead. `origin/main` push pending W0-7. |
+| W0-2 | Fix `verify.py` UnicodeEncodeError on the cp1252 Windows console (reconfigure stdout to UTF-8 at entry) | CQ-06 | **DONE** `b08da8a` — reproduced (`'✓'` → UnicodeEncodeError, `—` → mojibake); `_force_utf8_console()` at `main()` entry; re-verified under forced cp1252. |
+| W0-3 | Reproduce the 3 red gates at `5bc3ce7` and record the exact output as evidence | CQ-01 | **DONE** — evidence below. Note it is **4 red, not 3**: `css-build` also fails. |
+| W0-4 | Fix `tenant-scoping`: `application_fact_sheet.py:101` unscoped query | CQ-01 | **DONE** `b08da8a` — gate 1→0. |
+| W0-5 | Fix `silent-data`: `application_fact_sheet.py:99,154` broad `except` returning `[]` — must surface the error, not render "no capabilities" on a screen branded the single source of truth | CQ-01/CQ-02 | **DONE** `b08da8a` — gate 2→0. |
+| W0-6 | Close QA finding ARCH-064 (capability-map 482KB, architecture dashboard 170KB) — lazy-load the macro's modals instead of rendering all of them | CQ-01/PF-02/UX-02 | DOING |
+| W0-7 | Full `verify.py --tag static` green (every gate, never a subset), then deploy and confirm the live site serves | standing rule | TODO — blocked on W0-6 + `css-build` rebuild (must run last, after template edits) |
+
+**Exit criterion: the deployed commit passes its own gates.** Nothing else starts first — a ratchet that ships red once becomes advisory.
+
+---
+
+### W0-3 evidence — `python scripts/verify.py --tag static` at `5bc3ce7`, 20 Aug 2026
+
+`26 passed, 4 failed, 0 skipped`. The register said three red gates; there are **four**.
+
+```
+FAIL  tenant-scoping   23.5s  [1 > 0]
+      app/services/application_fact_sheet.py:101  [ApplicationCapabilityMapping]
+      db.session.query(...) with no organization_id filter nearby
+
+FAIL  silent-data       7.7s  [2 > 0]
+
+FAIL  qa-register       0.3s  [1 > 0]
+      S3 ARCH-064 Large server-rendered HTML payloads without pagination
+      (1 of 160 findings blocking; 147 fixed and evidenced)
+
+FAIL  css-build        49.8s
+      the committed tailwind-output.css is stale - a rebuild changes it
+```
+
+**`css-build` was not in the register and is a genuine Wave 0 blocker** — the
+committed CSS does not match a rebuild, so a fresh clone renders against stale
+classes. It is folded into W0-7 rather than given its own ID, because the
+rebuild has to run *after* the W0-6 template edits or it goes stale again.
+
+---
+
+## Wave 1 — Delete the latent attack surface
+
+| ID | Task | Audit ref | Status |
+|---|---|---|---|
+| W1-1 | Enumerate all 25 defined-but-unregistered blueprints with exact file paths | FC-01 | TODO |
+| W1-2 | Register `gdpr_bp` after a security review of its routes — GDPR export/erasure is written, secured, has a model and a table, and is unreachable | FC-01 | TODO |
+| W1-3 | Add an authz test proving the GDPR export + erasure endpoints resolve and enforce self-or-admin | FC-01 | TODO |
+| W1-4 | **Delete** the remaining 24. Priority: `signup_routes.py` (unauthenticated `invite_member` taking `org_id` from the URL and `inviter_id` from the body — org-boundary privilege escalation in six lines) and `analytics_routes.py` (unauthenticated admin dashboard, event endpoint accepting an arbitrary `user_id`) | SEC-02 | TODO |
+| W1-5 | Land a `verify.py` gate: **blueprints defined == blueprints registered**, ratcheted at 0, so the class cannot return | audit ethic | TODO |
+
+W1-4 removes the code referencing `/billing/setup` and `plan="starter"` (not a valid `SubscriptionPlan` member). That deletion is in scope; building a replacement billing flow is not.
+
+---
+
+## Wave 2 — Scalability, before there is data to be slow
+
+| ID | Task | Audit ref | Status |
+|---|---|---|---|
+| W2-1 | Move portfolio imports, document analysis and LLM generation onto the RQ worker. Inline execution on 3 gunicorn workers means three concurrent imports take the site down. | PF-01 | TODO |
+| W2-2 | Take the RQ worker out of the compose `profile` so it runs by default; verify on the 2-vCPU box (serial containers only) | PF-01 | TODO |
+| W2-3 | Paginate the three heaviest pages | PF-02/UX-02 | TODO |
+| W2-4 | Fix the N+1 at `application_fact_sheet.py:129-140` — one `session.get()` per relationship edge; batch the name/type lookup | PF-02 | TODO |
+| W2-5 | Convert `lazy="dynamic"` to `selectin` where the relationship is always fully iterated; keep `dynamic` only where the Query is genuinely filtered further | PF-02 | TODO |
+| W2-6 | Enable the Redis cache on a **separate DB number** from the queue with `allkeys-lru`. Current `noeviction` refuses writes rather than evicting — switching cache on without changing it produces write errors under load. | PF-03 | TODO |
+| W2-7 | Make the rate-limiter's Redis fallback loud — a health-degraded signal, not one log line. 3 workers on `memory://` means 3x the configured limit. | PF-05 | TODO |
+| W2-8 | Dropping the 2,135 never-scanned indexes — **deferred to post-launch**. `idx_scan=0` on an empty database proves nothing about a loaded one. | PF-04 | DROPPED (deferred, with reason) |
+
+---
+
+## Wave 3 — Correctness and schema safety
+
+| ID | Task | Audit ref | Status |
+|---|---|---|---|
+| W3-1 | Execute ADR-0002: Alembic baseline at current schema, `db upgrade` on deploy, `reconcile-schema` demoted to a drift detector. Before any customer holds data that cannot be rebuilt, not after. | CQ-03 | TODO |
+| W3-2 | Remove the soft-fail from the 9-command boot chain: a tenancy backfill that silently did not run must fail the boot, not print WARN and serve | CQ-04 | TODO |
+| W3-3 | Invert tenancy to fail **closed** — an explicit `unscoped_context()` for CLI/seeder paths; the ORM listener raises rather than no-ops inside a request context lacking an org | SEC-03 | TODO |
+| W3-4 | Audit the 119 auth-decorator-free routes; confirm each is login, health, or a signature-verified webhook, and gate the rest | SEC-03 | TODO |
+| W3-8 | `application_fact_sheet.py::_dependencies` has a broad `except` returning `{"upstream": [], "downstream": [], "linked": True}`. The `silent-data` gate does not flag the dict shape, so it passed W0-5 untouched — but it is the same defect: an import failure renders as "no dependencies". Needs the template's `linked` handling reviewed alongside. Surfaced 20 Aug during W0-5. | CQ-02 | TODO |
+| W3-5 | Attack the 104 `except: pass` handlers — widen the silent-data ratchet to count bare-pass handlers and drive the number down | CQ-02 | TODO |
+| W3-6 | Indirect prompt-injection defences on the RAG layer — uploaded documents and portfolio text reach prompts unfiltered; this surfaces at the first enterprise security review | SEC-05 | TODO |
+| W3-7 | Backup and restore, tested end to end. Not found in the repo. | §08 | TODO |
+
+---
+
+## Wave 4 — Product surface: stop building, start validating
+
+| ID | Task | Audit ref | Status |
+|---|---|---|---|
+| W4-1 | Self-serve signup and org creation that actually works — today an org can only be made by an admin running `create_admin.py`. Billing-free path only. | UX-03 | TODO |
+| W4-2 | One-click demo tenant / seeded dataset. Highest-leverage UX fix available: 683 empty tables means empty is the default first experience. | UX-04 | TODO |
+| W4-3 | Guided first-run for a new empty tenant | UX-04 | TODO |
+| W4-4 | Drive the 158 shell-conformance violations down — three competing page-header systems and two page widths make adjacent modules look like different products | UX-01 | TODO |
+| W4-5 | Instrument which features the 23 real users actually touch. The audit's closing recommendation: point the ratchet discipline at the product surface, not only the code surface. | §09 | TODO |
+
+---
+
+## Wave 5 — Strategic consolidation (largest, last)
+
+| ID | Task | Audit ref | Status |
+|---|---|---|---|
+| W5-1 | Quarantine the unvalidated half: take the 63 populated tables and the workflows around them as the product; move `codegen` (41,065 lines), `solutions_product` (17,549) and the empty subsystems behind an experimental flag or into a separate repository | §09 | TODO |
+| W5-2 | Finish or abandon the v1→v2 migration — 205 files, 99,285 lines, services imported 324 times from outside v2, but only 2 of 110 blueprint registrations point at v2 routes | FC-02 | TODO |
+| W5-3 | Retire the 7 duplicated domains per ADR-0004 (`account`, `admin`, `ai_chat`, `auth`, `dashboard`, `integrations`, `monitoring`) | FC-02 | TODO |
+| W5-4 | Split the four largest modules: `solution_design_routes.py` (12,145 lines), `codegen/routes/_helpers.py` (8,799), `deterministic_code_generator.py` (8,626), `multi_domain_chat_service.py` (8,591) | CQ-05 | TODO |
+| W5-5 | Architecture drift detection — compare the modelled estate against reality pulled from cloud APIs and CMDBs. The genuine differentiator; connector scaffolding already exists. | §07 | TODO |
+
+---
+
+## Housekeeping
+
+| ID | Task | Audit ref | Status |
+|---|---|---|---|
+| H-1 | Correct `CLAUDE.md`: it states `design_tokens` 88 and `raw_sql_tenancy` 98; both are 0 in `verification_baseline.json` | FC-04 | TODO |
+| H-2 | Refresh `FEATURE_FLAGS.md` — last verified 14 Jul, five weeks stale | FC-04 | TODO |
+| H-3 | Correct the 15 Aug handoff document: it says "Prod has NO LLM keys"; production has a DeepSeek key loaded | FC-04 | TODO |
+
+---
+
+## Explicitly out of scope (owner instruction, 20 Aug 2026)
+
+- MON-01 plan enforcement, feature gates, seat limits
+- MON-02 usage-metering pipeline for AI spend
+- Stripe checkout, portal, and webhook work
+- `/billing/setup` — the dead route is **deleted** under W1-4, not built
