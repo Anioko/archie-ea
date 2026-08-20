@@ -7,7 +7,6 @@
 {% from 'components/empty_state.html' import empty_state %}
 {% from 'components/skeleton.html' import skeleton_list %}
 {% from 'macros/page_shell.html' import page_shell %}
-{% from 'capability_map/_mapping_modal.html' import mapping_modal %}
 
 {# Reusable filter bar macro for capability tables #}
 {% macro capability_filter_bar(context_id, filters=[], has_search=True, has_clear=True) %}
@@ -2520,74 +2519,30 @@
             </div>
         </div>
 
-        <!-- ACM Technical Capability Mapping Modal (Same design as other tabs) -->
-        {{ mapping_modal(
-            modal_id="acm-mapping-modal",
-            title_label="Map Applications to",
-            name_span_id="acm-modal-capability-name",
-            accent_class="text-info",
-            close_fn="closeACMMappingModal",
-            close_aria="Close ACM mapping modal",
-            close_btn_class="text-muted-foreground hover:text-muted-foreground",
-            id_prefix="acm-",
-            search_fn="filterACMApplications",
-            select_all_fn="selectAllACMFiltered",
-            deselect_fn="deselectAllACM",
-            cancel_aria="Cancel ACM mapping",
-            save_fn="saveACMMappings",
-            save_bg_class="bg-info",
-            save_aria="Save ACM mappings"
-        ) }}
     </div>
 
-        <!-- Process Mapping Modal (Same design as ACM modal) -->
-        {{ mapping_modal(
-            modal_id="process-mapping-modal",
-            title_label="Map Applications to",
-            name_span_id="process-modal-process-name",
-            accent_class="text-primary",
-            close_fn="closeProcessMappingModal",
-            close_aria="Close process mapping modal",
-            close_btn_class="text-muted-foreground hover:text-muted-foreground",
-            id_prefix="process-",
-            search_fn="filterProcessApplications",
-            select_all_fn="selectAllProcessFiltered",
-            deselect_fn="deselectAllProcess",
-            cancel_aria="Cancel process mapping",
-            save_fn="saveProcessMappings",
-            save_bg_class="bg-primary",
-            save_aria="Save process mappings"
-        ) }}
-
-    <!-- Include Mapping Modals -->
-    {% include 'components/apqc_mapping_modal.html' %}
-    {% include 'components/archimate_mapping_modal.html' %}
+    {# ARCH-064: only the unified mapping modal is still rendered up front —
+       it pulls in its own <script src=...>, which an injected fragment cannot
+       execute. The APQC and ArchiMate dialogs, like the three application
+       mapping dialogs below, are fetched on first open. #}
     {% include 'components/unified_mapping_modal.html' %}
 
-    <!-- Application Mapping Modal -->
-    {{ mapping_modal(
-        modal_id="mapping-modal",
-        title_label="Map Applications to",
-        name_span_id="modal-capability-name",
-        accent_class="text-primary",
-        close_fn="closeMappingModal",
-        close_aria="Close application mapping modal",
-        close_btn_class="text-muted-foreground hover:text-foreground",
-        id_prefix="",
-        search_fn="filterApplications",
-        select_all_fn="selectAllFiltered",
-        deselect_fn="deselectAll",
-        cancel_aria="Cancel mapping",
-        save_fn="saveMappings",
-        save_bg_class="bg-primary",
-        save_aria="Save mappings"
-    ) }}
+    {# ARCH-064: mapping-modal, acm-mapping-modal, process-mapping-modal,
+       apqc-mapping-modal and archimate-mapping-modal all start closed, so none
+       of them are serialised into this page any more. They are fetched from
+       capability_map.mapping_modal_partial on first open and injected here —
+       inside #app, so their Alpine scope is unchanged. #}
+    <div id="lazy-modal-host"
+         data-partial-url="{{ url_for('capability_map.mapping_modal_partial', variant='__VARIANT__') }}"></div>
 
 </div>
 {% endblock %}
 
 {% block extra_js %}
 {# roadmap-utils.js is now loaded globally in admin_base.html #}
+{# ARCH-064: must load before index.js / index_inline.js — they call
+   CapabilityMapModals.ensure() to hydrate a dialog before opening it. #}
+<script src="{{ url_for('static', filename='js/capability_map/lazy_modals.js') }}"></script>
 <script src="{{ url_for('static', filename='js/capability_map/index.js') }}"></script>
 <script src="{{ url_for('static', filename='js/capability_map/index_inline.js') }}"></script>
 {# Business Architect visuals: Chart.js — same CDN/version already used by arb/dashboard.html

@@ -5102,6 +5102,9 @@
     
     // Make function globally accessible
     window.openMappingModal = async function(capabilityId, capabilityName) {
+        // ARCH-064: the dialog is not in the page until it is first opened.
+        if (!await window.CapabilityMapModals.ensure('mapping-modal')) { return; }
+
         // Ensure capabilityId is always a string to preserve precision for large Snowflake IDs
         currentCapabilityId = String(capabilityId);
         currentCapabilityName = capabilityName;

@@ -442,11 +442,12 @@
       "id": "ARCH-064",
       "severity": "S3",
       "title": "Large server-rendered HTML payloads without pagination",
-      "status": "open",
-      "note": "PARTIAL and measured: /architecture/dashboard 187,069 -> 169,857 bytes. /capability-map/ 481,749 -> 482,243 — dedup does NOT reduce page weight because the macro still renders all three modals; the 1,225-line premise was also wrong (~380). Real reduction needs lazy-loading the closed modals, not deduplication.",
-      "fix_commit": "",
+      "status": "closed",
+      "note": "Closed. Two payload sources removed. (1) /architecture/dashboard: the static per-element-type field config is fetched from archimate_crud.api_field_configs instead of being tojson'd inline - measured 187,069 -> 169,857 bytes (-9.2%). (2) /capability-map/: the five mapping dialogs (mapping-modal, acm-mapping-modal, process-mapping-modal, apqc-mapping-modal, archimate-mapping-modal) all start closed and are no longer rendered into the initial HTML; they are fetched from capability_map.mapping_modal_partial on first open and injected into #lazy-modal-host inside the page's Alpine root. Measured with the Flask test client against a near-empty flask_test database, logged in as an org admin: 436,618 -> 368,193 bytes (-68,425 / -15.7%). The earlier de-duplication wave moved this number by zero (481,749 -> 482,243) because the macro still rendered all three copies - not rendering them is what made the difference. The unified mapping modal stays inline deliberately: it carries its own <script src>, which an injected fragment cannot execute. fix_commit is a label, not a hash - the change was handed to the integrator uncommitted; replace with the real hash on merge.",
+      "fix_commit": "(lazy-modals)",
       "evidence": [
-        "test:tests/test_arch064_payload_bounds.py"
+        "test:tests/test_arch064_payload_bounds.py",
+        "manual:page-weight measured via Flask test client - /capability-map/ 436,618 -> 368,193 bytes; /architecture/dashboard 187,069 -> 169,857 bytes"
       ],
       "reviewed": false,
       "deployed": false

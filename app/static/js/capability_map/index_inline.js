@@ -14,7 +14,10 @@ if (typeof window.currentMappingCapability === 'undefined') {
 }
 
 if (typeof window.openMappingModal !== 'function') {
-    window.openMappingModal = function(capabilityId, capabilityName) {
+    window.openMappingModal = async function(capabilityId, capabilityName) {
+        // ARCH-064: hydrate the lazily-loaded dialog before touching its DOM.
+        if (!await window.CapabilityMapModals.ensure('mapping-modal')) { return; }
+
         window.currentMappingCapability = { id: capabilityId, name: capabilityName };
 
         let nameEl = document.getElementById('modal-capability-name');
@@ -76,14 +79,11 @@ if (typeof window.saveMappings !== 'function') {
 // Close modal when clicking outside
 // ============================================================================
 
-document.addEventListener('DOMContentLoaded', function() {
-    let modal = document.getElementById('mapping-modal');
-    if (modal) {
-        modal.addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeMappingModal();
-            }
-        });
+// ARCH-064: delegated, because #mapping-modal is injected on first open and so
+// does not exist at DOMContentLoaded to attach a listener to.
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'mapping-modal') {
+        closeMappingModal();
     }
 });
 
@@ -91,7 +91,10 @@ document.addEventListener('DOMContentLoaded', function() {
 // Capability Mapping to APQC Processes and ArchiMate Elements
 // ============================================================================
 
-function openCapabilityAPQCMapping(capabilityId, capabilityName) {
+async function openCapabilityAPQCMapping(capabilityId, capabilityName) {
+    // ARCH-064: hydrate the lazily-loaded dialog before reaching for its scope.
+    if (!await window.CapabilityMapModals.ensure('apqc-mapping-modal')) { return; }
+
     // Open APQC mapping modal
     let modal = Alpine.$data(document.querySelector('#apqc-mapping-modal'));
     if (modal && modal.openMappingModal) {
@@ -106,7 +109,10 @@ function openCapabilityAPQCMapping(capabilityId, capabilityName) {
     }
 }
 
-function openCapabilityArchimateMapping(capabilityId, capabilityName) {
+async function openCapabilityArchimateMapping(capabilityId, capabilityName) {
+    // ARCH-064: hydrate the lazily-loaded dialog before reaching for its scope.
+    if (!await window.CapabilityMapModals.ensure('archimate-mapping-modal')) { return; }
+
     // Open ArchiMate mapping modal
     let modal = Alpine.$data(document.querySelector('#archimate-mapping-modal'));
     if (modal && modal.openMappingModal) {
@@ -479,7 +485,10 @@ let acmCurrentCapabilityName = '';
 let acmModalApplicationsData = [];
 let acmSelectedApplications = new Map();
 
-function openACMMappingModal(capabilityId, capabilityName, domain, level) {
+async function openACMMappingModal(capabilityId, capabilityName, domain, level) {
+    // ARCH-064: hydrate the lazily-loaded dialog before touching its DOM.
+    if (!await window.CapabilityMapModals.ensure('acm-mapping-modal')) { return; }
+
     acmCurrentCapabilityId = String(capabilityId);
     acmCurrentCapabilityName = capabilityName;
     acmSelectedApplications.clear();
@@ -919,8 +928,11 @@ function openProcessMappingModal(processId, processName, processCode, processTyp
             if (!response.ok) { throw new Error('check-auth request failed: ' + response.status); }
             return response.json();
         })
-        .then(function(data) {
+        .then(async function(data) {
             if (data.authenticated) {
+                // ARCH-064: hydrate the lazily-loaded dialog before touching its DOM.
+                if (!await window.CapabilityMapModals.ensure('process-mapping-modal')) { return; }
+
                 // User is authenticated, proceed with modal
                 processCurrentProcessId = String(processId);
                 processCurrentProcessName = processName;

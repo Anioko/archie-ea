@@ -14,7 +14,7 @@ Helpers:
     - build_nodes_edges(catalog)   — used by mapping_routes.api_nodes_edges()
 """
 
-from flask import current_app, flash, g, render_template  # dead-code-ok
+from flask import abort, current_app, flash, g, render_template  # dead-code-ok
 from flask_login import login_required
 
 from app.extensions.cache import cached
@@ -91,6 +91,30 @@ def index():
         total_capabilities = None
 
     return render_template("capability_map/index.html", total_capabilities=total_capabilities)
+
+
+# ARCH-064: dialogs that are closed on arrival are no longer serialised into
+# /capability-map/'s initial HTML. They are fetched from here the first time
+# something opens one. The allow-list is explicit so the variant name — which
+# arrives from the client — can never select an arbitrary template.
+LAZY_MODAL_VARIANTS = frozenset(
+    {
+        "mapping-modal",
+        "acm-mapping-modal",
+        "process-mapping-modal",
+        "apqc-mapping-modal",
+        "archimate-mapping-modal",
+    }
+)
+
+
+@capability_map.route("/partials/mapping-modal/<variant>")
+@login_required
+def mapping_modal_partial(variant):
+    """Render one lazily-loaded mapping dialog as an HTML fragment."""
+    if variant not in LAZY_MODAL_VARIANTS:
+        abort(404)
+    return render_template("capability_map/_lazy_mapping_modals.html", variant=variant)
 
 
 @capability_map.route("/hierarchy")
