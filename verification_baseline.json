@@ -13,6 +13,7 @@
     "dynamic_link_prefixes": 0,
     "fetch_guards": 0,
     "sidebar_links": 26,
+    "nav_coverage": 4,
     "design_tokens_extended": 12,
     "shell_conformance": 158,
     "raw_fetch_sites": 919,

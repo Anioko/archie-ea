@@ -279,6 +279,31 @@ def gate_shell_conformance(baseline: int) -> Result:
     return Result("shell-conformance", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_nav_coverage(baseline: int) -> Result:
+    """Business-architecture outputs that have routes but no sidebar link.
+
+    An evaluating business architect concluded capability maturity, gap
+    analysis and strategy-to-execution "did not exist" in this product. All
+    three ship — 350 routes serve them — but his persona's sidebar had four
+    links, so nothing he could reach said so. A feature nobody can navigate to
+    is, to the person evaluating the product, an absent feature; and the defect
+    is invisible to every other gate, because the routes are registered, the
+    templates parse and the endpoints resolve.
+
+    Counted by scripts/ba_output_audit.py --count, which reads SIDEBAR_ZONES
+    from app/utils/role_access.py (the real shell mechanism, imported rather
+    than grepped, since the zones are built at import time) and checks each of
+    the 12 outputs against every persona's links, labels and URL paths.
+    """
+    proc = _run([sys.executable, "scripts/ba_output_audit.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("nav-coverage", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/ba_output_audit.py to list them"
+    return Result("nav-coverage", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_air_gap(baseline: int) -> Result:
     """No UI assets loaded from the public internet.
 
@@ -1134,6 +1159,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_shell_conformance(baseline["shell_conformance"]),
              remediation="use page_header/page_shell and p-6 space-y-6; see DESIGN.md, or add 'shell-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("nav-coverage",
+             "No business-architecture output with routes is missing from every sidebar",
+             "ratchet", lambda: gate_nav_coverage(baseline["nav_coverage"]),
+             remediation="add a link to the owning persona's zone in app/utils/role_access.py",
+             tags=["static"]),
         Gate("air-gap", "No UI assets loaded from public CDNs", "ratchet",
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
