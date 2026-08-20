@@ -250,3 +250,27 @@ and it is how EA programmes die.
 
 **Sequence: A → B → C.** A makes the existing work visible, B makes it travel to
 the people who decide, C is the framework Iain is actually asking for.
+
+## A3 — orphan blueprints touching BA outputs (scan 20 Aug, NOT yet actioned)
+
+| Blueprint | Routes | File |
+|---|---|---|
+| `journey_v2_bp` | 91 | `modules/solutions_strategic/v2/routes/journey_v2_routes.py` |
+| `business_capability_management` | 7 | `main/business_capability_management_routes.py` |
+| `ns_apqc` | 7 | `modules/vendors/api/api_vendors.py` |
+| `recommendations_bp` | 6 | `modules/solutions_strategic/v2/routes/recommendations_api_routes.py` |
+| `phase_e_bp` | 5 | `modules/ea_workflows/routes/phase_e_routes.py` |
+
+`main` (114) and `app` (29) are **false positives** — `main` registers through an
+aliased re-export and `app` is `_decorators_base`, not a blueprint. Same class of
+false positive W1-1 found; confirm each by resolving the registration, never by a
+symbol match.
+
+`journey_v2_bp` at 91 routes is the one to look at first — that is a large
+subsystem with no front door, and W5-2 already records that only 2 of 110
+blueprint registrations point at v2 routes. `business_capability_management` is
+W1-7 (needs its test file and 9 bandit baseline entries retired with it);
+`phase_e_bp` is the TOGAF phase-E hole W1-1 flagged, where phases A/B/F/G are all
+registered.
+
+**Decide each: register or delete. Do not leave them.**
