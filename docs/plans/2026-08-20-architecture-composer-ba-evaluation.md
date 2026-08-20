@@ -166,3 +166,87 @@ already in the database, then make it exportable. That alone reproduces both of
 Iain's hand-built artifacts inside the tool, which is the stated near-term goal.
 Everything below BA-04 should wait for leadership to say what is useful — which
 is Iain's own proposed sequence.
+
+---
+
+# The Business Architecture plan — what it takes to meet Iain's needs
+
+Iain listed **12 outputs**. Audited against the codebase 20 Aug
+(`scripts/ba_output_audit.py`, 3,770 routes scanned):
+
+| # | Output | Routes | Reachable | In nav |
+|---|---|---|---|---|
+| 1 | Capability maps | 17 | 5/6 | yes |
+| 2 | Capability maturity | 10 | 1/1 | **NO** |
+| 3 | Value stream maps | 14 | 4/4 | yes |
+| 4 | Org & ownership views | **0** | — | **NO** |
+| 5 | Information/data maps | 3 | 1/1 | **NO** |
+| 6 | Strategy-to-execution | 17 | 7/7 | **NO** |
+| 7 | Stakeholder maps | 20 | 9/10 | yes |
+| 8 | Initiative/project alignment | 109 | 14/16 | yes |
+| 9 | KPI/metric dashboards | 21 | 11/13 | **NO** |
+| 10 | Products & services | 28 | 10/11 | **NO** |
+| 11 | Policies & governance | 28 | 10/10 | yes |
+| 12 | Gap analysis & roadmaps | 83 | 23/26 | yes |
+
+**350 routes serve these 12 outputs. Exactly one (#4) does not exist at all.**
+Six exist and are invisible. About ten blueprints own routes nobody registered.
+
+This is not a build-twelve-features problem. It is a **surface, connect and
+share** problem, and that is an order of magnitude smaller.
+
+## Wave A — Make it findable (the discoverability fix)
+
+| ID | Task | Why |
+|---|---|---|
+| A1 | Populate the `business_architecture` nav section. It is **already declared** in `role_access.py:33` and granted to 3 roles, and renders nothing. | The single highest-value change: a front door for 350 existing routes |
+| A2 | Surface the 6 invisible outputs (2, 4, 5, 6, 9, 10) under it | Iain concluded maturity did not exist; it has 10 routes |
+| A3 | Register or delete the ~10 orphan blueprints the audit found | Same class as W1-1/W1-4; decide each, do not leave them |
+| A4 | A BA landing page listing the outputs with a one-line purpose each |A section with 12 unexplained links is a second discoverability problem |
+| A5 | Add `ba_output_audit.py` as a `verify.py` gate so an output cannot silently fall out of nav again | A ratchet beats a memo |
+
+## Wave B — Make it travel (the anti-shelfware work)
+
+Leadership will not log in. If the artefact cannot reach them, it is shelf-ware
+by construction. Today there is **no external sharing of any architecture
+artefact**.
+
+| ID | Task | Why |
+|---|---|---|
+| B1 | Revocable read-only share links for capability map, maturity heatmap and roadmap. **The pattern already exists** — `app/modules/codegen/routes/share_routes.py`, `_generate_share_token()`, 32-char URL-safe | Copy a proven mechanism, do not invent one |
+| B2 | PDF for the heatmap and capability map (Composer PDF is done and verified) | The format Iain asked about directly |
+| B3 | A one-page-per-area leadership view: how good are we, who owns it, what are we doing | What Andy's team actually consumes in a 20-minute review |
+
+## Wave C — The line of sight (Iain's actual ask)
+
+> "a clear line of sight from leadership decisions all the way through to
+> activities on the ground"
+
+| ID | Task | Why |
+|---|---|---|
+| C1 | **One capability → its owner, maturity, linked initiatives, KPIs, applications.** Mostly joins over data already held | The unit of value is not a map; it is a capability with an owner, a score and an initiative |
+| C2 | Org & ownership views (#4 — the only genuine gap) | Without an owner, no line of sight exists and no accountability follows |
+| C3 | Strategy-to-execution chain: Vision → Goal → Capability → Initiative → Activity | The framework Iain is describing, rendered |
+
+## Wave D — AI that drafts, never asserts
+
+`agent_runner.py` already exposes `create_capability`,
+`create_capability_mapping`, `create_work_package`,
+`generate_architecture_diagram`.
+
+| ID | Task | Why |
+|---|---|---|
+| D1 | **Approval gate ON for every write tool** before any of this is promoted | Tonight's finding: 270 capabilities carried maturity nobody assessed. An AI writing scores autonomously is that failure at machine speed, into the system Iain needs leadership to trust |
+| D2 | AI drafts a maturity assessment from evidence; a human confirms; `maturity_assessment_date` records provenance | Draft-and-confirm is the only design that survives a sceptical executive |
+| D3 | Use the AI to map the ~47 real domain names onto the classifier taxonomy (BA-12) | Turns a data problem into a one-off assisted migration |
+
+## Wave E — Deliberately NOT building yet
+
+The remaining artefacts (3, 5, 7, 10, 11 beyond what exists) wait for the
+September meeting. Iain: *"that discussion helps us define which outputs are
+genuinely valuable."* Building twelve artefacts before that conversation is
+precisely the "architecture artefacts for their own sake" he is warning against,
+and it is how EA programmes die.
+
+**Sequence: A → B → C.** A makes the existing work visible, B makes it travel to
+the people who decide, C is the framework Iain is actually asking for.
