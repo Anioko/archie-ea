@@ -60,8 +60,8 @@ rebuild has to run *after* the W0-6 template edits or it goes stale again.
 | ID | Task | Audit ref | Status |
 |---|---|---|---|
 | W1-1 | Enumerate all 25 defined-but-unregistered blueprints with exact file paths | FC-01 | **DONE** — see findings below. Audit's 25 = definition *sites*; **23 distinct blueprints**. |
-| W1-2 | Register `gdpr_bp` after a security review of its routes — GDPR export/erasure is written, secured, has a model and a table, and is unreachable | FC-01 | TODO |
-| W1-3 | Add an authz test proving the GDPR export + erasure endpoints resolve and enforce self-or-admin | FC-01 | TODO |
+| W1-2 | Register `gdpr_bp` after a security review of its routes — GDPR export/erasure is written, secured, has a model and a table, and is unreachable | FC-01 | **DONE** `de44242` — registered; review found **two real defects, both fixed** (see below). |
+| W1-3 | Add an authz test proving the GDPR export + erasure endpoints resolve and enforce self-or-admin | FC-01 | **DONE** `de44242` — `tests/test_gdpr_authz.py`, 11 tests, all passing. |
 | W1-4 | **Delete** the remaining 20 (not 24 — see W1-1 findings; 3 are registered via non-symbolic paths and 1 is live under another parent). Priority: `signup_routes.py` (unauthenticated `invite_member` taking `org_id` from the URL and `inviter_id` from the body — org-boundary privilege escalation in six lines) and `analytics_routes.py` (unauthenticated admin dashboard, event endpoint accepting an arbitrary `user_id`) | SEC-02 | TODO |
 | W1-5 | Land a `verify.py` gate: **blueprints defined == blueprints registered**, ratcheted at 0, so the class cannot return | audit ethic | TODO |
 
@@ -126,6 +126,37 @@ the deletions land; interim baseline 23.
 **If `backtesting_bp` (#6) is wired up rather than deleted**, its three undecorated
 routes must be decorated first — `/backtesting/summary` is a POST that batch-processes
 solutions.
+
+---
+
+### W1-2 findings — the security review was not a formality
+
+Two real defects in `GDPRService.delete_user_data`, both fixed in `de44242`:
+
+1. **Erasure did not destroy credentials.** It nulled email and names only.
+   `app/auth/sso.py:390-393` resolves an SSO login by `(external_id,
+   sso_provider)` — commented *"Try by external_id first (most reliable)"* —
+   **before** it ever consults the email. An erased data subject could sign
+   straight back into a live account, and the row kept its `password_hash`.
+   Now nulls `password_hash`, `external_id` and `sso_provider`.
+2. **The tombstone was a phantom.** The service assigned `user.deleted_at`, but
+   `User` maps no such column (nor `status`). SQLAlchemy accepts the assignment
+   onto an unmapped attribute, persists nothing, and the export route reads it
+   back via `getattr` — an erasure that looked recorded and was not. Both writes
+   are now guarded on the mapped attribute.
+
+Authorisation itself was clean: `_forbid_unless_self_or_platform_admin` is
+correct, erasure is `@platform_admin_required`, and the only 404 is reachable
+only by a caller already authorised for that id, so it is not an enumeration
+oracle. `User` is not a `TenantMixin` model and so is genuinely unfiltered, but a
+non-admin can only ever pass their own id.
+
+**New — W1-6:** `GDPRService.export_user_data` returns only the profile dict and
+carries a `# TODO: Add activities, content, etc.`. The endpoint is now registered
+and authorised, but this is **not a complete Article 15 export** — a data subject
+exercising their right of access would receive a fraction of what is held. This
+is a compliance question about scope (what must be included), so it needs the
+owner's input as well as engineering. **TODO.**
 
 ---
 
