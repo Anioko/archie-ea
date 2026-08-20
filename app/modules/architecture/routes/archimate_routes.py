@@ -1605,6 +1605,133 @@ def _materialize_canvas_items(data):
     return element_id_map, relationship_id_map
 
 
+# ── BA-01: canvas payload normalisation ───────────────────────────────────
+def _coerce_entity_id(value):
+    """Return ``value`` as an int primary key, or None if it is not one."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
+
+
+def _collect_canvas_items(raw_items, id_key):
+    """Deduplicate a canvas payload by entity id — last occurrence wins.
+
+    BA-01: the composer emits one entry per canvas *cell*, and two cells may
+    reference the same element (routine on an AI-generated diagram). Both
+    ``saved_diagram_elements`` and ``saved_diagram_relationships`` carry a
+    UNIQUE(diagram_id, <entity>_id), so sending both rows raised a
+    UniqueViolation that 500'd the autosave PUT. The client then retried the
+    identical payload, so autosave failed *forever* and the user's work was
+    never persisted.
+
+    Last occurrence wins: the client builds this list by walking the graph in
+    z-order, so the last entry for an element is the most recently added /
+    dragged cell — the position the user just put it in. Keeping the first
+    would silently snap the element back to a stale coordinate.
+
+    Returns ``(ordered_by_id, unusable_ids)``; ``unusable_ids`` are values that
+    are not integer primary keys at all, which the caller must reject rather
+    than drop (dropping one is a fabricated success).
+    """
+    ordered = {}
+    unusable = []
+    for item in raw_items or []:
+        raw_id = item.get(id_key)
+        if raw_id in (None, "", 0):
+            continue
+        entity_id = _coerce_entity_id(raw_id)
+        if entity_id is None:
+            unusable.append(raw_id)
+            continue
+        ordered[entity_id] = item
+    return ordered, unusable
+
+
+def _unknown_entity_ids(model, ids):
+    """Ids in ``ids`` with no row the current tenant can see.
+
+    ``ArchiMateElement`` / ``ArchiMateRelationship`` are ``TenantMixin`` models,
+    so this SELECT carries ``WHERE organization_id = g.current_org_id``. That
+    makes one query cover both failure modes at once: an id that does not exist
+    (FK violation → 500) and an id belonging to *another* organisation (a
+    cross-tenant pin). Both come back as unknown and are refused with a 400.
+    """
+    if not ids:
+        return []
+    rows = db.session.query(model.id).filter(model.id.in_(list(ids))).all()
+    known = {row[0] for row in rows}
+    return sorted(i for i in ids if i not in known)
+
+
+def _canvas_payload_error(data):
+    """Validate the elements/relationships of a diagram payload.
+
+    Returns an error message, or None when the payload is safe to insert.
+    Only keys actually present in the request are checked, so a partial update
+    (name only) is unaffected.
+    """
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+    if "elements" in data:
+        _, unusable = _collect_canvas_items(data.get("elements"), "element_id")
+        if unusable:
+            return f"element_id is not a valid element reference: {unusable[:10]}"
+    if "relationships" in data:
+        _, unusable = _collect_canvas_items(data.get("relationships"), "relationship_id")
+        if unusable:
+            return (
+                "relationship_id is not a valid relationship reference: "
+                f"{unusable[:10]}"
+            )
+
+    if "elements" in data:
+        el_items, _ = _collect_canvas_items(data.get("elements"), "element_id")
+        unknown = _unknown_entity_ids(ArchiMateElement, el_items.keys())
+        if unknown:
+            return (
+                "Unknown element_id(s) — no such element in this organization: "
+                f"{unknown[:10]}"
+            )
+    if "relationships" in data:
+        rel_items, _ = _collect_canvas_items(data.get("relationships"), "relationship_id")
+        unknown = _unknown_entity_ids(ArchiMateRelationship, rel_items.keys())
+        if unknown:
+            return (
+                "Unknown relationship_id(s) — no such relationship in this "
+                f"organization: {unknown[:10]}"
+            )
+    return None
+
+
+def _commit_diagram_save():
+    """Commit a diagram save, turning an IntegrityError into a clean response.
+
+    Returns None on success, or a ``(response, status)`` tuple. The rollback is
+    the important half: without it the failed transaction stays poisoned and
+    every later query in the same request raises InFailedSqlTransaction, which
+    turns one bad row into a 500 for the whole page.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        db.session.commit()
+    except IntegrityError as exc:
+        db.session.rollback()
+        current_app.logger.warning(
+            "Saved-viewpoint write rejected by the database: %s",
+            getattr(exc, "orig", exc),
+        )
+        return jsonify({
+            "error": "Diagram not saved — the layout conflicts with stored data.",
+            "detail": str(getattr(exc, "orig", exc))[:300],
+        }), 409
+    return None
+
+
 # CSRF: Protected via X-CSRFToken header sent by Platform.fetch
 @login_required
 @archimate_bp.route("/api/saved-viewpoints", methods=["POST"])
@@ -1635,6 +1762,19 @@ def api_create_saved_viewpoint():
         return jsonify({"error": err}), 400
     desc, _ = _validate_string(data.get("description"), "description", max_length=5000)
 
+    # Materialize imported canvas items (string source ids) into real model rows
+    # so the FK inserts below cannot fail and the data joins the model. Done
+    # before the diagram row is created so a rejected payload leaves nothing
+    # behind.
+    element_id_map, relationship_id_map = _materialize_canvas_items(data)
+
+    # BA-01: refuse ids we cannot honour with a named 400 rather than letting
+    # the insert raise an unhandled IntegrityError.
+    payload_error = _canvas_payload_error(data)
+    if payload_error:
+        db.session.rollback()
+        return jsonify({"error": payload_error}), 400
+
     vp = SavedDiagram(
         name=name,
         viewpoint_type=data.get("viewpoint_type"),
@@ -1644,14 +1784,9 @@ def api_create_saved_viewpoint():
     db.session.add(vp)
     db.session.flush()
 
-    # Materialize imported canvas items (string source ids) into real model rows
-    # so the FK inserts below cannot fail and the data joins the model.
-    element_id_map, relationship_id_map = _materialize_canvas_items(data)
-
-    for el_data in (data.get("elements") or []):
-        el_id = el_data.get("element_id")
-        if not el_id:
-            continue
+    # BA-01: one row per element, not per canvas cell — last position wins.
+    el_items, _ = _collect_canvas_items(data.get("elements"), "element_id")
+    for el_id, el_data in el_items.items():
         ve = SavedDiagramElement(
             diagram_id=vp.id,
             element_id=el_id,
@@ -1663,11 +1798,9 @@ def api_create_saved_viewpoint():
         )
         db.session.add(ve)
 
-    for rel_data in (data.get("relationships") or []):
-        rel_id = rel_data.get("relationship_id")
-        if not rel_id:
-            continue
-        import json as _json
+    import json as _json
+    rel_items, _ = _collect_canvas_items(data.get("relationships"), "relationship_id")
+    for rel_id, rel_data in rel_items.items():
         waypoints = rel_data.get("waypoints")
         vr = SavedDiagramRelationship(
             diagram_id=vp.id,
@@ -1677,7 +1810,9 @@ def api_create_saved_viewpoint():
         )
         db.session.add(vr)
 
-    db.session.commit()
+    failure = _commit_diagram_save()
+    if failure:
+        return failure
 
     body = vp.to_dict()
     if element_id_map or relationship_id_map:
@@ -1978,12 +2113,19 @@ def api_update_saved_viewpoint(vp_id):
     # before the FK inserts below (same as the create route).
     element_id_map, relationship_id_map = _materialize_canvas_items(data)
 
+    # BA-01: refuse ids we cannot honour with a named 400 rather than letting
+    # the insert raise an unhandled IntegrityError. Checked before the DELETEs
+    # below so a rejected autosave leaves the stored layout intact.
+    payload_error = _canvas_payload_error(data)
+    if payload_error:
+        db.session.rollback()
+        return jsonify({"error": payload_error}), 400
+
     if "elements" in data:
         SavedDiagramElement.query.filter_by(diagram_id=vp.id).delete()
-        for el_data in (data["elements"] or []):
-            el_id = el_data.get("element_id")
-            if not el_id:
-                continue
+        # One row per element, not per canvas cell — last position wins.
+        el_items, _ = _collect_canvas_items(data["elements"], "element_id")
+        for el_id, el_data in el_items.items():
             ve = SavedDiagramElement(
                 diagram_id=vp.id,
                 element_id=el_id,
@@ -1997,10 +2139,8 @@ def api_update_saved_viewpoint(vp_id):
 
     if "relationships" in data:
         SavedDiagramRelationship.query.filter_by(diagram_id=vp.id).delete()
-        for rel_data in (data["relationships"] or []):
-            rel_id = rel_data.get("relationship_id")
-            if not rel_id:
-                continue
+        rel_items, _ = _collect_canvas_items(data["relationships"], "relationship_id")
+        for rel_id, rel_data in rel_items.items():
             waypoints = rel_data.get("waypoints")
             vr = SavedDiagramRelationship(
                 diagram_id=vp.id,
@@ -2010,7 +2150,9 @@ def api_update_saved_viewpoint(vp_id):
             )
             db.session.add(vr)
 
-    db.session.commit()
+    failure = _commit_diagram_save()
+    if failure:
+        return failure
 
     body = {
         "id": vp.id,

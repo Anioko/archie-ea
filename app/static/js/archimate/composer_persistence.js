@@ -169,6 +169,41 @@ let ComposerPersistence = (function() {
         /* Legacy alias for backward-compat */
         function _serializeZones(self) { return _serializeCanvasExt(self); }
 
+        /* BA-01: the canvas emits one entry per CELL, and two cells can reference
+           the same element or relationship (routine on an AI-generated diagram).
+           saved_diagram_elements / saved_diagram_relationships each carry a
+           UNIQUE(diagram_id, <entity>_id), so an un-deduplicated payload was
+           rejected by the database and the autosave PUT 500'd — then retried the
+           same payload forever, so the work was never persisted. Last entry wins:
+           the list is built by walking the graph, so the last occurrence is the
+           most recently touched cell, i.e. the position the user just dragged to.
+           The server dedupes too; this is belt and braces so the request is
+           well-formed before it leaves the browser. */
+        function _dedupeById(items, key) {
+            let byId = {};
+            let order = [];
+            (items || []).forEach(function(item) {
+                if (!item) return;
+                let id = item[key];
+                if (id === null || id === undefined || id === '') return;
+                let k = String(id);
+                if (!(k in byId)) order.push(k);
+                byId[k] = item;
+            });
+            return order.map(function(k) { return byId[k]; });
+        }
+
+        /* BA-01: turn a rejected save into something the user can act on.
+           The old handler was `.catch(function() {` — it discarded the error
+           object entirely, which is why a permanently-failing payload looked
+           like nothing at all. */
+        function _saveErrorDetail(err) {
+            if (!err) return '';
+            let data = err.data || err.body || null;
+            let msg = (data && (data.error || data.detail)) || err.message || '';
+            return String(msg).slice(0, 200);
+        }
+
         let methods = {
 
         _autoSave: function() {
@@ -184,6 +219,12 @@ let ComposerPersistence = (function() {
              * (see the 10s snapshot below), never the system of record. */
             let self = this;
             if (!self.viewpointDirty || self._creatingAutosave) return;
+            /* BA-01: a payload the server rejected on its merits (4xx) will be
+               rejected identically on every retry. Stop the loop rather than
+               burning ticks on a save that cannot succeed. The user has been
+               toasted with the server's reason and pointed at Save; a
+               successful manual Save clears the block. */
+            if (self._autoSaveBlocked) return;
 
             let elements = self.graph.getElements().filter(function(c) { return !c.get('isLayerZone') && !c.get('isAnnotation'); });
             if (elements.length === 0) return;
@@ -208,6 +249,7 @@ let ComposerPersistence = (function() {
                 }
                 return item;
             }).filter(function(e) { return e.element_id; });
+            elData = _dedupeById(elData, 'element_id');
 
             let relData = self.graph.getLinks().map(function(link) {
                 let relId = link.get('relId');
@@ -219,6 +261,7 @@ let ComposerPersistence = (function() {
                     label: link.get('customLabel') || null,
                 };
             }).filter(function(r) { return r; });
+            relData = _dedupeById(relData, 'relationship_id');
 
             let payload = {
                 name: self.activeViewpointName || 'My Viewpoint',
@@ -240,19 +283,35 @@ let ComposerPersistence = (function() {
                     self._autosaveLabel = 'just now';
                     self._saveFailed = false;
                     self._autoSaveFailCount = 0;
+                    self._autoSaveBlocked = false;
+                    self._saveErrorDetail = '';
                     // Server copy is current — drop the redundant local snapshot so a
                     // deleted-then-restored diagram cannot re-materialise (see saveViewpoint).
                     self._clearAutosave();
                 }
             })
-            .catch(function() {
+            .catch(function(err) {
                 self._saving = false;
                 self._saveFailed = true;
                 self._autoSaveFailCount = (self._autoSaveFailCount || 0) + 1;
-                if (self._autoSaveFailCount === 3) {
+                let status = err && err.status;
+                let detail = _saveErrorDetail(err);
+                self._saveErrorDetail = detail;
+                /* BA-01: a 4xx means the server understood the request and
+                   refused it — retrying the same payload is guaranteed to fail
+                   the same way, which is how autosave used to fail forever
+                   while saying only "retrying...". Escalate immediately, say
+                   what the server said, and stop the loop. */
+                if (status >= 400 && status < 500) {
+                    self._autoSaveBlocked = true;
+                    _toast('error', 'Auto-save rejected — your changes are NOT saved. '
+                        + (detail || 'The server refused this diagram.')
+                        + ' Use Save to retry once the diagram is corrected.');
+                } else if (self._autoSaveFailCount === 3) {
                     _toast('warning', 'Changes not saved — retrying...');
                 } else if (self._autoSaveFailCount > 3) {
-                    _toast('error', 'Auto-save failed after multiple attempts');
+                    _toast('error', 'Auto-save failed after multiple attempts'
+                        + (detail ? ' — ' + detail : ''));
                 }
             });
         },
@@ -279,6 +338,7 @@ let ComposerPersistence = (function() {
                     rendering_mode: cell.get('renderingMode') || 'black_box',
                 };
             }).filter(function(e) { return e.element_id; });
+            elData = _dedupeById(elData, 'element_id');
 
             let relData = self.graph.getLinks().map(function(link) {
                 let relId = link.get('relId');
@@ -295,6 +355,7 @@ let ComposerPersistence = (function() {
                     label: link.get('customLabel') || null,
                 };
             }).filter(function(r) { return r; });
+            relData = _dedupeById(relData, 'relationship_id');
 
             let stamp = new Date().toLocaleString();
             let payload = {
@@ -317,17 +378,28 @@ let ComposerPersistence = (function() {
                     self._autosaveLabel = 'just now';
                     self._saveFailed = false;
                     self._autoSaveFailCount = 0;
+                    self._autoSaveBlocked = false;
+                    self._saveErrorDetail = '';
                     // Now persisted server-side under a real id; the local snapshot has
                     // served its purpose and must not linger to re-create a deleted row.
                     self._clearAutosave();
                 }
             })
-            .catch(function() {
+            .catch(function(err) {
                 self._creatingAutosave = false;
                 self._saveFailed = true;
                 self._autoSaveFailCount = (self._autoSaveFailCount || 0) + 1;
-                if (self._autoSaveFailCount === 1) {
-                    _toast('warning', 'Could not save your work to the server — keeping a local browser backup only. Retrying...');
+                let status = err && err.status;
+                let detail = _saveErrorDetail(err);
+                self._saveErrorDetail = detail;
+                /* BA-01: see _autoSave — a 4xx will never succeed on retry. */
+                if (status >= 400 && status < 500) {
+                    self._autoSaveBlocked = true;
+                    _toast('error', 'Auto-save rejected — your work is only in this browser. '
+                        + (detail || 'The server refused this diagram.'));
+                } else if (self._autoSaveFailCount === 1) {
+                    _toast('warning', 'Could not save your work to the server — keeping a local browser backup only. Retrying...'
+                        + (detail ? ' (' + detail + ')' : ''));
                 }
             });
         },
@@ -370,6 +442,7 @@ let ComposerPersistence = (function() {
                     }
                     return elItem;
                 }).filter(function(e) { return e.element_id; });
+                elData = _dedupeById(elData, 'element_id');
 
                 /* Collect relationship data with waypoints */
                 let relData = self.graph.getLinks().map(function(link) {
@@ -390,6 +463,7 @@ let ComposerPersistence = (function() {
                         label: link.get('customLabel') || null,
                     };
                 }).filter(function(r) { return r; });
+                relData = _dedupeById(relData, 'relationship_id');
 
                 let payload = {
                     name: name.trim(),
@@ -443,6 +517,12 @@ let ComposerPersistence = (function() {
                         self.lastSavedAt = Date.now();
                         self._autosaveLabel = 'just now';
                         self.statusText = 'Saved: ' + (data.name || name.trim());
+                        /* BA-01: a successful save clears the autosave block so
+                           the background loop resumes on the next edit. */
+                        self._autoSaveBlocked = false;
+                        self._autoSaveFailCount = 0;
+                        self._saveFailed = false;
+                        self._saveErrorDetail = '';
                         // CMP: the diagram is now safely in the DB, so the localStorage
                         // crash-recovery snapshot is redundant. Clearing it here stops a
                         // later "restore auto-save" from resurrecting a diagram that was
@@ -453,7 +533,14 @@ let ComposerPersistence = (function() {
                         self.statusText = 'Save failed: ' + (data.error || 'unknown');
                     }
                 })
-                .catch(function(err) { self.statusText = 'Save error: ' + err.message; _toast('error', 'Failed to save viewpoint'); });
+                .catch(function(err) {
+                    /* BA-01: report what the server actually said. err.message is
+                       often just "HTTP 400"; the reason is in err.data.error. */
+                    let detail = _saveErrorDetail(err);
+                    self._saveErrorDetail = detail;
+                    self.statusText = 'Save error: ' + (detail || 'unknown');
+                    _toast('error', 'Failed to save viewpoint' + (detail ? ' — ' + detail : ''));
+                });
             };
         },
 
