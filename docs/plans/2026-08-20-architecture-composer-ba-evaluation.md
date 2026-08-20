@@ -67,6 +67,21 @@ date. Backfill is **BA-11** and should run before anyone demos a maturity number
 `FrameworkClassifier` expects (`Accounting`, `Treasury Management`, ...). So the
 framework rollups have nothing to group by. Logged as **BA-12**.
 
+### Demo guidance — production data, verified 20 Aug
+
+Prod holds: 5 orgs, 23 users, **270 capabilities** (242 categorised), 603 ArchiMate
+elements, **5 saved diagrams**, 44 applications. There is real content to show.
+
+- **Demo `/capability-maturity/heatmap`.** It groups by whatever `category` holds,
+  so prod's mix of tiers and domain names both render. Every capability will show
+  `—` for maturity with an explicit "0 of 270 assessed" coverage line — that is the
+  honest baseline after BA-11, and it sets up the story: assess a few live in the
+  meeting via `/capability-maturity/edit/<id>` and watch them light up.
+- **Do NOT demo `/capability-maturity/frameworks`.** It will look broken-empty for
+  the taxonomy reason in BA-12, and the emptiness is not self-explaining.
+- **PDF export is verified working** (A3 landscape, 61,728 bytes on a 4-element
+  diagram). Export from one of the 5 existing saved diagrams.
+
 **Honest position for tomorrow:** the modelling engine and the maturity module
 are both real and better than the evaluation concluded. What is missing is
 populated data (BA-11, BA-12) and the leadership-facing presentation layer
@@ -134,7 +149,7 @@ and the owner's to settle, not engineering's.
 | BA-09 | KPI/metric dashboard concept — no dashboard or tile view exists. Note `Metric` is already an ArchiMate motivation entity in this codebase, so check the model before designing. | **OWNER** then engineering | TODO |
 | BA-10 | Products & services catalogue and policy/governance register views — only partially covered today (a `Service` element; a "Security Architecture" template touching constraints/policies). | **OWNER** on scope | TODO |
 | BA-11 | ✅ **DONE in production, 20 Aug.** 270 capabilities carried a defaulted maturity while **0** had ever been assessed. Backed up to `ba11_maturity_backup_20260820` (270 rows), then NULLed `current`/`target`/`gap` **only** `WHERE maturity_assessment_date IS NULL`. Verified after: 270 total, 0 assessed, **0 still scored**. Site healthy. Fully reversible — restore SQL is in the commit message. | **P1 data** | **DONE** |
-| BA-12 | **`category` is NULL on every capability**, and new ones get `data.get("type", "operational")`, which does not match the APQC-style taxonomy `FrameworkClassifier` expects. So framework rollups have nothing to group by and stay empty even with the query fixed. Either populate `category` from the classifier or change the rollup to group by what the data actually carries. | **P1** | TODO |
+| BA-12 | **Framework rollups will read near-empty in production, and the reason is a taxonomy mismatch, not missing data.** Measured in prod 20 Aug: 242 of 270 capabilities DO have a category, but 191 of them use capability *tiers* — `operational` (124), `tactical` (31), `supporting` (30), `strategic` (6) — while `FrameworkClassifier` matches APQC-style *domains* (`Accounting`, `Treasury Management`, `Customer Acquisition`, …). Only `Customer Management` (5 rows) overlaps. The ~47 rows that do use domain names (`Finance & Controlling`, `Sales & Channel Management`, `Manufacturing Operations`, …) are close to the taxonomy but not equal to it. Fix by mapping the existing domain names onto the classifier, not by re-categorising 270 rows. **The heatmap is unaffected** — it groups by whatever `category` holds. | **P1** | TODO |
 
 ## Recommendation
 
