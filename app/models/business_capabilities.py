@@ -58,8 +58,13 @@ class BusinessCapability(TenantMixin, db.Model):
     )
 
     # Capability maturity
-    current_maturity_level = db.Column(db.Integer, default=1)  # 1 - 5 scale
-    target_maturity_level = db.Column(db.Integer, default=3)  # 1 - 5 scale
+    # No default: an unassessed capability must read as NULL -> "—", not as a
+    # measured Level 1. These defaulted to 1 and 3, which put a plausible score
+    # on every capability nobody had assessed — indistinguishable from a real
+    # assessment, and the exact failure CLAUDE.md's "never invent data" rule
+    # exists to prevent. maturity_assessment_date is what says "this is real".
+    current_maturity_level = db.Column(db.Integer, nullable=True)  # 1 - 5 scale
+    target_maturity_level = db.Column(db.Integer, nullable=True)  # 1 - 5 scale
     maturity_gap = db.Column(db.Integer)  # Calculated gap between current and target
     maturity_assessment_date = db.Column(db.DateTime)
     maturity_assessment_notes = db.Column(db.Text)

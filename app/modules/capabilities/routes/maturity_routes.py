@@ -646,17 +646,48 @@ def frameworks_overview():
         # Get statistics for each framework
         framework_stats = {}
 
+        # Tenant scoping: raw SQL, so the ORM tenant filter in
+        # app/middleware/tenant_isolation.py does not apply (ADR 0003) — the
+        # organization_id predicate has to be added by hand.
+        _org_id = getattr(g, "current_org_id", None)
+        _org_filter = " AND organization_id = :org_id" if _org_id else ""
+
         for framework_key, framework_data in all_frameworks.items():
             framework_categories = FrameworkClassifier.get_framework_categories(framework_key)
 
-            if framework_categories:
-                # Use parameterized query to prevent SQL injection
-                (", ".join(
-                    [f":cat_{i}" for i in range(len(framework_categories))]
-                ))
-                ({
-                    f"cat_{i}": cat for i, cat in enumerate(framework_categories)
-                })
+            if not framework_categories:
+                continue
+
+            # Placeholders, not interpolated values, so a framework category can
+            # never carry SQL into the statement.
+            placeholders = ", ".join(
+                [f":cat_{i}" for i in range(len(framework_categories))]
+            )
+            params = {f"cat_{i}": cat for i, cat in enumerate(framework_categories)}
+            if _org_id:
+                params["org_id"] = _org_id
+
+            # Column ORDER is load-bearing: frameworks_overview.html reads this
+            # row positionally as stats[0], [1], [2], [4], [5].
+            row = db.session.execute(  # tenant-filtered
+                text(
+                    f"""
+                SELECT COUNT(*)                                              AS total,
+                       COUNT(current_maturity_level)                         AS with_current,
+                       COUNT(target_maturity_level)                          AS with_target,
+                       COUNT(*) FILTER (
+                           WHERE maturity_gap IS NOT NULL AND maturity_gap > 0
+                       )                                                     AS with_gap,
+                       AVG(current_maturity_level)                           AS avg_current,
+                       AVG(target_maturity_level)                            AS avg_target
+                FROM business_capability
+                WHERE category IN ({placeholders}){_org_filter}
+            """
+                ),
+                params,
+            ).first()
+
+            framework_stats[framework_key] = row
 
 
         return render_template(
