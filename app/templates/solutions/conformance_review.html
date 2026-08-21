@@ -30,13 +30,18 @@
     {# ── Score + summary ───────────────────────────────────────────── #}
     <div class="border border-border rounded-xl bg-card p-6 mb-6 flex items-start gap-5">
         <div class="shrink-0 text-center">
+            {% if review.score is not none %}
             <div class="text-4xl font-bold leading-none
                 {% if review.score >= 80 %}text-success{% elif review.score >= 50 %}text-warning{% else %}text-destructive{% endif %}">{{ review.score }}</div>
             <div class="text-xs uppercase tracking-wider text-muted-foreground mt-1">Conformance</div>
+            {% else %}
+            <div class="text-lg font-semibold leading-none text-muted-foreground">Unavailable</div>
+            <div class="text-xs uppercase tracking-wider text-muted-foreground mt-1">Conformance</div>
+            {% endif %}
         </div>
         <div class="min-w-0 border-l border-border pl-5">
             <h2 class="text-base font-semibold text-foreground">
-                {% if review.flagged %}{{ review.flagged }} issue{{ '' if review.flagged == 1 else 's' }} need{{ 's' if review.flagged == 1 else '' }} attention{% else %}Conformant{% endif %}
+                {% if review.unassessed %}Not yet assessed{% elif not review.controls_available %}Required controls unavailable{% elif review.flagged %}{{ review.flagged }} issue{{ '' if review.flagged == 1 else 's' }} need{{ 's' if review.flagged == 1 else '' }} attention{% else %}Conformant{% endif %}
             </h2>
             <p class="text-sm text-muted-foreground mt-1">{{ review.summary }}</p>
         </div>
@@ -65,6 +70,12 @@
             </div>
         </div>
         {% endfor %}
+    </div>
+    {% elif review.unassessed or not review.controls_available %}
+    <div class="border border-warning/30 bg-warning/5 rounded-xl p-8 text-center">
+        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-warning/10 text-warning-emphasis mb-3"><i data-lucide="circle-alert" class="h-6 w-6"></i></span>
+        <p class="text-sm font-medium text-foreground">{% if review.unassessed %}No architecture content is modelled yet{% else %}One or more required conformance controls are unavailable{% endif %}</p>
+        <p class="text-xs text-muted-foreground mt-1">No conformance score has been calculated.</p>
     </div>
     {% else %}
     <div class="border border-success/30 bg-success/5 rounded-xl p-8 text-center">

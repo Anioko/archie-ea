@@ -49,11 +49,14 @@ _DATA_TABLES = {
 }
 
 
-def _safe(name: str, fn: Callable[[], List[Dict]]) -> List[Dict]:
+def _safe(name: str, fn: Callable[[], List[Dict]], checks_run: List[Dict]) -> List[Dict]:
     try:
-        return fn()
+        findings = fn()
+        checks_run.append({"check": name, "available": True})
+        return findings
     except Exception as exc:  # noqa: BLE001 — one bad check can't break the review
         logger.debug("conformance check %s unavailable: %s", name, exc)
+        checks_run.append({"check": name, "available": False})
         return []
 
 
@@ -91,23 +94,34 @@ class ConformanceReviewer:
             }
 
         findings: List[Dict[str, Any]] = []
-        findings += _safe("integration", lambda: cls._integration_findings(solution_id))
-        findings += _safe("clean_core", lambda: cls._clean_core_findings(solution_id))
-        findings += _safe("business", lambda: cls._business_findings(solution_id))
-        findings += _safe("data", lambda: cls._data_findings(solution_id))
-        findings += _safe("technology", lambda: cls._technology_findings(solution_id))
-        findings += _safe("deployment", lambda: cls._deployment_findings(solution_id))
+        checks_run: List[Dict[str, Any]] = []
+        findings += _safe("integration", lambda: cls._integration_findings(solution_id), checks_run)
+        findings += _safe("clean_core", lambda: cls._clean_core_findings(solution_id), checks_run)
+        findings += _safe("business", lambda: cls._business_findings(solution_id), checks_run)
+        findings += _safe("data", lambda: cls._data_findings(solution_id), checks_run)
+        findings += _safe("technology", lambda: cls._technology_findings(solution_id), checks_run)
+        findings += _safe("deployment", lambda: cls._deployment_findings(solution_id), checks_run)
 
         rank = {"critical": 0, "high": 1, "info": 2}
         findings.sort(key=lambda f: rank.get(f.get("severity", "info"), 3))
 
-        score = 100
-        for f in findings:
-            score -= _DEBIT.get(f.get("severity", "info"), 0)
-        score = max(0, score)
+        unavailable_checks = [check["check"] for check in checks_run if not check["available"]]
+        controls_available = not unavailable_checks
+        score = None
+        if controls_available:
+            score = 100
+            for f in findings:
+                score -= _DEBIT.get(f.get("severity", "info"), 0)
+            score = max(0, score)
         flagged = sum(1 for f in findings if f.get("severity") in ("critical", "high"))
 
-        if not findings:
+        if not controls_available:
+            summary = (
+                "Conformance controls unavailable: "
+                + ", ".join(unavailable_checks)
+                + ". No score has been calculated."
+            )
+        elif not findings:
             summary = "No technical-conformance issues found. The design aligns with platform policy."
         else:
             summary = (
@@ -123,6 +137,9 @@ class ConformanceReviewer:
             "solution_name": solution.name,
             "score": score,
             "unassessed": False,
+            "controls_available": controls_available,
+            "unavailable_checks": unavailable_checks,
+            "checks_run": checks_run,
             "flagged": flagged,
             "findings": findings,
             "summary": summary,

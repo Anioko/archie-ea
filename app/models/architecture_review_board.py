@@ -51,6 +51,37 @@ class ARBReviewStatus(str, Enum):
     WITHDRAWN = "withdrawn"
 
 
+# These are the state groups used by operational ARB reporting.  Keeping them
+# next to the canonical status vocabulary prevents each dashboard from quietly
+# choosing a different meaning for "open".
+ARB_OPEN_STATUSES = frozenset(
+    {
+        ARBReviewStatus.SUBMITTED.value,
+        ARBReviewStatus.UNDER_REVIEW.value,
+        ARBReviewStatus.PENDING_INFO.value,
+        "pending_info",  # legacy spelling present in existing ARB records
+        "pending",       # legacy queue spelling present in existing ARB records
+    }
+)
+ARB_BLOCKED_OR_NOT_READY_STATUSES = frozenset(
+    {
+        ARBReviewStatus.PENDING_INFO.value,
+        "pending_info",
+        ARBReviewStatus.DEFERRED.value,
+    }
+)
+ARB_DECIDED_STATUSES = frozenset(
+    {
+        ARBReviewStatus.APPROVED.value,
+        ARBReviewStatus.APPROVED_WITH_CONDITIONS.value,
+        ARBReviewStatus.REJECTED.value,
+        ARBReviewStatus.DEFERRED.value,
+        ARBReviewStatus.WITHDRAWN.value,
+    }
+)
+ARB_REVIEW_SLA_DAYS = 21
+
+
 class TOGAFPhase(str, Enum):
     """TOGAF ADM Phases."""
 
