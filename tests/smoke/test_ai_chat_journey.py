@@ -203,7 +203,7 @@ def test_persona_storage_denial_keeps_chat_initialized(page, live_server, seeded
     throw the same SecurityError private browsing produces.
     """
     page.add_init_script("""
-        () => {
+        (() => {
             const originalGetItem = Storage.prototype.getItem;
             const originalSetItem = Storage.prototype.setItem;
             const denied = key => String(key).startsWith('archie_chat_persona_v2');
@@ -215,7 +215,7 @@ def test_persona_storage_denial_keeps_chat_initialized(page, live_server, seeded
                 if (denied(key)) throw new DOMException('Storage denied', 'SecurityError');
                 return originalSetItem.call(this, key, value);
             };
-        }
+        })()
     """)
 
     _open_chat(page, live_server, seeded)
