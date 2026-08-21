@@ -116,6 +116,17 @@ def test_nonce_in_header_matches_the_one_in_the_page(app):
     assert 'nonce="test-nonce-value"' in html
 
 
+def test_capability_map_has_no_blank_style_nonce(app):
+    """Imported macros must not emit style blocks without the request nonce."""
+    from flask import g, render_template
+
+    with app.test_request_context("/capability-map/"):
+        g.csp_nonce = "test-nonce-value"
+        html = render_template("capability_map/index.html", total_capabilities=0)
+
+    assert '<style nonce="">' not in html
+
+
 # --------------------------------------------------------------------------
 # The policy itself
 # --------------------------------------------------------------------------
