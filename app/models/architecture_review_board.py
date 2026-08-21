@@ -76,7 +76,6 @@ ARB_DECIDED_STATUSES = frozenset(
         ARBReviewStatus.APPROVED_WITH_CONDITIONS.value,
         ARBReviewStatus.REJECTED.value,
         ARBReviewStatus.DEFERRED.value,
-        ARBReviewStatus.WITHDRAWN.value,
     }
 )
 ARB_REVIEW_SLA_DAYS = 21

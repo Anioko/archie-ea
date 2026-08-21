@@ -51,13 +51,20 @@ class ChiefArchitectService:
         latest_adr = SolutionOptionsAdvisor.latest(solution_id)
         adr = SolutionOptionsAdvisor.to_dict(latest_adr) if latest_adr else None
 
-        score = conformance.get("score", 0) if conformance.get("success") else None
-        flagged = conformance.get("flagged", 0) if conformance.get("success") else 0
+        review_succeeded = bool(conformance.get("success"))
+        controls_available = review_succeeded and conformance.get("controls_available", True)
+        unassessed = bool(conformance.get("unassessed"))
+        score = conformance.get("score") if review_succeeded else None
+        flagged = conformance.get("flagged", 0) if review_succeeded else 0
         has_decision = adr is not None
         decision_accepted = bool(adr and adr.get("status") == "accepted")
 
         # synthesised board verdict
-        if score is None:
+        if not review_succeeded:
+            verdict, tone = "Conformance review unavailable", "warn"
+        elif not controls_available:
+            verdict, tone = "Conformance controls unavailable", "warn"
+        elif unassessed or score is None:
             verdict, tone = "Not yet reviewable", "info"
         elif flagged == 0 and decision_accepted:
             verdict, tone = "Ready for the board", "good"
@@ -82,7 +89,11 @@ class ChiefArchitectService:
             "conformance": {
                 "score": score,
                 "flagged": flagged,
-                "findings": conformance.get("findings", []) if conformance.get("success") else [],
+                "findings": conformance.get("findings", []) if review_succeeded else [],
+                "summary": conformance.get("summary") if review_succeeded else conformance.get("error"),
+                "unassessed": unassessed,
+                "controls_available": controls_available,
+                "unavailable_checks": conformance.get("unavailable_checks", []) if review_succeeded else [],
             },
             "decision": adr,
             "readiness": readiness,
@@ -106,8 +117,19 @@ class ChiefArchitectService:
             {"label": "Technical lead assigned", "ok": bool(getattr(solution, "technical_lead", None))},
             {"label": "Recommended decision (ADR)", "ok": adr is not None},
             {"label": "Decision accepted", "ok": bool(adr and adr.get("status") == "accepted")},
-            {"label": "No high/critical conformance issues",
-             "ok": conformance.get("success") and conformance.get("flagged", 1) == 0},
+            {
+                "label": "Required conformance controls available",
+                "ok": bool(conformance.get("success")) and conformance.get("controls_available", True),
+            },
+            {
+                "label": "No high/critical conformance issues",
+                "ok": (
+                    bool(conformance.get("success"))
+                    and conformance.get("controls_available", True)
+                    and not conformance.get("unassessed")
+                    and conformance.get("flagged", 1) == 0
+                ),
+            },
         ]
         items += ChiefArchitectService._domain_readiness(solution)
         return items
@@ -242,6 +264,8 @@ class ChiefArchitectService:
         attention.sort(key=lambda item: item["_rank"])
         for item in attention:
             item.pop("_rank")
+        attention_total = len(attention)
+        attention_displayed = min(attention_total, 10)
         avg = round(sum(scored) / len(scored)) if scored and not unavailable else None
 
         from app.models.architecture_review_board import (
@@ -254,9 +278,10 @@ class ChiefArchitectService:
         reviews = ARBReviewItem.query.all()
         open_reviews = [review for review in reviews if review.status in ARB_OPEN_STATUSES]
         submitted_dates = [review.submitted_at for review in open_reviews if review.submitted_at]
+        undated_open = len(open_reviews) - len(submitted_dates)
         oldest_open_age_days = (
             max(0, (cls._utcnow() - min(submitted_dates)).days)
-            if submitted_dates else None
+            if submitted_dates and not undated_open else None
         )
         arb = {
             "open": len(open_reviews),
@@ -265,6 +290,7 @@ class ChiefArchitectService:
                 1 for review in reviews if review.status in ARB_BLOCKED_OR_NOT_READY_STATUSES
             ),
             "oldest_open_age_days": oldest_open_age_days,
+            "undated_open": undated_open,
             "sla_days": ARB_REVIEW_SLA_DAYS,
         }
 
@@ -289,8 +315,12 @@ class ChiefArchitectService:
                 "unavailable": unavailable,
             },
             "avg_conformance": avg,
-            "flagged_total": flagged_total,
-            "attention": attention[:10],
+            "flagged_total": flagged_total if scored else None,
+            "flagged_evaluated": len(scored),
+            "attention": attention[:attention_displayed],
+            "attention_total": attention_total,
+            "attention_displayed": attention_displayed,
+            "attention_truncated": attention_total > attention_displayed,
             "worst": [item for item in attention if item["status"] == "not_ready"][:5],
             "arb": arb,
             "decisions_made": arb["decided"],

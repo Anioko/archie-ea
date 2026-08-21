@@ -43,12 +43,18 @@
         </div>
         <div class="border border-border rounded-xl bg-card p-4">
             <p class="text-xs uppercase tracking-wider text-muted-foreground">Conformance issues</p>
+            {% if synthesis.flagged_total is not none %}
             <p class="text-2xl font-bold {% if synthesis.flagged_total %}text-warning{% else %}text-foreground{% endif %} mt-1">{{ synthesis.flagged_total }}</p>
+            <p class="text-xs text-muted-foreground mt-1">Across {{ synthesis.flagged_evaluated }} evaluated review{{ '' if synthesis.flagged_evaluated == 1 else 's' }}</p>
+            {% else %}
+            <p class="text-lg font-semibold text-muted-foreground mt-2">Unavailable</p>
+            <p class="text-xs text-muted-foreground mt-1">No evaluated reviews; issue total has not been calculated.</p>
+            {% endif %}
         </div>
         <div class="border border-border rounded-xl bg-card p-4">
             <p class="text-xs uppercase tracking-wider text-muted-foreground">ARB records</p>
             <p class="text-2xl font-bold text-foreground mt-1">{{ synthesis.arb.open }}<span class="text-sm text-muted-foreground"> open</span></p>
-            <p class="text-xs text-muted-foreground mt-1">{{ synthesis.arb.decided }} decided · {{ synthesis.arb.blocked_or_not_ready }} awaiting info/deferred{% if synthesis.arb.oldest_open_age_days is not none %} · oldest {{ synthesis.arb.oldest_open_age_days }}d ({{ synthesis.arb.sla_days }}d SLA){% endif %}</p>
+            <p class="text-xs text-muted-foreground mt-1">{{ synthesis.arb.decided }} decided · {{ synthesis.arb.blocked_or_not_ready }} awaiting info/deferred{% if synthesis.arb.oldest_open_age_days is not none %} · oldest {{ synthesis.arb.oldest_open_age_days }}d ({{ synthesis.arb.sla_days }}d SLA){% elif synthesis.arb.undated_open %} · age unavailable: {{ synthesis.arb.undated_open }} open record{{ '' if synthesis.arb.undated_open == 1 else 's' }} undated{% endif %}</p>
         </div>
     </div>
 
@@ -57,7 +63,7 @@
     <div class="border border-border rounded-xl bg-card overflow-hidden">
         <div class="px-5 py-3 border-b border-border">
             <h2 class="text-sm font-semibold text-foreground">Attention queue</h2>
-            <p class="text-xs text-muted-foreground mt-1">Unavailable controls and unassessed designs are listed before scored conformance findings.</p>
+            <p class="text-xs text-muted-foreground mt-1">Unavailable controls and unassessed designs are listed before scored conformance findings. Showing {{ synthesis.attention_displayed }} of {{ synthesis.attention_total }} current attention item{{ '' if synthesis.attention_total == 1 else 's' }}{% if synthesis.attention_truncated %}; {{ synthesis.attention_total - synthesis.attention_displayed }} additional item{{ '' if synthesis.attention_total - synthesis.attention_displayed == 1 else 's' }} not displayed due to the queue limit{% endif %}.</p>
         </div>
         {% if synthesis.attention %}
         <table class="min-w-full divide-y divide-border text-sm">

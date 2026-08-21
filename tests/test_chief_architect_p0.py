@@ -143,6 +143,7 @@ def test_arb_summary_uses_authoritative_statuses_and_tenant_scope(db_session, te
         "decided": 1,
         "blocked_or_not_ready": 1,
         "oldest_open_age_days": 24,
+        "undated_open": 0,
         "sla_days": 21,
     }
 
@@ -162,3 +163,99 @@ def test_rollup_route_communicates_its_actual_scope(db_session, client, login_as
     assert "As of" in text
     assert "Portfolio-wide architecture health" not in text
     assert "across all reviews" not in text
+
+
+def test_review_packet_renders_unavailable_conformance_controls(
+    monkeypatch, db_session, client, login_as, tenant_ctx
+):
+    """A failed check is evidence of unavailable readiness, never a clean review."""
+    from app.modules.solutions_strategic.v2.services.conformance_reviewer import (
+        ConformanceReviewer,
+    )
+
+    org = _org(db_session, "packet-unavailable")
+    with tenant_ctx(org.id):
+        user = _user(db_session, org)
+        solution = _solution(db_session, "Unavailable packet controls")
+
+    monkeypatch.setattr(
+        ConformanceReviewer,
+        "review",
+        staticmethod(
+            lambda _solution_id: {
+                "success": True,
+                "score": None,
+                "flagged": 0,
+                "findings": [],
+                "unassessed": False,
+                "controls_available": False,
+                "unavailable_checks": ["business"],
+                "summary": "Conformance controls unavailable: business. No score has been calculated.",
+            }
+        ),
+    )
+    login_as(client, user)
+
+    response = client.get(f"/solutions/{solution.id}/review-packet")
+
+    assert response.status_code == 200
+    text = _visible_text(response)
+    assert "Conformance controls unavailable" in text
+    assert "Required conformance controls available" in text
+    assert "business" in text
+    assert "Ready for the board" not in text
+
+
+def test_attention_metadata_discloses_when_queue_is_limited(db_session, tenant_ctx):
+    """The visible queue must disclose rows omitted by its fixed display limit."""
+    org = _org(db_session, "attention-limit")
+    with tenant_ctx(org.id):
+        for number in range(11):
+            _solution(db_session, f"Unassessed {number}")
+        synthesis = ChiefArchitectService.portfolio_synthesis()
+
+    assert len(synthesis["attention"]) == 10
+    assert synthesis["attention_total"] == 11
+    assert synthesis["attention_displayed"] == 10
+    assert synthesis["attention_truncated"] is True
+
+
+def test_withdrawn_arb_record_is_not_decided_throughput(db_session, tenant_ctx):
+    """Withdrawn records are closed administratively, not ARB decision output."""
+    org = _org(db_session, "withdrawn")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with tenant_ctx(org.id):
+        user = _user(db_session, org)
+        _review_item(db_session, org, "REV-WITHDRAWN", "withdrawn", now, user.id)
+        _review_item(db_session, org, "REV-APPROVED", "approved", now, user.id, "approved")
+        synthesis = ChiefArchitectService.portfolio_synthesis()
+
+    assert synthesis["arb"]["decided"] == 1
+
+
+def test_arb_oldest_age_is_withheld_when_an_open_record_has_no_submission_date(
+    db_session, tenant_ctx
+):
+    """An undated open review makes the queue age incomplete, not precisely younger."""
+    org = _org(db_session, "undated-open")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with tenant_ctx(org.id):
+        user = _user(db_session, org)
+        _review_item(db_session, org, "REV-DATED", "submitted", now - timedelta(days=24), user.id)
+        _review_item(db_session, org, "REV-UNDATED", "under_review", None, user.id)
+        synthesis = ChiefArchitectService.portfolio_synthesis()
+
+    assert synthesis["arb"]["open"] == 2
+    assert synthesis["arb"]["undated_open"] == 1
+    assert synthesis["arb"]["oldest_open_age_days"] is None
+
+
+def test_flagged_total_is_withheld_without_an_evaluated_review(db_session, tenant_ctx):
+    """Zero issues cannot be presented as clean when no solution was evaluable."""
+    org = _org(db_session, "no-evaluated")
+    with tenant_ctx(org.id):
+        _solution(db_session, "No evidence")
+        synthesis = ChiefArchitectService.portfolio_synthesis()
+
+    assert synthesis["coverage"]["evaluated"] == 0
+    assert synthesis["flagged_total"] is None

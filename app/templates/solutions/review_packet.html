@@ -47,7 +47,13 @@
                 <h3 class="text-sm font-semibold text-foreground">Technical Conformance</h3>
                 <a href="/solutions/{{ solution.id }}/conformance" class="text-2xs text-primary hover:underline">Full review →</a>
             </div>
-            {% if packet.conformance.score is not none %}
+            {% if not packet.conformance.controls_available %}
+            <p class="text-sm font-medium text-destructive-emphasis">Required conformance controls unavailable</p>
+            <p class="text-xs text-muted-foreground mt-2">{{ packet.conformance.summary }}</p>
+            {% if packet.conformance.unavailable_checks %}
+            <p class="text-xs text-muted-foreground mt-1">Unavailable checks: {{ packet.conformance.unavailable_checks|join(', ') }}</p>
+            {% endif %}
+            {% elif packet.conformance.score is not none %}
             <div class="flex items-baseline gap-2">
                 <span class="text-3xl font-bold {% if packet.conformance.score >= 80 %}text-success{% elif packet.conformance.score >= 50 %}text-warning{% else %}text-destructive{% endif %}">{{ packet.conformance.score }}</span>
                 <span class="text-xs text-muted-foreground">/ 100 · {{ packet.conformance.flagged }} flagged</span>
@@ -61,7 +67,7 @@
                 </li>
                 {% endfor %}
             </ul>
-            {% else %}<p class="text-sm text-muted-foreground">Not yet reviewable.</p>{% endif %}
+            {% else %}<p class="text-sm text-muted-foreground">{{ packet.conformance.summary or 'Not yet reviewable.' }}</p>{% endif %}
         </div>
 
         {# Decision #}
