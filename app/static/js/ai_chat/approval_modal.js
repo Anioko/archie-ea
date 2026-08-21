@@ -25,6 +25,7 @@ function registerApprovalManager() {
         approvals: [],
         loading: false,
         error: null,
+        hasLoaded: false,
         /** ID of the approval currently being rejected (shows reason textarea) */
         rejectingId: null,
         rejectReason: "",
@@ -60,6 +61,7 @@ function registerApprovalManager() {
         /* ------------------------------------------------------------------ */
 
         async fetchPending() {
+            this.loading = true;
             try {
                 const res = await fetch("/ai-chat/approvals/queue", {
                     headers: {
@@ -71,13 +73,22 @@ function registerApprovalManager() {
                     throw new Error("HTTP " + res.status);
                 }
                 const data = await res.json();
-                if (data.success) {
-                    this.approvals = data.approvals || [];
-                    this.error = null;
+                if (!data.success) {
+                    throw new Error(data.error || "Approval queue was unavailable");
                 }
+                this.approvals = data.approvals || [];
+                this.hasLoaded = true;
+                this.error = null;
             } catch (err) {
                 console.error("[approvalManager] fetchPending failed:", err);
-                // Don't overwrite approvals on transient network errors
+                this.error = this.hasLoaded
+                    ? "Unable to refresh approvals. Showing the last known results."
+                    : "Unable to load approvals. Approval status is unavailable.";
+                // Do not overwrite previously displayed rows on a transient
+                // failure: the visible error marks them as stale rather than
+                // presenting an empty queue as a fact.
+            } finally {
+                this.loading = false;
             }
         },
 
@@ -216,6 +227,9 @@ function registerApprovalManager() {
         },
         get error() {
             return Alpine.store("approvals").error;
+        },
+        get hasLoaded() {
+            return Alpine.store("approvals").hasLoaded;
         },
         get rejectingId() {
             return Alpine.store("approvals").rejectingId;

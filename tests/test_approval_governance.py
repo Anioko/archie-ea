@@ -312,8 +312,8 @@ def test_approve_and_execute_mirrors_into_compliance_audit_log(db_session, tenan
             assert row.table_name == "ai_chat_approval:capability"
 
 
-def test_reject_approval_mirrors_into_compliance_audit_log(db_session, tenant_ctx):
-    """Same as above for the reject path, which used to write
+def test_requester_cancellation_mirrors_into_compliance_audit_log(db_session, tenant_ctx):
+    """Same as above for requester cancellation, which used to write
     AIChatApprovalAuditLog directly rather than through _audit()."""
     from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
     from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
@@ -342,7 +342,7 @@ def test_reject_approval_mirrors_into_compliance_audit_log(db_session, tenant_ct
         assert result["success"] is True
 
         row = AuditLog.query.filter_by(
-            organization_id=org.id, user_id=user.id, action="rejected"
+            organization_id=org.id, user_id=user.id, action="cancelled"
         ).filter(AuditLog.table_name.like("ai_chat_approval:%")).first()
         assert row is not None
         assert row.table_name == "ai_chat_approval:vendor"

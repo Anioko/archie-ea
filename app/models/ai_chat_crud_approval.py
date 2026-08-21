@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import Enum
 
 from app import db
-from app.models.mixins.core import _default_org_id
+from app.models.mixins.core import TenantMixin, _default_org_id
 
 
 class ApprovalStatus(Enum):
@@ -21,7 +21,7 @@ class ApprovalStatus(Enum):
     EXPIRED = "expired"
 
 
-class AIChatCRUDApproval(db.Model):
+class AIChatCRUDApproval(TenantMixin, db.Model):
     """
     Tracks pending CRUD operations from AI chat interactions.
 
@@ -38,9 +38,11 @@ class AIChatCRUDApproval(db.Model):
     # User who initiated the request
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
-    # Approval requests are tenant-owned. This is intentionally nullable while
-    # existing databases are reconciled then backfilled from requester users;
-    # TenantMixin cannot be used because it requires NOT NULL on day one.
+    # Override TenantMixin's normally non-nullable column for an ADD-only
+    # rollout: reconcile-schema must be able to add this to legacy tables, then
+    # the backfill derives ownership from the requester. The mixin is still
+    # essential: tenant middleware identifies tenant-owned models by it and
+    # applies the automatic query fence even while old NULL rows are repaired.
     organization_id = db.Column(
         db.Integer,
         db.ForeignKey("organizations.id", ondelete="CASCADE"),
@@ -132,25 +134,27 @@ class AIChatCRUDApproval(db.Model):
         return datetime.utcnow() > self.expires_at
 
     @classmethod
-    def get_pending_for_user(cls, user_id):
-        """Get all pending approvals for a user."""
+    def get_pending_for_user(cls, user_id, organization_id):
+        """Get pending approvals for a user inside one explicit organization."""
         return cls.query.filter_by(
             user_id=user_id,
+            organization_id=organization_id,
             status=ApprovalStatus.PENDING
         ).filter(
             cls.expires_at > datetime.utcnow()
         ).all()
 
     @classmethod
-    def get_by_id_and_user(cls, approval_id, user_id):
-        """Get approval by ID ensuring it belongs to the user."""
+    def get_by_id_and_user(cls, approval_id, user_id, organization_id):
+        """Get one approval by requester and explicit organization ownership."""
         return cls.query.filter_by(
             id=approval_id,
-            user_id=user_id
+            user_id=user_id,
+            organization_id=organization_id,
         ).first()
 
     @classmethod
-    def get_pending_for_session(cls, user_id, chat_session_id):
+    def get_pending_for_session(cls, user_id, organization_id, chat_session_id):
         """Pending approvals for one user scoped to one chat session (ARCH-020).
 
         Lets the agent answer "what's still pending in *this* conversation"
@@ -164,6 +168,7 @@ class AIChatCRUDApproval(db.Model):
         return (
             cls.query.filter_by(
                 user_id=user_id,
+                organization_id=organization_id,
                 chat_session_id=chat_session_id,
                 status=ApprovalStatus.PENDING,
             )

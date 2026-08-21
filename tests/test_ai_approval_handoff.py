@@ -95,6 +95,7 @@ def test_same_org_reviewer_executes_once_and_receives_allowlisted_queue(
                 "operation_type": "create",
                 "entity_type": "capability",
                 "summary": "Create capability Handoff",
+                "arguments": {"name": "Handoff"},
                 "created_at": approval.created_at.isoformat(),
                 "expires_at": approval.expires_at.isoformat(),
                 "requester": {"id": requester.id, "display_name": "Requester Reviewer"},
@@ -116,6 +117,121 @@ def test_same_org_reviewer_executes_once_and_receives_allowlisted_queue(
 
         events = AIChatApprovalAuditLog.query.filter_by(approval_id=approval_id).all()
         assert {event.event for event in events} >= {"created", "approved", "executed"}
+
+
+def test_approval_model_uses_the_tenant_middleware_for_direct_reads(
+    db_session, make_org, tenant_ctx
+):
+    """A direct model lookup must not bypass the tenant fence used by routes."""
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+    org_a = make_org("approval-mixin-a")
+    org_b = make_org("approval-mixin-b")
+    requester_a = _make_user(db_session, org_a.id, "RequesterA")
+    requester_b = _make_user(db_session, org_b.id, "RequesterB")
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
+    foreign = AIChatCRUDApproval(
+        user_id=requester_b.id,
+        organization_id=org_b.id,
+        operation_type="create",
+        entity_type="capability",
+        original_command="foreign approval",
+        operation_payload='{"name": "Foreign"}',
+        summary="Foreign approval",
+        status=ApprovalStatus.PENDING,
+        expires_at=expires_at,
+    )
+    db_session.add(foreign)
+    db_session.flush()
+
+    with tenant_ctx(org_a.id):
+        assert AIChatCRUDApproval.query.filter_by(id=foreign.id).first() is None
+        assert AIChatCRUDApproval.get_by_id_and_user(
+            foreign.id, requester_a.id, org_a.id
+        ) is None
+
+
+def test_two_independent_sessions_cannot_claim_the_same_pending_approval(app):
+    """The conditional claim permits exactly one reviewer before dispatch starts."""
+    from sqlalchemy.orm import sessionmaker
+
+    from app import db
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.models.organization import Organization
+    from app.models.user import User
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+
+    marker = uuid.uuid4().hex[:10]
+    with app.app_context():
+        Session = sessionmaker(bind=db.engine)
+        setup = Session()
+        first = second = None
+        approval_id = requester_id = first_reviewer_id = second_reviewer_id = org_id = None
+        try:
+            org = Organization(name=f"Claim {marker}", slug=f"claim-{marker}")
+            setup.add(org)
+            setup.flush()
+            requester = User(email=f"claim-requester-{marker}@example.com", organization_id=org.id)
+            first_reviewer = User(email=f"claim-first-{marker}@example.com", organization_id=org.id)
+            second_reviewer = User(email=f"claim-second-{marker}@example.com", organization_id=org.id)
+            # User.__init__ attaches the default Role from Flask's scoped
+            # session. These are persistence-only identities for the private
+            # conditional-claim primitive, so detach that cross-session object.
+            requester.role = first_reviewer.role = second_reviewer.role = None
+            setup.add_all([requester, first_reviewer, second_reviewer])
+            setup.flush()
+            approval = AIChatCRUDApproval(
+                user_id=requester.id,
+                organization=org,
+                operation_type="create",
+                entity_type="capability",
+                original_command="claim approval",
+                operation_payload='{"name": "Claim"}',
+                summary="Claim approval",
+                status=ApprovalStatus.PENDING,
+                expires_at=datetime.utcnow() + timedelta(minutes=5),
+            )
+            setup.add(approval)
+            setup.commit()
+            approval_id = approval.id
+            requester_id = requester.id
+            first_reviewer_id = first_reviewer.id
+            second_reviewer_id = second_reviewer.id
+            org_id = org.id
+
+            first, second = Session(), Session()
+            assert AIChatApprovalService._claim_pending_approval(
+                approval_id, org_id, first_reviewer_id, session=first
+            ) is True
+            first.commit()
+            assert AIChatApprovalService._claim_pending_approval(
+                approval_id, org_id, second_reviewer_id, session=second
+            ) is False
+            first.expire_all()
+            claimed = first.get(AIChatCRUDApproval, approval_id)
+            assert claimed.status == ApprovalStatus.APPROVED
+            assert claimed.approved_by_id == first_reviewer_id
+        finally:
+            if first is not None:
+                first.rollback()
+                first.close()
+            if second is not None:
+                second.rollback()
+                second.close()
+            setup.close()
+            cleanup = Session()
+            try:
+                if approval_id is not None:
+                    cleanup.query(AIChatCRUDApproval).filter_by(id=approval_id).delete()
+                if requester_id is not None:
+                    cleanup.query(User).filter(
+                        User.id.in_([requester_id, first_reviewer_id, second_reviewer_id])
+                    ).delete(synchronize_session=False)
+                if org_id is not None:
+                    cleanup.query(Organization).filter_by(id=org_id).delete()
+                cleanup.commit()
+            finally:
+                cleanup.close()
 
 
 def test_foreign_org_cannot_see_or_decide_known_approval_id(
@@ -144,7 +260,7 @@ def test_foreign_org_cannot_see_or_decide_known_approval_id(
 def test_requester_can_cancel_and_same_org_reviewer_can_reject(db_session, make_org, tenant_ctx):
     """Cancellation is requester-owned; review rejection is a same-org write permission."""
     from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
-    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.models.ai_chat_crud_approval import AIChatApprovalAuditLog, AIChatCRUDApproval, ApprovalStatus
 
     org = make_org("approval-reject")
     requester = _make_user(db_session, org.id, "Requester")
@@ -153,8 +269,13 @@ def test_requester_can_cancel_and_same_org_reviewer_can_reject(db_session, make_
     with tenant_ctx(org.id):
         requester_service = AIChatApprovalService(requester.id)
         cancelled_id = _queue(requester_service)
-        assert requester_service.reject_approval(cancelled_id, "cancelled")["success"] is True
+        cancelled = requester_service.reject_approval(cancelled_id, "cancelled")
+        assert cancelled["success"] is True
+        assert "cancelled" in cancelled["message"]
         assert db_session.get(AIChatCRUDApproval, cancelled_id).status == ApprovalStatus.REJECTED
+        assert AIChatApprovalAuditLog.query.filter_by(
+            approval_id=cancelled_id, event="cancelled"
+        ).one()
 
         reviewer_id = _queue(requester_service)
         rejected = AIChatApprovalService(reviewer.id).reject_approval(reviewer_id, "needs evidence")
@@ -242,6 +363,16 @@ def test_approval_modal_is_a_reviewer_queue_with_requester_attribution():
     assert 'fetch("/ai-chat/approvals/queue"' in js
     assert "Approvals for review" in template
     assert "Requested by" in template
+    assert 'item.arguments' in template
+    assert "hasLoaded: false" in js
+    assert "this.loading = true" in js
+    assert "Approval status is unavailable" in js
+    assert "finally" in js and "this.loading = false" in js
+    assert 'data-testid="approval-queue-unavailable"' in template
+    assert 'data-testid="approval-queue-loading"' in template
+    assert 'data-testid="approval-queue-empty"' in template
+    assert 'aria-label="Retry approval queue"' in template
+    assert "hasLoaded && !loading && !error && approvals.length === 0" in template
     assert "queued for another authorized user" in (
         root / "app/modules/ai_chat/services/ai_chat_approval_service.py"
     ).read_text(encoding="utf-8")

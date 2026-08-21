@@ -969,12 +969,25 @@ x-cloak>
             </div>
             <!-- Body -->
             <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-                <!-- Error banner -->
-                <div x-show="error" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="error"></div>
+                <!-- Loading/error/empty states are deliberately distinct: an
+                     unavailable reviewer queue must never look like truthfully
+                     empty approval work. -->
+                <div x-show="loading && !hasLoaded" x-cloak data-testid="approval-queue-loading" role="status"
+                     class="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                    Loading approvals for review…
+                </div>
+                <div x-show="error" x-cloak data-testid="approval-queue-unavailable" role="alert"
+                     class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis flex items-center justify-between gap-3">
+                    <span x-text="error"></span>
+                    <button type="button" @click="fetchPending()" aria-label="Retry approval queue"
+                            class="inline-flex h-8 items-center justify-center rounded-md border border-destructive/30 bg-background px-3 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50 disabled:pointer-events-none">
+                        Retry
+                    </button>
+                </div>
 
                 <!-- Empty state -->
-                <template x-if="approvals.length === 0">
-                    <div class="text-center py-8 text-muted-foreground">
+                <template x-if="hasLoaded && !loading && !error && approvals.length === 0">
+                    <div data-testid="approval-queue-empty" class="text-center py-8 text-muted-foreground">
                         <i data-lucide="check-circle-2" class="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true"></i>
                         <p class="text-sm">No approvals waiting for your review</p>
                     </div>
@@ -1013,11 +1026,11 @@ x-cloak>
                              _approval_summary / AIChatApprovalService) — this <details> is the
                              one place the underlying arguments are still visible, for anyone
                              who wants to verify exactly what will execute. -->
-                        <details class="text-xs" x-show="item.operation_payload">
+                        <details class="text-xs" x-show="item.arguments !== null">
                             <summary class="cursor-pointer text-muted-foreground hover:text-foreground select-none">
                                 View technical detail
                             </summary>
-                            <pre class="mt-1 whitespace-pre-wrap break-all rounded-md bg-muted/50 border border-border px-2 py-1.5 text-2xs text-muted-foreground" x-text="JSON.stringify(item.operation_payload, null, 2)"></pre>
+                            <pre class="mt-1 whitespace-pre-wrap break-all rounded-md bg-muted/50 border border-border px-2 py-1.5 text-2xs text-muted-foreground" x-text="JSON.stringify(item.arguments, null, 2)"></pre>
                         </details>
 
                         {# $store.approvals.*, not the bare facade getter: the Alpine.data facade

@@ -121,6 +121,42 @@ class AIChatApprovalService:
             ).first()
         )
 
+    @staticmethod
+    def _claim_pending_approval(
+        approval_id: int,
+        organization_id: int,
+        approver_id: int,
+        *,
+        session=None,
+    ) -> bool:
+        """Durably claim one unexpired approval before any mutable dispatch.
+
+        The conditional update is the at-most-once boundary.  An executor may
+        commit its own work, or the process may crash after the claim; both
+        cases leave the approval APPROVED and therefore fail closed on retry
+        rather than allowing a second caller to dispatch the write.
+        """
+        session = session or db.session
+        now = datetime.utcnow()
+        updated = (
+            session.query(AIChatCRUDApproval)
+            .filter(
+                AIChatCRUDApproval.id == approval_id,
+                AIChatCRUDApproval.organization_id == organization_id,
+                AIChatCRUDApproval.status == ApprovalStatus.PENDING,
+                AIChatCRUDApproval.expires_at > now,
+            )
+            .update(
+                {
+                    AIChatCRUDApproval.status: ApprovalStatus.APPROVED,
+                    AIChatCRUDApproval.approved_by_id: approver_id,
+                    AIChatCRUDApproval.approved_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        return updated == 1
+
     # ------------------------------------------------------------------ #
     # Audit trail (ARCH-022)                                              #
     # ------------------------------------------------------------------ #
@@ -166,17 +202,16 @@ class AIChatApprovalService:
         # Mirror the decision-relevant events onto AuditLog too — richer
         # detail stays in AIChatApprovalAuditLog, this is just so "who
         # approved this change" has one answerable page.
-        if event in ("approved", "rejected", "executed", "expired"):
+        if event in ("approved", "cancelled", "rejected", "executed", "expired"):
             try:
-                org_id = None
-                if actor_user_id:
-                    _actor = User.query.get(actor_user_id)
-                    org_id = getattr(_actor, "organization_id", None)
                 AuditLog.log(
                     action=event[:20],
                     table_name=f"ai_chat_approval:{approval.entity_type}",
                     record_id=approval.entity_id,
-                    organization_id=org_id,
+                    # The approval itself is the durable tenant snapshot. An
+                    # expiry has no actor, so deriving org from a user used to
+                    # drop that compliance record into a global/NULL scope.
+                    organization_id=approval.organization_id,
                     user_id=actor_user_id,
                     new_value={
                         "approval_id": approval.id,
@@ -454,6 +489,31 @@ class AIChatApprovalService:
                     "error": "Approval has expired. Please submit a new request.",
                 }
 
+            # Persist the claim before dispatch.  This is deliberately before
+            # parsing or calling any executor because some executors commit
+            # internally; a second reviewer must observe the claim even then.
+            if not self._claim_pending_approval(
+                approval_id,
+                actor.organization_id,
+                effective_approver_id,
+            ):
+                return {
+                    "success": False,
+                    "code": "CONFLICT",
+                    "error": "Approval was already claimed or is no longer actionable",
+                }
+            self._audit(
+                approval,
+                event="approved",
+                to_status=ApprovalStatus.APPROVED.value,
+                actor_user_id=effective_approver_id,
+                from_status=ApprovalStatus.PENDING.value,
+                reason="claimed before execution; retries fail closed",
+            )
+            db.session.commit()
+            db.session.expire_all()
+            approval = self._load_scoped_approval(approval_id, actor)
+
             # ARCH-022: execution is REFUSED without a resolvable human approver.
             # approving_user_id may be explicitly None from a caller; fall back to
             # self.user_id (already required above), but never proceed with both
@@ -557,16 +617,11 @@ class AIChatApprovalService:
                     "error": f"Unsupported operation type: {approval.operation_type}",
                 }
 
-            # Update approval record
+            # The approval state was durably claimed before dispatch.  A crash
+            # or execution failure remains APPROVED with no executed_at value,
+            # which intentionally forbids retrying an operation that may have
+            # reached a downstream system.
             if result.get("success"):
-                approval.approve(effective_approver_id)
-                self._audit(
-                    approval,
-                    event="approved",
-                    to_status=ApprovalStatus.APPROVED.value,
-                    actor_user_id=effective_approver_id,
-                    from_status=ApprovalStatus.PENDING.value,
-                )
                 approval.execute(result)
                 self._audit(
                     approval,
@@ -588,6 +643,14 @@ class AIChatApprovalService:
             else:
                 # Execution failed but we still mark it as attempted
                 approval.execute(result)
+                self._audit(
+                    approval,
+                    event="execution_failed",
+                    to_status=ApprovalStatus.APPROVED.value,
+                    actor_user_id=effective_approver_id,
+                    from_status=ApprovalStatus.APPROVED.value,
+                    reason=result.get("error", "Operation failed after durable claim"),
+                )
                 db.session.commit()
 
                 return {
@@ -646,10 +709,11 @@ class AIChatApprovalService:
                     "error": f"Approval is already {approval.status.value}",
                 }
 
+            is_requester_cancellation = approval.user_id == actor.id
             approval.reject(reason)
             self._audit(
                 approval,
-                event="rejected",
+                event="cancelled" if is_requester_cancellation else "rejected",
                 to_status=ApprovalStatus.REJECTED.value,
                 actor_user_id=actor.id,
                 from_status=ApprovalStatus.PENDING.value,
@@ -657,11 +721,16 @@ class AIChatApprovalService:
             )
             db.session.commit()
 
-            self.logger.info(f"Rejected approval {approval_id}")
+            event_label = "cancelled" if is_requester_cancellation else "rejected"
+            self.logger.info(f"{event_label.title()} approval {approval_id}")
 
             return {
                 "success": True,
-                "message": f"{approval.operation_type} operation rejected.",
+                "message": (
+                    f"{approval.operation_type} approval request cancelled."
+                    if is_requester_cancellation
+                    else f"{approval.operation_type} operation rejected."
+                ),
                 "approval_id": approval_id,
             }
 
@@ -721,6 +790,9 @@ class AIChatApprovalService:
                     "operation_type": approval.operation_type,
                     "entity_type": approval.entity_type,
                     "summary": approval.summary,
+                    # This is the exact decoded JSON supplied to the executor;
+                    # the modal renders it with x-text, never HTML insertion.
+                    "arguments": json.loads(approval.operation_payload),
                     "created_at": approval.created_at.isoformat() if approval.created_at else None,
                     "expires_at": approval.expires_at.isoformat() if approval.expires_at else None,
                     "requester": {
