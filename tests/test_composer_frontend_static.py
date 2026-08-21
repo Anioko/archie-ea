@@ -149,11 +149,21 @@ def test_cmp12_narrow_width_media_query():
 
 
 def test_cmp03_audit_failure_not_toasted():
-    """The composer must not toast on a fire-and-forget audit-log failure."""
+    """Audit writes must stay non-blocking without becoming invisible failures."""
     src = _read("archimate/composer.js")
     # The old code toasted 'Failed to log audit event' inside the catch.
     assert "Failed to log audit event" not in src, \
         "audit-log failures must be silent (fire-and-forget), not toasted"
+    assert "Platform.log.error('Failed to record composer audit event', err)" in src, \
+        "an audit request that never reaches the server must remain diagnosable"
+
+
+def test_cmp03_minimap_storage_failure_is_an_explicit_optional_exception():
+    """Storage denial must not break minimap toggling or look like a silent API failure."""
+    composer_html = (JS.parents[1] / "templates" / "archimate" / "composer.html").read_text(encoding="utf-8")
+    minimap_toggle = composer_html[composer_html.index("archie.composer.miniMapExpanded"):]
+    assert "swallow-ok: localStorage is unavailable in private browsing" in minimap_toggle, \
+        "the optional local preference failure must be reviewed and explicitly bounded"
 
 
 def test_ba04_pdf_export_is_one_click_and_vendored():

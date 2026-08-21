@@ -1471,7 +1471,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
              @mouseleave="miniMapPointerUp()">
             <div class="flex items-center justify-between px-2.5 pt-1.5 pb-0.5">
                 <span class="text-2xs font-semibold uppercase tracking-wider" style="color: hsl(var(--muted-foreground));">Minimap</span>
-                <button type="button" @click.stop="miniMapExpanded = !miniMapExpanded; try { window.localStorage.setItem('archie.composer.miniMapExpanded', miniMapExpanded); } catch (e) {}"
+                <button type="button" @click.stop="miniMapExpanded = !miniMapExpanded; try { window.localStorage.setItem('archie.composer.miniMapExpanded', miniMapExpanded); } catch (e) { /* swallow-ok: localStorage is unavailable in private browsing */ }"
                         class="text-2xs text-muted-foreground hover:text-foreground leading-none p-0.5"
                         x-text="miniMapExpanded ? '−' : '+'"></button>
             </div>

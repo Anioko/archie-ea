@@ -302,14 +302,16 @@
                     var resp = await fetch(
                         '/value-streams/' + this.valueStreamId + '/api/unmapped-capabilities?q=' + encodeURIComponent(name) + '&limit=10'
                     );
-                    if (!resp.ok) return null;
+                    if (!resp.ok) {
+                        throw new Error('Capability lookup failed (HTTP ' + resp.status + ')');
+                    }
                     var data = await resp.json();
                     var results = data.capabilities || [];
                     var lower = name.trim().toLowerCase();
                     return results.find(function (c) { return (c.name || '').trim().toLowerCase() === lower; }) || null;
                 } catch (err) {
                     console.error('Failed to resolve suggested capability', err);
-                    return null;
+                    throw err;
                 }
             },
 
