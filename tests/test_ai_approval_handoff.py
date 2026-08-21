@@ -234,6 +234,121 @@ def test_two_independent_sessions_cannot_claim_the_same_pending_approval(app):
                 cleanup.close()
 
 
+def test_audit_failure_after_claim_cannot_reopen_or_dispatch_an_approval(
+    db_session, make_org, tenant_ctx, monkeypatch
+):
+    """An optional audit failure happens after the irreversible claim boundary."""
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+
+    org = make_org("approval-audit-boundary")
+    requester = _make_user(db_session, org.id, "Requester")
+    reviewer = _make_user(db_session, org.id, "Reviewer")
+    second_reviewer = _make_user(db_session, org.id, "SecondReviewer")
+
+    with tenant_ctx(org.id):
+        approval_id = _queue(AIChatApprovalService(requester.id))
+        calls = _fake_execution(monkeypatch)
+        original_audit = AIChatApprovalService._audit
+        failed_claim_audit = False
+
+        def fail_only_the_post_claim_audit(self, approval, event, *args, **kwargs):
+            nonlocal failed_claim_audit
+            if event == "approved" and not failed_claim_audit:
+                failed_claim_audit = True
+                raise RuntimeError("approval audit storage is temporarily unavailable")
+            return original_audit(self, approval, event, *args, **kwargs)
+
+        monkeypatch.setattr(AIChatApprovalService, "_audit", fail_only_the_post_claim_audit)
+
+        first = AIChatApprovalService(reviewer.id).approve_and_execute(approval_id, reviewer.id)
+        replay = AIChatApprovalService(second_reviewer.id).approve_and_execute(
+            approval_id, second_reviewer.id
+        )
+
+        assert first["success"] is True
+        assert replay["code"] == "CONFLICT"
+        assert calls == [(reviewer.id, {"name": "Handoff"})]
+
+
+def test_two_sessions_rejection_cannot_overwrite_a_durable_claim(app):
+    """A stale reject loses the same conditional database race as a second approver."""
+    from sqlalchemy.orm import sessionmaker
+
+    from app import db
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.models.organization import Organization
+    from app.models.user import User
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+
+    marker = uuid.uuid4().hex[:10]
+    with app.app_context():
+        Session = sessionmaker(bind=db.engine)
+        setup = Session()
+        claimer = rejecter = None
+        approval_id = requester_id = reviewer_id = org_id = None
+        try:
+            org = Organization(name=f"Reject {marker}", slug=f"reject-{marker}")
+            setup.add(org)
+            setup.flush()
+            requester = User(email=f"reject-requester-{marker}@example.com", organization_id=org.id)
+            reviewer = User(email=f"reject-reviewer-{marker}@example.com", organization_id=org.id)
+            requester.role = reviewer.role = None
+            setup.add_all([requester, reviewer])
+            setup.flush()
+            approval = AIChatCRUDApproval(
+                user_id=requester.id,
+                organization=org,
+                operation_type="create",
+                entity_type="capability",
+                original_command="reject race approval",
+                operation_payload='{"name": "Reject race"}',
+                summary="Reject race",
+                status=ApprovalStatus.PENDING,
+                expires_at=datetime.utcnow() + timedelta(minutes=5),
+            )
+            setup.add(approval)
+            setup.commit()
+            approval_id, requester_id, reviewer_id, org_id = (
+                approval.id,
+                requester.id,
+                reviewer.id,
+                org.id,
+            )
+
+            claimer, rejecter = Session(), Session()
+            assert AIChatApprovalService._claim_pending_approval(
+                approval_id, org_id, reviewer_id, session=claimer
+            ) is True
+            claimer.commit()
+            assert AIChatApprovalService._reject_pending_approval(
+                approval_id, org_id, reason="stale cancellation", session=rejecter
+            ) is False
+            rejecter.rollback()
+            claimer.expire_all()
+            assert claimer.get(AIChatCRUDApproval, approval_id).status == ApprovalStatus.APPROVED
+        finally:
+            if claimer is not None:
+                claimer.rollback()
+                claimer.close()
+            if rejecter is not None:
+                rejecter.rollback()
+                rejecter.close()
+            setup.close()
+            cleanup = Session()
+            try:
+                if approval_id is not None:
+                    cleanup.query(AIChatCRUDApproval).filter_by(id=approval_id).delete()
+                if requester_id is not None:
+                    cleanup.query(User).filter(User.id.in_([requester_id, reviewer_id])).delete(
+                        synchronize_session=False
+                    )
+                if org_id is not None:
+                    cleanup.query(Organization).filter_by(id=org_id).delete()
+                cleanup.commit()
+            finally:
+                cleanup.close()
+
+
 def test_foreign_org_cannot_see_or_decide_known_approval_id(
     db_session, make_org, tenant_ctx, monkeypatch
 ):

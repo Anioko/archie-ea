@@ -157,6 +157,46 @@ class AIChatApprovalService:
         )
         return updated == 1
 
+    @staticmethod
+    def _reject_pending_approval(
+        approval_id: int,
+        organization_id: int,
+        *,
+        reason: Optional[str],
+        session=None,
+    ) -> bool:
+        """Atomically reject an unexpired pending approval without clobbering a claim."""
+        session = session or db.session
+        updated = (
+            session.query(AIChatCRUDApproval)
+            .filter(
+                AIChatCRUDApproval.id == approval_id,
+                AIChatCRUDApproval.organization_id == organization_id,
+                AIChatCRUDApproval.status == ApprovalStatus.PENDING,
+                AIChatCRUDApproval.expires_at > datetime.utcnow(),
+            )
+            .update(
+                {AIChatCRUDApproval.rejected_reason: reason,
+                 AIChatCRUDApproval.status: ApprovalStatus.REJECTED},
+                synchronize_session=False,
+            )
+        )
+        return updated == 1
+
+    def _audit_nonblocking(self, approval: AIChatCRUDApproval, event: str, **kwargs) -> None:
+        """Record an audit event without rolling back an already durable transition."""
+        try:
+            self._audit(approval, event=event, **kwargs)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            self.logger.warning(
+                "Approval %s audit event %s could not be recorded after its durable transition",
+                approval.id,
+                event,
+                exc_info=True,
+            )
+
     # ------------------------------------------------------------------ #
     # Audit trail (ARCH-022)                                              #
     # ------------------------------------------------------------------ #
@@ -502,7 +542,19 @@ class AIChatApprovalService:
                     "code": "CONFLICT",
                     "error": "Approval was already claimed or is no longer actionable",
                 }
-            self._audit(
+            # The claim is the at-most-once boundary and must be committed
+            # before a best-effort audit can fail.  In particular, rolling back
+            # a failed audit must never reopen a write that may be dispatched.
+            db.session.commit()
+            db.session.expire_all()
+            approval = self._load_scoped_approval(approval_id, actor)
+            if not approval:
+                return {
+                    "success": False,
+                    "code": "NOT_FOUND",
+                    "error": f"Approval {approval_id} not found after claiming",
+                }
+            self._audit_nonblocking(
                 approval,
                 event="approved",
                 to_status=ApprovalStatus.APPROVED.value,
@@ -510,9 +562,6 @@ class AIChatApprovalService:
                 from_status=ApprovalStatus.PENDING.value,
                 reason="claimed before execution; retries fail closed",
             )
-            db.session.commit()
-            db.session.expire_all()
-            approval = self._load_scoped_approval(approval_id, actor)
 
             # ARCH-022: execution is REFUSED without a resolvable human approver.
             # approving_user_id may be explicitly None from a caller; fall back to
@@ -710,8 +759,29 @@ class AIChatApprovalService:
                 }
 
             is_requester_cancellation = approval.user_id == actor.id
-            approval.reject(reason)
-            self._audit(
+            if not self._reject_pending_approval(
+                approval_id,
+                actor.organization_id,
+                reason=reason,
+            ):
+                return {
+                    "success": False,
+                    "code": "CONFLICT",
+                    "error": "Approval was already claimed or is no longer actionable",
+                }
+            # As for approval claims, make the state transition durable before
+            # a non-critical audit write. A stale reject must never overwrite a
+            # concurrent claim, and an audit failure must not reopen it.
+            db.session.commit()
+            db.session.expire_all()
+            approval = self._load_scoped_approval(approval_id, actor)
+            if not approval:
+                return {
+                    "success": False,
+                    "code": "NOT_FOUND",
+                    "error": f"Approval {approval_id} not found after rejection",
+                }
+            self._audit_nonblocking(
                 approval,
                 event="cancelled" if is_requester_cancellation else "rejected",
                 to_status=ApprovalStatus.REJECTED.value,
@@ -719,7 +789,6 @@ class AIChatApprovalService:
                 from_status=ApprovalStatus.PENDING.value,
                 reason=reason,
             )
-            db.session.commit()
 
             event_label = "cancelled" if is_requester_cancellation else "rejected"
             self.logger.info(f"{event_label.title()} approval {approval_id}")

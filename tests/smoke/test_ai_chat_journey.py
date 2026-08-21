@@ -238,6 +238,80 @@ def test_persona_storage_denial_keeps_chat_initialized(page, live_server, seeded
     assert not _js_errors(page), _js_errors(page)
 
 
+def test_approval_modal_distinguishes_loading_failure_stale_and_retry(page, live_server, seeded):
+    """Reviewers never mistake a failed approval fetch for an empty queue."""
+    page.add_init_script("""
+        window.__approvalQueueMode = "pending";
+        window.__approvalQueueReject = null;
+        const nativeFetch = window.fetch.bind(window);
+        window.fetch = function(input, init) {
+            const url = typeof input === "string" ? input : input.url;
+            if (!url.includes("/ai-chat/approvals/queue")) {
+                return nativeFetch(input, init);
+            }
+            if (window.__approvalQueueMode === "pending") {
+                return new Promise((resolve, reject) => {
+                    window.__approvalQueueReject = reject;
+                });
+            }
+            if (window.__approvalQueueMode === "failure") {
+                return Promise.reject(new TypeError("approval queue offline"));
+            }
+            const approvals = window.__approvalQueueMode === "populated" ? [{
+                id: 991,
+                operation_type: "create",
+                entity_type: "capability",
+                summary: "Stale approval evidence",
+                arguments: { name: "Stale capability" },
+                created_at: "2026-08-21T12:00:00",
+                expires_at: "2026-08-21T12:05:00",
+                requester: { id: 99, display_name: "Queue Requester" },
+            }] : [];
+            return Promise.resolve(new Response(
+                JSON.stringify({ success: true, approvals }),
+                { status: 200, headers: { "Content-Type": "application/json" } }
+            ));
+        };
+    """)
+
+    _open_chat(page, live_server, seeded)
+    page.wait_for_function("() => typeof window.__approvalQueueReject === 'function'")
+    # This journey exercises queue-state rendering, not the separately-covered
+    # overflow-menu mechanics. Trigger the real modal opener directly so a
+    # hidden menu's transition cannot consume the test's whole action timeout.
+    page.locator("[data-modal-open='ai-chat-approvals-modal']").click(force=True)
+
+    loading = page.get_by_test_id("approval-queue-loading")
+    unavailable = page.get_by_test_id("approval-queue-unavailable")
+    empty = page.get_by_test_id("approval-queue-empty")
+    loading.wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    assert not unavailable.is_visible()
+    assert not empty.is_visible()
+
+    page.evaluate("() => window.__approvalQueueReject(new TypeError('approval queue offline'))")
+    unavailable.wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    assert "unavailable" in unavailable.inner_text().lower()
+    assert not empty.is_visible(), "a failed first load must not look empty"
+
+    page.evaluate("() => { window.__approvalQueueMode = 'populated'; }")
+    page.get_by_role("button", name="Retry approval queue").click()
+    page.get_by_text("Stale approval evidence").wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    assert not unavailable.is_visible()
+
+    page.evaluate("() => { window.__approvalQueueMode = 'failure'; }")
+    page.get_by_role("button", name="Retry approval queue").click()
+    unavailable.wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    assert "last known results" in unavailable.inner_text().lower()
+    assert page.get_by_text("Stale approval evidence").is_visible(), (
+        "a refresh failure must retain the last proven queue rows as explicitly stale"
+    )
+
+    page.evaluate("() => { window.__approvalQueueMode = 'empty'; }")
+    page.get_by_role("button", name="Retry approval queue").click()
+    empty.wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    assert not unavailable.is_visible()
+
+
 def test_exactly_one_sidebar_panel_is_visible_at_a_time(page, live_server, seeded):
     """Each tab shows its own panel and hides the other three.
 
