@@ -379,7 +379,10 @@
                             'X-Requested-With': 'XMLHttpRequest'
                         }
                     })
-                    .then(function (r) { return r.json().catch(function () { return {}; }); })
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        return r.json();
+                    })
                     .then(function (data) {
                         if (!data.success) failures++;
                     })

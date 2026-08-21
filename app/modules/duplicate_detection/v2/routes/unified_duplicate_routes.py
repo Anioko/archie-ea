@@ -376,6 +376,27 @@ def get_simple_groups_api():
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+@unified_duplicate_bp_v2.route("/simple/api/element-groups")
+@timed_route
+@login_required
+def get_element_duplicate_groups_api():
+    """Return live ArchiMate duplicate-name groups for the simple dashboard."""
+    try:
+        groups = unified_service.get_archimate_element_duplicate_groups()
+        total_elements = sum(group["element_count"] for group in groups)
+        return jsonify(
+            {
+                "success": True,
+                "groups": groups,
+                "total_groups": len(groups),
+                "total_duplicated_elements": total_elements,
+            }
+        )
+    except Exception as e:
+        current_app.logger.error(f"Element duplicate groups route error: {str(e)}")
+        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+
+
 @unified_duplicate_bp_v2.route("/simple/api/run-detection", methods=["POST"])
 @timed_route
 @login_required
