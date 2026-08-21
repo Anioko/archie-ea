@@ -290,6 +290,23 @@ class WorkbenchKernel:
             meta["artifacts"] = artifacts
             session.custom_metadata = meta
             session.updated_at = datetime.utcnow()
+            if (
+                new_state in {ArtifactState.PERSISTED, ArtifactState.APPROVED}
+                and meta.get("solution_id")
+                and session.organization_id
+            ):
+                from app.models.arb_submission_evidence import WorkbenchArtifactEvidence
+
+                solution_id = meta.get("solution_id")
+                WorkbenchArtifactEvidence.capture(
+                    organization_id=session.organization_id,
+                    workspace_id=session.id,
+                    solution_id=solution_id,
+                    name=artifact_key,
+                    state=new_state.value,
+                    payload=artifacts[artifact_key]["data"],
+                    actor_id=self.user_id or session.created_by_id,
+                )
             db.session.commit()
             return True
         except Exception as e:
@@ -874,62 +891,66 @@ class WorkbenchKernel:
             return {"success": False, "error": str(e)}
 
     def submit_to_arb(self, workspace_id: int) -> Dict[str, Any]:
-        """Submit workspace artifacts to the Architecture Review Board.
-
-        Validates that minimum required artifacts exist (brief, scope,
-        recommendation), then records the submission as an artifact.
-        """
-        ws = self.load_workspace(workspace_id)
-        if not ws:
-            return {"success": False, "error": "Workspace not found"}
-
-        artifacts = ws.get("artifacts", {})
-        solution_id = ws.get("solution_id")
-
-        # Check required artifacts
-        required = ["brief", "scope", "recommendation"]
-        missing = [r for r in required if r not in artifacts]
-        if missing:
+        """Submit through the canonical ARB service using trusted workspace state."""
+        if workspace_id is None:
             return {
                 "success": False,
-                "missing_artifacts": missing,
-                "error": f"Missing required artifacts: {', '.join(missing)}",
+                "reason_codes": ["trusted_workspace_required"],
+                "missing_evidence": [
+                    {"code": "trusted_workspace_required", "action": "Open a solution workbench"}
+                ],
+            }
+        ws = self.load_workspace(workspace_id)
+        if not ws:
+            return {
+                "success": False,
+                "reason_codes": ["workspace_not_found"],
+                "missing_evidence": [{"code": "workspace_not_found"}],
+            }
+        solution_id = ws.get("solution_id")
+        if not solution_id:
+            return {
+                "success": False,
+                "reason_codes": ["workspace_solution_missing"],
+                "missing_evidence": [{"code": "workspace_solution_missing"}],
+            }
+        from app.modules.solutions_strategic.v2.services.arb_submission_service import (
+            ARBSubmissionService,
+        )
+
+        submission = ARBSubmissionService.submit(
+            solution_id,
+            self.user_id,
+            workspace_id=workspace_id,
+            assertions={"human_reviewed": True},
+        )
+        if not submission.success:
+            return {
+                "success": False,
+                "reason_codes": submission.reason_codes,
+                "missing_evidence": submission.missing_evidence,
             }
 
-        # Try calling ARB submission endpoint if solution exists
-        submitted = False
-        if solution_id:
-            try:
-                from flask import current_app
-                with current_app.test_client() as client:
-                    resp = client.post(
-                        f"/solutions/{solution_id}/arb-submission",
-                        json={"workspace_id": workspace_id},
-                    )
-                    if resp.status_code == 200:
-                        submitted = True
-                        logger.info("AIC-316: ARB submission for solution %s via endpoint", solution_id)
-            except Exception as arb_err:
-                logger.debug("AIC-316: ARB endpoint call skipped: %s", arb_err)
-
-        # Track as artifact
-        self.set_artifact_state(
-            workspace_id, "arb_submission",
-            ArtifactState.DRAFT.value,
-            {"solution_id": solution_id, "submitted": submitted},
-        )
-
-        self.add_evidence(
-            workspace_id, "arb_submission",
-            f"ARB submission initiated for workspace {workspace_id}",
-            f"solution_id={solution_id}",
-        )
-
-        return {
-            "success": True,
-            "submitted": submitted,
+        artifact_data = {
             "solution_id": solution_id,
+            "review_item_id": submission.review_item_id,
+            "review_number": submission.review_number,
+            "snapshot_id": submission.snapshot_id,
+            "idempotent": submission.idempotent,
         }
+        for state in (
+            ArtifactState.DRAFT.value,
+            ArtifactState.CONFIRMED.value,
+            ArtifactState.PERSISTED.value,
+        ):
+            if not self.set_artifact_state(workspace_id, "arb_submission", state, artifact_data):
+                return {
+                    "success": True,
+                    **artifact_data,
+                    "artifact_recorded": False,
+                    "warnings": ["submission_artifact_persistence_failed"],
+                }
+        return {"success": True, **artifact_data, "artifact_recorded": True, "warnings": []}
 
     # ------------------------------------------------------------------
     # AIC-318: Evidence gate enforcement

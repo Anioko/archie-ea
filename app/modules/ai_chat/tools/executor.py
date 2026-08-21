@@ -579,48 +579,52 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     def _tool_submit_for_arb_review(self, args: dict) -> dict:
+        workspace_id = args.get("workspace_id")
+        if workspace_id is None:
+            return {
+                "success": False,
+                "reason_codes": ["trusted_workspace_required"],
+                "missing_evidence": [
+                    {
+                        "code": "trusted_workspace_required",
+                        "action": "Open the linked solution workbench and retry",
+                    }
+                ],
+                "error": "A trusted solution workbench is required for AI submission.",
+            }
+
         sol_r = self._resolver.resolve_solution(args["solution_name"])
         if not sol_r["resolved"]:
             return self._clarify("solution", sol_r)
 
-        from app.models.solution_models import Solution
-        from datetime import datetime
+        from app.modules.solutions_strategic.v2.services.arb_submission_service import (
+            ARBSubmissionService,
+        )
 
-        sol = Solution.query.get(sol_r["id"])
-        if not sol:
-            return {"success": False, "error": "Solution not found"}
+        submission = ARBSubmissionService.submit(
+            sol_r["id"],
+            self.user_id,
+            workspace_id=workspace_id,
+            assertions={"human_reviewed": True},
+        )
+        if not submission.success:
+            return {
+                "success": False,
+                "reason_codes": submission.reason_codes,
+                "missing_evidence": submission.missing_evidence,
+                "error": "ARB submission is blocked until the listed evidence is complete.",
+            }
 
-        # AIC-318: evidence gate — check workspace artifacts before ARB submission
-        workspace_id = args.get("workspace_id")
-        if workspace_id:
-            try:
-                from app.modules.ai_chat.services.workbench_kernel import WorkbenchKernel
-                kernel = WorkbenchKernel()
-                workflow_type = args.get("workflow_type", "greenfield")
-                gate = kernel.check_evidence_gate(workspace_id, workflow_type)
-                if not gate.get("pass"):
-                    missing = gate.get("missing", [])
-                    actions = gate.get("suggested_actions", [])
-                    return {
-                        "success": False,
-                        "error": "Evidence gate: workspace artifacts insufficient for ARB submission.",
-                        "missing_artifacts": missing,
-                        "suggested_actions": actions,
-                    }
-            except Exception as _eg_err:
-                logger.warning("AIC-318: evidence gate check failed (non-blocking): %s", _eg_err)
-
-        sol.governance_status = "arb_review"
-        sol.arb_submission_date = datetime.utcnow()
-        db.session.commit()
-        logger.info("AgentRunner submitted solution id=%s for ARB review (user=%s)", sol.id, self.user_id)
         return {
             "success": True,
-            "result": {"solution": sol.name, "phase": args["phase"]},
-            "message": (
-                f"Submitted '{sol.name}' for ARB review at {args['phase']} phase. "
-                "Governance status set to 'arb_review'."
-            ),
+            "result": {
+                "solution": sol_r.get("name") or args["solution_name"],
+                "review_item_id": submission.review_item_id,
+                "review_number": submission.review_number,
+                "snapshot_id": submission.snapshot_id,
+                "idempotent": submission.idempotent,
+            },
+            "message": f"Submitted '{sol_r.get('name') or args['solution_name']}' for ARB review ({submission.review_number}).",
         }
 
     # ------------------------------------------------------------------ #

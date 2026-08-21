@@ -210,17 +210,12 @@ TOOL_SCHEMAS = [
                     "type": "string",
                     "description": "Name of the solution to submit (fuzzy matched)",
                 },
-                "phase": {
-                    "type": "string",
-                    "description": "TOGAF ADM phase at which the review is requested",
-                    "enum": ["concept", "design", "build", "deploy"],
-                },
                 "notes": {
                     "type": "string",
                     "description": "Additional context or questions for the ARB",
                 },
             },
-            "required": ["solution_name", "phase"],
+            "required": ["solution_name"],
         },
         "tier": "approve",
     },

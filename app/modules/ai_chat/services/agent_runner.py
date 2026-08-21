@@ -109,6 +109,20 @@ class AgentRunner:
         self.chat_session_id = chat_session_id
         self._turn_id: Optional[str] = None
 
+    @staticmethod
+    def _inject_trusted_tool_context(
+        tool_name: str, arguments: dict, trusted_workspace_id: Optional[int]
+    ) -> dict:
+        """Replace model-provided governance identity with server context."""
+        trusted = dict(arguments or {})
+        if tool_name == "submit_for_arb_review":
+            trusted.pop("workspace_id", None)
+            trusted.pop("workflow_type", None)
+            trusted.pop("phase", None)
+            if trusted_workspace_id is not None:
+                trusted["workspace_id"] = trusted_workspace_id
+        return trusted
+
     # ------------------------------------------------------------------ #
     # Public entry point                                                   #
     # ------------------------------------------------------------------ #
@@ -448,6 +462,7 @@ class AgentRunner:
         # survives.
         messages = self._prepare_history(history)
         messages.append({"role": "user", "content": user_message})
+        trusted_workspace_id = (context or {}).get("workspace_id")
         executor = ToolExecutor(self.user_id)
         actions_taken = []
         pending_approvals = []
@@ -481,7 +496,9 @@ class AgentRunner:
                 tc = ToolCall(
                     id=tc_raw["id"],
                     name=tc_raw["name"],
-                    arguments=tc_raw["arguments"],
+                    arguments=self._inject_trusted_tool_context(
+                        tc_raw["name"], tc_raw["arguments"], trusted_workspace_id
+                    ),
                 )
                 schema = TOOL_SCHEMA_BY_NAME.get(tc.name, {})
 
@@ -988,7 +1005,7 @@ class AgentRunner:
                 "Change application '{application_name}' status to '{new_status}'. Reason: {rationale}"
             ),
             "submit_for_arb_review": (
-                "Submit solution '{solution_name}' for ARB review at {phase} phase."
+                "Submit solution '{solution_name}' for ARB review."
             ),
             "generate_blueprint_narrative": (
                 "Generate AI narrative for section '{section_id}' of solution {solution_id}. "
