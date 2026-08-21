@@ -40,7 +40,12 @@ DROPLET="${DROPLET:-root@134.122.105.56}"                # ssh target
 APP_DIR="${APP_DIR:-/root/archie-ea}"                    # app dir on droplet
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:5000/health}" # health endpoint (on box)
 PUBLIC_HEALTH="${PUBLIC_HEALTH:-https://165-22-125-156.sslip.io/health}"
-POLL_SECONDS="${POLL_SECONDS:-900}"                      # 15 min bound
+POLL_SECONDS="${POLL_SECONDS:-1800}"                     # 30 min bound.
+# Was 900. A boot that was progressing normally through the backfill chain
+# exceeded 15 min on the 2-vCPU droplet, so a healthy deploy was rolled back as
+# a failure — the most expensive kind of false alarm, because the rollback looks
+# like the new code is broken. Raise this rather than lower it: the auto-rollback
+# is the safety net, and waiting longer costs nothing when the deploy is fine.
 POLL_INTERVAL="${POLL_INTERVAL:-20}"
 SSH_OPTS="-o ConnectTimeout=20 -o BatchMode=yes"
 

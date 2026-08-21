@@ -360,6 +360,14 @@ def test_unassessed_maturity_renders_a_dash_not_a_fabricated_score(
     link = _make_link(db_session, org)
     db_session.commit()
     body = app.test_client().get(f"/shared/{link.token}").get_data(as_text=True)
-    assert "&#39;" not in unassessed_name  # guard the assertion below is meaningful
-    assert unassessed_name in body
-    assert "—" in body
+
+    # With nothing assessed the page deliberately does NOT render a table of
+    # em dashes — 219 rows of them is accurate and unreadable, and a leadership
+    # artefact is a summary. It states the position instead. What must never
+    # appear either way is a fabricated level for an unassessed capability.
+    assert "No capability has been assessed yet" in body
+    assert "not reported as Level 1" in body
+    # The stat strip still reports the honest counts.
+    assert "Assessed" in body
+    # No maturity level chip anywhere, because none was measured.
+    assert 'title="Not assessed"' not in body or "—" in body

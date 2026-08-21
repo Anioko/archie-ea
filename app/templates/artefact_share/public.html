@@ -116,6 +116,21 @@
       </div>
     </section>
 
+    {# A leadership artefact is a summary, not a dump. With nothing assessed this
+       page rendered 219 rows of em dashes over 12,000px — technically accurate,
+       and nobody would read it. When there is no assessment to show, state that
+       and stop; the per-category counts above still say what exists. #}
+    {% if data.assessed_count == 0 %}
+    <section class="rounded-lg border border-dashed border-border bg-card p-6 text-center">
+      <p class="text-base font-medium text-foreground">No capability has been assessed yet</p>
+      <p class="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+        {{ data.total_count }} capabilities are recorded across
+        {{ data.groups|length }} categor{{ 'y' if data.groups|length == 1 else 'ies' }}.
+        None carries a recorded assessment date, so no maturity level is shown —
+        an unassessed capability is deliberately not reported as Level 1.
+      </p>
+    </section>
+    {% else %}
     {% for group in data.groups %}
     <section class="rounded-lg border border-border bg-card overflow-hidden">
       <div class="border-b border-border px-4 py-3">
@@ -155,6 +170,7 @@
         No capabilities have been recorded yet.
       </p>
     {% endfor %}
+    {% endif %}
 
   {# ── Capability map ──────────────────────────────────────────────────────── #}
   {% elif artefact_type == 'capability_map' %}
