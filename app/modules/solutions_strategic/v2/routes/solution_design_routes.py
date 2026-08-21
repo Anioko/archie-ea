@@ -7032,161 +7032,40 @@ def _validate_solution_recommended_option(solution):
 @audit_log("submit_solution_for_arb")
 def submit_solution_for_arb(solution_id: int):
     """Submit a solution for Architecture Review Board approval."""
-    solution = Solution.query.get_or_404(solution_id)
-
-    # Check if solution is in a submittable state
-    if solution.governance_status not in ["draft", "rejected"]:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": f"Solution cannot be submitted from status: {solution.governance_status}",
-                }
-            ),
-            400,
-        )
-
-    # ENH-005: Require explicit human approval when content is AI-generated
     data = request.get_json(silent=True) or {}
-    if _solution_has_ai_generated_content(solution) and not data.get("ai_content_reviewed"):
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": "AI-generated content must be reviewed before ARB submission. Confirm you have reviewed the AI-generated content and resubmit.",
-                    "requires_ai_review": True,
-                }
-            ),
-            400,
-        )
+    from app.modules.solutions_strategic.v2.services.arb_submission_service import (
+        ARBSubmissionService,
+    )
 
-    # ENH-007: Validate recommended option references real vendor products
-    valid, opt_error = _validate_solution_recommended_option(solution)
-    if not valid:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": "Recommended option references an invalid or missing vendor product. Update the solution option before submitting to ARB.",
-                    "option_invalid": opt_error == "option_invalid",
-                    "vendor_not_found": opt_error == "vendor_not_found",
-                }
-            ),
-            400,
-        )
-
-    # ENH-008: Option costs must have declared source (tco_engine or manual_override)
-    if solution.estimated_cost is not None and float(solution.estimated_cost or 0) != 0:
-        cost_source = data.get("cost_source")
-        if cost_source not in ("tco_engine", "manual_override"):
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Solution has cost estimate. Declare cost_source as 'tco_engine' or 'manual_override' in the request body before submitting to ARB.",
-                        "requires_cost_source": True,
-                    }
-                ),
-                400,
-            )
-
-    # ENH-009: Optional second-architect review when config enabled
-    if current_app.config.get("FLASK_ARB_REQUIRE_SECOND_REVIEW"):
-        if not data.get("second_reviewer_id"):
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Second architect review is required. Provide second_reviewer_id (user id) in the request body.",
-                        "requires_second_review": True,
-                    }
-                ),
-                400,
-            )
-
-    # GOV-03: Hard governance gate — block submission if completeness thresholds not met
-    try:
-        from app.modules.solutions_strategic.v2.services.governance_gate_service import check_gate
-
-        gate_result = check_gate(solution_id, "arb_submission")
-        if not gate_result["passed"]:
-            logger.info(
-                "GOV-03 gate blocked ARB submission for solution %s: %s",
-                solution_id,
-                gate_result["failures"],
-            )
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Solution does not meet governance gate requirements for ARB submission.",
-                        "gate_failures": gate_result["failures"],
-                        "gate_name": gate_result["gate_name"],
-                    }
-                ),
-                422,
-            )
-    except Exception as gate_err:
-        logger.warning("GOV-03 gate check failed (non-blocking): %s", gate_err)
-
-    try:
-        from app.models.architecture_review_board import ARBReviewItem
-
-        # Accept optional resubmission notes (SDX-003: resubmit after rejection)
-        resubmission_notes = data.get("resubmission_notes", "")
-        is_resubmission = solution.governance_status == "rejected"
-
-        # Build description with resubmission context
-        base_desc = f"Review request for solution: {solution.description or solution.name}"
-        if is_resubmission and resubmission_notes:
-            base_desc = f"[Resubmission] {resubmission_notes}\n\nOriginal: {base_desc}"
-
-        # Create ARB review item
-        review_item = ARBReviewItem(
-            review_number=ARBReviewItem.generate_review_number(),
-            title=f"{'Resubmission: ' if is_resubmission else ''}Solution Review: {solution.name}",
-            description=base_desc,
-            review_type="solution",
-            priority="medium",
-            status="submitted",
-            submitter_id=current_user.id,
-            solution_id=solution.id,
-            submitted_at=datetime.utcnow(),
-        )
-
-        db.session.add(review_item)
-        db.session.flush()
-
-        # Update solution
-        solution.governance_status = "arb_review"
-        solution.arb_submission_date = datetime.utcnow()
-        solution.arb_review_item_id = review_item.id
-
-        # Notify solution owner (ENT-012)
-        if solution.created_by_id:
-            notif = SolutionNotification(
-                solution_id=solution.id,
-                user_id=solution.created_by_id,
-                type="arb_submission",
-                message=f"Solution '{solution.name}' submitted for ARB review.",
-            )
-            db.session.add(notif)
-
-        db.session.commit()
-
-        return jsonify(
-            {
-                "success": True,
-                "message": "Solution submitted for ARB review",
-                "review_item_id": review_item.id,
-                "governance_status": solution.governance_status,
-                "is_resubmission": is_resubmission,
-            }
-        )
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error submitting solution for ARB: {e}")
-        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+    result = ARBSubmissionService.submit(
+        solution_id,
+        current_user.id,
+        assertions={
+            "human_reviewed": bool(data.get("ai_content_reviewed") or data.get("human_reviewed")),
+            "cost_source": data.get("cost_source"),
+            "direct_route_evidence": data.get("direct_route_evidence") or {},
+            "resubmission_notes": data.get("resubmission_notes"),
+        },
+    )
+    if not result.success:
+        status = 404 if "solution_not_found" in result.reason_codes else 422
+        if "actor_not_authorized" in result.reason_codes:
+            status = 403
+        if "evaluator_unavailable" in result.reason_codes or "submission_failed" in result.reason_codes:
+            status = 503
+        return jsonify({
+            "success": False,
+            "reason_codes": result.reason_codes,
+            "missing_evidence": result.missing_evidence,
+        }), status
+    return jsonify({
+        "success": True,
+        "message": "Solution submitted for ARB review",
+        "review_item_id": result.review_item_id,
+        "review_number": result.review_number,
+        "snapshot_id": result.snapshot_id,
+        "idempotent": result.idempotent,
+    })
 
 
 @solution_design_bp.route("/<int:solution_id>/governance-gates/check", methods=["GET"])

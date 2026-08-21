@@ -2545,65 +2545,32 @@ def full_validate(solution_id):
 @login_required
 @_require_solution_owner
 def submit_arb(solution_id):
-    """Submit solution to Architecture Review Board.
+    """Submit through the canonical, evidence-gated ARB service."""
+    from app.modules.solutions_strategic.v2.services.arb_submission_service import ARBSubmissionService
 
-    Readiness gate (reasoning mode): requires >= 4 of 7 ACM domains covered
-    and all pipeline stages complete. Pass override_acm_warning=true to bypass.
-
-    Readiness gate (domain mode): requires ready_for_arb from get_arb_package()
-    (>= 6/7 domains confirmed, >= 4/5 ArchiMate layers populated).
-    """
     data = request.get_json() or {}
-    override = data.get("override_acm_warning", False)
-
-    # --- Readiness gate ---
-    if not override:
-        try:
-            from app.modules.solutions_strategic.v2.services.journey_reasoning_orchestrator import (
-                JourneyReasoningOrchestrator,
-            )
-            r_orch = JourneyReasoningOrchestrator(solution_id)
-            journey_data = r_orch._get_journey_data()
-
-            if journey_data.get("confirmed_capabilities"):
-                # Reasoning mode: check pipeline completion + ACM coverage
-                ready, reasons = r_orch.is_ready_for_arb_reasoning()
-                if not ready:
-                    return api_error(
-                        "Architecture not ready for ARB. " + " | ".join(reasons),
-                        422,
-                    )
-            else:
-                # Domain mode: check blueprint proposals coverage
-                from app.modules.architecture_assistant.journey_orchestrator import (
-                    JourneyOrchestrator as JO,
-                )
-                package = JO(solution_id).get_arb_package()
-                if not package.get("ready_for_arb"):
-                    summary = package.get("summary", {})
-                    return api_error(
-                        f"Architecture not ready: {summary.get('domain_coverage', '?/7')} domains "
-                        f"confirmed, {summary.get('layer_coverage', '?/5')} ArchiMate layers populated. "
-                        "Confirm remaining domains or pass override_acm_warning=true.",
-                        422,
-                    )
-        except Exception as gate_err:
-            logger.error("ARB readiness gate check failed: %s", gate_err, exc_info=True)
-            return api_error(
-                "Readiness check failed unexpectedly. Architecture state could not be verified. "
-                "Pass override_acm_warning=true only if you have manually confirmed readiness.",
-                500,
-            )
-
-    # --- Submission ---
-    try:
-        from app.modules.architecture_assistant.journey_orchestrator import JourneyOrchestrator
-        orch = JourneyOrchestrator(solution_id)
-        result = orch.submit_to_arb(validation_result=data.get("validation_result", {}))
-        return api_success(data=result)
-    except Exception as e:
-        logger.error("ARB submission failed: %s", e, exc_info=True)
-        return api_error("Failed to submit to ARB", 500)
+    result = ARBSubmissionService.submit(
+        solution_id,
+        current_user.id,
+        assertions={
+            "human_reviewed": bool(data.get("ai_content_reviewed") or data.get("human_reviewed")),
+            "cost_source": data.get("cost_source"),
+            "direct_route_evidence": data.get("direct_route_evidence") or {},
+            "resubmission_notes": data.get("resubmission_notes"),
+        },
+    )
+    if not result.success:
+        status = 403 if "actor_not_authorized" in result.reason_codes else 422
+        if "solution_not_found" in result.reason_codes:
+            status = 404
+        if "evaluator_unavailable" in result.reason_codes or "submission_failed" in result.reason_codes:
+            status = 503
+        return jsonify({"success": False, "reason_codes": result.reason_codes,
+                        "missing_evidence": result.missing_evidence}), status
+    return api_success(data={"review_item_id": result.review_item_id,
+                             "review_number": result.review_number,
+                             "snapshot_id": result.snapshot_id,
+                             "idempotent": result.idempotent})
 
 
 # ── Spec Inference Hooks (post-generation triggers) ──────────────

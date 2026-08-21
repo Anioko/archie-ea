@@ -8045,7 +8045,7 @@ End with: "Type **'next'** to complete the design workflow."
         return any(re.search(p, msg_lower) for p in patterns)
 
     def _handle_arb_submission(self, message: str, context: dict = None) -> dict:
-        """Handle ARB submission intent — create ARBReviewItem record for the solution."""
+        """Handle ARB submission intent through the canonical service."""
         import re
         from flask_login import current_user
 
@@ -8060,75 +8060,53 @@ End with: "Type **'next'** to complete the design workflow."
                 "error": "missing_solution_id",
             }
 
-        try:
-            from app import db
-            from app.models.solution_models import Solution
-            from app.models.architecture_review_board import ARBReviewItem
-
-            solution = Solution.query.get(solution_id)
-            if not solution:
-                return {
-                    "success": False,
-                    "response": f"Solution {solution_id} not found.",
-                    "error": "solution_not_found",
-                }
-
-            # Check if already submitted
-            existing = ARBReviewItem.query.filter_by(solution_id=solution_id).first()
-            if existing:
-                return {
-                    "success": True,
-                    "response": (
-                        f"Solution **{solution.name}** is already in ARB review "
-                        f"({existing.review_number})."
-                    ),
-                    "arb_id": existing.id,
-                    "already_submitted": True,
-                }
-
-            # Resolve submitter_id — required column
-            submitter_id = None
-            try:
-                submitter_id = current_user.id if current_user.is_authenticated else None
-            except Exception as _ex:
-                logger.debug(f"_handle_arb_submission: could not read current_user: {_ex}")
-            if submitter_id is None:
-                return {
-                    "success": False,
-                    "response": "You must be logged in to submit a solution to ARB.",
-                    "error": "unauthenticated",
-                }
-
-            review_number = ARBReviewItem.generate_review_number()
-            arb_item = ARBReviewItem(
-                review_number=review_number,
-                title=f"ARB Review — {solution.name}",
-                review_type="solution_design",
-                solution_id=solution_id,
-                submitter_id=submitter_id,
-                status="submitted",
-                submitted_at=datetime.utcnow(),
-            )
-            db.session.add(arb_item)
-            db.session.commit()
-
-            review_url = f"/arb/reviews/{arb_item.id}"
-            return {
-                "success": True,
-                "response": (
-                    f"Solution **{solution.name}** submitted to ARB for review.\n\n"
-                    f"ARB record created: [{review_number}]({review_url})"
-                ),
-                "arb_id": arb_item.id,
-                "review_url": review_url,
-            }
-        except Exception as e:
-            logger.error(f"_handle_arb_submission error: {e}", exc_info=True)
+        if not current_user.is_authenticated:
             return {
                 "success": False,
-                "response": f"Failed to submit to ARB: {str(e)}",
-                "error": str(e),
+                "response": "You must be logged in to submit a solution to ARB.",
+                "error": "unauthenticated",
             }
+
+        workspace_id = (context or {}).get("workspace_id")
+        if not workspace_id:
+            return {
+                "success": False,
+                "response": "Open the solution workbench before submitting to ARB.",
+                "error": "trusted_workspace_required",
+                "reason_codes": ["trusted_workspace_required"],
+                "missing_evidence": [{
+                    "code": "trusted_workspace_required",
+                    "action": "Open the solution workbench",
+                }],
+            }
+
+        from app.modules.solutions_strategic.v2.services.arb_submission_service import ARBSubmissionService
+
+        result = ARBSubmissionService.submit(
+            solution_id,
+            current_user.id,
+            workspace_id=workspace_id,
+            assertions=(context or {}).get("arb_assertions") or {},
+        )
+        if not result.success:
+            return {
+                "success": False,
+                "response": "The solution could not be submitted to ARB. Complete the listed evidence and retry.",
+                "error": result.reason_codes[0] if result.reason_codes else "submission_blocked",
+                "reason_codes": result.reason_codes,
+                "missing_evidence": result.missing_evidence,
+            }
+        review_url = f"/arb/reviews/{result.review_item_id}"
+        return {
+            "success": True,
+            "response": f"ARB submission recorded as **{result.review_number}**.",
+            "arb_id": result.review_item_id,
+            "review_number": result.review_number,
+            "snapshot_id": result.snapshot_id,
+            "review_url": review_url,
+            "already_submitted": result.idempotent,
+            "idempotent": result.idempotent,
+        }
 
     # ------------------------------------------------------------------
     # A95-036: Capability-driven design intent detection & orchestration

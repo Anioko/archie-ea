@@ -1414,28 +1414,31 @@ def api_dashboard():
 @audit_log("arb_solution_review_submit")
 def api_submit_solution_review(solution_id):
     """API endpoint to auto-submit solution for ARB review."""
-    try:
-        review = arb_service.auto_submit_solution_for_review(
-            solution_id, current_user.id
-        )
-        if review:
-            return jsonify(
-                {
-                    "success": True,
-                    "review_id": review.id,
-                    "review_number": review.review_number,
-                }
-            )
-        else:
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Solution does not meet criteria for ARB review",
-                }
-            )
-    except Exception as e:
-        current_app.logger.error(f"Error submitting solution review: {e}")
-        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+    from app.modules.solutions_strategic.v2.services.arb_submission_service import ARBSubmissionService
+
+    data = request.get_json(silent=True) or {}
+    result = ARBSubmissionService.submit(
+        solution_id,
+        current_user.id,
+        assertions={
+            "human_reviewed": bool(data.get("ai_content_reviewed") or data.get("human_reviewed")),
+            "cost_source": data.get("cost_source"),
+            "direct_route_evidence": data.get("direct_route_evidence") or {},
+            "resubmission_notes": data.get("resubmission_notes"),
+        },
+    )
+    if not result.success:
+        status = 403 if "actor_not_authorized" in result.reason_codes else 422
+        if "solution_not_found" in result.reason_codes:
+            status = 404
+        if "evaluator_unavailable" in result.reason_codes or "submission_failed" in result.reason_codes:
+            status = 503
+        return jsonify({"success": False, "reason_codes": result.reason_codes,
+                        "missing_evidence": result.missing_evidence}), status
+    return jsonify({"success": True, "review_id": result.review_item_id,
+                    "review_item_id": result.review_item_id,
+                    "review_number": result.review_number, "snapshot_id": result.snapshot_id,
+                    "idempotent": result.idempotent})
 
 
 @arb_bp.route("/api/adr/<int:adr_id>/submit_review", methods=["POST"])

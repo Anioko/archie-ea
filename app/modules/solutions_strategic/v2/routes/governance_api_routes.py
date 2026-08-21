@@ -414,18 +414,30 @@ def get_blockers(solution_id):
 @solution_required
 def submit_for_arb(solution_id):
     """Submit solution to ARB for review."""
-    data = request.get_json()
-    
-    try:
-        review = arb_service.submit_for_arb_review(
-            solution_id=solution_id,
-            version_id=data.get('version_id'),
-            submitted_by_id=data.get('submitted_by_id'),
-            submission_notes=data.get('submission_notes')
-        )
-        return jsonify(review.to_dict()), 201
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    from app.modules.solutions_strategic.v2.services.arb_submission_service import ARBSubmissionService
+
+    data = request.get_json(silent=True) or {}
+    result = ARBSubmissionService.submit(
+        solution_id,
+        current_user.id,
+        assertions={
+            "human_reviewed": bool(data.get("ai_content_reviewed") or data.get("human_reviewed")),
+            "cost_source": data.get("cost_source"),
+            "direct_route_evidence": data.get("direct_route_evidence") or {},
+            "resubmission_notes": data.get("submission_notes") or data.get("resubmission_notes"),
+        },
+    )
+    if not result.success:
+        status = 403 if "actor_not_authorized" in result.reason_codes else 422
+        if "solution_not_found" in result.reason_codes:
+            status = 404
+        if "evaluator_unavailable" in result.reason_codes or "submission_failed" in result.reason_codes:
+            status = 503
+        return jsonify({"success": False, "reason_codes": result.reason_codes,
+                        "missing_evidence": result.missing_evidence}), status
+    return jsonify({"success": True, "review_item_id": result.review_item_id,
+                    "review_number": result.review_number, "snapshot_id": result.snapshot_id,
+                    "idempotent": result.idempotent}), 201 if not result.idempotent else 200
 
 
 @governance_api_bp.route('/solutions/<int:solution_id>/arb/status', methods=['GET'])
