@@ -1126,6 +1126,7 @@ def gate_tests() -> Result:
     """
     parts = [
         ("unit+integration", ["-p", "no:cacheprovider",
+                              "-p", "scripts.route_verification_audit",
                               "--ignore=tests/test_boot_health.py",
                               "--ignore=tests/smoke"]),
         ("smoke", ["-p", "no:cacheprovider", "tests/smoke"]),
@@ -1180,11 +1181,6 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_shell_conformance(baseline["shell_conformance"]),
              remediation="use page_header/page_shell and p-6 space-y-6; see DESIGN.md, or add 'shell-ok: <reason>'",
              tags=["static", "ui"]),
-        Gate("nav-verified",
-             "No new sidebar route goes untested",
-             "ratchet", lambda: gate_nav_verified(baseline["nav_verified"]),
-             remediation="add a test that loads the route, or remove it from the sidebar",
-             tags=[]),
         Gate("nav-coverage",
              "No business-architecture output with routes is missing from every sidebar",
              "ratchet", lambda: gate_nav_coverage(baseline["nav_coverage"]),
@@ -1334,6 +1330,14 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="run: flask --app manage reconcile-schema", tags=["runtime", "db"]),
         Gate("tests", "Test suite passes", "command", gate_tests, needs_db=True,
              remediation="fix the failing test", tags=["runtime", "db"]),
+        # Keep this after ``tests``: the unit phase writes fresh ignored
+        # route_verification.json evidence via the audit plugin.  CI runs this
+        # gate separately after its own audited pytest command.
+        Gate("nav-verified",
+             "No new sidebar route goes untested",
+             "ratchet", lambda: gate_nav_verified(baseline["nav_verified"]),
+             remediation="add a test that loads the route, or remove it from the sidebar",
+             tags=[]),
     ]
 
 

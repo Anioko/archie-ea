@@ -5,6 +5,7 @@ The gate is meaningful only when the same CI job first creates a fresh file by
 running the non-browser suite with the audit plugin.
 """
 
+import inspect
 from pathlib import Path
 
 from scripts.verify import build_gates, load_baseline
@@ -26,6 +27,21 @@ def test_nav_verification_is_not_a_static_gate():
     assert "static" not in gates["nav-verified"].tags, (
         "nav-verified consumes ignored route_verification.json evidence, so it "
         "must run after pytest generates that evidence in the tests job"
+    )
+
+
+def test_full_verifier_collects_nav_evidence_before_enforcing_it():
+    """A full local release run must not consume stale evidence from an earlier test."""
+    gates = build_gates(load_baseline())
+    names = [gate.name for gate in gates]
+    tests_gate = gates[names.index("tests")]
+
+    assert names.index("tests") < names.index("nav-verified"), (
+        "the full verifier must run pytest before evaluating its generated "
+        "route-verification evidence"
+    )
+    assert "scripts.route_verification_audit" in inspect.getsource(tests_gate.runner), (
+        "the verifier's non-smoke pytest phase must load the route audit plugin"
     )
 
 
