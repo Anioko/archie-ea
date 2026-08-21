@@ -124,6 +124,18 @@ def _reconcile(dry_run=False):
                 db.session.rollback()
                 failed.append(f"{label}: {str(exc)[:120]}")
 
+    if not dry_run:
+        try:
+            from app.models.arb_submission_evidence import (
+                ensure_evidence_immutability_triggers,
+            )
+
+            ensure_evidence_immutability_triggers(db.session.connection())
+            db.session.commit()
+        except Exception as exc:  # noqa: BLE001 — report alongside column failures
+            db.session.rollback()
+            failed.append(f"evidence_immutability_triggers: {str(exc)[:120]}")
+
     return added, failed, missing_tables, blocking
 
 

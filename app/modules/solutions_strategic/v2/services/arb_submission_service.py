@@ -16,7 +16,7 @@ from app import db
 from app.models.arb_submission_evidence import (
     ARBSubmissionEvidenceSnapshot,
     WorkbenchArtifactEvidence,
-    ensure_evidence_immutability_triggers,
+    evidence_immutability_is_installed,
 )
 from app.models.architecture_review_board import ARBReviewItem, ARB_OPEN_STATUSES
 from app.models.audit_log import AuditLog
@@ -284,7 +284,8 @@ class ARBSubmissionService:
             organization_id = getattr(g, "current_org_id", None) if has_request_context() else None
             if organization_id is None:
                 return ARBSubmissionResult(False, ["tenant_context_missing"])
-            ensure_evidence_immutability_triggers(db.session.connection())
+            if not evidence_immutability_is_installed(db.session.connection()):
+                return ARBSubmissionResult(False, ["evidence_immutability_unavailable"])
             solution = db.session.execute(
                 db.select(Solution)
                 .where(

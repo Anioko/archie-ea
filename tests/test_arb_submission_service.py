@@ -26,6 +26,8 @@ from app.models.vendor.vendor_organization import VendorOrganization, VendorProd
 from app.models.arb_submission_evidence import (
     ARBSubmissionEvidenceSnapshot,
     WorkbenchArtifactEvidence,
+    evidence_immutability_is_installed,
+    ensure_evidence_immutability_triggers,
 )
 from app.modules.solutions_strategic.v2.services.arb_submission_service import (
     ARBSubmissionService,
@@ -429,11 +431,16 @@ def test_evidence_schema_is_nullable_compatible_and_reconcile_safe(app, _schema)
 
     with app.app_context():
         added, failed, missing_tables, blocking = _reconcile(dry_run=True)
+        first_apply = _reconcile(dry_run=False)
+        second_apply = _reconcile(dry_run=False)
 
     assert not [item for item in added if "evidence" in item]
     assert not [item for item in failed if "evidence" in item]
     assert not [item for item in missing_tables if "evidence" in item]
     assert not [item for item in blocking if "evidence" in item]
+    assert first_apply[1] == []
+    assert second_apply[1] == []
+    assert evidence_immutability_is_installed(db.session.connection()) is True
 
 
 def test_submit_is_idempotent_for_an_active_review(db_session, make_org, tenant_ctx, passing_gate):
@@ -556,6 +563,54 @@ def test_submit_preserves_tenant_context_missing_reason(db_session, make_org, pa
     result = ARBSubmissionService.submit(solution.id, owner.id, assertions=_ready_assertions())
 
     assert result.reason_codes == ["tenant_context_missing"]
+
+
+def test_runtime_submission_executes_no_schema_ddl(db_session, make_org, tenant_ctx, passing_gate):
+    org = make_org("runtime-no-ddl")
+    owner = _user(db_session, org)
+    solution = _solution(db_session, org, owner)
+    statements = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    event.listen(db.engine, "before_cursor_execute", record_statement)
+    try:
+        with tenant_ctx(org.id):
+            result = ARBSubmissionService.submit(
+                solution.id, owner.id, assertions=_ready_assertions()
+            )
+    finally:
+        event.remove(db.engine, "before_cursor_execute", record_statement)
+
+    assert result.success is True
+    ddl_prefixes = ("CREATE ", "ALTER ", "DROP ", "DO ", "SELECT PG_ADVISORY")
+    assert not [
+        statement for statement in statements if statement.lstrip().upper().startswith(ddl_prefixes)
+    ]
+
+
+def test_missing_database_trigger_blocks_runtime_submission_with_precise_reason(
+    db_session, make_org, tenant_ctx, passing_gate
+):
+    org = make_org("missing-trigger")
+    owner = _user(db_session, org)
+    solution = _solution(db_session, org, owner)
+    connection = db_session.connection()
+    connection.exec_driver_sql(
+        "DROP TRIGGER IF EXISTS trg_reject_evidence_mutation ON arb_submission_evidence_snapshots"
+    )
+
+    try:
+        with tenant_ctx(org.id):
+            result = ARBSubmissionService.submit(
+                solution.id, owner.id, assertions=_ready_assertions()
+            )
+        assert result.success is False
+        assert result.reason_codes == ["evidence_immutability_unavailable"]
+        assert db_session.query(ARBReviewItem).filter_by(solution_id=solution.id).count() == 0
+    finally:
+        ensure_evidence_immutability_triggers(connection)
 
 
 def test_required_write_failure_rolls_back_every_submission_change(

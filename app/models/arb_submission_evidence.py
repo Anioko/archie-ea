@@ -178,6 +178,30 @@ def ensure_evidence_immutability_triggers(connection):
     )
 
 
+def evidence_immutability_is_installed(connection):
+    """Verify the PostgreSQL function and enabled triggers without schema writes."""
+    if connection.dialect.name != "postgresql":
+        return False
+    return bool(
+        connection.exec_driver_sql(
+            """
+            SELECT
+                to_regprocedure('reject_archie_evidence_mutation()') IS NOT NULL
+                AND (
+                    SELECT count(*) = 2
+                    FROM pg_trigger
+                    WHERE tgname = 'trg_reject_evidence_mutation'
+                      AND tgenabled <> 'D'
+                      AND tgrelid IN (
+                          to_regclass('public.arb_submission_evidence_snapshots'),
+                          to_regclass('public.workbench_artifact_evidence')
+                      )
+                )
+            """
+        ).scalar()
+    )
+
+
 @event.listens_for(ARBSubmissionEvidenceSnapshot.__table__, "after_create")
 @event.listens_for(WorkbenchArtifactEvidence.__table__, "after_create")
 def _install_evidence_triggers_after_create(_target, connection, **_kwargs):
