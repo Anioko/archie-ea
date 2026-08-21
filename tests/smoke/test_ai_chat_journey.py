@@ -285,7 +285,6 @@ def test_approval_modal_distinguishes_loading_failure_stale_and_retry(page, live
     )
     page.wait_for_function("() => typeof window.__approvalQueueReject === 'function'")
 
-    loading = page.get_by_test_id("approval-queue-loading")
     unavailable = page.get_by_test_id("approval-queue-unavailable")
     empty = page.get_by_test_id("approval-queue-empty")
     assert page.evaluate("() => window.Alpine.store('approvals').loading") is True

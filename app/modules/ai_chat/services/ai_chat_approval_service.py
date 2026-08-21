@@ -849,7 +849,10 @@ class AIChatApprovalService:
         requester_ids = {approval.user_id for approval in approvals}
         requesters = {
             user.id: user
-            for user in User.query.filter(User.id.in_(requester_ids)).all()
+            for user in User.query.filter(
+                User.organization_id == actor.organization_id,
+                User.id.in_(requester_ids),
+            ).all()
         } if requester_ids else {}
         return {
             "success": True,
