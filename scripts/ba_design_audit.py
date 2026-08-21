@@ -35,7 +35,11 @@ SCREENS = [
 ]
 
 
-def audit(page, name: str, url: str, out_dir: Path) -> dict:
+def audit(page, name: str, url: str, out_dir: Path, errors: list) -> dict:
+    # A JS exception is invisible to every static gate and fatal to the control it
+    # was wiring. "traceabilitySankey is not a function" shipped to production and
+    # only surfaced by watching the console on a real page load.
+    errors.clear()
     page.goto(url, wait_until="networkidle")
     page.wait_for_timeout(2200)
 
@@ -89,7 +93,13 @@ def audit(page, name: str, url: str, out_dir: Path) -> dict:
             f"page has almost no content ({metrics['bodyChars']} chars) — "
             "check this URL resolves before treating it as a layout problem"
         )
-    return {"name": name, "url": url, "flags": flags, "metrics": metrics, "shot": str(shot)}
+    js_errors = [e for e in errors if "Content Security Policy" not in e]
+    if js_errors:
+        flags.append(f"{len(js_errors)} JS error(s): {js_errors[0][:90]}")
+    return {
+        "name": name, "url": url, "flags": flags, "metrics": metrics,
+        "shot": str(shot), "js_errors": js_errors,
+    }
 
 
 def main() -> int:
@@ -110,6 +120,10 @@ def main() -> int:
         page = ctx.new_page()
         errors: list[str] = []
         page.on("pageerror", lambda e: errors.append(str(e)))
+        page.on(
+            "console",
+            lambda m: errors.append(m.text) if m.type == "error" else None,
+        )
 
         page.goto(f"{args.base}/account/login", wait_until="domcontentloaded")
         page.fill('input[name="email"]', args.email)
@@ -123,7 +137,7 @@ def main() -> int:
 
         for name, path in SCREENS:
             try:
-                results.append(audit(page, name, f"{args.base}{path}", out_dir))
+                results.append(audit(page, name, f"{args.base}{path}", out_dir, errors))
             except Exception as exc:  # noqa: BLE001
                 results.append({"name": name, "url": path, "flags": [f"ERROR {exc}"], "metrics": {}, "shot": ""})
         browser.close()
