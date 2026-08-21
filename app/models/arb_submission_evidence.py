@@ -27,7 +27,6 @@ class ARBSubmissionEvidenceSnapshot(TenantMixin, db.Model):
     review_item_id = db.Column(
         db.Integer, db.ForeignKey("arb_review_items.id"), nullable=True, index=True
     )
-    review_number = db.Column(db.String(50), nullable=True)
     solution_id = db.Column(db.Integer, db.ForeignKey("solutions.id"), nullable=True, index=True)
     workspace_id = db.Column(
         db.Integer, db.ForeignKey("solution_analysis_sessions.id"), nullable=True, index=True
@@ -49,7 +48,6 @@ class ARBSubmissionEvidenceSnapshot(TenantMixin, db.Model):
             "schema_version": self.schema_version,
             "organization_id": self.organization_id,
             "review_item_id": self.review_item_id,
-            "review_number": self.review_number,
             "solution_id": self.solution_id,
             "workspace_id": self.workspace_id,
             "actor_id": self.actor_id,
@@ -131,6 +129,59 @@ class WorkbenchArtifactEvidence(TenantMixin, db.Model):
         )
         db.session.add(row)
         return row
+
+
+def ensure_evidence_immutability_triggers(connection):
+    """Install PostgreSQL append-only triggers for fresh and existing schemas."""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.exec_driver_sql(
+        "SELECT pg_advisory_xact_lock(hashtext('archie_evidence_immutability_triggers'))"
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE OR REPLACE FUNCTION reject_archie_evidence_mutation()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            RAISE EXCEPTION 'ARB and workbench evidence records are append-only'
+                USING ERRCODE = '55000';
+        END;
+        $$
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        DO $$
+        DECLARE table_name text;
+        BEGIN
+            FOREACH table_name IN ARRAY ARRAY[
+                'arb_submission_evidence_snapshots',
+                'workbench_artifact_evidence'
+            ] LOOP
+                IF to_regclass('public.' || table_name) IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM pg_trigger
+                       WHERE tgname = 'trg_reject_evidence_mutation'
+                         AND tgrelid = to_regclass('public.' || table_name)
+                   ) THEN
+                    EXECUTE format(
+                        'CREATE TRIGGER trg_reject_evidence_mutation '
+                        'BEFORE UPDATE OR DELETE ON %%I '
+                        'FOR EACH ROW EXECUTE FUNCTION reject_archie_evidence_mutation()',
+                        table_name
+                    );
+                END IF;
+            END LOOP;
+        END;
+        $$
+        """
+    )
+
+
+@event.listens_for(ARBSubmissionEvidenceSnapshot.__table__, "after_create")
+@event.listens_for(WorkbenchArtifactEvidence.__table__, "after_create")
+def _install_evidence_triggers_after_create(_target, connection, **_kwargs):
+    ensure_evidence_immutability_triggers(connection)
 
 
 def _reject_snapshot_mutation(_mapper, _connection, _target):

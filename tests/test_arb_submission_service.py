@@ -3,9 +3,12 @@ from __future__ import annotations
 from copy import deepcopy
 from decimal import Decimal
 import uuid
+import threading
 
 import pytest
+import psycopg2
 from sqlalchemy import event
+from flask import g
 
 from app import db
 from app.models.architecture_review_board import ARBReviewItem
@@ -19,6 +22,7 @@ from app.models.solution_architect_models import (
 from app.models.solution_governance import SolutionNotification
 from app.models.solution_models import Solution
 from app.models.user import User
+from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 from app.models.arb_submission_evidence import (
     ARBSubmissionEvidenceSnapshot,
     WorkbenchArtifactEvidence,
@@ -153,6 +157,27 @@ def test_evaluate_binds_tenant_actor_workspace_and_derives_workflow(
     assert result.workflow_type == "brownfield"
     assert unauthorized.reason_codes == ["actor_not_authorized"]
     assert foreign_actor.reason_codes == ["actor_not_found"]
+
+
+def test_cross_tenant_solution_and_workspace_ids_are_not_resolved(
+    db_session, make_org, tenant_ctx, passing_gate
+):
+    org_a, org_b = make_org("cross-a"), make_org("cross-b")
+    owner_a, owner_b = _user(db_session, org_a), _user(db_session, org_b)
+    solution_a = _solution(db_session, org_a, owner_a)
+    solution_b = _solution(db_session, org_b, owner_b)
+    workspace_b = _workspace(db_session, org_b, owner_b, solution_b)
+
+    with tenant_ctx(org_a.id):
+        foreign_solution = ARBSubmissionService.evaluate(
+            solution_b.id, owner_a.id, assertions=_ready_assertions()
+        )
+        foreign_workspace = ARBSubmissionService.evaluate(
+            solution_a.id, owner_a.id, workspace_b.id, _ready_assertions()
+        )
+
+    assert foreign_solution.reason_codes == ["solution_not_found"]
+    assert foreign_workspace.reason_codes == ["workspace_not_found"]
 
 
 def test_evaluate_requires_each_named_artifact_at_persisted_state(
@@ -358,8 +383,20 @@ def test_human_review_cost_vendor_and_governance_requirements(
             workspace.id,
             {"human_reviewed": True, "cost_source": "manual_override"},
         )
-        recommendation.vendor_products = []
+        vendor = VendorOrganization(name=f"Valid Vendor {uuid.uuid4().hex[:10]}")
+        db_session.add(vendor)
         db_session.flush()
+        product = VendorProduct(vendor_organization_id=vendor.id, name="Valid Product")
+        db_session.add(product)
+        db_session.flush()
+        recommendation.vendor_products = [product.id]
+        db_session.flush()
+        valid_vendor = ARBSubmissionService.evaluate(
+            solution.id,
+            owner.id,
+            workspace.id,
+            {"human_reviewed": True, "cost_source": "manual_override"},
+        )
         monkeypatch.setattr(
             "app.modules.solutions_strategic.v2.services.arb_submission_service.check_gate",
             lambda *_: {"passed": False, "failures": [{"reason": "missing goal"}]},
@@ -374,7 +411,29 @@ def test_human_review_cost_vendor_and_governance_requirements(
     assert no_human.reason_codes == ["human_review_required"]
     assert no_cost_source.reason_codes == ["cost_source_required"]
     assert bad_vendor.reason_codes == ["recommended_vendor_not_found"]
+    assert valid_vendor.ready is True
     assert gate_blocked.reason_codes == ["governance_gate_failed"]
+
+
+def test_evidence_schema_is_nullable_compatible_and_reconcile_safe(app, _schema):
+    from app.commands.reconcile_schema import _reconcile
+
+    nullable_columns = [
+        column
+        for model in (ARBSubmissionEvidenceSnapshot, WorkbenchArtifactEvidence)
+        for column in model.__table__.columns
+        if not column.primary_key
+    ]
+    assert all(column.nullable for column in nullable_columns)
+    assert "review_number" not in ARBSubmissionEvidenceSnapshot.__table__.columns
+
+    with app.app_context():
+        added, failed, missing_tables, blocking = _reconcile(dry_run=True)
+
+    assert not [item for item in added if "evidence" in item]
+    assert not [item for item in failed if "evidence" in item]
+    assert not [item for item in missing_tables if "evidence" in item]
+    assert not [item for item in blocking if "evidence" in item]
 
 
 def test_submit_is_idempotent_for_an_active_review(db_session, make_org, tenant_ctx, passing_gate):
@@ -589,3 +648,122 @@ def test_append_only_snapshot_rejects_bulk_and_raw_mutation(
             db.text("DELETE FROM arb_submission_evidence_snapshots WHERE id = :snapshot_id"),
             {"snapshot_id": result.snapshot_id},
         )
+
+
+def test_two_concurrent_transactions_create_one_review_and_database_rejects_raw_mutation(
+    app, _schema, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.modules.solutions_strategic.v2.services.arb_submission_service.check_gate",
+        lambda *_: {"passed": True, "failures": [], "gate_name": "arb_submission"},
+    )
+    from app.models.organization import Organization
+
+    with app.app_context():
+        suffix = uuid.uuid4().hex[:10]
+        org = Organization(name=f"Concurrent {suffix}", slug=f"concurrent-{suffix}")
+        db.session.add(org)
+        db.session.flush()
+        owner = _user(db.session, org)
+        solution = _solution(db.session, org, owner)
+        workspace = _workspace(
+            db.session,
+            org,
+            owner,
+            solution,
+            artifacts=_artifacts("brief", "scope", "recommendation"),
+        )
+        db.session.commit()
+        artifact_id = (
+            db.session.query(WorkbenchArtifactEvidence.id)
+            .filter_by(workspace_id=workspace.id, name="brief")
+            .scalar()
+        )
+        org_id, owner_id, solution_id, workspace_id = (
+            org.id,
+            owner.id,
+            solution.id,
+            workspace.id,
+        )
+
+    barrier = threading.Barrier(2)
+    results = []
+    errors = []
+
+    def submit_from_independent_transaction():
+        try:
+            with app.test_request_context("/"):
+                g.current_org_id = org_id
+                barrier.wait(timeout=10)
+                results.append(
+                    ARBSubmissionService.submit(
+                        solution_id,
+                        owner_id,
+                        workspace_id,
+                        assertions=_ready_assertions(),
+                    )
+                )
+                db.session.remove()
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=submit_from_independent_transaction) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+
+    assert errors == []
+    assert len(results) == 2
+    assert {result.review_item_id for result in results} == {results[0].review_item_id}
+    assert sorted(result.idempotent for result in results) == [False, True]
+
+    with app.app_context():
+        assert db.session.query(ARBReviewItem).filter_by(solution_id=solution_id).count() == 1
+        snapshot = (
+            db.session.query(ARBSubmissionEvidenceSnapshot).filter_by(solution_id=solution_id).one()
+        )
+        snapshot_id = snapshot.id
+        db.session.remove()
+
+    database_url = app.config["SQLALCHEMY_DATABASE_URI"]
+    raw = psycopg2.connect(database_url)
+    try:
+        for statement in (
+            f"/* immutable */ UPDATE public.arb_submission_evidence_snapshots SET workflow_type='x' WHERE id={snapshot_id}",
+            f"WITH target AS (SELECT {snapshot_id} AS id) DELETE FROM arb_submission_evidence_snapshots USING target WHERE arb_submission_evidence_snapshots.id=target.id",
+            f"DELETE FROM public.arb_submission_evidence_snapshots WHERE id={snapshot_id}",
+            f"/* immutable */ UPDATE public.workbench_artifact_evidence SET state='draft' WHERE id={artifact_id}",
+            f"WITH target AS (SELECT {artifact_id} AS id) DELETE FROM workbench_artifact_evidence USING target WHERE workbench_artifact_evidence.id=target.id",
+        ):
+            with pytest.raises(psycopg2.Error, match="append-only"):
+                with raw.cursor() as cursor:
+                    cursor.execute(statement)
+            raw.rollback()
+    finally:
+        with raw.cursor() as cursor:
+            cursor.execute("ALTER TABLE arb_submission_evidence_snapshots DISABLE TRIGGER USER")
+            cursor.execute(
+                "DELETE FROM arb_submission_evidence_snapshots WHERE solution_id=%s",
+                (solution_id,),
+            )
+            cursor.execute("ALTER TABLE arb_submission_evidence_snapshots ENABLE TRIGGER USER")
+            cursor.execute("ALTER TABLE workbench_artifact_evidence DISABLE TRIGGER USER")
+            cursor.execute(
+                "DELETE FROM workbench_artifact_evidence WHERE solution_id=%s", (solution_id,)
+            )
+            cursor.execute("ALTER TABLE workbench_artifact_evidence ENABLE TRIGGER USER")
+            cursor.execute(
+                "DELETE FROM solution_notifications WHERE solution_id=%s", (solution_id,)
+            )
+            cursor.execute("DELETE FROM soc2_audit_log WHERE organization_id=%s", (org_id,))
+            cursor.execute(
+                "UPDATE solutions SET arb_review_item_id=NULL WHERE id=%s", (solution_id,)
+            )
+            cursor.execute("DELETE FROM arb_review_items WHERE solution_id=%s", (solution_id,))
+            cursor.execute("DELETE FROM solutions WHERE id=%s", (solution_id,))
+            cursor.execute("DELETE FROM solution_analysis_sessions WHERE id=%s", (workspace_id,))
+            cursor.execute("DELETE FROM users WHERE id=%s", (owner_id,))
+            cursor.execute("DELETE FROM organizations WHERE id=%s", (org_id,))
+        raw.commit()
+        raw.close()
