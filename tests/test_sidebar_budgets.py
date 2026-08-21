@@ -53,7 +53,7 @@ def _all_links(role):
     return links
 
 
-def test_sidebar_link_budget_is_27():
+def test_sidebar_link_budget_is_28():
     """Raised 25 -> 26 in the Task 3 fix round (coordinator review of the
     sidebar rewrite): platform_admin's two review-mandated admin-zone links
     (Salesforce Integration, Power Platform) alone render exactly 25 visible
@@ -67,10 +67,17 @@ def test_sidebar_link_budget_is_27():
     SIDEBAR_LINK_BUDGET comment and
     tests/test_sidebar_render.py::test_platform_admin_hits_the_link_budget_exactly.
 
+    Raised 27 -> 28 (BA-A1, 21 Aug 2026): the Business Architecture landing page
+    is the front door to all twelve BA outputs, and platform_admin is the default
+    role for anyone who never picked one — so it is the role that most needs the
+    link, and its only shared zone was already exactly on the ceiling. Retiring
+    "Batch Import" to make room would have regressed the S-11 finding that put it
+    there, trading one discoverability defect for another.
+
     S-11 (18 Aug 2026): raised 25 -> 26 for the one governance link added to
     surface Architecture Decisions, which platform_admin also renders.
     """
-    assert SIDEBAR_LINK_BUDGET == 27
+    assert SIDEBAR_LINK_BUDGET == 28
 
 
 def test_every_role_is_defined():
@@ -194,11 +201,17 @@ def test_business_architect_my_work_membership():
     near-empty, and it was this persona's only maturity link.
 
     BA-A3 (21 Aug 2026): the /business-architecture practice landing page
-    added first, as the front door to all twelve BA outputs."""
+    added first, as the front door to all twelve BA outputs.
+
+    Corrected same day: "Capability Frameworks" is restored ALONGSIDE the
+    heatmap rather than replaced by it. Repointing this persona's only maturity
+    link had removed frameworks_overview from every sidebar zone, regressing the
+    S-11 finding above — the full suite caught it; the targeted runs did not."""
     assert _my_work_labels(ROLE_BUSINESS_ARCHITECT) == [
         "Business Architecture",
         "Capability Map",
         "Capability Maturity",
+        "Capability Frameworks",
         "Value Streams",
         "Stakeholder Map",
         "Gap Analysis",

@@ -396,10 +396,32 @@ def test_capability_map_page_size_after_modal_dedup(app, db_session, make_org, t
 
 def test_capability_map_modal_ids_unchanged_and_present(app, db_session, make_org, tenant_ctx):
     """The JS that opens each modal (app/static/js/capability_map/*.js) finds
-    its target by DOM id — those ids must survive the dedup unchanged."""
+    its target by DOM id — those ids must survive unchanged.
+
+    ARCH-064 moved the dialogs out of /capability-map/'s initial HTML: all five
+    start closed, and serialising them cost 68KB on every page load. They are now
+    fetched from capability_map.mapping_modal_partial on first open. The intent
+    of this test is unchanged — every id the JS reaches for must exist — so it
+    asserts against the fragment that now carries them instead of the page that
+    used to. Asserting they are inline would pin the payload back.
+    """
     html = _get(app, db_session, make_org, tenant_ctx, "modal-ids", "/capability-map/")
-    for modal_id in ("acm-mapping-modal", "process-mapping-modal", "mapping-modal"):
-        assert f'id="{modal_id}"' in html, f"modal id {modal_id!r} missing after dedup"
+    assert 'id="lazy-modal-host"' in html, "the lazy modal host is missing from the page"
+
+    variants = {
+        "acm-mapping-modal": "acm-mapping-modal",
+        "process-mapping-modal": "process-mapping-modal",
+        "mapping-modal": "mapping-modal",
+    }
+    html = "".join(
+        _get(
+            app, db_session, make_org, tenant_ctx, f"modal-{v}",
+            f"/capability-map/partials/mapping-modal/{v}",
+        )
+        for v in variants
+    )
+    for modal_id in variants:
+        assert f'id="{modal_id}"' in html, f"modal id {modal_id!r} missing from its partial"
     # Spot-check a few of the ids inside each modal that the per-modal JS
     # also depends on (search box, applications list, save/close handlers).
     assert 'id="acm-application-search"' in html

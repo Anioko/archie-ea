@@ -279,6 +279,27 @@ def gate_shell_conformance(baseline: int) -> Result:
     return Result("shell-conformance", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_nav_verified(baseline: int) -> Result:
+    """Routes a user can click that no test has ever exercised.
+
+    Line coverage measures lines; this measures the unit a user actually
+    touches. A route reachable from the sidebar that no test has ever loaded is
+    unverified by definition — and it is the combination that hurts, because
+    someone will find it by clicking.
+
+    Counts from route_verification.json, written by running the suite with
+    ``-p scripts.route_verification_audit``. Stale or missing data reports the
+    full nav set as unverified, which fails loudly rather than passing on
+    absent evidence.
+    """
+    proc = _run([sys.executable, "scripts/route_verification_audit.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("nav-verified", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("nav-verified", PASS if count <= baseline else FAIL, "", count, baseline)
+
+
 def gate_nav_coverage(baseline: int) -> Result:
     """Business-architecture outputs that have routes but no sidebar link.
 
@@ -1159,6 +1180,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_shell_conformance(baseline["shell_conformance"]),
              remediation="use page_header/page_shell and p-6 space-y-6; see DESIGN.md, or add 'shell-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("nav-verified",
+             "No new sidebar route goes untested",
+             "ratchet", lambda: gate_nav_verified(baseline["nav_verified"]),
+             remediation="add a test that loads the route, or remove it from the sidebar",
+             tags=["static"]),
         Gate("nav-coverage",
              "No business-architecture output with routes is missing from every sidebar",
              "ratchet", lambda: gate_nav_coverage(baseline["nav_coverage"]),

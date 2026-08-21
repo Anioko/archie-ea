@@ -270,7 +270,17 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # list/health/roadmap) were nested as in-page tabs under the existing
 # "My Applications" sidebar link rather than given zone entries of their own
 # — see app/modules/my_applications/templates/my_applications/*.html.
-SIDEBAR_LINK_BUDGET = 27
+#
+# BA-A1 (21 Aug 2026): raised 27 -> 28. The Business Architecture landing page
+# is the front door to all twelve business-architecture outputs, and an
+# evaluating architect had concluded three of them did not exist because there
+# was no such door. platform_admin is the default enterprise_role for anyone who
+# never picked one, so it is the role that most needs the link, and its only
+# shared zone (admin) was already exactly on the ceiling. The alternative was to
+# retire "Batch Import", but that link exists to satisfy the S-11 finding above
+# — trading one discoverability defect for another. Raising the budget by one is
+# the honest cost of adding a front door.
+SIDEBAR_LINK_BUDGET = 28
 
 _ZONE_TITLES = {
     "home": "Home",
@@ -428,6 +438,11 @@ _MY_WORK_LINKS = {
         # data actually carries — BA-12). Clicking the single maturity link and
         # finding nothing is precisely why maturity was reported as missing.
         _link("Capability Maturity", "maturity_management.maturity_heatmap", "thermometer"),
+        # Kept alongside the heatmap, not replaced by it. A QA finding pins
+        # frameworks_overview as needing a sidebar zone, and repointing this
+        # persona's only maturity link at the heatmap had quietly removed it
+        # from every zone — trading one discoverability defect for another.
+        _link("Capability Frameworks", "maturity_management.frameworks_overview", "layers"),
         _link("Value Streams", "value_stream.index", "waypoints"),
         _link("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
         _link("Gap Analysis", "enterprise.gap_analysis", "search-x"),

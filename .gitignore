@@ -309,3 +309,4 @@ recheck.py
 # Wave verification screenshot-matrix output (scripts/screenshot_matrix.py) --
 # reviewed in-session, not committed.
 docs/superpowers/evidence/
+route_verification.json
