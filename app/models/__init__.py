@@ -341,7 +341,10 @@ else:
     # references via FK; it must be in metadata for create_all() to resolve that FK.
     from .solution_reasoning import *  # noqa: F401
     from .solution_governance import *  # noqa: F401
-    from .arb_submission_evidence import ARBSubmissionEvidenceSnapshot  # noqa: F401
+    from .arb_submission_evidence import (  # noqa: F401
+        ARBSubmissionEvidenceSnapshot,
+        WorkbenchArtifactEvidence,
+    )
 
     # GOV-02: Architecture Decision Records (uses original architecture_decision.py, imported at line 61)
     # Duplicate architecture_decisions.py removed — original has richer schema

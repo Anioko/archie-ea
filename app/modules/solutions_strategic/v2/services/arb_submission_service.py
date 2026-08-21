@@ -5,16 +5,18 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
-import hashlib
-import json
 import logging
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from flask import g, has_request_context
 
 from app import db
-from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
+from app.models.arb_submission_evidence import (
+    ARBSubmissionEvidenceSnapshot,
+    WorkbenchArtifactEvidence,
+)
 from app.models.architecture_review_board import ARBReviewItem, ARB_OPEN_STATUSES
 from app.models.audit_log import AuditLog
 from app.models.solution_architect_models import SolutionAnalysisSession, SolutionRecommendation
@@ -62,6 +64,11 @@ class ARBSubmissionService:
         ),
     }
     VALID_STATES = frozenset({"draft", "rejected"})
+    DIRECT_ROUTE_CHECKS = (
+        "design_reviewed",
+        "security_impact_reviewed",
+        "data_impact_reviewed",
+    )
 
     @classmethod
     def evaluate(
@@ -133,7 +140,30 @@ class ARBSubmissionService:
             workflow_type = metadata.get("workspace_type")
             if workflow_type not in cls.REQUIRED_ARTIFACTS:
                 return cls._blocked("workspace_workflow_invalid")
-            artifacts = deepcopy(metadata.get("artifacts") or {})
+            rows = db.session.execute(
+                db.select(WorkbenchArtifactEvidence)
+                .where(
+                    WorkbenchArtifactEvidence.organization_id == organization_id,
+                    WorkbenchArtifactEvidence.workspace_id == workspace.id,
+                    WorkbenchArtifactEvidence.solution_id == solution.id,
+                )
+                .order_by(
+                    WorkbenchArtifactEvidence.name,
+                    WorkbenchArtifactEvidence.version.desc(),
+                )
+            ).scalars()
+            for row in rows:
+                artifacts.setdefault(
+                    row.name,
+                    {
+                        "state": row.state,
+                        "data": deepcopy(row.payload or {}),
+                        "evidence_id": row.id,
+                        "content_hash": row.content_hash,
+                        "version": row.version,
+                        "captured_at": row.captured_at.isoformat() if row.captured_at else None,
+                    },
+                )
 
         if solution.governance_status not in cls.VALID_STATES and not (
             active_review and solution.governance_status == "arb_review"
@@ -156,27 +186,34 @@ class ARBSubmissionService:
                     )
             if missing:
                 return cls._blocked("missing_named_artifacts", missing, workflow_type, artifacts)
-            if not assertions.get("human_reviewed"):
-                return cls._blocked(
-                    "human_review_required",
-                    [{"code": "human_review_required", "assertion": "human_reviewed"}],
-                    workflow_type,
-                    artifacts,
-                )
         else:
-            direct_checks = assertions.get("direct_route_checks")
-            if (
-                not isinstance(direct_checks, dict)
-                or not direct_checks
-                or not all(direct_checks.values())
-            ):
+            direct_checks = assertions.get("direct_route_evidence")
+            missing_checks = []
+            for name in cls.DIRECT_ROUTE_CHECKS:
+                item = direct_checks.get(name) if isinstance(direct_checks, dict) else None
+                if not (
+                    isinstance(item, dict)
+                    and item.get("passed") is True
+                    and isinstance(item.get("evidence"), str)
+                    and item["evidence"].strip()
+                ):
+                    missing_checks.append({"code": "direct_route_check_missing", "check": name})
+            if missing_checks:
                 return cls._blocked(
                     "missing_direct_route_evidence",
-                    [{"code": "missing_direct_route_evidence", "assertion": "direct_route_checks"}],
+                    missing_checks,
                     workflow_type,
                 )
 
-        if solution.estimated_cost is not None and float(solution.estimated_cost) != 0:
+        if cls._has_ai_content(solution, workspace) and not assertions.get("human_reviewed"):
+            return cls._blocked(
+                "human_review_required",
+                [{"code": "human_review_required", "assertion": "human_reviewed"}],
+                workflow_type,
+                artifacts,
+            )
+
+        if solution.estimated_cost is not None and solution.estimated_cost != Decimal("0"):
             if assertions.get("cost_source") not in {"tco_engine", "manual_override"}:
                 return cls._blocked(
                     "cost_source_required",
@@ -223,7 +260,7 @@ class ARBSubmissionService:
             "human_reviewed": bool(assertions.get("human_reviewed")),
             "cost_source": assertions.get("cost_source"),
             "vendor_references_resolved": True,
-            "direct_route_checks": deepcopy(assertions.get("direct_route_checks") or {}),
+            "direct_route_evidence": deepcopy(assertions.get("direct_route_evidence") or {}),
         }
         return ARBReadinessResult(
             ready=True,
@@ -244,6 +281,8 @@ class ARBSubmissionService:
         assertions = deepcopy(assertions or {})
         try:
             organization_id = getattr(g, "current_org_id", None) if has_request_context() else None
+            if organization_id is None:
+                return ARBSubmissionResult(False, ["tenant_context_missing"])
             solution = db.session.execute(
                 db.select(Solution)
                 .where(
@@ -266,13 +305,36 @@ class ARBSubmissionService:
                 .scalars()
                 .first()
             )
+            if active is not None:
+                identity_failure = cls._validate_retry_identity(
+                    solution, actor_id, workspace_id, organization_id
+                )
+                if identity_failure is not None:
+                    return ARBSubmissionResult(False, [identity_failure])
+                snapshot = db.session.execute(
+                    db.select(ARBSubmissionEvidenceSnapshot).where(
+                        ARBSubmissionEvidenceSnapshot.organization_id == organization_id,
+                        ARBSubmissionEvidenceSnapshot.review_item_id == active.id,
+                    )
+                ).scalar_one_or_none()
+                if snapshot is None:
+                    return ARBSubmissionResult(False, ["active_review_snapshot_missing"])
+                if snapshot.workspace_id != workspace_id:
+                    return ARBSubmissionResult(False, ["workspace_identity_mismatch"])
+                return ARBSubmissionResult(
+                    True,
+                    review_item_id=active.id,
+                    review_number=active.review_number,
+                    snapshot_id=snapshot.id,
+                    idempotent=True,
+                )
             try:
                 readiness = cls._evaluate(
                     solution_id,
                     actor_id,
                     workspace_id,
                     assertions,
-                    active_review=active is not None,
+                    active_review=False,
                 )
             except Exception:
                 logger.exception("ARB readiness evaluation failed during submission")
@@ -284,21 +346,6 @@ class ARBSubmissionService:
             if not readiness.ready:
                 return ARBSubmissionResult(
                     False, readiness.reason_codes, readiness.missing_evidence
-                )
-
-            if active is not None:
-                snapshot = db.session.execute(
-                    db.select(ARBSubmissionEvidenceSnapshot).where(
-                        ARBSubmissionEvidenceSnapshot.organization_id == organization_id,
-                        ARBSubmissionEvidenceSnapshot.review_item_id == active.id,
-                    )
-                ).scalar_one_or_none()
-                return ARBSubmissionResult(
-                    True,
-                    review_item_id=active.id,
-                    review_number=active.review_number,
-                    snapshot_id=snapshot.id if snapshot else None,
-                    idempotent=True,
                 )
 
             now = datetime.utcnow()
@@ -322,29 +369,22 @@ class ARBSubmissionService:
             db.session.add(review)
             db.session.flush()
 
-            snapshot_payload = {
-                "schema_version": cls.SCHEMA_VERSION,
-                "organization_id": organization_id,
-                "solution_id": solution.id,
-                "workspace_id": workspace_id,
-                "workflow_type": readiness.workflow_type,
-                "actor_id": actor_id,
-                "checks": readiness.checks,
-                "artifacts": readiness.artifacts,
-                "governance_result": readiness.governance_result,
-                "request_assertions": assertions,
-            }
-            content_hash = hashlib.sha256(
-                json.dumps(
-                    snapshot_payload, sort_keys=True, separators=(",", ":"), default=str
-                ).encode()
-            ).hexdigest()
             snapshot = ARBSubmissionEvidenceSnapshot(
+                schema_version=cls.SCHEMA_VERSION,
+                organization_id=organization_id,
                 review_item_id=review.id,
+                review_number=review.review_number,
+                solution_id=solution.id,
+                workspace_id=workspace_id,
+                workflow_type=readiness.workflow_type,
+                actor_id=actor_id,
                 captured_at=now,
-                content_hash=content_hash,
-                **snapshot_payload,
+                checks=readiness.checks,
+                artifacts=readiness.artifacts,
+                governance_result=readiness.governance_result,
+                request_assertions=assertions,
             )
+            snapshot.content_hash = snapshot.recompute_content_hash()
             db.session.add(snapshot)
 
             solution.governance_status = "arb_review"
@@ -365,7 +405,7 @@ class ARBSubmissionService:
                     action="create",
                     table_name="arb_review_items",
                     record_id=review.id,
-                    new_value={"status": "submitted", "snapshot_hash": content_hash},
+                    new_value={"status": "submitted", "snapshot_hash": snapshot.content_hash},
                 )
             )
             db.session.flush()
@@ -402,6 +442,53 @@ class ARBSubmissionService:
             }
         )
 
+    @classmethod
+    def _validate_retry_identity(cls, solution, actor_id, workspace_id, organization_id):
+        actor = db.session.execute(
+            db.select(User).where(
+                User.id == actor_id,
+                User.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
+        if actor is None:
+            return "actor_not_found"
+        if not cls._actor_can_access(actor, solution):
+            return "actor_not_authorized"
+        if workspace_id is None:
+            return None
+        workspace = db.session.execute(
+            db.select(SolutionAnalysisSession).where(
+                SolutionAnalysisSession.id == workspace_id,
+                SolutionAnalysisSession.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
+        if workspace is None:
+            return "workspace_not_found"
+        if workspace.created_by_id != actor_id:
+            return "workspace_actor_mismatch"
+        if (workspace.custom_metadata or {}).get("solution_id") != solution.id:
+            return "workspace_solution_mismatch"
+        return None
+
+    @staticmethod
+    def _has_ai_content(solution, workspace):
+        session_ids = {
+            session_id
+            for session_id in (solution.analysis_session_id, workspace.id if workspace else None)
+            if session_id is not None
+        }
+        if not session_ids:
+            return False
+        return (
+            db.session.execute(
+                db.select(SolutionRecommendation.id).where(
+                    SolutionRecommendation.session_id.in_(session_ids),
+                    SolutionRecommendation.generated_by_model.is_not(None),
+                )
+            ).first()
+            is not None
+        ) or workspace is not None
+
     @staticmethod
     def _invalid_vendor_references(solution, workspace):
         vendor_ids = set()
@@ -417,7 +504,7 @@ class ARBSubmissionService:
                 vendor_ids.update(recommendation.vendor_products or [])
         if not vendor_ids:
             return []
-        from app.models.vendor.vendor_product import VendorProduct
+        from app.models.vendor.vendor_organization import VendorProduct
 
         resolved = set(
             db.session.execute(
