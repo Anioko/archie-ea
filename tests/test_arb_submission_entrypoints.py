@@ -8,6 +8,7 @@ from flask import g
 from flask_login import login_user
 
 from app.models.architecture_review_board import ARBReviewItem
+from app.models.solution_architect_models import SolutionAnalysisSession, SolutionSessionStatus
 from app.models.solution_models import Solution
 from app.models.user import User
 from app.modules.ai_chat.services.multi_domain_chat_service import MultiDomainChatService
@@ -43,6 +44,19 @@ def _solution(session, org, actor):
     session.add(solution)
     session.flush()
     return solution
+
+
+def _workspace(session, org, actor, solution=None):
+    workspace = SolutionAnalysisSession(
+        name=f"Ingress workspace {uuid.uuid4().hex[:8]}",
+        status=SolutionSessionStatus.IN_PROGRESS,
+        created_by_id=actor.id,
+        organization_id=org.id,
+        custom_metadata={"solution_id": solution.id} if solution else {},
+    )
+    session.add(workspace)
+    session.flush()
+    return workspace
 
 
 def _call_route(app, function, actor, org_id, solution_id, payload=None):
@@ -263,6 +277,8 @@ def test_chat_ingress_cannot_promote_client_workspace_or_assertions_to_trusted_c
 
     org = make_org("chat-ingress")
     actor = _actor(db_session, org)
+    solution = _solution(db_session, org, actor)
+    workspace = _workspace(db_session, org, actor, solution)
     captured = {}
 
     monkeypatch.setattr(
@@ -285,7 +301,8 @@ def test_chat_ingress_cannot_promote_client_workspace_or_assertions_to_trusted_c
         method="POST",
         json={
             "message": "Review this architecture",
-            "workspace_id": 991,
+            "solution_id": solution.id,
+            "workspace_id": workspace.id,
             "document_context": {
                 "workspace_id": 992,
                 "arb_assertions": {
@@ -299,13 +316,17 @@ def test_chat_ingress_cannot_promote_client_workspace_or_assertions_to_trusted_c
         login_user(actor)
         from flask import session as flask_session
 
-        flask_session["_workbench_workflow_state"] = {"workspace_id": 73}
         response = inspect.unwrap(chat_core.send_message)()
+        persisted = dict(flask_session["_workbench_workflow_state"])
+        resumed_id, resume_error = chat_core._bind_trusted_workbench(None, solution.id)
 
-    assert captured["context"]["workspace_id"] == 73
-    assert captured["context"]["_trusted_workspace_id"] == 73
+    assert captured["context"]["workspace_id"] == workspace.id
+    assert captured["context"]["_trusted_workspace_id"] == workspace.id
     assert "arb_assertions" not in captured["context"]
-    assert _json(response)["workspace_id"] == 73
+    assert _json(response)["workspace_id"] == workspace.id
+    assert persisted["workspace_id"] == workspace.id
+    assert persisted["solution_id"] == solution.id
+    assert (resumed_id, resume_error) == (workspace.id, None)
 
 
 def test_stream_chat_ingress_cannot_promote_client_workspace_to_trusted_context(
@@ -317,6 +338,8 @@ def test_stream_chat_ingress_cannot_promote_client_workspace_to_trusted_context(
 
     org = make_org("stream-chat-ingress")
     actor = _actor(db_session, org)
+    solution = _solution(db_session, org, actor)
+    workspace = _workspace(db_session, org, actor, solution)
     captured = {}
 
     monkeypatch.setattr(
@@ -350,15 +373,67 @@ def test_stream_chat_ingress_cannot_promote_client_workspace_to_trusted_context(
     with app.test_request_context(
         "/ai/chat/message/stream",
         method="POST",
-        json={"message": "Review this architecture", "workspace_id": 991},
+        json={
+            "message": "Review this architecture",
+            "solution_id": solution.id,
+            "workspace_id": workspace.id,
+        },
     ):
         g.current_org_id = org.id
         login_user(actor)
         from flask import session as flask_session
 
-        flask_session["_workbench_workflow_state"] = {"workspace_id": 73}
         response = inspect.unwrap(chat_core.send_message_stream)()
         response.get_data(as_text=True)
+        persisted = dict(flask_session["_workbench_workflow_state"])
 
-    assert captured["context"]["workspace_id"] == 73
-    assert captured["context"]["_trusted_workspace_id"] == 73
+    assert captured["context"]["workspace_id"] == workspace.id
+    assert captured["context"]["_trusted_workspace_id"] == workspace.id
+    assert persisted["workspace_id"] == workspace.id
+    assert persisted["solution_id"] == solution.id
+
+
+@pytest.mark.parametrize("invalid_kind", ["foreign", "unlinked"])
+def test_chat_ingress_rejects_workspace_without_authoritative_binding(
+    app, db_session, make_org, monkeypatch, invalid_kind
+):
+    from app.modules.ai_chat.routes import chat_core
+
+    org = make_org(f"invalid-{invalid_kind}")
+    actor = _actor(db_session, org)
+    solution = _solution(db_session, org, actor)
+    if invalid_kind == "foreign":
+        workspace_org = make_org("foreign-workspace")
+        workspace_actor = _actor(db_session, workspace_org)
+        foreign_solution = _solution(db_session, workspace_org, workspace_actor)
+        workspace = _workspace(db_session, workspace_org, workspace_actor, foreign_solution)
+    else:
+        workspace = _workspace(db_session, org, actor)
+
+    monkeypatch.setattr(
+        chat_core.FeatureFlagService,
+        "require_ai_for_route",
+        lambda *args, **kwargs: None,
+    )
+    with app.test_request_context(
+        "/ai/chat/message",
+        method="POST",
+        json={
+            "message": "Review this architecture",
+            "solution_id": solution.id,
+            "workspace_id": workspace.id,
+        },
+    ):
+        g.current_org_id = org.id
+        login_user(actor)
+        from flask import session as flask_session
+
+        response = inspect.unwrap(chat_core.send_message)()
+        state = flask_session.get("_workbench_workflow_state")
+
+    body = _json(response)
+    assert body["success"] is False
+    assert body["reason_codes"] == [
+        "workspace_not_found" if invalid_kind == "foreign" else "workspace_solution_missing"
+    ]
+    assert state is None

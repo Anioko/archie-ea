@@ -45,6 +45,59 @@ logger = logging.getLogger(__name__)
 _STREAM_KEEPALIVE_INTERVAL_S = 15
 
 
+def _bind_trusted_workbench(workspace_candidate, requested_solution_id=None):
+    """Validate and persist a client workspace candidate as trusted server state."""
+    from flask import session as flask_session
+    from app import db
+    from app.models.solution_architect_models import SolutionAnalysisSession
+    from app.models.solution_models import Solution
+
+    state = flask_session.get("_workbench_workflow_state") or {}
+    candidate = workspace_candidate if workspace_candidate is not None else state.get("workspace_id")
+    if candidate is None:
+        return None, None
+    valid, workspace_id, _ = validate_integer(candidate, min_val=1, field_name="workspace_id")
+    if not valid:
+        flask_session.pop("_workbench_workflow_state", None)
+        return None, ({"success": False, "reason_codes": ["workspace_not_found"],
+                       "missing_evidence": []}, 404)
+
+    organization_id = getattr(g, "current_org_id", None)
+    workspace = db.session.execute(
+        db.select(SolutionAnalysisSession).where(
+            SolutionAnalysisSession.id == workspace_id,
+            SolutionAnalysisSession.organization_id == organization_id,
+            SolutionAnalysisSession.created_by_id == current_user.id,
+        )
+    ).scalar_one_or_none()
+    if workspace is None:
+        flask_session.pop("_workbench_workflow_state", None)
+        return None, ({"success": False, "reason_codes": ["workspace_not_found"],
+                       "missing_evidence": []}, 404)
+
+    solution_id = (workspace.custom_metadata or {}).get("solution_id")
+    if not solution_id:
+        flask_session.pop("_workbench_workflow_state", None)
+        return None, ({"success": False, "reason_codes": ["workspace_solution_missing"],
+                       "missing_evidence": []}, 422)
+    solution = db.session.execute(
+        db.select(Solution).where(
+            Solution.id == solution_id,
+            Solution.organization_id == organization_id,
+        )
+    ).scalar_one_or_none()
+    if solution is None or (
+        requested_solution_id is not None and requested_solution_id != solution_id
+    ):
+        flask_session.pop("_workbench_workflow_state", None)
+        return None, ({"success": False, "reason_codes": ["workspace_solution_mismatch"],
+                       "missing_evidence": []}, 422)
+
+    state.update({"workspace_id": workspace.id, "solution_id": solution.id})
+    flask_session["_workbench_workflow_state"] = state
+    return workspace.id, None
+
+
 def _get_configured_chat_models():
     """Return models that are actually selectable in AI chat."""
     from app.models.models import APISettings
@@ -416,6 +469,13 @@ def send_message():
         )
         solution_id = validated_sol_id if is_valid else None
 
+    trusted_workspace_id, workspace_error = _bind_trusted_workbench(
+        data.get("workspace_id"), solution_id
+    )
+    if workspace_error:
+        body, status = workspace_error
+        return jsonify(body), status
+
     # Validate persona
     persona = data.get("persona")
     if persona:
@@ -500,9 +560,7 @@ def send_message():
         from app.modules.ai_chat.services.agent_runner import AgentRunner
         from flask import session as flask_session
 
-        workbench_state = flask_session.get("_workbench_workflow_state") or {}
-        trusted_workspace_id = workbench_state.get("workspace_id")
-        if isinstance(trusted_workspace_id, int) and trusted_workspace_id > 0:
+        if trusted_workspace_id is not None:
             context_data["workspace_id"] = trusted_workspace_id
             context_data["_trusted_workspace_id"] = trusted_workspace_id
 
@@ -760,11 +818,19 @@ def send_message_stream():
     requested_model = sanitize_html(data.get("model") or "")
 
     context_data = {}
+    solution_id = None
     solution_id = data.get("solution_id")
     if solution_id:
         is_valid_s, validated_sol, _ = validate_integer(solution_id, min_val=1, field_name="solution_id")
         if is_valid_s:
-            context_data["solution_id"] = validated_sol
+            solution_id = validated_sol
+            context_data["solution_id"] = solution_id
+    trusted_workspace_id, workspace_error = _bind_trusted_workbench(
+        data.get("workspace_id"), solution_id
+    )
+    if workspace_error:
+        body, status = workspace_error
+        return jsonify(body), status
     event_queue = _queue.Queue()
 
     def emit(e):
@@ -797,9 +863,7 @@ def send_message_stream():
     from flask import session as flask_session
 
     auto_execute_for_thread = flask_session.get("agent_auto_execute", False)
-    workbench_state = flask_session.get("_workbench_workflow_state") or {}
-    trusted_workspace_id = workbench_state.get("workspace_id")
-    if isinstance(trusted_workspace_id, int) and trusted_workspace_id > 0:
+    if trusted_workspace_id is not None:
         context_data["workspace_id"] = trusted_workspace_id
         context_data["_trusted_workspace_id"] = trusted_workspace_id
     # Load history here too, on the request thread, so the worker starts with the
