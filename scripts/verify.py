@@ -1184,7 +1184,7 @@ def build_gates(baseline: dict) -> list[Gate]:
              "No new sidebar route goes untested",
              "ratchet", lambda: gate_nav_verified(baseline["nav_verified"]),
              remediation="add a test that loads the route, or remove it from the sidebar",
-             tags=["static"]),
+             tags=[]),
         Gate("nav-coverage",
              "No business-architecture output with routes is missing from every sidebar",
              "ratchet", lambda: gate_nav_coverage(baseline["nav_coverage"]),
