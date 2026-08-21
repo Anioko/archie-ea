@@ -195,6 +195,49 @@ def test_ai_chat_renders_and_the_front_end_boots(page, live_server, seeded):
         % (len(errors), "\n  - ".join(errors[:8])))
 
 
+def test_persona_storage_denial_keeps_chat_initialized(page, live_server, seeded):
+    """Storage is optional: an enterprise-architect chat still boots without it.
+
+    Only the persona preference key is denied so this journey isolates chat's
+    storage contract from unrelated shell preferences. Both browser methods
+    throw the same SecurityError private browsing produces.
+    """
+    page.add_init_script("""
+        () => {
+            const originalGetItem = Storage.prototype.getItem;
+            const originalSetItem = Storage.prototype.setItem;
+            const denied = key => String(key).startsWith('archie_chat_persona_v2');
+            Storage.prototype.getItem = function(key) {
+                if (denied(key)) throw new DOMException('Storage denied', 'SecurityError');
+                return originalGetItem.call(this, key);
+            };
+            Storage.prototype.setItem = function(key, value) {
+                if (denied(key)) throw new DOMException('Storage denied', 'SecurityError');
+                return originalSetItem.call(this, key, value);
+            };
+        }
+    """)
+
+    _open_chat(page, live_server, seeded)
+
+    persona = page.locator("#persona-selector")
+    assert persona.input_value() == "enterprise_architect", (
+        "a denied local preference must fall back to the signed-in role default"
+    )
+    assert page.locator("#domain-selector").input_value() == "architecture", (
+        "the role default must still apply its configured domain in memory"
+    )
+
+    persona.select_option("data_architect")
+    assert persona.input_value() == "data_architect", (
+        "a denied preference write must not undo the persona chosen for this visit"
+    )
+    assert page.locator("#domain-selector").input_value() == "data_architecture", (
+        "a manual persona switch must still update its configured domain in memory"
+    )
+    assert not _js_errors(page), _js_errors(page)
+
+
 def test_exactly_one_sidebar_panel_is_visible_at_a_time(page, live_server, seeded):
     """Each tab shows its own panel and hides the other three.
 

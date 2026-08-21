@@ -107,6 +107,33 @@ def test_chat_client_uses_a_versioned_preference_key_for_explicit_choices():
     assert "_applyPersonaChange(e.target.value, true)" in js
 
 
+def test_chat_client_treats_persona_storage_as_optional():
+    """Private browsing must keep the signed-in role default usable.
+
+    Browser storage is only a convenience: a denied read must continue with
+    the server-rendered role default, and a denied write must keep the choice
+    already applied for this visit. Both exceptions need an explicit, bounded
+    rationale rather than silently aborting chat initialization.
+    """
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "app/static/js/ai_chat/app.js").read_text(
+        encoding="utf-8"
+    )
+    persona_client = js[js.index("function _applyPersonaChange"):js.index("function updatePersonaUI")]
+
+    assert persona_client.count("try {") >= 2
+    assert persona_client.count("catch (error)") >= 2
+    assert (
+        "swallow-ok: localStorage is unavailable; the signed-in role default remains active"
+        in persona_client
+    )
+    assert (
+        "swallow-ok: localStorage is unavailable; the chosen persona remains active for this visit"
+        in persona_client
+    )
+
+
 def test_picker_renders_every_configured_persona(app, db_session, make_org):
     """The server-driven picker must expose every selectable configuration."""
     from app.modules.ai_chat.services.multi_domain_chat_service import PERSONA_CONFIGS

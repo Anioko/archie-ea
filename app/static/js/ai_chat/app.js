@@ -152,7 +152,11 @@
         state.currentPersona = persona;
         updatePersonaUI(persona);
         if (persistChoice && persona) {
-            localStorage.setItem(window.chatPersonaPreferenceKey, persona);
+            try {
+                localStorage.setItem(window.chatPersonaPreferenceKey, persona);
+            } catch (error) {
+                /* swallow-ok: localStorage is unavailable; the chosen persona remains active for this visit */
+            }
         }
         if (persona && personaConfig[persona]) {
             // Auto-switch to persona's default domain
@@ -181,7 +185,12 @@
     // automatically on load and therefore is not evidence of user intent.
     function _syncPersonaFromSelector() {
         const preferenceKey = window.chatPersonaPreferenceKey || 'archie_chat_persona_v2';
-        const saved = localStorage.getItem(preferenceKey);
+        let saved = null;
+        try {
+            saved = localStorage.getItem(preferenceKey);
+        } catch (error) {
+            /* swallow-ok: localStorage is unavailable; the signed-in role default remains active */
+        }
         if (saved && personaSelector.querySelector(`option[value="${CSS.escape(saved)}"]`)) {
             personaSelector.value = saved;
         } else if (
