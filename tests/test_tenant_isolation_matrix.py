@@ -65,6 +65,10 @@ INTENTIONALLY_GLOBAL = {
     "ARBGovernanceStandard": "shared governance standards catalogue, not org-owned",
     "ARBWorkflowStage": "shared workflow stage catalogue, not org-owned",
     "EAWorkflowDefinition": "shared workflow template catalogue, not org-owned",
+    "ArtefactShareLink": (
+        "owner actions explicitly scope by organization_id; the unauthenticated "
+        "public token flow derives scope from the link"
+    ),
 }
 
 

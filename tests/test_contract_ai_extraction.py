@@ -228,9 +228,24 @@ def test_extract_oversized_text_returns_400(client, logged_in_procurement, db_se
 
 
 def test_extract_ai_disabled_returns_503(client, logged_in_procurement, db_session, monkeypatch):
-    """No patch of is_ai_enabled here - AI is off by default under the test
-    config (no LLM provider configured), so the feature-flag gate must 503
-    before the service is ever called."""
+    """The disabled gate returns before contract extraction can call an LLM."""
+    import app.modules.procurement.contract_extraction_service as svc_module
+    import app.services.feature_flag_service as ffs_module
+
+    monkeypatch.setattr(
+        ffs_module.FeatureFlagService,
+        "is_ai_enabled",
+        staticmethod(lambda feature="all": False),
+    )
+
+    def _llm_must_not_be_called(*_args, **_kwargs):
+        raise AssertionError("LLM work ran despite the disabled feature gate")
+
+    monkeypatch.setattr(
+        svc_module.LLMService,
+        "generate_from_prompt",
+        staticmethod(_llm_must_not_be_called),
+    )
     _clear_auth_caches()
     resp = client.post(ENDPOINT, json={"text": SAMPLE_TEXT})
     assert resp.status_code == 503

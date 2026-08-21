@@ -74,6 +74,20 @@ def _make_user(db_session, make_org, label):
     return user.id, org
 
 
+def _force_no_llm_provider(monkeypatch):
+    """Make the no-provider branch deterministic and fail on any model call."""
+    from app.modules.ai_chat.services.llm_service_impl import LLMService
+
+    def _no_provider(*_args, **_kwargs):
+        raise ValueError("No LLM provider configured")
+
+    def _llm_must_not_be_called(*_args, **_kwargs):
+        raise AssertionError("LLM work ran despite no configured provider")
+
+    monkeypatch.setattr(LLMService, "_get_configured_provider", staticmethod(_no_provider))
+    monkeypatch.setattr(LLMService, "_call_llm", staticmethod(_llm_must_not_be_called))
+
+
 def test_entity_matching_post_route_exists_and_is_not_405(app, db_session, make_org):
     """M-03: the chat UI POSTs to /ai-chat/entity-matching on every message.
     Before the fix, no view function handled POST on this URL and Flask
@@ -104,7 +118,9 @@ def test_entity_matching_post_route_exists_and_is_not_405(app, db_session, make_
     assert resp.is_json, resp.get_data(as_text=True)[:500]
 
 
-def test_entity_matching_honest_failure_names_llm_not_configured(app, db_session, make_org):
+def test_entity_matching_honest_failure_names_llm_not_configured(
+    app, db_session, make_org, monkeypatch
+):
     """With no LLM provider configured in this test environment, the route
     must say so explicitly (503 + LLM_NOT_CONFIGURED) rather than collapsing
     into a generic 500 apology or a silent "0 matches" success — the actual
@@ -112,6 +128,7 @@ def test_entity_matching_honest_failure_names_llm_not_configured(app, db_session
     template_name= / context_data= TypeError fix alone) a silent success with
     zero everything and no explanation."""
     user_id, _ = _make_user(db_session, make_org, "honest")
+    _force_no_llm_provider(monkeypatch)
     client = app.test_client()
     _login(client, user_id)
 
@@ -128,11 +145,6 @@ def test_entity_matching_honest_failure_names_llm_not_configured(app, db_session
     body = resp.get_json()
     assert body is not None, resp.get_data(as_text=True)[:500]
 
-    if resp.status_code == 200:
-        # An LLM provider happens to be configured in this environment
-        # (e.g. a real key was exported) — nothing to assert about honesty.
-        pytest.skip("an LLM provider is configured in this environment")
-
     assert resp.status_code == 503, resp.get_data(as_text=True)[:1000]
     assert body.get("success") is False
     assert body.get("code") == "LLM_NOT_CONFIGURED"
@@ -140,11 +152,14 @@ def test_entity_matching_honest_failure_names_llm_not_configured(app, db_session
     assert "internal error occurred" not in body.get("error", "").lower()
 
 
-def test_upload_document_honest_failure_names_llm_not_configured(app, db_session, make_org):
+def test_upload_document_honest_failure_names_llm_not_configured(
+    app, db_session, make_org, monkeypatch
+):
     """I-01: with no LLM provider configured, document upload must return a
     503 naming the real cause, not the generic {"error": "An internal error
     occurred"}, 500 the QA register observed."""
     user_id, _ = _make_user(db_session, make_org, "upload")
+    _force_no_llm_provider(monkeypatch)
     client = app.test_client()
     _login(client, user_id)
 
@@ -162,9 +177,6 @@ def test_upload_document_honest_failure_names_llm_not_configured(app, db_session
 
     body = resp.get_json()
     assert body is not None, resp.get_data(as_text=True)[:500]
-
-    if resp.status_code == 200:
-        pytest.skip("an LLM provider is configured in this environment")
 
     assert resp.status_code == 503, resp.get_data(as_text=True)[:1000]
     assert body.get("success") is False

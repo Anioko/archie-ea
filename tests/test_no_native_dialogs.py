@@ -94,18 +94,21 @@ def test_no_native_browser_dialogs_in_templates():
 
 def test_the_replacement_api_is_actually_shipped():
     """A ban with no alternative just moves the problem into JS files."""
-    dialog_js = os.path.join(
-        os.path.dirname(TEMPLATE_ROOT), "static", "js", "core", "07-dialog.js"
+    bundle = os.path.join(
+        os.path.dirname(TEMPLATE_ROOT), "static", "js", "bundles", "core-admin.js"
     )
-    assert os.path.exists(dialog_js), "core/07-dialog.js is missing"
+    assert os.path.exists(bundle), "the committed core-admin.js bundle is missing"
 
-    source = open(dialog_js, encoding="utf-8").read()
+    source = open(bundle, encoding="utf-8").read()
+    assert "// >>> app/static/js/core/07-dialog.js" in source, (
+        "core-admin.js does not contain the 07-dialog source marker"
+    )
     for api in ("register('confirm'", "register('alert'"):
-        assert api in source, "07-dialog.js does not register %s" % api
+        assert api in source, "core-admin.js does not register %s" % api
 
     base = os.path.join(TEMPLATE_ROOT, "layouts", "admin_base.html")
-    assert "07-dialog.js" in open(base, encoding="utf-8").read(), (
-        "core/07-dialog.js is never loaded, so Platform.confirm is undefined at "
+    assert "js/bundles/core-admin.js" in open(base, encoding="utf-8").read(), (
+        "core-admin.js is never loaded, so Platform.confirm is undefined at "
         "runtime and every converted call site throws")
 
 

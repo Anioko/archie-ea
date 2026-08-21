@@ -26,6 +26,34 @@ import uuid
 import pytest
 
 
+# Tests must never inherit a developer's or deployment agent's LLM credentials.
+# This runs while pytest imports its root conftest, before it collects test
+# modules that can import the Flask configuration.  The primary service supports
+# numbered and secondary keys for provider failover, so clear those too.
+_LLM_API_KEY_PROVIDERS = (
+    "ANTHROPIC",
+    "AZURE",
+    "CLAUDE",
+    "DEEPSEEK",
+    "GEMINI",
+    "GOOGLE",
+    "HUGGINGFACE",
+    "OPENAI",
+    "OPENROUTER",
+)
+_LLM_API_KEY_ENV_VARS = {"LLM_API_KEY", "AZURE_OPENAI_API_KEY"}
+for _provider in _LLM_API_KEY_PROVIDERS:
+    _LLM_API_KEY_ENV_VARS.add(f"{_provider}_API_KEY")
+    _LLM_API_KEY_ENV_VARS.add(f"{_provider}_API_KEY_SECONDARY")
+    _LLM_API_KEY_ENV_VARS.update(
+        f"{_provider}_API_KEY_{_number}" for _number in range(1, 10)
+    )
+
+for _llm_api_key_env_var in _LLM_API_KEY_ENV_VARS:
+    os.environ.pop(_llm_api_key_env_var, None)
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+
+
 @pytest.fixture(scope="session")
 def app():
     """Boot the application once per test session."""

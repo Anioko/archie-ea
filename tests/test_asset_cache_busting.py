@@ -5,8 +5,10 @@ css/tailwind-output.css) were served with `Cache-Control: immutable` under a
 stable URL. When such a file was rebuilt in place, browsers stayed pinned to
 the stale copy for a year — observed live as a fully unstyled login page.
 
-Fix: asset_url appends an mtime ?v= cache-buster when there is no content-hash
-manifest entry, and only content-hashed / ?v=-versioned URLs get `immutable`.
+Fix: asset_url uses the deploy's build identifier in production when there is
+no content-hash manifest entry. In debug mode it instead appends an mtime
+?v= cache-buster, so editing an asset on a running development server gets a
+fresh URL. Only content-hashed / ?v=-versioned URLs get `immutable`.
 These tests need no database.
 """
 
@@ -30,12 +32,18 @@ def app(tmp_path):
     return application
 
 
+@pytest.fixture
+def debug_app(app):
+    app.debug = True
+    return app
+
+
 def _asset_url(application, filename):
     with application.test_request_context():
         return application.jinja_env.filters["asset_url"](filename)
 
 
-def test_unfingerprinted_asset_gets_version_query(app):
+def test_production_unfingerprinted_asset_uses_the_deploy_build_id(app):
     url = _asset_url(app, "css/tailwind-output.css")
     assert url.startswith("/static/css/tailwind-output.css?v=")
 
@@ -44,7 +52,8 @@ def test_unfingerprinted_asset_gets_version_query(app):
     assert url.endswith(f"v={expected}")
 
 
-def test_version_changes_when_file_is_rebuilt(app):
+def test_production_build_id_does_not_change_when_one_file_is_rebuilt(app):
+    """A single deploy has one cache version, not one version per asset."""
     before = _asset_url(app, "css/tailwind-output.css")
 
     path = os.path.join(app.static_folder, "css", "tailwind-output.css")
@@ -55,11 +64,25 @@ def test_version_changes_when_file_is_rebuilt(app):
     os.utime(path, (stat.st_atime, stat.st_mtime + 5))
 
     after = _asset_url(app, "css/tailwind-output.css")
-    assert before != after, "rebuilt asset must get a fresh URL so clients refetch"
+    assert before == after, "production asset URLs must use the deploy-wide build id"
 
 
-def test_missing_asset_falls_back_to_bare_url(app):
-    url = _asset_url(app, "css/does-not-exist.css")
+def test_debug_version_changes_when_file_is_rebuilt(debug_app):
+    before = _asset_url(debug_app, "css/tailwind-output.css")
+
+    path = os.path.join(debug_app.static_folder, "css", "tailwind-output.css")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("body{color:blue}")
+    # Bump mtime deterministically (avoids relying on wall-clock resolution).
+    stat = os.stat(path)
+    os.utime(path, (stat.st_atime, stat.st_mtime + 5))
+
+    after = _asset_url(debug_app, "css/tailwind-output.css")
+    assert before != after, "debug asset URLs must change when the file is rebuilt"
+
+
+def test_debug_missing_asset_falls_back_to_bare_url(debug_app):
+    url = _asset_url(debug_app, "css/does-not-exist.css")
     assert url == "/static/css/does-not-exist.css"
     assert "?v=" not in url
 
