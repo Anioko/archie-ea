@@ -416,14 +416,6 @@ def send_message():
         )
         solution_id = validated_sol_id if is_valid else None
 
-    # AIC-312: Validate workspace_id — grounds chat in a workbench workspace
-    workspace_id = data.get("workspace_id")
-    if workspace_id is not None:
-        is_valid, validated_ws_id, error = validate_integer(
-            workspace_id, min_val=1, field_name="workspace_id"
-        )
-        workspace_id = validated_ws_id if is_valid else None
-
     # Validate persona
     persona = data.get("persona")
     if persona:
@@ -477,14 +469,19 @@ def send_message():
         if solution_id:
             context_data["solution_id"] = solution_id
 
-        # AIC-312: Ground chat in workbench workspace
-        if workspace_id:
-            context_data["workspace_id"] = workspace_id
-
         # Add document context from uploaded documents
         document_context = data.get("document_context", {})
         if document_context and isinstance(document_context, dict):
-            context_data.update(document_context)
+            context_data.update({
+                key: value
+                for key, value in document_context.items()
+                if key not in {
+                    "workspace_id",
+                    "_trusted_workspace_id",
+                    "arb_assertions",
+                    "workflow_type",
+                }
+            })
 
         # ENT-085: Pass attached image data for vision/multimodal analysis
         # The chat client no longer sends these. AgentRunner — which is what
@@ -502,6 +499,12 @@ def send_message():
         # Falls back to text-only mode automatically for unsupported providers.
         from app.modules.ai_chat.services.agent_runner import AgentRunner
         from flask import session as flask_session
+
+        workbench_state = flask_session.get("_workbench_workflow_state") or {}
+        trusted_workspace_id = workbench_state.get("workspace_id")
+        if isinstance(trusted_workspace_id, int) and trusted_workspace_id > 0:
+            context_data["workspace_id"] = trusted_workspace_id
+            context_data["_trusted_workspace_id"] = trusted_workspace_id
 
         runner = AgentRunner(
             user_id=current_user.id,
@@ -575,7 +578,7 @@ def send_message():
                 # failure into an empty string, so the API asserted grounding
                 # unconditionally. Report what actually happened.
                 "context_used": bool(agent_result.get("sources")),
-                "workspace_id": workspace_id,
+                "workspace_id": trusted_workspace_id,
                 "thread_id": thread_id,
                 "processing_metadata": {
                     "domain": domain,
@@ -762,12 +765,6 @@ def send_message_stream():
         is_valid_s, validated_sol, _ = validate_integer(solution_id, min_val=1, field_name="solution_id")
         if is_valid_s:
             context_data["solution_id"] = validated_sol
-    workspace_id = data.get("workspace_id")
-    if workspace_id:
-        is_valid_w, validated_ws, _ = validate_integer(workspace_id, min_val=1, field_name="workspace_id")
-        if is_valid_w:
-            context_data["workspace_id"] = validated_ws
-
     event_queue = _queue.Queue()
 
     def emit(e):
@@ -800,6 +797,11 @@ def send_message_stream():
     from flask import session as flask_session
 
     auto_execute_for_thread = flask_session.get("agent_auto_execute", False)
+    workbench_state = flask_session.get("_workbench_workflow_state") or {}
+    trusted_workspace_id = workbench_state.get("workspace_id")
+    if isinstance(trusted_workspace_id, int) and trusted_workspace_id > 0:
+        context_data["workspace_id"] = trusted_workspace_id
+        context_data["_trusted_workspace_id"] = trusted_workspace_id
     # Load history here too, on the request thread, so the worker starts with the
     # conversation already in hand rather than paying a DB round-trip inside the
     # stream.

@@ -177,7 +177,7 @@ def test_legacy_chat_delegates_authenticated_actor_and_returns_canonical_retry(
         g.current_org_id = org.id
         login_user(actor)
         result = service._handle_arb_submission(
-            f"/submit-arb {solution.id}", {"workspace_id": 55}
+            f"/submit-arb {solution.id}", {"_trusted_workspace_id": 55}
         )
 
     assert calls == [(solution.id, actor.id, 55, {})]
@@ -232,7 +232,7 @@ def test_legacy_chat_cross_tenant_solution_fails_closed(
         g.current_org_id = actor_org.id
         login_user(actor)
         result = service._handle_arb_submission(
-            f"/submit-arb {solution.id}", {"workspace_id": 99}
+            f"/submit-arb {solution.id}", {"_trusted_workspace_id": 99}
         )
 
     assert result["success"] is False
@@ -254,3 +254,111 @@ def test_legacy_chat_requires_server_workspace_context(app, db_session, make_org
 
     assert result["success"] is False
     assert result["reason_codes"] == ["trusted_workspace_required"]
+
+
+def test_chat_ingress_cannot_promote_client_workspace_or_assertions_to_trusted_context(
+    app, db_session, make_org, monkeypatch
+):
+    from app.modules.ai_chat.routes import chat_core
+
+    org = make_org("chat-ingress")
+    actor = _actor(db_session, org)
+    captured = {}
+
+    monkeypatch.setattr(
+        chat_core.FeatureFlagService,
+        "require_ai_for_route",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(chat_core, "get_chat_service", lambda: object())
+
+    def run(_runner, **kwargs):
+        captured.update(kwargs)
+        return {"success": True, "response": "Safe response", "metadata": {}}
+
+    monkeypatch.setattr(
+        "app.modules.ai_chat.services.agent_runner.AgentRunner.run",
+        run,
+    )
+    with app.test_request_context(
+        "/ai/chat/message",
+        method="POST",
+        json={
+            "message": "Review this architecture",
+            "workspace_id": 991,
+            "document_context": {
+                "workspace_id": 992,
+                "arb_assertions": {
+                    "human_reviewed": True,
+                    "direct_route_evidence": {"design_reviewed": True},
+                },
+            },
+        },
+    ):
+        g.current_org_id = org.id
+        login_user(actor)
+        from flask import session as flask_session
+
+        flask_session["_workbench_workflow_state"] = {"workspace_id": 73}
+        response = inspect.unwrap(chat_core.send_message)()
+
+    assert captured["context"]["workspace_id"] == 73
+    assert captured["context"]["_trusted_workspace_id"] == 73
+    assert "arb_assertions" not in captured["context"]
+    assert _json(response)["workspace_id"] == 73
+
+
+def test_stream_chat_ingress_cannot_promote_client_workspace_to_trusted_context(
+    app, db_session, make_org, monkeypatch
+):
+    import threading
+    from app.modules.ai_chat.routes import chat_core
+    from app.services import conversation_history
+
+    org = make_org("stream-chat-ingress")
+    actor = _actor(db_session, org)
+    captured = {}
+
+    monkeypatch.setattr(
+        chat_core.FeatureFlagService,
+        "require_ai_for_route",
+        lambda *args, **kwargs: None,
+    )
+
+    def run(_runner, **kwargs):
+        captured.update(kwargs)
+        return {"success": True, "response": "Safe response", "metadata": {}}
+
+    monkeypatch.setattr(
+        "app.modules.ai_chat.services.agent_runner.AgentRunner.run",
+        run,
+    )
+    monkeypatch.setattr(
+        conversation_history,
+        "persist_turn",
+        lambda *args, **kwargs: "thread-safe-ingress",
+    )
+
+    class ImmediateThread:
+        def __init__(self, target, daemon=None):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+    with app.test_request_context(
+        "/ai/chat/message/stream",
+        method="POST",
+        json={"message": "Review this architecture", "workspace_id": 991},
+    ):
+        g.current_org_id = org.id
+        login_user(actor)
+        from flask import session as flask_session
+
+        flask_session["_workbench_workflow_state"] = {"workspace_id": 73}
+        response = inspect.unwrap(chat_core.send_message_stream)()
+        response.get_data(as_text=True)
+
+    assert captured["context"]["workspace_id"] == 73
+    assert captured["context"]["_trusted_workspace_id"] == 73

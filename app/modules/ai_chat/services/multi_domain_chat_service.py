@@ -8067,7 +8067,7 @@ End with: "Type **'next'** to complete the design workflow."
                 "error": "unauthenticated",
             }
 
-        workspace_id = (context or {}).get("workspace_id")
+        workspace_id = (context or {}).get("_trusted_workspace_id")
         if not workspace_id:
             return {
                 "success": False,

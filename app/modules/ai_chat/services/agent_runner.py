@@ -462,7 +462,7 @@ class AgentRunner:
         # survives.
         messages = self._prepare_history(history)
         messages.append({"role": "user", "content": user_message})
-        trusted_workspace_id = (context or {}).get("workspace_id")
+        trusted_workspace_id = (context or {}).get("_trusted_workspace_id")
         executor = ToolExecutor(self.user_id)
         actions_taken = []
         pending_approvals = []
