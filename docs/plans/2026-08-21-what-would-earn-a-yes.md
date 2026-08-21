@@ -30,8 +30,35 @@ cost: three features the evaluating architect declared missing were built and
 unreachable, two unauthenticated blueprints sat undeleted, and the largest number
 on the landing page was computed from denominators that did not exist.
 
-**The yes does not come from adding. It comes from deleting, then proving one
-loop end to end.**
+**The yes does not come from adding. It comes from making the validated part
+obvious, and proving one loop end to end.**
+
+> ### Correction — "delete it" was the wrong first answer
+>
+> An earlier version of this document said to delete `codegen` (41,065 lines) and
+> `solutions_product` (17,549). Challenged on it, I measured instead of asserting,
+> and the case does not hold:
+>
+> | Claimed cost | Measured |
+> |---|---|
+> | Confuses users / crowds navigation | **0 nav links** into either module, from any persona |
+> | Security surface | **2 of 178 routes** lack an auth decorator — a morning's work, not a deletion |
+> | Slows the boot | **2%** of the 1,189 `app.*` modules loaded; `create_app` is 18.5s spread across everything |
+>
+> So deleting them would buy almost nothing measurable, while permanently
+> destroying optionality on ~59,000 lines nobody has yet tried to sell.
+>
+> **The real defect was never volume. It was that working code and dead code
+> looked identical.** Iain could not find capability maturity because his persona
+> had 4 sidebar links and the one maturity link led to a page whose query had been
+> gutted — not because `codegen` existed. The fix was a front door and a nav
+> repair, and it took a day.
+>
+> Deletion is one tool of five, and it earns its place only when the code is
+> **actively harmful**. It was exactly right for the 23 unregistered blueprints
+> removed this week: unreachable, indistinguishable from live code, and two of
+> them serving unauthenticated endpoints — one letting an anonymous caller mint a
+> member in any tenant. That is the bar. `codegen` does not meet it.
 
 ---
 
@@ -88,10 +115,15 @@ glance, and it is the closest to being met.
 | Measure | 12 modules on the landing page | A new user reaches their first real answer in **under 3 minutes, unaided** |
 
 **Tasks**
-- **T7** Quarantine the unvalidated half. `codegen` (41,065 lines) and
-  `solutions_product` (17,549) sit behind no flag and are supported by no user.
-  Move them behind an experimental flag or into a separate repository.
-  **Good = routes drop from 3,466 to under 1,000 and no user notices.**
+- **T7** Make the validated boundary explicit — **flag, do not delete.** Put
+  `codegen` and `solutions_product` behind an `EXPERIMENTAL_*` flag, off by
+  default, so the distinction is visible in code and reversible in a line. They
+  are already invisible in navigation, so this costs users nothing and keeps
+  every option open. **Good = a reader of the repo can tell in ten seconds which
+  half is supported.** Deleting them stays available later, and gets easier once
+  the flag proves nobody misses them.
+- **T7b** Decorate the **2 unauthenticated routes** in `codegen`. This is the
+  entire measured security cost of carrying that module, and it is cheap.
 - **T8** Delete or register the 5 orphan blueprints (`journey_v2_bp` alone owns
   91 unreachable routes).
 - **T9** Retire the 7 duplicated v1/v2 domains per ADR-0004.
@@ -147,7 +179,8 @@ On current evidence the fastest route is:
 1. **T3** import — because 270 hand-typed assessments is where this dies
 2. **T2** bulk assess — the same reason
 3. **T10** the one-page leadership artefact — the thing that leaves the building
-4. **T7** delete the unvalidated half — because 1,110 pages for 24 users is the
-   first question a serious reviewer asks, and there is currently no answer
+4. **T7** flag the unvalidated half — because "1,110 pages for 24 users" is the
+   first question a serious reviewer asks, and "here is the supported half, the
+   rest is flagged off" is a complete answer. Deleting is not required to give it.
 
 Those four, in that order. The rest is maintenance of the promise.
