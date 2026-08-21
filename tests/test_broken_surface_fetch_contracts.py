@@ -136,6 +136,27 @@ def test_element_groups_api_reports_query_failure(
     }
 
 
+def test_element_groups_ui_keeps_failure_distinct_from_empty_result():
+    script = (
+        ROOT / "app" / "static" / "js" / "duplicate_detection" / "dashboard.js"
+    ).read_text(encoding="utf-8")
+    template = (
+        ROOT / "app" / "templates" / "duplicate_detection" / "dashboard.html"
+    ).read_text(encoding="utf-8")
+
+    assert "elementGroupsError: ''" in script
+    assert "this.elementGroupsError = '';" in script
+    assert (
+        "this.elementGroupsError = 'Could not load ArchiMate element duplicate groups.';"
+        in script
+    )
+    assert 'x-if="!elementGroupsLoading && elementGroupsError"' in template
+    assert (
+        'x-if="!elementGroupsLoading && !elementGroupsError && elementGroups.length === 0"'
+        in template
+    )
+
+
 def test_value_stream_ai_capability_lookup_distinguishes_http_failure_from_no_match():
     """A failed lookup must reach applySuggestion's failure toast, not say missing.
 

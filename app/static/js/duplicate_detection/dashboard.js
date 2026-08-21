@@ -19,6 +19,7 @@ function duplicateDetection() {
         elementGroups: [],
         elementGroupsLoading: true,
         elementGroupsTotalDuplicated: 0,
+        elementGroupsError: '',
         // The template referenced selectedGroups 6 times - including
         // :class="selectedGroups.includes(group.id)" inside <template x-for> -
         // but nothing defined it, so every row render threw a ReferenceError and
@@ -67,6 +68,7 @@ function duplicateDetection() {
 
         async loadElementGroups() {
             this.elementGroupsLoading = true;
+            this.elementGroupsError = '';
             try {
                 let response = await fetch('/duplicate-detection/simple/api/element-groups');
                 if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -76,9 +78,8 @@ function duplicateDetection() {
                 this.$nextTick(function() { lucide.createIcons(); });
             } catch (error) {
                 console.error('Error loading ArchiMate element duplicate groups:', error);
-                this.elementGroups = [];
-                this.elementGroupsTotalDuplicated = 0;
-                if (window.Platform && Platform.toast) Platform.toast.error('Could not load ArchiMate element duplicate groups.');
+                this.elementGroupsError = 'Could not load ArchiMate element duplicate groups.';
+                if (window.Platform && Platform.toast) Platform.toast.error(this.elementGroupsError);
             } finally {
                 this.elementGroupsLoading = false;
             }

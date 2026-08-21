@@ -157,7 +157,18 @@
         </div>
       </template>
 
-      <template x-if="!elementGroupsLoading && elementGroups.length === 0">
+      <template x-if="!elementGroupsLoading && elementGroupsError">
+        <div class="m-4 sm:m-6 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+          <p class="text-sm font-medium text-destructive-emphasis" x-text="elementGroupsError"></p>
+          <p class="mt-1 text-sm text-muted-foreground">The scan result is unavailable. Previously loaded results may be stale.</p>
+          <button type="button" @click="loadElementGroups()"
+                  class="mt-3 inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50">
+            Retry scan
+          </button>
+        </div>
+      </template>
+
+      <template x-if="!elementGroupsLoading && !elementGroupsError && elementGroups.length === 0">
         <div class="text-center py-8">
           <p class="text-sm text-muted-foreground">No duplicate-named ArchiMate elements found.</p>
         </div>
