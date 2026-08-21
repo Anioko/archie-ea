@@ -487,7 +487,11 @@ def test_approval_modal_is_a_reviewer_queue_with_requester_attribution():
     assert 'data-testid="approval-queue-loading"' in template
     assert 'data-testid="approval-queue-empty"' in template
     assert 'aria-label="Retry approval queue"' in template
-    assert "hasLoaded && !loading && !error && approvals.length === 0" in template
+    assert (
+        "$store.approvals.hasLoaded && !$store.approvals.loading"
+        " && !$store.approvals.error && $store.approvals.approvals.length === 0"
+        in template
+    )
     assert "queued for another authorized user" in (
         root / "app/modules/ai_chat/services/ai_chat_approval_service.py"
     ).read_text(encoding="utf-8")
