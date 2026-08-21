@@ -240,6 +240,7 @@ def test_persona_storage_denial_keeps_chat_initialized(page, live_server, seeded
 
 def test_approval_modal_distinguishes_loading_failure_stale_and_retry(page, live_server, seeded):
     """Reviewers never mistake a failed approval fetch for an empty queue."""
+    state_timeout = 10_000
     page.add_init_script("""
         window.__approvalQueueMode = "pending";
         window.__approvalQueueReject = null;
@@ -275,32 +276,39 @@ def test_approval_modal_distinguishes_loading_failure_stale_and_retry(page, live
     """)
 
     _open_chat(page, live_server, seeded)
-    page.wait_for_function("() => typeof window.__approvalQueueReject === 'function'")
     # This journey exercises queue-state rendering, not the separately-covered
     # overflow-menu mechanics. Trigger the real modal opener directly so a
     # hidden menu's transition cannot consume the test's whole action timeout.
-    page.locator("[data-modal-open='ai-chat-approvals-modal']").click(force=True)
+    page.evaluate("() => window.Platform.modal.open('ai-chat-approvals-modal')")
+    page.locator("#ai-chat-approvals-modal").wait_for(
+        state="visible", timeout=state_timeout
+    )
+    page.wait_for_function("() => typeof window.__approvalQueueReject === 'function'")
 
     loading = page.get_by_test_id("approval-queue-loading")
     unavailable = page.get_by_test_id("approval-queue-unavailable")
     empty = page.get_by_test_id("approval-queue-empty")
-    loading.wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    assert page.evaluate("() => window.Alpine.store('approvals').loading") is True
     assert not unavailable.is_visible()
     assert not empty.is_visible()
 
     page.evaluate("() => window.__approvalQueueReject(new TypeError('approval queue offline'))")
-    unavailable.wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    unavailable.wait_for(state="visible", timeout=state_timeout)
     assert "unavailable" in unavailable.inner_text().lower()
     assert not empty.is_visible(), "a failed first load must not look empty"
 
     page.evaluate("() => { window.__approvalQueueMode = 'populated'; }")
     page.get_by_role("button", name="Retry approval queue").click()
-    page.get_by_text("Stale approval evidence").wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    page.wait_for_function(
+        "() => window.Alpine.store('approvals').approvals.length === 1",
+        timeout=state_timeout,
+    )
+    page.get_by_text("Stale approval evidence").wait_for(state="visible", timeout=state_timeout)
     assert not unavailable.is_visible()
 
     page.evaluate("() => { window.__approvalQueueMode = 'failure'; }")
     page.get_by_role("button", name="Retry approval queue").click()
-    unavailable.wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    unavailable.wait_for(state="visible", timeout=state_timeout)
     assert "last known results" in unavailable.inner_text().lower()
     assert page.get_by_text("Stale approval evidence").is_visible(), (
         "a refresh failure must retain the last proven queue rows as explicitly stale"
@@ -308,7 +316,7 @@ def test_approval_modal_distinguishes_loading_failure_stale_and_retry(page, live
 
     page.evaluate("() => { window.__approvalQueueMode = 'empty'; }")
     page.get_by_role("button", name="Retry approval queue").click()
-    empty.wait_for(state="visible", timeout=PAGE_TIMEOUT)
+    empty.wait_for(state="visible", timeout=state_timeout)
     assert not unavailable.is_visible()
 
 

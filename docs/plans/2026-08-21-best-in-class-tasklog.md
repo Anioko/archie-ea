@@ -38,7 +38,7 @@ The earlier audit measured the deployed platform as broad but insufficiently foc
 
 ## Workstreams
 
-### 0. Restore the delivery baseline — active
+### 0. Restore the delivery baseline — complete
 
 **Outcome:** A verified, production-safe base for all product work.
 
@@ -137,8 +137,8 @@ The earlier audit measured the deployed platform as broad but insufficiently foc
   duplicate-detection route, an unchecked governance delete response, a false-success
   CSP assignment, and five silent or misleading error paths. The `broken-surfaces`
   gate now measures zero, with focused regression coverage.
-- Production deployment and post-deploy health/login evidence remain outstanding; this
-  workstream is not complete until they are recorded.
+- Release `c4a4584a` passed all 39 consolidated gates (1,945 server-side tests and
+  54 browser journeys), was deployed, and passed all 11 public production checks.
 
 ### 2026-08-21 — Transformation programme modelling decision
 
@@ -153,10 +153,33 @@ The earlier audit measured the deployed platform as broad but insufficiently foc
   application links, and governance workflow are foundations to consolidate—not a reason
   to create a competing module.
 
+### 2026-08-21 — Governed AI and Chief Architect release candidate
+
+- Unified the AI assistant's persona choices with all nine enterprise roles. The signed-in
+  user's role now selects a governed charter by default, and user preferences remain usable
+  when browser storage is unavailable.
+- Added a tenant-scoped approval inbox for AI-proposed mutations, including requester
+  attribution, exact operation evidence, explicit failure states, and at-most-once execution.
+- Reframed `/solutions/architect-synthesis` as a truthful Solution Conformance Roll-up:
+  coverage and unavailable evidence are explicit, aggregate scores are withheld when they
+  would mislead, ARB ageing is derived from tenant-scoped records, and the attention queue
+  links every item to its evidence and next action.
+- Defined the next Chief Architect information architecture without adding another dashboard:
+  executive posture; enterprise architecture posture; governance and delivery; ranked
+  attention backlog; trends and scenarios; and evidence-backed advisory synthesis. These
+  views will compose existing briefing, repository-health, programme-governance, conformance,
+  and ARB services.
+- Audited the AI-to-ARB path. The next hardening slice is one fail-closed submission service
+  that derives workflow type from persisted state, binds solution/workspace/actor/tenant,
+  requires named evidence, creates one official ARB review item transactionally, and stores
+  an immutable evidence snapshot.
+
 ## Next verified actions
 
-1. Run the consolidated repository verification on the exact release candidate.
-2. Merge, push, deploy, and record production health and login evidence.
+1. Complete independent review, consolidated verification, deployment, and production checks
+   for the governed-AI and Chief Architect release candidate.
+2. Implement the single fail-closed, evidence-gated AI-to-ARB submission service and route all
+   chat, workbench, and direct submission paths through it.
 3. Write and review the Application Rationalisation Transformation Room design, including
    the programme/workstream/optional-solution model, before implementing it.
 4. Add dedicated runners for live-model quality and official ArchiMate OEF XSD validation.

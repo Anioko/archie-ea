@@ -940,7 +940,7 @@ x-cloak>
    Platform.modal still thinks it's open — canonical: data-modal-open/close,
    hidden attribute, own Alpine scope for interaction state (approve/reject),
    matching components/modal_standardized.html. #}
-<div x-data="approvalManager" x-cloak>
+<div x-data="{}" x-cloak>
     <div id="ai-chat-approvals-modal"
          class="hidden fixed inset-0 z-[100] flex items-center justify-center"
          role="dialog"
@@ -972,21 +972,21 @@ x-cloak>
                 <!-- Loading/error/empty states are deliberately distinct: an
                      unavailable reviewer queue must never look like truthfully
                      empty approval work. -->
-                <div x-show="loading && !hasLoaded" x-cloak data-testid="approval-queue-loading" role="status"
+                <div x-show="$store.approvals.loading && !$store.approvals.hasLoaded" x-cloak data-testid="approval-queue-loading" role="status"
                      class="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
                     Loading approvals for review…
                 </div>
-                <div x-show="error" x-cloak data-testid="approval-queue-unavailable" role="alert"
+                <div x-show="$store.approvals.error" x-cloak data-testid="approval-queue-unavailable" role="alert"
                      class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis flex items-center justify-between gap-3">
-                    <span x-text="error"></span>
-                    <button type="button" @click="fetchPending()" aria-label="Retry approval queue"
+                    <span x-text="$store.approvals.error"></span>
+                    <button type="button" @click="$store.approvals.fetchPending()" aria-label="Retry approval queue"
                             class="inline-flex h-8 items-center justify-center rounded-md border border-destructive/30 bg-background px-3 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50 disabled:pointer-events-none">
                         Retry
                     </button>
                 </div>
 
                 <!-- Empty state -->
-                <template x-if="hasLoaded && !loading && !error && approvals.length === 0">
+                <template x-if="$store.approvals.hasLoaded && !$store.approvals.loading && !$store.approvals.error && $store.approvals.approvals.length === 0">
                     <div data-testid="approval-queue-empty" class="text-center py-8 text-muted-foreground">
                         <i data-lucide="check-circle-2" class="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true"></i>
                         <p class="text-sm">No approvals waiting for your review</p>
@@ -994,7 +994,7 @@ x-cloak>
                 </template>
 
                 <!-- Approval cards -->
-                <template x-for="item in approvals" :key="item.id">
+                <template x-for="item in $store.approvals.approvals" :key="item.id">
                     <div class="rounded-lg border border-border bg-card p-4 space-y-2">
                         <!-- Top row: operation badge + entity type -->
                         <div class="flex items-center justify-between">
@@ -1008,7 +1008,7 @@ x-cloak>
                                       x-text="item.operation_type"></span>
                                 <span class="text-sm font-medium text-foreground capitalize" x-text="item.entity_type"></span>
                             </div>
-                            <span class="text-xs text-muted-foreground" x-text="formatDate(item.created_at)"></span>
+                            <span class="text-xs text-muted-foreground" x-text="$store.approvals.formatDate(item.created_at)"></span>
                         </div>
                         <!-- Summary -->
                         <p class="text-sm text-muted-foreground" x-text="item.summary"></p>
@@ -1017,7 +1017,7 @@ x-cloak>
                         </p>
                         <!-- Expiry -->
                         <p class="text-xs text-muted-foreground">
-                            Expires: <span x-text="formatDate(item.expires_at)"></span>
+                            Expires: <span x-text="$store.approvals.formatDate(item.expires_at)"></span>
                         </p>
 
                         <!-- ARCH-023: raw payload behind a disclosure, never as the primary
@@ -1040,21 +1040,21 @@ x-cloak>
    unclickable, so the whole human-in-the-loop approval flow was dead in the UI
    even though the route behind it worked (17 Aug 2026 QA finding #17). #}
                         <!-- Reject reason textarea (shown when rejecting this item) -->
-                        <template x-if="rejectingId === item.id">
+                        <template x-if="$store.approvals.rejectingId === item.id">
                             <div class="space-y-2 pt-1">
                                 <label :for="'reject-reason-' + item.id" class="text-xs font-medium text-foreground">Rejection reason (optional)</label>
                                 <textarea :id="'reject-reason-' + item.id"
-                                          x-model="rejectReason"
+                                          x-model="$store.approvals.rejectReason"
                                           rows="2"
                                           class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                           placeholder="Why are you rejecting this operation?" aria-label="Why are you rejecting this operation?"></textarea>
                                 <div class="flex gap-2">
-                                    <button type="button" @click="confirmReject(item.id)"
+                                    <button type="button" @click="$store.approvals.confirmReject(item.id)"
                                             :class="$store.approvals.busyIds[item.id] ? 'opacity-50 pointer-events-none' : ''"
                                             class="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50">
                                         Confirm Reject
                                     </button>
-                                    <button type="button" @click="cancelReject()"
+                                    <button type="button" @click="$store.approvals.cancelReject()"
                                             class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
                                         Cancel
                                     </button>
@@ -1063,15 +1063,15 @@ x-cloak>
                         </template>
 
                         <!-- Action buttons (hidden when reject textarea is open for this item) -->
-                        <template x-if="rejectingId !== item.id">
+                        <template x-if="$store.approvals.rejectingId !== item.id">
                             <div class="flex gap-2 pt-1">
-                                <button type="button" @click="approve(item.id)"
+                                <button type="button" @click="$store.approvals.approve(item.id)"
                                         :class="$store.approvals.busyIds[item.id] ? 'opacity-50 pointer-events-none' : ''"
                                         class="inline-flex items-center gap-1 rounded-md bg-success px-3 py-1.5 text-xs font-medium text-success-foreground hover:bg-success/90 transition-colors disabled:opacity-50">
                                     <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
                                     Approve
                                 </button>
-                                <button type="button" @click="startReject(item.id)"
+                                <button type="button" @click="$store.approvals.startReject(item.id)"
                                         :class="$store.approvals.busyIds[item.id] ? 'opacity-50 pointer-events-none' : ''"
                                         class="inline-flex items-center gap-1 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive-emphasis hover:bg-destructive/20 transition-colors disabled:opacity-50">
                                     <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
