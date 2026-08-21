@@ -10,6 +10,7 @@ from datetime import datetime
 from enum import Enum
 
 from app import db
+from app.models.mixins.core import _default_org_id
 
 
 class ApprovalStatus(Enum):
@@ -36,6 +37,17 @@ class AIChatCRUDApproval(db.Model):
 
     # User who initiated the request
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+
+    # Approval requests are tenant-owned. This is intentionally nullable while
+    # existing databases are reconciled then backfilled from requester users;
+    # TenantMixin cannot be used because it requires NOT NULL on day one.
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        default=_default_org_id,
+    )
 
     # Operation details
     operation_type = db.Column(db.String(50), nullable=False)  # create, update, delete

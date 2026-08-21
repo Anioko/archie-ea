@@ -333,11 +333,11 @@ x-cloak>
                                matching components/modal_standardized.html's pattern. #}
                             <div x-data="approvalManager" x-cloak>
                                 <button type="button" data-modal-open="ai-chat-approvals-modal" @click="menuOpen = false" role="menuitem"
-                                    aria-label="Pending CRUD approvals" title="Pending CRUD approvals"
+                                    aria-label="Approvals for review" title="Approvals for review"
                                     class="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
                                     <span class="flex items-center gap-2">
                                         <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
-                                        Approvals
+                                        Approvals for review
                                     </span>
                                     <span x-show="pendingCount > 0" x-cloak
                                           x-text="pendingCount"
@@ -945,7 +945,7 @@ x-cloak>
          class="hidden fixed inset-0 z-[100] flex items-center justify-center"
          role="dialog"
          aria-modal="true"
-         aria-label="Pending CRUD Approvals">
+         aria-label="Approvals for review">
         <!-- Backdrop -->
         <div class="absolute inset-0 bg-black/50" data-modal-close="ai-chat-approvals-modal"></div>
         <!-- Panel — no @click.stop: the backdrop is a separate sibling element
@@ -961,7 +961,7 @@ x-cloak>
         <div class="relative w-full max-w-lg max-h-[80vh] mx-4 rounded-lg border border-border bg-background shadow-lg flex flex-col">
             <!-- Header -->
             <div class="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-                <h2 class="text-lg font-semibold text-foreground">Pending Approvals</h2>
+                <h2 class="text-lg font-semibold text-foreground">Approvals for review</h2>
                 <button type="button" data-modal-close="ai-chat-approvals-modal" aria-label="Close modal"
                     class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors text-muted-foreground">
                     <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
@@ -976,7 +976,7 @@ x-cloak>
                 <template x-if="approvals.length === 0">
                     <div class="text-center py-8 text-muted-foreground">
                         <i data-lucide="check-circle-2" class="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true"></i>
-                        <p class="text-sm">No pending approvals</p>
+                        <p class="text-sm">No approvals waiting for your review</p>
                     </div>
                 </template>
 
@@ -999,6 +999,9 @@ x-cloak>
                         </div>
                         <!-- Summary -->
                         <p class="text-sm text-muted-foreground" x-text="item.summary"></p>
+                        <p class="text-xs text-muted-foreground">
+                            Requested by: <span class="text-foreground" x-text="item.requester?.display_name || 'Unknown requester'"></span>
+                        </p>
                         <!-- Expiry -->
                         <p class="text-xs text-muted-foreground">
                             Expires: <span x-text="formatDate(item.expires_at)"></span>

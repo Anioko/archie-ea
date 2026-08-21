@@ -1254,6 +1254,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": true
+   },
    "original_command": {
     "has_default": false,
     "nullable": false

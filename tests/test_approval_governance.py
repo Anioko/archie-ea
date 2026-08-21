@@ -233,7 +233,7 @@ def test_approve_and_execute_requires_approver_and_writes_audit(db_session, tena
 
         monkeypatch.setattr(svc_mod, "AIDataInteractionService", _FakeDataService)
 
-        svc = AIChatApprovalService(user_id=user.id)
+        svc = AIChatApprovalService(user_id=approver.id)
         result = svc.approve_and_execute(approval.id, approving_user_id=approver.id)
 
         print("APPROVE RESULT:", result)
@@ -393,7 +393,7 @@ def test_expiry_sweep_never_executes_pending_operation(db_session, tenant_ctx, m
 
         monkeypatch.setattr(svc_mod, "AIDataInteractionService", _FakeDataService)
 
-        svc = AIChatApprovalService(user_id=user.id)
+        svc = AIChatApprovalService(user_id=approver.id)
         result = svc.approve_and_execute(approval.id, approving_user_id=approver.id)
 
         assert result["success"] is False

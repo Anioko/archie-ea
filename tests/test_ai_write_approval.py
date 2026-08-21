@@ -333,6 +333,7 @@ def _make_tool_use_approval(db_session, user, tool_name="create_solution", argum
 
     record = AIChatCRUDApproval(
         user_id=user.id,
+        organization_id=user.organization_id,
         operation_type="tool_use",
         entity_type=tool_name,
         original_command=tool_name,
@@ -483,7 +484,7 @@ class TestApprovalExpiry:
 
         _login_second_approver(client, db_session, org)
         resp = client.post(f"/ai-chat/approvals/{record.id}/approve")
-        assert resp.status_code == 400
+        assert resp.status_code == 409
         assert "expired" in resp.get_json()["error"].lower()
 
 

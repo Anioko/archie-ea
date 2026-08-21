@@ -1,9 +1,9 @@
 /**
  * AI Chat CRUD Approval Manager — Alpine.js component.
  *
- * Polls /ai-chat/approvals/pending every 30 seconds, renders a badge count
- * in the chat header, and provides a modal to review / approve / reject
- * pending CRUD operations requested via the AI chat.
+ * Polls /ai-chat/approvals/queue every 30 seconds, renders a badge count
+ * in the chat header, and provides a modal for a second authorized user to
+ * review / approve / reject pending CRUD operations requested via AI chat.
  *
  * State lives in a single Alpine.store('approvals') instance, not in the
  * Alpine.data factory below. Two DOM mounts use x-data="approvalManager"
@@ -61,7 +61,7 @@ function registerApprovalManager() {
 
         async fetchPending() {
             try {
-                const res = await fetch("/ai-chat/approvals/pending", {
+                const res = await fetch("/ai-chat/approvals/queue", {
                     headers: {
                         "X-CSRFToken": window.csrfToken || "",
                     },

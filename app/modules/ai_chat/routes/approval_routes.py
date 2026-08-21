@@ -26,6 +26,26 @@ def pending_approvals():
     return jsonify({"success": True, "approvals": approvals})
 
 
+def _decision_status(result):
+    """Map structured decision results without exposing foreign approval IDs."""
+    if result.get("success"):
+        return 200
+    return {
+        "NOT_FOUND": 404,
+        "FORBIDDEN": 403,
+        "APPROVAL_DENIED": 403,
+        "CONFLICT": 409,
+    }.get(result.get("code"), 400)
+
+
+@unified_ai_chat_bp.route("/approvals/queue", methods=["GET"])
+@login_required
+def approver_queue():
+    """Approvals from other requesters the current same-org reviewer may decide."""
+    result = _approval_service().get_approver_queue()
+    return jsonify(result), _decision_status(result)
+
+
 @unified_ai_chat_bp.route("/approvals/<int:approval_id>/approve", methods=["POST"])
 @login_required
 def approve_pending_approval(approval_id):
@@ -35,8 +55,7 @@ def approve_pending_approval(approval_id):
     # queue itself worked - the blueprint page reaches it via a different route -
     # so the flow was sound and only this call site was wrong.
     result = _approval_service().approve_and_execute(approval_id, current_user.id)
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
+    return jsonify(result), _decision_status(result)
 
 
 @unified_ai_chat_bp.route("/approvals/<int:approval_id>/reject", methods=["POST"])
@@ -45,12 +64,12 @@ def reject_pending_approval(approval_id):
     payload = request.get_json(silent=True) or {}
     reason = payload.get("reason")
     result = _approval_service().reject_approval(approval_id, reason)
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
+    return jsonify(result), _decision_status(result)
 
 
 __all__ = [
     "pending_approvals",
+    "approver_queue",
     "approve_pending_approval",
     "reject_pending_approval",
 ]

@@ -241,6 +241,7 @@ class TestApprovalGateAuthorizesApprover:
 
         approval = AIChatCRUDApproval(
             user_id=requester.id,
+            organization_id=requester.organization_id,
             operation_type="tool_use",
             entity_type=tool_name,
             original_command=tool_name,
@@ -277,7 +278,7 @@ class TestApprovalGateAuthorizesApprover:
         result = service.approve_and_execute(approval.id, viewer.id)
 
         assert result["success"] is False
-        assert result.get("code") == "APPROVAL_DENIED"
+        assert result.get("code") == "FORBIDDEN"
 
     def test_different_architect_can_approve(self, db_session, architect, another_architect):
         from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService

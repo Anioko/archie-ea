@@ -81,6 +81,46 @@ class AIChatApprovalService:
         self.user_id = user_id
         self.logger = logging.getLogger(__name__)
 
+    def _acting_user(self, *, require_general: bool = False):
+        """Resolve the actor once, with the current request tenant still in force."""
+        if not self.user_id:
+            return None, {
+                "success": False,
+                "code": "FORBIDDEN",
+                "error": "Authentication required to manage approvals",
+            }
+        actor = _load_acting_user(self.user_id)
+        if not actor or actor.organization_id is None:
+            return None, {
+                "success": False,
+                "code": "FORBIDDEN",
+                "error": "An organization-scoped user is required to manage approvals",
+            }
+        if require_general:
+            from app.models.user import Permission
+
+            if not actor.can(Permission.GENERAL):
+                return None, {
+                    "success": False,
+                    "code": "FORBIDDEN",
+                    "error": "Your role does not include write/approval permission",
+                }
+        return actor, None
+
+    @staticmethod
+    def _load_scoped_approval(approval_id: int, actor: User) -> Optional[AIChatCRUDApproval]:
+        """Load a decision target by id *and* actor organization.
+
+        A foreign row deliberately looks absent. This prevents approval-id
+        enumeration and makes every decision path share the same tenant fence.
+        """
+        return (
+            AIChatCRUDApproval.query.filter_by(
+                id=approval_id,
+                organization_id=actor.organization_id,
+            ).first()
+        )
+
     # ------------------------------------------------------------------ #
     # Audit trail (ARCH-022)                                              #
     # ------------------------------------------------------------------ #
@@ -236,7 +276,15 @@ class AIChatApprovalService:
         try:
             # ENT-042: Block anonymous CRUD — a None user_id creates unfilterable approvals.
             if not self.user_id:
-                return {"success": False, "error": "Authentication required to request CRUD operations"}
+                return {
+                    "success": False,
+                    "code": "FORBIDDEN",
+                    "error": "Authentication required to request CRUD operations",
+                }
+
+            requester, actor_error = self._acting_user()
+            if actor_error:
+                return actor_error
 
             # ARCH-021: reuse an existing pending approval for the same operation
             # rather than creating a duplicate. Surfaced to the caller/agent so it
@@ -258,8 +306,8 @@ class AIChatApprovalService:
                     "duplicate_of_existing": True,
                     "message": (
                         f"This is already pending as approval {duplicate.id} "
-                        f"(\"{duplicate.summary}\"). Type 'confirm {duplicate.id}' to execute, "
-                        f"or 'reject {duplicate.id}' to cancel — I won't queue it twice."
+                        f"(\"{duplicate.summary}\"). It is queued for another authorized user "
+                        f"to review; type 'reject {duplicate.id}' to cancel — I won't queue it twice."
                     ),
                     "requires_approval": True,
                 }
@@ -267,6 +315,7 @@ class AIChatApprovalService:
             # Create approval record
             approval = AIChatCRUDApproval(
                 user_id=self.user_id,
+                organization_id=requester.organization_id,
                 operation_type=operation_type,
                 entity_type=entity_type,
                 entity_id=entity_id,
@@ -308,10 +357,10 @@ class AIChatApprovalService:
                 "expires_at": approval.expires_at.isoformat(),
                 "message": (
                     f"I've prepared a {operation_type} operation for {entity_type}. "
-                    f"Please review and confirm:\n\n"
+                    f"It is queued for another authorized user to review:\n\n"
                     f"**Summary:** {summary}\n\n"
-                    f"**Action Required:** Type 'confirm {approval.id}' to execute, "
-                    f"or 'reject {approval.id}' to cancel. "
+                    f"**Action Required:** Another authorized user can approve it; "
+                    f"you may type 'reject {approval.id}' to cancel it. "
                     f"This request expires in {self.DEFAULT_EXPIRY_MINUTES} minutes."
                 ),
                 "requires_approval": True,
@@ -339,46 +388,29 @@ class AIChatApprovalService:
             Dict with execution result
         """
         try:
-            approval = AIChatCRUDApproval.query.get(approval_id)
+            # Route callers must not claim to be another approver. The service
+            # identity is the authenticated actor; accepting a second id here
+            # would turn a harmless parameter into an impersonation primitive.
+            if approving_user_id is not None and approving_user_id != self.user_id:
+                return {
+                    "success": False,
+                    "code": "FORBIDDEN",
+                    "error": "Approval actor does not match the signed-in user",
+                }
 
+            actor, actor_error = self._acting_user(require_general=True)
+            if actor_error:
+                return actor_error
+            effective_approver_id = actor.id
+            approval = self._load_scoped_approval(approval_id, actor)
             if not approval:
-                return {"success": False, "error": f"Approval {approval_id} not found"}
+                return {
+                    "success": False,
+                    "code": "NOT_FOUND",
+                    "error": f"Approval {approval_id} not found",
+                }
 
-            # ENT-042: Require an authenticated user to avoid None==None bypass.
-            if not self.user_id:
-                return {"success": False, "error": "Authentication required to approve CRUD operations"}
-
-            # V-01: the approval gate must authorise the APPROVER, not just
-            # confirm someone is logged in. Two independent checks, both
-            # server-side:
-            #
-            #   1. Self-approval is refused. The exploit this closes is exactly
-            #      "the same read-only user who raised the request approved
-            #      it" — this used to be inverted (approval.user_id had to
-            #      EQUAL self.user_id, i.e. only the requester could approve,
-            #      which is precisely self-approval-by-construction).
-            #   2. The approver must hold write permission
-            #      (Permission.GENERAL — the same bitfield every non-AI write
-            #      route already checks). A Viewer cannot become a valid
-            #      approver merely by being asked to approve someone else's
-            #      request.
-            #
-            # Both are audit-logged as refusals themselves (mirrors 85c2924's
-            # ARB self_approval_refused pattern) and raised as exceptions
-            # rather than silently returned, so no future call site can add a
-            # new entry point that skips them.
-            # The approver is whoever is ACTUALLY approving — approving_user_id
-            # when supplied, else the service's user. Resolved BEFORE the check,
-            # because comparing against self.user_id alone got it wrong in both
-            # directions: it refused a legitimate approver when the service
-            # happened to be constructed with the requester's id, and — far
-            # worse — it ALLOWED a requester to approve their own request
-            # whenever the service held some third party's id, since the
-            # comparison never looked at approving_user_id at all. A
-            # separation-of-duties check that reads the wrong identity is not a
-            # check.
-            effective_approver_id = approving_user_id or self.user_id
-            if approval.user_id is not None and approval.user_id == effective_approver_id:
+            if approval.user_id == effective_approver_id:
                 self._audit(
                     approval,
                     event="self_approval_refused",
@@ -393,28 +425,11 @@ class AIChatApprovalService:
                     "permission to review and approve it."
                 )
 
-            from app.models.user import Permission
-
-            approver = _load_acting_user(self.user_id)
-            if not approver or not approver.can(Permission.GENERAL):
-                self._audit(
-                    approval,
-                    event="approval_denied_no_permission",
-                    to_status=approval.status.value,
-                    actor_user_id=self.user_id,
-                    from_status=approval.status.value,
-                    reason="approving user lacks write permission",
-                )
-                db.session.commit()
-                raise MissingApproverError(
-                    "Your role does not include write/approval permission, so you "
-                    "cannot approve this request."
-                )
-
             # Check status
             if approval.status != ApprovalStatus.PENDING:
                 return {
                     "success": False,
+                    "code": "CONFLICT",
                     "error": f"Approval is already {approval.status.value}",
                 }
 
@@ -433,7 +448,11 @@ class AIChatApprovalService:
                     reason="expires_at passed at approval attempt",
                 )
                 db.session.commit()
-                return {"success": False, "error": "Approval has expired. Please submit a new request."}
+                return {
+                    "success": False,
+                    "code": "CONFLICT",
+                    "error": "Approval has expired. Please submit a new request.",
+                }
 
             # ARCH-022: execution is REFUSED without a resolvable human approver.
             # approving_user_id may be explicitly None from a caller; fall back to
@@ -600,22 +619,30 @@ class AIChatApprovalService:
             Dict with rejection result
         """
         try:
-            approval = AIChatCRUDApproval.query.get(approval_id)
-
+            actor, actor_error = self._acting_user()
+            if actor_error:
+                return actor_error
+            approval = self._load_scoped_approval(approval_id, actor)
             if not approval:
-                return {"success": False, "error": f"Approval {approval_id} not found"}
-
-            # Verify ownership
-            if approval.user_id != self.user_id:
                 return {
                     "success": False,
-                    "error": "You can only reject your own pending operations",
+                    "code": "NOT_FOUND",
+                    "error": f"Approval {approval_id} not found",
                 }
+
+            # A requester can always cancel their own change. A separate
+            # reviewer may reject it only with the same GENERAL permission the
+            # approval action requires; a Viewer cannot interfere with either.
+            if approval.user_id != actor.id:
+                _, reviewer_error = self._acting_user(require_general=True)
+                if reviewer_error:
+                    return reviewer_error
 
             # Check status
             if approval.status != ApprovalStatus.PENDING:
                 return {
                     "success": False,
+                    "code": "CONFLICT",
                     "error": f"Approval is already {approval.status.value}",
                 }
 
@@ -624,7 +651,7 @@ class AIChatApprovalService:
                 approval,
                 event="rejected",
                 to_status=ApprovalStatus.REJECTED.value,
-                actor_user_id=self.user_id,
+                actor_user_id=actor.id,
                 from_status=ApprovalStatus.PENDING.value,
                 reason=reason,
             )
@@ -650,8 +677,65 @@ class AIChatApprovalService:
         Returns:
             List of pending approval dictionaries
         """
-        approvals = AIChatCRUDApproval.get_pending_for_user(self.user_id)
+        actor, actor_error = self._acting_user()
+        if actor_error:
+            return []
+        approvals = (
+            AIChatCRUDApproval.query.filter_by(
+                user_id=actor.id,
+                organization_id=actor.organization_id,
+                status=ApprovalStatus.PENDING,
+            )
+            .filter(AIChatCRUDApproval.expires_at > datetime.utcnow())
+            .all()
+        )
         return [approval.to_dict() for approval in approvals]
+
+    def get_approver_queue(self) -> Dict[str, Any]:
+        """Pending, unexpired same-org approvals a different user may review."""
+        actor, actor_error = self._acting_user(require_general=True)
+        if actor_error:
+            return actor_error
+        approvals = (
+            AIChatCRUDApproval.query.filter_by(
+                organization_id=actor.organization_id,
+                status=ApprovalStatus.PENDING,
+            )
+            .filter(
+                AIChatCRUDApproval.expires_at > datetime.utcnow(),
+                AIChatCRUDApproval.user_id != actor.id,
+            )
+            .order_by(AIChatCRUDApproval.created_at.desc())
+            .all()
+        )
+        requester_ids = {approval.user_id for approval in approvals}
+        requesters = {
+            user.id: user
+            for user in User.query.filter(User.id.in_(requester_ids)).all()
+        } if requester_ids else {}
+        return {
+            "success": True,
+            "approvals": [
+                {
+                    "id": approval.id,
+                    "operation_type": approval.operation_type,
+                    "entity_type": approval.entity_type,
+                    "summary": approval.summary,
+                    "created_at": approval.created_at.isoformat() if approval.created_at else None,
+                    "expires_at": approval.expires_at.isoformat() if approval.expires_at else None,
+                    "requester": {
+                        "id": approval.user_id,
+                        "display_name": " ".join(
+                            part for part in (
+                                getattr(requesters.get(approval.user_id), "first_name", None),
+                                getattr(requesters.get(approval.user_id), "last_name", None),
+                            ) if part
+                        ) or "Unknown requester",
+                    },
+                }
+                for approval in approvals
+            ],
+        }
 
     def get_pending_for_session(self, chat_session_id: Optional[str]) -> List[Dict[str, Any]]:
         """Pending approvals for this user within one chat session (ARCH-020).
@@ -660,7 +744,20 @@ class AIChatApprovalService:
         THIS conversation" before deciding whether to queue a new approval or
         point the user at the existing one.
         """
-        approvals = AIChatCRUDApproval.get_pending_for_session(self.user_id, chat_session_id)
+        actor, actor_error = self._acting_user()
+        if actor_error or not chat_session_id:
+            return []
+        approvals = (
+            AIChatCRUDApproval.query.filter_by(
+                user_id=actor.id,
+                organization_id=actor.organization_id,
+                chat_session_id=chat_session_id,
+                status=ApprovalStatus.PENDING,
+            )
+            .filter(AIChatCRUDApproval.expires_at > datetime.utcnow())
+            .order_by(AIChatCRUDApproval.created_at.desc())
+            .all()
+        )
         return [approval.to_dict() for approval in approvals]
 
     def check_for_confirmation_command(self, message: str) -> Optional[Dict[str, Any]]:
@@ -780,7 +877,20 @@ class AIChatApprovalService:
                 return self.approve_and_execute(confirmation["approval_id"])
             return self.reject_approval(confirmation["approval_id"])
 
-        pending = AIChatCRUDApproval.get_pending_for_session(self.user_id, chat_session_id)
+        actor, actor_error = self._acting_user()
+        if actor_error:
+            return actor_error
+        pending = (
+            AIChatCRUDApproval.query.filter_by(
+                user_id=actor.id,
+                organization_id=actor.organization_id,
+                chat_session_id=chat_session_id,
+                status=ApprovalStatus.PENDING,
+            )
+            .filter(AIChatCRUDApproval.expires_at > datetime.utcnow())
+            .order_by(AIChatCRUDApproval.created_at.desc())
+            .all()
+        )
         if not pending:
             return {
                 "success": False,
