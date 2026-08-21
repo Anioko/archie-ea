@@ -1470,7 +1470,7 @@ class UnifiedDuplicateDetectionService:
             ).all()
         except Exception as exc:
             self.logger.warning("ArchiMate element duplicate scan unavailable: %s", exc)
-            return []
+            raise
 
         buckets: Dict[tuple, List[Any]] = {}
         for el in elements:

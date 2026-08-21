@@ -1,11 +1,29 @@
 """Regression coverage for dashboard fetch contracts that previously broke live surfaces."""
 
 from pathlib import Path
+import uuid
 
 from flask import Flask
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _architect(db_session, make_org, slug):
+    from app.models.user import User
+
+    org = make_org(slug)
+    user = User(
+        email=f"duplicate-surface-{uuid.uuid4().hex[:8]}@example.com",
+        first_name="Duplicate",
+        last_name="Reviewer",
+        organization_id=org.id,
+        confirmed=True,
+        enterprise_role="architect",
+    )
+    db_session.add(user)
+    db_session.flush()
+    return org, user
 
 
 def test_guardrail_dedupe_blueprint_exposes_dashboard_element_groups_url():
@@ -43,6 +61,79 @@ def test_governance_bulk_delete_rejects_non_2xx_before_reading_json():
         ".then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); "
         "return r.json(); })"
     ) in normalized
+
+
+def test_element_groups_api_requires_authentication(app):
+    response = app.test_client().get(
+        "/duplicate-detection/simple/api/element-groups"
+    )
+
+    assert response.status_code in {302, 401}
+
+
+def test_element_groups_api_is_tenant_scoped(
+    app, db_session, login_as, make_org
+):
+    from app.models.archimate_core import ArchiMateElement
+
+    org_a, user_a = _architect(db_session, make_org, "element-groups-a")
+    org_b = make_org("element-groups-b")
+    db_session.add_all(
+        [
+            ArchiMateElement(
+                name="Shared A", type="ApplicationComponent", layer="Application",
+                organization_id=org_a.id,
+            ),
+            ArchiMateElement(
+                name="shared a", type="ApplicationComponent", layer="Application",
+                organization_id=org_a.id,
+            ),
+            ArchiMateElement(
+                name="Shared B", type="ApplicationComponent", layer="Application",
+                organization_id=org_b.id,
+            ),
+            ArchiMateElement(
+                name="shared b", type="ApplicationComponent", layer="Application",
+                organization_id=org_b.id,
+            ),
+        ]
+    )
+    db_session.flush()
+    client = app.test_client()
+    login_as(client, user_a)
+
+    response = client.get("/duplicate-detection/simple/api/element-groups")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["total_groups"] == 1
+    assert body["total_duplicated_elements"] == 2
+    assert {group["name"].casefold() for group in body["groups"]} == {"shared a"}
+
+
+def test_element_groups_api_reports_query_failure(
+    app, db_session, login_as, make_org, monkeypatch
+):
+    from app.models.archimate_core import ArchiMateElement
+
+    _org, user = _architect(db_session, make_org, "element-groups-error")
+    query_type = type(ArchiMateElement.query)
+
+    def fail_query(_query, *_entities):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(query_type, "with_entities", fail_query)
+    client = app.test_client()
+    login_as(client, user)
+
+    response = client.get("/duplicate-detection/simple/api/element-groups")
+
+    assert response.status_code == 500
+    assert response.get_json() == {
+        "success": False,
+        "error": "An internal error occurred",
+    }
 
 
 def test_value_stream_ai_capability_lookup_distinguishes_http_failure_from_no_match():
