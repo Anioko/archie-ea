@@ -192,22 +192,23 @@ x-cloak>
                         <label for="persona-selector" class="sr-only">Assistant</label>
                         <select id="persona-selector" aria-label="Assistant"
                             class="h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
-                            <optgroup label="AI Architects (governed, live-data)">
-                                <option value="enterprise_architect" selected>AI Enterprise Architect</option>
-                                <option value="solutions_architect">AI Solution Architect</option>
-                                <option value="technology_architect">AI Technical Architect</option>
-                                <option value="data_architect">AI Data Architect</option>
-                                <option value="business_architect">AI Business Architect</option>
+                            {% set persona_category_labels = {
+                                'architects': 'AI Architects (governed, live data)',
+                                'governance': 'Governance',
+                                'stewards': 'Portfolio & commercial stewardship',
+                                'analysts': 'Specialist roles',
+                                'executives': 'Executive roles'
+                            } %}
+                            {% for category, persona_keys in persona_config.categories.items() %}
+                            <optgroup label="{{ persona_category_labels.get(category, category | replace('_', ' ') | title) }}">
+                                {% for persona_key in persona_keys %}
+                                {% set persona = persona_config.personas.get(persona_key) %}
+                                {% if persona %}
+                                <option value="{{ persona_key }}"{% if persona_key == default_chat_persona %} selected{% endif %}>{{ persona.name }}</option>
+                                {% endif %}
+                                {% endfor %}
                             </optgroup>
-                            <optgroup label="Specialist roles">
-                                <option value="application_architect">Application Architect</option>
-                                <option value="integration_architect">Integration Architect</option>
-                                <option value="systems_architect">Systems Architect</option>
-                                <option value="capability_architect">Capability Architect</option>
-                                <option value="business_analyst">Business Analyst</option>
-                                <option value="product_analyst">Product Analyst</option>
-                                <option value="cio">CIO / IT Executive</option>
-                            </optgroup>
+                            {% endfor %}
                         </select>
                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                             <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
@@ -1080,6 +1081,8 @@ x-cloak>
     // Domain configuration from server - embedded as JSON
     window.domainConfig = {{ domain_config | tojson | safe }};
     window.personaConfig = {{ persona_config.personas | tojson | safe if persona_config else '{}' | safe }};
+    window.defaultChatPersona = {{ default_chat_persona | tojson }};
+    window.chatPersonaPreferenceKey = {{ chat_persona_preference_key | tojson }};
     window.csrfToken = '{{ csrf_token() }}';
 </script>
 

@@ -81,6 +81,54 @@ PERSONA_ALIASES: Dict[str, str] = {
     "capability_architect": "enterprise_architect",
 }
 
+# The database-backed enterprise role selects the initial chat persona. Keep
+# persisted role spellings unchanged; aliases above bridge legacy vocabulary.
+# platform_admin deliberately uses the general Enterprise Architect fallback
+# rather than gaining an operational-admin charter.
+ROLE_DEFAULT_PERSONAS: Dict[str, str] = {
+    "solution_architect": "solutions_architect",
+    "enterprise_architect": "enterprise_architect",
+    "business_architect": "business_architect",
+    "arb_member": "arb_member",
+    "portfolio_manager": "portfolio_manager",
+    "cto": "cio",
+    "procurement": "procurement",
+    "application_manager": "application_manager",
+    "platform_admin": "enterprise_architect",
+}
+
+DEFAULT_CHAT_PERSONA = "enterprise_architect"
+
+
+def get_default_chat_persona(enterprise_role: Optional[str]) -> str:
+    """Return the selectable AI persona for a persisted enterprise role."""
+    return ROLE_DEFAULT_PERSONAS.get(enterprise_role or "", DEFAULT_CHAT_PERSONA)
+
+
+def _validate_role_default_personas() -> None:
+    """Fail at import if a role loses its selectable, governed default."""
+    from app.models.user import VALID_ROLES
+
+    if set(ROLE_DEFAULT_PERSONAS) != set(VALID_ROLES):
+        raise ValueError(
+            "ROLE_DEFAULT_PERSONAS must define exactly the persisted VALID_ROLES"
+        )
+
+    known_personas = set(ARCHITECT_PERSONAS) | set(PERSONA_ALIASES)
+    invalid = {
+        role: persona
+        for role, persona in ROLE_DEFAULT_PERSONAS.items()
+        if persona not in known_personas
+    }
+    if invalid:
+        raise ValueError(
+            "ROLE_DEFAULT_PERSONAS names unknown persona(s): "
+            f"{invalid}"
+        )
+
+
+_validate_role_default_personas()
+
 _EVIDENCE_RULES = """
 HARD RULES (non-negotiable):
 1. EVIDENCE: every number, name, or status you state MUST come from the

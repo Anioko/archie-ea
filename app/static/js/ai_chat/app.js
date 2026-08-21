@@ -148,10 +148,12 @@
     // localStorage all derive from the same value, and switching applies the
     // full effect (domain + sample prompts) whether triggered by a user
     // click or by _syncPersonaFromSelector() on load/reload.
-    function _applyPersonaChange(persona) {
+    function _applyPersonaChange(persona, persistChoice) {
         state.currentPersona = persona;
         updatePersonaUI(persona);
-        if (persona) localStorage.setItem('archie_chat_persona', persona);
+        if (persistChoice && persona) {
+            localStorage.setItem(window.chatPersonaPreferenceKey, persona);
+        }
         if (persona && personaConfig[persona]) {
             // Auto-switch to persona's default domain
             const defaultDomain = personaConfig[persona].default_domain;
@@ -168,20 +170,27 @@
 
     // Initialize persona selector
     personaSelector.addEventListener('change', (e) => {
-        _applyPersonaChange(e.target.value);
+        _applyPersonaChange(e.target.value, true);
     });
 
     // ARCH-114: on load, state.currentPersona (default '', per render.js)
     // never matched the selector's `selected` option — the heading, the
     // request payload and the visible dropdown disagreed about which persona
-    // was active. Restore a persisted choice if the DOM still offers it,
-    // then always sync state from whatever the selector actually shows.
+    // was active. A deliberate v2 choice may override the signed-in role's
+    // server default. The legacy key is intentionally ignored: it was written
+    // automatically on load and therefore is not evidence of user intent.
     function _syncPersonaFromSelector() {
-        const saved = localStorage.getItem('archie_chat_persona');
+        const preferenceKey = window.chatPersonaPreferenceKey || 'archie_chat_persona_v2';
+        const saved = localStorage.getItem(preferenceKey);
         if (saved && personaSelector.querySelector(`option[value="${CSS.escape(saved)}"]`)) {
             personaSelector.value = saved;
+        } else if (
+            window.defaultChatPersona &&
+            personaSelector.querySelector(`option[value="${CSS.escape(window.defaultChatPersona)}"]`)
+        ) {
+            personaSelector.value = window.defaultChatPersona;
         }
-        _applyPersonaChange(personaSelector.value);
+        _applyPersonaChange(personaSelector.value, false);
     }
 
     function updatePersonaUI(persona) {

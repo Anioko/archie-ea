@@ -42,7 +42,7 @@ def _login(client, user_id):
             delattr(g, cached)
 
 
-def _make_user(db_session, make_org, label):
+def _make_user(db_session, make_org, label, enterprise_role="enterprise_architect"):
     from app.models.user import User
 
     org = make_org(f"aichat-shell-{label}")
@@ -53,7 +53,7 @@ def _make_user(db_session, make_org, label):
         last_name="Shell",
         organization_id=org.id,
         confirmed=True,
-        enterprise_role="enterprise_architect",
+        enterprise_role=enterprise_role,
     )
     user.password = "Sup3rSecret!23"
     db_session.add(user)
@@ -61,13 +61,59 @@ def _make_user(db_session, make_org, label):
     return user.id, org
 
 
-def _get_chat_html(app, db_session, make_org):
-    user, _ = _make_user(db_session, make_org, "get")
+def _get_chat_html(app, db_session, make_org, enterprise_role="enterprise_architect"):
+    user, _ = _make_user(db_session, make_org, "get", enterprise_role)
     client = app.test_client()
     _login(client, user)
     resp = client.get("/ai-chat")
     assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
     return resp.get_data(as_text=True)
+
+
+@pytest.mark.parametrize(
+    "enterprise_role,persona",
+    [
+        ("solution_architect", "solutions_architect"),
+        ("enterprise_architect", "enterprise_architect"),
+        ("business_architect", "business_architect"),
+        ("arb_member", "arb_member"),
+        ("portfolio_manager", "portfolio_manager"),
+        ("cto", "cio"),
+        ("procurement", "procurement"),
+        ("application_manager", "application_manager"),
+        ("platform_admin", "enterprise_architect"),
+    ],
+)
+def test_chat_bootstrap_selects_the_signed_in_roles_default_persona(
+    app, db_session, make_org, enterprise_role, persona
+):
+    """The rendered picker and JavaScript bootstrap agree about the role default."""
+    html = _get_chat_html(app, db_session, make_org, enterprise_role)
+    assert f'window.defaultChatPersona = "{persona}";' in html
+    assert f'<option value="{persona}" selected>' in html
+
+
+def test_chat_client_uses_a_versioned_preference_key_for_explicit_choices():
+    """The old automatic localStorage default must not mask the new role default."""
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "app/static/js/ai_chat/app.js").read_text(
+        encoding="utf-8"
+    )
+    assert "archie_chat_persona_v2" in js
+    assert "window.defaultChatPersona" in js
+    assert "getItem('archie_chat_persona')" not in js
+    assert "_applyPersonaChange(personaSelector.value, false)" in js
+    assert "_applyPersonaChange(e.target.value, true)" in js
+
+
+def test_picker_renders_every_configured_persona(app, db_session, make_org):
+    """The server-driven picker must expose every selectable configuration."""
+    from app.modules.ai_chat.services.multi_domain_chat_service import PERSONA_CONFIGS
+
+    html = _get_chat_html(app, db_session, make_org)
+    for persona in PERSONA_CONFIGS:
+        assert f'<option value="{persona}"' in html
 
 
 def test_no_multi_domain_title_block(app, db_session, make_org):

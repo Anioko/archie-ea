@@ -16,6 +16,52 @@ from app.modules.ai_chat.services.multi_domain_chat_service import (
 )
 
 
+ROLE_DEFAULT_PERSONAS = {
+    "solution_architect": "solutions_architect",
+    "enterprise_architect": "enterprise_architect",
+    "business_architect": "business_architect",
+    "arb_member": "arb_member",
+    "portfolio_manager": "portfolio_manager",
+    "cto": "cio",
+    "procurement": "procurement",
+    "application_manager": "application_manager",
+    "platform_admin": "enterprise_architect",
+}
+
+
+def test_every_supported_role_has_a_selectable_governed_chat_default():
+    """The persisted enterprise role must resolve to a real picker persona.
+
+    Before persona unification, four supported roles had charters but no picker
+    configuration, while every page silently started as Enterprise Architect.
+    """
+    from app.models.user import VALID_ROLES
+    from app.modules.ai_chat.services.architect_persona_charters import (
+        ARCHITECT_PERSONAS,
+        PERSONA_ALIASES,
+        ROLE_DEFAULT_PERSONAS as actual_defaults,
+    )
+
+    assert actual_defaults == ROLE_DEFAULT_PERSONAS
+    assert set(actual_defaults) == set(VALID_ROLES)
+    assert set(actual_defaults.values()).issubset(PERSONA_CONFIGS)
+    assert {
+        PERSONA_ALIASES.get(persona, persona)
+        for persona in actual_defaults.values()
+    }.issubset(ARCHITECT_PERSONAS)
+
+
+def test_persona_categories_cover_every_selectable_persona():
+    """A configured role cannot be hidden by a partial category response."""
+    categories = MultiDomainChatService.get_available_personas(None)["categories"]
+    categorized = {
+        persona
+        for personas in categories.values()
+        for persona in personas
+    }
+    assert categorized == set(PERSONA_CONFIGS)
+
+
 def test_the_data_architect_defaults_to_the_data_architecture_context():
     """It defaulted to `architecture`, so it never loaded its own loader.
 
@@ -42,18 +88,15 @@ def test_every_persona_defaults_to_a_domain_that_exists(persona, cfg, app):
 
 
 def test_the_capability_architect_is_reachable():
-    """It has a config entry AND dedicated prompts, and no way to select it.
+    """It has a config entry AND dedicated prompts, and must be categorized.
 
     capability_architect_prompts.py is imported for it at
-    multi_domain_chat_service.py:3337, so it is a working persona that the
-    picker simply never offered.
+    multi_domain_chat_service.py:3337, so omitting it from the categories
+    would make a working persona impossible to choose in the dynamic picker.
     """
-    from pathlib import Path
-
     assert "capability_architect" in PERSONA_CONFIGS
-    tpl = (Path(__file__).resolve().parents[1]
-           / "app/templates/ai_chat/index.html").read_text(encoding="utf-8")
-    assert 'value="capability_architect"' in tpl, (
+    categories = MultiDomainChatService.get_available_personas(None)["categories"]
+    assert "capability_architect" in categories["architects"], (
         "capability_architect is configured, has its own prompt module, and "
         "cannot be chosen"
     )

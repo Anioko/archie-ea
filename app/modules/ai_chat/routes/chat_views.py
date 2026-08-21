@@ -95,9 +95,16 @@ def _fallback_persona_config() -> Dict[str, Any]:
                 "business_architect",
                 "data_architect",
                 "technology_architect",
+                "capability_architect",
             ],
             "analysts": ["business_analyst", "product_analyst"],
             "executives": ["cio"],
+            "governance": ["arb_member"],
+            "stewards": [
+                "portfolio_manager",
+                "procurement",
+                "application_manager",
+            ],
         },
     }
 
@@ -137,6 +144,13 @@ def index():
     domain_config = _fallback_domain_config()
     persona_config = _fallback_persona_config()
     chat_bootstrap_error = None
+    from app.modules.ai_chat.services.architect_persona_charters import (
+        get_default_chat_persona,
+    )
+
+    default_chat_persona = get_default_chat_persona(
+        getattr(current_user, "enterprise_role", None)
+    )
 
     chat_service = get_chat_service()
     if chat_service is None:
@@ -164,6 +178,8 @@ def index():
         domain_config=domain_config,
         persona_config=persona_config,
         chat_bootstrap_error=chat_bootstrap_error,
+        default_chat_persona=default_chat_persona,
+        chat_persona_preference_key=f"archie_chat_persona_v2:{current_user.id}",
     )
 
 
