@@ -150,11 +150,18 @@ def test_element_groups_ui_keeps_failure_distinct_from_empty_result():
         "this.elementGroupsError = 'Could not load ArchiMate element duplicate groups.';"
         in script
     )
+    load_method = script.split("async loadElementGroups()", 1)[1].split(
+        "clearRunFeedback()", 1
+    )[0]
+    failure_branch = load_method.split("catch (error)", 1)[1].split("finally", 1)[0]
+    assert "this.elementGroups = []" not in failure_branch
+    assert "this.elementGroupsTotalDuplicated = 0" not in failure_branch
     assert 'x-if="!elementGroupsLoading && elementGroupsError"' in template
     assert (
         'x-if="!elementGroupsLoading && !elementGroupsError && elementGroups.length === 0"'
         in template
     )
+    assert '@click="loadElementGroups()"' in template
 
 
 def test_value_stream_ai_capability_lookup_distinguishes_http_failure_from_no_match():
