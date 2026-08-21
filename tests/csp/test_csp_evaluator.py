@@ -50,6 +50,51 @@ def test_alpine_works_under_csp_without_unsafe_eval():
     assert m.main() == 0, "Alpine+CSPExpr failed under a CSP without unsafe-eval"
 
 
+def test_read_only_global_assignment_surfaces_an_evaluation_error():
+    """The adapter must not report a rejected global mutation as successful."""
+    root = HERE.parents[1]
+    evaluator = root / "app" / "static" / "js" / "csp" / "csp-evaluator.js"
+    adapter = root / "app" / "static" / "js" / "csp" / "alpine-csp-adapter.js"
+
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content("<!doctype html><body></body>")
+        page.add_script_tag(path=evaluator)
+        page.add_script_tag(path=adapter)
+        result = page.evaluate(
+            """() => {
+                let evaluatorFactory;
+                const data = {};
+                const Alpine = {
+                    setEvaluator(factory) { evaluatorFactory = factory; },
+                    $data() { return data; }
+                };
+                window.CSPAlpineAdapter.install(Alpine);
+                Object.defineProperty(window, '__archieReadOnlyTest', {
+                    value: 'before', writable: false, configurable: true
+                });
+
+                let error = '';
+                try {
+                    const run = evaluatorFactory(
+                        document.body, "__archieReadOnlyTest = 'after'"
+                    );
+                    run(() => {}, {});
+                } catch (caught) {
+                    error = String(caught);
+                }
+                return { error, value: window.__archieReadOnlyTest };
+            }"""
+        )
+        browser.close()
+
+    assert result["value"] == "before"
+    assert result["error"], (
+        "a rejected global assignment was silently reported as successful"
+    )
+
+
 @pytest.mark.skipif(
     "TEST_DATABASE_URL" not in __import__("os").environ,
     reason="real-app smoke needs a database (TEST_DATABASE_URL)")

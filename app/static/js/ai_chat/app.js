@@ -371,7 +371,7 @@
             if (data.thread_id) {
                 const _wasNew = data.thread_id !== window.__threadId;
                 window.__threadId = data.thread_id;
-                try { sessionStorage.setItem('archie_chat_thread_id', data.thread_id); } catch (e) { /* private-browsing storage denial; thread still works, just won't restore on reload */ }
+                try { sessionStorage.setItem('archie_chat_thread_id', data.thread_id); } catch (e) { /* swallow-ok: private-browsing storage denial; the server-saved thread and current page still work, only reload restoration is unavailable */ }
                 if (_wasNew && window.loadSessionList) window.loadSessionList();
             }
             const endTime = performance.now();
@@ -505,7 +505,7 @@
                 onThreadId: (id) => {
                     const wasNew = id !== window.__threadId;
                     window.__threadId = id;
-                    try { sessionStorage.setItem('archie_chat_thread_id', id); } catch (e) { /* private-browsing storage denial; thread still works, just won't restore on reload */ }
+                    try { sessionStorage.setItem('archie_chat_thread_id', id); } catch (e) { /* swallow-ok: private-browsing storage denial; the server-saved thread and current page still work, only reload restoration is unavailable */ }
                     if (wasNew && window.loadSessionList) window.loadSessionList();
                 },
                 /* The evidence trail. The server has always emitted these and

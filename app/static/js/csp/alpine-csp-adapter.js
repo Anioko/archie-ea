@@ -77,7 +77,9 @@
           // Assign onto the component data when it owns the key, otherwise let a
           // genuine global assignment (rare in Alpine) hit the global.
           if (base && (k in base)) { base[k] = v; return true; }
-          if (k in global) { try { global[k] = v; } catch (e) { /* read-only global */ } return true; }
+          // A rejected assignment is an expression failure, not a successful
+          // no-op. Let the browser's TypeError reach Alpine's error path.
+          if (k in global) { global[k] = v; return true; }
           if (base) { base[k] = v; return true; }
           return true;
         }
