@@ -174,6 +174,19 @@ The earlier audit measured the deployed platform as broad but insufficiently foc
   requires named evidence, creates one official ARB review item transactionally, and stores
   an immutable evidence snapshot.
 
+### 2026-08-22 — Evidence-gated ARB workflow UX
+
+- Replaced optimistic ARB submission feedback on the blueprint and journey review surfaces
+  with explicit loading, unavailable, blocked, retry, and canonical-success states.
+- Missing-evidence entries returned by the governed service remain visible as an actionable
+  evidence ledger. AI-assisted content requires an explicit human-review assertion before
+  submission can be attempted.
+- Success is withheld unless the response contains both the canonical review item ID and
+  review number; the completed state links directly to that official ARB review. A failed
+  attempt never changes the displayed governance state or produces a success toast.
+- Focused journey contract: 2 passed. Template syntax, design-token, and air-gap gates passed;
+  the committed Tailwind build was checked byte-for-byte with the repository's pinned CLI.
+
 ## Next verified actions
 
 1. Complete independent review, consolidated verification, deployment, and production checks
