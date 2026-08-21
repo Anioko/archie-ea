@@ -50,7 +50,11 @@ for _provider in _LLM_API_KEY_PROVIDERS:
     )
 
 for _llm_api_key_env_var in _LLM_API_KEY_ENV_VARS:
-    os.environ.pop(_llm_api_key_env_var, None)
+    # Keep a deliberately empty process value instead of deleting it. python-
+    # dotenv's default override=False then treats it as already defined and
+    # cannot repopulate a real credential from a parent .env file, including
+    # on releases that do not support PYTHON_DOTENV_DISABLED.
+    os.environ[_llm_api_key_env_var] = ""
 os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 
 

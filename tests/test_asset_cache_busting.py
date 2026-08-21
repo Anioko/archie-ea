@@ -17,7 +17,7 @@ import os
 import pytest
 from flask import Flask
 
-from app._bootstrap.assets import _asset_version, init_assets
+from app._bootstrap.assets import init_assets
 from app._bootstrap.security import _FINGERPRINTED_RE
 
 
@@ -43,13 +43,11 @@ def _asset_url(application, filename):
         return application.jinja_env.filters["asset_url"](filename)
 
 
-def test_production_unfingerprinted_asset_uses_the_deploy_build_id(app):
-    url = _asset_url(app, "css/tailwind-output.css")
-    assert url.startswith("/static/css/tailwind-output.css?v=")
+def test_production_unfingerprinted_asset_uses_the_deploy_build_id(app, monkeypatch):
+    monkeypatch.setattr("app._bootstrap.assets.get_build_id", lambda: "test-build-id")
 
-    expected = _asset_version(app.static_folder, "css/tailwind-output.css")
-    assert expected is not None
-    assert url.endswith(f"v={expected}")
+    url = _asset_url(app, "css/tailwind-output.css")
+    assert url == "/static/css/tailwind-output.css?v=test-build-id"
 
 
 def test_production_build_id_does_not_change_when_one_file_is_rebuilt(app):
