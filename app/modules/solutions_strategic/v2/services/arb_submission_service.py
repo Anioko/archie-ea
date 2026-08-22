@@ -29,6 +29,19 @@ from app.modules.solutions_strategic.v2.services.governance_gate_service import 
 logger = logging.getLogger(__name__)
 
 
+def architect_cost_provenance_recovery(solution_id: int) -> dict:
+    """Return the server-owned recovery target for an untrusted cost claim."""
+    return {
+        "action": "architect_cost_provenance_review_required",
+        "url": f"/solutions/{int(solution_id)}?tab=governance",
+        "label": "Open the governed evidence dossier",
+        "message": (
+            "An architect must review the persisted estimate and explicitly confirm "
+            "its cost provenance in the governed evidence dossier."
+        ),
+    }
+
+
 @dataclass(frozen=True)
 class ARBReadinessResult:
     ready: bool

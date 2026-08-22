@@ -119,6 +119,10 @@ class AgentRunner:
             trusted.pop("workspace_id", None)
             trusted.pop("workflow_type", None)
             trusted.pop("phase", None)
+            trusted.pop("cost_source", None)
+            trusted.pop("human_reviewed", None)
+            trusted.pop("direct_route_evidence", None)
+            trusted.pop("assertions", None)
             if trusted_workspace_id is not None:
                 trusted["workspace_id"] = trusted_workspace_id
         return trusted
@@ -465,6 +469,7 @@ class AgentRunner:
         trusted_workspace_id = (context or {}).get("_trusted_workspace_id")
         executor = ToolExecutor(self.user_id)
         actions_taken = []
+        required_actions = []
         pending_approvals = []
         # Records the read tools actually returned this turn, for citation.
         sources = []
@@ -486,6 +491,7 @@ class AgentRunner:
                 return {
                     "response": llm_resp.get("text", ""),
                     "actions_taken": actions_taken,
+                    "required_actions": required_actions,
                     "pending_approvals": pending_approvals,
                     "sources": sources,
                 }
@@ -543,6 +549,8 @@ class AgentRunner:
                             # next-artifact suggestion and approval tiering.
                             "mutates": tc.name in _MUTATING_TOOLS,
                         })
+                    elif result.get("recovery"):
+                        required_actions.append(result["recovery"])
 
                 tool_results.append((tc_raw, result))
 
@@ -559,6 +567,7 @@ class AgentRunner:
                 else "I reached the action limit without completing all steps. Please try again with a simpler request."
             ),
             "actions_taken": actions_taken,
+            "required_actions": required_actions,
             "pending_approvals": pending_approvals,
             "sources": sources,
         }

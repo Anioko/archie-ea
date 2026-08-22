@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from decimal import Decimal
 import uuid
 
 from app.models.arb_submission_evidence import WorkbenchArtifactEvidence
@@ -11,6 +12,7 @@ from app.models.solution_architect_models import (
 from app.models.solution_models import Solution
 from app.models.user import User
 from app.modules.ai_chat.services.agent_runner import AgentRunner
+from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
 from app.modules.ai_chat.services.workbench_kernel import ArtifactState, WorkbenchKernel
 from app.modules.ai_chat.tools.executor import ToolCall, ToolExecutor
 from app.modules.ai_chat.tools.registry import TOOL_SCHEMA_BY_NAME
@@ -87,6 +89,21 @@ def test_runner_overwrites_llm_workspace_and_discards_workflow_selection():
     assert arguments == {"solution_name": "Customer Platform", "workspace_id": 42}
 
 
+def test_runner_strips_model_controlled_cost_provenance_and_attestations():
+    arguments = AgentRunner._inject_trusted_tool_context(
+        "submit_for_arb_review",
+        {
+            "solution_name": "Costed Platform",
+            "cost_source": "tco_engine",
+            "human_reviewed": True,
+            "direct_route_evidence": {"design_reviewed": True},
+        },
+        trusted_workspace_id=42,
+    )
+
+    assert arguments == {"solution_name": "Costed Platform", "workspace_id": 42}
+
+
 def test_executor_requires_trusted_workspace_for_ai_submission(
     db_session, make_org, tenant_ctx
 ):
@@ -155,6 +172,91 @@ def test_executor_delegates_to_canonical_service_with_trusted_identity(
         "idempotent": False,
     }
     assert solution.governance_status == "draft"
+
+
+def test_costed_executor_block_returns_canonical_architect_recovery(
+    db_session, make_org, tenant_ctx, monkeypatch
+):
+    org = make_org("ai-cost-recovery")
+    actor = _user(db_session, org)
+    solution = _solution(db_session, org, actor)
+    solution.estimated_cost = Decimal("250000.00")
+    workspace = _workspace(db_session, org, actor, solution)
+    monkeypatch.setattr(
+        "app.modules.solutions_strategic.v2.services.arb_submission_service."
+        "ARBSubmissionService.submit",
+        lambda *args, **kwargs: ARBSubmissionResult(
+            False,
+            ["cost_source_required"],
+            [{"code": "cost_source_required"}],
+        ),
+    )
+    with tenant_ctx(org.id):
+        executor = ToolExecutor(actor.id)
+        executor._resolver.resolve_solution = lambda _name: {
+            "resolved": True,
+            "id": solution.id,
+            "name": solution.name,
+        }
+        result = executor.execute(
+            ToolCall(
+                "cost-call",
+                "submit_for_arb_review",
+                {
+                    "solution_name": solution.name,
+                    "workspace_id": workspace.id,
+                    "cost_source": "tco_engine",
+                },
+            )
+        )
+
+    assert result["success"] is False
+    assert result["recovery"]["url"] == f"/solutions/{solution.id}?tab=governance"
+    assert result["recovery"]["action"] == "architect_cost_provenance_review_required"
+    assert "architect" in result["recovery"]["message"].lower()
+
+
+def test_costed_workbench_block_returns_same_canonical_recovery(
+    db_session, make_org, tenant_ctx, monkeypatch
+):
+    org = make_org("workbench-cost-recovery")
+    actor = _user(db_session, org)
+    solution = _solution(db_session, org, actor)
+    solution.estimated_cost = Decimal("250000.00")
+    workspace = _workspace(db_session, org, actor, solution)
+    monkeypatch.setattr(
+        "app.modules.solutions_strategic.v2.services.arb_submission_service."
+        "ARBSubmissionService.submit",
+        lambda *args, **kwargs: ARBSubmissionResult(
+            False, ["cost_source_required"], [{"code": "cost_source_required"}]
+        ),
+    )
+    with tenant_ctx(org.id):
+        result = WorkbenchKernel(user_id=actor.id).submit_to_arb(workspace.id)
+
+    assert result["success"] is False
+    assert result["recovery"]["url"] == f"/solutions/{solution.id}?tab=governance"
+    assert result["recovery"]["action"] == "architect_cost_provenance_review_required"
+
+
+def test_approved_agent_tool_surfaces_structured_cost_recovery():
+    tool_result = {
+        "success": False,
+        "error": "Architect review required",
+        "reason_codes": ["cost_source_required"],
+        "missing_evidence": [{"code": "cost_source_required"}],
+        "recovery": {
+            "action": "architect_cost_provenance_review_required",
+            "url": "/solutions/42?tab=governance",
+        },
+    }
+
+    response = AIChatApprovalService._execution_failure_response(tool_result, 17)
+
+    assert response["success"] is False
+    assert response["approval_id"] == 17
+    assert response["reason_codes"] == ["cost_source_required"]
+    assert response["recovery"] == tool_result["recovery"]
 
 
 def test_workbench_missing_trusted_workspace_is_a_structured_blocker():

@@ -449,6 +449,19 @@ class AIChatApprovalService:
                 "error": f"Failed to create approval: {str(e)}",
             }
 
+    @staticmethod
+    def _execution_failure_response(result: Dict[str, Any], approval_id: int) -> Dict[str, Any]:
+        """Preserve structured recovery from a failed approved tool execution."""
+        response = {
+            "success": False,
+            "error": result.get("error", "Operation failed"),
+            "approval_id": approval_id,
+        }
+        for key in ("reason_codes", "missing_evidence", "recovery"):
+            if key in result:
+                response[key] = result[key]
+        return response
+
     def approve_and_execute(
         self, approval_id: int, approving_user_id: Optional[int] = None
     ) -> Dict[str, Any]:
@@ -702,11 +715,7 @@ class AIChatApprovalService:
                 )
                 db.session.commit()
 
-                return {
-                    "success": False,
-                    "error": result.get("error", "Operation failed"),
-                    "approval_id": approval_id,
-                }
+                return self._execution_failure_response(result, approval_id)
 
         except (SelfApprovalError, MissingApproverError) as e:
             # Refusal was already audit-logged and committed above the raise;

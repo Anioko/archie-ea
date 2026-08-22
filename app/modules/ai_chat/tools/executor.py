@@ -608,12 +608,20 @@ class ToolExecutor:
             assertions={"human_reviewed": True},
         )
         if not submission.success:
-            return {
+            blocked = {
                 "success": False,
                 "reason_codes": submission.reason_codes,
                 "missing_evidence": submission.missing_evidence,
                 "error": "ARB submission is blocked until the listed evidence is complete.",
             }
+            if "cost_source_required" in submission.reason_codes:
+                from app.modules.solutions_strategic.v2.services.arb_submission_service import (
+                    architect_cost_provenance_recovery,
+                )
+
+                blocked["recovery"] = architect_cost_provenance_recovery(sol_r["id"])
+                blocked["error"] = blocked["recovery"]["message"]
+            return blocked
 
         return {
             "success": True,
