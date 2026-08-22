@@ -139,20 +139,44 @@ def demand_decide(demand_id):
 @portfolio_bp.route("/initiatives/<int:initiative_id>/benefits", methods=["POST"])
 @login_required
 def benefit_create(initiative_id):
-    from app.models.benefit import Benefit
-    from app.models.vendor.vendor_organization import EnterpriseInitiative
+    """Keep the legacy URL explicit and read-only until a programme bridge exists.
 
-    if db.session.get(EnterpriseInitiative, initiative_id) is None:
+    EnterpriseInitiative and StrategicInitiative identifiers come from separate
+    sequences and cannot safely be treated as interchangeable.  Returning a
+    conflict prevents a legacy form from silently attaching a new Benefit to an
+    unrelated canonical programme with the same integer identifier.
+    """
+    flash(
+        "This legacy initiative must be linked to a transformation programme "
+        "before benefits can be added.",
+        "error",
+    )
+    abort(409)
+
+
+@portfolio_bp.route("/programmes/<int:programme_id>/benefits", methods=["POST"])
+@login_required
+def programme_benefit_create(programme_id):
+    from app.models.benefit import Benefit
+    from app.models.strategic import StrategicInitiative
+
+    programme = db.session.scalar(
+        db.select(StrategicInitiative).where(
+            StrategicInitiative.id == programme_id,
+            StrategicInitiative.record_kind == "transformation_programme",
+        )
+    )
+    if programme is None:
         abort(404)
 
     name = (request.form.get("name") or "").strip()
     if not name:
         flash("A benefit needs a name.", "error")
-        return redirect(url_for("portfolio.detail", initiative_id=initiative_id))
+        return redirect(url_for("portfolio.index"))
 
     db.session.add(Benefit(
         name=name,
-        initiative_id=initiative_id,
+        strategic_initiative_id=programme.id,
         benefit_type=request.form.get("benefit_type") or "cost_saving",
         measure=(request.form.get("measure") or "").strip() or None,
         unit=(request.form.get("unit") or "").strip() or None,
@@ -164,7 +188,7 @@ def benefit_create(initiative_id):
     ))
     db.session.commit()
     flash("Benefit added.", "success")
-    return redirect(url_for("portfolio.detail", initiative_id=initiative_id))
+    return redirect(url_for("portfolio.index"))
 
 
 @portfolio_bp.route("/benefits/<int:benefit_id>/measure", methods=["POST"])
@@ -180,7 +204,7 @@ def benefit_measure(benefit_id):
     actual = _decimal_or_none(request.form.get("actual_value"))
     if actual is None:
         flash("A measurement needs a value.", "error")
-        return redirect(url_for("portfolio.detail", initiative_id=benefit.initiative_id))
+        return redirect(url_for("portfolio.index"))
 
     benefit.actual_value = actual
     benefit.actual_date = _date_or_none(request.form.get("actual_date")) or datetime.utcnow().date()
@@ -190,7 +214,7 @@ def benefit_measure(benefit_id):
     benefit.status = "realised" if (pct is not None and pct >= 100) else "realising"
     db.session.commit()
     flash("Measurement recorded.", "success")
-    return redirect(url_for("portfolio.detail", initiative_id=benefit.initiative_id))
+    return redirect(url_for("portfolio.index"))
 
 
 # ── Assumption ────────────────────────────────────────────────────────────

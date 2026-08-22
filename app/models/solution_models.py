@@ -175,7 +175,12 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
     # rollups (clean-core score, ARB pipeline, risk, wave timeline).
     initiative_id = Column(
         Integer,
-        ForeignKey("strategic_initiatives.id", use_alter=True, name="fk_solutions_initiative_id"),
+        ForeignKey(
+            "strategic_initiatives.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_solutions_initiative_id",
+        ),
         nullable=True,
         index=True,
     )

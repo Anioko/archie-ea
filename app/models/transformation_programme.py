@@ -7,6 +7,9 @@ supplied parent belongs to the active organization.
 
 from __future__ import annotations
 
+from babel.numbers import list_currencies
+from sqlalchemy.orm import validates
+
 from app import db
 from app.models.mixins import OptimisticLockMixin, TenantMixin
 
@@ -50,6 +53,10 @@ PROGRAMME_ROLES = (
 IMPROVEMENT_DIRECTIONS = ("increase", "decrease", "maintain")
 OUTCOME_LIFECYCLES = ("committed", "monitoring", "realised", "not_realised", "cancelled")
 MEASURE_AGGREGATIONS = ("sum", "average", "minimum", "maximum", "latest", "count")
+
+# Babel ships CLDR's ISO-4217 registry with the application. A three-letter
+# shape alone would accept invented currencies such as ``ZZZ``.
+ISO_4217_CURRENCIES = tuple(sorted(list_currencies()))
 
 
 def _sql_values(values):
@@ -245,6 +252,9 @@ class MeasureDefinition(TenantMixin, OptimisticLockMixin, db.Model):
     unit = db.Column(db.String(64), nullable=False)
     currency = db.Column(db.String(3))
     aggregation = db.Column(db.String(30), nullable=False)
+    baseline_amount = db.Column(db.Numeric(18, 2))
+    target_amount = db.Column(db.Numeric(18, 2))
+    tolerance_amount = db.Column(db.Numeric(18, 2))
     baseline_value = db.Column(db.Numeric(24, 6))
     target_value = db.Column(db.Numeric(24, 6))
     baseline_date = db.Column(db.Date)
@@ -267,10 +277,26 @@ class MeasureDefinition(TenantMixin, OptimisticLockMixin, db.Model):
             name="ck_measure_definition_aggregation",
         ),
         db.CheckConstraint(
-            "currency IS NULL OR currency ~ '^[A-Z]{3}$'",
+            f"currency IS NULL OR currency IN ({_sql_values(ISO_4217_CURRENCIES)})",
             name="ck_measure_definition_currency",
         ),
+        db.CheckConstraint(
+            "(currency IS NULL AND baseline_amount IS NULL "
+            "AND target_amount IS NULL AND tolerance_amount IS NULL) OR "
+            "(currency IS NOT NULL AND baseline_value IS NULL "
+            "AND target_value IS NULL AND tolerance IS NULL)",
+            name="ck_measure_definition_value_storage",
+        ),
     )
+
+    @validates("currency")
+    def _validate_currency(self, _key, value):
+        if value is None:
+            return None
+        normalized = value.strip().upper() if isinstance(value, str) else value
+        if normalized not in ISO_4217_CURRENCIES:
+            raise ValueError("currency must be an ISO 4217 code")
+        return normalized
 
     @staticmethod
     def _numeric(value):
@@ -285,14 +311,26 @@ class MeasureDefinition(TenantMixin, OptimisticLockMixin, db.Model):
             "unit": self.unit,
             "currency": self.currency,
             "aggregation": self.aggregation,
-            "baseline_value": self._numeric(self.baseline_value),
-            "target_value": self._numeric(self.target_value),
+            "baseline_value": self._numeric(
+                (self.baseline_amount if self.baseline_amount is not None else self.baseline_value)
+                if self.currency
+                else self.baseline_value
+            ),
+            "target_value": self._numeric(
+                (self.target_amount if self.target_amount is not None else self.target_value)
+                if self.currency
+                else self.target_value
+            ),
             "baseline_date": self.baseline_date.isoformat() if self.baseline_date else None,
             "target_date": self.target_date.isoformat() if self.target_date else None,
             "cadence": self.cadence,
             "source_adapter": self.source_adapter,
             "source_key": self.source_key,
-            "tolerance": self._numeric(self.tolerance),
+            "tolerance": self._numeric(
+                (self.tolerance_amount if self.tolerance_amount is not None else self.tolerance)
+                if self.currency
+                else self.tolerance
+            ),
             "unavailable_reason": self.unavailable_reason,
         }
 

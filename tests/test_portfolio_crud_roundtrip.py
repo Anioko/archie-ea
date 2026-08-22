@@ -109,16 +109,32 @@ def _make_initiative_id(db, org_id, name="Portfolio CRUD Initiative"):
     return init.id
 
 
+def _make_programme_id(db, org_id, owner_id, name="Portfolio CRUD Programme"):
+    from app.models.strategic import StrategicInitiative
+
+    programme = StrategicInitiative(
+        name=f"{name} {uuid.uuid4().hex[:6]}",
+        organization_id=org_id,
+        owner_id=owner_id,
+        record_kind="transformation_programme",
+    )
+    db.session.add(programme)
+    db.session.commit()
+    return programme.id
+
+
 @pytest.fixture
 def org_a(app):
     from app import db
 
     with app.app_context():
         org_id = _make_org_id(db, "CrudA")
+        user_id = _make_user_id(db, org_id, "CrudA")
         return {
             "org_id": org_id,
-            "user_id": _make_user_id(db, org_id, "CrudA"),
+            "user_id": user_id,
             "initiative_id": _make_initiative_id(db, org_id),
+            "programme_id": _make_programme_id(db, org_id, user_id),
         }
 
 
@@ -246,7 +262,7 @@ class TestBenefitLifecycle:
         _login(client, org_a["user_id"])
         name = f"Retire duplicate licences {uuid.uuid4().hex[:6]}"
 
-        client.post(f"/portfolio/initiatives/{org_a['initiative_id']}/benefits", data={
+        client.post(f"/portfolio/programmes/{org_a['programme_id']}/benefits", data={
             "name": name, "benefit_type": "cost_saving", "unit": "GBP",
             "baseline_value": "100000", "target_value": "60000",
         })
@@ -257,6 +273,8 @@ class TestBenefitLifecycle:
             assert float(row.baseline_value) == 100000
             assert row.status == "identified"
             assert row.realisation_percentage is None, "no actual yet -> must be None"
+            assert row.strategic_initiative_id == org_a["programme_id"]
+            assert row.legacy_enterprise_initiative_id is None
             db.session.delete(row)
             db.session.commit()
 
@@ -266,7 +284,7 @@ class TestBenefitLifecycle:
 
         with app.app_context():
             b = Benefit(name=f"Measure me {uuid.uuid4().hex[:6]}",
-                        initiative_id=org_a["initiative_id"], organization_id=org_a["org_id"],
+                        strategic_initiative_id=org_a["programme_id"], organization_id=org_a["org_id"],
                         baseline_value=100, target_value=50, status="identified")
             db.session.add(b)
             db.session.commit()
@@ -289,7 +307,7 @@ class TestBenefitLifecycle:
 
         with app.app_context():
             b = Benefit(name=f"Full {uuid.uuid4().hex[:6]}",
-                        initiative_id=org_a["initiative_id"], organization_id=org_a["org_id"],
+                        strategic_initiative_id=org_a["programme_id"], organization_id=org_a["org_id"],
                         baseline_value=100, target_value=50, status="identified")
             db.session.add(b)
             db.session.commit()
@@ -311,7 +329,7 @@ class TestBenefitLifecycle:
 
         with app.app_context():
             b = Benefit(name=f"Blank {uuid.uuid4().hex[:6]}",
-                        initiative_id=org_a["initiative_id"], organization_id=org_a["org_id"],
+                        strategic_initiative_id=org_a["programme_id"], organization_id=org_a["org_id"],
                         baseline_value=100, target_value=50, status="identified")
             db.session.add(b)
             db.session.commit()
@@ -417,12 +435,29 @@ class TestWritePathTenantIsolation:
 
         _login(client, attacker)
         name = f"Injected {uuid.uuid4().hex[:6]}"
-        resp = client.post(f"/portfolio/initiatives/{org_a['initiative_id']}/benefits",
+        resp = client.post(f"/portfolio/programmes/{org_a['programme_id']}/benefits",
                            data={"name": name})
 
         assert resp.status_code == 404, (
             f"org B reached org A's initiative (got {resp.status_code})"
         )
+        with app.app_context():
+            assert db.session.query(Benefit).filter_by(name=name).one_or_none() is None
+
+    def test_legacy_initiative_benefit_write_is_explicitly_read_only(
+        self, app, client, org_a
+    ):
+        from app import db
+        from app.models.benefit import Benefit
+
+        _login(client, org_a["user_id"])
+        name = f"Legacy write blocked {uuid.uuid4().hex[:6]}"
+        response = client.post(
+            f"/portfolio/initiatives/{org_a['initiative_id']}/benefits",
+            data={"name": name},
+        )
+
+        assert response.status_code == 409
         with app.app_context():
             assert db.session.query(Benefit).filter_by(name=name).one_or_none() is None
 
@@ -459,7 +494,7 @@ class TestPagesRender:
 
         with app.app_context():
             b = Benefit(name=f"Rendered {uuid.uuid4().hex[:6]}",
-                        initiative_id=org_a["initiative_id"], organization_id=org_a["org_id"],
+                        strategic_initiative_id=org_a["programme_id"], organization_id=org_a["org_id"],
                         benefit_type="cost_saving", baseline_value=100, target_value=50,
                         actual_value=75, status="realising")
             a = Assumption(statement=f"Rendered {uuid.uuid4().hex[:6]}",

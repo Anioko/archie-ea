@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -112,6 +113,75 @@ def test_nullable_metrics_do_not_become_zero():
     assert measure.to_dict()["baseline_value"] is None
 
 
+def test_financial_measures_use_money_precision_and_quantities_keep_six_decimals(
+    db_session, make_org
+):
+    org = make_org("measure-storage")
+    owner, programme, stream = _programme_graph(db_session, org, "measure-storage")
+    outcome = ProgrammeOutcomeCommitment(
+        organization_id=org.id,
+        programme_id=programme.id,
+        workstream_id=stream.id,
+        statement="Reduce annual cost",
+        owner_id=owner.id,
+        improvement_direction="decrease",
+        lifecycle="committed",
+    )
+    db_session.add(outcome)
+    db_session.flush()
+
+    money = MeasureDefinition(
+        organization_id=org.id,
+        outcome_commitment_id=outcome.id,
+        metric_name="Annual run cost",
+        unit="GBP",
+        currency="GBP",
+        aggregation="sum",
+        baseline_amount=Decimal("1000000.12"),
+        target_amount=Decimal("900000.10"),
+    )
+    quantity = MeasureDefinition(
+        organization_id=org.id,
+        outcome_commitment_id=outcome.id,
+        metric_name="Average cycle time",
+        unit="days",
+        aggregation="average",
+        baseline_value=Decimal("12.345678"),
+        target_value=Decimal("8.123456"),
+    )
+    db_session.add_all([money, quantity])
+    db_session.flush()
+
+    assert MeasureDefinition.__table__.c.baseline_amount.type.precision == 18
+    assert MeasureDefinition.__table__.c.baseline_amount.type.scale == 2
+    assert MeasureDefinition.__table__.c.baseline_value.type.precision == 24
+    assert MeasureDefinition.__table__.c.baseline_value.type.scale == 6
+    assert money.to_dict()["baseline_value"] == "1000000.12"
+    assert quantity.to_dict()["baseline_value"] == "12.345678"
+
+
+def test_currency_measure_rejects_non_iso_code():
+    with pytest.raises(ValueError, match="ISO 4217"):
+        MeasureDefinition(
+            metric_name="Invented money",
+            unit="ZZZ",
+            currency="ZZZ",
+            aggregation="sum",
+        )
+
+
+def test_fresh_measure_metadata_enforces_iso_and_storage_separation():
+    checks = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in MeasureDefinition.__table__.constraints
+        if constraint.name
+    }
+    assert " IN (" in checks["ck_measure_definition_currency"]
+    assert "~" not in checks["ck_measure_definition_currency"]
+    assert "baseline_amount" in checks["ck_measure_definition_value_storage"]
+    assert "baseline_value IS NULL" in checks["ck_measure_definition_value_storage"]
+
+
 def test_new_programme_children_reject_cross_tenant_parents(db_session, make_org):
     org_a, org_b = make_org("parent-a"), make_org("parent-b")
     owner_a, programme_a, stream_a = _programme_graph(db_session, org_a, "A")
@@ -178,6 +248,15 @@ def test_new_programme_children_reject_cross_tenant_parents(db_session, make_org
 
 def test_roadmap_item_is_tenant_scoped():
     assert issubclass(RoadmapItem, TenantMixin)
+
+
+def test_solution_programme_fk_is_restrict_in_fresh_metadata():
+    programme_fk = next(
+        foreign_key
+        for foreign_key in Solution.__table__.c.initiative_id.foreign_keys
+        if foreign_key.target_fullname == "strategic_initiatives.id"
+    )
+    assert programme_fk.ondelete == "RESTRICT"
 
 
 @pytest.mark.parametrize("delivery_kind", ["roadmap", "work_package", "benefit", "solution"])
