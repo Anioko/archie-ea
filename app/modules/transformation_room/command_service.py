@@ -97,6 +97,12 @@ class CommandService:
         return secrets.token_hex(32)
 
     @staticmethod
+    def _require_authorizer(authorizer: OperationAuthorizer) -> OperationAuthorizer:
+        if not callable(authorizer):
+            raise TypeError("authorizer must be callable")
+        return authorizer
+
+    @staticmethod
     def claim_from_record(record: CommandIdempotencyRecord) -> CommandClaim:
         return CommandClaim(
             receipt_id=record.id,
@@ -119,6 +125,7 @@ class CommandService:
         handler: Callable[[Session, CommandClaim], DomainMutationResult],
         natural_key_resolver: OperationNaturalKeyResolver | None = None,
     ) -> CommandResult:
+        authorizer = cls._require_authorizer(authorizer)
         digest = canonical_request_digest(payload)
         claim_or_result = cls.claim_or_reconcile(
             actor=actor,
@@ -172,6 +179,7 @@ class CommandService:
         handler: Callable[[Session, CommandClaim], DomainMutationResult],
         natural_key_resolver: OperationNaturalKeyResolver | None = None,
     ) -> CommandResult:
+        authorizer = cls._require_authorizer(authorizer)
         return cls._execute_claim(
             actor=actor,
             operation=operation,
@@ -242,6 +250,7 @@ class CommandService:
         authorizer: OperationAuthorizer,
     ) -> CommandClaim | CommandResult:
         """Commit a first/reclaimed claim independently, reconciling effects first."""
+        authorizer = cls._require_authorizer(authorizer)
         if not operation or not idempotency_key or not natural_key:
             raise ValueError("operation, idempotency_key and natural_key are required")
         if len(request_digest) != 64:

@@ -637,6 +637,141 @@ def test_result_replay_runs_authorizer_before_returning_persisted_result(
     assert _counts(command_fixture) == (1, 1, 1)
 
 
+@pytest.mark.parametrize(
+    "invalid_authorizer",
+    (None, object()),
+    ids=("none", "non-callable"),
+)
+def test_execute_rejects_invalid_authorizer_before_claim_or_domain_work(
+    command_fixture,
+    invalid_authorizer,
+):
+    """Catches the high-level command entry accepting an auth bypass value."""
+    resolver_called = False
+    handler_called = False
+
+    def resolver(_session, _actor, _natural_key, _claim):
+        nonlocal resolver_called
+        resolver_called = True
+        return None
+
+    def handler(_session, _claim):
+        nonlocal handler_called
+        handler_called = True
+        return DomainMutationResult({}, {}, ())
+
+    with pytest.raises(TypeError, match="authorizer must be callable"):
+        CommandService.execute(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            idempotency_key="invalid-execute-authorizer",
+            payload={"name": command_fixture.domain_name},
+            natural_key="programme-intake:invalid-execute-authorizer",
+            authorizer=invalid_authorizer,
+            natural_key_resolver=resolver,
+            handler=handler,
+        )
+
+    assert resolver_called is False
+    assert handler_called is False
+    with Session(db.engine) as session:
+        receipt_count = session.scalar(
+            select(db.func.count())
+            .select_from(CommandIdempotencyRecord)
+            .where(
+                CommandIdempotencyRecord.organization_id
+                == command_fixture.organization_id,
+                CommandIdempotencyRecord.idempotency_key
+                == "invalid-execute-authorizer",
+            )
+        )
+    assert receipt_count == 0
+    assert _counts(command_fixture) == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "invalid_authorizer",
+    (None, object()),
+    ids=("none", "non-callable"),
+)
+def test_claim_or_reconcile_rejects_invalid_authorizer_before_receipt(
+    command_fixture,
+    invalid_authorizer,
+):
+    """Catches direct claim/reconciliation accepting an auth bypass value."""
+    payload = {"name": command_fixture.domain_name}
+    with pytest.raises(TypeError, match="authorizer must be callable"):
+        CommandService.claim_or_reconcile(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            idempotency_key="invalid-claim-authorizer",
+            request_digest=canonical_request_digest(payload),
+            natural_key="programme-intake:invalid-claim-authorizer",
+            authorizer=invalid_authorizer,
+        )
+
+    with Session(db.engine) as session:
+        receipt_count = session.scalar(
+            select(db.func.count())
+            .select_from(CommandIdempotencyRecord)
+            .where(
+                CommandIdempotencyRecord.organization_id
+                == command_fixture.organization_id,
+                CommandIdempotencyRecord.idempotency_key
+                == "invalid-claim-authorizer",
+            )
+        )
+    assert receipt_count == 0
+    assert _counts(command_fixture) == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "invalid_authorizer",
+    (None, object()),
+    ids=("none", "non-callable"),
+)
+def test_execute_claim_rejects_invalid_authorizer_before_resolver_or_handler(
+    command_fixture,
+    invalid_authorizer,
+):
+    """Catches the low-level execution entry treating None as already authorized."""
+    payload = {"name": command_fixture.domain_name}
+    claim = CommandService.claim_or_reconcile(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="invalid-execute-claim-authorizer",
+        request_digest=canonical_request_digest(payload),
+        natural_key="programme-intake:invalid-execute-claim-authorizer",
+        authorizer=_allow_command,
+    )
+    resolver_called = False
+    handler_called = False
+
+    def resolver(_session, _actor, _natural_key, _claim):
+        nonlocal resolver_called
+        resolver_called = True
+        return DomainMutationResult({}, {}, ())
+
+    def handler(_session, _claim):
+        nonlocal handler_called
+        handler_called = True
+        return DomainMutationResult({}, {}, ())
+
+    with pytest.raises(TypeError, match="authorizer must be callable"):
+        CommandService.execute_claim(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            claim=claim,
+            authorizer=invalid_authorizer,
+            natural_key_resolver=resolver,
+            handler=handler,
+        )
+
+    assert resolver_called is False
+    assert handler_called is False
+    assert _counts(command_fixture) == (0, 0, 0)
+
+
 def test_cross_actor_domain_row_recovery_is_authorized_before_resolver(
     command_fixture,
 ):

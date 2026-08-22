@@ -826,3 +826,177 @@ roles []
 2. Docker remains unavailable in this Windows test environment. Compose
    structure was already pinned in round 1; this round exercises role drift,
    cleanup and bypass denial directly against PostgreSQL.
+
+---
+
+# Review fix round 3/5 — mandatory public authorization contract
+
+Status: **DONE_WITH_CONCERNS**
+
+Commit subject: `fix: require transformation replay authorization`
+
+The commit SHA is reported by the Task 3 status contract after this report and
+the implementation are committed together; a commit cannot contain its own SHA.
+
+## Files changed in this round
+
+- `app/modules/transformation_room/command_service.py`
+- `tests/test_transformation_command_service.py`
+- `docs/superpowers/plans/2026-08-22-application-rationalisation-transformation-room.md`
+- this report
+
+Task 1 programme/canonical-link models, Task 2 capability-tenancy files and the
+round 1/2 guard/runtime-role implementation remain unchanged. The ignored Task
+3 brief was not changed: no workspace helper required regeneration, and the
+tracked plan is the authoritative downstream contract.
+
+## Round 3 RED evidence
+
+Both database variables were
+`postgresql://postgres@127.0.0.1:5439/flask_test`.
+
+```powershell
+pytest -q tests/test_transformation_command_service.py::test_execute_rejects_invalid_authorizer_before_claim_or_domain_work tests/test_transformation_command_service.py::test_claim_or_reconcile_rejects_invalid_authorizer_before_receipt tests/test_transformation_command_service.py::test_execute_claim_rejects_invalid_authorizer_before_resolver_or_handler
+```
+
+The three tests are parametrized over `None` and `object()`, so they exercise
+six bypass attempts:
+
+```text
+6 failed, 14 warnings in 32.18s
+```
+
+- `execute(None/object)` and `claim_or_reconcile(None/object)` raised native
+  `'<type>' object is not callable` errors rather than the deterministic public
+  contract error.
+- `execute_claim(None)` did not raise at all and entered its private
+  already-authorized sentinel path: this was the concrete public bypass.
+- `execute_claim(object)` raised only when the object was invoked.
+
+In every case the test also measures that no receipt, resolver, handler,
+domain row, immutable result or outbox effect may occur before rejection.
+
+## Round 3 GREEN evidence
+
+The same six-case command after adding entry validation:
+
+```text
+6 passed, 14 warnings in 21.37s
+```
+
+Fresh consolidated Task 3 suite:
+
+```powershell
+pytest -q tests/test_transformation_command_service.py tests/test_transformation_db_guards.py tests/test_transformation_runtime_role.py
+```
+
+```text
+collected 50 items
+tests/test_transformation_command_service.py .......................... [ 52%]
+tests/test_transformation_db_guards.py ......................           [ 96%]
+tests/test_transformation_runtime_role.py ..                            [100%]
+50 passed, 97 warnings in 56.01s
+```
+
+Fresh prior-interface regression suite:
+
+```powershell
+pytest -q tests/test_transformation_programme_models.py tests/test_schema_reconciliation.py tests/test_capability_tenancy_cutover.py tests/test_tenant_isolation.py
+```
+
+```text
+64 passed, 139 warnings in 58.76s
+```
+
+Repository gates:
+
+```text
+python scripts/verify.py --gate schema-drift
+ok schema-drift 35.6s [0 <= 0]
+1 passed, 0 failed, 0 skipped
+
+python scripts/verify.py --gate raw-sql-tenancy
+ok raw-sql-tenancy 12.0s [0 <= 0]
+1 passed, 0 failed, 0 skipped
+
+python scripts/verify.py --tag static
+30 passed, 0 failed, 1 skipped
+```
+
+The single static skip remains `css-build`: this checkout has no vendored
+Tailwind executable and this round changes no frontend artifact. Relevant
+`ruff check` reports `All checks passed!`; `git diff --check` is empty.
+
+## Public-entry and downstream-plan consistency evidence
+
+AST inspection of the production command module and Task 3 command tests found:
+
+```text
+task3_public_callers=25
+by_entry={'execute': 6, 'claim_or_reconcile': 14, 'execute_claim': 5}
+missing_authorizer=[]
+caller_contract=PASS
+```
+
+An automated audit bounded to Tasks 4–14 in the tracked release plan found:
+
+```text
+downstream_execute_examples=10
+missing_authorizer=
+permissive_authorizer=
+missing_task_headings=
+public_contracts=3
+plan_consistency=PASS
+```
+
+Every downstream `CommandService.execute` example now passes a named,
+operation-specific authorizer factory. The shared interface defines
+`OperationAuthorizer`, all three mandatory public signatures and their ordering
+guarantee. Tasks 10–14 explicitly prevent routes, browser code, AI tools and
+compatibility adapters from constructing or accepting an authorization result;
+canonical services own the authorizer. A command-backed migration apply step
+must use a deployment-actor/tenant/operation/key-specific maintenance
+authorizer. Release journeys must prove denial before both persisted-result and
+domain-row-only reconciliation.
+
+## Design and security evidence
+
+- `_require_authorizer()` is the first executable statement in `execute`,
+  `execute_claim` and `claim_or_reconcile`. It accepts only callables and raises
+  the stable `TypeError("authorizer must be callable")` before digesting,
+  validating, claiming, replaying, resolving or handling.
+- The private `_execute_claim` sentinel remains private and is reached only by
+  `execute` after `claim_or_reconcile` has invoked the validated authorizer. The
+  public `execute_claim` can no longer select that sentinel path.
+- Authorization factories are required to verify exact operation/natural key,
+  tenant-load captured IDs through the supplied independent session and recheck
+  current server-side role/assignment. Mutable mutation preconditions remain in
+  the locked handler so legitimate replay can reconcile without weakening
+  authority.
+- All supplied identifiers in the implemented command service retain explicit
+  `organization_id` predicates; the zero raw-SQL-tenancy measurement confirms
+  no regression.
+
+## Round 3 self-review
+
+- Removing validation from any one public method makes its corresponding two
+  parametrized cases fail. Moving validation later makes the no-receipt or
+  no-resolver/handler assertions fail.
+- The high-level `execute` path intentionally authorizes exactly once before
+  claim/replay and then calls only the private execution method. Direct public
+  `execute_claim` authorizes independently before its resolver.
+- Existing tests use `_allow_command` only as an explicit test fixture callable;
+  no production or downstream plan example uses a permissive default.
+- The plan update is atomic with the runtime signature: later Task 4–9 examples
+  compile conceptually against the mandatory interface, while Tasks 10–14 are
+  constrained to those public services rather than inventing alternate entry
+  points.
+
+## Round 3 concerns
+
+1. The unchanged missing Tailwind CLI leaves `css-build` skipped; no frontend
+   artifact is in this round.
+2. Docker remains unavailable in this Windows test environment. This round
+   changes only command authorization and the tracked future-task contract;
+   the real PostgreSQL runtime-role/guard matrix remains green at 50/50 focused
+   tests.

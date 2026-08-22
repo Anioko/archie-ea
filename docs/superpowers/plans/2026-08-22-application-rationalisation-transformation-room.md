@@ -21,6 +21,7 @@
 - Browser mutations retain CSRF protection. JSON mutations require `Idempotency-Key`, use `(organization_id, actor_id, operation, idempotency_key)` uniqueness, bind a request digest, and reject digest reuse with `409`.
 - Command claims use a monotonically increasing `lease_generation` and cryptographically random `claim_token`; a worker checks both under a locked receipt before domain writes and finalisation. Domain mutation, immutable `OperationResult`/outbox insertion and receipt success finalisation commit atomically.
 - Each command has a database-enforced natural key. On lease expiry, reconcile `OperationResult` and the natural-key record before re-execution. `retryable_failure` is never returned as business success.
+- Every public command entry requires a callable, operation-specific `OperationAuthorizer`. It runs before receipt creation, immutable-result replay, natural-key resolution or the mutation handler; `None`, non-callables and permissive defaults are forbidden.
 - `EvidenceRecord`, `EvidenceHeadEvent`, `TransformationOptionVersion`, `DecisionBriefVersion`, brief citations, `DecisionEvent`, `ARBSubjectEvidenceSnapshot`, `OutcomeMeasurement`, `OperationResult` and completed `DeliveryExportAttempt` are append-only; PostgreSQL rejects direct `UPDATE` and `DELETE`.
 - Evidence head movement occurs only through the fixed-search-path `SECURITY DEFINER` guarded function, with same-chain identity, predecessor, exact revision increment, current fenced command and same-transaction `EvidenceHeadEvent` checks.
 - `source_identity` is non-null and canonically normalised. Manual attestations use `attestation:user:<user_id>`; unknowns use `unknown:<responsible-role>:<stable-scope-key>`; empty, whitespace-only or non-canonical values are rejected.
@@ -569,7 +570,7 @@ Commit only the listed files with subject `feat: enforce capability ownership bo
 
 **Interfaces:**
 - Consumes: Task 1 tenant schema and PostgreSQL reconciliation hook.
-- Produces: `ActorContext`, `CommandClaim`, `CommandResult`, `CommandConflict`, `StaleClaim`, `CommandService.execute`, `OperationResult`, and idempotent trigger installation.
+- Produces: `ActorContext`, `CommandClaim`, `CommandResult`, `CommandConflict`, `StaleClaim`, `OperationAuthorizer = Callable[[Session, ActorContext, str, str], None]`, `OperationNaturalKeyResolver = Callable[[Session, ActorContext, str, CommandClaim], DomainMutationResult | None]`, the three public `CommandService` entries below, `OperationResult`, and idempotent trigger installation.
 
 - [ ] **Step 1: Write the seven crash-point and stale-worker tests first**
 
@@ -587,7 +588,7 @@ assert count_domain_rows() == 1
 assert count_operation_results() == 1
 ```
 
-Also test same-key/different-digest `409`, active lease retry metadata, immutable digest/identity/natural-key/result fields, outbox event IDs and exact canonical replay response.
+Also test same-key/different-digest `409`, active lease retry metadata, immutable digest/identity/natural-key/result fields, outbox event IDs and exact canonical replay response. For each of `execute`, `execute_claim` and `claim_or_reconcile`, pass both `None` and a non-callable authorizer and assert `TypeError("authorizer must be callable")` occurs before receipt, resolver or handler work.
 
 - [ ] **Step 2: Run to establish RED**
 
@@ -615,37 +616,53 @@ class CommandClaim:
     request_digest: str
     natural_key: str
 
+OperationAuthorizer: TypeAlias = Callable[
+    [Session, ActorContext, str, str], None
+]
+OperationNaturalKeyResolver: TypeAlias = Callable[
+    [Session, ActorContext, str, CommandClaim], DomainMutationResult | None
+]
+
 class CommandService:
     @classmethod
     def execute(cls, *, actor: ActorContext, operation: str, idempotency_key: str,
                 payload: Mapping[str, Any], natural_key: str,
-                handler: Callable[[Session, CommandClaim], DomainMutationResult]) -> CommandResult:
+                authorizer: OperationAuthorizer,
+                handler: Callable[[Session, CommandClaim], DomainMutationResult],
+                natural_key_resolver: OperationNaturalKeyResolver | None = None,
+                ) -> CommandResult:
+        authorizer = cls._require_authorizer(authorizer)
         digest = canonical_request_digest(payload)
         claim_or_result = cls.claim_or_reconcile(
             actor=actor, operation=operation, idempotency_key=idempotency_key,
-            request_digest=digest, natural_key=natural_key,
+            request_digest=digest, natural_key=natural_key, authorizer=authorizer,
         )
         if isinstance(claim_or_result, CommandResult):
             return claim_or_result
-        claim = claim_or_result
-        try:
-            with db.session.begin():
-                cls.assert_fence(db.session, actor=actor, claim=claim)
-                mutation = handler(db.session, claim)
-                cls.assert_fence(db.session, actor=actor, claim=claim)
-                result = cls.insert_operation_result(
-                    db.session, actor=actor, operation=operation,
-                    claim=claim, mutation=mutation,
-                )
-                cls.finalise_succeeded(db.session, claim=claim, result_id=result.id)
-            return cls.to_command_result(result, created=True, idempotent=False)
-        except KnownPreCommitTransient as error:
-            db.session.rollback()
-            cls.mark_retryable(claim=claim, error_class=type(error).__name__)
-            raise
+        return cls._execute_claim(
+            actor=actor, operation=operation, claim=claim_or_result,
+            authorizer=None,  # private only: execute already authorized above
+            handler=handler, natural_key_resolver=natural_key_resolver,
+        )
+
+    @classmethod
+    def execute_claim(cls, *, actor: ActorContext, operation: str,
+                      claim: CommandClaim, authorizer: OperationAuthorizer,
+                      handler: Callable[[Session, CommandClaim], DomainMutationResult],
+                      natural_key_resolver: OperationNaturalKeyResolver | None = None,
+                      ) -> CommandResult: ...
+
+    @classmethod
+    def claim_or_reconcile(cls, *, actor: ActorContext, operation: str,
+                           idempotency_key: str, request_digest: str,
+                           natural_key: str,
+                           authorizer: OperationAuthorizer,
+                           ) -> CommandClaim | CommandResult: ...
 ```
 
-Define `canonical_request_digest()` as SHA-256 over sorted canonical JSON; `claim_or_reconcile()` as a constraint-backed PostgreSQL upsert on `(organization_id, actor_id, operation, idempotency_key)` in the short claim transaction; `assert_fence()` as a locked receipt query plus actor/tenant/digest/generation/token/unexpired checks; `insert_operation_result()` as one immutable result and immutable outbox rows under unique `(organization_id, operation, natural_key)`; `finalise_succeeded()` as the same fenced receipt update; and `to_command_result()` as a copy of persisted IDs/response. The short claim transaction binds the digest and commits independently. On conflict it returns an existing success, rejects a changed digest, returns retry guidance for an active lease, or reconciles `OperationResult` and the natural-key row before incrementing generation and replacing token on an expired lease. Validation/auth failures call `mark_non_retryable()`; known pre-commit transient failures call `mark_retryable()`; uncertain commit outcomes leave the receipt reconcilable and never assert failure or success.
+`_require_authorizer()` is the first executable statement in all three public entries and raises `TypeError("authorizer must be callable")`; only the private `_execute_claim()` accepts the `None` sentinel after `execute()` has already authorized. Define `canonical_request_digest()` as SHA-256 over sorted canonical JSON; `claim_or_reconcile()` as a constraint-backed PostgreSQL upsert on `(organization_id, actor_id, operation, idempotency_key)` in a short independent session; and `execute_claim()` as one independent transaction containing resolver/handler mutation, immutable result/outbox insertion and final fenced receipt update. `claim_or_reconcile()` invokes the authorizer before receipt creation or `OperationResult` lookup; public `execute_claim()` invokes it before resolver/handler work. On conflict the service returns an existing authorized success, rejects a changed digest, returns retry guidance for an active lease, or reconciles `OperationResult` and an operation-specific natural-key resolver before retry. Validation/auth failures call `mark_non_retryable()` only after a claim exists; known pre-commit transient failures call `mark_retryable()`; uncertain commit outcomes leave the receipt reconcilable and never assert failure or success.
+
+Every downstream service supplies an operation-specific authorizer factory. The returned callable must tenant-load every captured ID using its supplied `Session`, verify the exact `operation` and canonical `natural_key`, and recheck current server-side role/assignment authority. It raises `NotFound` or `NotAuthorised` on failure and returns `None` only after success. It must not check mutable mutation preconditions such as draft/open/not-yet-materialised state, because those may legitimately differ during replay; the locked handler checks those after reconciliation. A shared permissive authorizer, `lambda: None`, truthy flag or client-provided authorization result is forbidden.
 
 - [ ] **Step 4: Install database immutability and fencing triggers**
 
@@ -727,6 +744,7 @@ class TransformationProgrammeService:
         return CommandService.execute(
             actor=actor, operation="programme.create", idempotency_key=command_key,
             payload=asdict(validated), natural_key=natural_key,
+            authorizer=cls.authorise_create_programme(validated, natural_key),
             handler=lambda session, claim: cls._insert_intake_graph(
                 session=session, actor=actor, request=validated, claim=claim,
             ),
@@ -749,6 +767,7 @@ class TransformationProgrammeService:
         return CommandService.execute(
             actor=actor, operation="programme.assign_role", idempotency_key=command_key,
             payload=payload, natural_key=canonical_role_assignment_key(payload),
+            authorizer=cls.authorise_role_assignment_replay(payload),
             handler=lambda session, claim: cls._insert_role_assignment(
                 session, actor, programme, workstream, user, payload, claim),
         )
@@ -763,6 +782,8 @@ class TransformationProgrammeService:
 ```
 
 `validate_intake()` accepts the eight workstream types, canonical roles, valid ISO currency and same-tenant users. `_insert_intake_graph()` creates `StrategicInitiative(record_kind="transformation_programme")`, the owner assignment, first workstream, outcome and measure; flushes once; and returns `DomainMutationResult` containing all four canonical IDs and one `programme.created` outbox event. It never commits. The named load helpers always include `organization_id == actor.organization_id`; the authorization helpers apply the role table from the spec. `canonical_role_assignment_key()` hashes programme/workstream/user/role/effective-from. `update_objective()` delegates through `CommandService.execute`, locks the workstream, checks revision/role, changes only objective/scope/revision and emits `workstream.objective_updated`. `archive()` similarly locks the programme, requires the archive role and retention invariants, sets `archived_at/status`, and emits `programme.archived`. Keep `ProgrammeSetupService` as a compatibility adapter that delegates business-first creation and does not create a Solution; retain its old technology-specific methods only for explicit legacy solution journeys.
+
+`authorise_create_programme(validated, natural_key)` returns an `OperationAuthorizer` that requires exact operation `programme.create`, exact captured natural key, the server-side programme-create role and a same-tenant owner loaded through its supplied session. `authorise_role_assignment_replay(payload)` requires exact operation/key, tenant-loads programme, optional workstream and assigned user from payload, then applies current role-assignment authority. `update_objective()` and `archive()` must likewise pass `authorise_objective_update(workstream_id, expected_revision)` and `authorise_programme_archive(programme_id, expected_revision)` factories; neither may reuse pre-command authorization as a boolean or skip replay authorization.
 
 - [ ] **Step 4: Implement pure versioned gate evaluation and locked transition**
 
@@ -790,12 +811,16 @@ class TransformationGateService:
             actor=actor, operation="workstream.transition", idempotency_key=command_key,
             payload=request,
             natural_key=f"transition:{workstream_id}:{expected_revision}:{target_stage}",
+            authorizer=cls.authorise_transition(
+                workstream_id, target_stage, expected_revision),
             handler=lambda session, claim: cls._locked_transition(
                 session, actor, request, claim),
         )
 ```
 
 `load_policy_snapshot()` explicitly tenant-loads the workstream plus accepted candidates, active evidence heads, requests/waivers, immutable options/briefs, ARB cycle/conditions, work/roadmap/benefits and measurements. `evaluate_requirements()` implements each persisted requirement in the approved gate table and never mutates. `_locked_transition()` reloads the workstream `FOR UPDATE`, checks `expected_revision`, reruns evaluation inside that transaction, raises `BlockedByEvidence` with stable blockers when denied, updates stage/revision and inserts its audit event, then returns `DomainMutationResult`. `next_action()` evaluates the single valid forward transition for each non-terminal workstream in stage order and returns the first blocker/action; it returns null only when every workstream is terminal. No request may set lifecycle directly.
+
+`authorise_transition(workstream_id, target_stage, expected_revision)` returns an `OperationAuthorizer` that requires exact operation/key, tenant-loads the workstream and programme, and rechecks current transition authority. It deliberately does not require the old revision or gate readiness; `_locked_transition()` owns those mutable preconditions after replay reconciliation.
 
 - [ ] **Step 5: Convert the create route to the canonical service**
 
@@ -862,12 +887,16 @@ class RationalisationDiscoveryService:
         return CommandService.execute(
             actor=actor, operation="candidate.accept", idempotency_key=command_key,
             payload=request, natural_key=f"candidate:{workstream_id}:application:{application_id}",
+            authorizer=cls.authorise_candidate_acceptance(
+                workstream_id, application_id),
             handler=lambda session, claim: cls._accept_recomputed_candidate(
                 session, actor, request, claim),
         )
 ```
 
 `signal_rules()` returns seven named rule objects for capability overlap, cost, EOL, risk, technical health, dependency concentration and owner/data gaps. Each `evaluate()` uses explicit tenant-constrained queries, returns source IDs/rule version/evaluated time, and emits a named unknown with null confidence when inputs are absent. `_accept_recomputed_candidate()` locks the workstream/application, checks authorization, recomputes all selected signals inside the command transaction, compares canonical digests, inserts the unique candidate and immutable signal rows, and returns their IDs in `DomainMutationResult`. If application owner is absent it also inserts the required `application_owner` EvidenceRequest assigned first to the configured portfolio steward, otherwise the workstream architect; it does not advance the gate.
+
+`authorise_candidate_acceptance(workstream_id, application_id)` returns an `OperationAuthorizer` that requires exact operation/key, tenant-loads both records with the supplied session, verifies rationalisation-workstream membership and rechecks the current programme/workstream role. Signal freshness and absence of an existing candidate remain locked handler preconditions, not replay authorization.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -955,12 +984,15 @@ class TransformationEvidenceService:
             actor=actor, operation="evidence.attest", idempotency_key=command_key,
             payload=payload,
             natural_key=cls.evidence_natural_key(payload),
+            authorizer=cls.authorise_attestation(request.id, payload),
             handler=lambda session, claim: cls._append_and_advance(
                 session, actor, request, payload, claim),
         )
 ```
 
 Set `INVENTORY_FRESHNESS = timedelta(days=90)`. Implement `parse_positive_int`, `load_application_for_tenant`, `lock_application`, `canonical_inventory_fields` and `sha256_canonical` as strict module helpers; the latter uses the same canonical JSON rules as Task 3. `_append_and_advance()` locks/upserts the claim head, verifies expected revision, inserts the immutable evidence row and `EvidenceHeadEvent`, calls the guarded database function, and returns `DomainMutationResult`; any guard failure rolls back the inserted row. `record_observation()` resolves the registered adapter, reads/checksums the source under lock and calls `_append_and_advance()`. `accept_request()` locks request/evidence, verifies assignment or architect override, same claim/subject and current head, then marks accepted and links the evidence in one command. `resolve_conflict()` requires decision authority, verifies the selected evidence is one cited leaf, records the governing-source rationale as a new immutable resolution record and advances its own resolution head. `active_evidence()` joins only through `EvidenceClaimHead.current_record_id` and verifies tenant/subject membership. Canonicalize source identities with NFC normalization, lower-cased adapter/URI scheme/host and adapter-specific opaque-key preservation. Attestations remain separate sources. A disagreement appends a conflict row citing both heads; only governed source correction or decision-authority source selection resolves the gate.
+
+`authorise_attestation(request_id, payload)` returns an `OperationAuthorizer` that requires exact `evidence.attest` operation/key, tenant-loads the request without requiring mutable `open` state, and rechecks assignee/architect authority. The handler alone locks and requires `open`. `record_observation()`, `accept_request()` and `resolve_conflict()` each pass their own source/request/conflict-specific authorizer factory that tenant-loads captured IDs and rechecks adapter correction, assignee/override or decision authority before any result replay.
 
 - [ ] **Step 5: Install exact guarded head function and append-only triggers**
 
@@ -1014,6 +1046,7 @@ class TransformationOptionService:
         return CommandService.execute(
             actor=actor, operation="option.freeze", idempotency_key=command_key,
             payload=payload, natural_key=f"option:{option.id}:version:{expected_revision}",
+            authorizer=cls.authorise_option_freeze(option.id, expected_revision),
             handler=lambda session, claim: cls._lock_validate_and_insert_version(
                 session, actor, option.id, payload, claim),
         )
@@ -1050,6 +1083,7 @@ class DecisionBriefService:
         return CommandService.execute(
             actor=actor, operation="brief.freeze", idempotency_key=command_key,
             payload=request, natural_key=f"brief:{brief_id}:version:{expected_revision}",
+            authorizer=cls.authorise_brief_freeze(brief_id, expected_revision),
             handler=lambda session, claim: cls._freeze_locked_snapshot(
                 session, actor, request, claim),
         )
@@ -1060,6 +1094,8 @@ class DecisionBriefService:
 ```
 
 `_lock_validate_and_insert_version()` checks option revision, required ranges/currency/assumptions/dependencies/impacts/reversibility/technology flag, inserts the next immutable version plus hash and returns `DomainMutationResult`. `load_versions_for_tenant()` requires exact input cardinality and same tenant; range aggregation returns null unless currency and operands are comparable. `build_freeze_request()` rejects duplicate IDs and client totals. `_freeze_locked_snapshot()` locks the brief, option versions, evidence heads, outcome and measure rows; reruns the gate; requires two distinct options or the persisted exception; verifies human AI review and acknowledgements; inserts version/citations/event with canonical hash; and returns their IDs. Canonical serialization uses sorted keys, Decimal strings, UTC timestamps and explicit nulls. Re-read/lock cited rows immediately before insert and fail closed on membership, freshness or head changes.
+
+`authorise_option_freeze(option_id, expected_revision)` and `authorise_brief_freeze(brief_id, expected_revision)` return distinct `OperationAuthorizer` callables. Each requires its exact operation/canonical key, tenant-loads the option/brief and parent workstream, and rechecks current draft/decision role; neither requires the captured revision or mutable readiness state before replay.
 
 - [ ] **Step 5: Add database immutability and verify**
 
@@ -1142,6 +1178,8 @@ Implement `decision_brief_arb_readiness()` as a pure conversion that combines th
 
 `submit` locks the subject/cycle, verifies the snapshot/hash and authorization, creates cycle + canonical `ARBReviewItem` + `DecisionEvent` atomically, and returns the same result for same-version terminal replay. Decision authority comes from server roles/assignment and cannot equal a forged client field. Return-for-evidence/options closes the cycle; the next Decision Brief submission requires a new version. Conditions create canonical `ARBCondition` rows and `ApprovedWithConditions`; fulfilment/waiver service records evidence, authority, reason and expiry before projection to `Approved`.
 
+Every ARB submission, decision, return, condition fulfilment and waiver mutation delegates through `CommandService.execute` with its own `ARBSubmissionService.authorise_<operation>(subject_type, subject_id, captured_version_or_cycle_id)` factory. The callable verifies exact operation/key, tenant-loads the typed subject and rechecks current submitter/decision/condition authority before replay; cycle openness, terminal state, snapshot freshness and condition status remain locked handler preconditions.
+
 - [ ] **Step 6: Delegate compatibility routes**
 
 Every generic or legacy Solution/ArchitectureModel/ADR route calls the typed service or rejects unsupported subjects; none constructs `ARBReviewItem` directly. Preserve canonical deep links and response envelopes.
@@ -1191,6 +1229,8 @@ class TransformationExecutionService:
             actor=actor, operation="execution.materialise", idempotency_key=command_key,
             payload=request,
             natural_key=f"materialise:{decision_brief_version_id}:{sha256_canonical(request)}",
+            authorizer=cls.authorise_materialisation(
+                decision_brief_version_id, request),
             handler=lambda session, claim: cls._materialise_locked(
                 session, actor, request, claim),
         )
@@ -1205,6 +1245,8 @@ class TransformationExecutionService:
             actor=actor, operation="execution.create_solution", idempotency_key=command_key,
             payload=request,
             natural_key=f"solution:{decision_brief_version_id}:{option_version_id}",
+            authorizer=cls.authorise_solution_creation(
+                decision_brief_version_id, option_version_id),
             handler=lambda session, claim: cls._create_solution_if_required(
                 session, actor, request, claim),
         )
@@ -1228,12 +1270,16 @@ class OutcomeMeasurementService:
             actor=actor, operation="outcome.measure", idempotency_key=command_key,
             payload=request,
             natural_key=f"measurement:{benefit_id}:{source_identity}:{observed_at.isoformat()}:{source_version}",
+            authorizer=cls.authorise_measurement(
+                benefit_id, source_identity, observed_at, source_version),
             handler=lambda session, claim: cls._append_measurement_and_project(
                 session, actor, request, claim),
         )
 ```
 
 `validate_materialisation_request()` same-tenant loads the frozen version, approved cycle, actions, outcomes and active conditions and rejects any unresolved/expired condition. `_materialise_locked()` locks that graph, repeats authorization/gate checks, calls the canonical ArchiMate-backed WorkPackage creator, inserts RoadmapItems when scheduling applies and Benefits from the existing commitments/measures, and returns every ID in `DomainMutationResult`; unique materialisation keys handle races. `_create_solution_if_required()` additionally locks the selected captured option, requires its technology flag and explicit action, and creates one linked Solution. `validate_measurement()` authorizes the benefit owner/delegate, normalizes source identity and requires exactly one of value/unavailable reason. `_append_measurement_and_project()` locks Benefit, inserts immutable measurement, updates actual projection/status, records not-realised follow-up when measured target is missed, and returns canonical IDs. Completed DeliveryExportAttempt rows become immutable; retries create successor attempts.
+
+`authorise_materialisation(decision_brief_version_id, request)`, `authorise_solution_creation(decision_brief_version_id, option_version_id)` and `authorise_measurement(benefit_id, source_identity, observed_at, source_version)` each return a distinct `OperationAuthorizer`. They require their exact operation/key, tenant-load the captured version/option/benefit graph and recheck execution architect or benefit owner/delegate authority. Approval/conditions, technology flag, duplicate materialisation and measurement shape remain locked handler preconditions. Export/retry commands likewise use delivery-export-specific authorizers that tenant-load the work item and recheck export authority.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -1297,6 +1343,8 @@ def api_error(code: str, message: str, *, status: int,
 ```
 
 Define `AuthenticationRequired` as a `TransformationError` with code `not_authenticated` and status 401 in Task 3, and `resolve_enterprise_roles()` as the existing role-access mapper plus effective programme assignments. No route issues `db.session.commit()` or creates a model. It parses, rejects server-owned fields, delegates, maps domain error types to exact HTTP semantics and emits opaque security audit events. Add per-user/tenant repeated foreign-ID probe rate limiting through the established limiter when configured.
+
+Routes never construct, accept or pass an authorization result. Each mutation delegates to the operation-specific public domain service, and that service constructs the mandatory `OperationAuthorizer` passed to `CommandService.execute`. A request field, route flag or permissive callback cannot replace that authorizer; replay authorization is therefore evaluated from current server-side identity, tenant and assignments before a prior result or natural-key recovery can be returned.
 
 - [ ] **Step 4: Register without a second programme blueprint**
 
@@ -1390,6 +1438,8 @@ Add `/solutions/programmes/<id>/overview`, `/workstreams`, each workstream stage
 
 Intake fields are objective, intended outcome/measure, scope, owner picker, target date/unavailable reason and first workstream. Technology platform/vendor appears only when workstream type is technology. Copy explicitly states that a technology Solution can be added after approval. Templates use existing macros/tokens, progressive stage rail, persisted canonical IDs and exact recovery links. Alpine sends `Idempotency-Key` and `If-Match`, checks `response.ok`, renders server errors and only toasts success after canonical IDs return.
 
+Room routes and browser code call only the Task 4–9 public services; they cannot call `CommandService` directly or supply an authorizer. Any later read-model mutation must likewise delegate to an operation-specific public service whose mandatory `OperationAuthorizer` is evaluated before command replay.
+
 - [ ] **Step 6: Make navigation intent-led and broaden architect synthesis**
 
 Add guarded navigation for **Transform**, **Decisions**, **Execute**, **Outcomes**. Extend existing Chief Architect service/template rather than replace its Solution insights; add Transformation posture alongside them. No role is removed and no solution-only metric is relabelled as enterprise posture.
@@ -1446,6 +1496,8 @@ Expected: missing tool actions/telemetry and boundary failures.
 
 Expose narrow tool operations that build `ActorContext` from authenticated runtime and call the same discovery/evidence/option/brief services. Draft responses contain `citations`, `confidence`, `unknowns`, `abstained`, `allowed_actions` and canonical deep link. Remove/directly reject model-constructor and client-state shortcuts for Transformation Room subjects.
 
+AI tools cannot construct, select or bypass an `OperationAuthorizer`. Every mutating tool calls the same operation-specific public domain service as HTTP, and that service supplies its mandatory authorizer to `CommandService.execute`; replay therefore rechecks the authenticated runtime actor before returning any prior or reconstructed result.
+
 - [ ] **Step 4: Add logs, metrics and audit hooks**
 
 Instrument command/transition rate/latency/failures, blockers, evidence age/completeness, ARB ageing/idempotent collisions, execution/optional-Solution rate, migration counts, page/API errors, AI invocation/abstention/correction/token cost/provider failure. Add alerts through the existing monitoring interface for repeated transition failures, immutability violations, denial spikes, migration divergence, ARB queue failure and overdue outcome jobs.
@@ -1497,6 +1549,8 @@ Scores become derived Evidence with formula/config/time; overrides/audits retain
 
 Canonical writes only. Legacy mutation endpoints delegate to canonical services where a mapping exists, otherwise return explicit read-only/migration-required response; no dual-write. `/applications/rationalization` remains discovery entry. Workbench/planning/tracking routes redirect to mapped persisted stages or render a non-destructive chooser. Existing programme drift/fit-gap/snapshot links map to room views. Application-specific legacy links remain read-only until mapped, then redirect with provenance banner. Add redirect-loop and cross-tenant tests.
 
+Compatibility endpoints never call `CommandService` directly and cannot pass a client-derived authorizer. Canonical delegates use the destination operation's public service and mandatory operation-specific authorizer. If the migration runner uses command receipts for an apply step, it supplies a dedicated maintenance authorizer that validates the authenticated deployment actor, exact organisation, operation and natural key from server-side state; a permissive migration callback is forbidden.
+
 - [ ] **Step 6: Add machine-verifiable reports and rollback evidence**
 
 `scripts/verify_transformation_migration.py` compares counts, source/target links, statuses, money totals by currency, fingerprints, unmapped/conflict lists and sampled dossier hashes. CLI supports `--organization-id`, `--resume-cursor`, `--json-report`, `--dry-run`; apply records every row. Rollback disables feature reads/writes and leaves additive canonical history intact; it does not undo governance/outcomes or return writes to a second authority.
@@ -1527,6 +1581,8 @@ Implement exact journeys: Enterprise Architect creates non-Solution programme; A
 - [ ] **Step 2: Add invariant journeys around concurrency and failure**
 
 Exercise command crash points, lease fencing, root/correction evidence races, typed ARB cycle races, materialisation races, subordinate rollback, foreign-ID 404, forged state/identity rejection, immutable direct SQL and null preservation as integrated flows.
+
+For HTTP, UI, AI and compatibility entry points, include replay-bypass journeys proving a missing, non-callable, permissive or client-supplied authorizer cannot reach claim, prior-result reconciliation, natural-key reconciliation or handler work. Assert the operation-specific service authorizer runs first for both same-receipt replay and domain-row-only crash recovery, and that a now-unauthorised actor receives no canonical result or existence disclosure.
 
 - [ ] **Step 3: Build the production synthetic verifier**
 
