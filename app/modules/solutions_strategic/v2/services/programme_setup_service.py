@@ -17,6 +17,19 @@ logger = logging.getLogger(__name__)
 class ProgrammeSetupService:
     """Orchestrates multi-step programme creation for the wizard UI."""
 
+    @staticmethod
+    def create_business_first_programme(*, actor, command_key, request):
+        """Compatibility boundary for canonical non-Solution programme intake."""
+        from app.modules.transformation_room.programme_service import (
+            TransformationProgrammeService,
+        )
+
+        return TransformationProgrammeService.create_programme(
+            actor=actor,
+            command_key=command_key,
+            request=request,
+        )
+
     # ------------------------------------------------------------------ #
     # Programme entity (PROG-001)                                          #
     # ------------------------------------------------------------------ #

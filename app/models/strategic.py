@@ -75,6 +75,8 @@ class StrategicInitiative(TenantMixin, db.Model):
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    archived_at = Column(DateTime, nullable=True)
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
 
     # Relationships
     owner = relationship("User", backref="owned_strategic_initiatives", foreign_keys=[owner_id])
