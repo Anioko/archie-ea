@@ -663,6 +663,14 @@ class _ReviewValidationError(ValueError):
 # which is a legitimate difference between an HTML-form endpoint and a JSON
 # API endpoint, not a reason to keep two copies of the business logic.
 def _create_arb_review_item(data: dict) -> ARBReviewItem:
+    # Solution reviews have a stronger evidence contract than generic ADR/model
+    # reviews.  This modal cannot collect or preserve that dossier, so it must
+    # never manufacture a solution-linked review item.
+    if data.get("solution_id"):
+        raise _ReviewValidationError(
+            "solution_id",
+            "Submit solutions through the canonical evidence-gated submission endpoint.",
+        )
     review_type = data.get("review_type")
     capability_required_types = ["solution_design", "capability_implementation", "technology_selection"]
 
@@ -931,6 +939,13 @@ def review_audit_trail_csv(id):
 def submit_review(id):
     """Submit a draft review item for ARB consideration."""
     try:
+        review = ARBReviewItem.query.get_or_404(id)
+        if review.solution_id:
+            flash(
+                "Solution reviews must be submitted from the solution evidence dossier.",
+                "error",
+            )
+            return redirect(url_for("arb.review_detail", id=id))
         review = arb_service.submit_item(id)
         flash(f"Review item {review.review_number} submitted successfully", "success")
         return redirect(url_for("arb.review_detail", id=id))

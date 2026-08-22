@@ -1530,8 +1530,8 @@ def _current_user_can_address_conditions() -> bool:
 def create_from_wizard():
     """Create a Solution record from the Architecture Assistant wizard submission.
 
-    Accepts the wizard payload (scope, capabilities, gap analysis, selected option,
-    arb_review_id) and creates a full Solution with linked analysis session,
+    Accepts the wizard payload (scope, capabilities, gap analysis, selected option)
+    and creates a full Solution with linked analysis session,
     problem definition, motivational elements, capability mappings, and recommendation.
     """
     try:
@@ -1544,7 +1544,6 @@ def create_from_wizard():
         capabilities = data.get("capabilities") or []
         gap_analysis = data.get("gap_analysis") or {}
         selected_option = data.get("selected_option") or {}
-        arb_review_id = data.get("arb_review_id")
 
         # Derive a name if title is empty
         if not title:
@@ -1578,11 +1577,6 @@ def create_from_wizard():
             solution.adm_phase_b_completed_at = now
         if selected_option:
             solution.adm_phase_e_completed_at = now
-
-        # Link to ARB review if provided
-        if arb_review_id:
-            solution.arb_review_item_id = arb_review_id
-            solution.arb_submission_date = now
 
         db.session.add(solution)
         db.session.flush()  # Get solution.id

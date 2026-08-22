@@ -327,6 +327,16 @@
             return {
                 checks: [], pct: 0, loading: false, loadError: false,
                 humanReviewed: false,
+                directEvidence: {
+                    design_reviewed: {passed: false, evidence: ''},
+                    security_impact_reviewed: {passed: false, evidence: ''},
+                    data_impact_reviewed: {passed: false, evidence: ''}
+                },
+                directEvidenceReady: function() {
+                    return Object.values(this.directEvidence).every(function(item) {
+                        return item.passed && item.evidence.trim().length > 0;
+                    });
+                },
                 submission: {state: 'idle', status: null, body: {}, title: '', message: '', missingEvidence: [], reasonCodes: [], reviewItemId: null, reviewNumber: null},
                 classifySubmissionFailure: function(error) {
                     const body = error && error.data ? error.data : {};
@@ -365,7 +375,8 @@
                     self.submission.state = 'submitting';
                     self.submission.missingEvidence = [];
                     Platform.fetch.post('/solutions/' + solutionId + '/submit-for-arb', {
-                        human_reviewed: self.humanReviewed
+                        human_reviewed: self.humanReviewed,
+                        direct_route_evidence: self.directEvidence
                     }, {silent: true}).then(function(data) {
                         data = data && data.data !== undefined ? data.data : data;
                         if (!data || !data.review_item_id || !data.review_number) {
@@ -396,8 +407,28 @@
                 <input type="checkbox" x-model="humanReviewed" class="mt-0.5 h-4 w-4 rounded border-input text-primary focus-visible:ring-1 focus-visible:ring-ring">
                 <span>I have reviewed the AI-assisted content and confirm this dossier is ready for governance.</span>
             </label>
+            <fieldset class="space-y-3 rounded-md border border-border p-3">
+                <legend class="px-1 text-xs font-medium text-foreground">Required review attestations</legend>
+                <template x-for="item in [
+                    {key: 'design_reviewed', label: 'Architecture design reviewed'},
+                    {key: 'security_impact_reviewed', label: 'Security impact reviewed'},
+                    {key: 'data_impact_reviewed', label: 'Data impact reviewed'}
+                ]" :key="item.key">
+                    <div class="space-y-1.5">
+                        <label class="flex items-start gap-2 text-xs text-foreground">
+                            <input type="checkbox" x-model="directEvidence[item.key].passed" class="mt-0.5 h-4 w-4 rounded border-input text-primary focus-visible:ring-1 focus-visible:ring-ring">
+                            <span x-text="item.label"></span>
+                        </label>
+                        <label class="block text-xs text-muted-foreground">
+                            Evidence note
+                            <input type="text" x-model.trim="directEvidence[item.key].evidence" :aria-label="item.label + ' evidence note'" placeholder="Record what was checked and where the evidence is held"
+                                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                        </label>
+                    </div>
+                </template>
+            </fieldset>
             <button type="button" id="bp-submit-arb-btn" @click="submit()"
-                    :disabled="!humanReviewed || submission.state === 'submitting' || submission.state === 'success'"
+                    :disabled="!humanReviewed || !directEvidenceReady() || submission.state === 'submitting' || submission.state === 'success'"
                     class="w-full inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:pointer-events-none disabled:opacity-50">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <span x-text="['blocked', 'unavailable', 'error'].includes(submission.state) ? 'Try submission again' : submission.state === 'submitting' ? 'Submitting…' : 'Submit to ARB'"></span>

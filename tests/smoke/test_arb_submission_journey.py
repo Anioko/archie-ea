@@ -53,6 +53,15 @@ def _open_dossier(page, base, solution_id):
     return page
 
 
+def _complete_attestations(dossier):
+    dossier.get_by_role("checkbox", name="Architecture design reviewed").check()
+    dossier.get_by_role("textbox", name="Architecture design reviewed evidence note").fill("Reviewed architecture diagrams and decision rationale.")
+    dossier.get_by_role("checkbox", name="Security impact reviewed").check()
+    dossier.get_by_role("textbox", name="Security impact reviewed evidence note").fill("Reviewed threat and control impacts.")
+    dossier.get_by_role("checkbox", name="Data impact reviewed").check()
+    dossier.get_by_role("textbox", name="Data impact reviewed evidence note").fill("Reviewed data classification and lifecycle impacts.")
+
+
 def test_journey_template_keeps_failure_taxonomy_and_canonical_success_contract():
     template = (ROOT / "app/templates/architecture_assistant/journey_v2_steps/_step6_review.html").read_text(encoding="utf-8")
     assert "Submission service unavailable" in template
@@ -87,6 +96,7 @@ def test_blocked_submission_recovers_once_to_one_canonical_review(browser, live_
         review_assertion.focus()
         page.keyboard.press("Space")
         assert review_assertion.is_checked()
+        _complete_attestations(dossier)
         page.keyboard.press("Tab")
         assert submit.evaluate("element => element === document.activeElement")
 
@@ -110,7 +120,8 @@ def test_blocked_submission_recovers_once_to_one_canonical_review(browser, live_
         assert canonical.count() == 1
         assert canonical.get_attribute("href") == "/arb/reviews/417"
         assert len(attempts) == 2
-        assert attempts == [{"human_reviewed": True}, {"human_reviewed": True}]
+        assert all(attempt["human_reviewed"] is True for attempt in attempts)
+        assert all(set(attempt["direct_route_evidence"]) == {"design_reviewed", "security_impact_reviewed", "data_impact_reviewed"} for attempt in attempts)
     finally:
         page.close()
 
@@ -140,6 +151,7 @@ def test_non_evidence_failures_never_render_evidence_recovery(
         _login(page, live_server, seeded["emails"]["solution_architect"])
         dossier = _open_dossier(page, live_server, arb_solution)
         dossier.get_by_role("checkbox", name="I have reviewed").check()
+        _complete_attestations(dossier)
         dossier.get_by_role("button", name="Submit to ARB").click()
         error = page.get_by_test_id("arb-submission-error")
         error.wait_for(state="visible")

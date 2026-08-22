@@ -362,6 +362,14 @@
         window.arbEvidenceSubmission = function(solutionId) {
             return {
                 humanReviewed: false, arbSubmitting: false, arbSubmitResult: null, arbSubmissionError: null,
+                directEvidence: {
+                    design_reviewed: {passed: false, evidence: ''},
+                    security_impact_reviewed: {passed: false, evidence: ''},
+                    data_impact_reviewed: {passed: false, evidence: ''}
+                },
+                directEvidenceReady: function() {
+                    return Object.values(this.directEvidence).every(function(item) { return item.passed && item.evidence.trim().length > 0; });
+                },
                 classifySubmissionFailure: function(error) {
                     const body = error && error.data ? error.data : {};
                     const status = error && error.status ? error.status : null;
@@ -378,7 +386,10 @@
                     if (this.arbSubmitting) return;
                     this.arbSubmitting = true; this.arbSubmissionError = null;
                     try {
-                        const response = await Platform.fetch.post('/architecture-journey/' + solutionId + '/submit-arb', {human_reviewed: this.humanReviewed}, {silent: true});
+                        const response = await Platform.fetch.post('/architecture-journey/' + solutionId + '/submit-arb', {
+                            human_reviewed: this.humanReviewed,
+                            direct_route_evidence: this.directEvidence
+                        }, {silent: true});
                         const result = response && response.data !== undefined ? response.data : response;
                         if (!result || !result.review_item_id || !result.review_number) throw new Error('Canonical review identity was not returned.');
                         this.arbSubmitResult = result;
@@ -401,8 +412,28 @@
                         <input type="checkbox" x-model="humanReviewed" class="mt-0.5 h-4 w-4 rounded border-input text-primary focus-visible:ring-1 focus-visible:ring-ring">
                         <span>I have reviewed the AI-assisted content and confirm this evidence dossier is ready for governance.</span>
                     </label>
+                    <fieldset class="max-w-md space-y-3 rounded-md border border-border p-3">
+                        <legend class="px-1 text-xs font-medium text-foreground">Required review attestations</legend>
+                        <template x-for="item in [
+                            {key: 'design_reviewed', label: 'Architecture design reviewed'},
+                            {key: 'security_impact_reviewed', label: 'Security impact reviewed'},
+                            {key: 'data_impact_reviewed', label: 'Data impact reviewed'}
+                        ]" :key="item.key">
+                            <div class="space-y-1.5">
+                                <label class="flex items-start gap-2 text-xs text-foreground">
+                                    <input type="checkbox" x-model="directEvidence[item.key].passed" class="mt-0.5 h-4 w-4 rounded border-input text-primary focus-visible:ring-1 focus-visible:ring-ring">
+                                    <span x-text="item.label"></span>
+                                </label>
+                                <label class="block text-xs text-muted-foreground">
+                                    Evidence note
+                                    <input type="text" x-model.trim="directEvidence[item.key].evidence" :aria-label="item.label + ' evidence note'" placeholder="Record what was checked and where the evidence is held"
+                                           class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                </label>
+                            </div>
+                        </template>
+                    </fieldset>
                 <button type="button" @click="submitEvidenceDossier()"
-                        :disabled="arbSubmitting || !humanReviewed"
+                        :disabled="arbSubmitting || !humanReviewed || !directEvidenceReady()"
                         class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:pointer-events-none disabled:opacity-50">
                     <template x-if="!arbSubmitting">
                         <span class="flex items-center gap-2">

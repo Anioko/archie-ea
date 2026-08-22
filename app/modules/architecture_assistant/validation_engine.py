@@ -9,9 +9,6 @@ Runs a comprehensive validation pass on the journey's architecture and provides:
 """
 
 import logging
-from datetime import datetime
-
-from app import db
 
 logger = logging.getLogger(__name__)
 
@@ -59,59 +56,17 @@ class ValidationEngineService:
             "ready_for_arb": overall >= 60 and len(structural.get("blocking_issues", [])) == 0,
         }
 
-    def submit_to_arb(self, solution_id, validation_result, architecture_model_id=None, submitter_id=None):
-        """Create an ARBReviewItem from the validation results.
+    def submit_to_arb(self, solution_id, **_unused):
+        """Fail closed: legacy validation output is not submission evidence.
 
-        Args:
-            solution_id: solution being submitted
-            validation_result: output from full_validate()
-            architecture_model_id: optional ArchitectureModel ID
-            submitter_id: user ID submitting
-
-        Returns:
-            dict with arb_item_id and status
+        Callers must use the authenticated solution evidence-dossier endpoint,
+        which binds the actor and creates the canonical immutable snapshot.
         """
-        from app.models.architecture_review_board import ARBReviewItem
-        from app.models.solution_models import Solution
-
-        solution = Solution.query.get(solution_id)
-        if not solution:
-            return {"error": f"Solution {solution_id} not found"}
-
-        # Generate review number
-        count = ARBReviewItem.query.count()
-        review_number = f"ARB-{count + 1:04d}"
-
-        arb_item = ARBReviewItem(
-            review_number=review_number,
-            title=f"Solution Architecture Review: {solution.name}",
-            description=f"Journey wizard v2 submission. Overall completeness: {validation_result.get('overall', 0)}%",
-            review_type="solution_design",
-            togaf_phase="Phase_B",
-            solution_id=solution_id,
-            architecture_model_id=architecture_model_id,
-            status="submitted",
-            submitter_id=submitter_id or solution.created_by_id,
-            submitted_at=datetime.utcnow(),
-            compliance_score=validation_result.get("scores", {}).get("compliance", 0),
-            risk_score=validation_result.get("scores", {}).get("structural", 0),
-            quality_score=validation_result.get("scores", {}).get("governance", 0),
-            overall_score=validation_result.get("overall", 0),
-        )
-        db.session.add(arb_item)
-        db.session.flush()  # populate arb_item.id before referencing it
-
-        # Update solution governance status and link the review item
-        solution.governance_status = "arb_review"
-        solution.arb_review_item_id = arb_item.id
-        db.session.commit()
-
-        logger.info("Submitted ARB review %s for solution %d", review_number, solution_id)
-
         return {
-            "arb_item_id": arb_item.id,
-            "review_number": review_number,
-            "status": "submitted",
+            "success": False,
+            "error": "legacy_submission_disabled",
+            "reason_codes": ["canonical_submission_required"],
+            "solution_id": solution_id,
         }
 
     def _validate_structure(self, elements_by_layer):

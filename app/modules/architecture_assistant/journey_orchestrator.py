@@ -1618,15 +1618,14 @@ class JourneyOrchestrator:
         svc = ValidationEngineService()
         return svc.full_validate(architecture_elements, capabilities, self.solution_id, migration_plan)
 
-    def submit_to_arb(self, validation_result) -> dict:
-        """Step 6: Submit to Architecture Review Board."""
-        from app.modules.architecture_assistant.validation_engine import ValidationEngineService
-        svc = ValidationEngineService()
-        return svc.submit_to_arb(
-            solution_id=self.solution_id,
-            validation_result=validation_result,
-            architecture_model_id=self.graph.architecture_id,
-        )
+    def submit_to_arb(self, _validation_result=None) -> dict:
+        """Fail closed; submission requires authenticated evidence attestations."""
+        return {
+            "success": False,
+            "error": "legacy_submission_disabled",
+            "reason_codes": ["canonical_submission_required"],
+            "solution_id": self.solution_id,
+        }
 
     def rebuild_relationships(self, problem_summary: str = "") -> dict:
         """Re-run Pass 2 relationship generation for existing elements without regenerating them.
