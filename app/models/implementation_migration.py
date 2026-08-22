@@ -79,8 +79,6 @@ class WorkPackage(TenantMixin, db.Model):
     """Represents a discrete unit of work with defined deliverables."""
 
     __tablename__ = "work_packages"
-    __table_args__ = {"extend_existing": True}
-
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False, index=True)
     summary = db.Column(db.String(512))
@@ -101,6 +99,21 @@ class WorkPackage(TenantMixin, db.Model):
     enterprise_initiative_id = db.Column(
         db.Integer, db.ForeignKey("enterprise_initiatives.id", ondelete="SET NULL"), index=True
     )
+    strategic_initiative_id = db.Column(
+        db.Integer,
+        db.ForeignKey("strategic_initiatives.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    programme_workstream_id = db.Column(
+        db.Integer,
+        db.ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    # Task 5 installs the FK when decision_brief_versions becomes canonical.
+    decision_brief_version_id = db.Column(db.Integer, nullable=True, index=True)
+    materialisation_key = db.Column(db.String(64), nullable=True)
 
     # Link to Goal (WorkPackages realize Goals)
     goal_id = db.Column(db.Integer, db.ForeignKey("goals.id", ondelete="SET NULL"), index=True)
@@ -171,6 +184,12 @@ class WorkPackage(TenantMixin, db.Model):
     enterprise_initiative = db.relationship(
         "EnterpriseInitiative", backref="migration_work_packages"
     )
+    strategic_initiative = db.relationship(
+        "StrategicInitiative", foreign_keys=[strategic_initiative_id]
+    )
+    programme_workstream = db.relationship(
+        "ProgrammeWorkstream", foreign_keys=[programme_workstream_id]
+    )
     goal = db.relationship("Goal", backref="migration_work_packages")
     triggering_event = db.relationship(
         "BusinessEvent",
@@ -183,6 +202,17 @@ class WorkPackage(TenantMixin, db.Model):
     )
     capability = db.relationship(
         "UnifiedCapability", foreign_keys=[capability_id], backref="linked_work_packages"
+    )
+
+    __table_args__ = (
+        db.Index(
+            "uq_work_package_materialisation",
+            "organization_id",
+            "materialisation_key",
+            unique=True,
+            postgresql_where=materialisation_key.isnot(None),
+        ),
+        {"extend_existing": True},
     )
 
     # Relationship defined after Deliverable class
@@ -198,6 +228,10 @@ class WorkPackage(TenantMixin, db.Model):
         return {
             "id": self.id,
             "name": self.name,
+            "strategic_initiative_id": self.strategic_initiative_id,
+            "programme_workstream_id": self.programme_workstream_id,
+            "decision_brief_version_id": self.decision_brief_version_id,
+            "materialisation_key": self.materialisation_key,
             "summary": self.summary or "",
             "description": self.description or "",
             "status": self.status,

@@ -210,6 +210,37 @@ def test_explicit_org_on_insert_is_not_overwritten(db_session, make_org, tenant_
     assert assigned == org_b.id, "an explicit organization_id must not be overwritten"
 
 
+def test_transformation_workstream_select_is_tenant_scoped(
+    db_session, make_org, tenant_ctx
+):
+    """Transformation programme children obey the same tenant query policy."""
+    from app.models.strategic import StrategicInitiative
+    from app.models.transformation_programme import ProgrammeWorkstream
+
+    org_a, org_b = make_org("transformation-a"), make_org("transformation-b")
+    programme = StrategicInitiative(
+        name="Org A programme",
+        record_kind="transformation_programme",
+        organization_id=org_a.id,
+    )
+    db_session.add(programme)
+    db_session.flush()
+    stream = ProgrammeWorkstream(
+        organization_id=org_a.id,
+        programme_id=programme.id,
+        workstream_type="application_rationalisation",
+        objective="Reduce cost",
+        lifecycle_stage="objective",
+    )
+    db_session.add(stream)
+    db_session.flush()
+    stream_id = stream.id
+    db_session.expunge_all()
+
+    with tenant_ctx(org_b.id):
+        assert db_session.get(ProgrammeWorkstream, stream_id) is None
+
+
 # --------------------------------------------------------------- known gaps
 
 

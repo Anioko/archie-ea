@@ -80,9 +80,38 @@ class Benefit(TenantMixin, db.Model):
     # ── Traceability ────────────────────────────────────────────────────────
     # A benefit must attach to what delivers it and what it improves, or it
     # cannot be rolled up or chased.
-    initiative_id = db.Column(
-        db.Integer, db.ForeignKey("enterprise_initiatives.id", ondelete="CASCADE"), index=True
+    legacy_enterprise_initiative_id = db.Column(
+        "initiative_id",
+        db.Integer,
+        db.ForeignKey(
+            "enterprise_initiatives.id",
+            ondelete="SET NULL",
+            name="fk_benefits_legacy_enterprise_initiative",
+        ),
+        nullable=True,
+        index=True,
     )
+    strategic_initiative_id = db.Column(
+        db.Integer,
+        db.ForeignKey("strategic_initiatives.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    programme_workstream_id = db.Column(
+        db.Integer,
+        db.ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    outcome_commitment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("programme_outcome_commitments.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    # Task 5 installs the FK when decision_brief_versions becomes canonical.
+    decision_brief_version_id = db.Column(db.Integer, nullable=True, index=True)
+    materialisation_key = db.Column(db.String(64), nullable=True)
     capability_id = db.Column(
         db.Integer, db.ForeignKey("unified_capabilities.id", ondelete="SET NULL"), index=True
     )
@@ -96,11 +125,32 @@ class Benefit(TenantMixin, db.Model):
     )
 
     owner = db.relationship("User", foreign_keys=[owner_id])
-    initiative = db.relationship(
-        "EnterpriseInitiative", foreign_keys=[initiative_id], backref="benefits"
+    legacy_enterprise_initiative = db.relationship(
+        "EnterpriseInitiative",
+        foreign_keys=[legacy_enterprise_initiative_id],
+        backref="benefits",
+    )
+    strategic_initiative = db.relationship(
+        "StrategicInitiative", foreign_keys=[strategic_initiative_id]
+    )
+    programme_workstream = db.relationship(
+        "ProgrammeWorkstream", foreign_keys=[programme_workstream_id]
+    )
+    outcome_commitment = db.relationship(
+        "ProgrammeOutcomeCommitment", foreign_keys=[outcome_commitment_id]
     )
     capability = db.relationship("UnifiedCapability", foreign_keys=[capability_id], backref="benefits")
     work_package = db.relationship("WorkPackage", foreign_keys=[work_package_id], backref="benefits")
+
+    __table_args__ = (
+        db.Index(
+            "uq_benefit_materialisation",
+            "organization_id",
+            "materialisation_key",
+            unique=True,
+            postgresql_where=materialisation_key.isnot(None),
+        ),
+    )
 
     # ── Derived ─────────────────────────────────────────────────────────────
     @property
@@ -179,7 +229,12 @@ class Benefit(TenantMixin, db.Model):
             "is_financial": self.is_financial,
             "is_overdue": self.is_overdue,
             "owner": self.owner.email if self.owner else None,
-            "initiative_id": self.initiative_id,
+            "legacy_enterprise_initiative_id": self.legacy_enterprise_initiative_id,
+            "strategic_initiative_id": self.strategic_initiative_id,
+            "programme_workstream_id": self.programme_workstream_id,
+            "outcome_commitment_id": self.outcome_commitment_id,
+            "decision_brief_version_id": self.decision_brief_version_id,
+            "materialisation_key": self.materialisation_key,
             "capability_id": self.capability_id,
         }
 

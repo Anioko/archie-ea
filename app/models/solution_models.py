@@ -179,6 +179,12 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
         nullable=True,
         index=True,
     )
+    workstream_id = Column(
+        Integer,
+        ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
 
     # Relationships
     archimate_element = db.relationship("ArchiMateElement", foreign_keys=[archimate_element_id])
@@ -202,6 +208,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
         foreign_keys=[initiative_id],
         backref=db.backref("member_solutions", lazy="dynamic"),
     )
+    workstream = db.relationship("ProgrammeWorkstream", foreign_keys=[workstream_id])
 
     # Avoid declaring inverse relationship to ARBReviewItem here to prevent circular mapper initialization.
     # ARBReviewItem already declares solution relationship; access via ARBReviewItem.solution or ARBReviewItem.solutions backref.
