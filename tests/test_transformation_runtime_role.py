@@ -4,18 +4,17 @@ from __future__ import annotations
 
 import os
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import psycopg2
 import pytest
 import yaml
-from sqlalchemy import text
+from psycopg2 import sql as pg_sql
+from sqlalchemy import URL, create_engine
 
-from app import db
 from app.models.transformation_db_guards import ensure_transformation_db_guards
-from app.models.organization import Organization
-from app.models.user import User
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,13 +29,139 @@ def _environment(service: dict) -> dict[str, str]:
     return dict(item.split("=", 1) for item in environment)
 
 
-def _database_name() -> str:
-    return urlsplit(os.environ["TEST_DATABASE_URL"]).path.lstrip("/")
-
-
 def _maintenance_url() -> str:
     parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
     return urlunsplit(parsed._replace(path="/postgres"))
+
+
+@dataclass(frozen=True)
+class IsolatedRoleDatabase:
+    database_name: str
+    deploy_role: str
+    runtime_role: str
+    privileged_role: str
+    deploy_password: str
+    runtime_password: str
+
+    def url(self, *, role: str, password: str) -> URL:
+        parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+        return URL.create(
+            "postgresql+psycopg2",
+            username=role,
+            password=password,
+            host=parsed.hostname,
+            port=parsed.port,
+            database=self.database_name,
+        )
+
+
+@pytest.fixture
+def isolated_role_database():
+    """Unique cluster objects are always dropped, including after test failure."""
+    suffix = uuid.uuid4().hex[:12]
+    role_database = IsolatedRoleDatabase(
+        database_name=f"task3_roles_{suffix}",
+        deploy_role=f"task3_deploy_{suffix}",
+        runtime_role=f"task3_runtime_{suffix}",
+        privileged_role=f"task3_privileged_{suffix}",
+        deploy_password=f"deploy-{uuid.uuid4().hex}",
+        runtime_password=f"runtime-{uuid.uuid4().hex}",
+    )
+    maintenance = psycopg2.connect(_maintenance_url())
+    maintenance.autocommit = True
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL("CREATE DATABASE {}").format(
+                    pg_sql.Identifier(role_database.database_name)
+                )
+            )
+    finally:
+        maintenance.close()
+
+    try:
+        yield role_database
+    finally:
+        maintenance = psycopg2.connect(_maintenance_url())
+        maintenance.autocommit = True
+        try:
+            with maintenance.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = %s AND pid <> pg_backend_pid()",
+                    (role_database.database_name,),
+                )
+                cursor.execute(
+                    pg_sql.SQL("DROP DATABASE IF EXISTS {}").format(
+                        pg_sql.Identifier(role_database.database_name)
+                    )
+                )
+                cursor.execute(
+                    pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                        pg_sql.Identifier(role_database.runtime_role)
+                    )
+                )
+                cursor.execute(
+                    pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                        pg_sql.Identifier(role_database.privileged_role)
+                    )
+                )
+                cursor.execute(
+                    pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                        pg_sql.Identifier(role_database.deploy_role)
+                    )
+                )
+        finally:
+            maintenance.close()
+
+
+_TRANSFORMATION_TABLES_SQL = """
+CREATE TABLE command_idempotency_records (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    actor_id integer NOT NULL,
+    operation varchar(120) NOT NULL,
+    idempotency_key varchar(255) NOT NULL,
+    request_digest varchar(64) NOT NULL,
+    natural_key varchar(512) NOT NULL,
+    status varchar(32) NOT NULL,
+    lease_generation integer NOT NULL,
+    claim_token varchar(64) NOT NULL,
+    claimant_request_id varchar(255) NOT NULL,
+    lease_expires_at timestamptz,
+    operation_result_id integer,
+    attempt_count integer NOT NULL,
+    last_error_class varchar(255),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    completed_at timestamptz
+);
+CREATE TABLE operation_results (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    actor_id integer NOT NULL,
+    operation varchar(120) NOT NULL,
+    natural_key varchar(512) NOT NULL,
+    request_digest varchar(64) NOT NULL,
+    receipt_id integer NOT NULL,
+    receipt_generation integer NOT NULL,
+    object_ids json NOT NULL,
+    response_json json NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE transformation_outbox_events (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    operation_result_id integer NOT NULL,
+    event_id varchar(36) NOT NULL,
+    ordinal integer NOT NULL,
+    event_type varchar(160) NOT NULL,
+    payload_json json NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    published_at timestamptz,
+    delivery_attempts integer NOT NULL DEFAULT 0
+)
+"""
 
 
 def test_compose_paths_separate_database_deployment_from_runtime():
@@ -64,69 +189,108 @@ def test_compose_paths_separate_database_deployment_from_runtime():
     assert optimized_backup["PGPASSWORD"] == "${POSTGRES_PASSWORD}"
 
 
-def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(app, _schema):
+def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
+    isolated_role_database,
+):
     """Catches superuser/owner powers making database guards optional at runtime."""
     from scripts.database.configure_roles import configure_database_roles
 
-    deploy_password = f"deploy-{uuid.uuid4().hex}"
-    runtime_password = f"runtime-{uuid.uuid4().hex}"
-    for _ in range(2):
-        configure_database_roles(
-            admin_url=_maintenance_url(),
-            database_names=(_database_name(),),
-            deploy_password=deploy_password,
-            runtime_password=runtime_password,
-        )
+    role_database = isolated_role_database
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    maintenance = psycopg2.connect(_maintenance_url())
+    maintenance.autocommit = True
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL("CREATE ROLE {} CREATEDB").format(
+                    pg_sql.Identifier(role_database.privileged_role)
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("GRANT {} TO {}").format(
+                    pg_sql.Identifier(role_database.deploy_role),
+                    pg_sql.Identifier(role_database.runtime_role),
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("GRANT {} TO {}").format(
+                    pg_sql.Identifier(role_database.privileged_role),
+                    pg_sql.Identifier(role_database.runtime_role),
+                )
+            )
+    finally:
+        maintenance.close()
 
-    with app.app_context():
-        db.session.remove()
-        with db.engine.begin() as connection:
-            ensure_transformation_db_guards(connection)
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    maintenance = psycopg2.connect(_maintenance_url())
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT granted.rolname FROM pg_auth_members membership "
+                "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                "JOIN pg_roles member ON member.oid = membership.member "
+                "WHERE member.rolname = %s ORDER BY granted.rolname",
+                (role_database.runtime_role,),
+            )
+            assert cursor.fetchall() == []
+    finally:
+        maintenance.close()
 
-        suffix = uuid.uuid4().hex[:12]
-        organization = Organization(
-            name=f"Runtime Role Org {suffix}", slug=f"runtime-role-{suffix}"
+    deploy_engine = create_engine(
+        role_database.url(
+            role=role_database.deploy_role,
+            password=role_database.deploy_password,
         )
-        db.session.add(organization)
-        db.session.flush()
-        user = User(
-            email=f"runtime-role-{suffix}@example.test",
-            organization_id=organization.id,
-            confirmed=True,
-            enterprise_role="enterprise_architect",
-        )
-        db.session.add(user)
-        db.session.commit()
-        organization_id = organization.id
-        user_id = user.id
-        db.session.remove()
+    )
+    try:
+        with deploy_engine.begin() as connection:
+            connection.exec_driver_sql(_TRANSFORMATION_TABLES_SQL)
+            ensure_transformation_db_guards(
+                connection,
+                runtime_role=role_database.runtime_role,
+            )
 
+        parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
         raw = psycopg2.connect(
-            os.environ["TEST_DATABASE_URL"].replace(
-                "postgresql+psycopg2://", "postgresql://", 1
-            ),
-            user=RUNTIME_ROLE,
-            password=runtime_password,
+            host=parsed.hostname,
+            port=parsed.port,
+            dbname=role_database.database_name,
+            user=role_database.runtime_role,
+            password=role_database.runtime_password,
         )
         try:
             cursor = raw.cursor()
             cursor.execute(
                 "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls "
                 "FROM pg_roles WHERE rolname = %s",
-                (RUNTIME_ROLE,),
+                (role_database.runtime_role,),
             )
             assert cursor.fetchone() == (False, False, False, False, False)
             cursor.execute(
                 "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication "
                 "FROM pg_roles WHERE rolname = %s",
-                (DEPLOY_ROLE,),
+                (role_database.deploy_role,),
             )
             assert cursor.fetchone() == (False, False, False, False)
             cursor.execute(
                 "SELECT tableowner FROM pg_tables "
                 "WHERE schemaname = 'public' AND tablename = 'operation_results'"
             )
-            assert cursor.fetchone() == (DEPLOY_ROLE,)
+            assert cursor.fetchone() == (role_database.deploy_role,)
             cursor.execute(
                 "SELECT has_table_privilege(%s, 'operation_results', 'SELECT'), "
                 "has_table_privilege(%s, 'operation_results', 'INSERT'), "
@@ -140,7 +304,7 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(app, _sch
                 "has_sequence_privilege(%s, 'operation_results_id_seq', 'USAGE'), "
                 "has_function_privilege(%s, "
                 "'public.archie_guard_transformation_receipt()', 'EXECUTE')",
-                (RUNTIME_ROLE,) * 9,
+                (role_database.runtime_role,) * 9,
             )
             assert cursor.fetchone() == (
                 True,
@@ -163,7 +327,7 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(app, _sch
                 "WHERE dependency.classid = 'pg_proc'::regclass "
                 "AND dependency.objid = p.oid AND dependency.deptype = 'e'"
                 ") AND has_function_privilege(%s, p.oid, 'EXECUTE')",
-                (RUNTIME_ROLE,),
+                (role_database.runtime_role,),
             )
             assert cursor.fetchone() == (0,)
 
@@ -175,14 +339,14 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(app, _sch
                 "VALUES (%s, %s, %s, %s, %s, %s, 'in_progress', 1, %s, %s, "
                 "clock_timestamp() + interval '1 minute', 1) RETURNING id",
                 (
-                    organization_id,
-                    user_id,
+                    41001,
+                    42001,
                     "runtime.probe",
-                    f"runtime-{suffix}",
+                    "runtime-probe",
                     "a" * 64,
-                    f"runtime:{suffix}",
+                    "runtime:probe",
                     "b" * 64,
-                    f"runtime-request-{suffix}",
+                    "runtime-request",
                 ),
             )
             receipt_id = cursor.fetchone()[0]
@@ -193,10 +357,10 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(app, _sch
                 "response_json) VALUES (%s, %s, %s, %s, %s, %s, 1, '{}', '{}') "
                 "RETURNING id",
                 (
-                    organization_id,
-                    user_id,
+                    41001,
+                    42001,
                     "runtime.probe",
-                    f"runtime:{suffix}",
+                    "runtime:probe",
                     "a" * 64,
                     receipt_id,
                 ),
@@ -207,14 +371,14 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(app, _sch
                 "operation_result_id = %s, lease_expires_at = NULL, "
                 "completed_at = clock_timestamp() "
                 "WHERE id = %s AND organization_id = %s AND actor_id = %s",
-                (result_id, receipt_id, organization_id, user_id),
+                (result_id, receipt_id, 41001, 42001),
             )
             cursor.execute(
                 "INSERT INTO transformation_outbox_events "
                 "(organization_id, operation_result_id, event_id, ordinal, "
                 "event_type, payload_json) VALUES (%s, %s, %s, 0, %s, '{}')",
                 (
-                    organization_id,
+                    41001,
                     result_id,
                     str(uuid.uuid4()),
                     "runtime.probe.created",
@@ -224,13 +388,14 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(app, _sch
                 "UPDATE transformation_outbox_events "
                 "SET delivery_attempts = 1, published_at = clock_timestamp() "
                 "WHERE operation_result_id = %s AND organization_id = %s",
-                (result_id, organization_id),
+                (result_id, 41001),
             )
             raw.commit()
 
             forbidden = (
                 "SET session_replication_role = replica",
-                f"SET ROLE {DEPLOY_ROLE}",
+                f"SET ROLE {role_database.deploy_role}",
+                f"SET ROLE {role_database.privileged_role}",
                 "ALTER TABLE public.operation_results DISABLE TRIGGER ALL",
                 "DROP TRIGGER trg_transformation_result_immutable ON public.operation_results",
                 "TRUNCATE TABLE public.operation_results",
@@ -252,24 +417,5 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(app, _sch
         finally:
             raw.rollback()
             raw.close()
-            with db.engine.begin() as connection:
-                connection.exec_driver_sql(
-                    "SET LOCAL session_replication_role = replica"
-                )
-                for table_name in (
-                    "transformation_outbox_events",
-                    "operation_results",
-                    "command_idempotency_records",
-                    "users",
-                ):
-                    connection.execute(
-                        text(
-                            f'DELETE FROM "{table_name}" '
-                            "WHERE organization_id = :organization_id"
-                        ),
-                        {"organization_id": organization_id},
-                    )
-                connection.execute(
-                    text("DELETE FROM organizations WHERE id = :organization_id"),
-                    {"organization_id": organization_id},
-                )
+    finally:
+        deploy_engine.dispose()

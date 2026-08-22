@@ -244,6 +244,8 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         row = connection.exec_driver_sql(
             """
             SELECT trigger.tgenabled, trigger.tgtype,
+                   trigger.tgqual IS NOT NULL AS has_when,
+                   trigger.tgattr::text AS update_columns,
                    namespace.nspname AS function_schema,
                    proc.proname AS function_name
             FROM pg_trigger trigger
@@ -265,6 +267,10 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         # PostgreSQL tgtype: ROW(1) | BEFORE(2) | DELETE(8) | UPDATE(16).
         if row.tgtype != 27:
             drift.append(f"trigger_shape:{trigger_name}")
+        if row.has_when:
+            drift.append(f"trigger_when:{trigger_name}")
+        if row.update_columns:
+            drift.append(f"trigger_columns:{trigger_name}")
     return drift
 
 
@@ -278,6 +284,8 @@ def _repair_triggers(connection) -> None:
         row = connection.exec_driver_sql(
             """
             SELECT trigger.tgenabled, trigger.tgtype,
+                   trigger.tgqual IS NOT NULL AS has_when,
+                   trigger.tgattr::text AS update_columns,
                    namespace.nspname AS function_schema,
                    proc.proname AS function_name
             FROM pg_trigger trigger
@@ -293,6 +301,8 @@ def _repair_triggers(connection) -> None:
             row is not None
             and row.tgenabled == "O"
             and row.tgtype == 27
+            and not row.has_when
+            and not row.update_columns
             and row.function_schema == "public"
             and row.function_name == function_name
         )
@@ -309,7 +319,11 @@ def _repair_triggers(connection) -> None:
         )
 
 
-def ensure_transformation_db_guards(connection):
+def ensure_transformation_db_guards(
+    connection,
+    *,
+    runtime_role: str = TRANSFORMATION_RUNTIME_ROLE,
+):
     """Install/refresh guards once under a transaction-scoped advisory lock."""
     if connection.dialect.name != "postgresql":
         return
@@ -326,18 +340,21 @@ def ensure_transformation_db_guards(connection):
         "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() FROM PUBLIC"
     )
     runtime_role_exists = connection.exec_driver_sql(
-        "SELECT EXISTS (SELECT 1 FROM pg_roles "
-        f"WHERE rolname = '{TRANSFORMATION_RUNTIME_ROLE}')"
+        "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s)",
+        (runtime_role,),
     ).scalar()
+    runtime_role_identifier = connection.dialect.identifier_preparer.quote(
+        runtime_role
+    )
     if runtime_role_exists:
         connection.exec_driver_sql(
             "REVOKE ALL ON FUNCTION "
             "public.archie_reject_transformation_mutation() "
-            f"FROM {TRANSFORMATION_RUNTIME_ROLE}"
+            f"FROM {runtime_role_identifier}"
         )
         connection.exec_driver_sql(
             "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() "
-            f"FROM {TRANSFORMATION_RUNTIME_ROLE}"
+            f"FROM {runtime_role_identifier}"
         )
     _repair_triggers(connection)
     # The runtime role gets only the columns required by the service protocol.
@@ -366,11 +383,11 @@ def ensure_transformation_db_guards(connection):
             if present:
                 connection.exec_driver_sql(
                     f"REVOKE ALL ON TABLE public.{table_name} "
-                    f"FROM {TRANSFORMATION_RUNTIME_ROLE}"
+                    f"FROM {runtime_role_identifier}"
                 )
                 connection.exec_driver_sql(
                     f"GRANT SELECT, INSERT ON TABLE public.{table_name} "
-                    f"TO {TRANSFORMATION_RUNTIME_ROLE}"
+                    f"TO {runtime_role_identifier}"
                 )
         if connection.exec_driver_sql(
             "SELECT to_regclass('public.transformation_outbox_events') IS NOT NULL"
@@ -378,7 +395,7 @@ def ensure_transformation_db_guards(connection):
             connection.exec_driver_sql(
                 "GRANT UPDATE (delivery_attempts, published_at) ON TABLE "
                 "public.transformation_outbox_events "
-                f"TO {TRANSFORMATION_RUNTIME_ROLE}"
+                f"TO {runtime_role_identifier}"
             )
         if connection.exec_driver_sql(
             "SELECT to_regclass('public.command_idempotency_records') IS NOT NULL"
@@ -388,7 +405,7 @@ def ensure_transformation_db_guards(connection):
                 "claimant_request_id, lease_expires_at, operation_result_id, "
                 "attempt_count, last_error_class, updated_at, completed_at) "
                 "ON TABLE public.command_idempotency_records "
-                f"TO {TRANSFORMATION_RUNTIME_ROLE}"
+                f"TO {runtime_role_identifier}"
             )
     remaining_drift = inspect_transformation_db_guards(connection)
     if remaining_drift:

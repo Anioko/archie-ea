@@ -138,6 +138,10 @@ def _mutation(fixture: CommandFixture, *, events: int = 1):
     return handler
 
 
+def _allow_command(_session, _actor, _operation, _natural_key):
+    return None
+
+
 def _execute(fixture: CommandFixture, *, key="same", payload=None, handler=None):
     return CommandService.execute(
         actor=fixture.actor,
@@ -145,6 +149,7 @@ def _execute(fixture: CommandFixture, *, key="same", payload=None, handler=None)
         idempotency_key=key,
         payload=payload or {"name": fixture.domain_name, "scope": {"b": 2, "a": 1}},
         natural_key=f"programme-intake:{key}",
+        authorizer=_allow_command,
         handler=handler or _mutation(fixture),
     )
 
@@ -342,6 +347,7 @@ def test_claim_then_crash_reclaims_only_after_expiry(command_fixture):
         idempotency_key="claim-crash",
         request_digest=digest,
         natural_key="programme-intake:claim-crash",
+        authorizer=_allow_command,
     )
 
     assert claim.generation == 1
@@ -468,6 +474,7 @@ def test_expired_lease_reconciles_existing_result_without_handler(command_fixtur
         idempotency_key="orphan-result",
         request_digest=digest,
         natural_key="programme-intake:orphan-result",
+        authorizer=_allow_command,
     )
     with Session(db.engine) as session, session.begin():
         programme = StrategicInitiative(
@@ -535,6 +542,7 @@ def test_domain_row_only_crash_is_reconciled_by_operation_resolver(command_fixtu
         idempotency_key="domain-row-only",
         request_digest=digest,
         natural_key="programme-intake:domain-row-only",
+        authorizer=_allow_command,
     )
     with Session(db.engine) as session, session.begin():
         programme = StrategicInitiative(
@@ -581,6 +589,7 @@ def test_domain_row_only_crash_is_reconciled_by_operation_resolver(command_fixtu
         idempotency_key="domain-row-only",
         payload=payload,
         natural_key="programme-intake:domain-row-only",
+        authorizer=_allow_command,
         natural_key_resolver=resolve_programme,
         handler=must_not_run,
     )
@@ -590,6 +599,124 @@ def test_domain_row_only_crash_is_reconciled_by_operation_resolver(command_fixtu
     assert handler_called is False
     assert _receipt(command_fixture, "domain-row-only").status == "succeeded"
     assert _counts(command_fixture) == (1, 1, 1)
+
+
+def test_result_replay_runs_authorizer_before_returning_persisted_result(
+    command_fixture,
+):
+    """Catches immutable-result replay bypassing current authorization."""
+    payload = {"name": command_fixture.domain_name}
+    first = _execute(command_fixture, key="result-reauthorize", payload=payload)
+    authorizer_calls = 0
+
+    def deny_replay(_session, actor, operation, natural_key):
+        nonlocal authorizer_calls
+        authorizer_calls += 1
+        assert actor == command_fixture.actor
+        assert operation == "programme.create"
+        assert natural_key == "programme-intake:result-reauthorize"
+        raise NotAuthorised("programme_replay_not_authorised")
+
+    with pytest.raises(NotAuthorised) as denied:
+        CommandService.execute(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            idempotency_key="result-reauthorize",
+            payload=payload,
+            natural_key="programme-intake:result-reauthorize",
+            authorizer=deny_replay,
+            handler=lambda _session, _claim: pytest.fail(
+                "result replay executed handler"
+            ),
+        )
+
+    assert denied.value.reason == "programme_replay_not_authorised"
+    assert denied.value.details.get("operation_result_id") is None
+    assert authorizer_calls == 1
+    assert first.response["name"] == command_fixture.domain_name
+    assert _counts(command_fixture) == (1, 1, 1)
+
+
+def test_cross_actor_domain_row_recovery_is_authorized_before_resolver(
+    command_fixture,
+):
+    """Catches a domain-only recovery adapter exposing another actor's row."""
+    with Session(db.engine) as session, session.begin():
+        programme = StrategicInitiative(
+            organization_id=command_fixture.organization_id,
+            name=command_fixture.domain_name,
+            record_kind="transformation_programme",
+        )
+        session.add(programme)
+        session.flush()
+        programme_id = programme.id
+
+    suffix = uuid.uuid4().hex[:12]
+    second_user = User(
+        email=f"domain-recovery-second-{suffix}@example.test",
+        organization_id=command_fixture.organization_id,
+        confirmed=True,
+        enterprise_role="enterprise_architect",
+    )
+    db.session.add(second_user)
+    db.session.commit()
+    second_actor = ActorContext(
+        user_id=second_user.id,
+        organization_id=command_fixture.organization_id,
+        roles=command_fixture.actor.roles,
+        request_id=f"domain-recovery-request-{suffix}",
+    )
+    resolver_called = False
+    handler_called = False
+
+    def authorize_owner(_session, actor, operation, natural_key):
+        assert operation == "programme.create"
+        assert natural_key == "programme-intake:cross-actor-domain-row"
+        if actor.user_id != command_fixture.user_id:
+            raise NotAuthorised("programme_recovery_not_authorised")
+
+    def resolver(_session, _actor, _natural_key, _claim):
+        nonlocal resolver_called
+        resolver_called = True
+        return DomainMutationResult(
+            object_ids={"programme_id": programme_id},
+            response={"programme_id": programme_id},
+            outbox_events=(),
+        )
+
+    def handler(_session, _claim):
+        nonlocal handler_called
+        handler_called = True
+        raise AssertionError("unauthorized domain recovery executed handler")
+
+    with pytest.raises(NotAuthorised) as denied:
+        CommandService.execute(
+            actor=second_actor,
+            operation="programme.create",
+            idempotency_key="cross-actor-domain-row",
+            payload={"name": command_fixture.domain_name},
+            natural_key="programme-intake:cross-actor-domain-row",
+            authorizer=authorize_owner,
+            natural_key_resolver=resolver,
+            handler=handler,
+        )
+
+    assert denied.value.reason == "programme_recovery_not_authorised"
+    assert denied.value.details.get("programme_id") is None
+    assert resolver_called is False
+    assert handler_called is False
+    with Session(db.engine) as session:
+        second_receipts = session.scalar(
+            select(db.func.count())
+            .select_from(CommandIdempotencyRecord)
+            .where(
+                CommandIdempotencyRecord.organization_id
+                == command_fixture.organization_id,
+                CommandIdempotencyRecord.actor_id == second_actor.user_id,
+            )
+        )
+    assert second_receipts == 0
+    assert _counts(command_fixture) == (1, 0, 0)
 
 
 def test_cross_actor_same_natural_key_cannot_replay_persisted_result(
@@ -619,6 +746,7 @@ def test_cross_actor_same_natural_key_cannot_replay_persisted_result(
         idempotency_key="cross-actor",
         request_digest=canonical_request_digest(payload),
         natural_key="programme-intake:cross-actor",
+        authorizer=_allow_command,
     )
     _wait_for_expiry(second_claim)
     called = False
@@ -635,6 +763,7 @@ def test_cross_actor_same_natural_key_cannot_replay_persisted_result(
             idempotency_key="cross-actor",
             payload=payload,
             natural_key="programme-intake:cross-actor",
+            authorizer=_allow_command,
             handler=must_not_run,
         )
 
@@ -691,6 +820,7 @@ def test_same_key_changed_digest_conflicts_and_active_lease_has_retry_metadata(
         idempotency_key="active",
         request_digest=digest,
         natural_key="programme-intake:active",
+        authorizer=_allow_command,
     )
 
     with pytest.raises(CommandConflict) as active:
@@ -700,6 +830,7 @@ def test_same_key_changed_digest_conflicts_and_active_lease_has_retry_metadata(
             idempotency_key="active",
             request_digest=digest,
             natural_key="programme-intake:active",
+            authorizer=_allow_command,
         )
     assert active.value.reason == "active_lease"
     assert active.value.retry_after_seconds > 0
@@ -713,6 +844,7 @@ def test_same_key_changed_digest_conflicts_and_active_lease_has_retry_metadata(
             idempotency_key="active",
             request_digest=canonical_request_digest({"name": "different"}),
             natural_key="programme-intake:active",
+            authorizer=_allow_command,
         )
     assert changed.value.http_status == 409
     assert changed.value.reason == "idempotency_digest_mismatch"
@@ -728,6 +860,7 @@ def test_paused_stale_worker_cannot_write_after_reclaim(command_fixture, app):
         idempotency_key="race",
         request_digest=digest,
         natural_key="programme-intake:race",
+        authorizer=_allow_command,
     )
     paused = threading.Barrier(2)
     resume_worker_a = threading.Event()
@@ -742,6 +875,7 @@ def test_paused_stale_worker_cannot_write_after_reclaim(command_fixture, app):
                     actor=command_fixture.actor,
                     operation="programme.create",
                     claim=worker_a,
+                    authorizer=_allow_command,
                     handler=_mutation(command_fixture),
                 )
             except Exception as error:  # captured for assertion in the test thread
@@ -775,6 +909,7 @@ def test_heartbeat_completes_while_handler_is_paused(command_fixture, app):
         idempotency_key="paused-heartbeat",
         request_digest=canonical_request_digest(payload),
         natural_key="programme-intake:paused-heartbeat",
+        authorizer=_allow_command,
     )
     handler_entered = threading.Event()
     release_handler = threading.Event()
@@ -794,6 +929,7 @@ def test_heartbeat_completes_while_handler_is_paused(command_fixture, app):
                     actor=command_fixture.actor,
                     operation="programme.create",
                     claim=claim,
+                    authorizer=_allow_command,
                     handler=paused_handler,
                 )
             except Exception as error:
@@ -840,6 +976,7 @@ def test_reclaim_completes_while_expired_handler_is_paused(command_fixture, app)
         idempotency_key="paused-reclaim",
         request_digest=canonical_request_digest(payload),
         natural_key="programme-intake:paused-reclaim",
+        authorizer=_allow_command,
     )
     handler_entered = threading.Event()
     release_handler = threading.Event()
@@ -859,6 +996,7 @@ def test_reclaim_completes_while_expired_handler_is_paused(command_fixture, app)
                     actor=command_fixture.actor,
                     operation="programme.create",
                     claim=claim,
+                    authorizer=_allow_command,
                     handler=paused_handler,
                 )
             except Exception as error:
@@ -875,6 +1013,7 @@ def test_reclaim_completes_while_expired_handler_is_paused(command_fixture, app)
                     idempotency_key="paused-reclaim",
                     request_digest=canonical_request_digest(payload),
                     natural_key="programme-intake:paused-reclaim",
+                    authorizer=_allow_command,
                 )
             except Exception as error:
                 reclaim_outcome["error"] = error
@@ -909,6 +1048,7 @@ def test_supplied_receipt_id_is_still_tenant_and_actor_scoped(command_fixture):
         idempotency_key="foreign-actor",
         request_digest=canonical_request_digest(payload),
         natural_key="programme-intake:foreign-actor",
+        authorizer=_allow_command,
     )
     forged = ActorContext(
         user_id=command_fixture.user_id,
@@ -922,6 +1062,7 @@ def test_supplied_receipt_id_is_still_tenant_and_actor_scoped(command_fixture):
             actor=forged,
             operation="programme.create",
             claim=claim,
+            authorizer=_allow_command,
             handler=_mutation(command_fixture),
         )
     assert _counts(command_fixture) == (0, 0, 0)

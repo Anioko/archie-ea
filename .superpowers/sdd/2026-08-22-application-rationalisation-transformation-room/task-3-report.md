@@ -598,3 +598,231 @@ Tailwind executable. There are no template/CSS/JavaScript changes. Relevant
    PostgreSQL and the runtime bypass matrix uses a real direct login.
 2. The unchanged missing Tailwind CLI leaves `css-build` skipped. No frontend
    artifact is in review scope.
+
+---
+
+# Review fix round 2/5 — complete trigger semantics, replay auth and isolated roles
+
+Status: **DONE_WITH_CONCERNS**
+
+Commit subject: `fix: close transformation replay bypasses`
+
+## Files changed in this round
+
+- `app/models/transformation_db_guards.py`
+- `app/modules/transformation_room/command_service.py`
+- `scripts/database/configure_roles.py`
+- `tests/test_transformation_command_service.py`
+- `tests/test_transformation_db_guards.py`
+- `tests/test_transformation_runtime_role.py`
+- this report
+
+Task 1 programme/canonical-link models and Task 2 capability-tenancy files
+remain unchanged.
+
+## Round 2 RED evidence
+
+Every PostgreSQL command below used both `DATABASE_URL` and
+`TEST_DATABASE_URL` as
+`postgresql://postgres@127.0.0.1:5439/flask_test`.
+
+### Conditional and column-limited trigger bypasses
+
+```powershell
+pytest -q tests/test_transformation_db_guards.py::test_schema_reconciliation_repairs_conditional_or_column_limited_guard
+```
+
+The parametrized test replaces the result guard first with the correct
+name/function plus `WHEN (false)`, then with the correct name/function plus
+`UPDATE OF created_at`. Before inspecting `tgqual` and `tgattr`:
+
+```text
+FAILED ...[...WHEN (false)-trigger_when-WHEN (false)]
+assert False
+FAILED ...[...UPDATE OF created_at...-trigger_columns-UPDATE OF created_at]
+assert False
+2 failed, 10 warnings in 27.15s
+```
+
+Both failures were the dry-run drift list incorrectly remaining empty.
+
+### Mandatory authorization before either replay path
+
+```powershell
+pytest -q tests/test_transformation_command_service.py::test_result_replay_runs_authorizer_before_returning_persisted_result tests/test_transformation_command_service.py::test_cross_actor_domain_row_recovery_is_authorized_before_resolver
+```
+
+```text
+FAILED test_result_replay_runs_authorizer_before_returning_persisted_result
+TypeError: CommandService.execute() got an unexpected keyword argument 'authorizer'
+FAILED test_cross_actor_domain_row_recovery_is_authorized_before_resolver
+TypeError: CommandService.execute() got an unexpected keyword argument 'authorizer'
+2 failed, 15 warnings in 24.53s
+```
+
+### Per-test role identity injection
+
+The runtime-role test was first moved to a disposable database with unique
+deploy/runtime role names and asked guard installation to narrow that injected
+runtime role:
+
+```powershell
+pytest -q tests/test_transformation_runtime_role.py::test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards
+```
+
+```text
+FAILED test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards
+TypeError: ensure_transformation_db_guards() got an unexpected keyword argument 'runtime_role'
+1 failed, 1 warning in 4.28s
+```
+
+### Drifted privilege-bearing membership
+
+After role injection was green, the isolated test granted its runtime role both
+the deployment-owner role and a separate `CREATEDB` role, then reran bootstrap.
+Before membership repair:
+
+```powershell
+pytest -q tests/test_transformation_runtime_role.py::test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards
+```
+
+```text
+FAILED test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards
+AssertionError: assert [('task3_deploy_...',), ('task3_privileged_...',)] == []
+1 failed, 1 warning in 3.38s
+```
+
+## Round 2 GREEN evidence
+
+Individual transitions:
+
+```text
+conditional/column-limited trigger detection+repair:
+2 passed, 10 warnings in 30.74s
+
+persisted-result denial + cross-actor domain-only denial + authorized same-actor recovery:
+3 passed, 18 warnings in 30.79s
+
+unique injected runtime role after guard-role parameterization:
+1 passed, 1 warning in 3.52s
+
+membership repair plus direct SET ROLE/bypass matrix:
+1 passed, 1 warning in 3.33s
+```
+
+Fresh consolidated Task 3 suite:
+
+```powershell
+pytest -q tests/test_transformation_command_service.py tests/test_transformation_db_guards.py tests/test_transformation_runtime_role.py
+```
+
+```text
+collected 44 items
+tests/test_transformation_command_service.py .................... [ 45%]
+tests/test_transformation_db_guards.py ......................     [ 95%]
+tests/test_transformation_runtime_role.py ..                      [100%]
+44 passed, 91 warnings in 56.49s
+```
+
+Fresh prior-interface regression suite:
+
+```powershell
+pytest -q tests/test_transformation_programme_models.py tests/test_schema_reconciliation.py tests/test_capability_tenancy_cutover.py tests/test_tenant_isolation.py
+```
+
+```text
+64 passed, 139 warnings in 55.13s
+```
+
+Final repository gates:
+
+```text
+python scripts/verify.py --gate schema-drift
+ok schema-drift 45.0s [0 <= 0]
+1 passed, 0 failed, 0 skipped
+
+python scripts/verify.py --gate raw-sql-tenancy
+ok raw-sql-tenancy 18.0s [0 <= 0]
+1 passed, 0 failed, 0 skipped
+
+python scripts/verify.py --tag static
+30 passed, 0 failed, 1 skipped
+```
+
+The sole static skip remains `css-build` because this checkout has no vendored
+Tailwind executable; this round has no frontend changes. Relevant `ruff check`
+reports `All checks passed!` and `git diff --check` is empty.
+
+## Trigger-definition evidence and design
+
+- Inspection now treats a canonical guard trigger as enabled, ordinary,
+  row-level, `BEFORE UPDATE OR DELETE`, wired to the exact public guard function,
+  with `tgqual IS NULL` and empty `tgattr`. A same-name/function trigger with a
+  predicate or column list is drift even though its `tgtype` is unchanged.
+- Dry-run reports `trigger_when:<name>` or `trigger_columns:<name>` and leaves the
+  tampered `pg_get_triggerdef()` unchanged. Apply drops/recreates it, verifies no
+  remaining semantic drift, and a direct immutable-result UPDATE again raises
+  the append-only database exception.
+
+## Replay authorization evidence and design
+
+- `OperationAuthorizer` is a mandatory contract independent of the mutation
+  handler and natural-key resolver. It receives the independent command session,
+  actor, operation and natural key.
+- `claim_or_reconcile()` calls it before receipt creation and before consulting
+  any `OperationResult`; `execute_claim()` calls it before any domain resolver.
+  The ordinary `execute()` path authorizes once during claim/reconciliation and
+  carries that authorization directly into its private execution boundary.
+- A denying authorizer prevents persisted-result replay without returning a
+  result ID. Cross-actor domain-row-only recovery is denied before a receipt is
+  inserted and before either resolver or handler runs; final counts remain one
+  pre-existing domain row, zero results and zero outbox events.
+- The authorized same-actor domain-row-only test still reconstructs one immutable
+  result/outbox/finalization without invoking the mutation handler. Resolvers do
+  not duplicate or hide authorization logic.
+
+## Membership and test-isolation evidence and design
+
+- Idempotent bootstrap enumerates every direct role granted to the runtime role
+  and revokes it. This removes direct deployment-owner membership and arbitrary
+  privilege-bearing membership, closing all direct and indirect `SET ROLE` paths
+  from the runtime identity while preserving its explicit DML grants.
+- The test creates a unique `task3_roles_*` database plus unique
+  `task3_deploy_*`, `task3_runtime_*` and `task3_privileged_*` roles. It installs
+  real minimal transformation tables as the unique deploy owner, injects the
+  unique runtime name into real guard installation, authenticates directly as
+  that role, and runs the positive DML plus bypass matrix.
+- Fixture teardown terminates only connections to its unique database, drops the
+  database, then drops runtime, privileged and deploy roles in dependency order
+  inside `finally`, so it runs after assertion failure as well as success. After
+  the RED and GREEN runs an administrator query measured:
+
+```text
+databases []
+roles []
+```
+
+  for `task3_roles_%` and `task3_%`; no fixed cluster-global role password or
+  ownership was changed by the test.
+
+## Round 2 self-review
+
+- Mutation checks: omitting `tgqual` makes the `WHEN(false)` case fail; omitting
+  `tgattr` makes the `UPDATE OF` case fail; moving authorization after result or
+  resolver makes the respective denial test fail; retaining any runtime
+  membership makes the membership query and a direct `SET ROLE` attempt fail.
+- The injected runtime role is quoted as an SQL identifier while role existence
+  remains parameterized. Production deployment retains the default
+  `archie_runtime`; injection exists only to make the real installer safely
+  testable without cluster-global mutation.
+- All supplied command IDs retain explicit organization predicates. The
+  raw-SQL-tenancy gate remains zero, role fixture identifiers are random and
+  bounded, and all temporary cluster objects are absent after teardown.
+
+## Round 2 concerns
+
+1. The unchanged missing Tailwind CLI leaves `css-build` skipped; there are no
+   frontend artifacts in this round.
+2. Docker remains unavailable in this Windows test environment. Compose
+   structure was already pinned in round 1; this round exercises role drift,
+   cleanup and bypass denial directly against PostgreSQL.

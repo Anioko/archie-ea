@@ -60,6 +60,9 @@ def canonical_request_digest(payload: Mapping[str, Any]) -> str:
 OperationNaturalKeyResolver: TypeAlias = Callable[
     [Session, ActorContext, str, CommandClaim], DomainMutationResult | None
 ]
+OperationAuthorizer: TypeAlias = Callable[
+    [Session, ActorContext, str, str], None
+]
 
 
 class CommandService:
@@ -112,6 +115,7 @@ class CommandService:
         idempotency_key: str,
         payload: Mapping[str, Any],
         natural_key: str,
+        authorizer: OperationAuthorizer,
         handler: Callable[[Session, CommandClaim], DomainMutationResult],
         natural_key_resolver: OperationNaturalKeyResolver | None = None,
     ) -> CommandResult:
@@ -122,16 +126,18 @@ class CommandService:
             idempotency_key=idempotency_key,
             request_digest=digest,
             natural_key=natural_key,
+            authorizer=authorizer,
         )
         if isinstance(claim_or_result, CommandResult):
             return claim_or_result
         try:
-            return cls.execute_claim(
+            return cls._execute_claim(
                 actor=actor,
                 operation=operation,
                 claim=claim_or_result,
                 handler=handler,
                 natural_key_resolver=natural_key_resolver,
+                authorizer=None,
             )
         except KnownPreCommitTransient as error:
             cls.mark_retryable(
@@ -162,11 +168,34 @@ class CommandService:
         actor: ActorContext,
         operation: str,
         claim: CommandClaim,
+        authorizer: OperationAuthorizer,
+        handler: Callable[[Session, CommandClaim], DomainMutationResult],
+        natural_key_resolver: OperationNaturalKeyResolver | None = None,
+    ) -> CommandResult:
+        return cls._execute_claim(
+            actor=actor,
+            operation=operation,
+            claim=claim,
+            authorizer=authorizer,
+            handler=handler,
+            natural_key_resolver=natural_key_resolver,
+        )
+
+    @classmethod
+    def _execute_claim(
+        cls,
+        *,
+        actor: ActorContext,
+        operation: str,
+        claim: CommandClaim,
+        authorizer: OperationAuthorizer | None,
         handler: Callable[[Session, CommandClaim], DomainMutationResult],
         natural_key_resolver: OperationNaturalKeyResolver | None = None,
     ) -> CommandResult:
         command_result = None
         with Session(db.engine, expire_on_commit=False) as session, session.begin():
+            if authorizer is not None:
+                authorizer(session, actor, operation, claim.natural_key)
             # This preflight is intentionally non-locking. A handler may run for
             # minutes; heartbeat/reclaim must remain able to advance the lease.
             # The result/outbox/finalisation boundary takes the row lock below.
@@ -210,6 +239,7 @@ class CommandService:
         idempotency_key: str,
         request_digest: str,
         natural_key: str,
+        authorizer: OperationAuthorizer,
     ) -> CommandClaim | CommandResult:
         """Commit a first/reclaimed claim independently, reconciling effects first."""
         if not operation or not idempotency_key or not natural_key:
@@ -219,6 +249,9 @@ class CommandService:
 
         token = cls._new_claim_token()
         with Session(db.engine, expire_on_commit=False) as session, session.begin():
+            # Authorization is mandatory and precedes both receipt creation and
+            # immutable-result reconciliation. Resolvers never carry hidden auth.
+            authorizer(session, actor, operation, natural_key)
             now = cls._database_now(session)
             expiry = now + timedelta(seconds=cls._lease_seconds())
             insert = (
@@ -586,6 +619,7 @@ class CommandService:
 
 __all__ = [
     "CommandService",
+    "OperationAuthorizer",
     "OperationNaturalKeyResolver",
     "canonical_request_digest",
 ]

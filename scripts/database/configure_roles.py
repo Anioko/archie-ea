@@ -38,6 +38,28 @@ def _ensure_login_role(cursor, *, role: str, password: str) -> None:
     )
 
 
+def _revoke_role_memberships(cursor, *, member_role: str) -> None:
+    """Remove every SET ROLE path from the non-owner runtime identity."""
+    cursor.execute(
+        """
+        SELECT granted.rolname
+        FROM pg_auth_members membership
+        JOIN pg_roles granted ON granted.oid = membership.roleid
+        JOIN pg_roles member ON member.oid = membership.member
+        WHERE member.rolname = %s
+        ORDER BY granted.rolname
+        """,
+        (member_role,),
+    )
+    for (granted_role,) in cursor.fetchall():
+        cursor.execute(
+            sql.SQL("REVOKE {} FROM {}").format(
+                sql.Identifier(granted_role),
+                sql.Identifier(member_role),
+            )
+        )
+
+
 def _transfer_public_objects(
     cursor, *, deploy_role: str, runtime_role: str
 ) -> None:
@@ -205,6 +227,7 @@ def configure_database_roles(
         with connection.cursor() as cursor:
             _ensure_login_role(cursor, role=deploy_role, password=deploy_password)
             _ensure_login_role(cursor, role=runtime_role, password=runtime_password)
+            _revoke_role_memberships(cursor, member_role=runtime_role)
             for database_name in names:
                 cursor.execute(
                     "SELECT 1 FROM pg_database WHERE datname = %s", (database_name,)

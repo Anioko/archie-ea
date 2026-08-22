@@ -34,6 +34,10 @@ class GuardFixture:
     natural_key: str
 
 
+def _allow_command(_session, _actor, _operation, _natural_key):
+    return None
+
+
 @pytest.fixture
 def guard_fixture(app, _schema):
     suffix = uuid.uuid4().hex[:12]
@@ -87,6 +91,7 @@ def guard_fixture(app, _schema):
             idempotency_key=key,
             payload=payload,
             natural_key=natural_key,
+            authorizer=_allow_command,
             handler=mutation,
         )
         with Session(db.engine) as session:
@@ -307,6 +312,7 @@ def test_fencing_trigger_rejects_invalid_generation_and_old_worker(guard_fixture
         idempotency_key=key,
         request_digest=CommandService.request_digest(payload),
         natural_key=f"guard-lease:{key}",
+        authorizer=_allow_command,
     )
     extended = CommandService.heartbeat(actor=guard_fixture.actor, claim=claim)
     assert extended.claim_token == claim.claim_token
@@ -341,6 +347,7 @@ def test_fencing_trigger_rejects_invalid_generation_and_old_worker(guard_fixture
         idempotency_key=key,
         request_digest=CommandService.request_digest(payload),
         natural_key=f"guard-lease:{key}",
+        authorizer=_allow_command,
     )
     assert reclaimed.generation == claim.generation + 1
     assert reclaimed.claim_token != claim.claim_token
@@ -371,6 +378,7 @@ def test_receipt_guard_rejects_result_owned_by_another_actor(guard_fixture):
         idempotency_key=f"guard-second-{suffix}",
         request_digest=CommandService.request_digest(guard_fixture.payload),
         natural_key=guard_fixture.natural_key,
+        authorizer=_allow_command,
     )
 
     with pytest.raises(Exception, match="invalid command receipt transition"):
@@ -401,6 +409,7 @@ def test_reconciliation_guard_can_be_reinstalled_without_changing_success(
         idempotency_key=guard_fixture.idempotency_key,
         payload=guard_fixture.payload,
         natural_key=guard_fixture.natural_key,
+        authorizer=_allow_command,
         handler=lambda _session, _claim: pytest.fail("replay executed handler"),
     )
 
@@ -513,6 +522,85 @@ def test_guard_installation_replaces_miswired_same_name_trigger(guard_fixture):
                 "BEFORE UPDATE OR DELETE ON operation_results FOR EACH ROW "
                 "EXECUTE FUNCTION public.archie_reject_transformation_mutation()"
             )
+
+
+@pytest.mark.parametrize(
+    ("trigger_clause", "drift_marker", "definition_marker"),
+    (
+        (
+            "BEFORE UPDATE OR DELETE ON operation_results FOR EACH ROW "
+            "WHEN (false)",
+            "trigger_when",
+            "WHEN (false)",
+        ),
+        (
+            "BEFORE UPDATE OF created_at OR DELETE ON operation_results "
+            "FOR EACH ROW",
+            "trigger_columns",
+            "UPDATE OF created_at",
+        ),
+    ),
+)
+def test_schema_reconciliation_repairs_conditional_or_column_limited_guard(
+    guard_fixture,
+    trigger_clause,
+    drift_marker,
+    definition_marker,
+):
+    """Catches a correct-name/function trigger whose predicate disables updates."""
+    from app.commands.reconcile_schema import _reconcile
+
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "DROP TRIGGER trg_transformation_result_immutable "
+            "ON operation_results"
+        )
+        connection.exec_driver_sql(
+            "CREATE TRIGGER trg_transformation_result_immutable "
+            f"{trigger_clause} "
+            "EXECUTE FUNCTION public.archie_reject_transformation_mutation()"
+        )
+    try:
+        _added, failed, _missing, _blocking = _reconcile(dry_run=True)
+        assert any(
+            drift_marker in item
+            and "trg_transformation_result_immutable" in item
+            for item in failed
+        )
+        with db.engine.connect() as connection:
+            tampered_definition = connection.scalar(
+                text(
+                    "SELECT pg_get_triggerdef(oid) FROM pg_trigger "
+                    "WHERE tgname = 'trg_transformation_result_immutable' "
+                    "AND tgrelid = 'operation_results'::regclass"
+                )
+            )
+        assert definition_marker in tampered_definition
+
+        _added, repaired_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert repaired_failed == []
+        with db.engine.connect() as connection:
+            repaired_definition = connection.scalar(
+                text(
+                    "SELECT pg_get_triggerdef(oid) FROM pg_trigger "
+                    "WHERE tgname = 'trg_transformation_result_immutable' "
+                    "AND tgrelid = 'operation_results'::regclass"
+                )
+            )
+        assert definition_marker not in repaired_definition
+        with pytest.raises(Exception, match="append-only"):
+            _direct_driver_execute(
+                "UPDATE operation_results SET request_digest = %s "
+                "WHERE id = %s AND organization_id = %s",
+                (
+                    "e" * 64,
+                    guard_fixture.result_id,
+                    guard_fixture.organization_id,
+                ),
+            )
+    finally:
+        with db.engine.begin() as connection:
+            ensure_transformation_db_guards(connection)
 
 
 def test_schema_dry_run_reports_tampered_guard_function_then_apply_repairs_it(
