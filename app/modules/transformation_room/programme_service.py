@@ -477,6 +477,7 @@ class TransformationProgrammeService:
             payload["workstream_id"],
             ROLE_ASSIGNMENT_ROLES,
             "role_assignment_not_authorised",
+            lock=True,
         )
         assignment = ProgrammeRoleAssignment(
             organization_id=actor.organization_id,
@@ -729,13 +730,14 @@ class TransformationProgrammeService:
         return session.execute(statement)
 
     @staticmethod
-    def _load_runtime_user(session, actor):
-        user = session.execute(
-            select(User).where(
-                User.id == actor.user_id,
-                User.organization_id == actor.organization_id,
-            )
-        ).scalar_one_or_none()
+    def _load_runtime_user(session, actor, *, lock=False):
+        statement = select(User).where(
+            User.id == actor.user_id,
+            User.organization_id == actor.organization_id,
+        )
+        if lock:
+            statement = statement.with_for_update()
+        user = session.execute(statement).scalar_one_or_none()
         if user is None:
             raise NotAuthorised("actor_not_authorised")
         return user
@@ -763,12 +765,19 @@ class TransformationProgrammeService:
         workstream_id,
         allowed_roles,
         denial_reason,
+        *,
+        lock=False,
     ):
-        user = cls._load_runtime_user(session, actor)
+        # Aggregate-mutating callers lock programme then workstream before this
+        # user/assignment order. PostgreSQL holds these row locks until commit,
+        # so a concurrent authority update cannot become effective between the
+        # check and the governed mutation.
+        user = cls._load_runtime_user(session, actor, lock=lock)
         roles = cls._server_roles(user)
         today = date.today()
-        assigned = session.scalars(
-            select(ProgrammeRoleAssignment.role).where(
+        assignment_statement = (
+            select(ProgrammeRoleAssignment)
+            .where(
                 ProgrammeRoleAssignment.organization_id == actor.organization_id,
                 ProgrammeRoleAssignment.programme_id == programme_id,
                 or_(
@@ -776,14 +785,18 @@ class TransformationProgrammeService:
                     ProgrammeRoleAssignment.workstream_id == workstream_id,
                 ),
                 ProgrammeRoleAssignment.user_id == actor.user_id,
-                ProgrammeRoleAssignment.effective_from <= today,
-                or_(
-                    ProgrammeRoleAssignment.effective_to.is_(None),
-                    ProgrammeRoleAssignment.effective_to >= today,
-                ),
             )
-        ).all()
-        roles.update(assigned)
+            .order_by(ProgrammeRoleAssignment.id)
+        )
+        if lock:
+            assignment_statement = assignment_statement.with_for_update()
+        assignments = session.scalars(assignment_statement).all()
+        roles.update(
+            row.role
+            for row in assignments
+            if row.effective_from <= today
+            and (row.effective_to is None or row.effective_to >= today)
+        )
         if not roles.intersection(allowed_roles):
             raise NotAuthorised(denial_reason)
 

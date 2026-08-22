@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass
-from datetime import date
 import os
 import subprocess
 import sys
+import threading
+import time
+import uuid
+from dataclasses import dataclass
+from datetime import date, timedelta
 
 import pytest
-from sqlalchemy import func, select, text
+from sqlalchemy import event, func, select, text
 from sqlalchemy.orm import Session
 
 from app import db
@@ -25,7 +27,10 @@ from app.models.transformation_evidence import (
     EvidenceRequest,
     TransformationCandidate,
 )
-from app.models.transformation_programme import ProgrammeWorkstream
+from app.models.transformation_programme import (
+    ProgrammeRoleAssignment,
+    ProgrammeWorkstream,
+)
 from app.models.user import User
 from app.modules.transformation_room.domain import (
     ActorContext,
@@ -410,6 +415,7 @@ def committed_scope(app, _schema):
                     "transformation_candidates",
                     "application_dependencies",
                     "application_capability_mapping",
+                    "programme_role_assignments",
                     "programme_workstreams",
                     "strategic_initiatives",
                     "application_owners",
@@ -828,6 +834,200 @@ def test_locked_acceptance_rechecks_role_revoked_after_command_claim(committed_s
             .select_from(EvidenceRequest)
             .where(EvidenceRequest.organization_id == scope.organization_id)
         ) == 0
+
+
+@pytest.mark.parametrize("authority_source", ["enterprise_role", "programme_role"])
+def test_candidate_commit_serializes_with_concurrent_authority_revocation(
+    app, committed_scope, authority_source
+):
+    """Catches actor/assignment revocation committing after auth but before candidate."""
+    scope = committed_scope
+    assignment_id = None
+    with Session(db.engine) as session, session.begin():
+        actor = session.scalar(
+            select(User).where(
+                User.organization_id == scope.organization_id,
+                User.id == scope.actor_id,
+            )
+        )
+        if authority_source == "programme_role":
+            actor.enterprise_role = "application_manager"
+            programme_id = session.scalar(
+                select(ProgrammeWorkstream.programme_id).where(
+                    ProgrammeWorkstream.organization_id == scope.organization_id,
+                    ProgrammeWorkstream.id == scope.workstream_id,
+                )
+            )
+            assignment = ProgrammeRoleAssignment(
+                organization_id=scope.organization_id,
+                programme_id=programme_id,
+                workstream_id=None,
+                user_id=scope.actor_id,
+                role="programme_owner",
+                effective_from=date.today() - timedelta(days=1),
+                assigned_by_id=scope.actor_id,
+            )
+            session.add(assignment)
+            session.flush()
+            assignment_id = assignment.id
+
+    discovered = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+    request = {
+        "workstream_id": scope.workstream_id,
+        "application_id": scope.application_id,
+        "signal_digests": tuple(sorted(discovered.signal_digests)),
+        "inclusion_reason": "Authority and mutation must serialize",
+    }
+    claim = CommandService.claim_or_reconcile(
+        actor=scope.actor,
+        operation="candidate.accept",
+        idempotency_key=f"serialized-revocation-{authority_source}",
+        request_digest=CommandService.request_digest(request),
+        natural_key=(
+            f"candidate:{scope.workstream_id}:application:{scope.application_id}"
+        ),
+        authorizer=RationalisationDiscoveryService.authorise_candidate_acceptance(
+            scope.workstream_id, scope.application_id
+        ),
+    )
+
+    engine = db.engine
+    authority_read = threading.Event()
+    release_candidate = threading.Event()
+    revocation_started = threading.Event()
+    revocation_pid_ready = threading.Event()
+    candidate_results = []
+    candidate_errors = []
+    revocation_errors = []
+    revocation_pid = []
+    candidate_thread_name = f"candidate-{authority_source}"
+
+    def pause_after_authority_rows(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ):
+        if (
+            threading.current_thread().name == candidate_thread_name
+            and statement.lstrip().upper().startswith("SELECT")
+            and "programme_role_assignments" in statement.lower()
+        ):
+            authority_read.set()
+            if not release_candidate.wait(timeout=10):
+                raise TimeoutError("candidate authorization pause was not released")
+
+    def accept_candidate():
+        with app.app_context():
+            try:
+                candidate_results.append(
+                    CommandService._execute_claim(
+                        actor=scope.actor,
+                        operation="candidate.accept",
+                        claim=claim,
+                        authorizer=None,
+                        handler=lambda session, fenced_claim: (
+                            RationalisationDiscoveryService._accept_recomputed_candidate(
+                                session, scope.actor, request, fenced_claim
+                            )
+                        ),
+                    )
+                )
+            except Exception as error:  # asserted after both workers finish
+                candidate_errors.append(error)
+            finally:
+                db.session.remove()
+
+    def revoke_authority():
+        with app.app_context():
+            try:
+                with Session(engine) as session, session.begin():
+                    revocation_pid.append(
+                        session.scalar(text("SELECT pg_backend_pid()"))
+                    )
+                    revocation_pid_ready.set()
+                    revocation_started.set()
+                    if authority_source == "programme_role":
+                        assignment = session.scalar(
+                            select(ProgrammeRoleAssignment)
+                            .where(
+                                ProgrammeRoleAssignment.organization_id
+                                == scope.organization_id,
+                                ProgrammeRoleAssignment.id == assignment_id,
+                            )
+                            .with_for_update()
+                        )
+                        assignment.effective_to = date.today() - timedelta(days=1)
+                    else:
+                        actor = session.scalar(
+                            select(User)
+                            .where(
+                                User.organization_id == scope.organization_id,
+                                User.id == scope.actor_id,
+                            )
+                            .with_for_update()
+                        )
+                        actor.enterprise_role = "application_manager"
+            except Exception as error:  # asserted after both workers finish
+                revocation_errors.append(error)
+            finally:
+                db.session.remove()
+
+    event.listen(engine, "after_cursor_execute", pause_after_authority_rows)
+    candidate_thread = threading.Thread(
+        target=accept_candidate, name=candidate_thread_name, daemon=True
+    )
+    revocation_thread = threading.Thread(
+        target=revoke_authority,
+        name=f"revocation-{authority_source}",
+        daemon=True,
+    )
+    revocation_waited_on_lock = False
+    try:
+        candidate_thread.start()
+        assert authority_read.wait(timeout=10)
+        revocation_thread.start()
+        assert revocation_started.wait(timeout=5)
+        assert revocation_pid_ready.wait(timeout=5)
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and revocation_thread.is_alive():
+            with engine.connect() as connection:
+                revocation_waited_on_lock = connection.scalar(
+                    text(
+                        "SELECT wait_event_type = 'Lock' FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": revocation_pid[0]},
+                ) is True
+            if revocation_waited_on_lock:
+                break
+            time.sleep(0.01)
+    finally:
+        release_candidate.set()
+        candidate_thread.join(timeout=10)
+        revocation_thread.join(timeout=10)
+        event.remove(engine, "after_cursor_execute", pause_after_authority_rows)
+
+    assert revocation_waited_on_lock is True
+    assert candidate_thread.is_alive() is False
+    assert revocation_thread.is_alive() is False
+    assert candidate_errors == []
+    assert revocation_errors == []
+    assert len(candidate_results) == 1
+    with Session(engine) as session:
+        assert session.scalar(
+            select(func.count())
+            .select_from(TransformationCandidate)
+            .where(
+                TransformationCandidate.organization_id == scope.organization_id,
+                TransformationCandidate.workstream_id == scope.workstream_id,
+                TransformationCandidate.subject_id == scope.application_id,
+            )
+        ) == 1
+        if authority_source == "programme_role":
+            assert session.get(ProgrammeRoleAssignment, assignment_id).effective_to < date.today()
+        else:
+            assert session.get(User, scope.actor_id).enterprise_role == "application_manager"
 
 
 def test_candidate_signal_is_database_immutable(committed_scope):

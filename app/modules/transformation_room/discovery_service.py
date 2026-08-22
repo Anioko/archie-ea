@@ -718,6 +718,7 @@ class RationalisationDiscoveryService:
             workstream.id,
             cls.ACCEPTANCE_ROLES,
             "candidate_acceptance_not_authorised",
+            lock=True,
         )
         candidate = TransformationCandidate(
             organization_id=actor.organization_id,
@@ -834,17 +835,29 @@ class RationalisationDiscoveryService:
 
     @staticmethod
     def _load_workstream_graph(session, actor, workstream_id, *, lock):
-        statement = select(ProgrammeWorkstream).where(
+        workstream_filter = (
             ProgrammeWorkstream.id == workstream_id,
             ProgrammeWorkstream.organization_id == actor.organization_id,
         )
         if lock:
-            statement = statement.with_for_update()
-        workstream = session.scalar(statement)
-        if workstream is None:
-            raise NotFound("workstream_not_found")
+            scope = session.execute(
+                select(
+                    ProgrammeWorkstream.id,
+                    ProgrammeWorkstream.programme_id,
+                ).where(*workstream_filter)
+            ).one_or_none()
+            if scope is None:
+                raise NotFound("workstream_not_found")
+            programme_id = scope.programme_id
+        else:
+            workstream = session.scalar(
+                select(ProgrammeWorkstream).where(*workstream_filter)
+            )
+            if workstream is None:
+                raise NotFound("workstream_not_found")
+            programme_id = workstream.programme_id
         programme_statement = select(StrategicInitiative).where(
-            StrategicInitiative.id == workstream.programme_id,
+            StrategicInitiative.id == programme_id,
             StrategicInitiative.organization_id == actor.organization_id,
             StrategicInitiative.record_kind == "transformation_programme",
         )
@@ -853,6 +866,17 @@ class RationalisationDiscoveryService:
         programme = session.scalar(programme_statement)
         if programme is None:
             raise NotFound("programme_not_found")
+        if lock:
+            workstream = session.scalar(
+                select(ProgrammeWorkstream)
+                .where(
+                    *workstream_filter,
+                    ProgrammeWorkstream.programme_id == programme.id,
+                )
+                .with_for_update()
+            )
+            if workstream is None:
+                raise NotFound("workstream_not_found")
         return workstream, programme
 
     @staticmethod

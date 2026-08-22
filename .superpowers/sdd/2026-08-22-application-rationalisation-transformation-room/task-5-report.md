@@ -253,3 +253,94 @@ the confirmed same-tenant workstream lead.
 - The repository-wide verifier remains parent-wave work as documented in the
   original report; this round used bounded focused, prior-interface, tenant and
   required gate verification with no skips.
+
+## Fix round 2/5 — authorization/revocation serialization
+
+### Outcome
+
+Closed the remaining Important race at the PostgreSQL row-lock boundary.
+Candidate acceptance now owns locks in the shared programme → workstream →
+persisted actor → actor programme/workstream assignments order, with role
+assignments ordered by primary key. Those locks remain held by the command
+transaction through candidate/signal/request/result/outbox persistence and
+commit. Task 4's locked role-assignment mutation uses the same actor/assignment
+authority lock mode after its existing programme → workstream locks.
+
+Commit subject: `fix: serialize candidate authority revocation` (the exact hash
+is recorded in the parent handoff because this report is included in that
+commit).
+
+### RED evidence
+
+The new real two-session PostgreSQL regression pauses candidate acceptance after
+the final authority-row read and starts a second transaction that revokes the
+same authority. It is parameterized over both authority sources:
+
+- changing the persisted actor's `enterprise_role`; and
+- ending the actor's active programme-owner assignment.
+
+Before the fix, both cases failed `assert revocation_waited_on_lock is True`:
+the revocation committed while candidate authorization was paused, after which
+the stale-authorized candidate transaction resumed and committed. This directly
+reproduced the review race rather than simulating it with a mock.
+
+### GREEN evidence
+
+- Focused two-session serialization regression — **2 passed**. While candidate
+  authorization is paused, `pg_stat_activity` reports the revocation backend
+  waiting on a PostgreSQL row lock. Releasing candidate lets its transaction
+  commit and only then lets revocation complete; the candidate is persisted once
+  and the authority is finally revoked.
+- The prior revocation-wins-first test remains green: revocation after command
+  claim but before the locked handler yields `NotAuthorised` and zero candidate,
+  signal or request rows.
+- `pytest -q tests/test_rationalisation_discovery_service.py` — **27 passed**, 0
+  failed.
+- `pytest -q tests/test_transformation_programme_service.py
+  tests/test_transformation_command_service.py
+  tests/test_transformation_gate_service.py
+  tests/test_transformation_db_guards.py tests/test_tenant_isolation.py` — **128
+  passed**, 0 failed.
+- `python scripts/verify.py --gate compile` — **1 passed**, no skips.
+- `python scripts/verify.py --gate lint-core` — **1 passed**, `0 <= 0`, no skips.
+- `python scripts/verify.py --gate raw-sql-tenancy` — **1 passed**, `0 <= 0`, no
+  skips.
+- `python scripts/verify.py --gate schema-drift` — **1 passed**, `0 <= 0`, no
+  skips.
+- `python scripts/verify.py --gate undefined-exports` — **1 passed**, `0 <= 0`,
+  no skips.
+- Focused Ruff and `git diff --check` — clean.
+
+### Lock and deadlock analysis
+
+`_require_programme_authority(..., lock=True)` first locks the same-tenant
+persisted `User`, then loads every actor assignment relevant to the programme or
+current workstream, ordered by assignment ID, using `FOR UPDATE`. Active roles
+are derived in Python only after all relevant rows—including future or expired
+rows—are locked, so end/update/replace operations cannot change the authority
+set during the mutation transaction. Direct user or assignment UPDATE/DELETE
+statements acquire the same target row locks and therefore serialize as proven
+by the two-session test.
+
+Candidate graph loading previously locked workstream before programme, opposite
+to Task 4 role assignment. It now uses a non-locking tenant scope lookup, locks
+the programme first, then locks and revalidates the workstream against that
+programme. Task 4 role assignment already used programme → workstream and now
+also requests locked authority rows. Contending candidate/role writes therefore
+request common rows in the same order rather than forming a lock cycle.
+
+### Self-review and concerns
+
+- The test uses real SQLAlchemy sessions, PostgreSQL row locks and
+  `pg_stat_activity`; the SQL event only pauses after the real assignment query
+  and does not replace or alter authorization behavior.
+- Both legal serializations are safe. This regression exercises candidate-first;
+  the existing role-revoked-before-handler case exercises revocation-first and
+  proves denial with no domain writes.
+- Actor authorization has no persisted active/disabled flag in the current User
+  contract. `confirmed` is account/email confirmation and is not consulted by
+  `_require_programme_authority`; accordingly there is no separate actor
+  deactivation state to serialize. All persisted fields that currently influence
+  server roles live on the locked User row (apart from the static global Role
+  definition).
+- No schema, command contract or lifecycle behavior changed in this round.
