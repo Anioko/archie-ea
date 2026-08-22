@@ -428,3 +428,83 @@ The only remaining concern is the repository's existing warning volume
 (SQLAlchemy lifecycle/deprecation and detached test-user warnings). This round
 introduced no failure or skipped gate, and no schema, route, template or UI
 change.
+
+## Review fix round 4 — distinct resolution and governing source heads
+
+Fix commit subject: `fix: separate evidence resolution authority heads`. The
+exact SHA is recorded in the parent handoff because this report and the fix are
+committed together.
+
+Conflict resolution now requires the target resolution head and the governing
+source head to be different logical sources. The service compares the complete
+`(tenant, subject type, subject ID, claim key, source identity)` keys before it
+creates or locks the resolution head, and retains an explicit locked-head ID
+check as defence in depth. It therefore returns
+`governing_evidence_source_not_distinct` instead of relying on the incidental
+initial-resolution revision check.
+
+The SECURITY DEFINER function independently rejects both
+`governing_head_id = p_head_id` and a second physical head carrying the same
+complete key/source identity. The governing-record lookup has already bound
+tenant, subject and claim to the target head; the source-identity comparison
+closes the duplicate-head alias as well as the literal same-head path. The
+check runs after the live receipt fence is locked and validated but before the
+governing-current check, event insertion or compare-and-swap update.
+
+### Review fix round 4 RED evidence
+
+The focused service and restricted-runtime tests first produced **3 failures**:
+
+- the public service reached `stale_head_revision` rather than a semantic
+  distinct-source rejection; and
+- the real restricted runtime login successfully committed both the literal
+  same-head exploit and a second head with the identical full source key. In
+  each database case the definer verified the governing record as current and
+  then advanced the target, replacing the pointer that supplied its authority.
+
+The RED command was:
+
+```text
+pytest -q \
+  tests/test_transformation_evidence_service.py::test_resolution_rejects_governing_leaf_from_its_own_resolution_source \
+  tests/test_transformation_runtime_role.py::test_restricted_runtime_rejects_self_governing_resolution_atomically
+```
+
+and ended with `3 failed` for the expected missing-validation reasons.
+
+### Review fix round 4 GREEN and atomicity evidence
+
+The same service case, both restricted-runtime attack variants and the existing
+valid distinct-head control are now **4 passed**. Each rejected runtime attack
+captures the record count, event count and every affected head's
+`(id, current_record_id, revision)` before the attempt and verifies the exact
+same snapshot after PostgreSQL rolls the transaction back. Thus no attack
+record, head event or head mutation survives. The normal current cited leaf on
+a genuinely distinct source/head still advances successfully.
+
+### Review fix round 4 verification output
+
+Both database variables used
+`postgresql://postgres@127.0.0.1:5439/flask_test`.
+
+- Task 6 evidence/concurrency/database/runtime files: **57 passed**, 0 failed.
+- Full Transformation Room regression: **201 passed**, 0 failed.
+- `schema-drift`, `raw-sql-tenancy`, `lint-core`, `compile` and
+  `undefined-exports`: each **1 passed**, 0 failed, 0 skipped.
+- Focused Ruff over both implementation and both regression-test files:
+  **all checks passed**.
+- `git diff --check`: clean.
+
+### Review fix round 4 self-review
+
+The new service regression exercises the public command path with a real
+current governing head and verifies persisted state, not mocks. The database
+regression uses the isolated deploy/runtime roles, live receipt token and
+lease, the installed definer, real trigger/event ledger and commit boundary.
+Its same-head case proves the reported exploit; its duplicate-full-key case
+prevents an ID-only repair from leaving an alias bypass. The existing
+candidate-agnostic distinct-source test remains the positive control.
+
+No schema, reconciliation, route, template, CSS or UI change was required.
+The only remaining concern is the repository's pre-existing warning volume;
+this round introduced no failure, skipped gate or additional product behavior.

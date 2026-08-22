@@ -1361,6 +1361,22 @@ class TransformationEvidenceService:
         resolution_source_identity = canonical_source_identity(
             "governance_resolution", f"resolution:conflict:{conflict.id}"
         )
+        governing_head_key = (
+            governing.organization_id,
+            governing.subject_type,
+            governing.subject_id,
+            governing.claim_key,
+            governing.source_identity,
+        )
+        resolution_head_key = (
+            actor.organization_id,
+            conflict.subject_type,
+            conflict.subject_id,
+            conflict.claim_key,
+            resolution_source_identity,
+        )
+        if governing_head_key == resolution_head_key:
+            raise CommandConflict("governing_evidence_source_not_distinct")
         session.execute(
             postgresql_insert(EvidenceClaimHead)
             .values(
@@ -1412,6 +1428,8 @@ class TransformationEvidenceService:
         resolution_head = locked_by_source.get(resolution_source_identity)
         if resolution_head is None:
             raise RuntimeError("evidence resolution head upsert failed")
+        if governing_head is not None and governing_head.id == resolution_head.id:
+            raise CommandConflict("governing_evidence_source_not_distinct")
         if governing_head is None or governing_head.current_record_id != governing.id:
             raise CommandConflict("governing_evidence_not_current")
         now = CommandService._database_now(session)

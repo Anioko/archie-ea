@@ -626,6 +626,213 @@ def _runtime_conflict_resolution(role_database, *, supersede_governing_leaf: boo
         raw.close()
 
 
+def _runtime_same_source_resolution_attack(
+    role_database, *, duplicate_head_alias: bool
+):
+    """Attempt to make a resolution replace its own governing source head."""
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    raw = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.runtime_role,
+        password=role_database.runtime_password,
+    )
+    organization_id = 71001
+    actor_id = 72001
+    candidate_id = 73001
+    subject_id = 74001
+    claim_key = "application_owner"
+    claim_token = "1" * 64
+
+    def persisted_state(cursor):
+        cursor.execute(
+            "SELECT count(*) FROM evidence_records WHERE organization_id = %s",
+            (organization_id,),
+        )
+        record_count = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT count(*) FROM evidence_head_events WHERE organization_id = %s",
+            (organization_id,),
+        )
+        event_count = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT id, current_record_id, revision FROM evidence_claim_heads "
+            "WHERE organization_id = %s ORDER BY id",
+            (organization_id,),
+        )
+        return record_count, event_count, tuple(cursor.fetchall())
+
+    try:
+        cursor = raw.cursor()
+        cursor.execute(
+            "SELECT nextval(pg_get_serial_sequence('evidence_records', 'id'))"
+        )
+        governing_record_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO evidence_records "
+            "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
+            "classification, source_identity, source_type, source_record_id, "
+            "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+            "VALUES (%s, %s, 'application', %s, %s, 'conflict', %s, "
+            "'governance_conflict', NULL, %s, %s::json, %s::json, NULL) RETURNING id",
+            (
+                organization_id,
+                candidate_id,
+                subject_id,
+                claim_key,
+                "conflict:runtime-self-resolution-probe",
+                actor_id,
+                json.dumps({"conflicting_evidence_ids": [governing_record_id]}),
+                json.dumps([governing_record_id]),
+            ),
+        )
+        conflict_record_id = cursor.fetchone()[0]
+        resolution_identity = f"resolution:conflict:{conflict_record_id}"
+        source_digest = hashlib.sha256(
+            resolution_identity.encode("utf-8")
+        ).hexdigest()
+        cursor.execute(
+            "INSERT INTO evidence_claim_heads "
+            "(organization_id, subject_type, subject_id, claim_key, source_identity) "
+            "VALUES (%s, 'application', %s, %s, %s) RETURNING id",
+            (organization_id, subject_id, claim_key, resolution_identity),
+        )
+        governing_head_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO command_idempotency_records "
+            "(organization_id, actor_id, operation, idempotency_key, "
+            "request_digest, natural_key, status, lease_generation, "
+            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
+            "VALUES (%s, %s, 'evidence.observe', 'self-governing-root', %s, %s, "
+            "'in_progress', 1, %s, 'self-governing-root-request', "
+            "clock_timestamp() + interval '1 minute', 1) RETURNING id",
+            (
+                organization_id,
+                actor_id,
+                "2" * 64,
+                f"evidence:{candidate_id}:{claim_key}:{source_digest}:1",
+                claim_token,
+            ),
+        )
+        observation_receipt_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO evidence_records "
+            "(id, organization_id, candidate_id, subject_type, subject_id, claim_key, "
+            "classification, source_identity, source_type, source_record_id, "
+            "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+            "VALUES (%s, %s, %s, 'application', %s, %s, 'observed', %s, "
+            "'inventory', NULL, %s, %s::json, '[]'::json, NULL)",
+            (
+                governing_record_id,
+                organization_id,
+                candidate_id,
+                subject_id,
+                claim_key,
+                resolution_identity,
+                actor_id,
+                json.dumps("Self-governing owner"),
+            ),
+        )
+        cursor.execute(
+            "SELECT public.archie_advance_evidence_head(%s, %s, 0, %s, %s, 1, %s)",
+            (
+                governing_head_id,
+                governing_record_id,
+                actor_id,
+                observation_receipt_id,
+                claim_token,
+            ),
+        )
+        assert cursor.fetchone()[0] == 1
+        target_head_id = governing_head_id
+        expected_revision = 1
+        supersedes_id = governing_record_id
+        if duplicate_head_alias:
+            cursor.execute(
+                "INSERT INTO evidence_claim_heads "
+                "(organization_id, subject_type, subject_id, claim_key, "
+                "source_identity) VALUES (%s, 'application', %s, %s, %s) "
+                "RETURNING id",
+                (organization_id, subject_id, claim_key, resolution_identity),
+            )
+            target_head_id = cursor.fetchone()[0]
+            expected_revision = 0
+            supersedes_id = None
+        raw.commit()
+        before = persisted_state(cursor)
+
+        cursor.execute(
+            "INSERT INTO command_idempotency_records "
+            "(organization_id, actor_id, operation, idempotency_key, "
+            "request_digest, natural_key, status, lease_generation, "
+            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
+            "VALUES (%s, %s, 'evidence.conflict.resolve', 'self-governing-attack', "
+            "%s, %s, 'in_progress', 1, %s, 'self-governing-attack-request', "
+            "clock_timestamp() + interval '1 minute', 1) RETURNING id",
+            (
+                organization_id,
+                actor_id,
+                "3" * 64,
+                (
+                    f"evidence-conflict-resolution:{conflict_record_id}:"
+                    f"{governing_record_id}"
+                ),
+                claim_token,
+            ),
+        )
+        resolution_receipt_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO evidence_records "
+            "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
+            "classification, source_identity, source_type, source_record_id, "
+            "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+            "VALUES (%s, %s, 'application', %s, %s, 'derived', %s, "
+            "'governance_resolution', %s, %s, %s::json, %s::json, %s) RETURNING id",
+            (
+                organization_id,
+                candidate_id,
+                subject_id,
+                claim_key,
+                resolution_identity,
+                conflict_record_id,
+                actor_id,
+                json.dumps(
+                    {
+                        "conflict_evidence_id": conflict_record_id,
+                        "governing_evidence_id": governing_record_id,
+                        "rationale": "Attempt to replace the governing source",
+                    }
+                ),
+                json.dumps([conflict_record_id, governing_record_id]),
+                supersedes_id,
+            ),
+        )
+        resolution_record_id = cursor.fetchone()[0]
+        error_message = None
+        try:
+            cursor.execute(
+                "SELECT public.archie_advance_evidence_head("
+                "%s, %s, %s, %s, %s, 1, %s)",
+                (
+                    target_head_id,
+                    resolution_record_id,
+                    expected_revision,
+                    actor_id,
+                    resolution_receipt_id,
+                    claim_token,
+                ),
+            )
+            raw.commit()
+        except psycopg2.Error as error:
+            error_message = str(error)
+            raw.rollback()
+        after = persisted_state(cursor)
+        return error_message, before, after
+    finally:
+        raw.close()
+
+
 def test_restricted_runtime_allows_same_candidate_attestation_conflict_pair(
     guarded_runtime_database,
 ):
@@ -669,6 +876,27 @@ def test_restricted_runtime_rejects_resolution_with_superseded_cited_source_leaf
             guarded_runtime_database,
             supersede_governing_leaf=True,
         )
+
+
+@pytest.mark.parametrize(
+    "duplicate_head_alias",
+    (False, True),
+    ids=("same-head", "identical-full-key-alias"),
+)
+def test_restricted_runtime_rejects_self_governing_resolution_atomically(
+    guarded_runtime_database,
+    duplicate_head_alias,
+):
+    """Catches a resolution replacing its authority through the same source."""
+    error, before, after = _runtime_same_source_resolution_attack(
+        guarded_runtime_database,
+        duplicate_head_alias=duplicate_head_alias,
+    )
+
+    assert "governing evidence source must differ from resolution source" in (
+        error or ""
+    )
+    assert after == before
 
 
 def test_compose_paths_separate_database_deployment_from_runtime():

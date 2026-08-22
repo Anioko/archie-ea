@@ -476,6 +476,14 @@ BEGIN
     END IF;
 
     IF receipt_operation = 'evidence.conflict.resolve' THEN
+        -- The governing lookup already binds tenant, subject and claim.  Reject
+        -- both the literal target head and any duplicate head alias carrying
+        -- that same complete key/source identity before an event can be written.
+        IF governing_head_id IS NOT DISTINCT FROM p_head_id
+           OR governing_source_identity IS NOT DISTINCT FROM head_source_identity THEN
+            RAISE EXCEPTION 'governing evidence source must differ from resolution source'
+                USING ERRCODE = '55000';
+        END IF;
         SELECT head.current_record_id
           INTO governing_current_record_id
           FROM public.evidence_claim_heads head

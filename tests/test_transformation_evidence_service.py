@@ -761,6 +761,101 @@ def test_resolution_accepts_current_cited_leaf_from_another_candidate_provenance
     assert resolution.value_json["governing_evidence_id"] == governing.id
 
 
+def test_resolution_rejects_governing_leaf_from_its_own_resolution_source(
+    evidence_scope,
+):
+    """Catches a resolution superseding the head that grants its authority."""
+    scope = evidence_scope
+    _record_inventory(scope)
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("string", "Disputed owner", None, None),
+        expected_head_revision=0,
+        command_key="self-governing-source-attestation",
+    )
+    with Session(db.engine) as session, session.begin():
+        synthetic_conflict_id = session.scalar(
+            text(
+                "SELECT nextval("
+                "pg_get_serial_sequence('evidence_records', 'id'))"
+            )
+        )
+    resolution_source_identity = f"resolution:conflict:{synthetic_conflict_id}"
+    governing = _record_named_source(
+        scope,
+        candidate_id=scope.candidate_id,
+        adapter_key=f"self-resolution-source-{synthetic_conflict_id}",
+        source_identity=resolution_source_identity,
+        value="Self-governing owner",
+    )
+    governing_id = governing.object_ids["evidence_record_id"]
+    with Session(db.engine) as session, session.begin():
+        original = session.get(
+            EvidenceRecord, submitted.object_ids["conflict_evidence_id"]
+        )
+        values = {
+            column.name: getattr(original, column.name)
+            for column in EvidenceRecord.__table__.columns
+            if column.name not in {"id", "created_at"}
+        }
+        conflict_value = TypedEvidenceValue(
+            "json", {"conflicting_evidence_ids": [governing_id]}, None, None
+        )
+        values.update(
+            source_identity=(
+                f"conflict:self-resolution-source:{scope.request_id}:"
+                f"{synthetic_conflict_id}"
+            ),
+            source_version=f"self-resolution-source:{synthetic_conflict_id}",
+            value_json=conflict_value.value,
+            source_checksum=sha256_canonical(conflict_value),
+            cited_evidence_ids=[governing_id],
+            supersedes_id=None,
+        )
+        session.add(EvidenceRecord(id=synthetic_conflict_id, **values))
+    _grant_decision_authority(scope)
+
+    def persisted_state():
+        with Session(db.engine) as session:
+            head = session.scalar(
+                select(EvidenceClaimHead).where(
+                    EvidenceClaimHead.organization_id == scope.organization_id,
+                    EvidenceClaimHead.subject_type == "application",
+                    EvidenceClaimHead.subject_id == scope.application_id,
+                    EvidenceClaimHead.claim_key == "application_owner",
+                    EvidenceClaimHead.source_identity == resolution_source_identity,
+                )
+            )
+            return (
+                session.scalar(
+                    select(func.count())
+                    .select_from(EvidenceRecord)
+                    .where(EvidenceRecord.organization_id == scope.organization_id)
+                ),
+                session.scalar(
+                    select(func.count())
+                    .select_from(EvidenceHeadEvent)
+                    .where(EvidenceHeadEvent.organization_id == scope.organization_id)
+                ),
+                (head.id, head.current_record_id, head.revision),
+            )
+
+    before = persisted_state()
+    with pytest.raises(
+        CommandConflict, match="governing_evidence_source_not_distinct"
+    ):
+        TransformationEvidenceService.resolve_conflict(
+            actor=scope.actor,
+            conflict_evidence_id=synthetic_conflict_id,
+            governing_evidence_id=governing_id,
+            rationale="A resolution cannot replace its own governing source.",
+            command_key="reject-self-governing-resolution-source",
+        )
+
+    assert persisted_state() == before
+
+
 def test_resolution_rejects_cited_leaf_that_is_no_longer_current(evidence_scope):
     """Catches a historically cited record being selected after source correction."""
     scope = evidence_scope
