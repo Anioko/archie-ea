@@ -311,6 +311,157 @@ def test_capability_reference_is_read_only_inside_a_tenant_request(
             db_session.flush()
 
 
+def test_request_tenant_context_is_set_transaction_locally_in_postgresql(
+    app, db_session, make_org
+):
+    """The database trigger must receive the same tenant as the ORM middleware."""
+    from flask_login import login_user
+    from sqlalchemy import text
+
+    from app.models.user import User
+
+    org = make_org("db-context")
+    user = User(
+        email=f"db-context-{uuid.uuid4().hex[:10]}@example.com",
+        first_name="DB",
+        last_name="Context",
+        organization_id=org.id,
+        confirmed=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    with app.test_request_context("/"):
+        login_user(user)
+        handler = next(
+            callback
+            for callback in app.before_request_funcs[None]
+            if callback.__name__ == "set_tenant_context"
+        )
+        handler()
+        direct_actor_org = db_session.connection().execute(
+            text("SELECT current_setting('archie.organization_id', true)")
+        ).scalar_one()
+        actor_org = db_session.execute(
+            text("SELECT current_setting('archie.organization_id', true)")
+        ).scalar_one()
+
+    assert (direct_actor_org, actor_org) == (str(org.id), str(org.id))
+
+
+def test_database_tenant_setting_clears_at_transaction_boundary(app):
+    """A pooled PostgreSQL connection cannot carry one request's tenant onward."""
+    from sqlalchemy import text
+
+    from app import db
+    from app.middleware.tenant_isolation import set_database_tenant_context
+
+    with db.engine.connect() as connection:
+        transaction = connection.begin()
+        set_database_tenant_context(connection, 777001)
+        assert connection.execute(
+            text("SELECT current_setting('archie.organization_id', true)")
+        ).scalar_one() == "777001"
+        transaction.rollback()
+
+        with connection.begin():
+            cleared = connection.execute(
+                text("SELECT current_setting('archie.organization_id', true)")
+            ).scalar_one()
+    assert cleared in (None, "")
+
+
+def test_explicit_capability_identifier_loader_does_not_treat_missing_org_as_null_owner(
+    db_session,
+):
+    """A system caller without an org may load references, not unclassified NULL rows."""
+    from app.models.unified_capability import UnifiedCapability
+
+    suffix = uuid.uuid4().hex[:10]
+    legacy = UnifiedCapability(
+        name="Unclassified supplied identifier",
+        code=f"NULL-ID-{suffix}",
+        scope=None,
+        organization_id=None,
+    )
+    reference = UnifiedCapability(
+        name="Reference supplied identifier",
+        code=f"REF-ID-{suffix}",
+        scope="reference",
+        organization_id=None,
+    )
+    db_session.add_all((legacy, reference))
+    db_session.flush()
+
+    assert UnifiedCapability.visible_to_organization(legacy.id, None) is None
+    assert UnifiedCapability.visible_to_organization(reference.id, None) is reference
+
+
+def test_capability_api_identifier_lookup_rejects_warm_cached_foreign_tenant(
+    app, db_session, make_org, tenant_ctx
+):
+    """The API's supplied-ID fallback must not trust an identity-map hit."""
+    from app.api.v1.capabilities import get_capability
+    from app.models.unified_capability import UnifiedCapability
+
+    org_a, org_b = make_org("api-cap-a"), make_org("api-cap-b")
+    foreign = UnifiedCapability(
+        name="Foreign API capability",
+        code=f"API-B-{uuid.uuid4().hex[:10]}",
+        scope="tenant",
+        organization_id=org_b.id,
+    )
+    db_session.add(foreign)
+    db_session.flush()
+    foreign_id = foreign.id
+
+    with tenant_ctx(org_b.id):
+        assert db_session.get(UnifiedCapability, foreign_id) is foreign
+
+    with tenant_ctx(org_a.id):
+        response = get_capability.__wrapped__(str(foreign_id))
+    status = response[1] if isinstance(response, tuple) else response.status_code
+    assert status == 404
+
+
+def test_dual_mapping_service_identifier_lookup_rejects_warm_cached_foreign_tenant(
+    db_session, make_org, tenant_ctx
+):
+    """The compatibility service must explicitly scope supplied capability IDs."""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.unified_capability import UnifiedCapability
+    from app.modules.capabilities.services.dual_capability_mapping_service import (
+        DualCapabilityMappingService,
+    )
+
+    org_a, org_b = make_org("service-cap-a"), make_org("service-cap-b")
+    business = BusinessCapability(
+        name="Tenant A legacy capability",
+        code=f"BUS-A-{uuid.uuid4().hex[:10]}",
+        organization_id=org_a.id,
+    )
+    foreign = UnifiedCapability(
+        name="Tenant B replacement",
+        code=f"UNI-B-{uuid.uuid4().hex[:10]}",
+        scope="tenant",
+        organization_id=org_b.id,
+    )
+    db_session.add_all((business, foreign))
+    db_session.flush()
+    foreign_id = foreign.id
+
+    with tenant_ctx(org_b.id):
+        assert db_session.get(UnifiedCapability, foreign_id) is foreign
+
+    with tenant_ctx(org_a.id):
+        result = DualCapabilityMappingService.deprecate_business_capability(
+            business.id, foreign_id
+        )
+
+    assert result == {"status": "error", "message": "UnifiedCapability not found"}
+    assert business.is_deprecated is False
+
+
 # --------------------------------------------------------------- known gaps
 
 

@@ -37,6 +37,10 @@ def install_tenant_context(app):
         if current_user.is_authenticated and hasattr(current_user, "organization_id"):
             g.current_org_id = current_user.organization_id
             g.current_org = getattr(current_user, "organization", None)
+            from app.extensions import db
+            from app.middleware.tenant_isolation import set_database_tenant_context
+
+            set_database_tenant_context(db.session.connection(), g.current_org_id)
         else:
             g.current_org_id = None
             g.current_org = None

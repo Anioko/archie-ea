@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
 
-SELECT pg_advisory_lock(1684220026);
+BEGIN;
+SELECT pg_advisory_xact_lock(1684220026);
 
 -- Validate reversibility before making any catalogue change.  Any code or
 -- ArchiMate identifier reused across tenants makes the old global uniqueness
@@ -30,9 +31,12 @@ BEGIN
 END
 $reversible$;
 
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ix_unified_capabilities_code
+DROP INDEX IF EXISTS ix_unified_capabilities_code;
+DROP INDEX IF EXISTS ix_unified_capabilities_archimate_id;
+
+CREATE UNIQUE INDEX ix_unified_capabilities_code
     ON unified_capabilities (code);
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ix_unified_capabilities_archimate_id
+CREATE UNIQUE INDEX ix_unified_capabilities_archimate_id
     ON unified_capabilities (archimate_id);
 
 DROP INDEX IF EXISTS uq_unified_capabilities_reference_code;
@@ -49,4 +53,4 @@ ALTER TABLE unified_capabilities
     DROP CONSTRAINT IF EXISTS fk_unified_capabilities_reference,
     DROP CONSTRAINT IF EXISTS fk_unified_capabilities_retired_into;
 
-SELECT pg_advisory_unlock(1684220026);
+COMMIT;

@@ -30,6 +30,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    and_,
     or_,
 )
 from sqlalchemy import inspect as sa_inspect
@@ -342,6 +343,23 @@ class UnifiedCapability(HybridCapabilityTenantMixin, db.Model, OptimisticLockMix
     def __repr__(self):
         return f"<UnifiedCapability {self.name} (L{self.level})>"
 
+    @classmethod
+    def visible_to_organization(cls, capability_id: int, organization_id: int | None):
+        """Load a supplied identifier through an explicit hybrid-owner predicate.
+
+        A regular ``Session.get`` can return a warm identity-map object without
+        emitting SQL, bypassing loader criteria.  This query always reaches
+        PostgreSQL and treats only explicit reference scope as shared.
+        """
+
+        reference_scope = and_(
+            cls.scope == "reference", cls.organization_id.is_(None)
+        )
+        visibility = reference_scope
+        if organization_id is not None:
+            visibility = or_(reference_scope, cls.organization_id == organization_id)
+        return cls.query.filter(cls.id == capability_id, visibility).one_or_none()
+
     def to_dict(self):
         """Convert to dictionary for API responses"""
         return {
@@ -466,6 +484,9 @@ def _scope_unified_capability_queries(orm_execute_state):
 
     organization_id = g.current_org_id
     if orm_execute_state.is_select:
+        # NULL-owner legacy rows remain visible during the pre-cutover
+        # compatibility window.  A completed cutover installs the strict
+        # scope/owner CHECK, after which every such row is a reference row.
         predicate = lambda cls: or_(  # noqa: E731
             cls.organization_id == organization_id,
             cls.organization_id.is_(None),

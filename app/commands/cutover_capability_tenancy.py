@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
+import tempfile
 from typing import Literal, Sequence
 
 import click
@@ -226,6 +228,37 @@ def _foreign_keys(connection) -> list[dict[str, str]]:
     return [dict(row) for row in rows]
 
 
+def _lock_cutover_tables(connection, foreign_keys: Sequence[dict[str, str]]) -> None:
+    """Freeze classification evidence and every discovered inbound FK surface.
+
+    ``SHARE ROW EXCLUSIVE`` permits ordinary reads but conflicts with the
+    ``ROW EXCLUSIVE`` lock taken by INSERT/UPDATE/DELETE.  The locks live only
+    for the cutover transaction, so relationship ownership cannot change
+    between classification and final verification.
+    """
+
+    candidates = {
+        "unified_capabilities",
+        "application_components",
+        "benefits",
+        "work_packages",
+        "unified_work_packages",
+        "work_package_capabilities",
+        "unified_application_capability_mapping",
+        "unified_capability_application_mappings",
+    }
+    candidates.update(item["table_name"] for item in foreign_keys)
+    existing = sorted(name for name in candidates if _table_columns(connection, name))
+    if existing:
+        connection.execute(
+            text(
+                "LOCK TABLE "
+                + ", ".join(_quoted(name) for name in existing)
+                + " IN SHARE ROW EXCLUSIVE MODE"
+            )
+        )
+
+
 def _foreign_key_counts(connection, foreign_keys: Sequence[dict[str, str]]) -> dict[str, int]:
     result: dict[str, int] = {}
     for foreign_key in foreign_keys:
@@ -373,6 +406,15 @@ def _resolve_duplicate(
             ),
             {"source_id": source_id, "target_id": target_id},
         ).all()
+        source_links = int(
+            connection.execute(
+                text(
+                    f"SELECT count(*) FROM {table} AS source "
+                    f"WHERE source.{column} = :source_id"
+                ),
+                {"source_id": source_id},
+            ).scalar_one()
+        )
         eligible = int(
             connection.execute(
                 text(
@@ -381,6 +423,20 @@ def _resolve_duplicate(
                     f"AND ({owner_expression}) IS NOT DISTINCT FROM :organization_id"
                 ),
                 {"source_id": source_id, "organization_id": organization_id},
+            ).scalar_one()
+        )
+        if eligible != source_links:
+            raise CutoverBlocked(
+                "unknown or conflicting ownership for "
+                f"{table_name}.{column_name} relationships to duplicate {source_id}"
+            )
+        target_links_before = int(
+            connection.execute(
+                text(
+                    f"SELECT count(*) FROM {table} AS source "
+                    f"WHERE source.{column} = :target_id"
+                ),
+                {"target_id": target_id},
             ).scalar_one()
         )
         result = connection.execute(
@@ -400,6 +456,18 @@ def _resolve_duplicate(
                 f"relationship count mismatch while repointing {table_name}.{column_name}"
             )
         writes += result.rowcount
+        source_links_after, target_links_after = connection.execute(
+            text(
+                f"SELECT count(*) FILTER (WHERE source.{column} = :source_id), "
+                f"count(*) FILTER (WHERE source.{column} = :target_id) "
+                f"FROM {table} AS source"
+            ),
+            {"source_id": source_id, "target_id": target_id},
+        ).one()
+        if source_links_after != 0 or target_links_after != target_links_before + source_links:
+            raise CutoverBlocked(
+                f"relationship assignment mismatch after repointing {table_name}.{column_name}"
+            )
 
     result = connection.execute(
         text(
@@ -427,6 +495,13 @@ def _resolve_duplicate(
 def install_cutover_constraints(connection) -> None:
     """Swap global uniqueness for the four hybrid partial indexes in-transaction."""
 
+    connection.execute(
+        text(
+            "ALTER TABLE unified_capabilities "
+            "DROP CONSTRAINT IF EXISTS unified_capabilities_code_key, "
+            "DROP CONSTRAINT IF EXISTS unified_capabilities_archimate_id_key"
+        )
+    )
     connection.execute(text("DROP INDEX IF EXISTS ix_unified_capabilities_code"))
     connection.execute(text("DROP INDEX IF EXISTS ix_unified_capabilities_archimate_id"))
     connection.execute(
@@ -505,15 +580,18 @@ def install_cutover_constraints(connection) -> None:
               actor_org_text text := current_setting('archie.organization_id', true);
               actor_org integer;
             BEGIN
-              IF NEW.scope = 'reference' AND NEW.organization_id IS NOT NULL THEN
-                RAISE EXCEPTION 'reference capability must not have organization_id';
+              IF TG_OP <> 'DELETE' AND (
+                NEW.scope IS NULL
+                OR NEW.scope NOT IN ('reference', 'tenant')
+                OR (NEW.scope = 'reference' AND NEW.organization_id IS NOT NULL)
+                OR (NEW.scope = 'tenant' AND NEW.organization_id IS NULL)
+              ) THEN
+                RAISE EXCEPTION 'capability scope and ownership are invalid';
               END IF;
-              IF NEW.scope = 'tenant' AND NEW.organization_id IS NULL THEN
-                RAISE EXCEPTION 'tenant capability requires organization_id';
-              END IF;
-              IF NEW.reference_capability_id IS NOT NULL AND NOT EXISTS (
+              IF TG_OP <> 'DELETE' AND NEW.reference_capability_id IS NOT NULL AND NOT EXISTS (
                 SELECT 1 FROM unified_capabilities AS reference
                 WHERE reference.id = NEW.reference_capability_id
+                  AND reference.scope = 'reference'
                   AND reference.organization_id IS NULL
               ) THEN
                 RAISE EXCEPTION
@@ -521,8 +599,22 @@ def install_cutover_constraints(connection) -> None:
               END IF;
               IF actor_org_text IS NOT NULL AND actor_org_text <> '' THEN
                 actor_org := actor_org_text::integer;
-                IF TG_OP = 'UPDATE' AND OLD.organization_id IS NULL THEN
+                IF TG_OP = 'DELETE' THEN
+                  IF OLD.scope = 'reference' OR OLD.organization_id IS NULL THEN
+                    RAISE EXCEPTION 'reference capabilities are read-only for tenant sessions';
+                  END IF;
+                  IF OLD.organization_id IS DISTINCT FROM actor_org THEN
+                    RAISE EXCEPTION 'capability delete crosses tenant boundary';
+                  END IF;
+                  RETURN OLD;
+                END IF;
+                IF TG_OP = 'UPDATE' AND (
+                  OLD.scope = 'reference' OR OLD.organization_id IS NULL
+                ) THEN
                   RAISE EXCEPTION 'reference capabilities are read-only for tenant sessions';
+                END IF;
+                IF TG_OP = 'UPDATE' AND OLD.organization_id IS DISTINCT FROM actor_org THEN
+                  RAISE EXCEPTION 'capability update crosses tenant boundary';
                 END IF;
                 IF NEW.organization_id IS DISTINCT FROM actor_org THEN
                   RAISE EXCEPTION 'capability write crosses tenant boundary';
@@ -540,7 +632,7 @@ def install_cutover_constraints(connection) -> None:
     connection.execute(
         text(
             "CREATE TRIGGER trg_unified_capability_write_scope "
-            "BEFORE INSERT OR UPDATE ON unified_capabilities "
+            "BEFORE INSERT OR UPDATE OR DELETE ON unified_capabilities "
             "FOR EACH ROW EXECUTE FUNCTION enforce_unified_capability_write_scope()"
         )
     )
@@ -566,24 +658,12 @@ def install_cutover_constraints(connection) -> None:
     )
     connection.execute(
         text(
-            """
-            DO $guard$
-            BEGIN
-              IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint
-                WHERE conrelid = to_regclass('unified_capabilities')
-                  AND conname = 'ck_unified_capabilities_scope_owner'
-              ) THEN
-                ALTER TABLE unified_capabilities
-                  ADD CONSTRAINT ck_unified_capabilities_scope_owner CHECK (
-                    scope IS NULL
-                    OR (scope = 'reference' AND organization_id IS NULL)
-                    OR (scope = 'tenant' AND organization_id IS NOT NULL)
-                  );
-              END IF;
-            END
-            $guard$
-            """
+            "ALTER TABLE unified_capabilities "
+            "DROP CONSTRAINT IF EXISTS ck_unified_capabilities_scope_owner, "
+            "ADD CONSTRAINT ck_unified_capabilities_scope_owner CHECK ("
+            "scope IS NOT NULL AND ("
+            "(scope = 'reference' AND organization_id IS NULL) OR "
+            "(scope = 'tenant' AND organization_id IS NOT NULL)))"
         )
     )
 
@@ -603,11 +683,17 @@ def run_cutover(
     if not locked:
         raise CutoverBlocked("another capability tenancy cutover holds the advisory lock")
 
+    foreign_keys = _foreign_keys(connection)
+    if apply:
+        _lock_cutover_tables(connection, foreign_keys)
     before = _snapshot(connection)
     capability_ids = [
         int(row[0])
         for row in connection.execute(
-            text("SELECT id FROM unified_capabilities ORDER BY id")
+            text(
+                "SELECT id FROM unified_capabilities "
+                "WHERE retired_into_id IS NULL ORDER BY id"
+            )
         )
     ]
     classifications = [classify_capability(connection, capability_id) for capability_id in capability_ids]
@@ -617,7 +703,6 @@ def run_cutover(
         "tenant": sum(item.scope == "tenant" for item in classifications),
         "ambiguous": sum(item.scope == "ambiguous" for item in classifications),
     }
-    foreign_keys = _foreign_keys(connection)
     foreign_key_before = _foreign_key_counts(connection, foreign_keys)
     report: dict[str, object] = {
         "mode": "apply" if apply else "dry-run",
@@ -654,18 +739,33 @@ def run_cutover(
 
     writes = 0
     for item in classifications:
+        existing = connection.execute(
+            text(
+                "SELECT scope, organization_id FROM unified_capabilities "
+                "WHERE id = :capability_id FOR UPDATE"
+            ),
+            {"capability_id": item.capability_id},
+        ).one()
+        if tuple(existing) == (item.scope, item.organization_id):
+            continue
+        if existing.scope is not None:
+            raise CutoverBlocked(
+                f"capability {item.capability_id} has conflicting completed classification"
+            )
         result = connection.execute(
             text(
                 "UPDATE unified_capabilities SET scope = :scope, "
                 "organization_id = :organization_id "
                 "WHERE id = :capability_id "
-                "AND organization_id IS NOT DISTINCT FROM :prior_organization_id"
+                "AND organization_id IS NOT DISTINCT FROM :prior_organization_id "
+                "AND scope IS NOT DISTINCT FROM :prior_scope"
             ),
             {
                 "scope": item.scope,
                 "organization_id": item.organization_id,
                 "capability_id": item.capability_id,
-                "prior_organization_id": None,
+                "prior_organization_id": existing.organization_id,
+                "prior_scope": existing.scope,
             },
         )
         if result.rowcount != 1:
@@ -696,6 +796,47 @@ def run_cutover(
     return report
 
 
+def _write_report_atomic(report_path: str | Path, payload: dict[str, object]) -> None:
+    """Durably replace the report without ever exposing partial JSON."""
+
+    destination = Path(report_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def execute_cutover_with_report(
+    connection,
+    *,
+    report_path: str | Path,
+    apply: bool,
+    backup_manifest: str | Path | None = None,
+) -> dict[str, object]:
+    """Run the cutover and persist its audit record before the caller commits."""
+
+    payload = run_cutover(
+        connection,
+        apply=apply,
+        backup_manifest=backup_manifest,
+    )
+    _write_report_atomic(report_path, payload)
+    return payload
+
+
 @click.command("cutover-capability-tenancy")
 @click.option("--dry-run", is_flag=True, help="Measure and classify without writing.")
 @click.option("--apply", "apply_changes", is_flag=True, help="Apply the classified cutover.")
@@ -718,15 +859,14 @@ def cutover_capability_tenancy(dry_run, apply_changes, report, backup_manifest):
         raise click.UsageError("choose exactly one of --dry-run or --apply")
     try:
         with db.engine.begin() as connection:
-            payload = run_cutover(
+            payload = execute_cutover_with_report(
                 connection,
+                report_path=report,
                 apply=apply_changes,
                 backup_manifest=backup_manifest,
             )
     except CutoverBlocked as exc:
         raise click.ClickException(str(exc)) from exc
-    report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     click.echo(
         f"{payload['mode']}: {payload['counts']['classified']} classified, "
         f"{payload['counts']['ambiguous']} ambiguous, {payload['writes']} writes"
