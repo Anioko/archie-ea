@@ -432,15 +432,18 @@ class TransformationGateService:
         required_fields = ("assumptions", "risks", "dependencies", "reversibility",
                            "transition_approach", "affected_capability_ids",
                            "affected_value_stream_ids", "recommendation_rationale")
-        if any(_value(row, "immutable") is not True or not _value(row, "content_hash")
+        incomplete_contract = any(
+               _value(row, "immutable") is not True or not _value(row, "content_hash")
                or any(not _value(row, field) for field in required_fields)
                or _value(row, "currency") not in ISO_4217_CURRENCIES
                or _value(row, "technology_required") is None
                or any(_value(row, field) is None for field in ("benefit_min", "benefit_max", "cost_min", "cost_max"))
-               for row in options):
+               for row in options
+        )
+        if incomplete_contract:
             block("option_contract_incomplete", "Complete every immutable option contract.", "workstream", workstream_id, f"{room}/options")
-        if any(not _finite(_value(row, field)) for row in options
-               for field in ("benefit_min", "benefit_max", "cost_min", "cost_max")):
+        elif any(not _finite(_value(row, field)) for row in options
+                 for field in ("benefit_min", "benefit_max", "cost_min", "cost_max")):
             block("option_value_invalid", "Option values must be finite.", "workstream", workstream_id, f"{room}/options")
         elif any(_value(row, "benefit_min") > _value(row, "benefit_max")
                  or _value(row, "cost_min") > _value(row, "cost_max") for row in options):
@@ -490,9 +493,7 @@ class TransformationGateService:
         matching = [cycle for cycle in snapshot.arb_cycles
                     if _value(cycle, "workstream_id") == workstream_id
                     and _value(cycle, "subject_type") == "decision_brief"
-                    and _value(cycle, "brief_version_id") in brief_ids
-                    and _value(cycle, "decision_brief_version_id", _value(cycle, "brief_version_id"))
-                    == _value(cycle, "brief_version_id")
+                    and cls._cycle_brief_version_id(cycle) in brief_ids
                     and _value(cycle, "subject_id") in subject_ids
                     and _value(cycle, "decision_brief_id") == _value(cycle, "subject_id")
                     and _value(cycle, "status") in {"decided", "terminal"}
@@ -512,26 +513,81 @@ class TransformationGateService:
     @classmethod
     def _evaluate_conditions(cls, snapshot, block, room):
         workstream_id = snapshot.workstream.id
-        cycle_ids = {_value(row, "id") for row in snapshot.arb_cycles
-                     if _value(row, "workstream_id") == workstream_id
-                     and _value(row, "decision") == "approved_with_conditions"}
-        conditions = [row for row in snapshot.arb_conditions if _value(row, "arb_cycle_id") in cycle_ids]
-        resolved = bool(conditions) and all(
-            (_value(row, "status") == "fulfilled" and _value(row, "accepted_evidence_id"))
-            or (_value(row, "status") == "waived" and cls._valid_waiver(row))
-            for row in conditions)
-        if not resolved:
+        cycles = cls._matching_governance_cycles(snapshot, "approved_with_conditions")
+        if not cycles:
+            block("arb_decision_mismatch", "A matching terminal conditional approval is required.", "workstream", workstream_id, f"{room}/governance")
+            return
+        if not cls._conditions_resolved(snapshot, cycles[-1]):
             block("arb_conditions_open", "Fulfil or authoritatively waive every ARB condition.", "workstream", workstream_id, f"{room}/governance")
+
+    @classmethod
+    def _matching_governance_cycles(cls, snapshot, decision):
+        briefs = cls._valid_briefs(snapshot)
+        brief_ids = {_value(row, "id") for row in briefs}
+        subject_ids = {_value(row, "decision_brief_id") for row in briefs}
+        return [
+            cycle
+            for cycle in snapshot.arb_cycles
+            if _value(cycle, "workstream_id") == snapshot.workstream.id
+            and _value(cycle, "subject_type") == "decision_brief"
+            and cls._cycle_brief_version_id(cycle) in brief_ids
+            and _value(cycle, "subject_id") in subject_ids
+            and _value(cycle, "decision_brief_id") == _value(cycle, "subject_id")
+            and _value(cycle, "status") in {"decided", "terminal"}
+            and _value(cycle, "decision") == decision
+            and _value(cycle, "target_stage") == decision
+            and _value(cycle, "decision_maker_id")
+            and _text(cycle, "rationale")
+            and _value(cycle, "decided_at")
+        ]
+
+    @staticmethod
+    def _cycle_brief_version_id(cycle):
+        return _value(
+            cycle,
+            "decision_brief_version_id",
+            _value(cycle, "brief_version_id"),
+        )
+
+    @classmethod
+    def _conditions_resolved(cls, snapshot, cycle):
+        accepted_evidence_ids = {
+            _value(row, "id")
+            for row in snapshot.evidence_records
+            if _value(row, "status") == "accepted"
+        }
+        accepted_evidence_ids.update(
+            _value(row, "current_record_id")
+            for row in snapshot.active_evidence_heads
+            if _value(row, "current_record_id") is not None
+        )
+        conditions = [
+            row
+            for row in snapshot.arb_conditions
+            if _value(row, "arb_cycle_id") == _value(cycle, "id")
+        ]
+        return bool(conditions) and all(
+            (
+                _value(row, "status") == "fulfilled"
+                and _value(row, "accepted_evidence_id") in accepted_evidence_ids
+            )
+            or (_value(row, "status") == "waived" and cls._valid_waiver(row))
+            for row in conditions
+        )
 
     @classmethod
     def _evaluate_execution(cls, snapshot, block, room):
         workstream_id = snapshot.workstream.id
+        approved_cycles = cls._matching_governance_cycles(snapshot, "approved")
+        conditional_cycles = [
+            cycle
+            for cycle in cls._matching_governance_cycles(snapshot, "approved_with_conditions")
+            if _value(snapshot.workstream, "lifecycle_stage") == "approved"
+            and cls._conditions_resolved(snapshot, cycle)
+        ]
         approved_versions = {
-            _value(row, "decision_brief_version_id", _value(row, "brief_version_id"))
-            for row in snapshot.arb_cycles
-            if _value(row, "workstream_id") == workstream_id
-            and _value(row, "decision") == "approved"
-            and _value(row, "status") in {"decided", "terminal"}
+            cls._cycle_brief_version_id(row)
+            for row in (*approved_cycles, *conditional_cycles)
         }
         work_packages = {_value(row, "id"): row for row in snapshot.work_packages
                          if _value(row, "programme_workstream_id", _value(row, "workstream_id")) == workstream_id
@@ -552,21 +608,65 @@ class TransformationGateService:
             for row in snapshot.approved_actions)
         if not action_ok:
             block("approved_action_unresolved", "Resolve every approved action into declined rationale or owned scheduled work.", "workstream", workstream_id, f"{room}/execute")
-        outcome_ids = {_value(row, "id") for row in snapshot.outcomes}
-        measure_ids = {_value(row, "id") for row in snapshot.measures
-                       if _value(row, "outcome_commitment_id") in outcome_ids}
-        benefit_outcomes = {_value(row, "outcome_commitment_id") for row in snapshot.benefits
-                            if _value(row, "programme_workstream_id") == workstream_id
-                            and _value(row, "decision_brief_version_id") in approved_versions
-                            and _value(row, "owner_id")
-                            and _value(row, "measure_definition_id") in measure_ids
-                            and (_value(row, "baseline_value") is not None
-                                 or _text(row, "baseline_unavailable_reason"))
-                            and _value(row, "target_value") is not None
-                            and _finite(_value(row, "target_value"))
-                            and _text(row, "measurement_method")}
+        outcome_ids = {
+            _value(row, "id")
+            for row in snapshot.outcomes
+            if _value(row, "owner_id") and _text(row, "statement")
+        }
+        benefit_outcomes = set()
+        for benefit in snapshot.benefits:
+            outcome_id = _value(benefit, "outcome_commitment_id")
+            measures = [
+                measure
+                for measure in snapshot.measures
+                if _value(measure, "outcome_commitment_id") == outcome_id
+                and _text(measure, "metric_name") == _text(benefit, "measure")
+                and _text(measure, "unit") == _text(benefit, "unit")
+            ]
+            matching_measure = next(
+                (
+                    measure
+                    for measure in measures
+                    if cls._measure_target(measure) == _value(benefit, "target_value")
+                    and (
+                        _value(benefit, "baseline_value") is not None
+                        or cls._measure_baseline(measure) is not None
+                        or _text(measure, "unavailable_reason")
+                    )
+                ),
+                None,
+            )
+            if (
+                _value(benefit, "programme_workstream_id") == workstream_id
+                and _value(benefit, "strategic_initiative_id") == snapshot.programme.id
+                and outcome_id in outcome_ids
+                and _value(benefit, "decision_brief_version_id") in approved_versions
+                and _value(benefit, "work_package_id") in work_packages
+                and _value(benefit, "owner_id")
+                and matching_measure is not None
+                and _value(benefit, "target_value") is not None
+                and _finite(_value(benefit, "target_value"))
+                and _text(benefit, "measurement_method")
+            ):
+                benefit_outcomes.add(outcome_id)
         if not outcome_ids or not outcome_ids.issubset(benefit_outcomes):
             block("benefit_contract_incomplete", "Link each outcome to a complete canonical Benefit measurement contract.", "workstream", workstream_id, f"{room}/outcomes")
+
+    @staticmethod
+    def _measure_baseline(measure):
+        return (
+            _value(measure, "baseline_amount")
+            if _value(measure, "baseline_amount") is not None
+            else _value(measure, "baseline_value")
+        )
+
+    @staticmethod
+    def _measure_target(measure):
+        return (
+            _value(measure, "target_amount")
+            if _value(measure, "target_amount") is not None
+            else _value(measure, "target_value")
+        )
 
     @classmethod
     def _evaluate_delivery(cls, snapshot, block, room):
@@ -679,10 +779,6 @@ class TransformationGateService:
     @classmethod
     def next_action(cls, *, actor: ActorContext, workstreams: Sequence[ProgrammeWorkstream]):
         for workstream in sorted(workstreams, key=lambda row: row.id):
-            programme = getattr(workstream, "programme", None)
-            if programme is not None and (getattr(programme, "status", None) == "archived"
-                                          or getattr(programme, "archived_at", None) is not None):
-                return None
             if workstream.lifecycle_stage in cls.TERMINAL_STAGES:
                 continue
             target = cls.NEXT_STAGE.get(workstream.lifecycle_stage)

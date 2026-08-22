@@ -529,6 +529,42 @@ def test_archived_programme_rejects_role_and_objective_mutations(programme_fixtu
     assert view.next_action is None
 
 
+def test_active_programme_read_builds_next_action_from_detached_multiple_workstreams(
+    programme_fixture,
+):
+    """Catches next-action projection lazy-loading programme after session detach."""
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="active-multiple-workstreams",
+        request=_intake(programme_fixture.owner_id),
+    )
+    with Session(db.engine) as session, session.begin():
+        first = session.get(ProgrammeWorkstream, created.object_ids["workstream_id"])
+        first.lifecycle_stage = "completed"
+        second = ProgrammeWorkstream(
+            organization_id=programme_fixture.organization_id,
+            programme_id=created.object_ids["programme_id"],
+            workstream_type="process",
+            objective="Simplify fulfilment hand-offs",
+            scope_expression={"business_units": ["Retail"]},
+            lifecycle_stage="objective",
+            lead_id=programme_fixture.owner_id,
+            target_date=date(2027, 9, 30),
+        )
+        session.add(second)
+        session.flush()
+        second_id = second.id
+
+    view = TransformationProgrammeService.get_programme(
+        actor=programme_fixture.actor,
+        programme_id=created.object_ids["programme_id"],
+    )
+
+    assert view.workstream_ids == (created.object_ids["workstream_id"], second_id)
+    assert view.next_action is not None
+    assert view.next_action.resource_id == second_id
+
+
 @pytest.mark.parametrize("non_finite", ["NaN", "Infinity", "-Infinity", Decimal("NaN")])
 def test_intake_rejects_non_finite_measure_values(programme_fixture, non_finite):
     """Catches PostgreSQL Numeric special values entering governed outcome measures."""

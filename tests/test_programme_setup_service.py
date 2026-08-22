@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 from app.models.solution_models import Solution
+from app.models.transformation_programme import WORKSTREAM_TYPES
 from app.modules.solutions_strategic.v2.services.programme_setup_service import ProgrammeSetupService
 
 from tests.test_transformation_programme_service import _intake, _rows, programme_fixture
@@ -87,3 +90,36 @@ def test_new_programme_page_posts_canonical_business_payload_with_csrf_and_idemp
     assert "data.solution_id" not in html
     assert "mode: this.form.mode" not in html
     assert "window.location.href = data.redirect_url" in html
+
+    workstream_select = re.search(
+        r'<select[^>]*name="workstream_type".*?</select>', html, re.DOTALL
+    )
+    assert workstream_select is not None
+    rendered_types = tuple(re.findall(r'<option value="([a-z_]+)">', workstream_select.group()))
+    assert rendered_types == WORKSTREAM_TYPES
+
+
+def test_create_programme_route_accepts_every_canonical_workstream_type(
+    app, programme_fixture, login_as
+):
+    """Catches a rendered workstream choice that canonical validation rejects."""
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    for index, workstream_type in enumerate(WORKSTREAM_TYPES):
+        request = _intake(programme_fixture.owner_id)
+        payload = {
+            "name": f"Canonical workstream {index}",
+            "objective": request.objective,
+            "owner_id": request.owner_id,
+            "target_date": request.target_date.isoformat(),
+            "workstream_type": workstream_type,
+            "scope_expression": request.scope_expression,
+            "outcome": request.outcome,
+        }
+        response = client.post(
+            "/solutions/create-programme",
+            json=payload,
+            headers={"Idempotency-Key": f"canonical-workstream-{workstream_type}"},
+        )
+        assert response.status_code == 201, (workstream_type, response.get_json())
+        assert "solution_id" not in response.get_json()

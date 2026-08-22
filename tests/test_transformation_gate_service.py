@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import db
+from app.models.benefit import Benefit
 from app.models.transformation_programme import ProgrammeWorkstream
 from app.models.user import User
 from app.modules.transformation_room.domain import (
@@ -172,6 +173,11 @@ def _policy_snapshot(source: str, target: str, **changes):
         decision = "approved"
     if source == "approved_with_conditions" and target == "approved":
         decision = "approved_with_conditions"
+    decision_target = target
+    if decision == "approved":
+        decision_target = "approved"
+    elif decision == "approved_with_conditions":
+        decision_target = "approved_with_conditions"
     cycle = _row(
         id=81,
         workstream_id=2,
@@ -182,7 +188,7 @@ def _policy_snapshot(source: str, target: str, **changes):
         decision_brief_version_id=71,
         status="decided",
         decision=decision,
-        target_stage=target,
+        target_stage=decision_target,
         decision_maker_id=7,
         rationale="Decision grounded in the submitted brief",
         decided_at=datetime(2026, 8, 22, tzinfo=timezone.utc),
@@ -221,14 +227,17 @@ def _policy_snapshot(source: str, target: str, **changes):
     )
     benefit = _row(
         id=131,
+        strategic_initiative_id=1,
         programme_workstream_id=2,
         outcome_commitment_id=3,
+        work_package_id=101,
         owner_id=7,
-        measure_definition_id=4,
+        measure="Annual run cost",
+        unit="GBP",
         baseline_value=None,
-        baseline_unavailable_reason="Finance baseline requested",
         target_value=Decimal("900000.00"),
         measurement_method="Monthly finance ledger extract",
+        measurement_frequency="monthly",
         decision_brief_version_id=71,
     )
     delivery = _row(
@@ -442,6 +451,73 @@ def test_execute_gate_rejects_orphaned_actions_work_and_benefit_contracts():
         "approved_action_unresolved",
         "benefit_contract_incomplete",
     }
+
+
+@pytest.mark.parametrize(
+    "cycle_change",
+    (
+        {"subject_id": 999, "decision_brief_id": 999},
+        {"status": "open", "decided_at": None},
+    ),
+)
+def test_conditional_projection_requires_matching_terminal_governed_cycle(cycle_change):
+    """Catches unrelated or pending conditional decisions releasing conditions."""
+    snapshot = _policy_snapshot("approved_with_conditions", "approved")
+    wrong_cycle = replace_namespace(snapshot.arb_cycles[0], **cycle_change)
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(snapshot, arb_cycles=(wrong_cycle,)),
+        TransformationGateService.require_valid_transition(
+            "approved_with_conditions", "approved"
+        ),
+    )
+    assert {row.code for row in blockers} == {"arb_decision_mismatch"}
+
+
+def test_execute_accepts_resolved_conditional_cycle_and_real_benefit_shape(app):
+    """Catches execution excluding a correctly projected conditional approval."""
+    snapshot = _policy_snapshot("approved", "execute")
+    conditional_cycle = replace_namespace(
+        snapshot.arb_cycles[0],
+        decision="approved_with_conditions",
+        target_stage="approved_with_conditions",
+    )
+    canonical_benefit = Benefit(
+        id=131,
+        organization_id=10,
+        name="Reduce annual run cost",
+        strategic_initiative_id=1,
+        programme_workstream_id=2,
+        outcome_commitment_id=3,
+        work_package_id=101,
+        decision_brief_version_id=71,
+        owner_id=7,
+        measure="Annual run cost",
+        unit="GBP",
+        baseline_value=None,
+        target_value=Decimal("900000.00"),
+        measurement_method="Monthly finance ledger extract",
+        measurement_frequency="monthly",
+    )
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(
+            snapshot,
+            arb_cycles=(conditional_cycle,),
+            benefits=(canonical_benefit,),
+        ),
+        TransformationGateService.require_valid_transition("approved", "execute"),
+    )
+    assert blockers == []
+
+
+def test_missing_option_numeric_bound_returns_stable_contract_blocker():
+    """Catches an incomplete range raising TypeError instead of a policy blocker."""
+    snapshot = _policy_snapshot("options", "decision_ready")
+    incomplete = replace_namespace(snapshot.option_versions[0], cost_min=None)
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(snapshot, option_versions=(incomplete, snapshot.option_versions[1])),
+        TransformationGateService.require_valid_transition("options", "decision_ready"),
+    )
+    assert {row.code for row in blockers} == {"option_contract_incomplete"}
 
 
 def test_completed_gate_requires_measurement_for_each_relevant_benefit_and_outcome_review():
