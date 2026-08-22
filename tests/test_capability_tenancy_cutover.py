@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.commands import cutover_capability_tenancy as cutover_module
@@ -572,6 +572,39 @@ def test_duplicate_retirement_blocks_unknown_or_conflicting_relationship_owner(
     ).scalar_one() is None
 
 
+def test_reference_duplicate_retirement_blocks_unknown_relationship_owner(
+    capability_schema, tmp_path
+):
+    """NULL reference ownership must never make an unowned FK look eligible."""
+
+    connection = capability_schema
+    connection.execute(
+        text(
+            "CREATE TABLE unknown_reference_links ("
+            "id INTEGER PRIMARY KEY, capability_id BIGINT NOT NULL, "
+            "CONSTRAINT fk_unknown_reference_capability FOREIGN KEY (capability_id) "
+            "REFERENCES unified_capabilities(id))"
+        )
+    )
+    _capability(connection, 183, "DUP-REF-UNKNOWN", source_table="seeded_import", source_org_id=None)
+    _capability(connection, 184, "DUP-REF-UNKNOWN", source_table="seeded_import", source_org_id=None)
+    connection.execute(
+        text("INSERT INTO unknown_reference_links (id, capability_id) VALUES (1, 184)")
+    )
+    manifest = tmp_path / "backup.json"
+    manifest.write_text(json.dumps({"backup_path": "C:/backups/capabilities.dump"}))
+
+    with pytest.raises(CutoverBlocked, match="unknown or conflicting ownership"):
+        run_cutover(connection, apply=True, backup_manifest=manifest)
+
+    assert connection.execute(
+        text("SELECT retired_into_id FROM unified_capabilities WHERE id = 184")
+    ).scalar_one() is None
+    assert connection.execute(
+        text("SELECT capability_id FROM unknown_reference_links WHERE id = 1")
+    ).scalar_one() == 184
+
+
 def test_repeat_apply_is_a_verified_no_op_with_stable_measurements(
     capability_schema, tmp_path
 ):
@@ -671,6 +704,165 @@ def test_atomic_report_writer_cleans_temporary_file_on_replace_failure(tmp_path,
 
     assert not report_path.exists()
     assert list(tmp_path.glob(".cutover.json.*.tmp")) == []
+
+
+class _RollbackThenFailTransaction:
+    def __init__(self, transaction):
+        self._transaction = transaction
+
+    @property
+    def is_active(self):
+        return self._transaction.is_active
+
+    def commit(self):
+        self._transaction.rollback()
+        raise RuntimeError("simulated commit failure")
+
+    def rollback(self):
+        if self._transaction.is_active:
+            self._transaction.rollback()
+
+
+class _CommitFailingConnection:
+    def __init__(self, connection):
+        self._connection = connection
+
+    def begin(self):
+        return _RollbackThenFailTransaction(self._connection.begin())
+
+    def close(self):
+        self._connection.close()
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
+class _CommitFailingEngine:
+    def __init__(self, engine):
+        self._engine = engine
+
+    def connect(self):
+        return _CommitFailingConnection(self._engine.connect())
+
+
+def _schema_engine(app, schema):
+    from app import db
+
+    return create_engine(
+        db.engine.url,
+        connect_args={"options": f"-csearch_path={schema},public"},
+    )
+
+
+def _seed_standalone_reference(raw, capability_id: int, code: str):
+    raw.cursor().execute(
+        "INSERT INTO unified_capabilities "
+        "(id, name, code, level, version, source_table, source_id, source_checksum) "
+        "VALUES (%s, %s, %s, 1, 1, 'seeded_import', %s, %s)",
+        (capability_id, f"Capability {capability_id}", code, str(capability_id), "d" * 64),
+    )
+
+
+def test_commit_failure_leaves_pending_report_and_rolls_back_database(
+    standalone_capability_schema, tmp_path, app
+):
+    """A failed commit cannot leave an audit artifact claiming completion."""
+
+    raw, schema = standalone_capability_schema
+    _seed_standalone_reference(raw, 601, "COMMIT-FAIL")
+    manifest = tmp_path / "backup.json"
+    manifest.write_text(json.dumps({"backup_path": "C:/backups/capabilities.dump"}))
+    report_path = tmp_path / "commit-failure.json"
+    engine = _schema_engine(app, schema)
+    try:
+        with pytest.raises(RuntimeError, match="simulated commit failure"):
+            cutover_module.execute_cutover_with_audit(
+                _CommitFailingEngine(engine),
+                report_path=report_path,
+                apply=True,
+                backup_manifest=manifest,
+            )
+    finally:
+        engine.dispose()
+
+    cursor = raw.cursor()
+    cursor.execute("SELECT scope FROM unified_capabilities WHERE id = 601")
+    assert cursor.fetchone()[0] is None
+    pending = json.loads(report_path.read_text(encoding="utf-8"))
+    assert pending["audit_state"] == "pending_commit"
+    assert pending["database_commit_confirmed"] is False
+    assert not (tmp_path / "commit-failure.json.committed-report-pending.json").exists()
+
+
+def test_publication_failure_retains_committed_recovery_marker(
+    standalone_capability_schema, tmp_path, app, monkeypatch
+):
+    """A committed DB plus failed final report has an unambiguous recovery record."""
+
+    raw, schema = standalone_capability_schema
+    _seed_standalone_reference(raw, 602, "PUBLISH-FAIL")
+    manifest = tmp_path / "backup.json"
+    manifest.write_text(json.dumps({"backup_path": "C:/backups/capabilities.dump"}))
+    report_path = tmp_path / "publication-failure.json"
+    marker_path = tmp_path / "publication-failure.json.committed-report-pending.json"
+    real_writer = cutover_module._write_report_atomic
+
+    def fail_completed_report(path, payload):
+        if payload.get("audit_state") == "completed":
+            raise OSError("simulated final publication failure")
+        return real_writer(path, payload)
+
+    monkeypatch.setattr(cutover_module, "_write_report_atomic", fail_completed_report)
+    engine = _schema_engine(app, schema)
+    try:
+        with pytest.raises(Exception, match="committed.*report.*pending"):
+            cutover_module.execute_cutover_with_audit(
+                engine,
+                report_path=report_path,
+                apply=True,
+                backup_manifest=manifest,
+            )
+    finally:
+        engine.dispose()
+
+    cursor = raw.cursor()
+    cursor.execute("SELECT scope FROM unified_capabilities WHERE id = 602")
+    assert cursor.fetchone()[0] == "reference"
+    pending = json.loads(report_path.read_text(encoding="utf-8"))
+    assert pending["audit_state"] == "pending_commit"
+    assert pending["database_commit_confirmed"] is False
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert marker["audit_state"] == "committed_report_pending"
+    assert marker["database_commit_confirmed"] is True
+    assert marker["report_path"] == str(report_path)
+
+
+def test_success_report_is_completed_only_after_database_commit(
+    standalone_capability_schema, tmp_path, app
+):
+    """The normal path replaces pending state only after commit succeeds."""
+
+    raw, schema = standalone_capability_schema
+    _seed_standalone_reference(raw, 603, "PUBLISH-SUCCESS")
+    manifest = tmp_path / "backup.json"
+    manifest.write_text(json.dumps({"backup_path": "C:/backups/capabilities.dump"}))
+    report_path = tmp_path / "success.json"
+    marker_path = tmp_path / "success.json.committed-report-pending.json"
+    engine = _schema_engine(app, schema)
+    try:
+        payload = cutover_module.execute_cutover_with_audit(
+            engine,
+            report_path=report_path,
+            apply=True,
+            backup_manifest=manifest,
+        )
+    finally:
+        engine.dispose()
+
+    assert payload["audit_state"] == "completed"
+    assert payload["database_commit_confirmed"] is True
+    assert json.loads(report_path.read_text(encoding="utf-8")) == payload
+    assert not marker_path.exists()
 
 
 def test_apply_sql_is_failure_atomic_and_preserves_legacy_protection(

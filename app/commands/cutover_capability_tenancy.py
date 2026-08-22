@@ -28,6 +28,14 @@ class CutoverBlocked(RuntimeError):
     """Raised before an unsafe or unverifiable cutover can proceed."""
 
 
+class CutoverReportPending(RuntimeError):
+    """The database committed, but the completed audit report is not published."""
+
+    def __init__(self, message: str, marker_path: Path):
+        super().__init__(message)
+        self.marker_path = marker_path
+
+
 @dataclass(frozen=True)
 class CapabilityClassification:
     capability_id: int
@@ -415,12 +423,16 @@ def _resolve_duplicate(
                 {"source_id": source_id},
             ).scalar_one()
         )
+        if organization_id is None:
+            ownership_predicate = f"({owner_expression}) IS NOT NULL"
+        else:
+            ownership_predicate = f"({owner_expression}) = :organization_id"
         eligible = int(
             connection.execute(
                 text(
                     f"SELECT count(*) FROM {table} AS source "
                     f"WHERE source.{column} = :source_id "
-                    f"AND ({owner_expression}) IS NOT DISTINCT FROM :organization_id"
+                    f"AND {ownership_predicate}"
                 ),
                 {"source_id": source_id, "organization_id": organization_id},
             ).scalar_one()
@@ -443,7 +455,7 @@ def _resolve_duplicate(
             text(
                 f"UPDATE {table} AS source SET {column} = :target_id "
                 f"WHERE source.{column} = :source_id "
-                f"AND ({owner_expression}) IS NOT DISTINCT FROM :organization_id"
+                f"AND {ownership_predicate}"
             ),
             {
                 "source_id": source_id,
@@ -819,6 +831,28 @@ def _write_report_atomic(report_path: str | Path, payload: dict[str, object]) ->
         raise
 
 
+def _audit_payload(
+    payload: dict[str, object],
+    *,
+    state: Literal["pending_commit", "committed_report_pending", "completed"],
+    database_commit_confirmed: bool,
+    **details: object,
+) -> dict[str, object]:
+    audited = dict(payload)
+    audited.update(
+        {
+            "audit_state": state,
+            "database_commit_confirmed": database_commit_confirmed,
+            **details,
+        }
+    )
+    return audited
+
+
+def _committed_report_pending_path(report_path: str | Path) -> Path:
+    return Path(f"{report_path}.committed-report-pending.json")
+
+
 def execute_cutover_with_report(
     connection,
     *,
@@ -826,15 +860,105 @@ def execute_cutover_with_report(
     apply: bool,
     backup_manifest: str | Path | None = None,
 ) -> dict[str, object]:
-    """Run the cutover and persist its audit record before the caller commits."""
+    """Run inside an open transaction and persist explicit pending evidence."""
 
     payload = run_cutover(
         connection,
         apply=apply,
         backup_manifest=backup_manifest,
     )
-    _write_report_atomic(report_path, payload)
+    _write_report_atomic(
+        report_path,
+        _audit_payload(
+            payload,
+            state="pending_commit",
+            database_commit_confirmed=False,
+        ),
+    )
     return payload
+
+
+def execute_cutover_with_audit(
+    engine,
+    *,
+    report_path: str | Path,
+    apply: bool,
+    backup_manifest: str | Path | None = None,
+) -> dict[str, object]:
+    """Commit the cutover, then publish only evidence whose state is known.
+
+    The requested report path first contains a durable ``pending_commit``
+    artifact.  A completed report is never written until ``commit()`` returns.
+    After commit, a separate recovery marker is made durable before completed
+    publication is attempted, so a later filesystem failure has an explicit
+    committed-but-report-pending result.
+    """
+
+    connection = engine.connect()
+    transaction = connection.begin()
+    try:
+        payload = execute_cutover_with_report(
+            connection,
+            report_path=report_path,
+            apply=apply,
+            backup_manifest=backup_manifest,
+        )
+        transaction.commit()
+    except BaseException:
+        if transaction.is_active:
+            transaction.rollback()
+        raise
+    finally:
+        connection.close()
+
+    destination = Path(report_path)
+    marker_path = _committed_report_pending_path(destination)
+    marker = _audit_payload(
+        payload,
+        state="committed_report_pending",
+        database_commit_confirmed=True,
+        report_path=str(destination),
+        superseded_when_completed_report_is_present=True,
+    )
+    try:
+        _write_report_atomic(marker_path, marker)
+    except BaseException as marker_error:
+        # The database is already committed.  Preserve the strongest possible
+        # state at the original durable path without implying rollback.
+        try:
+            _write_report_atomic(destination, marker)
+        except BaseException:
+            pass
+        raise CutoverReportPending(
+            "database committed; committed report marker publication pending",
+            marker_path,
+        ) from marker_error
+
+    completed = _audit_payload(
+        payload,
+        state="completed",
+        database_commit_confirmed=True,
+        report_path=str(destination),
+    )
+    try:
+        _write_report_atomic(destination, completed)
+    except BaseException as publication_error:
+        marker["publication_error"] = (
+            f"{type(publication_error).__name__}: {publication_error}"
+        )
+        _write_report_atomic(marker_path, marker)
+        raise CutoverReportPending(
+            f"database committed; report publication pending at {marker_path}",
+            marker_path,
+        ) from publication_error
+
+    try:
+        marker_path.unlink(missing_ok=True)
+    except OSError:
+        # The completed report is authoritative; the marker declares that a
+        # completed report supersedes it if cleanup is interrupted.
+        pass
+    return completed
 
 
 @click.command("cutover-capability-tenancy")
@@ -858,14 +982,15 @@ def cutover_capability_tenancy(dry_run, apply_changes, report, backup_manifest):
     if dry_run == apply_changes:
         raise click.UsageError("choose exactly one of --dry-run or --apply")
     try:
-        with db.engine.begin() as connection:
-            payload = execute_cutover_with_report(
-                connection,
-                report_path=report,
-                apply=apply_changes,
-                backup_manifest=backup_manifest,
-            )
+        payload = execute_cutover_with_audit(
+            db.engine,
+            report_path=report,
+            apply=apply_changes,
+            backup_manifest=backup_manifest,
+        )
     except CutoverBlocked as exc:
+        raise click.ClickException(str(exc)) from exc
+    except CutoverReportPending as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(
         f"{payload['mode']}: {payload['counts']['classified']} classified, "
