@@ -184,7 +184,9 @@ The earlier audit measured the deployed platform as broad but insufficiently foc
 - Success is withheld unless the response contains both the canonical review item ID and
   review number; the completed state links directly to that official ARB review. A failed
   attempt never changes the displayed governance state or produces a success toast.
-- Focused journey contract: 2 passed. Template syntax, design-token, and air-gap gates passed;
+- Focused journey contract: 6 passed against the rendered blueprint governance route, including
+  blocked recovery, loading/keyboard behavior, canonical success, and non-evidence failures.
+  Template syntax, design-token, and air-gap gates passed;
   the committed Tailwind build was checked byte-for-byte with the repository's pinned CLI.
 
 ## Next verified actions
