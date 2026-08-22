@@ -9,6 +9,7 @@ from app.models.transformation_execution import (
     OperationOutboxEvent,
     OperationResult,
 )
+from app.models.transformation_evidence import CandidateSignal
 
 
 TRANSFORMATION_RUNTIME_ROLE = "archie_runtime"
@@ -42,7 +43,7 @@ BEGIN
             RETURN NEW;
         END IF;
     END IF;
-    RAISE EXCEPTION 'transformation operation results and outbox rows are append-only'
+    RAISE EXCEPTION 'transformation immutable rows are append-only'
         USING ERRCODE = '55000';
 END;
 $$
@@ -196,7 +197,22 @@ _TRIGGER_SPECS = (
         "trg_transformation_receipt_guard",
         "archie_guard_transformation_receipt",
     ),
+    (
+        "candidate_signals",
+        "trg_candidate_signal_immutable",
+        "archie_reject_transformation_mutation",
+    ),
 )
+
+
+_IMMUTABLE_TABLES = (
+    "operation_results",
+    "transformation_outbox_events",
+    "candidate_signals",
+)
+
+
+_COMMAND_TABLES = _IMMUTABLE_TABLES + ("command_idempotency_records",)
 
 
 def _normalise_function_body(body: str) -> str:
@@ -359,11 +375,7 @@ def ensure_transformation_db_guards(
     _repair_triggers(connection)
     # The runtime role gets only the columns required by the service protocol.
     # It never owns these objects and has no DELETE or TRUNCATE privilege.
-    for table_name in (
-        "operation_results",
-        "transformation_outbox_events",
-        "command_idempotency_records",
-    ):
+    for table_name in _COMMAND_TABLES:
         present = connection.exec_driver_sql(
             f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
         ).scalar()
@@ -372,11 +384,7 @@ def ensure_transformation_db_guards(
                 f"REVOKE ALL ON TABLE public.{table_name} FROM PUBLIC"
             )
     if runtime_role_exists:
-        for table_name in (
-            "operation_results",
-            "transformation_outbox_events",
-            "command_idempotency_records",
-        ):
+        for table_name in _COMMAND_TABLES:
             present = connection.exec_driver_sql(
                 f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
             ).scalar()
@@ -418,6 +426,7 @@ def ensure_transformation_db_guards(
 @event.listens_for(CommandIdempotencyRecord.__table__, "after_create")
 @event.listens_for(OperationResult.__table__, "after_create")
 @event.listens_for(OperationOutboxEvent.__table__, "after_create")
+@event.listens_for(CandidateSignal.__table__, "after_create")
 def _install_transformation_guards_after_create(_target, connection, **_kwargs):
     ensure_transformation_db_guards(connection)
 

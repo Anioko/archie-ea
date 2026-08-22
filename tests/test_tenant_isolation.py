@@ -243,6 +243,77 @@ def test_transformation_workstream_select_is_tenant_scoped(
         assert db_session.get(ProgrammeWorkstream, stream_id) is None
 
 
+def test_transformation_candidate_and_signal_selects_are_tenant_scoped(
+    db_session, make_org, tenant_ctx
+):
+    """Candidate decisions and their immutable citations never cross tenants."""
+    from datetime import datetime, timezone
+
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.strategic import StrategicInitiative
+    from app.models.transformation_evidence import CandidateSignal, TransformationCandidate
+    from app.models.transformation_programme import ProgrammeWorkstream
+    from app.models.user import User
+
+    org_a, org_b = make_org("candidate-a"), make_org("candidate-b")
+    actor = User(
+        email=f"candidate-{uuid.uuid4().hex[:10]}@example.test",
+        organization_id=org_a.id,
+        confirmed=True,
+        enterprise_role="enterprise_architect",
+    )
+    application = ApplicationComponent(
+        name="Candidate application", organization_id=org_a.id
+    )
+    programme = StrategicInitiative(
+        name="Candidate programme",
+        record_kind="transformation_programme",
+        organization_id=org_a.id,
+    )
+    db_session.add_all((actor, application, programme))
+    db_session.flush()
+    stream = ProgrammeWorkstream(
+        organization_id=org_a.id,
+        programme_id=programme.id,
+        workstream_type="application_rationalisation",
+        objective="Reduce duplication",
+        lifecycle_stage="discover",
+    )
+    db_session.add(stream)
+    db_session.flush()
+    candidate = TransformationCandidate(
+        organization_id=org_a.id,
+        workstream_id=stream.id,
+        subject_type="application",
+        subject_id=application.id,
+        inclusion_status="accepted",
+        inclusion_reason="Inspectable signals",
+        accepted_by_id=actor.id,
+        accepted_at=datetime.now(timezone.utc),
+        revision=1,
+    )
+    db_session.add(candidate)
+    db_session.flush()
+    signal = CandidateSignal(
+        organization_id=org_a.id,
+        candidate_id=candidate.id,
+        rule_code="cost",
+        rule_version="app-rationalisation-r1.1/cost/1",
+        payload_json={"observed_values": {"total_cost_of_ownership": None}},
+        source_record_ids={"application_components": [application.id]},
+        evaluated_at=datetime.now(timezone.utc),
+        content_hash="a" * 64,
+    )
+    db_session.add(signal)
+    db_session.flush()
+    candidate_id, signal_id = candidate.id, signal.id
+    db_session.expunge_all()
+
+    with tenant_ctx(org_b.id):
+        assert db_session.get(TransformationCandidate, candidate_id) is None
+        assert db_session.get(CandidateSignal, signal_id) is None
+
+
 def test_capability_reference_and_current_tenant_are_visible_but_foreign_tenant_is_hidden(
     db_session, make_org, tenant_ctx
 ):

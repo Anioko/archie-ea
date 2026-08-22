@@ -90,11 +90,24 @@ class DiscoveryFilters:
 
 
 @dataclass(frozen=True)
+class DiscoverySignal:
+    rule_code: str
+    rule_version: str
+    source_record_ids: Mapping[str, Sequence[int]]
+    evaluated_at: datetime
+    observed_values: Mapping[str, Any]
+    confidence: Decimal | None
+    unknown_code: str | None
+    content_hash: str
+
+
+@dataclass(frozen=True)
 class DiscoveryCandidate:
     application_id: int
     signal_digests: Sequence[str]
     confidence: Decimal | None
     unknown_codes: Sequence[str]
+    signals: Sequence[DiscoverySignal] = ()
 
 
 @dataclass(frozen=True)
@@ -249,6 +262,7 @@ __all__ = [
     "CommandResult",
     "DiscoveryCandidate",
     "DiscoveryFilters",
+    "DiscoverySignal",
     "DomainMutationResult",
     "FreshnessResult",
     "GateBlocker",
