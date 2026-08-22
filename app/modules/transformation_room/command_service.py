@@ -9,7 +9,7 @@ import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, TypeAlias
 
 from flask import current_app
 from sqlalchemy import func, select
@@ -55,6 +55,11 @@ def canonical_request_digest(payload: Mapping[str, Any]) -> str:
         default=_canonical_json_default,
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+OperationNaturalKeyResolver: TypeAlias = Callable[
+    [Session, ActorContext, str, CommandClaim], DomainMutationResult | None
+]
 
 
 class CommandService:
@@ -108,8 +113,8 @@ class CommandService:
         payload: Mapping[str, Any],
         natural_key: str,
         handler: Callable[[Session, CommandClaim], DomainMutationResult],
+        natural_key_resolver: OperationNaturalKeyResolver | None = None,
     ) -> CommandResult:
-        cls._prepare_domain_session()
         digest = canonical_request_digest(payload)
         claim_or_result = cls.claim_or_reconcile(
             actor=actor,
@@ -126,9 +131,9 @@ class CommandService:
                 operation=operation,
                 claim=claim_or_result,
                 handler=handler,
+                natural_key_resolver=natural_key_resolver,
             )
         except KnownPreCommitTransient as error:
-            db.session.rollback()
             cls.mark_retryable(
                 actor=actor,
                 claim=claim_or_result,
@@ -136,10 +141,8 @@ class CommandService:
             )
             raise
         except StaleClaim:
-            db.session.rollback()
             raise
         except TransformationError as error:
-            db.session.rollback()
             cls.mark_non_retryable(
                 actor=actor,
                 claim=claim_or_result,
@@ -150,7 +153,6 @@ class CommandService:
             # The database outcome can be uncertain (for example a connection
             # loss while COMMIT is acknowledged). Leave the receipt claim for
             # result/natural-key reconciliation; never manufacture failure.
-            db.session.rollback()
             raise
 
     @classmethod
@@ -161,14 +163,25 @@ class CommandService:
         operation: str,
         claim: CommandClaim,
         handler: Callable[[Session, CommandClaim], DomainMutationResult],
+        natural_key_resolver: OperationNaturalKeyResolver | None = None,
     ) -> CommandResult:
-        session = cls._prepare_domain_session()
         command_result = None
-        with session.begin():
-            cls.assert_fence(session, actor=actor, claim=claim)
-            mutation = handler(session, claim)
+        with Session(db.engine, expire_on_commit=False) as session, session.begin():
+            # This preflight is intentionally non-locking. A handler may run for
+            # minutes; heartbeat/reclaim must remain able to advance the lease.
+            # The result/outbox/finalisation boundary takes the row lock below.
+            cls.assert_fence(session, actor=actor, claim=claim, lock=False)
+            mutation = (
+                natural_key_resolver(session, actor, claim.natural_key, claim)
+                if natural_key_resolver is not None
+                else None
+            )
+            reconciled = mutation is not None
+            if mutation is None:
+                mutation = handler(session, claim)
             if not isinstance(mutation, DomainMutationResult):
-                raise TypeError("command handler must return DomainMutationResult")
+                source = "natural-key resolver" if reconciled else "command handler"
+                raise TypeError(f"{source} must return DomainMutationResult")
             cls.assert_fence(session, actor=actor, claim=claim)
             result = cls.insert_operation_result(
                 session,
@@ -184,23 +197,9 @@ class CommandService:
                 result_id=result.id,
             )
             command_result = cls.to_command_result(
-                result, created=True, idempotent=False
+                result, created=not reconciled, idempotent=reconciled
             )
         return command_result
-
-    @staticmethod
-    def _prepare_domain_session() -> Session:
-        session = db.session()
-        if session.in_transaction():
-            if session.new or session.dirty or session.deleted:
-                raise RuntimeError(
-                    "command execution requires a clean session before its owned transaction"
-                )
-            # Flask-Login and tenant-aware authorization commonly perform reads
-            # before the command boundary. End only that clean read transaction;
-            # the command below still owns one explicit atomic write transaction.
-            session.rollback()
-        return session
 
     @classmethod
     def claim_or_reconcile(
@@ -287,6 +286,7 @@ class CommandService:
             result = cls._find_result(
                 session,
                 organization_id=actor.organization_id,
+                actor_id=actor.user_id,
                 operation=operation,
                 natural_key=natural_key,
             )
@@ -308,6 +308,15 @@ class CommandService:
                 return cls.to_command_result(
                     result, created=False, idempotent=True
                 )
+            result_owner = session.scalar(
+                select(OperationResult.actor_id).where(
+                    OperationResult.organization_id == actor.organization_id,
+                    OperationResult.operation == operation,
+                    OperationResult.natural_key == natural_key,
+                )
+            )
+            if result_owner is not None:
+                raise CommandConflict("natural_key_owned_by_another_actor")
 
             if receipt.status == "failed_non_retryable":
                 raise CommandConflict(
@@ -348,12 +357,14 @@ class CommandService:
         session: Session,
         *,
         organization_id: int,
+        actor_id: int,
         operation: str,
         natural_key: str,
     ) -> OperationResult | None:
         return session.execute(
             select(OperationResult).where(
                 OperationResult.organization_id == organization_id,
+                OperationResult.actor_id == actor_id,
                 OperationResult.operation == operation,
                 OperationResult.natural_key == natural_key,
             )
@@ -366,10 +377,9 @@ class CommandService:
         *,
         actor: ActorContext,
         claim: CommandClaim,
+        lock: bool = True,
     ) -> CommandIdempotencyRecord:
-        receipt = session.execute(
-            select(CommandIdempotencyRecord)
-            .where(
+        statement = select(CommandIdempotencyRecord).where(
                 CommandIdempotencyRecord.id == claim.receipt_id,
                 CommandIdempotencyRecord.organization_id
                 == actor.organization_id,
@@ -377,8 +387,9 @@ class CommandService:
                 CommandIdempotencyRecord.request_digest == claim.request_digest,
                 CommandIdempotencyRecord.natural_key == claim.natural_key,
             )
-            .with_for_update()
-        ).scalar_one_or_none()
+        if lock:
+            statement = statement.with_for_update()
+        receipt = session.execute(statement).scalar_one_or_none()
         now = cls._database_now(session)
         if (
             receipt is None
@@ -573,4 +584,8 @@ class CommandService:
         )
 
 
-__all__ = ["CommandService", "canonical_request_digest"]
+__all__ = [
+    "CommandService",
+    "OperationNaturalKeyResolver",
+    "canonical_request_digest",
+]

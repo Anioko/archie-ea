@@ -348,6 +348,46 @@ def test_fencing_trigger_rejects_invalid_generation_and_old_worker(guard_fixture
         CommandService.heartbeat(actor=guard_fixture.actor, claim=claim)
 
 
+def test_receipt_guard_rejects_result_owned_by_another_actor(guard_fixture):
+    """Catches direct receipt repair binding actor B to actor A's result."""
+    suffix = uuid.uuid4().hex[:12]
+    second_user = User(
+        email=f"guard-second-{suffix}@example.test",
+        organization_id=guard_fixture.organization_id,
+        confirmed=True,
+        enterprise_role="enterprise_architect",
+    )
+    db.session.add(second_user)
+    db.session.commit()
+    second_actor = ActorContext(
+        user_id=second_user.id,
+        organization_id=guard_fixture.organization_id,
+        roles=guard_fixture.actor.roles,
+        request_id=f"guard-second-request-{suffix}",
+    )
+    claim = CommandService.claim_or_reconcile(
+        actor=second_actor,
+        operation="guard.create",
+        idempotency_key=f"guard-second-{suffix}",
+        request_digest=CommandService.request_digest(guard_fixture.payload),
+        natural_key=guard_fixture.natural_key,
+    )
+
+    with pytest.raises(Exception, match="invalid command receipt transition"):
+        _direct_driver_execute(
+            "UPDATE public.command_idempotency_records "
+            "SET status = 'succeeded', operation_result_id = %s, "
+            "lease_expires_at = NULL, completed_at = clock_timestamp() "
+            "WHERE id = %s AND organization_id = %s AND actor_id = %s",
+            (
+                guard_fixture.result_id,
+                claim.receipt_id,
+                guard_fixture.organization_id,
+                second_actor.user_id,
+            ),
+        )
+
+
 def test_reconciliation_guard_can_be_reinstalled_without_changing_success(
     guard_fixture,
 ):
@@ -394,3 +434,131 @@ def test_schema_reconciliation_restores_missing_guard_idempotently(guard_fixture
             )
         )
     assert trigger_count == 1
+
+
+def test_schema_dry_run_reports_disabled_guard_without_mutating_it(guard_fixture):
+    """Catches a same-name disabled trigger being treated as installed."""
+    from app.commands.reconcile_schema import _reconcile
+
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "ALTER TABLE operation_results "
+            "DISABLE TRIGGER trg_transformation_result_immutable"
+        )
+    try:
+        _added, failed, _missing, _blocking = _reconcile(dry_run=True)
+        assert any(
+            "trg_transformation_result_immutable" in item and "disabled" in item
+            for item in failed
+        )
+        with db.engine.connect() as connection:
+            assert connection.scalar(
+                text(
+                    "SELECT tgenabled FROM pg_trigger "
+                    "WHERE tgname = 'trg_transformation_result_immutable' "
+                    "AND tgrelid = 'operation_results'::regclass"
+                )
+            ) == "D"
+
+        _added, repaired_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert repaired_failed == []
+        with db.engine.connect() as connection:
+            assert connection.scalar(
+                text(
+                    "SELECT tgenabled FROM pg_trigger "
+                    "WHERE tgname = 'trg_transformation_result_immutable' "
+                    "AND tgrelid = 'operation_results'::regclass"
+                )
+            ) == "O"
+    finally:
+        with db.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE operation_results "
+                "ENABLE TRIGGER trg_transformation_result_immutable"
+            )
+
+
+def test_guard_installation_replaces_miswired_same_name_trigger(guard_fixture):
+    """Catches trigger-name-only reconciliation accepting the wrong function."""
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "DROP TRIGGER trg_transformation_result_immutable ON operation_results"
+        )
+        connection.exec_driver_sql(
+            "CREATE TRIGGER trg_transformation_result_immutable "
+            "BEFORE UPDATE OR DELETE ON operation_results FOR EACH ROW "
+            "EXECUTE FUNCTION public.archie_guard_transformation_receipt()"
+        )
+    try:
+        with db.engine.begin() as connection:
+            ensure_transformation_db_guards(connection)
+        with db.engine.connect() as connection:
+            function_name = connection.scalar(
+                text(
+                    "SELECT proc.proname FROM pg_trigger trigger "
+                    "JOIN pg_proc proc ON proc.oid = trigger.tgfoid "
+                    "WHERE trigger.tgname = 'trg_transformation_result_immutable' "
+                    "AND trigger.tgrelid = 'operation_results'::regclass"
+                )
+            )
+        assert function_name == "archie_reject_transformation_mutation"
+    finally:
+        with db.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "DROP TRIGGER IF EXISTS trg_transformation_result_immutable "
+                "ON operation_results"
+            )
+            connection.exec_driver_sql(
+                "CREATE TRIGGER trg_transformation_result_immutable "
+                "BEFORE UPDATE OR DELETE ON operation_results FOR EACH ROW "
+                "EXECUTE FUNCTION public.archie_reject_transformation_mutation()"
+            )
+
+
+def test_schema_dry_run_reports_tampered_guard_function_then_apply_repairs_it(
+    guard_fixture,
+):
+    """Catches a correct function name hiding a replaced permissive body."""
+    from app.commands.reconcile_schema import _reconcile
+
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql(
+            """
+            CREATE OR REPLACE FUNCTION public.archie_reject_transformation_mutation()
+            RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+            SET search_path = pg_catalog, public AS $$
+            BEGIN
+                RETURN NEW;
+            END;
+            $$
+            """
+        )
+    try:
+        _added, failed, _missing, _blocking = _reconcile(dry_run=True)
+        assert any(
+            "archie_reject_transformation_mutation" in item
+            and "function_body" in item
+            for item in failed
+        )
+        with db.engine.connect() as connection:
+            before_body = connection.scalar(
+                text(
+                    "SELECT prosrc FROM pg_proc proc "
+                    "JOIN pg_namespace ns ON ns.oid = proc.pronamespace "
+                    "WHERE ns.nspname = 'public' "
+                    "AND proc.proname = 'archie_reject_transformation_mutation'"
+                )
+            )
+        assert "RETURN NEW" in before_body
+
+        _added, repaired_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert repaired_failed == []
+        with pytest.raises(Exception, match="append-only"):
+            _direct_driver_execute(
+                "UPDATE public.operation_results SET request_digest = %s "
+                "WHERE id = %s AND organization_id = %s",
+                ("f" * 64, guard_fixture.result_id, guard_fixture.organization_id),
+            )
+    finally:
+        with db.engine.begin() as connection:
+            ensure_transformation_db_guards(connection)

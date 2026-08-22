@@ -116,9 +116,9 @@ A transaction is already begun on this Session.
 1 failed, 9 warnings in 31.57s
 ```
 
-The final service ends only a clean authorization/user-read transaction before
-claiming. It rejects a session with pending writes rather than silently rolling
-them back.
+The review fix replaces that shared-session preparation entirely. The command
+uses an independent SQLAlchemy session, so authorization reads, already-flushed
+ORM writes and raw-SQL writes in the caller transaction remain untouched.
 
 ## GREEN evidence — final tree
 
@@ -298,3 +298,303 @@ no template, CSS or front-end JavaScript changes.
    database gates, wider static verifier and 64-test prior-interface regression
    surface are recorded above; overall release verification remains with the
    release coordinator after later dependent tasks land.
+
+---
+
+# Review fix round 1/5 — runtime isolation and recovery hardening
+
+Status: **DONE_WITH_CONCERNS**
+
+Commit subject: `fix: harden transformation command execution`
+
+This section records the reviewer-required scope beyond the original Task 3
+file list. Deployment/configuration changes were necessary to make database
+guards an invariant under the credentials actually used by web and worker
+processes.
+
+## Additional files changed
+
+- `.env.example`
+- `docker-compose.yml`
+- `docker-compose.optimized.yml`
+- `scripts/database/configure_roles.py` (created)
+- `scripts/database/deploy-schema.sh` (created)
+- `app/commands/reconcile_schema.py`
+- `app/models/transformation_db_guards.py`
+- `app/modules/transformation_room/command_service.py`
+- `tests/test_transformation_command_service.py`
+- `tests/test_transformation_db_guards.py`
+- `tests/test_transformation_runtime_role.py` (created)
+- this report
+
+Task 1 programme/canonical-link models and Task 2 capability-tenancy files
+remain unchanged.
+
+## Review RED evidence
+
+Every PostgreSQL test below used both `DATABASE_URL` and `TEST_DATABASE_URL` as
+`postgresql://postgres@127.0.0.1:5439/flask_test`.
+
+### Actual runtime role and compose boundary
+
+```powershell
+pytest -q tests/test_transformation_runtime_role.py::test_compose_paths_separate_database_deployment_from_runtime tests/test_transformation_runtime_role.py::test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards
+```
+
+Initial result before the bootstrap/deploy/runtime split:
+
+```text
+FAILED test_compose_paths_separate_database_deployment_from_runtime
+assert {'database-bootstrap', 'schema-deploy'} <= services.keys()
+FAILED test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards
+ModuleNotFoundError: No module named 'scripts.database.configure_roles'
+2 failed, 8 warnings in 21.06s
+```
+
+The final privilege audit added checks for all non-extension public functions
+and the optimized backup credential. Before the corresponding fix:
+
+```text
+FAILED test_compose_paths_separate_database_deployment_from_runtime
+AssertionError: assert 'postgres' == '${POSTGRES_PASSWORD}'
+FAILED test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards
+assert (2,) == (0,)
+2 failed, 9 warnings in 22.12s
+```
+
+The `(2,)` was the count of application-owned public functions still executable
+by the direct-login runtime role. The role test deliberately authenticates as
+`archie_runtime`; `SET ROLE` from the bootstrap superuser was rejected as proof
+because PostgreSQL retains the superuser `session_user` in that setup.
+
+### Actor-bound result reconciliation
+
+```powershell
+pytest -q tests/test_transformation_command_service.py::test_cross_actor_same_natural_key_cannot_replay_persisted_result
+```
+
+```text
+FAILED test_cross_actor_same_natural_key_cannot_replay_persisted_result
+Failed: DID NOT RAISE <class 'app.modules.transformation_room.domain.CommandConflict'>
+1 failed, 12 warnings in 32.08s
+```
+
+The database-side finalization proof was independently pinned by temporarily
+removing the actor predicate from the receipt trigger:
+
+```powershell
+pytest -q tests/test_transformation_db_guards.py::test_receipt_guard_rejects_result_owned_by_another_actor
+```
+
+```text
+FAILED test_receipt_guard_rejects_result_owned_by_another_actor
+Failed: DID NOT RAISE <class 'psycopg2.Error'>
+1 failed, 10 warnings in 28.41s
+```
+
+### Domain-row-only reconciliation adapter
+
+```powershell
+pytest -q tests/test_transformation_command_service.py::test_domain_row_only_crash_is_reconciled_by_operation_resolver
+```
+
+```text
+FAILED test_domain_row_only_crash_is_reconciled_by_operation_resolver
+TypeError: CommandService.execute() got an unexpected keyword argument 'natural_key_resolver'
+1 failed, 11 warnings in 20.88s
+```
+
+### Heartbeat/reclaim while handler is paused
+
+```powershell
+pytest -q tests/test_transformation_command_service.py::test_heartbeat_completes_while_handler_is_paused tests/test_transformation_command_service.py::test_reclaim_completes_while_expired_handler_is_paused
+```
+
+```text
+FAILED test_heartbeat_completes_while_handler_is_paused
+FAILED test_reclaim_completes_while_expired_handler_is_paused
+assert completed_while_paused is False
+2 failed, 14 warnings in 32.09s
+```
+
+### Caller transaction preservation
+
+```powershell
+pytest -q tests/test_transformation_command_service.py::test_execute_owns_domain_transaction_after_request_identity_read tests/test_transformation_command_service.py::test_preflushed_orm_write_is_not_rolled_back_by_command tests/test_transformation_command_service.py::test_raw_sql_write_is_not_rolled_back_by_command
+```
+
+```text
+FAILED test_execute_owns_domain_transaction_after_request_identity_read
+FAILED test_preflushed_orm_write_is_not_rolled_back_by_command
+FAILED test_raw_sql_write_is_not_rolled_back_by_command
+assert db.session().in_transaction() is True
+3 failed, 19 warnings in 21.55s
+```
+
+### Disabled, miswired and tampered guards
+
+```powershell
+pytest -q tests/test_transformation_db_guards.py::test_schema_dry_run_reports_disabled_guard_without_mutating_it
+```
+
+```text
+FAILED test_schema_dry_run_reports_disabled_guard_without_mutating_it
+assert 'trigger_disabled:trg_transformation_result_immutable' in []
+1 failed, 9 warnings in 32.88s
+```
+
+```powershell
+pytest -q tests/test_transformation_db_guards.py::test_guard_installation_replaces_miswired_same_name_trigger
+```
+
+```text
+FAILED test_guard_installation_replaces_miswired_same_name_trigger
+assert 'archie_guard_transformation_receipt' == 'archie_reject_transformation_mutation'
+1 failed, 9 warnings in 27.29s
+```
+
+```powershell
+pytest -q tests/test_transformation_db_guards.py::test_schema_dry_run_reports_tampered_guard_function_then_apply_repairs_it
+```
+
+```text
+FAILED test_schema_dry_run_reports_tampered_guard_function_then_apply_repairs_it
+assert 'function_body:archie_reject_transformation_mutation' in []
+1 failed, 9 warnings in 23.35s
+```
+
+## Review GREEN evidence — final tree
+
+Individual transition evidence:
+
+```text
+cross-actor service: 1 passed, 12 warnings in 22.77s
+cross-actor receipt trigger: 1 passed, 10 warnings in 21.63s
+domain-row-only resolver: 1 passed, 11 warnings in 21.28s
+paused-handler heartbeat: 1 passed, 11 warnings in 21.99s
+paused-handler reclaim: passed in the two-test correction run
+caller transaction preservation: 3 passed, 19 warnings in 20.24s
+miswired trigger repair: 1 passed, 9 warnings in 20.65s
+disabled trigger + tampered function: 2 passed, 10 warnings in 29.15s
+runtime role + compose final privilege audit: 2 passed, 9 warnings in 20.83s
+```
+
+Fresh consolidated command:
+
+```powershell
+pytest -q tests/test_transformation_command_service.py tests/test_transformation_db_guards.py tests/test_transformation_runtime_role.py
+```
+
+```text
+collected 40 items
+tests/test_transformation_command_service.py .................. [ 45%]
+tests/test_transformation_db_guards.py ....................     [ 95%]
+tests/test_transformation_runtime_role.py ..                    [100%]
+40 passed, 83 warnings in 35.90s
+```
+
+Fresh prior-interface regression command:
+
+```powershell
+pytest -q tests/test_transformation_programme_models.py tests/test_schema_reconciliation.py tests/test_capability_tenancy_cutover.py tests/test_tenant_isolation.py
+```
+
+```text
+64 passed, 139 warnings in 46.52s
+```
+
+Repository gates on the final tree:
+
+```text
+python scripts/verify.py --gate schema-drift
+ok schema-drift 46.1s [0 <= 0]
+1 passed, 0 failed, 0 skipped
+
+python scripts/verify.py --gate raw-sql-tenancy
+ok raw-sql-tenancy 20.2s [0 <= 0]
+1 passed, 0 failed, 0 skipped
+
+python scripts/verify.py --tag static
+30 passed, 0 failed, 1 skipped
+```
+
+The static skip remains only `css-build`: this checkout has no vendored
+Tailwind executable. There are no template/CSS/JavaScript changes. Relevant
+`ruff check` reports `All checks passed!`; `git diff --check` is empty.
+
+## Runtime role, guard and deployment evidence
+
+- `database-bootstrap` alone receives the PostgreSQL bootstrap credential and
+  idempotently creates/rotates `archie_deploy` and `archie_runtime` as login,
+  non-superuser, non-createdb, non-createrole, non-replication,
+  non-bypass-RLS roles. It transfers database/schema/application-object
+  ownership to `archie_deploy`.
+- A one-shot `schema-deploy` service runs init, reconciliation and backfills as
+  the owner. Main compose server/worker and optimized web/web-dev authenticate
+  only as `archie_runtime` and wait for successful schema deployment.
+- The actual direct-login runtime role proves permitted receipt/result/outbox
+  INSERTs, receipt protocol-column UPDATE, outbox delivery-metadata UPDATE and
+  sequence use. It has no ownership, DELETE, TRUNCATE or immutable-result UPDATE
+  privilege and zero EXECUTE privilege on non-extension public functions.
+- Direct attempts to change `session_replication_role`, assume the deploy role,
+  disable/drop triggers, truncate results, update results, delete receipts,
+  invoke a guard function, or create a public-schema table all fail under that
+  same actual runtime login.
+- Existing and default function privileges are revoked from PUBLIC/runtime;
+  extension functions are left under extension ownership. Guard installation
+  remains a deployment-owner action and narrows the three transformation tables
+  after the general application DML grants. Both role setup and guard setup are
+  idempotent.
+
+## Actor, resolver, lock and atomicity design
+
+- Result lookup now includes `organization_id`, actor, operation and natural
+  key. A same-tenant, same-operation/key result owned by a different actor
+  yields opaque `natural_key_owned_by_another_actor`; the receipt trigger also
+  requires the result actor to equal the receipt actor.
+- `OperationNaturalKeyResolver` is an explicit operation adapter contract. It
+  receives an independent domain session, actor, natural key and fenced claim;
+  when the domain row exists but `OperationResult` does not, it reconstructs the
+  immutable mutation envelope, then atomically writes result, outbox and receipt
+  finalization without invoking the mutation handler.
+- Execution performs a non-locking fence read before domain work. The handler
+  never holds the receipt row lock, so heartbeat/reclaim commits while a real
+  handler transaction is paused. The final boundary locks and rechecks the exact
+  tenant/actor/receipt/generation/token before result/outbox/finalization. A
+  reclaimed stale worker loses that fence and its domain transaction rolls back.
+- Command execution owns an independent SQLAlchemy session. It neither commits
+  nor rolls back the request/caller session; preflushed ORM and raw-SQL writes
+  stay present and remain under caller control while the command result commits
+  independently.
+
+## Guard drift and idempotence design
+
+- Dry-run inspection compares trigger relation/name, enabled state, event/timing
+  shape and exact function schema/identity. It also compares normalized function
+  bodies, `SECURITY DEFINER` and the hardened search path.
+- Dry-run records drift in reconciliation output without DDL. Apply replaces
+  function definitions and drops/recreates disabled, miswired or malformed
+  same-name triggers under an advisory lock, then audits that no drift remains.
+
+## Review self-review
+
+- Mutation checks: removing actor predicates breaks both actor tests; restoring
+  a pre-handler `FOR UPDATE` breaks both paused-worker tests; removing the final
+  fence permits the stale worker; removing the resolver reruns the handler;
+  using Flask's scoped session breaks all three caller-transaction tests;
+  name-only trigger inspection breaks disabled/miswired/body-drift tests.
+- Runtime-role verification uses a new network authentication, not inherited
+  `SET ROLE` state or mocks. Positive DML is exercised before every bypass denial.
+- All supplied IDs in new SQL retain explicit organization predicates. The
+  raw-SQL tenancy gate is zero and Task 1/2 regression suites pass.
+- The optimized backup password was also corrected to use the configured
+  bootstrap secret; no credential value is hard-coded in compose.
+
+## Review concerns
+
+1. Docker is unavailable in this Windows test environment, so the compose
+   documents are parsed structurally rather than executed with
+   `docker compose config`. The role bootstrap itself is exercised twice against
+   PostgreSQL and the runtime bypass matrix uses a real direct login.
+2. The unchanged missing Tailwind CLI leaves `css-build` skipped. No frontend
+   artifact is in review scope.

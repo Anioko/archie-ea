@@ -773,7 +773,19 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
 
-    if not dry_run:
+    if dry_run:
+        try:
+            from app.models.transformation_db_guards import (
+                inspect_transformation_db_guards,
+            )
+
+            guard_drift = inspect_transformation_db_guards(db.session.connection())
+            failed.extend(
+                f"transformation_db_guards:{item}" for item in guard_drift
+            )
+        except Exception as exc:  # noqa: BLE001 — report inspection failure
+            failed.append(f"transformation_db_guards_inspection: {str(exc)[:120]}")
+    else:
         try:
             from app.models.transformation_db_guards import (
                 ensure_transformation_db_guards,

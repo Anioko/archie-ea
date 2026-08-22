@@ -262,6 +262,74 @@ def test_execute_owns_domain_transaction_after_request_identity_read(command_fix
     result = _execute(command_fixture, key="request-read")
 
     assert result.created is True
+    assert db.session().in_transaction() is True
+    assert _counts(command_fixture) == (1, 1, 1)
+
+
+def test_preflushed_orm_write_is_not_rolled_back_by_command(command_fixture):
+    """Catches a flushed caller row disappearing at the command boundary."""
+    pending = StrategicInitiative(
+        organization_id=command_fixture.organization_id,
+        name=f"Caller pending {uuid.uuid4().hex[:8]}",
+        record_kind="transformation_programme",
+    )
+    db.session.add(pending)
+    db.session.flush()
+    pending_id = pending.id
+
+    result = _execute(command_fixture, key="caller-orm-write")
+
+    assert result.created is True
+    assert db.session().in_transaction() is True
+    assert db.session.scalar(
+        select(StrategicInitiative.id).where(
+            StrategicInitiative.id == pending_id,
+            StrategicInitiative.organization_id == command_fixture.organization_id,
+        )
+    ) == pending_id
+    db.session.rollback()
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(StrategicInitiative.id).where(
+                StrategicInitiative.id == pending_id,
+                StrategicInitiative.organization_id == command_fixture.organization_id,
+            )
+        ) is None
+    assert _counts(command_fixture) == (1, 1, 1)
+
+
+def test_raw_sql_write_is_not_rolled_back_by_command(command_fixture):
+    """Catches raw SQL work being invisible to new/dirty/deleted heuristics."""
+    original_name = db.session.scalar(
+        select(Organization.name).where(
+            Organization.id == command_fixture.organization_id
+        )
+    )
+    pending_name = f"{original_name} pending"
+    db.session.execute(
+        text(
+            "UPDATE organizations SET name = :name "
+            "WHERE id = :organization_id"
+        ),
+        {"name": pending_name, "organization_id": command_fixture.organization_id},
+    )
+
+    result = _execute(command_fixture, key="caller-raw-write")
+
+    assert result.created is True
+    assert db.session().in_transaction() is True
+    assert db.session.scalar(
+        select(Organization.name).where(
+            Organization.id == command_fixture.organization_id
+        )
+    ) == pending_name
+    db.session.rollback()
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(Organization.name).where(
+                Organization.id == command_fixture.organization_id
+            )
+        ) == original_name
     assert _counts(command_fixture) == (1, 1, 1)
 
 
@@ -457,6 +525,126 @@ def test_expired_lease_reconciles_existing_result_without_handler(command_fixtur
     assert _counts(command_fixture) == (1, 1, 1)
 
 
+def test_domain_row_only_crash_is_reconciled_by_operation_resolver(command_fixture):
+    """Catches a committed natural-key row being duplicated when its result is absent."""
+    payload = {"name": command_fixture.domain_name}
+    digest = canonical_request_digest(payload)
+    claim = CommandService.claim_or_reconcile(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="domain-row-only",
+        request_digest=digest,
+        natural_key="programme-intake:domain-row-only",
+    )
+    with Session(db.engine) as session, session.begin():
+        programme = StrategicInitiative(
+            organization_id=command_fixture.organization_id,
+            name=command_fixture.domain_name,
+            record_kind="transformation_programme",
+        )
+        session.add(programme)
+        session.flush()
+        programme_id = programme.id
+    _wait_for_expiry(claim)
+    handler_called = False
+
+    def resolve_programme(session, actor, natural_key, _claim):
+        assert natural_key == "programme-intake:domain-row-only"
+        recovered = session.execute(
+            select(StrategicInitiative).where(
+                StrategicInitiative.id == programme_id,
+                StrategicInitiative.organization_id == actor.organization_id,
+                StrategicInitiative.record_kind == "transformation_programme",
+            )
+        ).scalar_one_or_none()
+        if recovered is None:
+            return None
+        return DomainMutationResult(
+            object_ids={"programme_id": recovered.id},
+            response={"programme_id": recovered.id, "name": recovered.name},
+            outbox_events=(
+                {
+                    "event_type": "programme.created",
+                    "payload": {"programme_id": recovered.id},
+                },
+            ),
+        )
+
+    def must_not_run(_session, _claim):
+        nonlocal handler_called
+        handler_called = True
+        raise AssertionError("domain mutation reran after natural-key recovery")
+
+    result = CommandService.execute(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="domain-row-only",
+        payload=payload,
+        natural_key="programme-intake:domain-row-only",
+        natural_key_resolver=resolve_programme,
+        handler=must_not_run,
+    )
+
+    assert result.created is False and result.idempotent is True
+    assert result.object_ids == {"programme_id": programme_id}
+    assert handler_called is False
+    assert _receipt(command_fixture, "domain-row-only").status == "succeeded"
+    assert _counts(command_fixture) == (1, 1, 1)
+
+
+def test_cross_actor_same_natural_key_cannot_replay_persisted_result(
+    command_fixture,
+):
+    """Catches actor B receiving actor A's immutable result during repair."""
+    payload = {"name": command_fixture.domain_name}
+    first = _execute(command_fixture, key="cross-actor", payload=payload)
+    suffix = uuid.uuid4().hex[:12]
+    second_user = User(
+        email=f"command-second-{suffix}@example.test",
+        organization_id=command_fixture.organization_id,
+        confirmed=True,
+        enterprise_role="enterprise_architect",
+    )
+    db.session.add(second_user)
+    db.session.commit()
+    second_actor = ActorContext(
+        user_id=second_user.id,
+        organization_id=command_fixture.organization_id,
+        roles=command_fixture.actor.roles,
+        request_id=f"second-request-{suffix}",
+    )
+    second_claim = CommandService.claim_or_reconcile(
+        actor=second_actor,
+        operation="programme.create",
+        idempotency_key="cross-actor",
+        request_digest=canonical_request_digest(payload),
+        natural_key="programme-intake:cross-actor",
+    )
+    _wait_for_expiry(second_claim)
+    called = False
+
+    def must_not_run(_session, _claim):
+        nonlocal called
+        called = True
+        raise AssertionError("cross-actor natural-key collision ran the handler")
+
+    with pytest.raises(CommandConflict) as denied:
+        CommandService.execute(
+            actor=second_actor,
+            operation="programme.create",
+            idempotency_key="cross-actor",
+            payload=payload,
+            natural_key="programme-intake:cross-actor",
+            handler=must_not_run,
+        )
+
+    assert denied.value.reason == "natural_key_owned_by_another_actor"
+    assert called is False
+    assert denied.value.details.get("operation_result_id") is None
+    assert first.response["name"] == command_fixture.domain_name
+    assert _counts(command_fixture) == (1, 1, 1)
+
+
 def test_damaged_receipt_reconciles_natural_key_and_exact_response(command_fixture):
     """Catches receipt damage causing a natural-key domain row to be duplicated."""
     first = _execute(command_fixture, key="damaged")
@@ -575,6 +763,141 @@ def test_paused_stale_worker_cannot_write_after_reclaim(command_fixture, app):
     assert isinstance(outcome.get("error"), StaleClaim)
     assert _receipt(command_fixture, "race").lease_generation == 2
     assert _counts(command_fixture) == (1, 1, 1)
+
+
+def test_heartbeat_completes_while_handler_is_paused(command_fixture, app):
+    """Catches execution holding the receipt row lock for the handler duration."""
+    app.config["TRANSFORMATION_COMMAND_LEASE_SECONDS"] = 1.0
+    payload = {"name": command_fixture.domain_name}
+    claim = CommandService.claim_or_reconcile(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="paused-heartbeat",
+        request_digest=canonical_request_digest(payload),
+        natural_key="programme-intake:paused-heartbeat",
+    )
+    handler_entered = threading.Event()
+    release_handler = threading.Event()
+    heartbeat_done = threading.Event()
+    execution_outcome = {}
+    heartbeat_outcome = {}
+
+    def paused_handler(session, active_claim):
+        handler_entered.set()
+        assert release_handler.wait(timeout=3)
+        return _mutation(command_fixture)(session, active_claim)
+
+    def execute_worker():
+        with app.app_context():
+            try:
+                execution_outcome["result"] = CommandService.execute_claim(
+                    actor=command_fixture.actor,
+                    operation="programme.create",
+                    claim=claim,
+                    handler=paused_handler,
+                )
+            except Exception as error:
+                execution_outcome["error"] = error
+            finally:
+                db.session.remove()
+
+    def heartbeat_worker():
+        with app.app_context():
+            try:
+                heartbeat_outcome["claim"] = CommandService.heartbeat(
+                    actor=command_fixture.actor, claim=claim
+                )
+            except Exception as error:
+                heartbeat_outcome["error"] = error
+            finally:
+                heartbeat_done.set()
+                db.session.remove()
+
+    execution_thread = threading.Thread(target=execute_worker, daemon=True)
+    execution_thread.start()
+    assert handler_entered.wait(timeout=3)
+    heartbeat_thread = threading.Thread(target=heartbeat_worker, daemon=True)
+    heartbeat_thread.start()
+    completed_while_paused = heartbeat_done.wait(timeout=0.5)
+    release_handler.set()
+    execution_thread.join(timeout=3)
+    heartbeat_thread.join(timeout=3)
+
+    assert completed_while_paused is True
+    assert heartbeat_outcome.get("error") is None
+    assert heartbeat_outcome["claim"].generation == claim.generation
+    assert execution_outcome.get("error") is None
+    assert execution_outcome["result"].created is True
+    assert _counts(command_fixture) == (1, 1, 1)
+
+
+def test_reclaim_completes_while_expired_handler_is_paused(command_fixture, app):
+    """Catches an expired handler lock preventing the next generation from claiming."""
+    payload = {"name": command_fixture.domain_name}
+    claim = CommandService.claim_or_reconcile(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="paused-reclaim",
+        request_digest=canonical_request_digest(payload),
+        natural_key="programme-intake:paused-reclaim",
+    )
+    handler_entered = threading.Event()
+    release_handler = threading.Event()
+    reclaim_done = threading.Event()
+    execution_outcome = {}
+    reclaim_outcome = {}
+
+    def paused_handler(session, active_claim):
+        handler_entered.set()
+        assert release_handler.wait(timeout=3)
+        return _mutation(command_fixture)(session, active_claim)
+
+    def execute_worker():
+        with app.app_context():
+            try:
+                CommandService.execute_claim(
+                    actor=command_fixture.actor,
+                    operation="programme.create",
+                    claim=claim,
+                    handler=paused_handler,
+                )
+            except Exception as error:
+                execution_outcome["error"] = error
+            finally:
+                db.session.remove()
+
+    def reclaim_worker():
+        with app.app_context():
+            try:
+                reclaim_outcome["claim"] = CommandService.claim_or_reconcile(
+                    actor=command_fixture.actor,
+                    operation="programme.create",
+                    idempotency_key="paused-reclaim",
+                    request_digest=canonical_request_digest(payload),
+                    natural_key="programme-intake:paused-reclaim",
+                )
+            except Exception as error:
+                reclaim_outcome["error"] = error
+            finally:
+                reclaim_done.set()
+                db.session.remove()
+
+    execution_thread = threading.Thread(target=execute_worker, daemon=True)
+    execution_thread.start()
+    assert handler_entered.wait(timeout=3)
+    _wait_for_expiry(claim)
+    reclaim_thread = threading.Thread(target=reclaim_worker, daemon=True)
+    reclaim_thread.start()
+    completed_while_paused = reclaim_done.wait(timeout=0.5)
+    release_handler.set()
+    execution_thread.join(timeout=3)
+    reclaim_thread.join(timeout=3)
+
+    assert completed_while_paused is True
+    assert reclaim_outcome.get("error") is None
+    assert reclaim_outcome["claim"].generation == claim.generation + 1
+    assert isinstance(execution_outcome.get("error"), StaleClaim)
+    assert _counts(command_fixture) == (0, 0, 0)
 
 
 def test_supplied_receipt_id_is_still_tenant_and_actor_scoped(command_fixture):

@@ -11,6 +11,9 @@ from app.models.transformation_execution import (
 )
 
 
+TRANSFORMATION_RUNTIME_ROLE = "archie_runtime"
+
+
 _IMMUTABILITY_FUNCTION_SQL = r"""
 CREATE OR REPLACE FUNCTION public.archie_reject_transformation_mutation()
 RETURNS trigger
@@ -154,6 +157,7 @@ BEGIN
            FROM public.operation_results result
            WHERE result.id = NEW.operation_result_id
              AND result.organization_id = NEW.organization_id
+             AND result.actor_id = NEW.actor_id
              AND result.operation = NEW.operation
              AND result.natural_key = NEW.natural_key
              AND result.request_digest = NEW.request_digest
@@ -166,6 +170,143 @@ BEGIN
 END;
 $$
 """
+
+
+_FUNCTION_SPECS = (
+    (
+        "archie_reject_transformation_mutation",
+        _IMMUTABILITY_FUNCTION_SQL,
+    ),
+    ("archie_guard_transformation_receipt", _RECEIPT_FUNCTION_SQL),
+)
+
+_TRIGGER_SPECS = (
+    (
+        "operation_results",
+        "trg_transformation_result_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "transformation_outbox_events",
+        "trg_transformation_outbox_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "command_idempotency_records",
+        "trg_transformation_receipt_guard",
+        "archie_guard_transformation_receipt",
+    ),
+)
+
+
+def _normalise_function_body(body: str) -> str:
+    return "\n".join(line.rstrip() for line in body.strip().splitlines())
+
+
+def _expected_function_body(create_sql: str) -> str:
+    return _normalise_function_body(create_sql.split("AS $$", 1)[1].rsplit("$$", 1)[0])
+
+
+def inspect_transformation_db_guards(connection) -> list[str]:
+    """Return semantic guard drift without changing database state."""
+    if connection.dialect.name != "postgresql":
+        return []
+    drift: list[str] = []
+    for function_name, create_sql in _FUNCTION_SPECS:
+        row = connection.exec_driver_sql(
+            """
+            SELECT proc.prosrc, proc.prosecdef, proc.proconfig
+            FROM pg_proc proc
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE namespace.nspname = 'public'
+              AND proc.proname = %s
+              AND proc.pronargs = 0
+              AND proc.prorettype = 'trigger'::regtype
+            """,
+            (function_name,),
+        ).first()
+        if row is None:
+            drift.append(f"function_missing:{function_name}")
+            continue
+        if _normalise_function_body(row.prosrc) != _expected_function_body(create_sql):
+            drift.append(f"function_body:{function_name}")
+        if row.prosecdef is not True:
+            drift.append(f"function_security:{function_name}")
+        if "search_path=pg_catalog, public" not in (row.proconfig or []):
+            drift.append(f"function_search_path:{function_name}")
+
+    for table_name, trigger_name, function_name in _TRIGGER_SPECS:
+        table_present = connection.exec_driver_sql(
+            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+        ).scalar()
+        if not table_present:
+            continue
+        row = connection.exec_driver_sql(
+            """
+            SELECT trigger.tgenabled, trigger.tgtype,
+                   namespace.nspname AS function_schema,
+                   proc.proname AS function_name
+            FROM pg_trigger trigger
+            JOIN pg_proc proc ON proc.oid = trigger.tgfoid
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE trigger.tgname = %s
+              AND trigger.tgrelid = to_regclass(%s)
+              AND NOT trigger.tgisinternal
+            """,
+            (trigger_name, f"public.{table_name}"),
+        ).first()
+        if row is None:
+            drift.append(f"trigger_missing:{trigger_name}")
+            continue
+        if row.tgenabled != "O":
+            drift.append(f"trigger_disabled:{trigger_name}")
+        if row.function_schema != "public" or row.function_name != function_name:
+            drift.append(f"trigger_function:{trigger_name}")
+        # PostgreSQL tgtype: ROW(1) | BEFORE(2) | DELETE(8) | UPDATE(16).
+        if row.tgtype != 27:
+            drift.append(f"trigger_shape:{trigger_name}")
+    return drift
+
+
+def _repair_triggers(connection) -> None:
+    for table_name, trigger_name, function_name in _TRIGGER_SPECS:
+        table_present = connection.exec_driver_sql(
+            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+        ).scalar()
+        if not table_present:
+            continue
+        row = connection.exec_driver_sql(
+            """
+            SELECT trigger.tgenabled, trigger.tgtype,
+                   namespace.nspname AS function_schema,
+                   proc.proname AS function_name
+            FROM pg_trigger trigger
+            JOIN pg_proc proc ON proc.oid = trigger.tgfoid
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE trigger.tgname = %s
+              AND trigger.tgrelid = to_regclass(%s)
+              AND NOT trigger.tgisinternal
+            """,
+            (trigger_name, f"public.{table_name}"),
+        ).first()
+        correct = (
+            row is not None
+            and row.tgenabled == "O"
+            and row.tgtype == 27
+            and row.function_schema == "public"
+            and row.function_name == function_name
+        )
+        if correct:
+            continue
+        connection.exec_driver_sql(
+            f"DROP TRIGGER IF EXISTS {trigger_name} ON public.{table_name}"
+        )
+        connection.exec_driver_sql(
+            f"CREATE TRIGGER {trigger_name} "
+            f"BEFORE UPDATE OR DELETE ON public.{table_name} "
+            "FOR EACH ROW "
+            f"EXECUTE FUNCTION public.{function_name}()"
+        )
 
 
 def ensure_transformation_db_guards(connection):
@@ -184,51 +325,23 @@ def ensure_transformation_db_guards(connection):
     connection.exec_driver_sql(
         "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() FROM PUBLIC"
     )
-    connection.exec_driver_sql(
-        """
-        DO $$
-        BEGIN
-            IF to_regclass('public.operation_results') IS NOT NULL
-               AND NOT EXISTS (
-                   SELECT 1 FROM pg_trigger
-                   WHERE tgname = 'trg_transformation_result_immutable'
-                     AND tgrelid = to_regclass('public.operation_results')
-               ) THEN
-                CREATE TRIGGER trg_transformation_result_immutable
-                BEFORE UPDATE OR DELETE ON public.operation_results
-                FOR EACH ROW
-                EXECUTE FUNCTION public.archie_reject_transformation_mutation();
-            END IF;
-
-            IF to_regclass('public.transformation_outbox_events') IS NOT NULL
-               AND NOT EXISTS (
-                   SELECT 1 FROM pg_trigger
-                   WHERE tgname = 'trg_transformation_outbox_immutable'
-                     AND tgrelid = to_regclass('public.transformation_outbox_events')
-               ) THEN
-                CREATE TRIGGER trg_transformation_outbox_immutable
-                BEFORE UPDATE OR DELETE ON public.transformation_outbox_events
-                FOR EACH ROW
-                EXECUTE FUNCTION public.archie_reject_transformation_mutation();
-            END IF;
-
-            IF to_regclass('public.command_idempotency_records') IS NOT NULL
-               AND NOT EXISTS (
-                   SELECT 1 FROM pg_trigger
-                   WHERE tgname = 'trg_transformation_receipt_guard'
-                     AND tgrelid = to_regclass('public.command_idempotency_records')
-               ) THEN
-                CREATE TRIGGER trg_transformation_receipt_guard
-                BEFORE UPDATE OR DELETE ON public.command_idempotency_records
-                FOR EACH ROW
-                EXECUTE FUNCTION public.archie_guard_transformation_receipt();
-            END IF;
-        END;
-        $$
-        """
-    )
-    # PUBLIC normally has no table DML rights; make that invariant explicit
-    # without removing the owning application's service-path privileges.
+    runtime_role_exists = connection.exec_driver_sql(
+        "SELECT EXISTS (SELECT 1 FROM pg_roles "
+        f"WHERE rolname = '{TRANSFORMATION_RUNTIME_ROLE}')"
+    ).scalar()
+    if runtime_role_exists:
+        connection.exec_driver_sql(
+            "REVOKE ALL ON FUNCTION "
+            "public.archie_reject_transformation_mutation() "
+            f"FROM {TRANSFORMATION_RUNTIME_ROLE}"
+        )
+        connection.exec_driver_sql(
+            "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() "
+            f"FROM {TRANSFORMATION_RUNTIME_ROLE}"
+        )
+    _repair_triggers(connection)
+    # The runtime role gets only the columns required by the service protocol.
+    # It never owns these objects and has no DELETE or TRUNCATE privilege.
     for table_name in (
         "operation_results",
         "transformation_outbox_events",
@@ -239,8 +352,50 @@ def ensure_transformation_db_guards(connection):
         ).scalar()
         if present:
             connection.exec_driver_sql(
-                f"REVOKE UPDATE, DELETE ON TABLE public.{table_name} FROM PUBLIC"
+                f"REVOKE ALL ON TABLE public.{table_name} FROM PUBLIC"
             )
+    if runtime_role_exists:
+        for table_name in (
+            "operation_results",
+            "transformation_outbox_events",
+            "command_idempotency_records",
+        ):
+            present = connection.exec_driver_sql(
+                f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+            ).scalar()
+            if present:
+                connection.exec_driver_sql(
+                    f"REVOKE ALL ON TABLE public.{table_name} "
+                    f"FROM {TRANSFORMATION_RUNTIME_ROLE}"
+                )
+                connection.exec_driver_sql(
+                    f"GRANT SELECT, INSERT ON TABLE public.{table_name} "
+                    f"TO {TRANSFORMATION_RUNTIME_ROLE}"
+                )
+        if connection.exec_driver_sql(
+            "SELECT to_regclass('public.transformation_outbox_events') IS NOT NULL"
+        ).scalar():
+            connection.exec_driver_sql(
+                "GRANT UPDATE (delivery_attempts, published_at) ON TABLE "
+                "public.transformation_outbox_events "
+                f"TO {TRANSFORMATION_RUNTIME_ROLE}"
+            )
+        if connection.exec_driver_sql(
+            "SELECT to_regclass('public.command_idempotency_records') IS NOT NULL"
+        ).scalar():
+            connection.exec_driver_sql(
+                "GRANT UPDATE (status, lease_generation, claim_token, "
+                "claimant_request_id, lease_expires_at, operation_result_id, "
+                "attempt_count, last_error_class, updated_at, completed_at) "
+                "ON TABLE public.command_idempotency_records "
+                f"TO {TRANSFORMATION_RUNTIME_ROLE}"
+            )
+    remaining_drift = inspect_transformation_db_guards(connection)
+    if remaining_drift:
+        raise RuntimeError(
+            "transformation database guard repair incomplete: "
+            + ", ".join(remaining_drift)
+        )
 
 
 @event.listens_for(CommandIdempotencyRecord.__table__, "after_create")
@@ -250,4 +405,8 @@ def _install_transformation_guards_after_create(_target, connection, **_kwargs):
     ensure_transformation_db_guards(connection)
 
 
-__all__ = ["ensure_transformation_db_guards"]
+__all__ = [
+    "TRANSFORMATION_RUNTIME_ROLE",
+    "ensure_transformation_db_guards",
+    "inspect_transformation_db_guards",
+]
