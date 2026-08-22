@@ -90,7 +90,7 @@ class CommandService:
         value = session.scalar(select(func.clock_timestamp()))
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
-        return value
+        return value.astimezone(timezone.utc)
 
     @staticmethod
     def _new_claim_token() -> str:

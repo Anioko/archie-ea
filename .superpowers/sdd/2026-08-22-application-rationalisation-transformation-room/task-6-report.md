@@ -360,3 +360,71 @@ Both database variables used the required
 
 The only concern remains the repository's pre-existing warning volume; this
 round introduced no test failure, gate failure or skip.
+
+## Review fix round 3 — current governing source through commit
+
+Fix commit subject: `fix: serialize evidence conflict resolution heads`. The
+exact SHA is recorded in the parent handoff because this report and the fix are
+committed together.
+
+Conflict resolution now creates the resolution head before validation and
+locks it together with the selected governing record's exact global source
+head. The lock query is ordered by the complete global head key
+`(tenant, subject_type, subject_id, claim_key, source_identity, id)`, uses a
+fresh ORM population, and requires the locked governing head's
+`current_record_id` to remain the selected cited record. Candidate ID remains
+provenance only: the governing leaf can still originate from another candidate
+while the conflict request/workstream remains the deterministic authorization
+boundary.
+
+The SECURITY DEFINER advance function independently performs the same check.
+It reads only immutable identity inputs before locking, discovers the selected
+record's exact source head, locks target and governing heads in the same global
+key order, then re-reads the target head, record, live receipt and governing
+pointer under lock. A restricted runtime caller therefore cannot bypass the
+service with a valid conflict/receipt/citation whose selected source leaf has
+already been superseded.
+
+The restricted-role RED used the real runtime login, live receipts and leases,
+real guarded head movements and the deferred one-to-one event binding. The
+definer accepted the cited version-1 leaf after its source head had advanced to
+version 2. GREEN rejects it with `governing evidence is not current`; the
+candidate-agnostic counterpart selecting a current leaf still advances exactly
+one resolution revision.
+
+The real two-session race covers both serial orders without mocks. When
+resolution owns the ordered head locks first, source advancement blocks,
+resolution commits against the then-current leaf, and advancement follows.
+When guarded source advancement owns the global source head first, resolution
+blocks, observes the version-2 pointer after release, and rolls back with
+`governing_evidence_not_current`; no resolution record/head movement commits.
+The source movement uses a distinct persisted actor so programme, request and
+user locks cannot create a false-positive serialization result.
+
+During RED setup, the run crossed the Europe/London BST midnight boundary and
+exposed an existing inconsistency: discovery hashed UTC's calendar day while
+the command-side database timestamp retained the session's local offset. That
+made every evidence fixture report `candidate_signals_stale` despite unchanged
+facts. `CommandService._database_now` now normalizes aware database timestamps
+to UTC, with a real PostgreSQL `Asia/Tokyo` session-timezone regression test.
+
+### Review fix round 3 verification
+
+Both database variables used the required
+`postgresql://postgres@127.0.0.1:5439/flask_test` URL.
+
+- Task 6 evidence/concurrency/guard/runtime files plus the UTC regression:
+  **55 passed**, 0 failed.
+- Full Transformation Room regression: **198 passed**, 0 failed.
+- The two-order head race alone: **2 passed**, 0 failed.
+- Restricted-runtime current/superseded direct-call pair: **2 passed**, 0
+  failed.
+- `schema-drift`, `raw-sql-tenancy`, `lint-core`, `compile` and
+  `undefined-exports`: each **1 passed**, 0 failed, 0 skipped.
+- Focused Ruff over every changed Python/test file: **all checks passed**.
+- `git diff --check`: clean.
+
+The only remaining concern is the repository's existing warning volume
+(SQLAlchemy lifecycle/deprecation and detached test-user warnings). This round
+introduced no failure or skipped gate, and no schema, route, template or UI
+change.

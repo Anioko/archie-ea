@@ -1358,17 +1358,61 @@ class TransformationEvidenceService:
         )
         if governing is None:
             raise NotFound("governing_evidence_not_found")
-        current = session.scalar(
-            select(EvidenceClaimHead.id).where(
+        resolution_source_identity = canonical_source_identity(
+            "governance_resolution", f"resolution:conflict:{conflict.id}"
+        )
+        session.execute(
+            postgresql_insert(EvidenceClaimHead)
+            .values(
+                organization_id=actor.organization_id,
+                subject_type=conflict.subject_type,
+                subject_id=conflict.subject_id,
+                claim_key=conflict.claim_key,
+                source_identity=resolution_source_identity,
+                current_record_id=None,
+                revision=0,
+            )
+            .on_conflict_do_nothing(
+                index_elements=(
+                    EvidenceClaimHead.organization_id,
+                    EvidenceClaimHead.subject_type,
+                    EvidenceClaimHead.subject_id,
+                    EvidenceClaimHead.claim_key,
+                    EvidenceClaimHead.source_identity,
+                )
+            )
+        )
+        locked_heads = session.scalars(
+            select(EvidenceClaimHead)
+            .where(
                 EvidenceClaimHead.organization_id == actor.organization_id,
                 EvidenceClaimHead.subject_type == conflict.subject_type,
                 EvidenceClaimHead.subject_id == conflict.subject_id,
                 EvidenceClaimHead.claim_key == conflict.claim_key,
-                EvidenceClaimHead.source_identity == governing.source_identity,
-                EvidenceClaimHead.current_record_id == governing.id,
+                EvidenceClaimHead.source_identity.in_(
+                    (governing.source_identity, resolution_source_identity)
+                ),
             )
-        )
-        if current is None:
+            .order_by(
+                EvidenceClaimHead.organization_id,
+                EvidenceClaimHead.subject_type,
+                EvidenceClaimHead.subject_id,
+                EvidenceClaimHead.claim_key,
+                EvidenceClaimHead.source_identity,
+                EvidenceClaimHead.id,
+            )
+            .execution_options(
+                populate_existing=True,
+                evidence_conflict_resolution_head_lock=True,
+            )
+            .with_for_update()
+        ).all()
+        locked_by_source = {head.source_identity: head for head in locked_heads}
+        governing_head = locked_by_source.get(governing.source_identity)
+        resolution_head = locked_by_source.get(resolution_source_identity)
+        if resolution_head is None:
+            raise RuntimeError("evidence resolution head upsert failed")
+        if governing_head is None or governing_head.current_record_id != governing.id:
             raise CommandConflict("governing_evidence_not_current")
         now = CommandService._database_now(session)
         value = TypedEvidenceValue(
@@ -1394,7 +1438,7 @@ class TransformationEvidenceService:
                 "unit": None,
                 "currency": None,
                 "classification": "derived",
-                "source_identity": f"resolution:conflict:{conflict.id}",
+                "source_identity": resolution_source_identity,
                 "source_type": "governance_resolution",
                 "source_record_id": conflict.id,
                 "source_uri": None,

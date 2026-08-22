@@ -405,6 +405,227 @@ def _runtime_attestation_conflict_pair(role_database, *, conflict_candidate_id: 
         raw.close()
 
 
+def _runtime_conflict_resolution(role_database, *, supersede_governing_leaf: bool):
+    """Call the definer directly with a current or superseded cited source leaf."""
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    raw = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.runtime_role,
+        password=role_database.runtime_password,
+    )
+    organization_id = 61001
+    actor_id = 62001
+    conflict_candidate_id = 63001
+    governing_candidate_id = 63002
+    subject_id = 64001
+    claim_key = "application_owner"
+    source_identity = "inventory:runtime-governing-owner"
+    source_digest = hashlib.sha256(source_identity.encode("utf-8")).hexdigest()
+    claim_token = "e" * 64
+
+    def insert_receipt(cursor, *, natural_key: str, command_key: str):
+        cursor.execute(
+            "INSERT INTO command_idempotency_records "
+            "(organization_id, actor_id, operation, idempotency_key, "
+            "request_digest, natural_key, status, lease_generation, "
+            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
+            "VALUES (%s, %s, 'evidence.observe', %s, %s, %s, "
+            "'in_progress', 1, %s, %s, clock_timestamp() + interval '1 minute', 1) "
+            "RETURNING id",
+            (
+                organization_id,
+                actor_id,
+                command_key,
+                "f" * 64,
+                natural_key,
+                claim_token,
+                f"{command_key}-request",
+            ),
+        )
+        return cursor.fetchone()[0]
+
+    try:
+        cursor = raw.cursor()
+        cursor.execute(
+            "INSERT INTO evidence_claim_heads "
+            "(organization_id, subject_type, subject_id, claim_key, source_identity) "
+            "VALUES (%s, 'application', %s, %s, %s) RETURNING id",
+            (organization_id, subject_id, claim_key, source_identity),
+        )
+        governing_head_id = cursor.fetchone()[0]
+        root_receipt_id = insert_receipt(
+            cursor,
+            natural_key=(
+                f"evidence:{governing_candidate_id}:{claim_key}:{source_digest}:1"
+            ),
+            command_key="runtime-governing-root",
+        )
+        cursor.execute(
+            "INSERT INTO evidence_records "
+            "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
+            "classification, source_identity, source_type, source_record_id, "
+            "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+            "VALUES (%s, %s, 'application', %s, %s, 'observed', %s, "
+            "'inventory', NULL, %s, %s::json, '[]'::json, NULL) RETURNING id",
+            (
+                organization_id,
+                governing_candidate_id,
+                subject_id,
+                claim_key,
+                source_identity,
+                actor_id,
+                json.dumps("Governed owner v1"),
+            ),
+        )
+        governing_record_id = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT public.archie_advance_evidence_head(%s, %s, 0, %s, %s, 1, %s)",
+            (
+                governing_head_id,
+                governing_record_id,
+                actor_id,
+                root_receipt_id,
+                claim_token,
+            ),
+        )
+        assert cursor.fetchone()[0] == 1
+        raw.commit()
+
+        if supersede_governing_leaf:
+            correction_receipt_id = insert_receipt(
+                cursor,
+                natural_key=(
+                    f"evidence:{governing_candidate_id}:{claim_key}:{source_digest}:2"
+                ),
+                command_key="runtime-governing-correction",
+            )
+            cursor.execute(
+                "INSERT INTO evidence_records "
+                "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
+                "classification, source_identity, source_type, source_record_id, "
+                "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+                "VALUES (%s, %s, 'application', %s, %s, 'observed', %s, "
+                "'inventory', NULL, %s, %s::json, '[]'::json, %s) RETURNING id",
+                (
+                    organization_id,
+                    governing_candidate_id,
+                    subject_id,
+                    claim_key,
+                    source_identity,
+                    actor_id,
+                    json.dumps("Governed owner v2"),
+                    governing_record_id,
+                ),
+            )
+            correction_record_id = cursor.fetchone()[0]
+            cursor.execute(
+                "SELECT public.archie_advance_evidence_head(%s, %s, 1, %s, %s, 1, %s)",
+                (
+                    governing_head_id,
+                    correction_record_id,
+                    actor_id,
+                    correction_receipt_id,
+                    claim_token,
+                ),
+            )
+            assert cursor.fetchone()[0] == 2
+            raw.commit()
+
+        cursor.execute(
+            "INSERT INTO evidence_records "
+            "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
+            "classification, source_identity, source_type, source_record_id, "
+            "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+            "VALUES (%s, %s, 'application', %s, %s, 'conflict', %s, "
+            "'governance_conflict', NULL, %s, %s::json, %s::json, NULL) RETURNING id",
+            (
+                organization_id,
+                conflict_candidate_id,
+                subject_id,
+                claim_key,
+                "conflict:runtime-resolution-probe",
+                actor_id,
+                json.dumps({"conflicting_evidence_ids": [governing_record_id]}),
+                json.dumps([governing_record_id]),
+            ),
+        )
+        conflict_record_id = cursor.fetchone()[0]
+        resolution_identity = f"resolution:conflict:{conflict_record_id}"
+        cursor.execute(
+            "INSERT INTO evidence_claim_heads "
+            "(organization_id, subject_type, subject_id, claim_key, source_identity) "
+            "VALUES (%s, 'application', %s, %s, %s) RETURNING id",
+            (organization_id, subject_id, claim_key, resolution_identity),
+        )
+        resolution_head_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO command_idempotency_records "
+            "(organization_id, actor_id, operation, idempotency_key, "
+            "request_digest, natural_key, status, lease_generation, "
+            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
+            "VALUES (%s, %s, 'evidence.conflict.resolve', 'runtime-resolution', %s, %s, "
+            "'in_progress', 1, %s, 'runtime-resolution-request', "
+            "clock_timestamp() + interval '1 minute', 1) RETURNING id",
+            (
+                organization_id,
+                actor_id,
+                "a" * 64,
+                (
+                    f"evidence-conflict-resolution:{conflict_record_id}:"
+                    f"{governing_record_id}"
+                ),
+                claim_token,
+            ),
+        )
+        resolution_receipt_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO evidence_records "
+            "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
+            "classification, source_identity, source_type, source_record_id, "
+            "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+            "VALUES (%s, %s, 'application', %s, %s, 'derived', %s, "
+            "'governance_resolution', %s, %s, %s::json, %s::json, NULL) RETURNING id",
+            (
+                organization_id,
+                conflict_candidate_id,
+                subject_id,
+                claim_key,
+                resolution_identity,
+                conflict_record_id,
+                actor_id,
+                json.dumps(
+                    {
+                        "conflict_evidence_id": conflict_record_id,
+                        "governing_evidence_id": governing_record_id,
+                        "rationale": "Runtime direct-call current-head probe",
+                    }
+                ),
+                json.dumps([conflict_record_id, governing_record_id]),
+            ),
+        )
+        resolution_record_id = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT public.archie_advance_evidence_head(%s, %s, 0, %s, %s, 1, %s)",
+            (
+                resolution_head_id,
+                resolution_record_id,
+                actor_id,
+                resolution_receipt_id,
+                claim_token,
+            ),
+        )
+        revision = cursor.fetchone()[0]
+        raw.commit()
+        return revision
+    except Exception:
+        raw.rollback()
+        raise
+    finally:
+        raw.close()
+
+
 def test_restricted_runtime_allows_same_candidate_attestation_conflict_pair(
     guarded_runtime_database,
 ):
@@ -426,6 +647,27 @@ def test_restricted_runtime_rejects_cross_candidate_attestation_conflict_move(
         _runtime_attestation_conflict_pair(
             guarded_runtime_database,
             conflict_candidate_id=53001,
+        )
+
+
+def test_restricted_runtime_allows_resolution_with_current_cited_source_leaf(
+    guarded_runtime_database,
+):
+    """Catches the definer rejecting a valid candidate-agnostic governing leaf."""
+    assert _runtime_conflict_resolution(
+        guarded_runtime_database,
+        supersede_governing_leaf=False,
+    ) == 1
+
+
+def test_restricted_runtime_rejects_resolution_with_superseded_cited_source_leaf(
+    guarded_runtime_database,
+):
+    """Catches a restricted direct call governing by a cited but superseded leaf."""
+    with pytest.raises(psycopg2.Error, match="governing evidence is not current"):
+        _runtime_conflict_resolution(
+            guarded_runtime_database,
+            supersede_governing_leaf=True,
         )
 
 

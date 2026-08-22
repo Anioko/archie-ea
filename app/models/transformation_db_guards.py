@@ -337,6 +337,10 @@ DECLARE
     record_created_by_id bigint;
     record_value jsonb;
     record_citations jsonb;
+    governing_record_id bigint;
+    governing_source_identity text;
+    governing_head_id bigint;
+    governing_current_record_id bigint;
     attestation_candidate_id bigint;
     attestation_source_identity text;
     attestation_revision integer;
@@ -344,14 +348,88 @@ DECLARE
     event_reason text;
     affected integer;
 BEGIN
+    -- Read immutable identity inputs first, then acquire every evidence-head
+    -- lock in the same natural-key order.  The values are re-read after the
+    -- locks, so neither this preliminary snapshot nor the caller's snapshot
+    -- can authorize a stale movement.
     SELECT organization_id, subject_type, subject_id, claim_key,
            source_identity, current_record_id, revision
       INTO head_organization_id, head_subject_type, head_subject_id,
            head_claim_key, head_source_identity, head_current_record_id,
            head_revision
       FROM public.evidence_claim_heads
-     WHERE id = p_head_id
-     FOR UPDATE;
+     WHERE id = p_head_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'evidence head not found' USING ERRCODE = '55000';
+    END IF;
+    SELECT record.candidate_id, record.classification, record.source_type,
+           record.source_record_id, record.created_by_id,
+           record.value_json::jsonb, record.cited_evidence_ids::jsonb
+      INTO record_candidate_id, record_classification, record_source_type,
+           record_source_record_id, record_created_by_id,
+           record_value, record_citations
+      FROM public.evidence_records record
+        WHERE record.id = p_new_record_id
+          AND record.organization_id = head_organization_id
+          AND record.subject_type = head_subject_type
+          AND record.subject_id = head_subject_id
+          AND record.claim_key = head_claim_key
+          AND record.source_identity = head_source_identity
+          AND record.supersedes_id IS NOT DISTINCT FROM head_current_record_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'evidence record does not extend the evidence head'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT actor_id, organization_id, operation, natural_key, status,
+           lease_generation, claim_token, lease_expires_at
+      INTO receipt_actor_id, receipt_organization_id, receipt_operation,
+           receipt_natural_key, receipt_status, receipt_generation,
+           receipt_token, receipt_expiry
+      FROM public.command_idempotency_records
+     WHERE id = p_receipt_id;
+    IF receipt_operation = 'evidence.conflict.resolve'
+       AND record_value ->> 'governing_evidence_id' ~ '^[1-9][0-9]*$' THEN
+        governing_record_id := (record_value ->> 'governing_evidence_id')::bigint;
+        SELECT governing.source_identity, governing_head.id
+          INTO governing_source_identity, governing_head_id
+          FROM public.evidence_records governing
+          LEFT JOIN public.evidence_claim_heads governing_head
+            ON governing_head.organization_id = governing.organization_id
+           AND governing_head.subject_type = governing.subject_type
+           AND governing_head.subject_id = governing.subject_id
+           AND governing_head.claim_key = governing.claim_key
+           AND governing_head.source_identity = governing.source_identity
+         WHERE governing.id = governing_record_id
+           AND governing.organization_id = head_organization_id
+           AND governing.subject_type = head_subject_type
+           AND governing.subject_id = head_subject_id
+           AND governing.claim_key = head_claim_key;
+    END IF;
+
+    IF governing_head_id IS NULL THEN
+        PERFORM head.id
+          FROM public.evidence_claim_heads head
+         WHERE head.id = p_head_id
+         ORDER BY head.organization_id, head.subject_type, head.subject_id,
+                  head.claim_key, head.source_identity, head.id
+         FOR UPDATE;
+    ELSE
+        PERFORM head.id
+          FROM public.evidence_claim_heads head
+         WHERE head.id IN (p_head_id, governing_head_id)
+         ORDER BY head.organization_id, head.subject_type, head.subject_id,
+                  head.claim_key, head.source_identity, head.id
+         FOR UPDATE;
+    END IF;
+
+    SELECT organization_id, subject_type, subject_id, claim_key,
+           source_identity, current_record_id, revision
+      INTO head_organization_id, head_subject_type, head_subject_id,
+           head_claim_key, head_source_identity, head_current_record_id,
+           head_revision
+      FROM public.evidence_claim_heads
+     WHERE id = p_head_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'evidence head not found' USING ERRCODE = '55000';
     END IF;
@@ -395,6 +473,23 @@ BEGIN
        OR receipt_expiry <= clock_timestamp() THEN
         RAISE EXCEPTION 'evidence head command fence is stale or unrelated'
             USING ERRCODE = '55000';
+    END IF;
+
+    IF receipt_operation = 'evidence.conflict.resolve' THEN
+        SELECT head.current_record_id
+          INTO governing_current_record_id
+          FROM public.evidence_claim_heads head
+         WHERE head.id = governing_head_id
+           AND head.organization_id = head_organization_id
+           AND head.subject_type = head_subject_type
+           AND head.subject_id = head_subject_id
+           AND head.claim_key = head_claim_key
+           AND head.source_identity = governing_source_identity;
+        IF NOT FOUND
+           OR governing_current_record_id IS DISTINCT FROM governing_record_id THEN
+            RAISE EXCEPTION 'governing evidence is not current'
+                USING ERRCODE = '55000';
+        END IF;
     END IF;
 
     IF record_created_by_id <> p_actor_id THEN

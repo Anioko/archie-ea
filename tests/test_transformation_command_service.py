@@ -7,6 +7,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select, text
@@ -42,6 +43,15 @@ class CommandFixture:
     organization_id: int
     user_id: int
     domain_name: str
+
+
+def test_database_now_normalizes_session_timezone_to_utc(app):
+    """Catches date-sensitive commands hashing a database-local calendar day."""
+    with app.app_context(), Session(db.engine) as session, session.begin():
+        session.execute(text("SET LOCAL TIME ZONE 'Asia/Tokyo'"))
+        value = CommandService._database_now(session)
+
+    assert value.utcoffset() == timedelta(0)
 
 
 @pytest.fixture
