@@ -51,6 +51,8 @@ Product measures are persisted events and durations, segmented by organisation a
 
 No missing measure is rendered as zero. It is `null` and displayed as an em dash with the reason it is unavailable.
 
+Existing `StrategicInitiative.budget_remaining`, `budget_utilization_percentage` and `completion_percentage` coerce absent facts to zero and therefore are not reused for Transformation Room truth. New nullable projection functions require provenance and return `None` when allocation, spend, milestone or measurement evidence is absent. Monetary aggregation is only within one ISO currency unless an explicit dated exchange-rate source is cited.
+
 ## 3. Scope and non-goals
 
 ### In scope
@@ -87,12 +89,19 @@ New entities:
 |---|---|
 | `ProgrammeWorkstream` | Tenant-scoped child of one Transformation Programme. Owns type, objective, lifecycle, lead and scope boundary. Types: `application_rationalisation`, `process`, `organisation_skills`, `policy_control`, `data`, `supplier`, `technology`, `other`. |
 | `ProgrammeRoleAssignment` | Effective-dated assignment of a user to a programme/workstream role; programme owner remains the root owner, while contributor, evidence owner, decision authority and delivery lead are explicit assignments. |
+| `ProgrammeOutcomeCommitment` | Tenant-scoped promise owned by a programme or workstream: outcome statement, accountable owner, direction of improvement, target date and lifecycle. It links to one or more `MeasureDefinition` rows and, once execution is approved, to one or more canonical `Benefit` rows. Intake therefore persists outcomes before Benefits exist; execution does not invent them later. |
+| `MeasureDefinition` | The measurement contract for an outcome: metric name, unit, aggregation, baseline/target values and dates, cadence, source adapter/key, tolerance and explicit unavailable reason. Financial values use `Numeric(18,2)` plus ISO-4217 currency; percentages/quantities use `Numeric(24,6)`. It never uses binary float. |
 | `TransformationCandidate` | A workstream-scoped item being assessed. It references a canonical subject (`ApplicationComponent` first) and never copies the subject as a new inventory record. A uniqueness constraint covers `(organization_id, workstream_id, subject_type, subject_id)`. |
 | `EvidenceRecord` | Append-only, versioned observation or attestation linked to a candidate or workstream. Stores field/claim, typed value, source, collector, observed time, freshness rule, confidence, status and supersession. |
+| `EvidenceRequest` | Persisted request for a named claim and subject, assigned contributor, due date, required/non-blocking classification and status (`open`, `submitted`, `accepted`, `declined`, `expired`, `cancelled`). A submitted response creates Evidence, but the request is completed only when an authorised architect accepts that version. |
 | `TransformationOption` | A persisted option for one candidate or workstream, including action type, description, assumptions, dependencies, expected impacts, cost/risk ranges and optional technology requirement. Options are editable drafts until captured in a decision-brief version. |
+| `TransformationOptionVersion` | Immutable option snapshot. Every comparison and brief cites exact version IDs; fields include typed monetary ranges/currency, benefit/risk ranges, assumptions, dependencies, impact and technology requirement. A canonical hash covers content, tenant, logical option ID, version and capture metadata. |
 | `DecisionBrief` | Stable logical decision case for a candidate or workstream. Owns recommendation and governance subject identity. |
 | `DecisionBriefVersion` | Immutable submitted snapshot of objective, scope, alternatives, recommendation, evidence citations, unknowns, conflicts, impacts and assertions. A content hash detects mutation. Drafting produces a new version; submitted versions are never updated or deleted. |
+| `DecisionEvent` | Append-only state/decision history for a brief and its ARB review: event type, from/to state, actor, rationale, conditions, source review ID and time. Current status is a projection; this log is the audit truth. |
 | `OutcomeMeasurement` | Append-only observation against a canonical `Benefit`, with source, measurement time, value and recorder. The current `Benefit.actual_*` projection may be refreshed transactionally for compatibility. |
+| `CommandIdempotencyRecord` | Mutable only while a command is `in_progress`; stores tenant, actor, operation, key, request digest, lease and final response IDs/error class. Terminal `succeeded`/`failed_non_retryable` rows are immutable. Expired in-progress leases may be taken over atomically. |
+| `DeliveryExportAttempt` | Append-only attempt/result for sending a canonical WorkPackage to an external delivery system. Retry is a new attempt linked by predecessor ID; external keys never overwrite history. |
 | `LegacyProgrammeBridge` | Temporary one-to-one mapping from an `EnterpriseInitiative` to its canonical `StrategicInitiative`, with migration state and source fingerprint. It prevents duplicate imports and makes retirement measurable. |
 
 Canonical existing entities remain authoritative:
@@ -122,17 +131,25 @@ erDiagram
     STRATEGIC_INITIATIVE ||--o{ PROGRAMME_WORKSTREAM : contains
     STRATEGIC_INITIATIVE ||--o{ PROGRAMME_ROLE_ASSIGNMENT : assigns
     PROGRAMME_WORKSTREAM ||--o{ PROGRAMME_ROLE_ASSIGNMENT : optionally_scopes
+    PROGRAMME_WORKSTREAM ||--o{ PROGRAMME_OUTCOME_COMMITMENT : commits
+    PROGRAMME_OUTCOME_COMMITMENT ||--|{ MEASURE_DEFINITION : measured_by
+    PROGRAMME_OUTCOME_COMMITMENT }o--o{ BENEFIT : realised_through
     PROGRAMME_WORKSTREAM ||--o{ TRANSFORMATION_CANDIDATE : assesses
     APPLICATION_COMPONENT ||--o{ TRANSFORMATION_CANDIDATE : referenced_by
     TRANSFORMATION_CANDIDATE ||--o{ EVIDENCE_RECORD : supported_by
     PROGRAMME_WORKSTREAM ||--o{ EVIDENCE_RECORD : supported_by
+    PROGRAMME_WORKSTREAM ||--o{ EVIDENCE_REQUEST : requests
+    TRANSFORMATION_CANDIDATE ||--o{ EVIDENCE_REQUEST : may_request_for
+    EVIDENCE_REQUEST ||--o| EVIDENCE_RECORD : accepted_as
     TRANSFORMATION_CANDIDATE ||--o{ TRANSFORMATION_OPTION : compares
+    TRANSFORMATION_OPTION ||--|{ TRANSFORMATION_OPTION_VERSION : versions
     PROGRAMME_WORKSTREAM ||--o{ DECISION_BRIEF : frames
     TRANSFORMATION_CANDIDATE ||--o{ DECISION_BRIEF : may_frame
     DECISION_BRIEF ||--o{ DECISION_BRIEF_VERSION : versions
     DECISION_BRIEF_VERSION ||--o| ARB_REVIEW_ITEM : governed_as
     DECISION_BRIEF_VERSION }o--o{ EVIDENCE_RECORD : cites_versions
-    DECISION_BRIEF_VERSION }o--o{ TRANSFORMATION_OPTION : captures
+    DECISION_BRIEF_VERSION }o--|{ TRANSFORMATION_OPTION_VERSION : cites
+    DECISION_BRIEF_VERSION ||--o{ DECISION_EVENT : records
     PROGRAMME_WORKSTREAM ||--o{ WORK_PACKAGE : executes
     WORK_PACKAGE ||--o{ ROADMAP_ITEM : schedules
     PROGRAMME_WORKSTREAM ||--o{ BENEFIT : promises
@@ -155,6 +172,7 @@ Relationship ownership rules:
    rows are backfilled and verified first.
 5. A Solution may belong to one programme and one workstream within that programme. A service invariant rejects mismatched parents.
 6. Every tenant-scoped child carries `organization_id`; foreign-key identity alone is never accepted as proof of same-tenant membership.
+7. Evidence supersession is a single ordered chain per `(tenant, subject, claim_key, source_identity)`: exactly one unsuperseded leaf is enforced by a partial unique index. Concurrent corrections lock that leaf; attempts to create forks return `409`. Different sources may have independent leaves and surface as an explicit conflict rather than silently superseding one another.
 
 ## 5. Lifecycle and gates
 
@@ -185,13 +203,13 @@ Gate requirements:
 
 | Gate | Required persisted evidence |
 |---|---|
-| Objective -> Discover | named programme and workstream owner; business objective; at least one intended outcome/measure; scope expression; target date or explicit unknown reason |
+| Objective -> Discover | named programme and workstream owner; business objective; at least one `ProgrammeOutcomeCommitment` with accountable owner and at least one valid `MeasureDefinition`; scope expression; target date or explicit unknown reason |
 | Discover -> Evidence | candidate inclusion decision; subject exists in tenant; duplicates resolved; candidate owner assigned or missing-owner task created |
-| Evidence -> Options | application owner attestation or explicit unavailable/declined state; lifecycle, cost, business criticality, capability impact, dependency impact, risk and source/freshness evaluated; conflicts and unknowns visible |
-| Options -> Decision-ready | at least two genuinely distinct options unless a policy exception is reasoned; assumptions; benefits; costs/ranges; risks; dependencies; reversibility; affected capabilities/value streams; recommendation rationale; technology-required flag |
+| Evidence -> Options | every required `EvidenceRequest` is accepted, declined/unavailable with an authorised acknowledgement, or expired and explicitly waived; application owner attestation or explicit unavailable/declined state; lifecycle, cost, business criticality, capability impact, dependency impact, risk and source/freshness evaluated; conflicts and unknowns visible |
+| Options -> Decision-ready | at least two genuinely distinct immutable `TransformationOptionVersion` records unless a policy exception is reasoned; assumptions; benefits; costs/ranges and ISO currency; risks; dependencies; reversibility; affected capabilities/value streams; recommendation rationale; technology-required flag |
 | Decision-ready -> Governance | authorised submitter; immutable brief version; cited evidence versions; explicit human review of AI-authored material; named decision authority; all blockers cleared; acknowledged non-blocking unknowns |
 | Governance -> Approved/Rejected | canonical ARB decision with decision maker, rationale, conditions and timestamp; no client-authored status |
-| Approved -> Execute | each approved action is accepted, declined with reason, or linked to an owned WorkPackage; Benefit has owner, baseline/unknown reason, target and measurement method; RoadmapItem exists when scheduling is applicable |
+| Approved -> Execute | each approved action is accepted, declined with reason, or linked to an owned WorkPackage; each outcome commitment is linked to a canonical Benefit whose measurement definition supplies owner, baseline/unknown reason, target and method; RoadmapItem exists when scheduling is applicable; every open `ARBCondition` is satisfied with accepted evidence or has an authorised, reasoned, expiring waiver |
 | Execute -> Outcomes | delivery completion evidence, residual risk, operational owner and measurement schedule |
 | Outcomes -> Completed | actual measurement or explicit not-measurable record; realised/not-realised judgement; lessons and follow-up decision; no fabricated zero |
 
@@ -219,11 +237,17 @@ The architect compares Tolerate, Invest, Migrate, Eliminate and a context-specif
 
 ### Decision / Govern
 
-`DecisionBriefService.freeze()` resolves and snapshots the programme objective, candidate subject, option versions, recommendation, cited evidence versions, conflicts, unknowns, human assertions and expected execution/outcomes. The result is immutable. `GovernanceSubmissionService.submit_subject()` creates exactly one canonical `ARBReviewItem` for `(subject_type=decision_brief_version, subject_id, review_cycle)` and links it to the version.
+`DecisionBriefService.freeze()` resolves and snapshots the programme objective, outcome commitments/measure definitions, candidate subject, exact immutable option versions, recommendation, cited evidence versions, conflicts, unknowns, human assertions and expected execution/outcomes. The result is immutable. The existing `ARBSubmissionService` is generalised—not replaced—as the sole writer for every ARB submission. Its existing Solution subject adapter, evidence evaluation and `ARBSubmissionEvidenceSnapshot` remain intact. A new Decision Brief subject adapter supplies the same service contract and creates exactly one canonical `ARBReviewItem` and subject-specific immutable snapshot.
 
 This is the canonical non-Solution ARB subject strategy: ARB reviews a `DecisionBriefVersion`, not an invented Solution. The ARB review UI resolves a typed subject adapter that supplies title, evidence dossier, risk, decision actions and canonical deep link. Existing Solution ARB submissions continue to use the evidence-gated Solution adapter. A generic ARB endpoint must delegate to the typed service or reject an unsupported subject; it cannot create a second rationalisation review state.
 
 The decision authority approves, rejects, returns for evidence/options, or approves with conditions. That action and rationale live on the canonical ARB item and append-only decision event. The workstream projects the result; it does not duplicate it.
+
+`ARBReviewItem` receives additive nullable `subject_type`, `subject_id`, `decision_brief_version_id` and `review_cycle_id` fields. Existing `solution_id` remains the Solution adapter's compatibility FK; service invariants require exactly one supported subject and reject disagreement between it and typed fields. `ARBReviewCycle` has tenant, subject type/ID, integer `cycle_number`, predecessor cycle, opened/closed times and terminal outcome. Uniqueness is `(organization_id, subject_type, subject_id, cycle_number)`; only one open cycle per subject is enforced by a partial unique index. Resubmission after `returned`, `rejected` or materially changed approved conditions opens the next locked counter. A retry in the same cycle returns the existing review/snapshot. Review numbers become tenant/year/sequenced identities backed by a database counter rather than the current race-prone global last-row scan.
+
+Legacy Solution reviews are backfilled with `subject_type = "solution"`, `subject_id = solution_id`, cycle numbers ordered by submitted/created time and stable ID, and a corresponding cycle. Reviews lacking a supported subject are retained as `legacy_generic` read-only and cannot be submitted through the new service. Existing evidence snapshots attach to the backfilled cycle; nothing is regenerated or represented as newly reviewed. Decision Brief reviews use `subject_type = "decision_brief_version"` and the exact immutable version ID.
+
+`approved_with_conditions` is a real decision, not equivalent to unconditional execution. Existing canonical `ARBCondition` rows are reused and linked to Evidence Requests/accepted Evidence where applicable. Materialisation is blocked while any mandatory condition is open. The decision authority may grant a reasoned, expiring waiver with scope, approver and compensating control; waiver is a Decision Event and never deletes the condition. Fulfilment/waiver changes append events, and execution records the condition set and evidence state it relied on.
 
 ### Execute
 
@@ -235,6 +259,16 @@ For each approved option, `TransformationExecutionService.materialise()` atomica
 - creates a `Solution` only when `technology_architecture_required = true` and an authorised architect explicitly selects **Create technology solution**. The Solution inherits links and constraints from the approved decision, but does not become the programme or replace the decision brief.
 
 The materialisation key is `(decision_brief_version_id, action_kind, approved_option_id)`; retries return existing IDs. Partial creation rolls back. If a delivery tool integration is unavailable, the canonical Archie work package remains pending export with an honest failure record.
+
+The exact additive canonical links are:
+
+- `app.models.implementation_migration.WorkPackage`: nullable `strategic_initiative_id -> strategic_initiatives.id ON DELETE RESTRICT`, `programme_workstream_id -> programme_workstreams.id ON DELETE RESTRICT`, `decision_brief_version_id -> decision_brief_versions.id ON DELETE RESTRICT`, `materialisation_key` and `organization_id` (already present through `TenantMixin`). Existing `enterprise_initiative_id ON DELETE SET NULL` remains migration provenance only. The canonical fields take read precedence after mapping; disagreement is a migration conflict, never fallback.
+- `app.models.strategic.RoadmapItem`: add `organization_id -> organizations.id ON DELETE RESTRICT`, `programme_workstream_id -> programme_workstreams.id ON DELETE RESTRICT`, `work_package_id -> work_packages.id ON DELETE RESTRICT`, `decision_brief_version_id -> decision_brief_versions.id ON DELETE RESTRICT` and `materialisation_key`. Existing `initiative_id` remains the canonical programme FK and must equal the workstream's programme.
+- `app.models.benefit.Benefit`: add nullable `strategic_initiative_id -> strategic_initiatives.id ON DELETE RESTRICT`, `programme_workstream_id -> programme_workstreams.id ON DELETE RESTRICT`, `outcome_commitment_id -> programme_outcome_commitments.id ON DELETE RESTRICT`, `decision_brief_version_id -> decision_brief_versions.id ON DELETE RESTRICT` and `materialisation_key`. Existing `initiative_id -> enterprise_initiatives.id ON DELETE CASCADE` is renamed logically as `legacy_enterprise_initiative_id`; the migration first drops its `CASCADE` FK and recreates it `ON DELETE SET NULL` before any bridge retirement, preventing deletion of canonical benefits.
+
+Each table has a partial unique constraint on `(organization_id, materialisation_key)` when the key is non-null. For migrated rows, canonical FKs are populated only from proven bridge/source identity and the materialisation key is a deterministic migration namespace. During compatibility, reads prefer canonical FKs; the legacy FK is consulted only when canonical is null and the bridge is verified. Writes never populate the legacy FK. Programme/workstream deletion is `RESTRICT`; archive retains execution history.
+
+External export mutability is separated from canonical delivery truth. `WorkPackage` export state is a derived projection only; every network call creates a `DeliveryExportAttempt`. Attempt request, response digest, external key, status and error are append-only after completion. A retry never overwrites a failed attempt.
 
 ### Outcomes
 
@@ -264,6 +298,24 @@ a compensating record, never mutation.
 
 A decision hash covers canonical serialisation of the version, captured option versions, evidence citations, policy version, subject identity, tenant, creator and capture time. Reading verifies the hash. Submission fails closed if a citation is absent, cross-tenant, superseded without acknowledgement, or changes between evaluation and commit.
 
+### 7.1 Evidence source adapters and conflicts
+
+An `EvidenceSourceAdapter` has `resolve(source_key, actor_context)`, `read_version()`, `canonical_uri()`, `freshness()` and `authorise_correction()` methods. A versioned source supplies its native immutable revision and checksum. An unversioned source is read in one transaction and assigned a snapshot checksum over canonical field/value/source/timestamp data; subsequent reads create new Evidence versions rather than altering that snapshot. External documents are content-addressed by checksum and retain retrieval metadata.
+
+An attestation is an actor's assertion about a source fact, not authority to rewrite it. If the attestation agrees, it becomes a separate accepted evidence source linked to the observed fact. If it disagrees, both leaves remain and a `conflict` Evidence record cites them; gates block until an authorised correction changes the canonical source through its owner service or a decision authority records which source governs this decision and why. A correction therefore produces a new canonical-source revision plus a new observed Evidence version. It is never represented by editing an attestation or silently choosing its value.
+
+### 7.2 UnifiedCapability tenancy cutover
+
+`UnifiedCapability` is currently shared and globally unique (`code`, `archimate_id`) while Transformation Programme data is tenant-scoped. Release 1 does not pretend ORM tenant filtering already protects capabilities. The target is explicit hybrid ownership:
+
+- reference-library capabilities have `scope = "reference"`, `organization_id = NULL`, are read-only to tenants and may keep a global `reference_code` identity;
+- organisation capabilities have `scope = "tenant"`, non-null `organization_id`, and all mutable assessment/ownership fields are tenant-owned;
+- programme/candidate links may reference either, but tenant-specific observations about a reference capability live in tenant-scoped mappings/evidence, never on the shared row.
+
+This requires an explicit maintenance migration, not additive reconciliation alone. It adds nullable `organization_id`, `scope`, `reference_capability_id` and provenance (`source_table`, `source_id`, `source_org_id`, `source_checksum`) fields; backfills existing seeded/catalogue rows as reference and classifies tenant-authored rows from auditable relationship provenance. Ambiguous rows are blocked for manual classification. It then replaces global unique constraints on `code` and `archimate_id` with partial uniqueness: reference values unique where `organization_id IS NULL`; tenant values unique on `(organization_id, code)` and `(organization_id, archimate_id)` where non-null. Foreign keys are preserved, indexes are built concurrently where PostgreSQL permits, duplicate conflicts are resolved via recorded repoint-then-retire mappings, and before/after references are measured.
+
+Cutover runs in a maintenance window because dropping the existing unique constraints cannot be performed by the add-only reconciler. Deployment first ships code able to read old and new layouts, takes a backup, runs the classified backfill and constraint swap, verifies zero ambiguous active links and per-tenant isolation, then enables tenant capability writes. Rollback before the constraint swap restores the backup; after it, the compatible release reads the new shape and a reverse migration is used only if referential verification fails. No tenant-scoped Transformation Room capability mutation is enabled until this cutover is green.
+
 ## 8. Tenant isolation, identity and authorisation
 
 All new aggregate children inherit `TenantMixin`; shared/reference records are explicitly classified. Service methods require an `ActorContext` containing authenticated user and active organisation. They load every supplied ID under explicit organisation predicates, even though ORM request filtering remains enabled. Background jobs and multi-tenant loops establish one tenant/session at a time and clear the identity map between tenants.
@@ -281,6 +333,8 @@ Authorisation policy:
 - archive: programme owner/administrator when retention invariants permit.
 
 Payload fields such as `organization_id`, `created_by_id`, `decision_by_id`, readiness, review status and lifecycle status are ignored or rejected. The server derives identity and state. Cross-tenant IDs return not-found semantics without disclosing existence. CSRF applies to browser mutations; APIs use the established authenticated mechanism and equivalent replay protection.
+
+For HTTP, unauthenticated is `401`, an authenticated actor lacking a general action is `403`, and any identifier outside the active tenant (including a globally existing ID) is `404`. Each denial emits a security audit event containing tenant/actor/request correlation and opaque reason code but never the foreign record's tenant or title. Repeated probes are rate-limited and alerted.
 
 ## 9. Service and API boundaries
 
@@ -300,6 +354,8 @@ Routes remain thin. Domain services own validation, authorisation, transitions a
 Versioned JSON endpoints sit below `/api/v1/transformation-programmes` and return a consistent envelope with `data`, `meta`, `errors` and `request_id`. Primary resources are programmes, workstreams, candidates, evidence, options, briefs, transitions, execution and outcomes. Mutation endpoints require `Idempotency-Key`; the server persists key, actor, organisation, operation, request digest, result and expiry. Reuse with a different digest is `409`.
 
 Concurrency uses a row lock on the workstream/brief for transition and submission, database uniqueness for natural idempotency keys, and one transaction per command. Expected version (`If-Match`/revision) rejects stale edits with `409`. No route commits inside subordinate services.
+
+`CommandIdempotencyRecord` is written in a short claim transaction before domain work and finalised after the domain transaction with its canonical result IDs. Its key is unique on `(organization_id, actor_id, operation, idempotency_key)`. A same-digest completed replay returns the stored outcome; a different digest is `409`; an active lease is `409` plus retry guidance; an expired lease is atomically acquired. Payload digest, identity and terminal result are immutable by PostgreSQL trigger; only lease heartbeat/status/result fields may change through the service while non-terminal. `DecisionEvent`, completed `DeliveryExportAttempt`, option versions, evidence, measurements and brief versions reject update/delete at database level. Mutable logical roots (`TransformationOption`, request assignment/due date before acceptance, programme/workstream current-state projections) retain optimistic locking and auditable service updates.
 
 Read models compose canonical data without mutating it. AI tools call the same services and receive allowed actions plus evidence; they cannot call model constructors, assert human review, make an ARB decision or materialise execution without the same actor permissions and lifecycle preconditions.
 
@@ -356,6 +412,8 @@ Migration is additive, measured and reversible until cutover. It does not indefi
 4. Convert `Solution.initiative_id` directly to the canonical programme ID. Create a `technology` workstream for grouped Solutions lacking one; attach Solutions to it. Do not create Solutions for programmes that have none.
 5. Transform durable programme wizard JSON into typed workstream, role, objective and evidence records. Unrecognised keys are retained in an immutable migration attachment and exposed as unmapped, never discarded or silently interpreted.
 
+Status mapping is deterministic and recorded per row: `draft -> draft`; `planning -> active` with workstream at `Objective`; `in_progress -> active` with the workstream stage inferred only from canonical linked evidence/review/work (otherwise `Objective` plus `migration_review_required`); `completed -> completed` only when linked work is terminal and outcome evidence exists, otherwise `outcomes_monitoring`; `cancelled -> cancelled`; null/unknown -> `draft` plus review required. Enterprise statuses map through an explicit versioned lookup (`proposed/planned -> draft`, `approved/active/in_progress -> active`, `on_hold -> on_hold`, `completed -> completed` subject to the same outcome test, `cancelled/rejected -> cancelled`). Source status, mapping-policy version and reason are retained. No text heuristic advances a lifecycle gate.
+
 ### Phase C — rationalisation records
 
 1. Map each `ApplicationRationalizationScore` to a rationalisation candidate and versioned derived evidence, retaining scoring configuration/formula and evaluated time.
@@ -392,6 +450,10 @@ Audit events capture actor, tenant, before/after lifecycle, reason, canonical ob
 
 ## 13. Acceptance criteria and verification
 
+Release boundaries are explicit. **Release 1** delivers the canonical programme/workstream journey, application-rationalisation flow, non-Solution ARB subject, execution/outcomes, compatibility reads and production proof for newly created and safely mapped records. It does not claim `EnterpriseInitiative` or legacy rationalisation retirement. **The later Retirement Release** executes the full tenant migration/cutover and removes legacy programme writes/reads only after its gates pass. Release 1 can therefore be complete while the bridge remains; the overall migration is complete only at the Retirement Release.
+
+### Release 1 acceptance
+
 ### Domain and persistence
 
 - A programme with a non-technology workstream can complete the full lifecycle without any Solution row.
@@ -416,7 +478,7 @@ Audit events capture actor, tenant, before/after lifecycle, reason, canonical ob
 - Chief Architect sees non-Solution programmes, evidence debt, decision ageing, execution and outcomes in the roll-up.
 - AI drafts with source citations, visibly abstains on missing evidence and cannot attest, decide or fabricate success.
 
-### Migration and compatibility
+### Retirement Release migration and compatibility
 
 - Fixture matrices cover Strategic-only, Enterprise-only, provably matching, conflicting, Solution-linked, wizard-JSON and every active rationalisation legacy state.
 - Dry-run reports exact changes without writes; rerun produces identical targets; rollback restores pre-cutover reads.
@@ -426,7 +488,7 @@ Audit events capture actor, tenant, before/after lifecycle, reason, canonical ob
 
 ### Repository and production gates
 
-Implementation is not complete until:
+Release 1 is not complete until items 1–6, 8 and 9 pass for its scope. Item 7 is exercised on a production-like backup in Release 1 and is additionally a production cutover gate for the Retirement Release:
 
 1. focused model/service/route/template tests and real PostgreSQL concurrency/trigger tests pass;
 2. tenant isolation, authorisation matrix, raw-SQL tenancy and schema reconciliation tests pass;
@@ -467,3 +529,19 @@ Implementation proceeds in dependency order, each with tests and independent rev
 7. full verification, deploy, production migration and synthetic journey proof.
 
 No slice may introduce a temporary alternative source of truth. Partial UI can remain hidden until its end-to-end command path and failure states are real.
+
+## 16. Independent review resolution — 2026-08-22
+
+This revision resolves the independent architecture review as follows:
+
+- added canonical `ProgrammeOutcomeCommitment`, `MeasureDefinition` and `EvidenceRequest` persistence, lifecycle gates and Benefit traceability;
+- added immutable, hashed `TransformationOptionVersion` records and corrected ER cardinalities/citations;
+- made `UnifiedCapability` shared-versus-tenant ownership, provenance backfill, partial-uniqueness replacement and maintenance cutover operationally explicit;
+- designated the existing `ARBSubmissionService` as sole writer, preserving its Solution adapter/evidence snapshots while adding typed Decision Brief support;
+- defined ARB review-cycle identity, additive review fields, uniqueness, review numbering and legacy backfill;
+- reused canonical `ARBCondition`, with evidence-backed fulfilment and controlled expiring waivers that block materialisation until resolved;
+- added deterministic programme status mappings and exact WorkPackage, RoadmapItem and Benefit foreign keys, precedence, delete rules and idempotency constraints, including removal of the dangerous legacy Benefit cascade before retirement;
+- defined `DecisionEvent`, `CommandIdempotencyRecord` and `DeliveryExportAttempt` mutability and database-trigger boundaries;
+- specified versioned/unversioned evidence adapters and correction-versus-attestation conflict behavior;
+- split Release 1 completion from the later Retirement Release;
+- made evidence supersession single-leaf and fork-safe, monetary precision/currency explicit, foreign-tenant HTTP behavior auditable, and zero-coercing legacy programme properties ineligible for Transformation Room truth.
