@@ -515,6 +515,101 @@ def test_task4_locked_handler_denies_revocation_that_commits_first(
         )
 
 
+def test_transition_denies_revocation_committed_between_snapshot_and_locked_authority(
+    app, programme_fixture
+):
+    """Catches the locked authority query reusing a stale snapshot identity."""
+    operation, claim, handler, assignment_id = _claim_task4_mutation(
+        "transition", programme_fixture
+    )
+    engine = db.engine
+    aggregate_locked = threading.Event()
+    snapshot_authority_read = threading.Event()
+    revocation_committed = threading.Event()
+    results = []
+    errors = []
+    mutation_thread_name = "transition-stale-authority"
+
+    def pause_after_snapshot_authority_and_aggregate_lock(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ):
+        lowered = statement.lower()
+        if (
+            threading.current_thread().name == mutation_thread_name
+            and statement.lstrip().upper().startswith("SELECT")
+            and "programme_workstreams" in lowered
+            and "for update" in lowered
+        ):
+            aggregate_locked.set()
+        elif (
+            threading.current_thread().name == mutation_thread_name
+            and aggregate_locked.is_set()
+            and not snapshot_authority_read.is_set()
+            and statement.lstrip().upper().startswith("SELECT")
+            and "users." in lowered
+            and "for update" not in lowered
+        ):
+            snapshot_authority_read.set()
+            if not revocation_committed.wait(timeout=10):
+                raise TimeoutError("authority revocation did not commit")
+
+    def transition():
+        with app.app_context():
+            try:
+                results.append(
+                    CommandService._execute_claim(
+                        actor=programme_fixture.actor,
+                        operation=operation,
+                        claim=claim,
+                        authorizer=None,
+                        handler=handler,
+                    )
+                )
+            except Exception as error:  # asserted after the worker finishes
+                errors.append(error)
+            finally:
+                db.session.remove()
+
+    event.listen(
+        engine,
+        "after_cursor_execute",
+        pause_after_snapshot_authority_and_aggregate_lock,
+    )
+    worker = threading.Thread(
+        target=transition, name=mutation_thread_name, daemon=True
+    )
+    try:
+        worker.start()
+        assert snapshot_authority_read.wait(timeout=10)
+        with Session(engine) as session, session.begin():
+            assignment = session.scalar(
+                select(ProgrammeRoleAssignment)
+                .where(
+                    ProgrammeRoleAssignment.organization_id
+                    == programme_fixture.organization_id,
+                    ProgrammeRoleAssignment.id == assignment_id,
+                )
+                .with_for_update()
+            )
+            assignment.effective_to = date.today() - timedelta(days=1)
+        revocation_committed.set()
+        worker.join(timeout=10)
+    finally:
+        revocation_committed.set()
+        worker.join(timeout=10)
+        event.remove(
+            engine,
+            "after_cursor_execute",
+            pause_after_snapshot_authority_and_aggregate_lock,
+        )
+
+    assert worker.is_alive() is False
+    assert results == []
+    assert len(errors) == 1
+    assert isinstance(errors[0], NotAuthorised)
+    assert errors[0].reason == "transition_not_authorised"
+
+
 def test_create_programme_hides_cross_tenant_owner(programme_fixture):
     """Catches a globally valid foreign user ID being accepted or disclosed."""
     with pytest.raises(NotFound, match="owner_not_found"):

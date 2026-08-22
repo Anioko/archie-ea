@@ -188,6 +188,7 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                     'trg_transformation_receipt_guard',
                     'trg_evidence_record_immutable',
                     'trg_evidence_event_immutable',
+                    'trg_evidence_event_binding',
                     'trg_evidence_head_guard'
                   )
                 ORDER BY tg.tgname
@@ -203,6 +204,7 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                     'archie_reject_transformation_mutation',
                     'archie_guard_transformation_receipt',
                     'archie_guard_evidence_head',
+                    'archie_guard_evidence_event_binding',
                     'archie_advance_evidence_head'
                 )
                 ORDER BY proname
@@ -211,6 +213,7 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
         ).all()
 
     assert triggers == [
+        ("trg_evidence_event_binding", "evidence_head_events"),
         ("trg_evidence_event_immutable", "evidence_head_events"),
         ("trg_evidence_head_guard", "evidence_claim_heads"),
         ("trg_evidence_record_immutable", "evidence_records"),
@@ -218,7 +221,7 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
         ("trg_transformation_receipt_guard", "command_idempotency_records"),
         ("trg_transformation_result_immutable", "operation_results"),
     ]
-    assert len(functions) == 4
+    assert len(functions) == 5
     assert all(row.prosecdef is True for row in functions)
     assert all("search_path=pg_catalog, public" in row.proconfig for row in functions)
 
@@ -830,3 +833,114 @@ def test_evidence_head_rejects_wrong_predecessor_and_unaudited_function_move(
         head = session.get(EvidenceClaimHead, head_id)
     assert head.current_record_id == current_id and head.revision == 1
     assert event_count == 1 and record_count == 1
+
+
+def test_evidence_event_rejects_orphan_insert_that_would_poison_next_revision(
+    evidence_scope: EvidenceScope,
+    guard_fixture,
+):
+    """Catches an arbitrary event reserving a head revision/new-record pair."""
+    scope = evidence_scope
+    result = _record_inventory(scope)
+    with pytest.raises(Exception, match="evidence event is not bound to its head movement"):
+        _direct_driver_execute(
+            """
+            WITH leaf AS (
+                INSERT INTO public.evidence_records (
+                    organization_id, programme_id, workstream_id, candidate_id,
+                    subject_type, subject_id, claim_key, value_json, value_type,
+                    classification, collector_type, source_identity, source_type,
+                    source_version, source_checksum, source_system, collected_at,
+                    observed_at, freshness_status, freshness_rule_version,
+                    created_by_id, cited_evidence_ids, supersedes_id
+                )
+                SELECT organization_id, programme_id, workstream_id, candidate_id,
+                       subject_type, subject_id, claim_key, value_json, value_type,
+                       classification, collector_type, source_identity, source_type,
+                       'poisoned-event', source_checksum, source_system,
+                       clock_timestamp(), observed_at, freshness_status,
+                       freshness_rule_version, created_by_id, '[]'::json, id
+                FROM public.evidence_records WHERE id = %s
+                RETURNING id, organization_id, created_by_id
+            )
+            INSERT INTO public.evidence_head_events (
+                organization_id, head_id, old_record_id, new_record_id, actor_id,
+                command_receipt_id, command_generation, reason, revision, created_txid
+            )
+            SELECT leaf.organization_id, %s, %s, leaf.id, leaf.created_by_id,
+                   prior.command_receipt_id, prior.command_generation,
+                   'poisoned revision', 2, txid_current()
+            FROM leaf
+            JOIN public.evidence_head_events AS prior ON prior.id = %s
+            """,
+            (
+                result.object_ids["evidence_record_id"],
+                result.object_ids["evidence_head_id"],
+                result.object_ids["evidence_record_id"],
+                result.object_ids["evidence_head_event_id"],
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("operation", "natural_key"),
+    (
+        ("programme.archive", "programme:unrelated"),
+        ("evidence.observe", "evidence:unrelated"),
+    ),
+)
+def test_evidence_advance_rejects_unrelated_operation_or_natural_key(
+    evidence_scope: EvidenceScope,
+    guard_fixture,
+    operation,
+    natural_key,
+):
+    """Catches a live fenced receipt being reused for an unrelated head action."""
+    scope = evidence_scope
+    result = _record_inventory(scope)
+    claim = CommandService.claim_or_reconcile(
+        actor=scope.actor,
+        operation=operation,
+        idempotency_key=f"unrelated-{operation}-{uuid.uuid4().hex}",
+        request_digest=CommandService.request_digest({"unrelated": True}),
+        natural_key=natural_key,
+        authorizer=_allow_command,
+    )
+
+    with pytest.raises(
+        Exception,
+        match="receipt operation or natural key does not authorize evidence head",
+    ):
+        _direct_driver_execute(
+            """
+            WITH leaf AS (
+                INSERT INTO public.evidence_records (
+                    organization_id, programme_id, workstream_id, candidate_id,
+                    subject_type, subject_id, claim_key, value_json, value_type,
+                    classification, collector_type, source_identity, source_type,
+                    source_version, source_checksum, source_system, collected_at,
+                    observed_at, freshness_status, freshness_rule_version,
+                    created_by_id, cited_evidence_ids, supersedes_id
+                )
+                SELECT organization_id, programme_id, workstream_id, candidate_id,
+                       subject_type, subject_id, claim_key, value_json, value_type,
+                       classification, collector_type, source_identity, source_type,
+                       'unrelated-receipt', source_checksum, source_system,
+                       clock_timestamp(), observed_at, freshness_status,
+                       freshness_rule_version, created_by_id, '[]'::json, id
+                FROM public.evidence_records WHERE id = %s
+                RETURNING id
+            )
+            SELECT public.archie_advance_evidence_head(
+                %s, leaf.id, 1, %s, %s, %s, %s
+            ) FROM leaf
+            """,
+            (
+                result.object_ids["evidence_record_id"],
+                result.object_ids["evidence_head_id"],
+                scope.actor.user_id,
+                claim.receipt_id,
+                claim.generation,
+                claim.claim_token,
+            ),
+        )

@@ -755,7 +755,9 @@ class TransformationProgrammeService:
             User.organization_id == actor.organization_id,
         )
         if lock:
-            statement = statement.with_for_update()
+            statement = statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
         user = session.execute(statement).scalar_one_or_none()
         if user is None:
             raise NotAuthorised("actor_not_authorised")
@@ -808,7 +810,9 @@ class TransformationProgrammeService:
             .order_by(ProgrammeRoleAssignment.id)
         )
         if lock:
-            assignment_statement = assignment_statement.with_for_update()
+            assignment_statement = assignment_statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
         assignments = session.scalars(assignment_statement).all()
         roles.update(
             row.role

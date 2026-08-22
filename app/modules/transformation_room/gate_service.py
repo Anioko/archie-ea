@@ -240,20 +240,26 @@ class TransformationGateService:
         if programme is None:
             raise NotFound("programme_not_found")
         TransformationProgrammeService._require_active_programme(programme)
-        TransformationProgrammeService._require_programme_authority(
-            session, actor, programme.id, scope.id, READ_ROLES,
-            "programme_read_not_authorised",
-        )
         if lock:
             workstream = session.execute(
                 select(ProgrammeWorkstream).where(
                     ProgrammeWorkstream.id == scope.id,
                     ProgrammeWorkstream.programme_id == programme.id,
                     ProgrammeWorkstream.organization_id == actor.organization_id,
-                ).with_for_update()
+                )
+                .execution_options(populate_existing=True)
+                .with_for_update()
             ).scalar_one()
         else:
             workstream = scope
+            TransformationProgrammeService._require_programme_authority(
+                session,
+                actor,
+                programme.id,
+                scope.id,
+                READ_ROLES,
+                "programme_read_not_authorised",
+            )
         roles = tuple(session.scalars(select(ProgrammeRoleAssignment).where(
             ProgrammeRoleAssignment.organization_id == actor.organization_id,
             ProgrammeRoleAssignment.programme_id == programme.id,

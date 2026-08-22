@@ -213,3 +213,96 @@ actor organization. No route, template, CSS or front-end file changed.
 - The parent integration wave should run the repository-wide verifier after all
   SDD task commits are assembled. This task's commit basis is the complete
   179-test Transformation Room regression plus all mandated Task 6 gates above.
+
+## Review fix round 1 — authorization freshness and governed acceptance
+
+Fix commit subject: `fix: close transformation evidence review findings`.
+The exact SHA is recorded in the parent handoff because this report and the fix
+are committed together.
+
+The transition snapshot no longer performs or caches an authority lookup before
+the aggregate locks. The only mutating-handler authority decision occurs after
+the programme/workstream locks; the locked workstream, persisted runtime user
+and deterministically ordered assignments use `populate_existing` so the
+identity map cannot substitute a stale row. A real two-session RED committed an
+assignment revocation after the former snapshot read but before the locked
+authority read and observed the transition incorrectly succeed. The same
+interleaving is GREEN and denies with `transition_not_authorised`.
+
+Acceptance now requires the exact `submitted_evidence_id`, proves that record is
+the current head for the exact tenant/subject/claim, rejects a conflict record,
+and rejects a submitted attestation while a current disagreement remains
+unresolved. Decision-authority resolution advances a separate governed head and
+atomically replaces the request's submitted pointer, after which the resolution
+can be accepted. The initial REDs accepted a different current source and an
+unresolved attestation; both are now denied.
+
+Attestation comparison now evaluates every current non-conflict source head.
+Any disagreement produces one deterministic conflict citing all current leaves
+plus the attestation, ordered by source identity and record ID. The three-source
+RED showed one agreement suppressing two disagreements; the corrected case is
+GREEN and stable regardless of source insertion order.
+
+Claim-head identity remains global at
+`(tenant, subject_type, subject_id, claim_key, source_identity)`. Candidate and
+workstream IDs remain provenance, not ownership of an accepted head. Active
+evidence enumerates accepted subject memberships in explicit
+programme/workstream/candidate order and succeeds through any authorized
+membership rather than whichever candidate PostgreSQL happens to return first.
+A same-subject two-workstream RED denied the authorized second membership; the
+GREEN case proves both relevant requests can accept the same governed current
+record under their own locked request authority.
+
+## Review fix round 1 — existing schema and one-to-one ledger
+
+Long-lived `evidence_requests` tables now reconcile
+`ck_evidence_request_waiver_complete` after the nullable waiver columns are
+added. Dry-run reports `CHECK NOT VALID THEN VALIDATE`; apply installs and
+validates it without blocking the column-add phase, partial waiver state fails
+at PostgreSQL, and a second apply is a no-op. The representative pre-Task-6
+schema test was RED because reconciliation reported no constraint work and is
+now GREEN.
+
+The guarded database function, rather than runtime ORM code, is now the only
+creator of an evidence-head event. Runtime has SELECT but no INSERT on
+`evidence_head_events` and retains EXECUTE on the seven-argument guarded advance
+function. The allowed receipt bindings are exact:
+
+- `evidence.observe` and the attested leaf of `evidence.attest` use
+  `evidence:{candidate_id}:{claim_key}:{sha256(source_identity UTF-8)}:{new_revision}`;
+- the conflict move under `evidence.attest` must name the exact evidence request
+  and cite the same-transaction attestation event that the receipt key binds;
+- `evidence.conflict.resolve` uses
+  `evidence-conflict-resolution:{conflict_id}:{governing_evidence_id}` and the
+  record's source identity, JSON IDs and governing citation must agree.
+
+The function validates the operation/key/record/request binding before it
+inserts the event and advances the locked head. A deferred constraint trigger
+enforces the converse at commit: every new event must resolve to the exact
+tenant head movement, new record/predecessor, revision, actor, receipt,
+generation and transaction. Existing uniqueness constraints retain one event
+per `(tenant, head, revision)` and one event per new record. The RED suite showed
+an orphan event successfully reserving the next revision and unrelated live
+receipts reaching the old "missing event" check. GREEN proves orphan insertion
+rolls back, both unrelated operation and malformed evidence natural key are
+rejected, valid observation/attestation/conflict/resolution flows still create
+exactly one event, and the restricted runtime role cannot insert one directly.
+
+## Review fix round 1 verification
+
+Both `DATABASE_URL` and `TEST_DATABASE_URL` were set to
+`postgresql://postgres@127.0.0.1:5439/flask_test` for database-backed runs.
+
+- Complete Task 6 files: **42 passed**, 0 failed.
+- Full Transformation Room regression including real head races: **187
+  passed**, 0 failed.
+- Focused changed service/guard/programme/runtime/reconciliation files: **79
+  passed**, 0 failed.
+- `schema-drift`, `raw-sql-tenancy`, `lint-core`, `compile` and
+  `undefined-exports`: each **1 passed**, 0 failed, 0 skipped.
+- Focused Ruff over all changed Python/test files: **all checks passed**.
+- `git diff --check`: clean.
+
+The only remaining concern is the repository's pre-existing warning volume
+(SQLAlchemy lifecycle/deprecation and detached test-user warnings); no new test
+failure, gate failure or skip remains in this fix round.

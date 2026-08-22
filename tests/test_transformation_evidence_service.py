@@ -283,6 +283,32 @@ class _UnversionedInventoryAdapter(ApplicationInventoryEvidenceAdapter):
         return SourceVersion("", version.checksum, version.observed_at, version.value)
 
 
+class _NamedInventoryAdapter(ApplicationInventoryEvidenceAdapter):
+    """A real adapter variant for an independently governed current source."""
+
+    def __init__(self, source_identity: str, value: str):
+        self.source_identity = source_identity
+        self.value = value
+
+    def resolve(self, source_key, actor):
+        resolved = super().resolve(source_key, actor)
+        return SourceResolution(
+            self.source_identity,
+            resolved.canonical_subject_type,
+            resolved.canonical_subject_id,
+        )
+
+    def read_version(self, resolution):
+        inventory = super().read_version(resolution)
+        value = TypedEvidenceValue("string", self.value, None, None)
+        return SourceVersion(
+            f"{inventory.version}:{self.source_identity}",
+            sha256_canonical(value),
+            inventory.observed_at,
+            value,
+        )
+
+
 def test_unversioned_adapter_gets_content_addressed_snapshot_version(evidence_scope):
     """Catches an unversioned source being stored without a reproducible snapshot identity."""
     scope = evidence_scope
@@ -349,6 +375,226 @@ def test_attestation_agreement_submits_then_accepts_request(evidence_scope):
     assert len(heads) == 2
 
 
+def test_accept_request_rejects_current_evidence_not_submitted_for_request(
+    evidence_scope,
+):
+    """Catches accepting a different current source than the request submission."""
+    scope = evidence_scope
+    observed = _record_inventory(scope)
+    with Session(db.engine) as session:
+        value = session.get(
+            EvidenceRecord, observed.object_ids["evidence_record_id"]
+        ).value_json
+    TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("json", value, None, None),
+        expected_head_revision=0,
+        command_key="submitted-source-binding",
+    )
+
+    with pytest.raises(CommandConflict, match="evidence_not_submitted_for_request"):
+        TransformationEvidenceService.accept_request(
+            actor=scope.actor,
+            request_id=scope.request_id,
+            evidence_id=observed.object_ids["evidence_record_id"],
+            expected_revision=2,
+            command_key="reject-different-current-source",
+        )
+
+
+def test_accept_request_rejects_submitted_attestation_while_conflict_unresolved(
+    evidence_scope,
+):
+    """Catches accepting an attestation while a current source still disagrees."""
+    scope = evidence_scope
+    _record_inventory(scope)
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("string", "Disputed owner", None, None),
+        expected_head_revision=0,
+        command_key="unresolved-submission",
+    )
+
+    with pytest.raises(CommandConflict, match="evidence_conflict_unresolved"):
+        TransformationEvidenceService.accept_request(
+            actor=scope.actor,
+            request_id=scope.request_id,
+            evidence_id=submitted.object_ids["evidence_record_id"],
+            expected_revision=2,
+            command_key="reject-unresolved-submission",
+        )
+
+
+def test_attestation_compares_every_current_source_and_cites_stable_leaf_order(
+    evidence_scope,
+):
+    """Catches one agreeing source suppressing disagreements from other heads."""
+    scope = evidence_scope
+    observed = _record_inventory(scope)
+    adapters = (
+        ("source-z", _NamedInventoryAdapter("external:Z-source", "Different")),
+        ("source-a", _NamedInventoryAdapter("external:A-source", "Shared")),
+    )
+    previous = {
+        key: TransformationEvidenceService.register_adapter(key, adapter)
+        for key, adapter in adapters
+    }
+    try:
+        source_z = TransformationEvidenceService.record_observation(
+            actor=scope.actor,
+            candidate_id=scope.candidate_id,
+            claim_key="application_owner",
+            adapter_key="source-z",
+            source_key=str(scope.application_id),
+            expected_head_revision=0,
+            command_key="three-source-z",
+        )
+        source_a = TransformationEvidenceService.record_observation(
+            actor=scope.actor,
+            candidate_id=scope.candidate_id,
+            claim_key="application_owner",
+            adapter_key="source-a",
+            source_key=str(scope.application_id),
+            expected_head_revision=0,
+            command_key="three-source-a",
+        )
+    finally:
+        for key, _adapter in adapters:
+            TransformationEvidenceService.restore_adapter(key, previous[key])
+
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("string", "Shared", None, None),
+        expected_head_revision=0,
+        command_key="three-source-attestation",
+    )
+    conflict_id = submitted.object_ids["conflict_evidence_id"]
+    current_ids = {
+        observed.object_ids["evidence_record_id"],
+        source_z.object_ids["evidence_record_id"],
+        source_a.object_ids["evidence_record_id"],
+        submitted.object_ids["evidence_record_id"],
+    }
+    with Session(db.engine) as session:
+        conflict = session.get(EvidenceRecord, conflict_id)
+        ordered = session.execute(
+            select(EvidenceRecord.id, EvidenceRecord.source_identity)
+            .where(EvidenceRecord.id.in_(current_ids))
+            .order_by(EvidenceRecord.source_identity, EvidenceRecord.id)
+        ).all()
+    assert conflict.cited_evidence_ids == [row.id for row in ordered]
+
+
+def test_shared_subject_heads_are_membership_authorized_not_candidate_owned(
+    evidence_scope,
+):
+    """Catches arbitrary-first candidate auth and evidence provenance ownership."""
+    scope = evidence_scope
+    observed = _record_inventory(scope)
+    with db.session.begin():
+        first = db.session.get(ProgrammeWorkstream, scope.workstream_id)
+        peer = User(
+            email=f"shared-evidence-{uuid.uuid4().hex[:10]}@example.test",
+            organization_id=scope.organization_id,
+            confirmed=True,
+            enterprise_role="application_manager",
+        )
+        db.session.add(peer)
+        db.session.flush()
+        second = ProgrammeWorkstream(
+            organization_id=scope.organization_id,
+            programme_id=first.programme_id,
+            workstream_type="application_rationalisation",
+            objective="Govern the same application in a second scope",
+            scope_expression={"application_ids": [scope.application_id]},
+            lifecycle_stage="discover",
+            lead_id=peer.id,
+            revision=1,
+        )
+        db.session.add(second)
+        db.session.flush()
+        db.session.add(
+            ProgrammeRoleAssignment(
+                organization_id=scope.organization_id,
+                programme_id=first.programme_id,
+                workstream_id=second.id,
+                user_id=peer.id,
+                role="evidence_owner",
+                effective_from=date.today() - timedelta(days=1),
+                assigned_by_id=scope.actor_id,
+            )
+        )
+        peer_id = peer.id
+        second_workstream_id = second.id
+
+    second_scope = EvidenceScope(
+        organization_id=scope.organization_id,
+        foreign_organization_id=scope.foreign_organization_id,
+        actor_id=scope.actor_id,
+        foreign_actor_id=scope.foreign_actor_id,
+        workstream_id=second_workstream_id,
+        candidate_id=0,
+        application_id=scope.application_id,
+        request_id=0,
+        actor=scope.actor,
+        foreign_actor=scope.foreign_actor,
+    )
+    discovered = next(
+        item
+        for item in _discover(second_scope)
+        if item.application_id == scope.application_id
+    )
+    second_acceptance = RationalisationDiscoveryService.accept_candidate(
+        actor=scope.actor,
+        workstream_id=second_workstream_id,
+        application_id=scope.application_id,
+        signal_digests=discovered.signal_digests,
+        inclusion_reason="Share the canonical evidence head",
+        command_key="second-workstream-candidate",
+    )
+    second_request_id = second_acceptance.object_ids["evidence_request_id"]
+    evidence_id = observed.object_ids["evidence_record_id"]
+    with Session(db.engine) as session, session.begin():
+        for request_id in (scope.request_id, second_request_id):
+            request = session.get(EvidenceRequest, request_id)
+            request.status = "submitted"
+            request.submitted_evidence_id = evidence_id
+            request.submitted_at = datetime.now(timezone.utc)
+
+    peer_actor = ActorContext(
+        peer_id,
+        scope.organization_id,
+        frozenset({"forged_client_role"}),
+        "shared-subject-peer",
+    )
+    active = TransformationEvidenceService.active_evidence(
+        actor=peer_actor,
+        subject_type="application",
+        subject_id=scope.application_id,
+    )
+    first_accepted = TransformationEvidenceService.accept_request(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        evidence_id=evidence_id,
+        expected_revision=2,
+        command_key="accept-first-shared-head",
+    )
+    second_accepted = TransformationEvidenceService.accept_request(
+        actor=peer_actor,
+        request_id=second_request_id,
+        evidence_id=evidence_id,
+        expected_revision=2,
+        command_key="accept-second-shared-head",
+    )
+
+    assert [record.id for record in active] == [evidence_id]
+    assert first_accepted.response["status"] == "accepted"
+    assert second_accepted.response["status"] == "accepted"
+
+
 def test_disagreement_creates_conflict_and_decision_authority_resolution(evidence_scope):
     """Catches silent source selection when an attestation disagrees with observation."""
     scope = evidence_scope
@@ -369,11 +615,18 @@ def test_disagreement_creates_conflict_and_decision_authority_resolution(evidenc
         rationale="The governed inventory owner is accountable for this decision.",
         command_key="resolve-owner-conflict",
     )
+    resolution_id = resolved.object_ids["evidence_record_id"]
+    accepted = TransformationEvidenceService.accept_request(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        evidence_id=resolution_id,
+        expected_revision=3,
+        command_key="accept-governed-resolution",
+    )
     with Session(db.engine) as session:
         conflict = session.get(EvidenceRecord, conflict_id)
-        resolution = session.get(
-            EvidenceRecord, resolved.object_ids["evidence_record_id"]
-        )
+        resolution = session.get(EvidenceRecord, resolution_id)
+        request = session.get(EvidenceRequest, scope.request_id)
     assert conflict.classification == "conflict"
     assert set(conflict.cited_evidence_ids) == {
         observed.object_ids["evidence_record_id"],
@@ -388,6 +641,9 @@ def test_disagreement_creates_conflict_and_decision_authority_resolution(evidenc
         conflict.id,
         observed.object_ids["evidence_record_id"],
     }
+    assert request.submitted_evidence_id == resolution.id
+    assert request.accepted_evidence_id == resolution.id
+    assert accepted.response["revision"] == 4
 
 
 def test_decline_and_expiry_do_not_complete_required_request(evidence_scope):

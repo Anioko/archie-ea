@@ -69,6 +69,25 @@ def pre_feature_transformation_schema(app):
                         name VARCHAR(255) NOT NULL,
                         organization_id INTEGER NOT NULL
                     );
+                    CREATE TABLE "{schema}".evidence_requests (
+                        id INTEGER PRIMARY KEY,
+                        organization_id INTEGER NOT NULL,
+                        workstream_id INTEGER NOT NULL,
+                        candidate_id INTEGER NOT NULL,
+                        subject_type VARCHAR(40) NOT NULL,
+                        subject_id INTEGER NOT NULL,
+                        claim_key VARCHAR(100) NOT NULL,
+                        assigned_to_id INTEGER NOT NULL,
+                        required BOOLEAN NOT NULL DEFAULT true,
+                        status VARCHAR(30) NOT NULL DEFAULT 'open',
+                        accepted_evidence_id INTEGER,
+                        acknowledgement_id INTEGER,
+                        waiver_id INTEGER,
+                        due_at TIMESTAMPTZ,
+                        created_by_id INTEGER NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+                        revision INTEGER NOT NULL DEFAULT 1
+                    );
                     INSERT INTO "{schema}".organizations (id) VALUES (1), (2);
                     INSERT INTO "{schema}".users (id, organization_id) VALUES (1, 1), (2, 2);
                     INSERT INTO "{schema}".strategic_initiatives
@@ -85,6 +104,14 @@ def pre_feature_transformation_schema(app):
                     INSERT INTO "{schema}".solutions
                         (id, initiative_id, name, organization_id)
                         VALUES (300, 10, 'Existing solution', 1);
+                    INSERT INTO "{schema}".evidence_requests (
+                        id, organization_id, workstream_id, candidate_id,
+                        subject_type, subject_id, claim_key, assigned_to_id,
+                        created_by_id
+                    ) VALUES (
+                        400, 1, 500, 600, 'application', 700,
+                        'application_owner', 1, 1
+                    );
                     """
                 )
             )
@@ -151,6 +178,46 @@ def test_existing_schema_reconciles_additive_columns_idempotently(app, _schema):
         with app.app_context(), db.engine.begin() as connection:
             connection.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
         db.metadata.remove(model_table)
+
+
+def test_pre_task6_evidence_waiver_constraint_reconciles_idempotently(
+    app, pre_feature_transformation_schema
+):
+    """Catches add-only reconciliation omitting the Task 6 waiver invariant."""
+    _schema_name, isolated_engine = pre_feature_transformation_schema
+    label = "constraint.ck_evidence_request_waiver_complete"
+    with app.app_context():
+        dry_added, dry_failed, _missing, _blocking = _reconcile(dry_run=True)
+        assert dry_failed == []
+        assert f"{label} :: CHECK NOT VALID THEN VALIDATE" in dry_added
+        with isolated_engine.connect() as connection:
+            assert connection.scalar(
+                text(
+                    "SELECT count(*) FROM pg_constraint "
+                    "WHERE conrelid = 'evidence_requests'::regclass "
+                    "AND conname = 'ck_evidence_request_waiver_complete'"
+                )
+            ) == 0
+
+        first_added, first_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert first_failed == []
+        assert f"{label} :: CHECK NOT VALID THEN VALIDATE" in first_added
+        with isolated_engine.connect() as connection:
+            assert connection.scalar(
+                text(
+                    "SELECT convalidated FROM pg_constraint "
+                    "WHERE conrelid = 'evidence_requests'::regclass "
+                    "AND conname = 'ck_evidence_request_waiver_complete'"
+                )
+            ) is True
+            with pytest.raises(Exception):
+                connection.execute(
+                    text("UPDATE evidence_requests SET waiver_id = 77 WHERE id = 400")
+                )
+
+        second_added, second_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert second_failed == []
+        assert not any(item.startswith(label) for item in second_added)
 
 
 def test_genuine_pre_feature_schema_backfills_roadmap_and_repairs_delivery_fks(

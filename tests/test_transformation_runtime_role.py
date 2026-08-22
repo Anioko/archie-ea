@@ -160,6 +160,58 @@ CREATE TABLE transformation_outbox_events (
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     published_at timestamptz,
     delivery_attempts integer NOT NULL DEFAULT 0
+);
+CREATE TABLE evidence_records (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    candidate_id integer NOT NULL,
+    subject_type varchar(40) NOT NULL,
+    subject_id integer NOT NULL,
+    claim_key varchar(100) NOT NULL,
+    classification varchar(40) NOT NULL,
+    source_identity varchar(1024) NOT NULL,
+    source_type varchar(80) NOT NULL,
+    source_record_id integer,
+    created_by_id integer NOT NULL,
+    value_json json NOT NULL,
+    cited_evidence_ids json NOT NULL DEFAULT '[]',
+    supersedes_id integer
+);
+CREATE TABLE evidence_claim_heads (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    subject_type varchar(40) NOT NULL,
+    subject_id integer NOT NULL,
+    claim_key varchar(100) NOT NULL,
+    source_identity varchar(1024) NOT NULL,
+    current_record_id integer,
+    revision integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE evidence_requests (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    candidate_id integer NOT NULL,
+    subject_type varchar(40) NOT NULL,
+    subject_id integer NOT NULL,
+    claim_key varchar(100) NOT NULL,
+    assigned_to_id integer NOT NULL
+);
+CREATE TABLE evidence_head_events (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    head_id integer NOT NULL,
+    old_record_id integer,
+    new_record_id integer NOT NULL UNIQUE,
+    actor_id integer NOT NULL,
+    command_receipt_id integer NOT NULL,
+    command_generation integer NOT NULL,
+    reason text NOT NULL,
+    revision integer NOT NULL,
+    created_txid bigint NOT NULL DEFAULT txid_current(),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    UNIQUE (organization_id, head_id, revision)
 )
 """
 
@@ -318,6 +370,15 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 False,
             )
             cursor.execute(
+                "SELECT has_table_privilege(%s, 'evidence_head_events', 'SELECT'), "
+                "has_table_privilege(%s, 'evidence_head_events', 'INSERT'), "
+                "has_function_privilege(%s, "
+                "'public.archie_advance_evidence_head(bigint,bigint,integer,bigint,bigint,integer,text)', "
+                "'EXECUTE')",
+                (role_database.runtime_role,) * 3,
+            )
+            assert cursor.fetchone() == (True, False, True)
+            cursor.execute(
                 "SELECT p.proname, pg_get_function_identity_arguments(p.oid) "
                 "FROM pg_proc p "
                 "JOIN pg_namespace n ON n.oid = p.pronamespace "
@@ -408,6 +469,7 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 "TRUNCATE TABLE public.operation_results",
                 "UPDATE public.operation_results SET request_digest = request_digest",
                 "DELETE FROM public.command_idempotency_records",
+                "INSERT INTO public.evidence_head_events DEFAULT VALUES",
                 "SELECT public.archie_guard_transformation_receipt()",
                 "CREATE TABLE public.runtime_guard_bypass (id integer)",
             )

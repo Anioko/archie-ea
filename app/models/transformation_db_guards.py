@@ -259,6 +259,46 @@ $$
 """
 
 
+_EVIDENCE_EVENT_BINDING_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_guard_evidence_event_binding()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.evidence_claim_heads head
+        JOIN public.evidence_records record
+          ON record.id = NEW.new_record_id
+         AND record.organization_id = NEW.organization_id
+         AND record.subject_type = head.subject_type
+         AND record.subject_id = head.subject_id
+         AND record.claim_key = head.claim_key
+         AND record.source_identity = head.source_identity
+         AND record.supersedes_id IS NOT DISTINCT FROM NEW.old_record_id
+        JOIN public.command_idempotency_records receipt
+          ON receipt.id = NEW.command_receipt_id
+         AND receipt.organization_id = NEW.organization_id
+         AND receipt.actor_id = NEW.actor_id
+         AND receipt.lease_generation = NEW.command_generation
+         AND receipt.status IN ('in_progress', 'succeeded')
+        WHERE head.id = NEW.head_id
+          AND head.organization_id = NEW.organization_id
+          AND head.current_record_id = NEW.new_record_id
+          AND head.revision = NEW.revision
+          AND NEW.created_txid = txid_current()
+    ) THEN
+        RAISE EXCEPTION 'evidence event is not bound to its head movement'
+            USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$
+"""
+
+
 _EVIDENCE_HEAD_ADVANCE_SQL = r"""
 CREATE OR REPLACE FUNCTION public.archie_advance_evidence_head(
     p_head_id bigint,
@@ -284,10 +324,24 @@ DECLARE
     head_revision integer;
     receipt_actor_id bigint;
     receipt_organization_id bigint;
+    receipt_operation text;
+    receipt_natural_key text;
     receipt_status text;
     receipt_generation integer;
     receipt_token text;
     receipt_expiry timestamptz;
+    record_candidate_id bigint;
+    record_classification text;
+    record_source_type text;
+    record_source_record_id bigint;
+    record_created_by_id bigint;
+    record_value jsonb;
+    record_citations jsonb;
+    attestation_candidate_id bigint;
+    attestation_source_identity text;
+    attestation_revision integer;
+    expected_natural_key text;
+    event_reason text;
     affected integer;
 BEGIN
     SELECT organization_id, subject_type, subject_id, claim_key,
@@ -304,24 +358,30 @@ BEGIN
     IF head_revision <> p_expected_revision THEN
         RAISE EXCEPTION 'stale evidence head revision' USING ERRCODE = '40001';
     END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM public.evidence_records record
+    SELECT record.candidate_id, record.classification, record.source_type,
+           record.source_record_id, record.created_by_id,
+           record.value_json::jsonb, record.cited_evidence_ids::jsonb
+      INTO record_candidate_id, record_classification, record_source_type,
+           record_source_record_id, record_created_by_id,
+           record_value, record_citations
+      FROM public.evidence_records record
         WHERE record.id = p_new_record_id
           AND record.organization_id = head_organization_id
           AND record.subject_type = head_subject_type
           AND record.subject_id = head_subject_id
           AND record.claim_key = head_claim_key
           AND record.source_identity = head_source_identity
-          AND record.supersedes_id IS NOT DISTINCT FROM head_current_record_id
-    ) THEN
+          AND record.supersedes_id IS NOT DISTINCT FROM head_current_record_id;
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'evidence record does not extend the locked head'
             USING ERRCODE = '55000';
     END IF;
 
-    SELECT actor_id, organization_id, status, lease_generation,
-           claim_token, lease_expires_at
-      INTO receipt_actor_id, receipt_organization_id, receipt_status,
-           receipt_generation, receipt_token, receipt_expiry
+    SELECT actor_id, organization_id, operation, natural_key, status,
+           lease_generation, claim_token, lease_expires_at
+      INTO receipt_actor_id, receipt_organization_id, receipt_operation,
+           receipt_natural_key, receipt_status, receipt_generation,
+           receipt_token, receipt_expiry
       FROM public.command_idempotency_records
      WHERE id = p_receipt_id
      FOR UPDATE;
@@ -336,21 +396,142 @@ BEGIN
         RAISE EXCEPTION 'evidence head command fence is stale or unrelated'
             USING ERRCODE = '55000';
     END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM public.evidence_head_events event
-        WHERE event.organization_id = head_organization_id
-          AND event.head_id = p_head_id
-          AND event.old_record_id IS NOT DISTINCT FROM head_current_record_id
-          AND event.new_record_id = p_new_record_id
-          AND event.actor_id = p_actor_id
-          AND event.command_receipt_id = p_receipt_id
-          AND event.command_generation = p_generation
-          AND event.revision = head_revision + 1
-          AND event.created_txid = txid_current()
-    ) THEN
-        RAISE EXCEPTION 'evidence head event is missing or unrelated'
+
+    IF record_created_by_id <> p_actor_id THEN
+        RAISE EXCEPTION 'evidence record actor does not match command actor'
             USING ERRCODE = '55000';
     END IF;
+
+    IF receipt_operation = 'evidence.observe'
+       AND record_classification = 'observed' THEN
+        expected_natural_key := format(
+            'evidence:%%s:%%s:%%s:%%s',
+            record_candidate_id,
+            head_claim_key,
+            encode(sha256(convert_to(head_source_identity, 'UTF8')), 'hex'),
+            head_revision + 1
+        );
+        event_reason := 'canonical source observation';
+    ELSIF receipt_operation = 'evidence.attest'
+       AND record_classification = 'attested'
+       AND record_source_type = 'attestation'
+       AND record_source_record_id = p_actor_id
+       AND head_source_identity = format('attestation:user:%%s', p_actor_id) THEN
+        expected_natural_key := format(
+            'evidence:%%s:%%s:%%s:%%s',
+            record_candidate_id,
+            head_claim_key,
+            encode(sha256(convert_to(head_source_identity, 'UTF8')), 'hex'),
+            head_revision + 1
+        );
+        event_reason := 'human attestation submitted';
+    ELSIF receipt_operation = 'evidence.attest'
+       AND record_classification = 'conflict'
+       AND record_source_type = 'governance_conflict'
+       AND head_source_identity = format(
+           'conflict:request:%%s', record_source_record_id
+       )
+       AND EXISTS (
+           SELECT 1
+           FROM public.evidence_requests request
+           WHERE request.id = record_source_record_id
+             AND request.organization_id = head_organization_id
+             AND request.candidate_id = record_candidate_id
+             AND request.subject_type = head_subject_type
+             AND request.subject_id = head_subject_id
+             AND request.claim_key = head_claim_key
+             AND request.assigned_to_id = p_actor_id
+       ) THEN
+        SELECT attestation.candidate_id, attestation.source_identity, event.revision
+          INTO attestation_candidate_id, attestation_source_identity,
+               attestation_revision
+          FROM jsonb_array_elements_text(
+                   COALESCE(record_citations, '[]'::jsonb)
+               ) AS citation(evidence_id)
+          JOIN public.evidence_records attestation
+            ON attestation.id = citation.evidence_id::bigint
+          JOIN public.evidence_head_events event
+            ON event.new_record_id = attestation.id
+           AND event.organization_id = head_organization_id
+           AND event.command_receipt_id = p_receipt_id
+           AND event.command_generation = p_generation
+           AND event.created_txid = txid_current()
+         WHERE attestation.organization_id = head_organization_id
+           AND attestation.subject_type = head_subject_type
+           AND attestation.subject_id = head_subject_id
+           AND attestation.claim_key = head_claim_key
+           AND attestation.classification = 'attested'
+           AND attestation.source_type = 'attestation'
+           AND attestation.source_record_id = p_actor_id
+           AND attestation.created_by_id = p_actor_id
+         ORDER BY attestation.id DESC
+         LIMIT 1;
+        IF FOUND THEN
+            expected_natural_key := format(
+                'evidence:%%s:%%s:%%s:%%s',
+                attestation_candidate_id,
+                head_claim_key,
+                encode(
+                    sha256(convert_to(attestation_source_identity, 'UTF8')),
+                    'hex'
+                ),
+                attestation_revision
+            );
+            event_reason := 'attestation disagrees with canonical observation';
+        END IF;
+    ELSIF receipt_operation = 'evidence.conflict.resolve'
+       AND record_classification = 'derived'
+       AND record_source_type = 'governance_resolution'
+       AND head_source_identity = format(
+           'resolution:conflict:%%s', record_source_record_id
+       )
+       AND record_value ->> 'conflict_evidence_id' = record_source_record_id::text
+       AND EXISTS (
+           SELECT 1
+           FROM public.evidence_records conflict
+           JOIN public.evidence_records governing
+             ON governing.id = (record_value ->> 'governing_evidence_id')::bigint
+            AND governing.organization_id = conflict.organization_id
+            AND governing.subject_type = conflict.subject_type
+            AND governing.subject_id = conflict.subject_id
+            AND governing.claim_key = conflict.claim_key
+           WHERE conflict.id = record_source_record_id
+             AND conflict.organization_id = head_organization_id
+             AND conflict.subject_type = head_subject_type
+             AND conflict.subject_id = head_subject_id
+             AND conflict.claim_key = head_claim_key
+             AND conflict.classification = 'conflict'
+             AND EXISTS (
+                 SELECT 1
+                 FROM jsonb_array_elements_text(
+                     conflict.cited_evidence_ids::jsonb
+                 ) AS cited(evidence_id)
+                 WHERE cited.evidence_id =
+                       record_value ->> 'governing_evidence_id'
+             )
+       ) THEN
+        expected_natural_key := format(
+            'evidence-conflict-resolution:%%s:%%s',
+            record_source_record_id,
+            record_value ->> 'governing_evidence_id'
+        );
+        event_reason := 'decision authority selected governing source';
+    END IF;
+
+    IF expected_natural_key IS NULL
+       OR receipt_natural_key IS DISTINCT FROM expected_natural_key THEN
+        RAISE EXCEPTION 'receipt operation or natural key does not authorize evidence head'
+            USING ERRCODE = '55000';
+    END IF;
+
+    INSERT INTO public.evidence_head_events (
+        organization_id, head_id, old_record_id, new_record_id, actor_id,
+        command_receipt_id, command_generation, reason, revision, created_txid
+    ) VALUES (
+        head_organization_id, p_head_id, head_current_record_id, p_new_record_id,
+        p_actor_id, p_receipt_id, p_generation, event_reason,
+        head_revision + 1, txid_current()
+    );
 
     UPDATE public.evidence_claim_heads
        SET current_record_id = p_new_record_id,
@@ -378,6 +559,7 @@ _FUNCTION_SPECS = (
     ),
     ("archie_guard_transformation_receipt", _RECEIPT_FUNCTION_SQL),
     ("archie_guard_evidence_head", _EVIDENCE_HEAD_GUARD_SQL),
+    ("archie_guard_evidence_event_binding", _EVIDENCE_EVENT_BINDING_SQL),
 )
 
 _TRIGGER_SPECS = (
@@ -418,6 +600,8 @@ _TRIGGER_SPECS = (
     ),
 )
 
+_EVIDENCE_EVENT_BINDING_TRIGGER = "trg_evidence_event_binding"
+
 
 _IMMUTABLE_TABLES = (
     "operation_results",
@@ -439,7 +623,10 @@ def _normalise_function_body(body: str) -> str:
 
 
 def _expected_function_body(create_sql: str) -> str:
-    return _normalise_function_body(create_sql.split("AS $$", 1)[1].rsplit("$$", 1)[0])
+    body = create_sql.split("AS $$", 1)[1].rsplit("$$", 1)[0]
+    # ``exec_driver_sql`` passes percent signs through psycopg2's paramstyle;
+    # doubled literals are stored by PostgreSQL as the intended single sign.
+    return _normalise_function_body(body.replace("%%", "%"))
 
 
 def inspect_transformation_db_guards(connection) -> list[str]:
@@ -530,6 +717,57 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             drift.append(f"trigger_when:{trigger_name}")
         if row.update_columns:
             drift.append(f"trigger_columns:{trigger_name}")
+
+    if connection.exec_driver_sql(
+        "SELECT to_regclass('public.evidence_head_events') IS NOT NULL"
+    ).scalar():
+        row = connection.exec_driver_sql(
+            """
+            SELECT trigger.tgenabled, trigger.tgtype, trigger.tgdeferrable,
+                   trigger.tginitdeferred,
+                   trigger.tgqual IS NOT NULL AS has_when,
+                   trigger.tgattr::text AS update_columns,
+                   namespace.nspname AS function_schema,
+                   proc.proname AS function_name
+            FROM pg_trigger trigger
+            JOIN pg_proc proc ON proc.oid = trigger.tgfoid
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE trigger.tgname = %s
+              AND trigger.tgrelid = to_regclass('public.evidence_head_events')
+              AND NOT trigger.tgisinternal
+            """,
+            (_EVIDENCE_EVENT_BINDING_TRIGGER,),
+        ).first()
+        if row is None:
+            drift.append(
+                f"trigger_missing:{_EVIDENCE_EVENT_BINDING_TRIGGER}"
+            )
+        else:
+            if row.tgenabled != "O":
+                drift.append(
+                    f"trigger_disabled:{_EVIDENCE_EVENT_BINDING_TRIGGER}"
+                )
+            if (
+                row.function_schema != "public"
+                or row.function_name != "archie_guard_evidence_event_binding"
+            ):
+                drift.append(
+                    f"trigger_function:{_EVIDENCE_EVENT_BINDING_TRIGGER}"
+                )
+            if (
+                row.tgtype != 5
+                or not row.tgdeferrable
+                or not row.tginitdeferred
+            ):
+                drift.append(
+                    f"trigger_shape:{_EVIDENCE_EVENT_BINDING_TRIGGER}"
+                )
+            if row.has_when:
+                drift.append(f"trigger_when:{_EVIDENCE_EVENT_BINDING_TRIGGER}")
+            if row.update_columns:
+                drift.append(
+                    f"trigger_columns:{_EVIDENCE_EVENT_BINDING_TRIGGER}"
+                )
     return drift
 
 
@@ -583,6 +821,50 @@ def _repair_triggers(connection) -> None:
             f"EXECUTE FUNCTION public.{function_name}()"
         )
 
+    if not connection.exec_driver_sql(
+        "SELECT to_regclass('public.evidence_head_events') IS NOT NULL"
+    ).scalar():
+        return
+    row = connection.exec_driver_sql(
+        """
+        SELECT trigger.tgenabled, trigger.tgtype, trigger.tgdeferrable,
+               trigger.tginitdeferred,
+               trigger.tgqual IS NOT NULL AS has_when,
+               trigger.tgattr::text AS update_columns,
+               namespace.nspname AS function_schema,
+               proc.proname AS function_name
+        FROM pg_trigger trigger
+        JOIN pg_proc proc ON proc.oid = trigger.tgfoid
+        JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+        WHERE trigger.tgname = %s
+          AND trigger.tgrelid = to_regclass('public.evidence_head_events')
+          AND NOT trigger.tgisinternal
+        """,
+        (_EVIDENCE_EVENT_BINDING_TRIGGER,),
+    ).first()
+    correct = (
+        row is not None
+        and row.tgenabled == "O"
+        and row.tgtype == 5
+        and row.tgdeferrable
+        and row.tginitdeferred
+        and not row.has_when
+        and not row.update_columns
+        and row.function_schema == "public"
+        and row.function_name == "archie_guard_evidence_event_binding"
+    )
+    if not correct:
+        connection.exec_driver_sql(
+            "DROP TRIGGER IF EXISTS trg_evidence_event_binding "
+            "ON public.evidence_head_events"
+        )
+        connection.exec_driver_sql(
+            "CREATE CONSTRAINT TRIGGER trg_evidence_event_binding "
+            "AFTER INSERT ON public.evidence_head_events "
+            "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
+            "EXECUTE FUNCTION public.archie_guard_evidence_event_binding()"
+        )
+
 
 def ensure_transformation_db_guards(
     connection,
@@ -599,6 +881,7 @@ def ensure_transformation_db_guards(
     connection.exec_driver_sql(_IMMUTABILITY_FUNCTION_SQL)
     connection.exec_driver_sql(_RECEIPT_FUNCTION_SQL)
     connection.exec_driver_sql(_EVIDENCE_HEAD_GUARD_SQL)
+    connection.exec_driver_sql(_EVIDENCE_EVENT_BINDING_SQL)
     connection.exec_driver_sql(_EVIDENCE_HEAD_ADVANCE_SQL)
     connection.exec_driver_sql(
         "REVOKE ALL ON FUNCTION public.archie_reject_transformation_mutation() FROM PUBLIC"
@@ -608,6 +891,10 @@ def ensure_transformation_db_guards(
     )
     connection.exec_driver_sql(
         "REVOKE ALL ON FUNCTION public.archie_guard_evidence_head() FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        "REVOKE ALL ON FUNCTION "
+        "public.archie_guard_evidence_event_binding() FROM PUBLIC"
     )
     connection.exec_driver_sql(
         "REVOKE ALL ON FUNCTION public.archie_advance_evidence_head("
@@ -632,6 +919,11 @@ def ensure_transformation_db_guards(
         )
         connection.exec_driver_sql(
             "REVOKE ALL ON FUNCTION public.archie_guard_evidence_head() "
+            f"FROM {runtime_role_identifier}"
+        )
+        connection.exec_driver_sql(
+            "REVOKE ALL ON FUNCTION "
+            "public.archie_guard_evidence_event_binding() "
             f"FROM {runtime_role_identifier}"
         )
         connection.exec_driver_sql(
@@ -660,8 +952,13 @@ def ensure_transformation_db_guards(
                     f"REVOKE ALL ON TABLE public.{table_name} "
                     f"FROM {runtime_role_identifier}"
                 )
+                privileges = (
+                    "SELECT"
+                    if table_name == "evidence_head_events"
+                    else "SELECT, INSERT"
+                )
                 connection.exec_driver_sql(
-                    f"GRANT SELECT, INSERT ON TABLE public.{table_name} "
+                    f"GRANT {privileges} ON TABLE public.{table_name} "
                     f"TO {runtime_role_identifier}"
                 )
         if connection.exec_driver_sql(

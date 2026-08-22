@@ -198,6 +198,12 @@ _MEMBERSHIP_TABLES = (
     "solutions",
 )
 
+_EVIDENCE_WAIVER_CHECK = (
+    "waiver_id IS NULL OR (waiver_authority_id IS NOT NULL AND "
+    "waiver_reason IS NOT NULL AND waiver_expires_at IS NOT NULL AND "
+    "interim_accountable_id IS NOT NULL AND waived_at IS NOT NULL)"
+)
+
 
 def _create_transformation_tables(*, dry_run, existing_tables, added, failed):
     """Create only the new canonical tables when init-db has not run yet."""
@@ -268,6 +274,79 @@ def _ensure_transformation_foreign_keys(*, dry_run, existing_tables, added, fail
         except Exception as exc:  # noqa: BLE001
             db.session.rollback()
             failed.append(f"{label}: {str(exc)[:120]}")
+
+
+def _ensure_evidence_waiver_constraint(
+    *, dry_run, existing_tables, added, failed
+):
+    """Install and validate the Task 6 waiver invariant on upgraded databases."""
+    from sqlalchemy import inspect, text
+
+    table_name = "evidence_requests"
+    constraint_name = "ck_evidence_request_waiver_complete"
+    if table_name not in existing_tables:
+        return
+
+    required_columns = {
+        "waiver_id",
+        "waiver_authority_id",
+        "waiver_reason",
+        "waiver_expires_at",
+        "interim_accountable_id",
+        "waived_at",
+    }
+    live_columns = {
+        item["name"] for item in inspect(db.engine).get_columns(table_name)
+    }
+    if not dry_run and not required_columns <= live_columns:
+        failed.append(
+            f"constraint.{constraint_name}: required waiver columns are missing"
+        )
+        return
+
+    row = db.session.execute(
+        text(
+            """
+            SELECT c.convalidated
+            FROM pg_constraint AS c
+            JOIN pg_class AS t ON t.oid = c.conrelid
+            JOIN pg_namespace AS n ON n.oid = t.relnamespace
+            WHERE n.nspname = current_schema()
+              AND t.relname = :table_name
+              AND c.conname = :constraint_name
+              AND c.contype = 'c'
+            """
+        ),
+        {"table_name": table_name, "constraint_name": constraint_name},
+    ).mappings().one_or_none()
+    if row is not None and row["convalidated"]:
+        return
+
+    label = f"constraint.{constraint_name}"
+    action = "CHECK NOT VALID THEN VALIDATE"
+    if dry_run:
+        added.append(f"{label} :: {action}")
+        return
+
+    try:
+        if row is None:
+            db.session.execute(
+                text(
+                    f'ALTER TABLE "{table_name}" ADD CONSTRAINT '
+                    f'"{constraint_name}" CHECK ({_EVIDENCE_WAIVER_CHECK}) NOT VALID'
+                )
+            )
+        db.session.execute(
+            text(
+                f'ALTER TABLE "{table_name}" VALIDATE CONSTRAINT '
+                f'"{constraint_name}"'
+            )
+        )
+        db.session.commit()
+        added.append(f"{label} :: {action}")
+    except Exception as exc:  # noqa: BLE001
+        db.session.rollback()
+        failed.append(f"{label}: {str(exc)[:120]}")
 
 
 def _ensure_benefit_legacy_fk(*, dry_run, existing_tables, added, failed):
@@ -765,6 +844,12 @@ def _reconcile(dry_run=False):
                 failed.append(f"{label}: {str(exc)[:120]}")
 
     _backfill_roadmap_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _ensure_evidence_waiver_constraint(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,

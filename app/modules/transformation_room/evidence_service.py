@@ -165,7 +165,13 @@ def canonical_source_identity(adapter_key: str, source_identity: str) -> str:
     if not separator or not opaque:
         return f"{adapter}:{identity}"
     prefix = prefix.strip().lower()
-    if prefix in {"application", "attestation", "conflict", "resolution", "unknown"}:
+    if prefix == adapter or prefix in {
+        "application",
+        "attestation",
+        "conflict",
+        "resolution",
+        "unknown",
+    }:
         return f"{prefix}:{opaque}"
     return f"{adapter}:{prefix}:{opaque}"
 
@@ -813,15 +819,27 @@ class TransformationEvidenceService:
                 EvidenceClaimHead.subject_type == candidate.subject_type,
                 EvidenceClaimHead.subject_id == candidate.subject_id,
                 EvidenceClaimHead.claim_key == request.claim_key,
-                EvidenceRecord.classification.in_(("observed", "external_reference")),
+                EvidenceRecord.id != attestation_id,
+                EvidenceRecord.classification != "conflict",
+                EvidenceRecord.source_type != "governance_resolution",
             )
-            .order_by(EvidenceRecord.id)
+            .order_by(EvidenceClaimHead.source_identity, EvidenceRecord.id)
         ).all()
         conflict_mutation = None
-        if canonical_records and not any(
-            cls._record_agrees(record, value) for record in canonical_records
-        ):
-            cited = [canonical_records[0].id, attestation_id]
+        disagreeing = [
+            record
+            for record in canonical_records
+            if not cls._record_agrees(record, value)
+        ]
+        if disagreeing:
+            attestation = session.get(EvidenceRecord, attestation_id)
+            cited = [
+                record.id
+                for record in sorted(
+                    (*canonical_records, attestation),
+                    key=lambda record: (record.source_identity, record.id),
+                )
+            ]
             conflict_value = TypedEvidenceValue(
                 "json", {"conflicting_evidence_ids": cited}, None, None
             )
@@ -933,7 +951,9 @@ class TransformationEvidenceService:
                 select(EvidenceRecord.id).where(
                     EvidenceRecord.id == payload["evidence_id"],
                     EvidenceRecord.organization_id == actor.organization_id,
-                    EvidenceRecord.candidate_id == request.candidate_id,
+                    EvidenceRecord.subject_type == request.subject_type,
+                    EvidenceRecord.subject_id == request.subject_id,
+                    EvidenceRecord.claim_key == request.claim_key,
                 )
             )
             if evidence is None:
@@ -955,12 +975,13 @@ class TransformationEvidenceService:
             raise CommandConflict("evidence_request_not_submitted")
         if request.revision != payload["expected_revision"]:
             raise CommandConflict("stale_revision")
+        if request.submitted_evidence_id != payload["evidence_id"]:
+            raise CommandConflict("evidence_not_submitted_for_request")
         evidence = session.scalar(
             select(EvidenceRecord)
             .where(
                 EvidenceRecord.id == payload["evidence_id"],
                 EvidenceRecord.organization_id == actor.organization_id,
-                EvidenceRecord.candidate_id == candidate.id,
                 EvidenceRecord.subject_type == request.subject_type,
                 EvidenceRecord.subject_id == request.subject_id,
                 EvidenceRecord.claim_key == request.claim_key,
@@ -968,6 +989,8 @@ class TransformationEvidenceService:
         )
         if evidence is None:
             raise NotFound("evidence_record_not_found")
+        if evidence.classification == "conflict":
+            raise CommandConflict("evidence_conflict_unresolved")
         is_current = session.scalar(
             select(EvidenceClaimHead.id).where(
                 EvidenceClaimHead.organization_id == actor.organization_id,
@@ -980,6 +1003,54 @@ class TransformationEvidenceService:
         )
         if is_current is None:
             raise CommandConflict("evidence_record_not_current")
+        current_records = session.scalars(
+            select(EvidenceRecord)
+            .join(
+                EvidenceClaimHead,
+                EvidenceClaimHead.current_record_id == EvidenceRecord.id,
+            )
+            .where(
+                EvidenceClaimHead.organization_id == actor.organization_id,
+                EvidenceClaimHead.subject_type == request.subject_type,
+                EvidenceClaimHead.subject_id == request.subject_id,
+                EvidenceClaimHead.claim_key == request.claim_key,
+                EvidenceRecord.organization_id == actor.organization_id,
+            )
+            .order_by(EvidenceClaimHead.source_identity, EvidenceRecord.id)
+        ).all()
+        conflicts = [
+            record for record in current_records if record.classification == "conflict"
+        ]
+        resolutions = [
+            record
+            for record in current_records
+            if record.source_type == "governance_resolution"
+        ]
+        source_leaves = [
+            record
+            for record in current_records
+            if record.classification != "conflict"
+            and record.source_type != "governance_resolution"
+        ]
+        selected = TypedEvidenceValue(
+            evidence.value_type,
+            evidence.value_json,
+            evidence.unit,
+            evidence.currency,
+        )
+        corrected_to_agreement = bool(source_leaves) and all(
+            cls._record_agrees(record, selected) for record in source_leaves
+        )
+        unresolved = [
+            conflict
+            for conflict in conflicts
+            if not any(
+                conflict.id in set(resolution.cited_evidence_ids or ())
+                for resolution in resolutions
+            )
+        ]
+        if unresolved and not corrected_to_agreement:
+            raise CommandConflict("evidence_conflict_unresolved")
         request.status = "accepted"
         request.accepted_evidence_id = evidence.id
         request.accepted_at = CommandService._database_now(session)
@@ -1257,6 +1328,22 @@ class TransformationEvidenceService:
         candidate, workstream, programme = cls._load_scope(
             session, actor, conflict.candidate_id, lock=True
         )
+        request = session.scalar(
+            select(EvidenceRequest)
+            .where(
+                EvidenceRequest.id == conflict.source_record_id,
+                EvidenceRequest.organization_id == actor.organization_id,
+                EvidenceRequest.candidate_id == candidate.id,
+                EvidenceRequest.subject_type == conflict.subject_type,
+                EvidenceRequest.subject_id == conflict.subject_id,
+                EvidenceRequest.claim_key == conflict.claim_key,
+                EvidenceRequest.status == "submitted",
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        if request is None:
+            raise NotFound("evidence_conflict_request_not_found")
         cls._decision_actor(session, actor, programme, workstream, lock=True)
         if payload["governing_evidence_id"] not in set(conflict.cited_evidence_ids or []):
             raise CommandConflict("governing_evidence_not_conflict_leaf")
@@ -1291,7 +1378,7 @@ class TransformationEvidenceService:
             None,
             None,
         )
-        return cls._append_and_advance(
+        mutation = cls._append_and_advance(
             session,
             actor,
             candidate,
@@ -1327,6 +1414,34 @@ class TransformationEvidenceService:
             0,
             claim,
             "decision authority selected governing source",
+        )
+        resolution_id = mutation.object_ids["evidence_record_id"]
+        request.submitted_evidence_id = resolution_id
+        request.revision += 1
+        session.flush()
+        object_ids = {
+            **mutation.object_ids,
+            "evidence_request_id": request.id,
+        }
+        response = {
+            **mutation.response,
+            "request_id": request.id,
+            "request_revision": request.revision,
+        }
+        return DomainMutationResult(
+            object_ids,
+            response,
+            (
+                *mutation.outbox_events,
+                {
+                    "event_type": "evidence.request_governed",
+                    "payload": {
+                        "request_id": request.id,
+                        "resolution_evidence_id": resolution_id,
+                        "revision": request.revision,
+                    },
+                },
+            ),
         )
 
     @classmethod
@@ -1404,20 +1519,6 @@ class TransformationEvidenceService:
         )
         session.add(record)
         session.flush()
-        event = EvidenceHeadEvent(
-            organization_id=actor.organization_id,
-            head_id=head.id,
-            old_record_id=old_record_id,
-            new_record_id=record.id,
-            actor_id=actor.user_id,
-            command_receipt_id=claim.receipt_id,
-            command_generation=claim.generation,
-            reason=reason,
-            revision=new_revision,
-            created_txid=session.scalar(text("SELECT txid_current()")),
-        )
-        session.add(event)
-        session.flush()
         advanced_revision = session.scalar(
             text(
                 "SELECT public.archie_advance_evidence_head("
@@ -1436,6 +1537,18 @@ class TransformationEvidenceService:
         )
         if advanced_revision != new_revision:
             raise CommandConflict("evidence_head_advance_failed")
+        event = session.scalar(
+            select(EvidenceHeadEvent).where(
+                EvidenceHeadEvent.organization_id == actor.organization_id,
+                EvidenceHeadEvent.head_id == head.id,
+                EvidenceHeadEvent.new_record_id == record.id,
+                EvidenceHeadEvent.command_receipt_id == claim.receipt_id,
+                EvidenceHeadEvent.command_generation == claim.generation,
+                EvidenceHeadEvent.revision == new_revision,
+            )
+        )
+        if event is None or event.reason != reason:
+            raise CommandConflict("evidence_head_event_missing")
         object_ids = {
             "evidence_record_id": record.id,
             "evidence_head_id": head.id,
@@ -1472,37 +1585,57 @@ class TransformationEvidenceService:
         if not subject_type:
             raise ValueError("subject_type is required")
         with Session(db.engine) as session:
-            candidate = session.scalar(
-                select(TransformationCandidate).where(
+            candidate_ids = session.scalars(
+                select(TransformationCandidate.id)
+                .join(
+                    ProgrammeWorkstream,
+                    (ProgrammeWorkstream.id == TransformationCandidate.workstream_id)
+                    & (
+                        ProgrammeWorkstream.organization_id
+                        == TransformationCandidate.organization_id
+                    ),
+                )
+                .where(
                     TransformationCandidate.organization_id == actor.organization_id,
                     TransformationCandidate.subject_type == subject_type,
                     TransformationCandidate.subject_id == subject_id,
                     TransformationCandidate.inclusion_status == "accepted",
+                    ProgrammeWorkstream.organization_id == actor.organization_id,
                 )
-            )
-            if candidate is None:
+                .order_by(
+                    ProgrammeWorkstream.programme_id,
+                    ProgrammeWorkstream.id,
+                    TransformationCandidate.id,
+                )
+            ).all()
+            if not candidate_ids:
                 raise NotFound("evidence_subject_not_found")
-            _candidate, workstream, programme = cls._load_scope(
-                session, actor, candidate.id, lock=False
-            )
-            TransformationProgrammeService._require_programme_authority(
-                session,
-                actor,
-                programme.id,
-                workstream.id,
-                READ_ROLES,
-                "evidence_read_not_authorised",
-            )
+            authorized = False
+            for candidate_id in candidate_ids:
+                _candidate, workstream, programme = cls._load_scope(
+                    session, actor, candidate_id, lock=False
+                )
+                try:
+                    TransformationProgrammeService._require_programme_authority(
+                        session,
+                        actor,
+                        programme.id,
+                        workstream.id,
+                        READ_ROLES,
+                        "evidence_read_not_authorised",
+                    )
+                except NotAuthorised:
+                    continue
+                authorized = True
+                break
+            if not authorized:
+                raise NotAuthorised("evidence_read_not_authorised")
             records = tuple(
                 session.scalars(
                     select(EvidenceRecord)
                     .join(
                         EvidenceClaimHead,
                         EvidenceClaimHead.current_record_id == EvidenceRecord.id,
-                    )
-                    .join(
-                        TransformationCandidate,
-                        TransformationCandidate.id == EvidenceRecord.candidate_id,
                     )
                     .where(
                         EvidenceClaimHead.organization_id == actor.organization_id,
@@ -1511,11 +1644,12 @@ class TransformationEvidenceService:
                         EvidenceRecord.organization_id == actor.organization_id,
                         EvidenceRecord.subject_type == subject_type,
                         EvidenceRecord.subject_id == subject_id,
-                        TransformationCandidate.organization_id == actor.organization_id,
-                        TransformationCandidate.subject_type == subject_type,
-                        TransformationCandidate.subject_id == subject_id,
                     )
-                    .order_by(EvidenceRecord.claim_key, EvidenceRecord.source_identity)
+                    .order_by(
+                        EvidenceRecord.claim_key,
+                        EvidenceRecord.source_identity,
+                        EvidenceRecord.id,
+                    )
                 ).all()
             )
             session.expunge_all()
