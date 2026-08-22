@@ -39,6 +39,9 @@ _TRANSFORMATION_TABLES = (
     "programme_role_assignments",
     "programme_outcome_commitments",
     "measure_definitions",
+    "command_idempotency_records",
+    "operation_results",
+    "transformation_outbox_events",
 )
 
 _TRANSFORMATION_FOREIGN_KEYS = (
@@ -769,6 +772,18 @@ def _reconcile(dry_run=False):
         added=added,
         failed=failed,
     )
+
+    if not dry_run:
+        try:
+            from app.models.transformation_db_guards import (
+                ensure_transformation_db_guards,
+            )
+
+            ensure_transformation_db_guards(db.session.connection())
+            db.session.commit()
+        except Exception as exc:  # noqa: BLE001 — report alongside column failures
+            db.session.rollback()
+            failed.append(f"transformation_db_guards: {str(exc)[:120]}")
 
     if not dry_run:
         try:
