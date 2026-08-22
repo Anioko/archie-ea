@@ -529,10 +529,10 @@ def test_archived_programme_rejects_role_and_objective_mutations(programme_fixtu
     assert view.next_action is None
 
 
-def test_active_programme_read_builds_next_action_from_detached_multiple_workstreams(
+def test_active_programme_read_prioritises_earliest_stage_across_detached_workstreams(
     programme_fixture,
 ):
-    """Catches next-action projection lazy-loading programme after session detach."""
+    """Catches next action using ID rather than lifecycle risk after session detach."""
     created = TransformationProgrammeService.create_programme(
         actor=programme_fixture.actor,
         command_key="active-multiple-workstreams",
@@ -540,7 +540,7 @@ def test_active_programme_read_builds_next_action_from_detached_multiple_workstr
     )
     with Session(db.engine) as session, session.begin():
         first = session.get(ProgrammeWorkstream, created.object_ids["workstream_id"])
-        first.lifecycle_stage = "completed"
+        first.lifecycle_stage = "approved"
         second = ProgrammeWorkstream(
             organization_id=programme_fixture.organization_id,
             programme_id=created.object_ids["programme_id"],

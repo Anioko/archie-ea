@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -289,6 +289,7 @@ def _policy_snapshot(source: str, target: str, **changes):
         "delivery_records": (delivery,),
         "measurements": (measurement,),
         "outcome_reviews": (review,),
+        "authorized_waiver_authority_ids": frozenset({7}),
         "unavailable_resources": frozenset(),
     }
     if source == "rejected" and target == "options":
@@ -507,6 +508,122 @@ def test_execute_accepts_resolved_conditional_cycle_and_real_benefit_shape(app):
         TransformationGateService.require_valid_transition("approved", "execute"),
     )
     assert blockers == []
+
+
+@pytest.mark.parametrize("baseline", (Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")))
+def test_execute_rejects_non_finite_legacy_benefit_baseline(baseline):
+    """Catches a legacy Benefit special value satisfying the execution contract."""
+    snapshot = _policy_snapshot("approved", "execute")
+    benefit = replace_namespace(snapshot.benefits[0], baseline_value=baseline)
+
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(snapshot, benefits=(benefit,)),
+        TransformationGateService.require_valid_transition("approved", "execute"),
+    )
+
+    assert {row.code for row in blockers} == {"benefit_value_invalid"}
+
+
+@pytest.mark.parametrize(
+    "waiver_change",
+    (
+        {"waiver_authority_id": 999999},
+        {"organization_id": 999},
+        {"waiver_expires_at": datetime.now(timezone.utc) - timedelta(days=1)},
+        {"waiver_expires_at": date.today()},
+        {"waiver_condition_id": 999},
+        {"waiver_arb_cycle_id": 999},
+        {"waiver_subject_id": 999},
+    ),
+)
+def test_condition_waiver_requires_verified_tenant_authority_and_exact_scope(waiver_change):
+    """Catches forged, foreign, expired or mismatched condition waivers releasing a gate."""
+    snapshot = _policy_snapshot("approved_with_conditions", "approved")
+    waiver = {
+        "organization_id": 10,
+        "status": "waived",
+        "accepted_evidence_id": None,
+        "waiver_authority_id": 7,
+        "waiver_reason": "Compensating control approved",
+        "waiver_expires_at": datetime.now(timezone.utc) + timedelta(days=30),
+        "waiver_condition_id": 91,
+        "waiver_arb_cycle_id": 81,
+        "waiver_subject_type": "decision_brief",
+        "waiver_subject_id": 70,
+    }
+    condition = replace_namespace(snapshot.arb_conditions[0], **{**waiver, **waiver_change})
+    verified_snapshot = replace(
+        snapshot,
+        arb_conditions=(condition,),
+        authorized_waiver_authority_ids=frozenset({7}),
+    )
+
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        verified_snapshot,
+        TransformationGateService.require_valid_transition(
+            "approved_with_conditions", "approved"
+        ),
+    )
+
+    assert {row.code for row in blockers} == {"arb_conditions_open"}
+
+
+def test_condition_waiver_accepts_only_verified_exactly_linked_authority():
+    """Pins the positive path for a tenant-loaded governance waiver authority."""
+    snapshot = _policy_snapshot("approved_with_conditions", "approved")
+    condition = replace_namespace(
+        snapshot.arb_conditions[0],
+        organization_id=10,
+        status="waived",
+        accepted_evidence_id=None,
+        waiver_authority_id=7,
+        waiver_reason="Compensating control approved",
+        waiver_expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+        waiver_condition_id=91,
+        waiver_arb_cycle_id=81,
+        waiver_subject_type="decision_brief",
+        waiver_subject_id=70,
+    )
+    verified_snapshot = replace(
+        snapshot,
+        arb_conditions=(condition,),
+        authorized_waiver_authority_ids=frozenset({7}),
+    )
+
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        verified_snapshot,
+        TransformationGateService.require_valid_transition(
+            "approved_with_conditions", "approved"
+        ),
+    )
+
+    assert blockers == []
+
+
+def test_snapshot_loads_waiver_authority_from_persisted_tenant_roles(programme_fixture):
+    """Catches caller claims or foreign and ordinary tenant users entering waiver authority."""
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="waiver-authority-snapshot",
+        request=_intake(programme_fixture.owner_id),
+    )
+    ordinary_user = User(
+        email=f"ordinary-waiver-{uuid.uuid4().hex[:10]}@example.test",
+        organization_id=programme_fixture.organization_id,
+        confirmed=True,
+        enterprise_role="application_manager",
+    )
+    db.session.add(ordinary_user)
+    db.session.commit()
+
+    snapshot = TransformationGateService.load_policy_snapshot(
+        actor=programme_fixture.actor,
+        workstream_id=created.object_ids["workstream_id"],
+    )
+
+    assert programme_fixture.owner_id in snapshot.authorized_waiver_authority_ids
+    assert ordinary_user.id not in snapshot.authorized_waiver_authority_ids
+    assert programme_fixture.foreign_owner_id not in snapshot.authorized_waiver_authority_ids
 
 
 def test_missing_option_numeric_bound_returns_stable_contract_blocker():

@@ -21,6 +21,7 @@ from app.models.transformation_programme import (
     ProgrammeRoleAssignment,
     ProgrammeWorkstream,
 )
+from app.models.user import User
 from app.modules.transformation_room.command_service import CommandService, OperationAuthorizer
 from app.modules.transformation_room.domain import (
     ActorContext,
@@ -73,6 +74,7 @@ class PolicySnapshot:
     delivery_records: tuple[object, ...]
     measurements: tuple[object, ...]
     outcome_reviews: tuple[object, ...]
+    authorized_waiver_authority_ids: frozenset[int]
     unavailable_resources: frozenset[str]
 
 
@@ -104,7 +106,7 @@ def _current(value: Any) -> bool:
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
         return value > now
-    return value >= date.today()
+    return value > date.today()
 
 
 class TransformationGateService:
@@ -137,6 +139,21 @@ class TransformationGateService:
         "outcomes": "completed",
     }
     TERMINAL_STAGES = frozenset({"completed"})
+    STAGE_ORDER = {
+        "objective": 0,
+        "discover": 1,
+        "evidence": 2,
+        "options": 3,
+        "rejected": 3,
+        "decision_ready": 4,
+        "in_governance": 5,
+        "approved_with_conditions": 6,
+        "approved": 7,
+        "execute": 8,
+        "outcomes": 9,
+        "completed": 10,
+    }
+    WAIVER_AUTHORITY_ROLES = CREATE_ROLES | frozenset({"arb_member", "decision_authority"})
     REQUIRED_RESOURCES = {
         ("discover", "evidence"): frozenset({"candidates", "evidence"}),
         ("evidence", "options"): frozenset({"evidence"}),
@@ -221,6 +238,30 @@ class TransformationGateService:
             ProgrammeRoleAssignment.organization_id == actor.organization_id,
             ProgrammeRoleAssignment.programme_id == programme.id,
         )).all())
+        tenant_users = tuple(session.scalars(select(User).where(
+            User.organization_id == actor.organization_id,
+        )).all())
+        tenant_user_ids = {row.id for row in tenant_users}
+        today = date.today()
+        authorized_waiver_authority_ids = {
+            row.id
+            for row in tenant_users
+            if (
+                row.enterprise_role in cls.WAIVER_AUTHORITY_ROLES
+                or (row.is_org_admin and "organization_admin" in cls.WAIVER_AUTHORITY_ROLES)
+                or (row.is_platform_admin and "platform_admin" in cls.WAIVER_AUTHORITY_ROLES)
+            )
+        }
+        authorized_waiver_authority_ids.update(
+            row.user_id
+            for row in roles
+            if row.user_id in tenant_user_ids
+            and row.role == "decision_authority"
+            and row.effective_from is not None
+            and row.effective_from <= today
+            and (row.effective_to is None or row.effective_to >= today)
+            and (row.workstream_id is None or row.workstream_id == workstream.id)
+        )
         outcomes = tuple(session.scalars(select(ProgrammeOutcomeCommitment).where(
             ProgrammeOutcomeCommitment.organization_id == actor.organization_id,
             ProgrammeOutcomeCommitment.programme_id == programme.id,
@@ -251,7 +292,7 @@ class TransformationGateService:
         return PolicySnapshot(
             programme, workstream, roles, outcomes, measures, (), (), (), (), (),
             (), (), (), (), (), (), work_packages, roadmap_items, benefits, (), (),
-            (), unavailable,
+            (), frozenset(authorized_waiver_authority_ids), unavailable,
         )
 
     @staticmethod
@@ -358,11 +399,16 @@ class TransformationGateService:
             block("target_date_required", "Record a target date or why it is unavailable.", "workstream", workstream_id, f"{room}/objective")
 
     @classmethod
-    def _valid_waiver(cls, row):
+    def _valid_waiver(cls, snapshot, row):
         authority = _value(row, "approver_id", _value(row, "waiver_authority_id"))
         reason = _text(row, "reason") or _text(row, "waiver_reason")
         expiry = _value(row, "expires_at", _value(row, "waiver_expires_at"))
-        return bool(authority and reason and _current(expiry))
+        return bool(
+            authority in snapshot.authorized_waiver_authority_ids
+            and _value(row, "organization_id") == snapshot.programme.organization_id
+            and reason
+            and _current(expiry)
+        )
 
     @classmethod
     def _evaluate_discovery(cls, snapshot, block, room):
@@ -385,7 +431,7 @@ class TransformationGateService:
                                  for row in snapshot.evidence_records)
             owner_waiver = any(_value(row, "candidate_id") == candidate.id
                                and _value(row, "claim_key") == "application_owner"
-                               and cls._valid_waiver(row) and _value(row, "interim_owner_id")
+                               and cls._valid_waiver(snapshot, row) and _value(row, "interim_owner_id")
                                for row in snapshot.evidence_waivers)
             if not owner_evidence and not owner_waiver:
                 block("application_owner_evidence_required", "Resolve application ownership with accepted evidence or a controlled waiver.", "candidate", candidate.id, f"{room}/evidence")
@@ -402,7 +448,8 @@ class TransformationGateService:
             or (_value(row, "status") in {"declined", "unavailable"} and _value(row, "acknowledgement_id"))
             or (_value(row, "status") == "expired"
                 and any(_value(waiver, "id") == _value(row, "waiver_id")
-                        and cls._valid_waiver(waiver) for waiver in snapshot.evidence_waivers))
+                        and cls._valid_waiver(snapshot, waiver)
+                        for waiver in snapshot.evidence_waivers))
             for row in snapshot.evidence_requests)
         if not requests_complete:
             block("required_evidence_incomplete", "Complete or explicitly acknowledge every required evidence request.", "workstream", workstream_id, f"{room}/evidence")
@@ -571,8 +618,21 @@ class TransformationGateService:
                 _value(row, "status") == "fulfilled"
                 and _value(row, "accepted_evidence_id") in accepted_evidence_ids
             )
-            or (_value(row, "status") == "waived" and cls._valid_waiver(row))
+            or (
+                _value(row, "status") == "waived"
+                and cls._valid_condition_waiver(snapshot, row, cycle)
+            )
             for row in conditions
+        )
+
+    @classmethod
+    def _valid_condition_waiver(cls, snapshot, condition, cycle):
+        return bool(
+            cls._valid_waiver(snapshot, condition)
+            and _value(condition, "waiver_condition_id") == _value(condition, "id")
+            and _value(condition, "waiver_arb_cycle_id") == _value(cycle, "id")
+            and _value(condition, "waiver_subject_type") == _value(cycle, "subject_type")
+            and _value(condition, "waiver_subject_id") == _value(cycle, "subject_id")
         )
 
     @classmethod
@@ -608,13 +668,32 @@ class TransformationGateService:
             for row in snapshot.approved_actions)
         if not action_ok:
             block("approved_action_unresolved", "Resolve every approved action into declined rationale or owned scheduled work.", "workstream", workstream_id, f"{room}/execute")
+        relevant_benefits = [
+            row
+            for row in snapshot.benefits
+            if _value(row, "programme_workstream_id") == workstream_id
+            and _value(row, "strategic_initiative_id") == snapshot.programme.id
+        ]
+        if any(
+            _value(row, field) is not None and not _finite(_value(row, field))
+            for row in relevant_benefits
+            for field in ("baseline_value", "target_value")
+        ):
+            block(
+                "benefit_value_invalid",
+                "Benefit baseline and target values must be finite.",
+                "workstream",
+                workstream_id,
+                f"{room}/outcomes",
+            )
+            return
         outcome_ids = {
             _value(row, "id")
             for row in snapshot.outcomes
             if _value(row, "owner_id") and _text(row, "statement")
         }
         benefit_outcomes = set()
-        for benefit in snapshot.benefits:
+        for benefit in relevant_benefits:
             outcome_id = _value(benefit, "outcome_commitment_id")
             measures = [
                 measure
@@ -778,7 +857,10 @@ class TransformationGateService:
 
     @classmethod
     def next_action(cls, *, actor: ActorContext, workstreams: Sequence[ProgrammeWorkstream]):
-        for workstream in sorted(workstreams, key=lambda row: row.id):
+        for workstream in sorted(
+            workstreams,
+            key=lambda row: (cls.STAGE_ORDER.get(row.lifecycle_stage, -1), row.id),
+        ):
             if workstream.lifecycle_stage in cls.TERMINAL_STAGES:
                 continue
             target = cls.NEXT_STAGE.get(workstream.lifecycle_stage)
