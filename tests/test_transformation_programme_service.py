@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
+from dataclasses import asdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -31,6 +33,8 @@ from app.modules.transformation_room.domain import (
     NotFound,
     ProgrammeIntake,
 )
+from app.modules.transformation_room.command_service import CommandService
+from app.modules.transformation_room.gate_service import TransformationGateService
 from app.modules.transformation_room.programme_service import TransformationProgrammeService
 
 
@@ -183,6 +187,114 @@ def _rows(fixture: ProgrammeFixture):
         }
 
 
+def _claim_task4_mutation(kind: str, fixture: ProgrammeFixture):
+    """Claim one Task 4 command without entering its locked handler yet."""
+    if kind == "create":
+        validated = TransformationProgrammeService.validate_intake(
+            actor=fixture.actor, request=_intake(fixture.owner_id)
+        )
+        natural_key = "programme-intake:task4-create-race"
+        claim = CommandService.claim_or_reconcile(
+            actor=fixture.actor,
+            operation="programme.create",
+            idempotency_key="task4-create-race",
+            request_digest=CommandService.request_digest(asdict(validated)),
+            natural_key=natural_key,
+            authorizer=TransformationProgrammeService.authorise_create_programme(
+                validated, natural_key
+            ),
+        )
+        return (
+            "programme.create",
+            claim,
+            lambda session, fenced_claim: TransformationProgrammeService._insert_intake_graph(
+                session=session,
+                actor=fixture.actor,
+                request=validated,
+                claim=fenced_claim,
+            ),
+            None,
+        )
+
+    created = TransformationProgrammeService.create_programme(
+        actor=fixture.actor,
+        command_key=f"task4-{kind}-programme",
+        request=_intake(fixture.owner_id),
+    )
+    programme_id = created.object_ids["programme_id"]
+    workstream_id = created.object_ids["workstream_id"]
+    with Session(db.engine) as session, session.begin():
+        user = session.scalar(
+            select(User).where(
+                User.organization_id == fixture.organization_id,
+                User.id == fixture.owner_id,
+            )
+        )
+        user.enterprise_role = "application_manager"
+        assignment_id = session.scalar(
+            select(ProgrammeRoleAssignment.id).where(
+                ProgrammeRoleAssignment.organization_id == fixture.organization_id,
+                ProgrammeRoleAssignment.programme_id == programme_id,
+                ProgrammeRoleAssignment.user_id == fixture.owner_id,
+                ProgrammeRoleAssignment.role == "programme_owner",
+            )
+        )
+        assignment = session.get(ProgrammeRoleAssignment, assignment_id)
+        assignment.effective_from = date.today() - timedelta(days=2)
+
+    if kind == "objective":
+        operation = "workstream.update_objective"
+        payload = {
+            "workstream_id": workstream_id,
+            "objective": "The locked objective update",
+            "scope_expression": {"business_units": ["Retail"]},
+            "expected_revision": 1,
+        }
+        natural_key = f"objective:{workstream_id}:1"
+        authorizer = TransformationProgrammeService.authorise_objective_update(
+            workstream_id, 1
+        )
+        def handler(session, fenced_claim):
+            return TransformationProgrammeService._update_objective_locked(
+                session, fixture.actor, payload, fenced_claim
+            )
+    elif kind == "archive":
+        operation = "programme.archive"
+        payload = {"programme_id": programme_id, "expected_revision": 1}
+        natural_key = f"programme-archive:{programme_id}:1"
+        authorizer = TransformationProgrammeService.authorise_programme_archive(
+            programme_id, 1
+        )
+        def handler(session, fenced_claim):
+            return TransformationProgrammeService._archive_locked(
+                session, fixture.actor, payload, fenced_claim
+            )
+    else:
+        operation = "workstream.transition"
+        payload = {
+            "workstream_id": workstream_id,
+            "target_stage": "discover",
+            "expected_revision": 1,
+        }
+        natural_key = f"transition:{workstream_id}:1:discover"
+        authorizer = TransformationGateService.authorise_transition(
+            workstream_id, "discover", 1
+        )
+        def handler(session, fenced_claim):
+            return TransformationGateService._locked_transition(
+                session, fixture.actor, payload, fenced_claim
+            )
+    claim = CommandService.claim_or_reconcile(
+        actor=fixture.actor,
+        operation=operation,
+        idempotency_key=f"task4-{kind}-race",
+        request_digest=CommandService.request_digest(payload),
+        natural_key=natural_key,
+        authorizer=authorizer,
+    )
+    return operation, claim, handler, assignment_id
+
+
 def test_create_programme_persists_one_business_graph_and_replays_exactly(programme_fixture):
     """Catches business intake creating a Solution, duplicate graph, or lossy result envelope."""
     created = TransformationProgrammeService.create_programme(
@@ -235,6 +347,172 @@ def test_create_programme_requires_persisted_server_role_not_actor_claim(program
             request=_intake(programme_fixture.owner_id),
         )
     assert _rows(programme_fixture)["programme"] is None
+
+
+@pytest.mark.parametrize("kind", ["create", "objective", "archive", "transition"])
+def test_task4_mutation_commit_serializes_with_authority_revocation(
+    app, programme_fixture, kind
+):
+    """Catches a Task 4 write committing after its persisted authority was revoked."""
+    operation, claim, handler, assignment_id = _claim_task4_mutation(
+        kind, programme_fixture
+    )
+    engine = db.engine
+    authority_locked = threading.Event()
+    release_mutation = threading.Event()
+    revocation_started = threading.Event()
+    revocation_pid_ready = threading.Event()
+    results = []
+    mutation_errors = []
+    revocation_errors = []
+    revocation_pid = []
+    mutation_thread_name = f"task4-{kind}-mutation"
+
+    def pause_after_locked_authority(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ):
+        lowered = statement.lower()
+        expected_table = "users" if kind == "create" else "programme_role_assignments"
+        if (
+            threading.current_thread().name == mutation_thread_name
+            and statement.lstrip().upper().startswith("SELECT")
+            and expected_table in lowered
+            and "for update" in lowered
+        ):
+            authority_locked.set()
+            if not release_mutation.wait(timeout=10):
+                raise TimeoutError("Task 4 mutation authority pause was not released")
+
+    def mutate():
+        with app.app_context():
+            try:
+                results.append(
+                    CommandService._execute_claim(
+                        actor=programme_fixture.actor,
+                        operation=operation,
+                        claim=claim,
+                        authorizer=None,
+                        handler=handler,
+                    )
+                )
+            except Exception as error:  # asserted after both workers finish
+                mutation_errors.append(error)
+            finally:
+                db.session.remove()
+
+    def revoke():
+        with app.app_context():
+            try:
+                with Session(engine) as session, session.begin():
+                    revocation_pid.append(
+                        session.scalar(text("SELECT pg_backend_pid()"))
+                    )
+                    revocation_pid_ready.set()
+                    revocation_started.set()
+                    if kind == "create":
+                        user = session.scalar(
+                            select(User)
+                            .where(
+                                User.organization_id
+                                == programme_fixture.organization_id,
+                                User.id == programme_fixture.owner_id,
+                            )
+                            .with_for_update()
+                        )
+                        user.enterprise_role = "application_manager"
+                    else:
+                        assignment = session.scalar(
+                            select(ProgrammeRoleAssignment)
+                            .where(
+                                ProgrammeRoleAssignment.organization_id
+                                == programme_fixture.organization_id,
+                                ProgrammeRoleAssignment.id == assignment_id,
+                            )
+                            .with_for_update()
+                        )
+                        assignment.effective_to = date.today() - timedelta(days=1)
+            except Exception as error:  # asserted after both workers finish
+                revocation_errors.append(error)
+            finally:
+                db.session.remove()
+
+    event.listen(engine, "after_cursor_execute", pause_after_locked_authority)
+    mutation_thread = threading.Thread(
+        target=mutate, name=mutation_thread_name, daemon=True
+    )
+    revocation_thread = threading.Thread(
+        target=revoke, name=f"task4-{kind}-revocation", daemon=True
+    )
+    revocation_waited_on_lock = False
+    try:
+        mutation_thread.start()
+        assert authority_locked.wait(timeout=10)
+        revocation_thread.start()
+        assert revocation_started.wait(timeout=5)
+        assert revocation_pid_ready.wait(timeout=5)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and revocation_thread.is_alive():
+            with engine.connect() as connection:
+                revocation_waited_on_lock = connection.scalar(
+                    text(
+                        "SELECT wait_event_type = 'Lock' FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": revocation_pid[0]},
+                ) is True
+            if revocation_waited_on_lock:
+                break
+            time.sleep(0.01)
+    finally:
+        release_mutation.set()
+        mutation_thread.join(timeout=10)
+        if revocation_thread.ident is not None:
+            revocation_thread.join(timeout=10)
+        event.remove(engine, "after_cursor_execute", pause_after_locked_authority)
+
+    assert revocation_waited_on_lock is True
+    assert mutation_thread.is_alive() is False
+    assert revocation_thread.is_alive() is False
+    assert mutation_errors == []
+    assert revocation_errors == []
+    assert len(results) == 1
+
+
+@pytest.mark.parametrize("kind", ["create", "objective", "archive", "transition"])
+def test_task4_locked_handler_denies_revocation_that_commits_first(
+    programme_fixture, kind
+):
+    """Catches a claimed Task 4 command trusting authority read before its handler."""
+    operation, claim, handler, assignment_id = _claim_task4_mutation(
+        kind, programme_fixture
+    )
+    with Session(db.engine) as session, session.begin():
+        if kind == "create":
+            user = session.scalar(
+                select(User).where(
+                    User.organization_id == programme_fixture.organization_id,
+                    User.id == programme_fixture.owner_id,
+                )
+            )
+            user.enterprise_role = "application_manager"
+        else:
+            assignment = session.scalar(
+                select(ProgrammeRoleAssignment).where(
+                    ProgrammeRoleAssignment.organization_id
+                    == programme_fixture.organization_id,
+                    ProgrammeRoleAssignment.id == assignment_id,
+                )
+            )
+            assignment.effective_to = date.today() - timedelta(days=1)
+
+    with pytest.raises(NotAuthorised):
+        CommandService._execute_claim(
+            actor=programme_fixture.actor,
+            operation=operation,
+            claim=claim,
+            authorizer=None,
+            handler=handler,
+        )
 
 
 def test_create_programme_hides_cross_tenant_owner(programme_fixture):

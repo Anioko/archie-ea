@@ -9,7 +9,12 @@ from app.models.transformation_execution import (
     OperationOutboxEvent,
     OperationResult,
 )
-from app.models.transformation_evidence import CandidateSignal
+from app.models.transformation_evidence import (
+    CandidateSignal,
+    EvidenceClaimHead,
+    EvidenceHeadEvent,
+    EvidenceRecord,
+)
 
 
 TRANSFORMATION_RUNTIME_ROLE = "archie_runtime"
@@ -173,12 +178,206 @@ $$
 """
 
 
+_EVIDENCE_HEAD_GUARD_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_guard_evidence_head()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.current_record_id IS NOT NULL OR NEW.revision <> 0 THEN
+            RAISE EXCEPTION 'evidence head must be created empty at revision zero'
+                USING ERRCODE = '55000';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        IF OLD.current_record_id IS NOT NULL OR EXISTS (
+            SELECT 1 FROM public.evidence_head_events event
+            WHERE event.head_id = OLD.id
+        ) THEN
+            RAISE EXCEPTION 'evidence head with history cannot be deleted'
+                USING ERRCODE = '55000';
+        END IF;
+        RETURN OLD;
+    END IF;
+
+    IF NEW.id IS DISTINCT FROM OLD.id
+       OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
+       OR NEW.subject_type IS DISTINCT FROM OLD.subject_type
+       OR NEW.subject_id IS DISTINCT FROM OLD.subject_id
+       OR NEW.claim_key IS DISTINCT FROM OLD.claim_key
+       OR NEW.source_identity IS DISTINCT FROM OLD.source_identity
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+        RAISE EXCEPTION 'evidence head identity is immutable'
+            USING ERRCODE = '55000';
+    END IF;
+    IF NEW.current_record_id IS NULL OR NEW.revision <> OLD.revision + 1 THEN
+        RAISE EXCEPTION 'evidence head revision must advance exactly once'
+            USING ERRCODE = '55000';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.evidence_records record
+        WHERE record.id = NEW.current_record_id
+          AND record.organization_id = NEW.organization_id
+          AND record.subject_type = NEW.subject_type
+          AND record.subject_id = NEW.subject_id
+          AND record.claim_key = NEW.claim_key
+          AND record.source_identity = NEW.source_identity
+          AND record.supersedes_id IS NOT DISTINCT FROM OLD.current_record_id
+    ) THEN
+        RAISE EXCEPTION 'evidence head target is outside its chain or has wrong predecessor'
+            USING ERRCODE = '55000';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.evidence_head_events event
+        JOIN public.command_idempotency_records receipt
+          ON receipt.id = event.command_receipt_id
+         AND receipt.organization_id = event.organization_id
+         AND receipt.actor_id = event.actor_id
+        WHERE event.organization_id = NEW.organization_id
+          AND event.head_id = NEW.id
+          AND event.old_record_id IS NOT DISTINCT FROM OLD.current_record_id
+          AND event.new_record_id = NEW.current_record_id
+          AND event.revision = NEW.revision
+          AND event.created_txid = txid_current()
+          AND receipt.status = 'in_progress'
+          AND receipt.lease_generation = event.command_generation
+          AND receipt.lease_expires_at > clock_timestamp()
+    ) THEN
+        RAISE EXCEPTION 'evidence head move requires same-transaction fenced event'
+            USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$
+"""
+
+
+_EVIDENCE_HEAD_ADVANCE_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_advance_evidence_head(
+    p_head_id bigint,
+    p_new_record_id bigint,
+    p_expected_revision integer,
+    p_actor_id bigint,
+    p_receipt_id bigint,
+    p_generation integer,
+    p_claim_token text
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    head_organization_id bigint;
+    head_subject_type text;
+    head_subject_id bigint;
+    head_claim_key text;
+    head_source_identity text;
+    head_current_record_id bigint;
+    head_revision integer;
+    receipt_actor_id bigint;
+    receipt_organization_id bigint;
+    receipt_status text;
+    receipt_generation integer;
+    receipt_token text;
+    receipt_expiry timestamptz;
+    affected integer;
+BEGIN
+    SELECT organization_id, subject_type, subject_id, claim_key,
+           source_identity, current_record_id, revision
+      INTO head_organization_id, head_subject_type, head_subject_id,
+           head_claim_key, head_source_identity, head_current_record_id,
+           head_revision
+      FROM public.evidence_claim_heads
+     WHERE id = p_head_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'evidence head not found' USING ERRCODE = '55000';
+    END IF;
+    IF head_revision <> p_expected_revision THEN
+        RAISE EXCEPTION 'stale evidence head revision' USING ERRCODE = '40001';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM public.evidence_records record
+        WHERE record.id = p_new_record_id
+          AND record.organization_id = head_organization_id
+          AND record.subject_type = head_subject_type
+          AND record.subject_id = head_subject_id
+          AND record.claim_key = head_claim_key
+          AND record.source_identity = head_source_identity
+          AND record.supersedes_id IS NOT DISTINCT FROM head_current_record_id
+    ) THEN
+        RAISE EXCEPTION 'evidence record does not extend the locked head'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT actor_id, organization_id, status, lease_generation,
+           claim_token, lease_expires_at
+      INTO receipt_actor_id, receipt_organization_id, receipt_status,
+           receipt_generation, receipt_token, receipt_expiry
+      FROM public.command_idempotency_records
+     WHERE id = p_receipt_id
+     FOR UPDATE;
+    IF NOT FOUND
+       OR receipt_actor_id <> p_actor_id
+       OR receipt_organization_id <> head_organization_id
+       OR receipt_status <> 'in_progress'
+       OR receipt_generation <> p_generation
+       OR receipt_token IS DISTINCT FROM p_claim_token
+       OR receipt_expiry IS NULL
+       OR receipt_expiry <= clock_timestamp() THEN
+        RAISE EXCEPTION 'evidence head command fence is stale or unrelated'
+            USING ERRCODE = '55000';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM public.evidence_head_events event
+        WHERE event.organization_id = head_organization_id
+          AND event.head_id = p_head_id
+          AND event.old_record_id IS NOT DISTINCT FROM head_current_record_id
+          AND event.new_record_id = p_new_record_id
+          AND event.actor_id = p_actor_id
+          AND event.command_receipt_id = p_receipt_id
+          AND event.command_generation = p_generation
+          AND event.revision = head_revision + 1
+          AND event.created_txid = txid_current()
+    ) THEN
+        RAISE EXCEPTION 'evidence head event is missing or unrelated'
+            USING ERRCODE = '55000';
+    END IF;
+
+    UPDATE public.evidence_claim_heads
+       SET current_record_id = p_new_record_id,
+           revision = head_revision + 1,
+           updated_at = clock_timestamp()
+     WHERE id = p_head_id
+       AND organization_id = head_organization_id
+       AND revision = head_revision
+       AND current_record_id IS NOT DISTINCT FROM head_current_record_id;
+    GET DIAGNOSTICS affected = ROW_COUNT;
+    IF affected <> 1 THEN
+        RAISE EXCEPTION 'evidence head compare-and-swap failed'
+            USING ERRCODE = '40001';
+    END IF;
+    RETURN head_revision + 1;
+END;
+$$
+"""
+
+
 _FUNCTION_SPECS = (
     (
         "archie_reject_transformation_mutation",
         _IMMUTABILITY_FUNCTION_SQL,
     ),
     ("archie_guard_transformation_receipt", _RECEIPT_FUNCTION_SQL),
+    ("archie_guard_evidence_head", _EVIDENCE_HEAD_GUARD_SQL),
 )
 
 _TRIGGER_SPECS = (
@@ -202,6 +401,21 @@ _TRIGGER_SPECS = (
         "trg_candidate_signal_immutable",
         "archie_reject_transformation_mutation",
     ),
+    (
+        "evidence_records",
+        "trg_evidence_record_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "evidence_head_events",
+        "trg_evidence_event_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "evidence_claim_heads",
+        "trg_evidence_head_guard",
+        "archie_guard_evidence_head",
+    ),
 )
 
 
@@ -209,10 +423,15 @@ _IMMUTABLE_TABLES = (
     "operation_results",
     "transformation_outbox_events",
     "candidate_signals",
+    "evidence_records",
+    "evidence_head_events",
 )
 
 
-_COMMAND_TABLES = _IMMUTABLE_TABLES + ("command_idempotency_records",)
+_COMMAND_TABLES = _IMMUTABLE_TABLES + (
+    "command_idempotency_records",
+    "evidence_claim_heads",
+)
 
 
 def _normalise_function_body(body: str) -> str:
@@ -251,6 +470,29 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         if "search_path=pg_catalog, public" not in (row.proconfig or []):
             drift.append(f"function_search_path:{function_name}")
 
+    advance = connection.exec_driver_sql(
+        """
+        SELECT proc.prosrc, proc.prosecdef, proc.proconfig
+        FROM pg_proc proc
+        JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+        WHERE namespace.nspname = 'public'
+          AND proc.proname = 'archie_advance_evidence_head'
+          AND proc.pronargs = 7
+          AND proc.prorettype = 'integer'::regtype
+        """
+    ).first()
+    if advance is None:
+        drift.append("function_missing:archie_advance_evidence_head")
+    else:
+        if _normalise_function_body(advance.prosrc) != _expected_function_body(
+            _EVIDENCE_HEAD_ADVANCE_SQL
+        ):
+            drift.append("function_body:archie_advance_evidence_head")
+        if advance.prosecdef is not True:
+            drift.append("function_security:archie_advance_evidence_head")
+        if "search_path=pg_catalog, public" not in (advance.proconfig or []):
+            drift.append("function_search_path:archie_advance_evidence_head")
+
     for table_name, trigger_name, function_name in _TRIGGER_SPECS:
         table_present = connection.exec_driver_sql(
             f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
@@ -280,8 +522,9 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             drift.append(f"trigger_disabled:{trigger_name}")
         if row.function_schema != "public" or row.function_name != function_name:
             drift.append(f"trigger_function:{trigger_name}")
-        # PostgreSQL tgtype: ROW(1) | BEFORE(2) | DELETE(8) | UPDATE(16).
-        if row.tgtype != 27:
+        # Evidence heads also guard INSERT so they can only start empty at revision 0.
+        expected_tgtype = 31 if table_name == "evidence_claim_heads" else 27
+        if row.tgtype != expected_tgtype:
             drift.append(f"trigger_shape:{trigger_name}")
         if row.has_when:
             drift.append(f"trigger_when:{trigger_name}")
@@ -313,10 +556,11 @@ def _repair_triggers(connection) -> None:
             """,
             (trigger_name, f"public.{table_name}"),
         ).first()
+        expected_tgtype = 31 if table_name == "evidence_claim_heads" else 27
         correct = (
             row is not None
             and row.tgenabled == "O"
-            and row.tgtype == 27
+            and row.tgtype == expected_tgtype
             and not row.has_when
             and not row.update_columns
             and row.function_schema == "public"
@@ -327,9 +571,14 @@ def _repair_triggers(connection) -> None:
         connection.exec_driver_sql(
             f"DROP TRIGGER IF EXISTS {trigger_name} ON public.{table_name}"
         )
+        events = (
+            "INSERT OR UPDATE OR DELETE"
+            if table_name == "evidence_claim_heads"
+            else "UPDATE OR DELETE"
+        )
         connection.exec_driver_sql(
             f"CREATE TRIGGER {trigger_name} "
-            f"BEFORE UPDATE OR DELETE ON public.{table_name} "
+            f"BEFORE {events} ON public.{table_name} "
             "FOR EACH ROW "
             f"EXECUTE FUNCTION public.{function_name}()"
         )
@@ -349,11 +598,20 @@ def ensure_transformation_db_guards(
     )
     connection.exec_driver_sql(_IMMUTABILITY_FUNCTION_SQL)
     connection.exec_driver_sql(_RECEIPT_FUNCTION_SQL)
+    connection.exec_driver_sql(_EVIDENCE_HEAD_GUARD_SQL)
+    connection.exec_driver_sql(_EVIDENCE_HEAD_ADVANCE_SQL)
     connection.exec_driver_sql(
         "REVOKE ALL ON FUNCTION public.archie_reject_transformation_mutation() FROM PUBLIC"
     )
     connection.exec_driver_sql(
         "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        "REVOKE ALL ON FUNCTION public.archie_guard_evidence_head() FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        "REVOKE ALL ON FUNCTION public.archie_advance_evidence_head("
+        "bigint, bigint, integer, bigint, bigint, integer, text) FROM PUBLIC"
     )
     runtime_role_exists = connection.exec_driver_sql(
         "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s)",
@@ -371,6 +629,15 @@ def ensure_transformation_db_guards(
         connection.exec_driver_sql(
             "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() "
             f"FROM {runtime_role_identifier}"
+        )
+        connection.exec_driver_sql(
+            "REVOKE ALL ON FUNCTION public.archie_guard_evidence_head() "
+            f"FROM {runtime_role_identifier}"
+        )
+        connection.exec_driver_sql(
+            "GRANT EXECUTE ON FUNCTION public.archie_advance_evidence_head("
+            "bigint, bigint, integer, bigint, bigint, integer, text) "
+            f"TO {runtime_role_identifier}"
         )
     _repair_triggers(connection)
     # The runtime role gets only the columns required by the service protocol.
@@ -427,6 +694,9 @@ def ensure_transformation_db_guards(
 @event.listens_for(OperationResult.__table__, "after_create")
 @event.listens_for(OperationOutboxEvent.__table__, "after_create")
 @event.listens_for(CandidateSignal.__table__, "after_create")
+@event.listens_for(EvidenceRecord.__table__, "after_create")
+@event.listens_for(EvidenceClaimHead.__table__, "after_create")
+@event.listens_for(EvidenceHeadEvent.__table__, "after_create")
 def _install_transformation_guards_after_create(_target, connection, **_kwargs):
     ensure_transformation_db_guards(connection)
 

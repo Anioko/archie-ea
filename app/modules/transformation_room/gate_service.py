@@ -937,7 +937,9 @@ class TransformationGateService:
         transition = cls.require_valid_transition(workstream.lifecycle_stage, request["target_stage"])
         TransformationProgrammeService._require_programme_authority(
             session, actor, workstream.programme_id, workstream.id,
-            cls._transition_roles(transition.source, transition.target), "transition_not_authorised",
+            cls._transition_roles(transition.source, transition.target),
+            "transition_not_authorised",
+            lock=True,
         )
         blockers, warnings, evidence_ids = cls.evaluate_requirements(snapshot, transition)
         if blockers:

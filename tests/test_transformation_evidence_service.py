@@ -1,0 +1,481 @@
+"""Versioned Transformation Room evidence and request service contracts."""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
+
+from app import db
+from app.models.application_portfolio import ApplicationComponent
+from app.models.organization import Organization
+from app.models.transformation_evidence import (
+    EvidenceClaimHead,
+    EvidenceHeadEvent,
+    EvidenceRecord,
+    EvidenceRequest,
+)
+from app.models.transformation_programme import ProgrammeRoleAssignment, ProgrammeWorkstream
+from app.models.user import User
+from app.modules.transformation_room.discovery_service import RationalisationDiscoveryService
+from app.modules.transformation_room.domain import (
+    ActorContext,
+    CommandConflict,
+    NotAuthorised,
+    NotFound,
+    SourceResolution,
+    SourceVersion,
+    TypedEvidenceValue,
+)
+from app.modules.transformation_room.evidence_service import (
+    ApplicationInventoryEvidenceAdapter,
+    TransformationEvidenceService,
+    canonical_source_identity,
+    parse_positive_int,
+    sha256_canonical,
+)
+
+from tests.test_rationalisation_discovery_service import _discover, _seed_scope
+
+
+@dataclass(frozen=True)
+class EvidenceScope:
+    organization_id: int
+    foreign_organization_id: int
+    actor_id: int
+    foreign_actor_id: int
+    workstream_id: int
+    candidate_id: int
+    application_id: int
+    request_id: int
+    actor: ActorContext
+    foreign_actor: ActorContext
+
+
+@pytest.fixture(scope="module", autouse=True)
+def evidence_schema(app, _schema):
+    from app.commands.reconcile_schema import _reconcile
+
+    with app.app_context():
+        _added, failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert failed == []
+
+
+@pytest.fixture
+def evidence_scope(app, _schema):
+    """Persist command prerequisites visible to independent fenced sessions."""
+    suffix = uuid.uuid4().hex[:10]
+    with app.app_context():
+        db.session.remove()
+        prior_steward = app.config.pop("TRANSFORMATION_PORTFOLIO_STEWARD_ID", None)
+        seeded = _seed_scope(db.session, suffix=f"evidence-{suffix}", commit=True)
+        discovered = next(
+            item for item in _discover(seeded) if item.application_id == seeded.application_id
+        )
+        accepted = RationalisationDiscoveryService.accept_candidate(
+            actor=seeded.actor,
+            workstream_id=seeded.workstream_id,
+            application_id=seeded.application_id,
+            signal_digests=discovered.signal_digests,
+            inclusion_reason="Govern this canonical inventory subject",
+            command_key=f"evidence-candidate-{suffix}",
+        )
+        foreign_org = Organization(
+            name=f"Evidence foreign {suffix}", slug=f"evidence-foreign-{suffix}"
+        )
+        db.session.add(foreign_org)
+        db.session.flush()
+        foreign_user = User(
+            email=f"evidence-foreign-{suffix}@example.test",
+            organization_id=foreign_org.id,
+            confirmed=True,
+            enterprise_role="chief_architect",
+        )
+        db.session.add(foreign_user)
+        db.session.flush()
+        foreign_org_id = foreign_org.id
+        foreign_user_id = foreign_user.id
+        db.session.commit()
+        db.session.remove()
+        scope = EvidenceScope(
+            organization_id=seeded.organization_id,
+            foreign_organization_id=foreign_org_id,
+            actor_id=seeded.actor_id,
+            foreign_actor_id=foreign_user_id,
+            workstream_id=seeded.workstream_id,
+            candidate_id=accepted.object_ids["candidate_id"],
+            application_id=seeded.application_id,
+            request_id=accepted.object_ids["evidence_request_id"],
+            actor=seeded.actor,
+            foreign_actor=ActorContext(
+                foreign_user_id,
+                foreign_org_id,
+                frozenset({"chief_architect"}),
+                f"foreign-request-{suffix}",
+            ),
+        )
+        try:
+            yield scope
+        finally:
+            if prior_steward is not None:
+                app.config["TRANSFORMATION_PORTFOLIO_STEWARD_ID"] = prior_steward
+            db.session.remove()
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+                for table_name in (
+                    "transformation_outbox_events",
+                    "operation_results",
+                    "command_idempotency_records",
+                    "evidence_head_events",
+                    "evidence_claim_heads",
+                    "evidence_records",
+                    "candidate_signals",
+                    "evidence_requests",
+                    "transformation_candidates",
+                    "application_dependencies",
+                    "application_capability_mapping",
+                    "programme_role_assignments",
+                    "programme_workstreams",
+                    "strategic_initiatives",
+                    "application_owners",
+                    "application_components",
+                    "business_capability",
+                    "users",
+                ):
+                    connection.execute(
+                        text(
+                            f'DELETE FROM "{table_name}" '
+                            "WHERE organization_id IN (:organization_id, :foreign_id)"
+                        ),
+                        {
+                            "organization_id": scope.organization_id,
+                            "foreign_id": scope.foreign_organization_id,
+                        },
+                    )
+                connection.execute(
+                    text("DELETE FROM organizations WHERE id IN (:organization_id, :foreign_id)"),
+                    {
+                        "organization_id": scope.organization_id,
+                        "foreign_id": scope.foreign_organization_id,
+                    },
+                )
+
+
+def _record_inventory(scope: EvidenceScope, *, expected_revision=0, key="inventory-root"):
+    return TransformationEvidenceService.record_observation(
+        actor=scope.actor,
+        candidate_id=scope.candidate_id,
+        claim_key="application_owner",
+        adapter_key="Application-Inventory",
+        source_key=str(scope.application_id),
+        expected_head_revision=expected_revision,
+        command_key=key,
+    )
+
+
+def _grant_decision_authority(scope: EvidenceScope):
+    with Session(db.engine) as session, session.begin():
+        programme_id = session.scalar(
+            select(ProgrammeWorkstream.programme_id).where(
+                ProgrammeWorkstream.organization_id == scope.organization_id,
+                ProgrammeWorkstream.id == scope.workstream_id,
+            )
+        )
+        session.add(
+            ProgrammeRoleAssignment(
+                organization_id=scope.organization_id,
+                programme_id=programme_id,
+                workstream_id=scope.workstream_id,
+                user_id=scope.actor_id,
+                role="decision_authority",
+                effective_from=date.today() - timedelta(days=1),
+                assigned_by_id=scope.actor_id,
+            )
+        )
+
+
+def test_strict_source_helpers_preserve_opaque_keys_and_reject_bad_ids():
+    """Catches lossy source normalization or permissive integer parsing."""
+    assert parse_positive_int("17") == 17
+    for invalid in (None, True, "", " 0 ", "-2", "1.5", "abc"):
+        with pytest.raises(ValueError):
+            parse_positive_int(invalid)
+    assert canonical_source_identity(
+        "  InVenTory  ", "HTTPS://Inventory.EXAMPLE/Apps/CaseSensitive?Key=ABC"
+    ) == "https://inventory.example/Apps/CaseSensitive?Key=ABC"
+    assert canonical_source_identity(" Attestation ", "User:CaseSensitive") == (
+        "attestation:user:CaseSensitive"
+    )
+
+
+def test_inventory_observation_versions_metadata_and_active_head(evidence_scope):
+    """Catches newest-row guessing, source metadata loss, or in-place correction."""
+    scope = evidence_scope
+    root = _record_inventory(scope)
+    root_id = root.object_ids["evidence_record_id"]
+    with Session(db.engine) as session, session.begin():
+        application = session.scalar(
+            select(ApplicationComponent).where(
+                ApplicationComponent.organization_id == scope.organization_id,
+                ApplicationComponent.id == scope.application_id,
+            )
+        )
+        application.application_owner = "Retail Operations"
+        application.updated_at = datetime.now(timezone.utc)
+
+    correction = _record_inventory(scope, expected_revision=1, key="inventory-correction")
+    correction_id = correction.object_ids["evidence_record_id"]
+    active = TransformationEvidenceService.active_evidence(
+        actor=scope.actor,
+        subject_type="application",
+        subject_id=scope.application_id,
+    )
+
+    with Session(db.engine) as session:
+        old = session.get(EvidenceRecord, root_id)
+        current = session.get(EvidenceRecord, correction_id)
+        head = session.get(EvidenceClaimHead, correction.object_ids["evidence_head_id"])
+        events = session.scalars(
+            select(EvidenceHeadEvent)
+            .where(EvidenceHeadEvent.organization_id == scope.organization_id)
+            .order_by(EvidenceHeadEvent.revision)
+        ).all()
+    assert old.supersedes_id is None
+    assert current.supersedes_id == old.id
+    assert current.value_type == "json"
+    assert current.classification == "observed"
+    assert current.source_identity == f"application:{scope.application_id}"
+    assert current.source_uri == f"archie://application/{scope.application_id}"
+    assert len(current.source_checksum) == 64
+    assert current.freshness_status == "fresh"
+    assert current.freshness_rule_version == "inventory-r1.1"
+    assert current.created_by_id == scope.actor_id
+    assert current.collected_at is not None and current.observed_at is not None
+    assert head.current_record_id == current.id and head.revision == 2
+    assert [event.revision for event in events] == [1, 2]
+    assert {row.id for row in active} == {current.id}
+
+    with pytest.raises(CommandConflict, match="stale_head_revision"):
+        _record_inventory(scope, expected_revision=1, key="stale-correction")
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(func.count())
+            .select_from(EvidenceRecord)
+            .where(EvidenceRecord.organization_id == scope.organization_id)
+        ) == 2
+
+
+class _UnversionedInventoryAdapter(ApplicationInventoryEvidenceAdapter):
+    def resolve(self, source_key, actor):
+        resolved = super().resolve(source_key, actor)
+        return SourceResolution(
+            "HTTPS://Inventory.EXAMPLE/Apps/CaseSensitive",
+            resolved.canonical_subject_type,
+            resolved.canonical_subject_id,
+        )
+
+    def read_version(self, resolution):
+        version = super().read_version(resolution)
+        return SourceVersion("", version.checksum, version.observed_at, version.value)
+
+
+def test_unversioned_adapter_gets_content_addressed_snapshot_version(evidence_scope):
+    """Catches an unversioned source being stored without a reproducible snapshot identity."""
+    scope = evidence_scope
+    previous = TransformationEvidenceService.register_adapter(
+        " Snapshot-Inventory ", _UnversionedInventoryAdapter()
+    )
+    try:
+        result = TransformationEvidenceService.record_observation(
+            actor=scope.actor,
+            candidate_id=scope.candidate_id,
+            claim_key="inventory_snapshot",
+            adapter_key=" SNAPSHOT-INVENTORY ",
+            source_key=str(scope.application_id),
+            expected_head_revision=0,
+            command_key="unversioned-snapshot",
+        )
+    finally:
+        TransformationEvidenceService.restore_adapter("snapshot-inventory", previous)
+
+    with Session(db.engine) as session:
+        record = session.get(EvidenceRecord, result.object_ids["evidence_record_id"])
+    assert record.source_identity == "https://inventory.example/Apps/CaseSensitive"
+    assert record.source_version == f"snapshot:{record.source_checksum}"
+
+
+def test_attestation_agreement_submits_then_accepts_request(evidence_scope):
+    """Catches agreement overwriting the canonical source or skipping request acceptance."""
+    scope = evidence_scope
+    observed = _record_inventory(scope)
+    with Session(db.engine) as session:
+        value = session.get(
+            EvidenceRecord, observed.object_ids["evidence_record_id"]
+        ).value_json
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("json", value, None, None),
+        expected_head_revision=0,
+        command_key="agree-attestation",
+    )
+    evidence_id = submitted.object_ids["evidence_record_id"]
+    assert "conflict_evidence_id" not in submitted.object_ids
+    accepted = TransformationEvidenceService.accept_request(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        evidence_id=evidence_id,
+        expected_revision=2,
+        command_key="accept-agreement",
+    )
+    with Session(db.engine) as session:
+        request = session.get(EvidenceRequest, scope.request_id)
+        evidence = session.get(EvidenceRecord, evidence_id)
+        heads = session.scalars(
+            select(EvidenceClaimHead).where(
+                EvidenceClaimHead.organization_id == scope.organization_id,
+                EvidenceClaimHead.claim_key == "application_owner",
+            )
+        ).all()
+    assert request.status == "accepted"
+    assert request.accepted_evidence_id == evidence.id
+    assert accepted.response["revision"] == 3
+    assert evidence.classification == "attested"
+    assert evidence.source_identity == f"attestation:user:{scope.actor_id}"
+    assert len(heads) == 2
+
+
+def test_disagreement_creates_conflict_and_decision_authority_resolution(evidence_scope):
+    """Catches silent source selection when an attestation disagrees with observation."""
+    scope = evidence_scope
+    observed = _record_inventory(scope)
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("string", "Different owner", None, None),
+        expected_head_revision=0,
+        command_key="disagree-attestation",
+    )
+    conflict_id = submitted.object_ids["conflict_evidence_id"]
+    _grant_decision_authority(scope)
+    resolved = TransformationEvidenceService.resolve_conflict(
+        actor=scope.actor,
+        conflict_evidence_id=conflict_id,
+        governing_evidence_id=observed.object_ids["evidence_record_id"],
+        rationale="The governed inventory owner is accountable for this decision.",
+        command_key="resolve-owner-conflict",
+    )
+    with Session(db.engine) as session:
+        conflict = session.get(EvidenceRecord, conflict_id)
+        resolution = session.get(
+            EvidenceRecord, resolved.object_ids["evidence_record_id"]
+        )
+    assert conflict.classification == "conflict"
+    assert set(conflict.cited_evidence_ids) == {
+        observed.object_ids["evidence_record_id"],
+        submitted.object_ids["evidence_record_id"],
+    }
+    assert resolution.classification == "derived"
+    assert resolution.value_json["governing_evidence_id"] == (
+        observed.object_ids["evidence_record_id"]
+    )
+    assert resolution.value_json["rationale"].startswith("The governed")
+    assert set(resolution.cited_evidence_ids) == {
+        conflict.id,
+        observed.object_ids["evidence_record_id"],
+    }
+
+
+def test_decline_and_expiry_do_not_complete_required_request(evidence_scope):
+    """Catches declined/expired evidence debt being treated as accepted evidence."""
+    scope = evidence_scope
+    declined = TransformationEvidenceService.decline_request(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        reason="The assignee cannot attest this fact.",
+        expected_revision=1,
+        command_key="decline-request",
+    )
+    with Session(db.engine) as session:
+        request = session.get(EvidenceRequest, scope.request_id)
+    assert declined.response["status"] == "declined"
+    assert request.required is True
+    assert request.accepted_evidence_id is None
+    assert request.waiver_id is None
+
+
+def test_expired_request_can_receive_authorised_expiring_unavailable_waiver(
+    evidence_scope,
+):
+    """Catches indefinite, anonymous, or unaccountable evidence waivers."""
+    scope = evidence_scope
+    with Session(db.engine) as session, session.begin():
+        request = session.get(EvidenceRequest, scope.request_id)
+        request.due_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    expired = TransformationEvidenceService.expire_request(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        expected_revision=2,
+        command_key="expire-request",
+    )
+    assert expired.response["status"] == "expired"
+    _grant_decision_authority(scope)
+    waived = TransformationEvidenceService.waive_unavailable_request(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        reason="Source owner is unavailable during the decision window.",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        interim_accountable_id=scope.actor_id,
+        expected_revision=3,
+        command_key="waive-expired-request",
+    )
+    with Session(db.engine) as session:
+        request = session.get(EvidenceRequest, scope.request_id)
+    assert request.status == "expired"
+    assert request.accepted_evidence_id is None
+    assert request.waiver_id == request.id
+    assert request.waiver_authority_id == scope.actor_id
+    assert request.interim_accountable_id == scope.actor_id
+    assert request.waiver_expires_at > datetime.now(timezone.utc)
+    assert waived.response["revision"] == 4
+
+
+def test_cross_tenant_other_assignee_and_forged_role_are_denied(evidence_scope):
+    """Catches request IDs or ActorContext claims bypassing tenant/assignee checks."""
+    scope = evidence_scope
+    with pytest.raises(NotFound):
+        TransformationEvidenceService.submit_attestation(
+            actor=scope.foreign_actor,
+            request_id=scope.request_id,
+            value=TypedEvidenceValue("string", "Foreign claim", None, None),
+            expected_head_revision=0,
+            command_key="foreign-attestation",
+        )
+    with db.session.begin():
+        peer = User(
+            email=f"evidence-peer-{uuid.uuid4().hex[:10]}@example.test",
+            organization_id=scope.organization_id,
+            confirmed=True,
+            enterprise_role="portfolio_manager",
+        )
+        db.session.add(peer)
+        db.session.flush()
+        peer_id = peer.id
+    forged = ActorContext(
+        peer_id,
+        scope.organization_id,
+        frozenset({"chief_architect", "decision_authority"}),
+        "forged-evidence-role",
+    )
+    with pytest.raises(NotAuthorised):
+        TransformationEvidenceService.submit_attestation(
+            actor=forged,
+            request_id=scope.request_id,
+            value=TypedEvidenceValue("string", "Unassigned claim", None, None),
+            expected_head_revision=0,
+            command_key="other-assignee",
+        )

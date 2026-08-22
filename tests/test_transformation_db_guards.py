@@ -17,9 +17,21 @@ from app.models.transformation_execution import (
     OperationOutboxEvent,
     OperationResult,
 )
+from app.models.transformation_evidence import (
+    EvidenceClaimHead,
+    EvidenceHeadEvent,
+    EvidenceRecord,
+)
 from app.models.user import User
 from app.modules.transformation_room.command_service import CommandService
 from app.modules.transformation_room.domain import ActorContext, DomainMutationResult, StaleClaim
+from app.modules.transformation_room.evidence_service import TransformationEvidenceService
+
+from tests.test_transformation_evidence_service import (
+    EvidenceScope,
+    _record_inventory,
+    evidence_scope,
+)
 
 
 @dataclass(frozen=True)
@@ -173,7 +185,10 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                   AND tg.tgname IN (
                     'trg_transformation_result_immutable',
                     'trg_transformation_outbox_immutable',
-                    'trg_transformation_receipt_guard'
+                    'trg_transformation_receipt_guard',
+                    'trg_evidence_record_immutable',
+                    'trg_evidence_event_immutable',
+                    'trg_evidence_head_guard'
                   )
                 ORDER BY tg.tgname
                 """
@@ -186,7 +201,9 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                 FROM pg_proc
                 WHERE proname IN (
                     'archie_reject_transformation_mutation',
-                    'archie_guard_transformation_receipt'
+                    'archie_guard_transformation_receipt',
+                    'archie_guard_evidence_head',
+                    'archie_advance_evidence_head'
                 )
                 ORDER BY proname
                 """
@@ -194,11 +211,14 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
         ).all()
 
     assert triggers == [
+        ("trg_evidence_event_immutable", "evidence_head_events"),
+        ("trg_evidence_head_guard", "evidence_claim_heads"),
+        ("trg_evidence_record_immutable", "evidence_records"),
         ("trg_transformation_outbox_immutable", "transformation_outbox_events"),
         ("trg_transformation_receipt_guard", "command_idempotency_records"),
         ("trg_transformation_result_immutable", "operation_results"),
     ]
-    assert len(functions) == 2
+    assert len(functions) == 4
     assert all(row.prosecdef is True for row in functions)
     assert all("search_path=pg_catalog, public" in row.proconfig for row in functions)
 
@@ -650,3 +670,163 @@ def test_schema_dry_run_reports_tampered_guard_function_then_apply_repairs_it(
     finally:
         with db.engine.begin() as connection:
             ensure_transformation_db_guards(connection)
+
+
+def test_evidence_records_events_and_heads_reject_direct_mutation(
+    evidence_scope: EvidenceScope,
+):
+    """Catches direct SQL rewriting evidence history or deleting its active pointer."""
+    scope = evidence_scope
+    result = _record_inventory(scope)
+    record_id = result.object_ids["evidence_record_id"]
+    head_id = result.object_ids["evidence_head_id"]
+    event_id = result.object_ids["evidence_head_event_id"]
+
+    for statement, parameters in (
+        (
+            "UPDATE public.evidence_records SET value_json = '{}'::json "
+            "WHERE id = %s AND organization_id = %s",
+            (record_id, scope.organization_id),
+        ),
+        (
+            "DELETE FROM public.evidence_records WHERE id = %s AND organization_id = %s",
+            (record_id, scope.organization_id),
+        ),
+        (
+            "UPDATE public.evidence_head_events SET reason = 'forged' "
+            "WHERE id = %s AND organization_id = %s",
+            (event_id, scope.organization_id),
+        ),
+        (
+            "DELETE FROM public.evidence_head_events WHERE id = %s AND organization_id = %s",
+            (event_id, scope.organization_id),
+        ),
+        (
+            "DELETE FROM public.evidence_claim_heads WHERE id = %s AND organization_id = %s",
+            (head_id, scope.organization_id),
+        ),
+    ):
+        with pytest.raises(Exception):
+            _direct_driver_execute(statement, parameters)
+
+
+def test_evidence_head_rejects_arbitrary_historical_cross_tenant_wrong_subject_and_jump(
+    evidence_scope: EvidenceScope,
+):
+    """Catches every direct pointer/revision bypass named by the evidence contract."""
+    scope = evidence_scope
+    root = _record_inventory(scope)
+    with Session(db.engine) as session, session.begin():
+        application = session.get(
+            __import__(
+                "app.models.application_portfolio", fromlist=["ApplicationComponent"]
+            ).ApplicationComponent,
+            scope.application_id,
+        )
+        application.application_owner = "Guarded correction"
+    correction = _record_inventory(
+        scope, expected_revision=1, key="guarded-correction"
+    )
+    root_id = root.object_ids["evidence_record_id"]
+    current_id = correction.object_ids["evidence_record_id"]
+    head_id = correction.object_ids["evidence_head_id"]
+
+    invalid_moves = (
+        (
+            "INSERT INTO public.evidence_claim_heads "
+            "(organization_id, subject_type, subject_id, claim_key, source_identity, "
+            "current_record_id, revision) VALUES (%s, 'application', %s, "
+            "'forged_claim', 'forged:source', %s, 1)",
+            (scope.organization_id, scope.application_id, root_id),
+        ),
+        (
+            "UPDATE public.evidence_claim_heads SET current_record_id = %s, revision = 3 "
+            "WHERE id = %s AND organization_id = %s",
+            (root_id, head_id, scope.organization_id),
+        ),
+        (
+            "UPDATE public.evidence_claim_heads SET revision = revision + 2 "
+            "WHERE id = %s AND organization_id = %s",
+            (head_id, scope.organization_id),
+        ),
+        (
+            "UPDATE public.evidence_claim_heads SET organization_id = %s, "
+            "current_record_id = %s, revision = revision + 1 WHERE id = %s",
+            (scope.foreign_organization_id, current_id, head_id),
+        ),
+        (
+            "UPDATE public.evidence_claim_heads SET subject_id = subject_id + 1, "
+            "current_record_id = %s, revision = revision + 1 WHERE id = %s",
+            (current_id, head_id),
+        ),
+    )
+    for statement, parameters in invalid_moves:
+        with pytest.raises(Exception):
+            _direct_driver_execute(statement, parameters)
+
+
+def test_evidence_head_rejects_wrong_predecessor_and_unaudited_function_move(
+    evidence_scope: EvidenceScope,
+):
+    """Catches an inserted leaf moving a head without its exact event and live command."""
+    scope = evidence_scope
+    result = _record_inventory(scope)
+    head_id = result.object_ids["evidence_head_id"]
+    current_id = result.object_ids["evidence_record_id"]
+
+    connection = db.engine.raw_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO public.evidence_records (
+                organization_id, programme_id, workstream_id, candidate_id,
+                subject_type, subject_id, claim_key, value_json, value_type,
+                classification, collector_type, source_identity, source_type, source_version,
+                source_checksum, source_system, collected_at, observed_at,
+                freshness_status, freshness_rule_version, created_by_id,
+                cited_evidence_ids, supersedes_id
+            )
+            SELECT organization_id, programme_id, workstream_id, candidate_id,
+                   subject_type, subject_id, claim_key, value_json, value_type,
+                   classification, 'system', source_identity, source_type,
+                   'direct-wrong-predecessor',
+                   source_checksum, source_system, clock_timestamp(), observed_at,
+                   freshness_status, freshness_rule_version, created_by_id,
+                   '[]'::json, NULL
+            FROM public.evidence_records WHERE id = %s
+            RETURNING id
+            """,
+            (current_id,),
+        )
+        wrong_predecessor_id = cursor.fetchone()[0]
+        with pytest.raises(Exception):
+            cursor.execute(
+                "UPDATE public.evidence_claim_heads SET current_record_id = %s, revision = 2 "
+                "WHERE id = %s AND organization_id = %s",
+                (wrong_predecessor_id, head_id, scope.organization_id),
+            )
+        connection.rollback()
+    finally:
+        connection.close()
+
+    with Session(db.engine) as session:
+        event_count = session.scalar(
+            select(db.func.count())
+            .select_from(EvidenceHeadEvent)
+            .where(
+                EvidenceHeadEvent.organization_id == scope.organization_id,
+                EvidenceHeadEvent.head_id == head_id,
+            )
+        )
+        record_count = session.scalar(
+            select(db.func.count())
+            .select_from(EvidenceRecord)
+            .where(
+                EvidenceRecord.organization_id == scope.organization_id,
+                EvidenceRecord.claim_key == "application_owner",
+            )
+        )
+        head = session.get(EvidenceClaimHead, head_id)
+    assert head.current_record_id == current_id and head.revision == 1
+    assert event_count == 1 and record_count == 1

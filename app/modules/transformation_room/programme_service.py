@@ -232,6 +232,13 @@ class TransformationProgrammeService:
 
     @classmethod
     def _insert_intake_graph(cls, *, session, actor, request, claim) -> DomainMutationResult:
+        # Receipt-time authorization is intentionally repeated on the persisted
+        # actor row inside the mutation transaction. Holding this row lock until
+        # commit serializes account-role revocation with the first programme
+        # persistence. User has no separate active/disabled account predicate.
+        runtime_user = cls._load_runtime_user(session, actor, lock=True)
+        if not cls._server_roles(runtime_user).intersection(CREATE_ROLES):
+            raise NotAuthorised("programme_create_not_authorised")
         outcome_data = request.outcome
         measure_data = outcome_data["measure"]
         programme = StrategicInitiative(
@@ -584,7 +591,13 @@ class TransformationProgrammeService:
         if stream.revision != payload["expected_revision"]:
             raise CommandConflict("stale_revision")
         cls._require_programme_authority(
-            session, actor, stream.programme_id, stream.id, OBJECTIVE_ROLES, "objective_update_not_authorised"
+            session,
+            actor,
+            stream.programme_id,
+            stream.id,
+            OBJECTIVE_ROLES,
+            "objective_update_not_authorised",
+            lock=True,
         )
         before_revision = stream.revision
         stream.objective = payload["objective"]
@@ -642,7 +655,13 @@ class TransformationProgrammeService:
         if programme.revision != payload["expected_revision"]:
             raise CommandConflict("stale_revision")
         cls._require_programme_authority(
-            session, actor, programme.id, None, ARCHIVE_ROLES, "programme_archive_not_authorised"
+            session,
+            actor,
+            programme.id,
+            None,
+            ARCHIVE_ROLES,
+            "programme_archive_not_authorised",
+            lock=True,
         )
         if programme.status == "archived":
             raise CommandConflict("programme_already_archived")

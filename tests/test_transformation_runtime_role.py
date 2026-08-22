@@ -318,7 +318,7 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 False,
             )
             cursor.execute(
-                "SELECT count(*) "
+                "SELECT p.proname, pg_get_function_identity_arguments(p.oid) "
                 "FROM pg_proc p "
                 "JOIN pg_namespace n ON n.oid = p.pronamespace "
                 "WHERE n.nspname = 'public' "
@@ -329,7 +329,14 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 ") AND has_function_privilege(%s, p.oid, 'EXECUTE')",
                 (role_database.runtime_role,),
             )
-            assert cursor.fetchone() == (0,)
+            assert cursor.fetchall() == [
+                (
+                    "archie_advance_evidence_head",
+                    "p_head_id bigint, p_new_record_id bigint, "
+                    "p_expected_revision integer, p_actor_id bigint, "
+                    "p_receipt_id bigint, p_generation integer, p_claim_token text",
+                )
+            ]
 
             cursor.execute(
                 "INSERT INTO command_idempotency_records "

@@ -42,9 +42,31 @@ _TRANSFORMATION_TABLES = (
     "command_idempotency_records",
     "operation_results",
     "transformation_outbox_events",
+    "transformation_candidates",
+    "candidate_signals",
+    "evidence_records",
+    "evidence_claim_heads",
+    "evidence_head_events",
+    "evidence_requests",
 )
 
 _TRANSFORMATION_FOREIGN_KEYS = (
+    (
+        "fk_evidence_requests_submitted_evidence",
+        "evidence_requests",
+        "submitted_evidence_id",
+        "evidence_records",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_evidence_requests_accepted_evidence",
+        "evidence_requests",
+        "accepted_evidence_id",
+        "evidence_records",
+        "id",
+        "RESTRICT",
+    ),
     (
         "fk_work_packages_strategic_initiative",
         "work_packages",
