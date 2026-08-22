@@ -24,17 +24,8 @@ logger = logging.getLogger(__name__)
 @solution_design_bp.route("/new-programme", methods=["GET"])
 @login_required
 def new_programme():
-    """Render the multi-step programme wizard."""
-    from app.modules.solutions_strategic.v2.services.programme_setup_service import (
-        ProgrammeSetupService,
-    )
-
-    service = ProgrammeSetupService()
-    templates = service.get_templates()
-    return render_template(
-        "solutions/programme_wizard.html",
-        templates=templates,
-    )
+    """Render the canonical business-first programme intake."""
+    return render_template("solutions/programme_wizard.html")
 
 
 # =============================================================================

@@ -45,6 +45,21 @@ CREATE_ROLES = frozenset(
 OBJECTIVE_ROLES = CREATE_ROLES | frozenset({"programme_owner", "workstream_lead"})
 ROLE_ASSIGNMENT_ROLES = CREATE_ROLES | frozenset({"programme_owner"})
 ARCHIVE_ROLES = frozenset({"programme_owner", "platform_admin", "organization_admin", "administrator"})
+READ_ROLES = CREATE_ROLES | frozenset(
+    {
+        "portfolio_manager",
+        "business_architect",
+        "application_architect",
+        "arb_member",
+        "programme_owner",
+        "workstream_lead",
+        "evidence_owner",
+        "decision_authority",
+        "delivery_lead",
+        "outcome_owner",
+        "contributor",
+    }
+)
 
 
 def _required_text(value: Any, field: str) -> str:
@@ -76,9 +91,12 @@ def _decimal(value: Any, field: str) -> Decimal | None:
     if value is None or value == "":
         return None
     try:
-        return Decimal(str(value))
+        parsed = Decimal(str(value))
     except (InvalidOperation, ValueError) as error:
         raise ValueError(f"{field} must be numeric") from error
+    if not parsed.is_finite():
+        raise ValueError(f"{field} must be finite")
+    return parsed
 
 
 def canonical_role_assignment_key(payload: Mapping[str, Any]) -> str:
@@ -393,6 +411,7 @@ class TransformationProgrammeService:
             programme = cls._programme_query(session, actor, payload["programme_id"]).scalar_one_or_none()
             if programme is None:
                 raise NotFound("programme_not_found")
+            cls._require_active_programme(programme)
             workstream_id = payload.get("workstream_id")
             if workstream_id is not None:
                 workstream = session.scalar(
@@ -425,6 +444,12 @@ class TransformationProgrammeService:
 
     @classmethod
     def _insert_role_assignment(cls, session, actor, programme, workstream, user, payload, claim):
+        locked_programme = cls._programme_query(
+            session, actor, payload["programme_id"], lock=True
+        ).scalar_one_or_none()
+        if locked_programme is None:
+            raise NotFound("programme_not_found")
+        cls._require_active_programme(locked_programme)
         locked_stream = None
         if payload["workstream_id"] is not None:
             locked_stream = session.execute(
@@ -438,6 +463,13 @@ class TransformationProgrammeService:
                 raise NotFound("workstream_not_found")
             if locked_stream.revision != payload["expected_revision"]:
                 raise CommandConflict("stale_revision")
+            aggregate = locked_stream
+            aggregate_type = "workstream"
+        else:
+            if locked_programme.revision != payload["expected_revision"]:
+                raise CommandConflict("stale_revision")
+            aggregate = locked_programme
+            aggregate_type = "programme"
         cls._require_programme_authority(
             session,
             actor,
@@ -457,8 +489,13 @@ class TransformationProgrammeService:
             assigned_by_id=actor.user_id,
         )
         session.add(assignment)
+        aggregate.revision += 1
         session.flush()
-        response = {"role_assignment_id": assignment.id}
+        response = {
+            "role_assignment_id": assignment.id,
+            "revision": aggregate.revision,
+            "aggregate_type": aggregate_type,
+        }
         return DomainMutationResult(
             response,
             response,
@@ -510,6 +547,10 @@ class TransformationProgrammeService:
             ).scalar_one_or_none()
             if stream is None:
                 raise NotFound("workstream_not_found")
+            programme = cls._programme_query(session, actor, stream.programme_id).scalar_one_or_none()
+            if programme is None:
+                raise NotFound("programme_not_found")
+            cls._require_active_programme(programme)
             cls._require_programme_authority(
                 session, actor, stream.programme_id, stream.id, OBJECTIVE_ROLES, "objective_update_not_authorised"
             )
@@ -518,14 +559,27 @@ class TransformationProgrammeService:
 
     @classmethod
     def _update_objective_locked(cls, session, actor, payload, claim):
-        stream = session.execute(
+        stream_scope = session.execute(
             select(ProgrammeWorkstream).where(
                 ProgrammeWorkstream.id == payload["workstream_id"],
                 ProgrammeWorkstream.organization_id == actor.organization_id,
-            ).with_for_update()
+            )
         ).scalar_one_or_none()
-        if stream is None:
+        if stream_scope is None:
             raise NotFound("workstream_not_found")
+        programme = cls._programme_query(
+            session, actor, stream_scope.programme_id, lock=True
+        ).scalar_one_or_none()
+        if programme is None:
+            raise NotFound("programme_not_found")
+        cls._require_active_programme(programme)
+        stream = session.execute(
+            select(ProgrammeWorkstream).where(
+                ProgrammeWorkstream.id == payload["workstream_id"],
+                ProgrammeWorkstream.programme_id == programme.id,
+                ProgrammeWorkstream.organization_id == actor.organization_id,
+            ).with_for_update()
+        ).scalar_one()
         if stream.revision != payload["expected_revision"]:
             raise CommandConflict("stale_revision")
         cls._require_programme_authority(
@@ -609,7 +663,9 @@ class TransformationProgrammeService:
         workstreams = cls.load_workstreams_for_tenant(actor, programme.id)
         from app.modules.transformation_room.gate_service import TransformationGateService
 
-        next_action = TransformationGateService.next_action(actor=actor, workstreams=workstreams)
+        next_action = None
+        if programme.status != "archived" and programme.archived_at is None:
+            next_action = TransformationGateService.next_action(actor=actor, workstreams=workstreams)
         return ProgrammeView(
             programme.id,
             tuple(row.id for row in workstreams),
@@ -644,9 +700,22 @@ class TransformationProgrammeService:
     @classmethod
     def authorise_read(cls, actor, programme):
         with Session(db.engine) as session:
-            user = cls._load_runtime_user(session, actor)
-            if user.organization_id != programme.organization_id:
+            persisted = cls._programme_query(session, actor, programme.id).scalar_one_or_none()
+            if persisted is None:
                 raise NotFound("programme_not_found")
+            cls._require_programme_authority(
+                session,
+                actor,
+                persisted.id,
+                None,
+                READ_ROLES,
+                "programme_read_not_authorised",
+            )
+
+    @staticmethod
+    def _require_active_programme(programme) -> None:
+        if programme.status == "archived" or programme.archived_at is not None:
+            raise CommandConflict("programme_archived")
 
     @staticmethod
     def _programme_query(session, actor, programme_id, lock=False):

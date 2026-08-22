@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import event, select, text
@@ -302,6 +304,128 @@ def test_assign_role_reauthorises_replay_from_current_server_state(programme_fix
         )
 
 
+def test_programme_role_assignment_locks_and_advances_programme_revision(programme_fixture):
+    """Catches programme-scoped role writes ignoring their expected aggregate revision."""
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="programme-role-revision",
+        request=_intake(programme_fixture.owner_id),
+    )
+    programme_id = created.object_ids["programme_id"]
+    assigned = TransformationProgrammeService.assign_role(
+        actor=programme_fixture.actor,
+        programme_id=programme_id,
+        workstream_id=None,
+        user_id=programme_fixture.owner_id,
+        role="contributor",
+        effective_from=date.today(),
+        effective_to=None,
+        expected_revision=1,
+        command_key="programme-role-write",
+    )
+    assert assigned.response["revision"] == 2
+    with Session(db.engine) as session:
+        assert session.get(StrategicInitiative, programme_id).revision == 2
+
+    with pytest.raises(CommandConflict, match="stale_revision"):
+        TransformationProgrammeService.assign_role(
+            actor=programme_fixture.actor,
+            programme_id=programme_id,
+            workstream_id=None,
+            user_id=programme_fixture.owner_id,
+            role="evidence_owner",
+            effective_from=date.today(),
+            effective_to=None,
+            expected_revision=1,
+            command_key="stale-programme-role-write",
+        )
+
+
+def test_workstream_role_assignment_locks_and_advances_workstream_revision(programme_fixture):
+    """Catches workstream-scoped role writes leaving the aggregate revision unchanged."""
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="workstream-role-revision",
+        request=_intake(programme_fixture.owner_id),
+    )
+    assigned = TransformationProgrammeService.assign_role(
+        actor=programme_fixture.actor,
+        programme_id=created.object_ids["programme_id"],
+        workstream_id=created.object_ids["workstream_id"],
+        user_id=programme_fixture.owner_id,
+        role="contributor",
+        effective_from=date.today(),
+        effective_to=None,
+        expected_revision=1,
+        command_key="workstream-role-write",
+    )
+    assert assigned.response["revision"] == 2
+    with Session(db.engine) as session:
+        assert session.get(ProgrammeWorkstream, created.object_ids["workstream_id"]).revision == 2
+    with pytest.raises(CommandConflict, match="stale_revision"):
+        TransformationProgrammeService.assign_role(
+            actor=programme_fixture.actor,
+            programme_id=created.object_ids["programme_id"],
+            workstream_id=created.object_ids["workstream_id"],
+            user_id=programme_fixture.owner_id,
+            role="evidence_owner",
+            effective_from=date.today(),
+            effective_to=None,
+            expected_revision=1,
+            command_key="stale-workstream-role-write",
+        )
+
+
+def test_concurrent_programme_role_assignments_allow_one_revision_winner(app, programme_fixture):
+    """Catches two writers both committing against the same programme revision."""
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="concurrent-role-programme",
+        request=_intake(programme_fixture.owner_id),
+    )
+    start = threading.Barrier(3)
+    results = []
+    errors = []
+
+    def assign(role):
+        with app.app_context():
+            start.wait(timeout=5)
+            try:
+                results.append(
+                    TransformationProgrammeService.assign_role(
+                        actor=programme_fixture.actor,
+                        programme_id=created.object_ids["programme_id"],
+                        workstream_id=None,
+                        user_id=programme_fixture.owner_id,
+                        role=role,
+                        effective_from=date.today(),
+                        effective_to=None,
+                        expected_revision=1,
+                        command_key=f"concurrent-role-{role}",
+                    )
+                )
+            except Exception as error:  # asserted after both workers finish
+                errors.append(error)
+            finally:
+                db.session.remove()
+
+    threads = [
+        threading.Thread(target=assign, args=(role,), daemon=True)
+        for role in ("contributor", "evidence_owner")
+    ]
+    for thread in threads:
+        thread.start()
+    start.wait(timeout=5)
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert len(results) == 1
+    assert results[0].response["revision"] == 2
+    assert len(errors) == 1
+    assert isinstance(errors[0], CommandConflict)
+    assert errors[0].reason == "stale_revision"
+
+
 def test_update_objective_checks_revision_and_changes_only_owned_fields(programme_fixture):
     """Catches stale or broad workstream updates bypassing the locked command handler."""
     created = TransformationProgrammeService.create_programme(
@@ -361,6 +485,62 @@ def test_archive_is_soft_versioned_and_retains_children(programme_fixture):
                 ProgrammeWorkstream.organization_id == programme_fixture.organization_id,
             )
         ) == 1
+
+
+def test_archived_programme_rejects_role_and_objective_mutations(programme_fixture):
+    """Catches archived history remaining writable through aggregate child commands."""
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="archived-mutation-programme",
+        request=_intake(programme_fixture.owner_id),
+    )
+    TransformationProgrammeService.archive(
+        actor=programme_fixture.actor,
+        programme_id=created.object_ids["programme_id"],
+        expected_revision=1,
+        command_key="archive-before-mutation",
+    )
+    with pytest.raises(CommandConflict, match="programme_archived"):
+        TransformationProgrammeService.assign_role(
+            actor=programme_fixture.actor,
+            programme_id=created.object_ids["programme_id"],
+            workstream_id=created.object_ids["workstream_id"],
+            user_id=programme_fixture.owner_id,
+            role="contributor",
+            effective_from=date.today(),
+            effective_to=None,
+            expected_revision=1,
+            command_key="archived-role-write",
+        )
+    with pytest.raises(CommandConflict, match="programme_archived"):
+        TransformationProgrammeService.update_objective(
+            actor=programme_fixture.actor,
+            workstream_id=created.object_ids["workstream_id"],
+            objective="Attempted archived change",
+            scope_expression={"business_units": ["Retail"]},
+            expected_revision=1,
+            command_key="archived-objective-write",
+        )
+    view = TransformationProgrammeService.get_programme(
+        actor=programme_fixture.actor,
+        programme_id=created.object_ids["programme_id"],
+    )
+    assert view.lifecycle == "archived"
+    assert view.next_action is None
+
+
+@pytest.mark.parametrize("non_finite", ["NaN", "Infinity", "-Infinity", Decimal("NaN")])
+def test_intake_rejects_non_finite_measure_values(programme_fixture, non_finite):
+    """Catches PostgreSQL Numeric special values entering governed outcome measures."""
+    intake = _intake(programme_fixture.owner_id)
+    measure = {**intake.outcome["measure"], "target_value": non_finite}
+    outcome = {**intake.outcome, "measure": measure}
+    with pytest.raises(ValueError, match="finite"):
+        TransformationProgrammeService.create_programme(
+            actor=programme_fixture.actor,
+            command_key=f"non-finite-{str(non_finite)}",
+            request=_intake(programme_fixture.owner_id, outcome=outcome),
+        )
 
 
 @pytest.mark.parametrize(

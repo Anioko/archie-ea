@@ -57,3 +57,33 @@ def test_create_programme_route_rejects_forged_fields_and_returns_canonical_ids(
         f"/solutions/programmes/{body['programme_id']}/workstreams/{body['workstream_id']}/objective"
     )
     assert Solution.query.filter_by(organization_id=programme_fixture.organization_id).count() == 0
+
+
+def test_new_programme_page_posts_canonical_business_payload_with_csrf_and_idempotency(
+    app, programme_fixture, login_as
+):
+    """Catches the live wizard retaining its legacy Solution-only request/response contract."""
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    response = client.get("/solutions/new-programme")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    for canonical_field in (
+        "objective",
+        "owner_id",
+        "target_date",
+        "target_date_unavailable_reason",
+        "workstream_type",
+        "scope_expression",
+        "outcome",
+        "metric_name",
+        "aggregation",
+    ):
+        assert canonical_field in html
+    assert "Idempotency-Key" in html
+    assert "X-CSRFToken" in html
+    assert "/api/users" in html
+    assert "data.solution_id" not in html
+    assert "mode: this.form.mode" not in html
+    assert "window.location.href = data.redirect_url" in html
