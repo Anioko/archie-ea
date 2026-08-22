@@ -283,6 +283,13 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register architect-role backfill CLI: {e}")
 
+    try:
+        from app.commands.cutover_capability_tenancy import init_app as init_capability_cutover
+        init_capability_cutover(app)
+        app.logger.info("Capability tenancy cutover CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register capability tenancy cutover CLI: {e}")
+
     # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
     try:
         from app.commands.backfill_saved_diagram_tenancy import init_app as init_saved_diagram_tenancy

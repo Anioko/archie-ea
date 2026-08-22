@@ -42,6 +42,8 @@ Suite status when last run: 6 passed, 2 xfailed (the two documented gaps).
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 pytestmark = pytest.mark.usefixtures("db_session")
@@ -239,6 +241,74 @@ def test_transformation_workstream_select_is_tenant_scoped(
 
     with tenant_ctx(org_b.id):
         assert db_session.get(ProgrammeWorkstream, stream_id) is None
+
+
+def test_capability_reference_and_current_tenant_are_visible_but_foreign_tenant_is_hidden(
+    db_session, make_org, tenant_ctx
+):
+    """Hybrid capability reads expose reference plus own rows, never another tenant's rows."""
+    from app.models.unified_capability import UnifiedCapability
+
+    org_a, org_b = make_org("capability-a"), make_org("capability-b")
+    suffix = uuid.uuid4().hex[:10]
+    reference = UnifiedCapability(
+        name="Reference capability",
+        code=f"REF-{suffix}",
+        scope="reference",
+        organization_id=None,
+    )
+    own = UnifiedCapability(
+        name="Tenant A capability",
+        code=f"A-{suffix}",
+        scope="tenant",
+        organization_id=org_a.id,
+    )
+    foreign = UnifiedCapability(
+        name="Tenant B capability",
+        code=f"B-{suffix}",
+        scope="tenant",
+        organization_id=org_b.id,
+    )
+    db_session.add_all((reference, own, foreign))
+    db_session.flush()
+    wanted = {reference.id, own.id, foreign.id}
+    db_session.expunge_all()
+
+    with tenant_ctx(org_a.id):
+        visible = {
+            row.id
+            for row in UnifiedCapability.query.filter(UnifiedCapability.id.in_(wanted)).all()
+        }
+
+    assert reference.id in visible
+    assert own.id in visible
+    assert foreign.id not in visible
+
+
+def test_capability_reference_is_read_only_inside_a_tenant_request(
+    db_session, tenant_ctx, make_org
+):
+    """A tenant must not mutate the shared reference catalogue it can read."""
+    from app.models.unified_capability import UnifiedCapability
+
+    org = make_org("capability-writer")
+    reference = UnifiedCapability(
+        name="Immutable reference capability",
+        code=f"IMM-{uuid.uuid4().hex[:10]}",
+        scope="reference",
+        organization_id=None,
+    )
+    db_session.add(reference)
+    db_session.flush()
+    reference_id = reference.id
+    db_session.expunge_all()
+
+    with tenant_ctx(org.id):
+        loaded = db_session.get(UnifiedCapability, reference_id)
+        assert loaded is not None
+        loaded.name = "Tenant attempted edit"
+        with pytest.raises(PermissionError, match="reference capabilities are read-only"):
+            db_session.flush()
 
 
 # --------------------------------------------------------------- known gaps

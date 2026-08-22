@@ -17,6 +17,7 @@ from datetime import datetime
 import logging
 from typing import Any, Dict, List, Optional  # dead-code-ok
 
+from flask import g, has_request_context
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -29,8 +30,10 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    or_,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm import declared_attr, relationship, with_loader_criteria
 
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 
@@ -38,6 +41,24 @@ from .. import db
 from .mixins import OptimisticLockMixin, TenantMixin
 
 logger = logging.getLogger(__name__)
+
+
+class HybridCapabilityTenantMixin:
+    """Nullable tenant ownership for a shared-reference/tenant-extension model.
+
+    This is intentionally separate from ``TenantMixin`` because the ordinary
+    equality filter would hide shared reference rows.  The model-specific event
+    handlers below provide its read and write mechanism.
+    """
+
+    @declared_attr
+    def organization_id(cls):
+        return Column(
+            Integer,
+            ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=True,
+            index=True,
+        )
 
 
 class BusinessDomain(db.Model):
@@ -81,7 +102,7 @@ class BusinessDomain(db.Model):
         return f"<BusinessDomain {self.code}: {self.name}>"
 
 
-class UnifiedCapability(db.Model, OptimisticLockMixin):
+class UnifiedCapability(HybridCapabilityTenantMixin, db.Model, OptimisticLockMixin):
     """
     Unified Capability Model (L1 - L3)
 
@@ -113,7 +134,32 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
     # Capability identity
     name = Column(db.String(256), nullable=False, index=True)
     description = Column(db.Text)
-    code = Column(db.String(50), unique=True, index=True)  # e.g., CUST-CRM-ACQ, PROD-DEV-PLM
+    code = Column(db.String(50), index=True)  # e.g., CUST-CRM-ACQ, PROD-DEV-PLM
+
+    # Hybrid ownership.  ``scope`` deliberately remains nullable until the
+    # explicit maintenance cutover has classified every legacy row.
+    scope = Column(String(16), nullable=True, index=True)
+    reference_capability_id = Column(
+        BigInteger,
+        ForeignKey("unified_capabilities.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Audited source provenance used by the cutover classifier.  Ownership is
+    # never derived from a capability's mutable display name or code.
+    source_table = Column(String(128), nullable=True)
+    source_id = Column(String(255), nullable=True)
+    source_org_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_checksum = Column(String(64), nullable=True)
+    retired_into_id = Column(
+        BigInteger,
+        ForeignKey("unified_capabilities.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # Specialization type marker
     specialization_type = Column(
@@ -168,7 +214,7 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
     target_state_description = db.Column(db.Text)
 
     # ArchiMate 3.2 integration
-    archimate_id = Column(db.String(64), unique=True, index=True)
+    archimate_id = Column(db.String(64), index=True)
     archimate_layer = Column(db.String(32), default="strategy")
     archimate_element_type = Column(db.String(30), default="capability")
     archimate_element_id = Column(db.Integer, db.ForeignKey("archimate_elements.id"))
@@ -212,8 +258,21 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
     # Relationships
     parent_capability = relationship(
         "UnifiedCapability",
+        foreign_keys=[parent_capability_id],
         remote_side="UnifiedCapability.id",
         backref=db.backref("child_capabilities", lazy="dynamic"),
+    )
+    reference_capability = relationship(
+        "UnifiedCapability",
+        foreign_keys=[reference_capability_id],
+        remote_side="UnifiedCapability.id",
+        backref="tenant_extensions",
+    )
+    retired_into = relationship(
+        "UnifiedCapability",
+        foreign_keys=[retired_into_id],
+        remote_side="UnifiedCapability.id",
+        backref="retired_duplicates",
     )
 
     # ArchiMate element
@@ -247,6 +306,36 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
         Index("idx_capability_maturity", "current_maturity_level", "target_maturity_level"),
         Index("idx_capability_manufacturing", "industry_domain", "manufacturing_critical"),
         Index("idx_capability_configuration", "configuration_id", "is_template"),
+        Index(
+            "uq_unified_capabilities_reference_code",
+            "code",
+            unique=True,
+            postgresql_where=db.text("organization_id IS NULL"),
+        ),
+        Index(
+            "uq_unified_capabilities_tenant_code",
+            "organization_id",
+            "code",
+            unique=True,
+            postgresql_where=db.text("organization_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_unified_capabilities_reference_archimate_id",
+            "archimate_id",
+            unique=True,
+            postgresql_where=db.text(
+                "organization_id IS NULL AND archimate_id IS NOT NULL"
+            ),
+        ),
+        Index(
+            "uq_unified_capabilities_tenant_archimate_id",
+            "organization_id",
+            "archimate_id",
+            unique=True,
+            postgresql_where=db.text(
+                "organization_id IS NOT NULL AND archimate_id IS NOT NULL"
+            ),
+        ),
         {"extend_existing": True},
     )
 
@@ -260,6 +349,9 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
             "name": self.name,
             "description": self.description,
             "code": self.code,
+            "scope": self.scope,
+            "organization_id": self.organization_id,
+            "reference_capability_id": self.reference_capability_id,
             "level": self.level,
             "domain_code": self.domain.code if self.domain else None,
             "domain_name": self.domain.name if self.domain else None,
@@ -351,6 +443,71 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
         import json
 
         self.kpis = json.dumps(kpis_list)
+
+
+@db.event.listens_for(db.session, "do_orm_execute")
+def _scope_unified_capability_queries(orm_execute_state):
+    """Expose shared reference capabilities plus only the current tenant's rows.
+
+    UnifiedCapability intentionally cannot use the ordinary TenantMixin: that
+    mixin's equality predicate would hide the shared ``organization_id IS
+    NULL`` catalogue.  Writes are stricter than reads so tenants cannot mutate
+    reference rows through an ORM bulk statement.
+    """
+
+    if not has_request_context() or getattr(g, "current_org_id", None) is None:
+        return
+    if not (
+        orm_execute_state.is_select
+        or orm_execute_state.is_update
+        or orm_execute_state.is_delete
+    ):
+        return
+
+    organization_id = g.current_org_id
+    if orm_execute_state.is_select:
+        predicate = lambda cls: or_(  # noqa: E731
+            cls.organization_id == organization_id,
+            cls.organization_id.is_(None),
+        )
+    else:
+        predicate = lambda cls: cls.organization_id == organization_id  # noqa: E731
+    orm_execute_state.statement = orm_execute_state.statement.options(
+        with_loader_criteria(UnifiedCapability, predicate, include_aliases=True)
+    )
+
+
+@db.event.listens_for(db.session, "before_flush")
+def _protect_reference_capability_writes(session, flush_context, instances):
+    """Stamp tenant-created capabilities and reject reference/cross-org edits."""
+
+    if not has_request_context() or getattr(g, "current_org_id", None) is None:
+        return
+    organization_id = g.current_org_id
+
+    for capability in (item for item in session.new if isinstance(item, UnifiedCapability)):
+        if capability.scope == "reference":
+            raise PermissionError("reference capabilities are read-only inside a tenant request")
+        if capability.organization_id is None:
+            capability.organization_id = organization_id
+        if capability.organization_id != organization_id:
+            raise PermissionError("capabilities owned by another tenant are read-only")
+        if capability.scope is None:
+            capability.scope = "tenant"
+
+    for capability in (
+        item
+        for item in session.dirty.union(session.deleted)
+        if isinstance(item, UnifiedCapability)
+    ):
+        history = sa_inspect(capability).attrs.organization_id.history
+        original_organization_id = (
+            history.deleted[0] if history.deleted else capability.organization_id
+        )
+        if original_organization_id is None:
+            raise PermissionError("reference capabilities are read-only inside a tenant request")
+        if original_organization_id != organization_id or capability.organization_id != organization_id:
+            raise PermissionError("capabilities owned by another tenant are read-only")
 
 
 
