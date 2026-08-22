@@ -138,3 +138,118 @@ advance the Discover → Evidence gate.
 - The broad all-gates verifier was bounded without a result as described above;
   the parent integration wave should run it to completion after all SDD tasks are
   assembled.
+
+## Fix round 1/5 — Important review findings
+
+### Outcome
+
+Closed all five Important findings test-first. Candidate mutation now rechecks
+persisted authority inside the locked handler immediately before its first
+insert. The live gate snapshot consumes installed candidate, signal and evidence
+request rows. Capability citations validate the referenced capability tenant.
+Risk and technical-health facts use canonical vocabularies and fail unknown.
+The portfolio steward is now an environment-backed optional positive integer,
+and only a confirmed same-tenant user can receive generated evidence requests.
+
+Commit subject: `fix: harden rationalisation candidate governance` (the exact
+commit hash is recorded in the parent handoff because this report is part of the
+same commit).
+
+### RED evidence
+
+- The concurrency regression claimed the command, revoked the actor's persisted
+  role, then entered the real locked handler. It failed with `DID NOT RAISE
+  NotAuthorised`, proving receipt-time authorization alone left a race window.
+- After a real candidate acceptance, the live policy snapshot returned
+  `accepted_candidates == ()`, proving Task 5 persistence was replaced by the
+  gate service's placeholder constants.
+- A tenant-owned mapping pointing at a foreign `BusinessCapability` produced a
+  fully confident capability signal and cited the foreign row instead of the
+  named `capability_overlap_unavailable` result.
+- Blank and whitespace risk values were initially emitted with confidence 1 and
+  no unknown code. The same implementation path also accepted `unknown`,
+  unsupported values and arbitrary technical-health strings.
+- The environment-loading test raised `AttributeError` because
+  `Config.TRANSFORMATION_PORTFOLIO_STEWARD_ID` did not exist. A configured but
+  unconfirmed user was also assigned the evidence request instead of falling
+  back to the workstream lead.
+
+### GREEN evidence
+
+- `pytest -q tests/test_rationalisation_discovery_service.py` — **25 passed**, 0
+  failed. This includes the role-revocation race, live gate integration,
+  cross-tenant capability and steward cases, four invalid forms for each
+  categorical rule, normalized supported forms, and actual subprocess config
+  loading.
+- `pytest -q tests/test_transformation_gate_service.py
+  tests/test_transformation_command_service.py
+  tests/test_transformation_programme_service.py
+  tests/test_transformation_db_guards.py tests/test_tenant_isolation.py` — **128
+  passed**, 0 failed.
+- `python scripts/verify.py --gate compile` — **1 passed**, no skips.
+- `python scripts/verify.py --gate lint-core` — **1 passed**, `0 <= 0`, no skips.
+- `python scripts/verify.py --gate raw-sql-tenancy` — **1 passed**, `0 <= 0`, no
+  skips.
+- `python scripts/verify.py --gate schema-drift` — **1 passed**, `0 <= 0`, no
+  skips.
+- `python scripts/verify.py --gate undefined-exports` — **1 passed**, `0 <= 0`,
+  no skips.
+- Focused Ruff over all changed Python/test files — **all checks passed**.
+- `git diff --check` — clean.
+
+### Authorization, tenancy, source and replay evidence
+
+The locked acceptance handler tenant-locks workstream, programme and application,
+recomputes the selected signals, then invokes the persisted-role authority check
+immediately before constructing any candidate row. The regression deliberately
+bypasses a second command-layer authorizer so only this handler check can deny;
+after denial, PostgreSQL counts for candidates, signals and requests are all
+zero. Existing replay reauthorization remains green.
+
+Capability mapping reads now inner-join `BusinessCapability` on both foreign key
+and the actor's explicit organization ID; sibling mappings do the same while
+also tenant-validating their application endpoint. A corrupt cross-tenant
+mapping is excluded from both observations and source citations and yields the
+named unknown with null confidence.
+
+The live gate projection loads accepted candidates with an explicit tenant and
+workstream predicate, joins their signals on candidate plus tenant, derives
+`subject_exists` from a live same-tenant non-deleted application, and derives
+`duplicates_resolved` from a persisted, known, digest-bearing capability signal.
+Evidence requests are likewise joined to same-tenant candidates and constrained
+to the workstream. Installed candidate/evidence resources are no longer reported
+as unavailable; the live Discover → Evidence result reaches the real owner
+evidence blocker instead of a placeholder resource blocker.
+
+### Categorical and configuration evidence
+
+`APPLICATION_RISK_LEVELS` and `APPLICATION_HEALTH_STATUSES` are canonical model
+vocabularies. Signal observations trim and lowercase supported values before
+digesting; blank, whitespace, literal `unknown`, non-string and unsupported
+values normalize to `None`, carry null confidence and expose the appropriate
+named unknown code.
+
+`TRANSFORMATION_PORTFOLIO_STEWARD_ID` is documented in `.env.example` and loaded
+by `Config` through a positive-integer parser. The test imports `Config` in fresh
+processes with valid, blank, non-numeric and non-positive environment values,
+rather than relying on direct Flask config injection. Persistence selection then
+requires the configured ID to name a confirmed same-tenant user; absent,
+malformed, non-positive, foreign-tenant, unconfirmed or missing IDs fall back to
+the confirmed same-tenant workstream lead.
+
+### Self-review and concerns
+
+- Reviewed every changed query for explicit organization and workstream/candidate
+  binding; no raw SQL or tenant-middleware-only assumption was introduced.
+- The handler check is intentionally repeated after signal recomputation: this
+  places it at the final locked boundary before persistence while retaining the
+  named command authorizer at receipt/replay.
+- No schema column was added by this fix round. Canonical vocabularies are code
+  constants over existing nullable fields, and the deployment option is config
+  only.
+- `User` has no persisted disable flag beyond account confirmation; therefore
+  `confirmed = true` is the repository's deployable active-account criterion for
+  steward/lead assignment.
+- The repository-wide verifier remains parent-wave work as documented in the
+  original report; this round used bounded focused, prior-interface, tenant and
+  required gate verification with no skips.

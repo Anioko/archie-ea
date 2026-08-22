@@ -11,9 +11,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import db
+from app.models.application_portfolio import ApplicationComponent
 from app.models.benefit import Benefit
 from app.models.implementation_migration import WorkPackage
 from app.models.strategic import RoadmapItem, StrategicInitiative
+from app.models.transformation_evidence import (
+    CandidateSignal,
+    EvidenceRequest,
+    TransformationCandidate,
+)
 from app.models.transformation_programme import (
     ISO_4217_CURRENCIES,
     MeasureDefinition,
@@ -76,6 +82,20 @@ class PolicySnapshot:
     outcome_reviews: tuple[object, ...]
     authorized_waiver_authority_ids: frozenset[int]
     unavailable_resources: frozenset[str]
+
+
+@dataclass(frozen=True)
+class CandidatePolicyProjection:
+    """Persisted candidate facts needed by the Discover-to-Evidence policy."""
+
+    id: int
+    organization_id: int
+    workstream_id: int
+    subject_type: str
+    subject_id: int
+    inclusion_status: str
+    subject_exists: bool
+    duplicates_resolved: bool
 
 
 def _value(row: object, field: str, default: Any = None) -> Any:
@@ -285,12 +305,94 @@ class TransformationGateService:
             Benefit.organization_id == actor.organization_id,
             Benefit.programme_workstream_id == workstream.id,
         )).all())
+        candidate_rows = tuple(session.scalars(
+            select(TransformationCandidate).where(
+                TransformationCandidate.organization_id == actor.organization_id,
+                TransformationCandidate.workstream_id == workstream.id,
+                TransformationCandidate.inclusion_status == "accepted",
+            )
+        ).all())
+        candidate_ids = [row.id for row in candidate_rows]
+        candidate_signals = tuple(session.scalars(
+            select(CandidateSignal)
+            .join(
+                TransformationCandidate,
+                (TransformationCandidate.id == CandidateSignal.candidate_id)
+                & (
+                    TransformationCandidate.organization_id
+                    == CandidateSignal.organization_id
+                ),
+            )
+            .where(
+                CandidateSignal.organization_id == actor.organization_id,
+                CandidateSignal.candidate_id.in_(candidate_ids or [-1]),
+                TransformationCandidate.organization_id == actor.organization_id,
+                TransformationCandidate.workstream_id == workstream.id,
+            )
+        ).all())
+        application_subject_ids = [
+            row.subject_id
+            for row in candidate_rows
+            if row.subject_type == "application"
+        ]
+        existing_application_ids = frozenset(session.scalars(
+            select(ApplicationComponent.id).where(
+                ApplicationComponent.organization_id == actor.organization_id,
+                ApplicationComponent.id.in_(application_subject_ids or [-1]),
+                ApplicationComponent.deleted_at.is_(None),
+            )
+        ).all())
+        signals_by_candidate: dict[int, list[CandidateSignal]] = {}
+        for signal in candidate_signals:
+            signals_by_candidate.setdefault(signal.candidate_id, []).append(signal)
+        accepted_candidates = tuple(
+            CandidatePolicyProjection(
+                id=row.id,
+                organization_id=row.organization_id,
+                workstream_id=row.workstream_id,
+                subject_type=row.subject_type,
+                subject_id=row.subject_id,
+                inclusion_status=row.inclusion_status,
+                subject_exists=(
+                    row.subject_type == "application"
+                    and row.subject_id in existing_application_ids
+                ),
+                duplicates_resolved=any(
+                    signal.rule_code == "capability_overlap"
+                    and isinstance(signal.payload_json, Mapping)
+                    and signal.payload_json.get("unknown_code") is None
+                    and isinstance(signal.content_hash, str)
+                    and len(signal.content_hash) == 64
+                    for signal in signals_by_candidate.get(row.id, ())
+                ),
+            )
+            for row in candidate_rows
+        )
+        evidence_requests = tuple(session.scalars(
+            select(EvidenceRequest)
+            .join(
+                TransformationCandidate,
+                (TransformationCandidate.id == EvidenceRequest.candidate_id)
+                & (
+                    TransformationCandidate.organization_id
+                    == EvidenceRequest.organization_id
+                ),
+            )
+            .where(
+                EvidenceRequest.organization_id == actor.organization_id,
+                EvidenceRequest.workstream_id == workstream.id,
+                EvidenceRequest.candidate_id.in_(candidate_ids or [-1]),
+                TransformationCandidate.organization_id == actor.organization_id,
+                TransformationCandidate.workstream_id == workstream.id,
+            )
+        ).all())
         unavailable = frozenset({
-            "candidates", "evidence", "options", "briefs", "arb", "conditions",
-            "approved_actions", "delivery", "measurements", "outcome_reviews",
+            "options", "briefs", "arb", "conditions", "approved_actions",
+            "delivery", "measurements", "outcome_reviews",
         })
         return PolicySnapshot(
-            programme, workstream, roles, outcomes, measures, (), (), (), (), (),
+            programme, workstream, roles, outcomes, measures, accepted_candidates,
+            (), (), evidence_requests, (),
             (), (), (), (), (), (), work_packages, roadmap_items, benefits, (), (),
             (), frozenset(authorized_waiver_authority_ids), unavailable,
         )

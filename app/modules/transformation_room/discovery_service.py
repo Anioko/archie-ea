@@ -16,8 +16,13 @@ from sqlalchemy.orm import Session, aliased
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping
 from app.models.application_owner import ApplicationOwner
-from app.models.application_portfolio import ApplicationComponent
+from app.models.application_portfolio import (
+    APPLICATION_HEALTH_STATUSES,
+    APPLICATION_RISK_LEVELS,
+    ApplicationComponent,
+)
 from app.models.application_rationalization import ApplicationDependency
+from app.models.business_capabilities import BusinessCapability
 from app.models.strategic import StrategicInitiative
 from app.models.transformation_evidence import (
     CandidateSignal,
@@ -100,6 +105,13 @@ def _signal_digest(
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _normalize_category(value: Any, allowed_values: frozenset[str]) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    return normalized if normalized in allowed_values else None
+
+
 class _SignalRule:
     code: str
     unknown_code: str
@@ -155,7 +167,16 @@ class _CapabilityOverlapRule(_SignalRule):
 
     def observe(self, session, actor, application, evaluated_at):
         mappings = session.scalars(
-            select(ApplicationCapabilityMapping).where(
+            select(ApplicationCapabilityMapping)
+            .join(
+                BusinessCapability,
+                and_(
+                    BusinessCapability.id
+                    == ApplicationCapabilityMapping.business_capability_id,
+                    BusinessCapability.organization_id == actor.organization_id,
+                ),
+            )
+            .where(
                 ApplicationCapabilityMapping.organization_id == actor.organization_id,
                 ApplicationCapabilityMapping.application_component_id == application.id,
                 ApplicationCapabilityMapping.is_active.is_(True),
@@ -185,6 +206,14 @@ class _CapabilityOverlapRule(_SignalRule):
                     ApplicationComponent.id
                     == ApplicationCapabilityMapping.application_component_id,
                     ApplicationComponent.organization_id == actor.organization_id,
+                ),
+            )
+            .join(
+                BusinessCapability,
+                and_(
+                    BusinessCapability.id
+                    == ApplicationCapabilityMapping.business_capability_id,
+                    BusinessCapability.organization_id == actor.organization_id,
                 ),
             )
             .where(
@@ -254,7 +283,12 @@ class _RiskRule(_SignalRule):
 
     def observe(self, session, actor, application, evaluated_at):
         del session, evaluated_at
-        values = {field: getattr(application, field) for field in self._FIELDS}
+        values = {
+            field: _normalize_category(
+                getattr(application, field), APPLICATION_RISK_LEVELS
+            )
+            for field in self._FIELDS
+        }
         complete = all(value is not None for value in values.values())
         return (
             {"application_components": [application.id]},
@@ -270,7 +304,9 @@ class _TechnicalHealthRule(_SignalRule):
 
     def observe(self, session, actor, application, evaluated_at):
         del session, evaluated_at
-        value = application.health_status
+        value = _normalize_category(
+            application.health_status, APPLICATION_HEALTH_STATUSES
+        )
         return (
             {"application_components": [application.id]},
             {"health_status": value},
@@ -672,6 +708,17 @@ class RationalisationDiscoveryService:
         if len(selected_signals) != len(selected_digests):
             raise CommandConflict("candidate_signals_stale")
 
+        # Receipt authorization runs in an earlier claim transaction. Recheck
+        # persisted authority after owning the aggregate locks so a role revoked
+        # between claim and mutation cannot authorize these domain writes.
+        TransformationProgrammeService._require_programme_authority(
+            session,
+            actor,
+            programme.id,
+            workstream.id,
+            cls.ACCEPTANCE_ROLES,
+            "candidate_acceptance_not_authorised",
+        )
         candidate = TransformationCandidate(
             organization_id=actor.organization_id,
             workstream_id=workstream.id,
@@ -873,6 +920,7 @@ class RationalisationDiscoveryService:
                 select(User.id).where(
                     User.organization_id == actor.organization_id,
                     User.id == configured_id,
+                    User.confirmed.is_(True),
                 )
             )
             if steward_id is not None:
@@ -881,6 +929,7 @@ class RationalisationDiscoveryService:
             select(User.id).where(
                 User.organization_id == actor.organization_id,
                 User.id == workstream.lead_id,
+                User.confirmed.is_(True),
             )
         )
         if architect_id is None:

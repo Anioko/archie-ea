@@ -5,6 +5,9 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import date
+import os
+import subprocess
+import sys
 
 import pytest
 from sqlalchemy import func, select, text
@@ -30,9 +33,11 @@ from app.modules.transformation_room.domain import (
     DiscoveryFilters,
     NotAuthorised,
 )
+from app.modules.transformation_room.command_service import CommandService
 from app.modules.transformation_room.discovery_service import (
     RationalisationDiscoveryService,
 )
+from app.modules.transformation_room.gate_service import TransformationGateService
 
 
 @dataclass(frozen=True)
@@ -270,6 +275,113 @@ def test_missing_inputs_are_named_unknowns_never_numeric_zero(db_session):
     }
 
 
+@pytest.mark.parametrize("invalid_value", ["", "   ", "unknown", "unsupported"])
+def test_invalid_risk_categories_are_named_unknowns(db_session, invalid_value):
+    scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
+    application = db_session.get(ApplicationComponent, scope.application_id)
+    application.technical_risk = invalid_value
+    db_session.flush()
+
+    target = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+    signal = next(item for item in target.signals if item.rule_code == "risk")
+
+    assert signal.unknown_code == "risk_unavailable"
+    assert signal.confidence is None
+    assert signal.observed_values["technical_risk"] is None
+
+
+@pytest.mark.parametrize("invalid_value", ["", "   ", "unknown", "unsupported"])
+def test_invalid_health_categories_are_named_unknowns(db_session, invalid_value):
+    scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
+    application = db_session.get(ApplicationComponent, scope.application_id)
+    application.health_status = invalid_value
+    db_session.flush()
+
+    target = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+    signal = next(
+        item for item in target.signals if item.rule_code == "technical_health"
+    )
+
+    assert signal.unknown_code == "technical_health_unavailable"
+    assert signal.confidence is None
+    assert signal.observed_values["health_status"] is None
+
+
+def test_supported_categories_are_normalized_before_digesting(db_session):
+    scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
+    application = db_session.get(ApplicationComponent, scope.application_id)
+    application.technical_risk = " HIGH "
+    application.health_status = " AT_RISK "
+    db_session.flush()
+
+    target = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+    signals = {item.rule_code: item for item in target.signals}
+
+    assert signals["risk"].observed_values["technical_risk"] == "high"
+    assert signals["risk"].confidence == 1
+    assert signals["technical_health"].observed_values["health_status"] == "at_risk"
+    assert signals["technical_health"].confidence == 1
+
+
+def test_capability_signal_excludes_corrupt_cross_tenant_mapping(
+    db_session, make_org
+):
+    """Catches a tenant-owned mapping leaking a foreign capability citation."""
+    scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
+    target_mapping = db_session.scalar(
+        select(ApplicationCapabilityMapping).where(
+            ApplicationCapabilityMapping.organization_id == scope.organization_id,
+            ApplicationCapabilityMapping.id == scope.mapping_ids[0],
+        )
+    )
+    db_session.delete(target_mapping)
+    foreign_org = make_org("foreign-capability")
+    foreign_capability = BusinessCapability(
+        organization_id=foreign_org.id,
+        name="Foreign capability",
+        code=f"FOREIGN-{uuid.uuid4().hex[:10]}",
+        level=2,
+    )
+    db_session.add(foreign_capability)
+    db_session.flush()
+    corrupt_mapping = ApplicationCapabilityMapping(
+        organization_id=scope.organization_id,
+        application_component_id=scope.application_id,
+        business_capability_id=foreign_capability.id,
+        coverage_percentage=100,
+        is_active=True,
+    )
+    db_session.add(corrupt_mapping)
+    db_session.flush()
+
+    target = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+    signal = next(
+        item for item in target.signals if item.rule_code == "capability_overlap"
+    )
+
+    assert signal.unknown_code == "capability_overlap_unavailable"
+    assert signal.confidence is None
+    assert signal.observed_values == {
+        "capability_ids": None,
+        "overlapping_application_ids": None,
+        "overlap_count": None,
+    }
+    assert foreign_capability.id not in signal.source_record_ids.get(
+        "business_capability", ()
+    )
+    assert corrupt_mapping.id not in signal.source_record_ids.get(
+        "application_capability_mapping", ()
+    )
+
+
 @pytest.fixture
 def committed_scope(app, _schema):
     """Persist prerequisites because fenced commands intentionally use new sessions."""
@@ -332,7 +444,6 @@ def test_acceptance_recomputes_citations_replays_and_does_not_copy_application(
             .select_from(ApplicationComponent)
             .where(ApplicationComponent.organization_id == scope.organization_id)
         )
-
     created = RationalisationDiscoveryService.accept_candidate(
         actor=scope.actor,
         workstream_id=scope.workstream_id,
@@ -408,6 +519,46 @@ def test_acceptance_recomputes_citations_replays_and_does_not_copy_application(
         )
 
 
+def test_live_discovery_gate_loads_accepted_candidate_signals_and_owner_request(
+    committed_scope,
+):
+    """Catches the persisted gate snapshot replacing installed Task 5 rows with empties."""
+    scope = committed_scope
+    discovered = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+    RationalisationDiscoveryService.accept_candidate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        application_id=scope.application_id,
+        signal_digests=discovered.signal_digests,
+        inclusion_reason="Accepted scope still needs owner evidence",
+        command_key="live-gate-candidate",
+    )
+
+    snapshot = TransformationGateService.load_policy_snapshot(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+    )
+    gate = TransformationGateService.evaluate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="evidence",
+    )
+
+    assert len(snapshot.accepted_candidates) == 1
+    assert snapshot.accepted_candidates[0].subject_exists is True
+    assert snapshot.accepted_candidates[0].duplicates_resolved is True
+    assert len(snapshot.evidence_requests) == 1
+    assert snapshot.evidence_requests[0].claim_key == "application_owner"
+    assert "candidates" not in snapshot.unavailable_resources
+    assert "evidence" not in snapshot.unavailable_resources
+    assert gate.allowed is False
+    assert {blocker.code for blocker in gate.blockers} == {
+        "application_owner_evidence_required"
+    }
+
+
 def test_acceptance_rejects_stale_signal_digest(committed_scope):
     """Catches acceptance persisting facts that changed after discovery."""
     scope = committed_scope
@@ -472,6 +623,114 @@ def test_owner_request_falls_back_to_workstream_architect_without_configuration(
     assert request.assigned_to_id == scope.actor_id
 
 
+def test_owner_request_rejects_configured_steward_from_another_tenant(
+    app, db_session, make_org
+):
+    scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
+    foreign_org = make_org("foreign-steward")
+    foreign_steward = User(
+        email=f"foreign-steward-{uuid.uuid4().hex[:10]}@example.test",
+        organization_id=foreign_org.id,
+        confirmed=True,
+        enterprise_role="portfolio_manager",
+    )
+    db_session.add(foreign_steward)
+    db_session.flush()
+    workstream = db_session.scalar(
+        select(ProgrammeWorkstream).where(
+            ProgrammeWorkstream.organization_id == scope.organization_id,
+            ProgrammeWorkstream.id == scope.workstream_id,
+        )
+    )
+    previous_steward = app.config.get("TRANSFORMATION_PORTFOLIO_STEWARD_ID")
+    app.config["TRANSFORMATION_PORTFOLIO_STEWARD_ID"] = foreign_steward.id
+    try:
+        assignee_id = RationalisationDiscoveryService._owner_request_assignee(
+            db_session, scope.actor, workstream
+        )
+    finally:
+        if previous_steward is None:
+            app.config.pop("TRANSFORMATION_PORTFOLIO_STEWARD_ID", None)
+        else:
+            app.config["TRANSFORMATION_PORTFOLIO_STEWARD_ID"] = previous_steward
+
+    assert assignee_id == scope.actor_id
+
+
+def test_owner_request_falls_back_when_configured_steward_is_not_active(
+    app, committed_scope
+):
+    scope = committed_scope
+    with Session(db.engine) as session, session.begin():
+        steward = session.scalar(
+            select(User).where(
+                User.organization_id == scope.organization_id,
+                User.id == scope.steward_id,
+            )
+        )
+        steward.confirmed = False
+    app.config["TRANSFORMATION_PORTFOLIO_STEWARD_ID"] = scope.steward_id
+    discovered = next(
+        item
+        for item in _discover(scope)
+        if item.application_id == scope.unknown_application_id
+    )
+
+    result = RationalisationDiscoveryService.accept_candidate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        application_id=scope.unknown_application_id,
+        signal_digests=discovered.signal_digests,
+        inclusion_reason="Inactive steward must not own evidence",
+        command_key="inactive-steward-fallback",
+    )
+
+    with Session(db.engine) as session:
+        request = session.scalar(
+            select(EvidenceRequest).where(
+                EvidenceRequest.organization_id == scope.organization_id,
+                EvidenceRequest.id == result.object_ids["evidence_request_id"],
+            )
+        )
+    assert request.assigned_to_id == scope.actor_id
+
+
+@pytest.mark.parametrize(
+    ("configured_value", "expected"),
+    [("42", "42"), ("", "None"), ("not-an-id", "None"), ("0", "None")],
+)
+def test_portfolio_steward_id_is_loaded_and_validated_from_environment(
+    configured_value, expected
+):
+    """Exercises the deployment config path rather than mutating Flask config."""
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "TRANSFORMATION_PORTFOLIO_STEWARD_ID": configured_value,
+            "SECRET_KEY": "test-secret",
+            "ADMIN_PASSWORD": "test-password",
+        }
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from config import Config; "
+                "print(repr(Config.TRANSFORMATION_PORTFOLIO_STEWARD_ID))"
+            ),
+        ],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip().splitlines()[-1] == expected
+
+
 def test_acceptance_replay_reauthorises_from_persisted_role(committed_scope):
     """Catches immutable command replay bypassing current candidate authority."""
     scope = committed_scope
@@ -504,6 +763,71 @@ def test_acceptance_replay_reauthorises_from_persisted_role(committed_scope):
             inclusion_reason="Authorised first call",
             command_key="reauthorise-replay",
         )
+
+
+def test_locked_acceptance_rechecks_role_revoked_after_command_claim(committed_scope):
+    """Catches authority revoked between receipt claim and the locked domain handler."""
+    scope = committed_scope
+    discovered = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+    request = {
+        "workstream_id": scope.workstream_id,
+        "application_id": scope.application_id,
+        "signal_digests": tuple(sorted(discovered.signal_digests)),
+        "inclusion_reason": "Authority must survive until persistence",
+    }
+    natural_key = (
+        f"candidate:{scope.workstream_id}:application:{scope.application_id}"
+    )
+    claim = CommandService.claim_or_reconcile(
+        actor=scope.actor,
+        operation="candidate.accept",
+        idempotency_key="revoked-after-claim",
+        request_digest=CommandService.request_digest(request),
+        natural_key=natural_key,
+        authorizer=RationalisationDiscoveryService.authorise_candidate_acceptance(
+            scope.workstream_id, scope.application_id
+        ),
+    )
+    with Session(db.engine) as session, session.begin():
+        architect = session.scalar(
+            select(User).where(
+                User.organization_id == scope.organization_id,
+                User.id == scope.actor_id,
+            )
+        )
+        architect.enterprise_role = "application_manager"
+
+    with pytest.raises(NotAuthorised, match="candidate_acceptance_not_authorised"):
+        CommandService._execute_claim(
+            actor=scope.actor,
+            operation="candidate.accept",
+            claim=claim,
+            authorizer=None,
+            handler=lambda session, fenced_claim: (
+                RationalisationDiscoveryService._accept_recomputed_candidate(
+                    session, scope.actor, request, fenced_claim
+                )
+            ),
+        )
+
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(func.count())
+            .select_from(TransformationCandidate)
+            .where(TransformationCandidate.organization_id == scope.organization_id)
+        ) == 0
+        assert session.scalar(
+            select(func.count())
+            .select_from(CandidateSignal)
+            .where(CandidateSignal.organization_id == scope.organization_id)
+        ) == 0
+        assert session.scalar(
+            select(func.count())
+            .select_from(EvidenceRequest)
+            .where(EvidenceRequest.organization_id == scope.organization_id)
+        ) == 0
 
 
 def test_candidate_signal_is_database_immutable(committed_scope):

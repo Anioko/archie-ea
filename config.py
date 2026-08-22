@@ -49,6 +49,17 @@ def _env_bool(name: str, default: bool) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _env_optional_positive_int(name: str) -> int | None:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    try:
+        parsed = int(value.strip())
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
 # Load environment variables from .env file
 from dotenv import load_dotenv
 
@@ -150,6 +161,11 @@ class Config:
             "Set ADMIN_PASSWORD in your .env file for production use."
         )
     ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "flask-base-admin@example.com")
+    # Optional same-tenant, confirmed user who owns generated application-owner
+    # evidence requests. Invalid/unavailable IDs fall back to the workstream lead.
+    TRANSFORMATION_PORTFOLIO_STEWARD_ID = _env_optional_positive_int(
+        "TRANSFORMATION_PORTFOLIO_STEWARD_ID"
+    )
     EMAIL_SUBJECT_PREFIX = "[{}]".format(APP_NAME)
     EMAIL_SENDER = "{app_name} Admin <{email}>".format(
         app_name=APP_NAME, email=MAIL_USERNAME
