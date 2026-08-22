@@ -93,7 +93,7 @@ New entities:
 | `MeasureDefinition` | The measurement contract for an outcome: metric name, unit, aggregation, baseline/target values and dates, cadence, source adapter/key, tolerance and explicit unavailable reason. Financial values use `Numeric(18,2)` plus ISO-4217 currency; percentages/quantities use `Numeric(24,6)`. It never uses binary float. |
 | `TransformationCandidate` | A workstream-scoped item being assessed. It references a canonical subject (`ApplicationComponent` first) and never copies the subject as a new inventory record. A uniqueness constraint covers `(organization_id, workstream_id, subject_type, subject_id)`. |
 | `EvidenceRecord` | Append-only, versioned observation or attestation linked to a candidate or workstream. Stores field/claim, typed value, source, collector, observed time, freshness rule, confidence, status and supersession. |
-| `EvidenceClaimHead` | Mutable concurrency head keyed uniquely by `(organization_id, subject_type, subject_id, claim_key, source_identity)`. It points to the current immutable `EvidenceRecord`, carries a CAS `revision`, and is the only mutable part of an evidence chain. Pointer changes are audited. |
+| `EvidenceClaimHead` | Mutable concurrency head keyed uniquely by `(organization_id, subject_type, subject_id, claim_key, source_identity)`. `source_identity` is non-null and canonically normalised. The head points to the current immutable `EvidenceRecord`, carries a CAS `revision`, and is the only mutable part of an evidence chain. Pointer changes are database-enforced and audited. |
 | `EvidenceRequest` | Persisted request for a named claim and subject, assigned contributor, due date, required/non-blocking classification and status (`open`, `submitted`, `accepted`, `declined`, `expired`, `cancelled`). A submitted response creates Evidence, but the request is completed only when an authorised architect accepts that version. |
 | `TransformationOption` | A persisted option for one candidate or workstream, including action type, description, assumptions, dependencies, expected impacts, cost/risk ranges and optional technology requirement. Options are editable drafts until captured in a decision-brief version. |
 | `TransformationOptionVersion` | Immutable option snapshot. Every comparison and brief cites exact version IDs; fields include typed monetary ranges/currency, benefit/risk ranges, assumptions, dependencies, impact and technology requirement. A canonical hash covers content, tenant, logical option ID, version and capture metadata. |
@@ -101,7 +101,7 @@ New entities:
 | `DecisionBriefVersion` | Immutable submitted snapshot of objective, scope, alternatives, recommendation, evidence citations, unknowns, conflicts, impacts and assertions. A content hash detects mutation. Drafting produces a new version; submitted versions are never updated or deleted. |
 | `DecisionEvent` | Append-only state/decision history for a brief and its ARB review: event type, from/to state, actor, rationale, conditions, source review ID and time. Current status is a projection; this log is the audit truth. |
 | `OutcomeMeasurement` | Append-only observation against a canonical `Benefit`, with source, measurement time, value and recorder. The current `Benefit.actual_*` projection may be refreshed transactionally for compatibility. |
-| `CommandIdempotencyRecord` | Receipt/lease claimed independently of domain work. Stores tenant, actor, operation, key, request digest, lease, status and pointer to a canonical `OperationResult`. It never authorises blind re-execution. |
+| `CommandIdempotencyRecord` | Receipt/lease claimed independently of domain work. Stores tenant, actor, operation, key, request digest, lease expiry, monotonically increasing `lease_generation`, unguessable `claim_token`, claimant, status and pointer to a canonical `OperationResult`. It never authorises blind or stale-claimant execution. |
 | `OperationResult` | Immutable canonical result/outbox row created in the same transaction as the domain mutation, keyed by an operation-specific natural key. It contains canonical object IDs, response digest and events to publish. |
 | `DeliveryExportAttempt` | Append-only attempt/result for sending a canonical WorkPackage to an external delivery system. Retry is a new attempt linked by predecessor ID; external keys never overwrite history. |
 | `LegacyProgrammeBridge` | Temporary one-to-one mapping from an `EnterpriseInitiative` to its canonical `StrategicInitiative`, with migration state and source fingerprint. It prevents duplicate imports and makes retirement measurable. |
@@ -150,7 +150,9 @@ erDiagram
     TRANSFORMATION_CANDIDATE ||--o{ DECISION_BRIEF : may_frame
     DECISION_BRIEF ||--o{ DECISION_BRIEF_VERSION : versions
     DECISION_BRIEF ||--o{ ARB_REVIEW_CYCLE : governed_in
-    DECISION_BRIEF_VERSION ||--o| ARB_REVIEW_CYCLE : pinned_by
+    SOLUTION ||--o{ ARB_REVIEW_CYCLE : governed_in
+    DECISION_BRIEF_VERSION ||--o| ARB_REVIEW_CYCLE : decision_evidence_for
+    ARB_SUBMISSION_EVIDENCE_SNAPSHOT ||--o| ARB_REVIEW_CYCLE : solution_evidence_for
     DECISION_BRIEF ||--o{ ARB_REVIEW_ITEM : subject_of
     ARB_REVIEW_CYCLE ||--|| ARB_REVIEW_ITEM : owns
     DECISION_BRIEF_VERSION }o--o{ EVIDENCE_RECORD : cites_versions
@@ -178,7 +180,7 @@ Relationship ownership rules:
    rows are backfilled and verified first.
 5. A Solution may belong to one programme and one workstream within that programme. A service invariant rejects mismatched parents.
 6. Every tenant-scoped child carries `organization_id`; foreign-key identity alone is never accepted as proof of same-tenant membership.
-7. Evidence supersession is a single ordered chain per `(organization_id, subject_type, subject_id, claim_key, source_identity)`. The unique `EvidenceClaimHead` is created by constraint-backed upsert, then locked or updated with `WHERE revision = :expected_revision`. A change inserts the immutable successor and CAS-updates the head pointer/revision in the same transaction. A lost CAS rolls back the insert and returns `409`, so forks cannot commit. There is no "unique unsuperseded leaf" index on immutable rows. Different sources have independent heads and surface as an explicit conflict rather than silently superseding one another.
+7. Evidence supersession is a single ordered chain per `(organization_id, subject_type, subject_id, claim_key, source_identity)`. `source_identity` is never null: adapters produce `<adapter-kind>:<canonical-source-key>`, Unicode-normalised to NFC, with adapter kind/URI scheme/host lower-cased and opaque source keys preserved according to that adapter's canonicalisation contract; manual attestations use `attestation:user:<user_id>` and unknowns use `unknown:<responsible-role>:<stable-scope-key>`. Empty, whitespace-only or non-canonical values are rejected. The unique `EvidenceClaimHead` is created by constraint-backed upsert. A change inserts the immutable successor and invokes the guarded head-advance function in the same transaction. A failed guard rolls back the insert and returns `409`, so forks cannot commit. There is no "unique unsuperseded leaf" index on immutable rows. Different sources have independent heads and surface as an explicit conflict rather than silently superseding one another.
 
 ## 5. Lifecycle and gates
 
@@ -247,15 +249,58 @@ The architect compares Tolerate, Invest, Migrate, Eliminate and a context-specif
 
 `DecisionBriefService.freeze()` resolves and snapshots the programme objective, outcome commitments/measure definitions, candidate subject, exact immutable option versions, recommendation, cited evidence versions, conflicts, unknowns, human assertions and expected execution/outcomes. The result is immutable. The existing `ARBSubmissionService` is generalised—not replaced—as the sole writer for every ARB submission. Its existing Solution subject adapter, evidence evaluation and `ARBSubmissionEvidenceSnapshot` remain intact. A new Decision Brief subject adapter supplies the same service contract and creates exactly one canonical `ARBReviewItem` and subject-specific immutable snapshot.
 
-This is the canonical non-Solution ARB subject strategy: ARB reviews a `DecisionBriefVersion`, not an invented Solution. The ARB review UI resolves a typed subject adapter that supplies title, evidence dossier, risk, decision actions and canonical deep link. Existing Solution ARB submissions continue to use the evidence-gated Solution adapter. A generic ARB endpoint must delegate to the typed service or reject an unsupported subject; it cannot create a second rationalisation review state.
+This is the canonical non-Solution ARB subject strategy: the logical governed subject is a `DecisionBrief`, and each cycle reviews one pinned immutable `DecisionBriefVersion`—never an invented Solution. The ARB review UI resolves a typed subject adapter that supplies title, evidence dossier, risk, decision actions and canonical deep link. Existing Solution ARB submissions continue to use the evidence-gated Solution adapter. A generic ARB endpoint must delegate to the typed service or reject an unsupported subject; it cannot create a second rationalisation review state.
 
 The decision authority approves, rejects, returns for evidence/options, or approves with conditions. That action and rationale live on the canonical ARB item and append-only decision event. The workstream projects the result; it does not duplicate it.
 
-For this adapter the governed subject is the logical `DecisionBrief`, while each review cycle pins exactly one immutable `DecisionBriefVersion`. `ARBReviewItem` receives additive nullable `subject_type`, `subject_id`, `decision_brief_version_id` and `review_cycle_id` fields: `subject_type = "decision_brief"`, `subject_id = DecisionBrief.id`, and the version FK must equal its cycle's pinned version. Existing `solution_id` remains the Solution adapter's compatibility FK; service invariants require exactly one supported logical subject and reject disagreement between projections.
+`ARBReviewCycle` provides one typed logical-subject contract for both adapters. Its
+columns are `organization_id`, `subject_type`, `subject_id`, nullable
+`decision_brief_id -> decision_briefs.id`, nullable
+`solution_id -> solutions.id`, nullable pinned
+`decision_brief_version_id -> decision_brief_versions.id`, nullable pinned
+`solution_evidence_snapshot_id -> arb_submission_evidence_snapshots.id`, integer
+`cycle_number`, predecessor cycle, status, opened/closed times and terminal outcome.
+Because a polymorphic `subject_id` cannot itself have a sound foreign key, the real
+nullable FKs and a database check enforce exactly one shape:
 
-`ARBReviewCycle` has tenant, `decision_brief_id`, pinned `decision_brief_version_id`, integer `cycle_number`, predecessor cycle, opened/closed times and terminal outcome. Uniqueness is `(organization_id, decision_brief_id, cycle_number)`; only one open cycle per logical brief is enforced by a partial unique index. A changed brief version can never replace the version in an existing cycle: submission closes/returns the prior cycle as policy permits and opens the next cycle with predecessor and a row-locked cycle counter. Retry of the same version/command returns the existing cycle/review/snapshot. Review numbers become tenant/year/sequenced identities backed by a database counter rather than the current race-prone global last-row scan.
+- `decision_brief`: `subject_id = decision_brief_id`, decision brief/version FKs are
+  non-null and the Solution/snapshot FKs are null; or
+- `solution`: `subject_id = solution_id`, Solution/snapshot FKs are non-null and the
+  Decision Brief/version FKs are null.
 
-Legacy Solution reviews are backfilled with `subject_type = "solution"`, `subject_id = solution_id`, cycle numbers ordered by submitted/created time and stable ID, and a corresponding Solution-adapter cycle. Reviews lacking a supported subject are retained as `legacy_generic` read-only and cannot be submitted through the new service. Existing evidence snapshots attach to the backfilled cycle; nothing is regenerated or represented as newly reviewed. Decision Brief reviews use the logical `DecisionBrief` as subject and the cycle/version foreign keys to preserve exactly what was reviewed.
+The corresponding adapter loads the pinned row and subject with explicit tenant/type
+predicates and verifies that a DecisionBriefVersion belongs to that DecisionBrief, or
+that an evidence snapshot belongs to that Solution/submission, before insert. Deferred
+constraint triggers repeat those membership/tenant checks at commit so direct SQL
+cannot mix subjects. Uniqueness is
+`(organization_id, subject_type, subject_id, cycle_number)` and a partial unique index
+permits only one open cycle per `(organization_id, subject_type, subject_id)`.
+
+`ARBReviewItem` receives the same logical `subject_type`/`subject_id`, nullable real
+`decision_brief_id`, `decision_brief_version_id`, existing `solution_id`, and
+`review_cycle_id`; its check/constraint trigger requires its typed logical subject and
+pinned evidence to equal the owning cycle. The existing `ARBSubmissionService`
+remains the sole writer and selects the Solution or Decision Brief adapter; no route
+or adapter writes a cycle/review independently.
+
+A pinned version/snapshot can never be replaced in an existing cycle. A returned or
+rejected cycle is terminal. A new cycle requires a newly created immutable
+`DecisionBriefVersion`, even when its canonical content is unchanged, so the new
+submission intent, author and capture time are explicit. Replaying the same version
+and command against a terminal cycle idempotently returns that terminal prior cycle;
+it cannot open the next one. An actually changed or intentionally recaptured version
+opens the next cycle with predecessor and a row-locked cycle counter. Review numbers
+become tenant/year/sequenced identities backed by a database counter rather than the
+current race-prone global last-row scan.
+
+Legacy Solution reviews are backfilled with `subject_type = "solution"`,
+`subject_id = solution_id`, cycle numbers ordered by submitted/created time and stable
+ID, and a corresponding typed Solution cycle. Existing immutable evidence snapshots
+are pinned where provably associated; a missing snapshot makes the cycle historical
+read-only rather than fabricating evidence. Reviews lacking a supported subject are
+retained as `legacy_generic` read-only and cannot be submitted through the service.
+Decision Brief reviews use the logical brief subject and pinned version to preserve
+exactly what was reviewed.
 
 `ApprovedWithConditions` is an explicit workflow state, not equivalent to approval or execution authority. Existing canonical `ARBCondition` rows are reused; every imported or new condition is conservatively `blocks_execution = true` (an additive persisted field, or immutable adapter metadata for a legacy row) and is linked to Evidence Requests/accepted Evidence where applicable. The decision authority may grant a reasoned, expiring waiver with scope, approver and compensating control; waiver is a Decision Event and never deletes the condition. Only when all conditions are fulfilled or currently waived does the governance service append the projection event to `Approved`; materialisation accepts only `Approved`. An expired waiver projects the item back to `ApprovedWithConditions` and blocks any not-yet-started materialisation. Fulfilment/waiver changes append events, and execution records the condition set and evidence state it relied on.
 
@@ -298,17 +343,31 @@ Every `EvidenceRecord` includes:
 - supersedes ID and immutable creation metadata.
 
 Changes append a new row whose `supersedes_id` points to the head's former current
-record; prior rows are never marked or changed. In the same transaction the service
-CAS-updates `EvidenceClaimHead.current_evidence_record_id` and `revision`. The active
-view joins through this stable head rather than guessing the newest leaf. The head
-pointer/revision are deliberately mutable, but every successful move appends an audit
-event with old/new IDs, actor and command. PostgreSQL triggers reject `UPDATE` and
-`DELETE` of evidence records, decision-brief versions, brief-to-evidence citations,
-outcome measurements and decision events; a separate trigger restricts head updates
-to pointer/revision/audit metadata and rejects deletion while history exists. Trigger
-installation is idempotent in schema reconciliation and covered against direct SQL,
-comments, CTEs and schema-qualified statements. Administrative correction is a
-compensating record, never mutation.
+record; prior rows are never marked or changed. Direct `UPDATE` on
+`EvidenceClaimHead` is revoked from the application role. A `SECURITY DEFINER`
+database function is the only update path; it fixes `search_path`, validates the
+caller/command context, locks the head and requires all of the following atomically:
+
+- new record organisation, subject type/ID, claim key and normalised source identity
+  exactly equal the head key;
+- `new.supersedes_id` equals the head's current record ID (or both are null only for
+  root creation);
+- requested revision equals current revision plus exactly one; and
+- a matching immutable `DecisionEvent(event_type="evidence_head_advanced")` with
+  actor, fenced command receipt/generation, old/new record IDs, new revision and
+  `created_txid = txid_current()` was inserted in the same transaction. The function
+  also locks that command receipt and verifies its claimant/generation/token/lease,
+  so an event naming a stale or unrelated command cannot authorise the move.
+
+The function then CAS-updates pointer/revision. Trigger constraints also reject a
+head pointing at arbitrary, historical or cross-tenant Evidence and reject unaudited
+revision jumps even through owner/direct SQL. The active view joins through this
+stable head rather than guessing the newest leaf. PostgreSQL triggers reject `UPDATE`
+and `DELETE` of evidence records, decision-brief versions, brief-to-evidence
+citations, outcome measurements and decision events, and reject head deletion while
+history exists. Function/trigger installation and grants are idempotent in privileged
+schema reconciliation. Administrative correction is a new compensating record and
+guarded head advance, never mutation.
 
 A decision hash covers canonical serialisation of the version, captured option versions, evidence citations, policy version, subject identity, tenant, creator and capture time. Reading verifies the hash. Submission fails closed if a citation is absent, cross-tenant, superseded without acknowledgement, or changes between evaluation and commit.
 
@@ -371,12 +430,13 @@ Concurrency uses a row lock on the workstream/brief for transition and submissio
 
 Idempotency never assumes an expired lease means the domain mutation did not commit. The protocol is:
 
-1. Claim `CommandIdempotencyRecord` in a short transaction, unique on `(organization_id, actor_id, operation, idempotency_key)`, binding an immutable request digest and operation-specific natural key.
-2. Execute the domain mutation, insert immutable `OperationResult` (including its outbox events), and finalise the receipt to `succeeded` with that result ID **in the same database transaction**. Every command defines a database-enforced natural key and result lookup: programme intake uses the command key; Evidence change uses claim-head/revision; brief submission uses logical brief/cycle/version; materialisation uses decision-version/action/option; measurement uses benefit/source/observed-at/source-version; export uses package/destination/attempt sequence.
-3. A same-digest succeeded replay returns `OperationResult`; a different digest is `409`. An active lease returns retry guidance. On an expired lease, the worker first queries `OperationResult` and the command's canonical natural-key record. If found, it repairs/finalises the receipt without rerunning effects. Only when both are absent may it atomically acquire the lease and execute.
-4. A transient failure known to occur before domain commit persists receipt status `retryable_failure`, `operation_result_id = NULL`, the error class/attempt count, and sets `lease_expires_at` to the current time in a short transaction. That state is non-terminal and may be reclaimed only by the same request digest through the same reconcile-first path; it cannot be returned as business success. If commit outcome is uncertain, the worker leaves/reclaims the lease and performs natural-key/result reconciliation rather than labelling it failed. Validation/authorisation failures are terminal `failed_non_retryable` and clear the lease. A crash after domain commit cannot leave an unfinalised receipt because result/outbox/receipt finalisation share that transaction; a crash after the independent claim merely leaves a lease that reconciles to no result.
+1. Claim `CommandIdempotencyRecord` in a short transaction, unique on `(organization_id, actor_id, operation, idempotency_key)`, binding an immutable request digest and operation-specific natural key. Each first claim or reclamation increments `lease_generation`, generates a new cryptographically random `claim_token`, records claimant and expiry, and returns that fenced claim to the worker; neither generation nor token may be reused.
+2. At the start of the domain transaction—and again immediately before any domain write through the command unit of work—the worker locks the receipt `FOR UPDATE` and requires claimant, claim token and generation to match and the lease to be unexpired. Receipt finalisation has the same predicate. Failure raises a stale-claim error and rolls back the entire domain transaction before any write can commit. Heartbeats may extend expiry only for the same fenced claim and never change its generation.
+3. Execute the domain mutation, insert immutable `OperationResult` (including its outbox events), and finalise the receipt to `succeeded` with that result ID **in the same database transaction**. Every command defines a database-enforced natural key and result lookup: programme intake uses the command key; Evidence change uses claim-head/revision; brief submission uses logical brief/cycle/version; materialisation uses decision-version/action/option; measurement uses benefit/source/observed-at/source-version; export uses package/destination/attempt sequence.
+4. A same-digest succeeded replay returns `OperationResult`; a different digest is `409`. An active lease returns retry guidance. On an expired lease, the worker first queries `OperationResult` and the command's canonical natural-key record. If found, it repairs/finalises the receipt without rerunning effects. Only when both are absent may it atomically acquire a newly fenced generation/token and execute.
+5. A transient failure known to occur before domain commit persists receipt status `retryable_failure`, `operation_result_id = NULL`, the error class/attempt count, and sets `lease_expires_at` to the current time in a short transaction, conditional on the same generation/token. That state is non-terminal and may be reclaimed only by the same request digest through the same reconcile-first path; reclamation increments the generation and changes the token. It cannot be returned as business success. If commit outcome is uncertain, the worker leaves/reclaims the lease and performs natural-key/result reconciliation rather than labelling it failed. Validation/authorisation failures are terminal `failed_non_retryable` and clear the lease. A crash after domain commit cannot leave an unfinalised receipt because result/outbox/receipt finalisation share that transaction; a crash after the independent claim merely leaves a lease that reconciles to no result.
 
-Payload digest, identity, natural key and terminal result are immutable by PostgreSQL trigger; only lease heartbeat and permitted non-terminal status fields may change through the service. Outbox delivery is at-least-once with event IDs for consumer deduplication. `DecisionEvent`, completed `DeliveryExportAttempt`, `OperationResult`, option versions, evidence, measurements and brief versions reject update/delete at database level. Mutable logical roots (`TransformationOption`, request assignment/due date before acceptance, programme/workstream current-state projections, and EvidenceClaimHead pointer/revision) retain optimistic locking and audited service updates.
+Payload digest, identity, natural key and terminal result are immutable by PostgreSQL trigger; only correctly fenced lease heartbeat/reclamation and permitted non-terminal status fields may change through the service. Outbox delivery is at-least-once with event IDs for consumer deduplication. `DecisionEvent`, completed `DeliveryExportAttempt`, `OperationResult`, option versions, evidence, measurements and brief versions reject update/delete at database level. Mutable logical roots (`TransformationOption`, request assignment/due date before acceptance, programme/workstream current-state projections, and EvidenceClaimHead pointer/revision) retain optimistic locking and audited service updates.
 
 Read models compose canonical data without mutating it. AI tools call the same services and receive allowed actions plus evidence; they cannot call model constructors, assert human review, make an ARB decision or materialise execution without the same actor permissions and lifecycle preconditions.
 
@@ -482,7 +542,9 @@ Release boundaries are explicit. **Release 1** delivers the canonical programme/
 - Cross-tenant programme, subject, evidence, option, brief, review, work, Benefit and Solution IDs are rejected without disclosure.
 - Concurrent duplicate submissions/materialisations create exactly one canonical record set; one response is created and the others are idempotent successes.
 - Idempotency crash-point tests cover: after receipt claim/before domain work; after domain writes/before result insert; after result/outbox insert/before commit; immediately after atomic commit/before HTTP response; expired lease with result present; expired lease with natural-key record but damaged receipt; and `retryable_failure` recovery. Each proves no duplicate domain row/event and the same canonical response IDs.
+- Lease-fencing concurrency test pauses worker A after generation/token claim, expires it, lets worker B reconcile and reclaim at generation + 1, then resumes A. A must fail its locked receipt predicate and roll back before domain writes; only B may commit/finalise, with one domain result and outbox event.
 - Two concurrent evidence corrections from one expected head revision commit one immutable successor and one head move; the loser receives `409`, no orphan successor remains, and root creation races produce one head through the unique upsert.
+- Separate direct PostgreSQL connections attempt arbitrary-current, historical-record, cross-tenant and wrong-subject head pointers, a revision jump, a successor whose `supersedes_id` is not the old current record, and a head move without the matching immutable event/command. Every attempt is rejected; the guarded function succeeds once for the valid same-transaction successor/event and records exactly one revision increment.
 - A forced failure at each subordinate write rolls back the whole command.
 - Direct PostgreSQL attempts to update/delete immutable content fail, including comment-prefixed, CTE and schema-qualified statements.
 - Hash verification detects altered decision snapshots.
@@ -495,6 +557,7 @@ Release boundaries are explicit. **Release 1** delivers the canonical programme/
 - Application Architect accepts a discovered candidate, sees cited signals, requests/records attestation, compares options and creates a decision-ready brief.
 - Business owner attests an assigned claim and cannot attest another tenant/user's assignment.
 - ARB member reviews the immutable brief, returns it for evidence, then approves a new version with conditions; history remains intact.
+- Typed ARB cycle tests cover Solution and Decision Brief adapters, FK/type/tenant mismatches, one-open-cycle races, legacy Solution backfill, terminal same-version replay, and mandatory new-version creation for a post-return/rejection cycle even when content is unchanged.
 - Conditional approval remains `ApprovedWithConditions` and cannot materialise until all conservatively blocking conditions are evidenced or validly waived; expiry blocks later materialisation and remains auditable.
 - A missing application owner creates the required steward/architect EvidenceRequest and cannot advance merely because it was declined or expired.
 - Delivery lead materialises canonical work, roadmap and benefits; retry creates no duplicates.
@@ -579,3 +642,11 @@ This revision resolves the independent architecture review as follows:
 - made missing application ownership a persisted, required owner-resolution request assigned to a portfolio steward/architect, with acceptance or controlled unavailable waiver as the only gate exits;
 - replaced generic expired-lease re-execution with receipt claiming, operation-specific natural keys, an atomic immutable `OperationResult`/outbox/finalisation transaction and reconcile-before-retry behavior, including explicit `retryable_failure` and crash-point proofs; and
 - corrected Outcome Commitment-to-Benefit to one-to-many to match the canonical Benefit foreign key.
+
+### Review fix round 3
+
+- made `source_identity` non-null and adapter-normalised, revoked direct head updates, and specified a guarded `SECURITY DEFINER` advance that enforces matching chain identity, predecessor, exact revision increment and same-transaction immutable audit/command evidence;
+- unified `ARBReviewCycle` around a typed logical subject for Decision Brief and Solution, with real nullable foreign keys, shape/check/commit-time membership constraints, typed uniqueness and pinned immutable evidence for both adapters while preserving `ARBSubmissionService` as sole writer;
+- required a new immutable Decision Brief version for every post-return/rejection cycle and limited a terminal same-version replay to its prior result;
+- fenced every idempotency lease with a monotonically increasing generation and unique claim token checked under receipt lock before writes/finalisation, preventing a paused stale worker from committing after reclamation; and
+- added direct-SQL integrity, typed-cycle, terminal-resubmission and pause/reclaim/resume concurrency proofs to acceptance.
