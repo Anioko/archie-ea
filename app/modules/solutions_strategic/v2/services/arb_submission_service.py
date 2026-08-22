@@ -215,13 +215,17 @@ class ARBSubmissionService:
             )
 
         if solution.estimated_cost is not None and solution.estimated_cost != Decimal("0"):
-            if assertions.get("cost_source") not in {"tco_engine", "manual_override"}:
+            # No current TCO record carries authoritative engine provenance.
+            # Therefore a caller cannot self-assert ``tco_engine``; accepting it
+            # would fabricate provenance.  Manual review is explicit and stored
+            # in the immutable submission snapshot.
+            if assertions.get("cost_source") != "manual_override":
                 return cls._blocked(
                     "cost_source_required",
                     [
                         {
                             "code": "cost_source_required",
-                            "allowed": ["tco_engine", "manual_override"],
+                            "allowed": ["manual_override"],
                         }
                     ],
                     workflow_type,

@@ -232,6 +232,10 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
+        if solution_id is not None:
+            raise ValueError(
+                "Solution reviews require the canonical evidence-gated submission service"
+            )
         review_number = ARBReviewItem.generate_review_number()
 
         # Auto-determine ArchiMate layer from TOGAF phase if not provided
@@ -283,6 +287,10 @@ class ARBGovernanceService:
         item = db.session.get(ARBReviewItem, review_item_id)
         if not item:
             raise ValueError(f"Review item {review_item_id} not found")
+        if item.solution_id is not None:
+            raise ValueError(
+                "Solution reviews require the canonical evidence-gated submission service"
+            )
 
         if item.status != "draft":
             raise ValueError("Item must be in draft status to submit")
@@ -579,30 +587,9 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
-        from app.models.truly_missing_models import Solution
-
-        solution = db.session.get(Solution, solution_id)
-        if not solution:
-            raise ValueError(f"Solution {solution_id} not found")
-
-        # Determine review type based on solution characteristics
-        review_type = "solution_design"
-        togaf_phase = "phase_e_opportunities"  # Solutions typically align with Phase E
-
-        # Get capability mappings
-        capability_ids = []
-        if hasattr(solution, "capability_mappings"):
-            capability_ids = [cm.capability_id for cm in solution.capability_mappings]
-
-        return self.submit_for_review(
-            title=f"Solution Review: {solution.name}",
-            description=f"Architecture review for solution: {solution.description or 'No description'}",
-            review_type=review_type,
-            submitter_id=submitter_id,
-            togaf_phase=togaf_phase,
-            solution_id=solution_id,
-            capability_ids=capability_ids,
-            priority=self._determine_priority_from_solution(solution),
+        raise ValueError(
+            "Automatic solution review is disabled; use the canonical "
+            "evidence-gated submission service"
         )
 
     def auto_submit_adr_for_review(self, adr_id: int, submitter_id: int) -> ARBReviewItem:

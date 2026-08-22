@@ -31,30 +31,9 @@ class SolutionARBService:
         Returns:
             SolutionARBReview: New review record
         """
-        # Check if already submitted
-        existing = db.session.query(SolutionARBReview).filter(
-            SolutionARBReview.solution_id == solution_id,
-            SolutionARBReview.arb_decision.in_(['pending', 'conditional'])
-        ).first()
-        
-        if existing:
-            raise ValueError(f"Solution {solution_id} already has pending ARB review")
-        
-        review = SolutionARBReview(
-            solution_id=solution_id,
-            version_id=version_id,
-            submitted_by_id=submitted_by_id,
-            submitted_at=datetime.utcnow(),
-            arb_decision='pending'
+        raise ValueError(
+            "Legacy solution ARB writes are disabled; use the canonical evidence-gated submission service"
         )
-        
-        if submission_notes:
-            review.arb_decision_reason = submission_notes
-        
-        db.session.add(review)
-        db.session.commit()
-        
-        return review
     
     def record_arb_attendance(
         self,

@@ -1,6 +1,7 @@
 """Real-browser contract for the evidence-gated ARB submission journey."""
 
 import uuid
+from decimal import Decimal
 from pathlib import Path
 import pytest
 
@@ -24,6 +25,7 @@ def arb_solution(seeded):
             created_by_id=user.id,
             governance_status="draft",
             has_acm_domains=True,
+            estimated_cost=Decimal("250000.00"),
         )
         db.session.add(solution)
         db.session.commit()
@@ -79,7 +81,7 @@ def test_blocked_submission_recovers_once_to_one_canonical_review(browser, live_
     def submission(route):
         attempts.append(route.request.post_data_json)
         if len(attempts) == 1:
-            route.fulfill(status=422, content_type="application/json", body='{"success":false,"reason_codes":["missing_named_artifacts"],"missing_evidence":[{"code":"artifact_missing","name":"Transition plan","action":"Persist the transition plan in the workbench."}]}')
+            route.fulfill(status=422, content_type="application/json", body='{"success":false,"reason_codes":["cost_source_required"],"missing_evidence":[{"code":"cost_source_required","name":"Cost provenance","action":"Confirm how the non-zero estimate was produced."}]}')
         else:
             route.fulfill(status=200, content_type="application/json", body='{"success":true,"data":{"review_item_id":417,"review_number":"ARB-2026-0417","snapshot_id":91,"idempotent":false}}')
 
@@ -109,11 +111,12 @@ def test_blocked_submission_recovers_once_to_one_canonical_review(browser, live_
         submit.click(no_wait_after=True)
         blocker = page.get_by_test_id("arb-missing-evidence")
         blocker.wait_for(state="visible")
-        assert "Transition plan" in blocker.inner_text()
-        assert "Persist the transition plan" in blocker.inner_text()
+        assert "Cost provenance" in blocker.inner_text()
+        assert "Confirm how the non-zero estimate" in blocker.inner_text()
         assert not page.get_by_text("Submitted to the Architecture Review Board", exact=True).is_visible()
         assert not page.get_by_role("link", name="Open canonical review").is_visible()
 
+        dossier.get_by_role("combobox", name="Cost provenance").select_option("manual_override")
         dossier.get_by_role("button", name="Try submission again").click()
         page.get_by_text("Submitted to the Architecture Review Board", exact=True).wait_for(state="visible")
         canonical = page.get_by_role("link", name="Open canonical review")
@@ -122,6 +125,7 @@ def test_blocked_submission_recovers_once_to_one_canonical_review(browser, live_
         assert len(attempts) == 2
         assert all(attempt["human_reviewed"] is True for attempt in attempts)
         assert all(set(attempt["direct_route_evidence"]) == {"design_reviewed", "security_impact_reviewed", "data_impact_reviewed"} for attempt in attempts)
+        assert [attempt["cost_source"] for attempt in attempts] == [None, "manual_override"]
     finally:
         page.close()
 

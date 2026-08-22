@@ -327,6 +327,7 @@
             return {
                 checks: [], pct: 0, loading: false, loadError: false,
                 humanReviewed: false,
+                costSource: '',
                 directEvidence: {
                     design_reviewed: {passed: false, evidence: ''},
                     security_impact_reviewed: {passed: false, evidence: ''},
@@ -376,6 +377,7 @@
                     self.submission.missingEvidence = [];
                     Platform.fetch.post('/solutions/' + solutionId + '/submit-for-arb', {
                         human_reviewed: self.humanReviewed,
+                        cost_source: self.costSource || null,
                         direct_route_evidence: self.directEvidence
                     }, {silent: true}).then(function(data) {
                         data = data && data.data !== undefined ? data.data : data;
@@ -406,6 +408,15 @@
             <label class="flex items-start gap-2 text-xs text-muted-foreground">
                 <input type="checkbox" x-model="humanReviewed" class="mt-0.5 h-4 w-4 rounded border-input text-primary focus-visible:ring-1 focus-visible:ring-ring">
                 <span>I have reviewed the AI-assisted content and confirm this dossier is ready for governance.</span>
+            </label>
+            <label class="block text-xs text-muted-foreground">
+                Cost provenance <span class="font-normal">(required when estimated cost is non-zero)</span>
+                <select x-model="costSource" aria-label="Cost provenance"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">Select when applicable</option>
+                    <option value="manual_override">I confirm the estimate was manually reviewed</option>
+                </select>
+                <span class="mt-1 block">Choose manual review only when you have checked the persisted estimate. Archie does not infer cost provenance.</span>
             </label>
             <fieldset class="space-y-3 rounded-md border border-border p-3">
                 <legend class="px-1 text-xs font-medium text-foreground">Required review attestations</legend>

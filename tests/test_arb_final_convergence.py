@@ -2,6 +2,9 @@
 
 from pathlib import Path
 import uuid
+from decimal import Decimal
+
+import pytest
 
 from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
 from app.models.architecture_review_board import ARBReviewItem
@@ -57,6 +60,91 @@ def test_direct_route_ui_sends_named_attestations_with_evidence_notes():
         for name in ("design_reviewed", "security_impact_reviewed", "data_impact_reviewed"):
             assert name in source
         assert "direct_route_evidence" in source
+        assert "costSource" in source
+        assert "manual_override" in source
+
+
+def test_all_legacy_governance_services_reject_solution_subjects():
+    for path in (
+        "app/services/arb_governance_service.py",
+        "app/modules/solutions_strategic/v2/services/arb_governance_service.py",
+    ):
+        source = _source(path)
+        submit_for_review = source[source.index("    def submit_for_review"):source.index("    def submit_item")]
+        assert "canonical evidence-gated submission service" in submit_for_review
+        assert submit_for_review.index("if solution_id is not None") < submit_for_review.index("ARBReviewItem(")
+        submit_item = source[source.index("    def submit_item"):source.index("    def assign_to_session")]
+        assert "if item.solution_id is not None" in submit_item
+        assert "canonical evidence-gated submission service" in submit_item
+        auto = source[source.index("    def auto_submit_solution_for_review"):source.index("    def auto_submit_adr_for_review")]
+        assert "ARBReviewItem(" not in auto
+        assert "submit_for_review(" not in auto
+
+
+def test_parallel_solution_arb_service_cannot_write_legacy_review():
+    source = _source("app/modules/solutions_strategic/v2/services/solution_arb_service.py")
+    method = source[source.index("    def submit_for_arb_review"):source.index("    def record_arb_attendance")]
+    assert "canonical evidence-gated submission service" in method
+    assert "SolutionARBReview(" not in method
+    assert "db.session.commit" not in method
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "app.services.arb_governance_service",
+        "app.modules.solutions_strategic.v2.services.arb_governance_service",
+    ],
+)
+def test_legacy_governance_service_rejects_solution_create_auto_and_submit_item(
+    module_name, db_session, make_org
+):
+    module = __import__(module_name, fromlist=["ARBGovernanceService"])
+    service = module.ARBGovernanceService()
+    with pytest.raises(ValueError, match="canonical evidence-gated"):
+        service.submit_for_review("title", "description", "solution_design", 1, solution_id=999)
+    with pytest.raises(ValueError, match="canonical.*evidence-gated"):
+        service.auto_submit_solution_for_review(999, 1)
+
+    org = make_org(f"legacy-service-{module_name.rsplit('.', 2)[0]}")
+    actor = User(
+        email=f"legacy-service-{uuid.uuid4().hex[:8]}@example.test",
+        first_name="Legacy",
+        last_name="Guard",
+        organization_id=org.id,
+        confirmed=True,
+    )
+    db_session.add(actor)
+    db_session.flush()
+    solution = Solution(
+        name="Legacy service guard",
+        organization_id=org.id,
+        created_by_id=actor.id,
+        governance_status="draft",
+    )
+    db_session.add(solution)
+    db_session.flush()
+    item = ARBReviewItem(
+        review_number=f"GUARD-{uuid.uuid4().hex[:8]}",
+        title="Legacy solution draft",
+        review_type="solution_design",
+        solution_id=solution.id,
+        submitter_id=actor.id,
+        organization_id=org.id,
+        status="draft",
+    )
+    db_session.add(item)
+    db_session.flush()
+    with pytest.raises(ValueError, match="canonical evidence-gated"):
+        service.submit_item(item.id)
+    assert item.status == "draft"
+
+
+def test_parallel_solution_arb_service_fails_closed_before_query_or_write():
+    from app.modules.solutions_strategic.v2.services.solution_arb_service import SolutionARBService
+
+    with pytest.raises(ValueError, match="canonical evidence-gated"):
+        SolutionARBService().submit_for_arb_review(999, submitted_by_id=123)
 
 
 def test_real_solution_endpoint_blocks_then_creates_one_canonical_snapshot(
@@ -90,6 +178,7 @@ def test_real_solution_endpoint_blocks_then_creates_one_canonical_snapshot(
         created_by_id=actor.id,
         governance_status="draft",
         has_acm_domains=True,
+        estimated_cost=Decimal("250000.00"),
         analysis_session_id=workspace.id,
     )
     db_session.add(solution)
@@ -144,6 +233,16 @@ def test_real_solution_endpoint_blocks_then_creates_one_canonical_snapshot(
             "data_impact_reviewed": {"passed": True, "evidence": "Reviewed classification and lifecycle impacts."},
         },
     }
+    cost_blocked = client.post(f"/solutions/{solution_id}/submit-for-arb", json=assertions)
+    assert cost_blocked.status_code == 422
+    assert cost_blocked.get_json()["reason_codes"] == ["cost_source_required"]
+    assert ARBReviewItem.query.filter_by(solution_id=solution_id).count() == 0
+    assertions["cost_source"] = "tco_engine"
+    unproven_engine = client.post(f"/solutions/{solution_id}/submit-for-arb", json=assertions)
+    assert unproven_engine.status_code == 422
+    assert unproven_engine.get_json()["reason_codes"] == ["cost_source_required"]
+    assert ARBReviewItem.query.filter_by(solution_id=solution_id).count() == 0
+    assertions["cost_source"] = "manual_override"
     created = client.post(f"/solutions/{solution_id}/submit-for-arb", json=assertions)
     assert created.status_code == 200, created.get_json()
     body = created.get_json()

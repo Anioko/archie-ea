@@ -361,7 +361,7 @@
         <script>
         window.arbEvidenceSubmission = function(solutionId) {
             return {
-                humanReviewed: false, arbSubmitting: false, arbSubmitResult: null, arbSubmissionError: null,
+                humanReviewed: false, costSource: '', arbSubmitting: false, arbSubmitResult: null, arbSubmissionError: null,
                 directEvidence: {
                     design_reviewed: {passed: false, evidence: ''},
                     security_impact_reviewed: {passed: false, evidence: ''},
@@ -388,6 +388,7 @@
                     try {
                         const response = await Platform.fetch.post('/architecture-journey/' + solutionId + '/submit-arb', {
                             human_reviewed: this.humanReviewed,
+                            cost_source: this.costSource || null,
                             direct_route_evidence: this.directEvidence
                         }, {silent: true});
                         const result = response && response.data !== undefined ? response.data : response;
@@ -411,6 +412,15 @@
                     <label class="flex max-w-md items-start gap-2 text-xs text-muted-foreground">
                         <input type="checkbox" x-model="humanReviewed" class="mt-0.5 h-4 w-4 rounded border-input text-primary focus-visible:ring-1 focus-visible:ring-ring">
                         <span>I have reviewed the AI-assisted content and confirm this evidence dossier is ready for governance.</span>
+                    </label>
+                    <label class="block max-w-md text-xs text-muted-foreground">
+                        Cost provenance <span class="font-normal">(required when estimated cost is non-zero)</span>
+                        <select x-model="costSource" aria-label="Cost provenance"
+                                class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                            <option value="">Select when applicable</option>
+                            <option value="manual_override">I confirm the estimate was manually reviewed</option>
+                        </select>
+                        <span class="mt-1 block">Choose manual review only when you have checked the persisted estimate. Archie does not infer cost provenance.</span>
                     </label>
                     <fieldset class="max-w-md space-y-3 rounded-md border border-border p-3">
                         <legend class="px-1 text-xs font-medium text-foreground">Required review attestations</legend>
