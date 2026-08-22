@@ -467,6 +467,10 @@ BEGIN
          ORDER BY attestation.id DESC
          LIMIT 1;
         IF FOUND THEN
+            IF attestation_candidate_id IS DISTINCT FROM record_candidate_id THEN
+                RAISE EXCEPTION 'attestation candidate does not match conflict request candidate'
+                    USING ERRCODE = '55000';
+            END IF;
             expected_natural_key := format(
                 'evidence:%%s:%%s:%%s:%%s',
                 attestation_candidate_id,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import uuid
 from dataclasses import dataclass
@@ -214,6 +216,217 @@ CREATE TABLE evidence_head_events (
     UNIQUE (organization_id, head_id, revision)
 )
 """
+
+
+@pytest.fixture
+def guarded_runtime_database(isolated_role_database):
+    """Create the minimal guarded schema under deploy/runtime role separation."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = isolated_role_database
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    deploy_engine = create_engine(
+        role_database.url(
+            role=role_database.deploy_role,
+            password=role_database.deploy_password,
+        )
+    )
+    try:
+        with deploy_engine.begin() as connection:
+            connection.exec_driver_sql(_TRANSFORMATION_TABLES_SQL)
+            ensure_transformation_db_guards(
+                connection,
+                runtime_role=role_database.runtime_role,
+            )
+        yield role_database
+    finally:
+        deploy_engine.dispose()
+
+
+def _runtime_attestation_conflict_pair(role_database, *, conflict_candidate_id: int):
+    """Attempt one same-receipt attestation/conflict pair as the runtime role."""
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    raw = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.runtime_role,
+        password=role_database.runtime_password,
+    )
+    organization_id = 51001
+    actor_id = 52001
+    attestation_candidate_id = 53002
+    subject_id = 54001
+    claim_key = "application_owner"
+    source_identity = f"attestation:user:{actor_id}"
+    source_digest = hashlib.sha256(source_identity.encode("utf-8")).hexdigest()
+    natural_key = (
+        f"evidence:{attestation_candidate_id}:{claim_key}:{source_digest}:1"
+    )
+    claim_token = "c" * 64
+    try:
+        cursor = raw.cursor()
+        cursor.execute(
+            "INSERT INTO command_idempotency_records "
+            "(organization_id, actor_id, operation, idempotency_key, "
+            "request_digest, natural_key, status, lease_generation, "
+            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
+            "VALUES (%s, %s, 'evidence.attest', 'candidate-binding', %s, %s, "
+            "'in_progress', 1, %s, 'candidate-binding-request', "
+            "clock_timestamp() + interval '1 minute', 1) RETURNING id",
+            (
+                organization_id,
+                actor_id,
+                "d" * 64,
+                natural_key,
+                claim_token,
+            ),
+        )
+        receipt_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO evidence_requests "
+            "(organization_id, candidate_id, subject_type, subject_id, "
+            "claim_key, assigned_to_id) VALUES (%s, %s, 'application', %s, %s, %s) "
+            "RETURNING id",
+            (
+                organization_id,
+                conflict_candidate_id,
+                subject_id,
+                claim_key,
+                actor_id,
+            ),
+        )
+        request_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO evidence_claim_heads "
+            "(organization_id, subject_type, subject_id, claim_key, source_identity) "
+            "VALUES (%s, 'application', %s, %s, %s) RETURNING id",
+            (organization_id, subject_id, claim_key, source_identity),
+        )
+        attestation_head_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO evidence_records "
+            "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
+            "classification, source_identity, source_type, source_record_id, "
+            "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+            "VALUES (%s, %s, 'application', %s, %s, 'attested', %s, "
+            "'attestation', %s, %s, %s::json, '[]'::json, NULL) RETURNING id",
+            (
+                organization_id,
+                attestation_candidate_id,
+                subject_id,
+                claim_key,
+                source_identity,
+                actor_id,
+                actor_id,
+                json.dumps("Candidate B attestation"),
+            ),
+        )
+        attestation_record_id = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT public.archie_advance_evidence_head(%s, %s, 0, %s, %s, 1, %s)",
+            (
+                attestation_head_id,
+                attestation_record_id,
+                actor_id,
+                receipt_id,
+                claim_token,
+            ),
+        )
+        attestation_revision = cursor.fetchone()[0]
+
+        conflict_identity = f"conflict:request:{request_id}"
+        cursor.execute(
+            "INSERT INTO evidence_claim_heads "
+            "(organization_id, subject_type, subject_id, claim_key, source_identity) "
+            "VALUES (%s, 'application', %s, %s, %s) RETURNING id",
+            (organization_id, subject_id, claim_key, conflict_identity),
+        )
+        conflict_head_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO evidence_records "
+            "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
+            "classification, source_identity, source_type, source_record_id, "
+            "created_by_id, value_json, cited_evidence_ids, supersedes_id) "
+            "VALUES (%s, %s, 'application', %s, %s, 'conflict', %s, "
+            "'governance_conflict', %s, %s, %s::json, %s::json, NULL) RETURNING id",
+            (
+                organization_id,
+                conflict_candidate_id,
+                subject_id,
+                claim_key,
+                conflict_identity,
+                request_id,
+                actor_id,
+                json.dumps({"conflicting_evidence_ids": [attestation_record_id]}),
+                json.dumps([attestation_record_id]),
+            ),
+        )
+        conflict_record_id = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT public.archie_advance_evidence_head(%s, %s, 0, %s, %s, 1, %s)",
+            (
+                conflict_head_id,
+                conflict_record_id,
+                actor_id,
+                receipt_id,
+                claim_token,
+            ),
+        )
+        conflict_revision = cursor.fetchone()[0]
+        raw.commit()
+        cursor.execute(
+            "SELECT revision FROM evidence_claim_heads WHERE id = %s",
+            (conflict_head_id,),
+        )
+        persisted_revision = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT count(*) FROM evidence_head_events WHERE command_receipt_id = %s",
+            (receipt_id,),
+        )
+        event_count = cursor.fetchone()[0]
+        return (
+            attestation_revision,
+            conflict_revision,
+            persisted_revision,
+            event_count,
+        )
+    except Exception:
+        raw.rollback()
+        raise
+    finally:
+        raw.close()
+
+
+def test_restricted_runtime_allows_same_candidate_attestation_conflict_pair(
+    guarded_runtime_database,
+):
+    """Catches candidate binding accidentally rejecting the valid paired move."""
+    assert _runtime_attestation_conflict_pair(
+        guarded_runtime_database,
+        conflict_candidate_id=53002,
+    ) == (1, 1, 1, 2)
+
+
+def test_restricted_runtime_rejects_cross_candidate_attestation_conflict_move(
+    guarded_runtime_database,
+):
+    """Catches candidate B's receipt advancing candidate A's conflict head."""
+    with pytest.raises(
+        psycopg2.Error,
+        match="attestation candidate does not match conflict request candidate",
+    ):
+        _runtime_attestation_conflict_pair(
+            guarded_runtime_database,
+            conflict_candidate_id=53001,
+        )
 
 
 def test_compose_paths_separate_database_deployment_from_runtime():

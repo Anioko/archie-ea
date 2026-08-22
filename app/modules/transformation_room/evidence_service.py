@@ -1351,7 +1351,6 @@ class TransformationEvidenceService:
             select(EvidenceRecord).where(
                 EvidenceRecord.id == payload["governing_evidence_id"],
                 EvidenceRecord.organization_id == actor.organization_id,
-                EvidenceRecord.candidate_id == candidate.id,
                 EvidenceRecord.subject_type == conflict.subject_type,
                 EvidenceRecord.subject_id == conflict.subject_id,
                 EvidenceRecord.claim_key == conflict.claim_key,
@@ -1362,6 +1361,10 @@ class TransformationEvidenceService:
         current = session.scalar(
             select(EvidenceClaimHead.id).where(
                 EvidenceClaimHead.organization_id == actor.organization_id,
+                EvidenceClaimHead.subject_type == conflict.subject_type,
+                EvidenceClaimHead.subject_id == conflict.subject_id,
+                EvidenceClaimHead.claim_key == conflict.claim_key,
+                EvidenceClaimHead.source_identity == governing.source_identity,
                 EvidenceClaimHead.current_record_id == governing.id,
             )
         )

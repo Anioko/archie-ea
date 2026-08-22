@@ -198,6 +198,77 @@ def _grant_decision_authority(scope: EvidenceScope):
         )
 
 
+def _accept_same_subject_in_second_workstream(scope: EvidenceScope, *, key: str):
+    """Create a second real workstream/candidate for the fixture application."""
+    with Session(db.engine) as session, session.begin():
+        first = session.get(ProgrammeWorkstream, scope.workstream_id)
+        second = ProgrammeWorkstream(
+            organization_id=scope.organization_id,
+            programme_id=first.programme_id,
+            workstream_type="application_rationalisation",
+            objective="Govern the same application through a second candidate",
+            scope_expression={"application_ids": [scope.application_id]},
+            lifecycle_stage="discover",
+            lead_id=scope.actor_id,
+            revision=1,
+        )
+        session.add(second)
+        session.flush()
+        workstream_id = second.id
+    second_scope = EvidenceScope(
+        organization_id=scope.organization_id,
+        foreign_organization_id=scope.foreign_organization_id,
+        actor_id=scope.actor_id,
+        foreign_actor_id=scope.foreign_actor_id,
+        workstream_id=workstream_id,
+        candidate_id=0,
+        application_id=scope.application_id,
+        request_id=0,
+        actor=scope.actor,
+        foreign_actor=scope.foreign_actor,
+    )
+    discovered = next(
+        item
+        for item in _discover(second_scope)
+        if item.application_id == scope.application_id
+    )
+    return RationalisationDiscoveryService.accept_candidate(
+        actor=scope.actor,
+        workstream_id=workstream_id,
+        application_id=scope.application_id,
+        signal_digests=discovered.signal_digests,
+        inclusion_reason="Exercise global governed evidence heads",
+        command_key=f"{key}-candidate",
+    )
+
+
+def _record_named_source(
+    scope: EvidenceScope,
+    *,
+    candidate_id: int,
+    adapter_key: str,
+    source_identity: str,
+    value: str,
+    expected_revision: int = 0,
+):
+    previous = TransformationEvidenceService.register_adapter(
+        adapter_key,
+        _NamedInventoryAdapter(source_identity, value),
+    )
+    try:
+        return TransformationEvidenceService.record_observation(
+            actor=scope.actor,
+            candidate_id=candidate_id,
+            claim_key="application_owner",
+            adapter_key=adapter_key,
+            source_key=str(scope.application_id),
+            expected_head_revision=expected_revision,
+            command_key=f"{adapter_key}-{expected_revision}",
+        )
+    finally:
+        TransformationEvidenceService.restore_adapter(adapter_key, previous)
+
+
 def test_strict_source_helpers_preserve_opaque_keys_and_reject_bad_ids():
     """Catches lossy source normalization or permissive integer parsing."""
     assert parse_positive_int("17") == 17
@@ -644,6 +715,190 @@ def test_disagreement_creates_conflict_and_decision_authority_resolution(evidenc
     assert request.submitted_evidence_id == resolution.id
     assert request.accepted_evidence_id == resolution.id
     assert accepted.response["revision"] == 4
+
+
+def test_resolution_accepts_current_cited_leaf_from_another_candidate_provenance(
+    evidence_scope,
+):
+    """Catches treating a global evidence head as owned by one candidate."""
+    scope = evidence_scope
+    second = _accept_same_subject_in_second_workstream(
+        scope, key="foreign-provenance-resolution"
+    )
+    foreign_leaf = _record_named_source(
+        scope,
+        candidate_id=second.object_ids["candidate_id"],
+        adapter_key="foreign-provenance-source",
+        source_identity="external:cross-workstream-owner",
+        value="Governed owner",
+    )
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("string", "Disputed owner", None, None),
+        expected_head_revision=0,
+        command_key="foreign-provenance-attestation",
+    )
+    _grant_decision_authority(scope)
+
+    resolved = TransformationEvidenceService.resolve_conflict(
+        actor=scope.actor,
+        conflict_evidence_id=submitted.object_ids["conflict_evidence_id"],
+        governing_evidence_id=foreign_leaf.object_ids["evidence_record_id"],
+        rationale="The other workstream owns the current governed source.",
+        command_key="select-foreign-provenance-leaf",
+    )
+
+    with Session(db.engine) as session:
+        governing = session.get(
+            EvidenceRecord, foreign_leaf.object_ids["evidence_record_id"]
+        )
+        resolution = session.get(
+            EvidenceRecord, resolved.object_ids["evidence_record_id"]
+        )
+    assert governing.candidate_id == second.object_ids["candidate_id"]
+    assert resolution.candidate_id == scope.candidate_id
+    assert resolution.value_json["governing_evidence_id"] == governing.id
+
+
+def test_resolution_rejects_cited_leaf_that_is_no_longer_current(evidence_scope):
+    """Catches a historically cited record being selected after source correction."""
+    scope = evidence_scope
+    second = _accept_same_subject_in_second_workstream(
+        scope, key="noncurrent-foreign-provenance"
+    )
+    candidate_id = second.object_ids["candidate_id"]
+    old_leaf = _record_named_source(
+        scope,
+        candidate_id=candidate_id,
+        adapter_key="corrected-cross-workstream-source",
+        source_identity="external:corrected-owner",
+        value="Old owner",
+    )
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("string", "Disputed owner", None, None),
+        expected_head_revision=0,
+        command_key="noncurrent-foreign-attestation",
+    )
+    _record_named_source(
+        scope,
+        candidate_id=candidate_id,
+        adapter_key="corrected-cross-workstream-source",
+        source_identity="external:corrected-owner",
+        value="New owner",
+        expected_revision=1,
+    )
+    _grant_decision_authority(scope)
+
+    with pytest.raises(CommandConflict, match="governing_evidence_not_current"):
+        TransformationEvidenceService.resolve_conflict(
+            actor=scope.actor,
+            conflict_evidence_id=submitted.object_ids["conflict_evidence_id"],
+            governing_evidence_id=old_leaf.object_ids["evidence_record_id"],
+            rationale="A historical leaf must not govern.",
+            command_key="reject-noncurrent-foreign-leaf",
+        )
+
+
+def test_resolution_rejects_current_leaf_not_cited_by_conflict(evidence_scope):
+    """Catches selecting a source that appeared only after the conflict snapshot."""
+    scope = evidence_scope
+    second = _accept_same_subject_in_second_workstream(
+        scope, key="uncited-foreign-provenance"
+    )
+    _record_inventory(scope)
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("string", "Disputed owner", None, None),
+        expected_head_revision=0,
+        command_key="uncited-foreign-attestation",
+    )
+    uncited = _record_named_source(
+        scope,
+        candidate_id=second.object_ids["candidate_id"],
+        adapter_key="late-cross-workstream-source",
+        source_identity="external:late-owner",
+        value="Late owner",
+    )
+    _grant_decision_authority(scope)
+
+    with pytest.raises(CommandConflict, match="governing_evidence_not_conflict_leaf"):
+        TransformationEvidenceService.resolve_conflict(
+            actor=scope.actor,
+            conflict_evidence_id=submitted.object_ids["conflict_evidence_id"],
+            governing_evidence_id=uncited.object_ids["evidence_record_id"],
+            rationale="An uncited leaf must not govern.",
+            command_key="reject-uncited-current-leaf",
+        )
+
+
+def test_resolution_rejects_cited_leaf_from_foreign_tenant(evidence_scope):
+    """Catches a malicious citation turning a foreign record into governing evidence."""
+    scope = evidence_scope
+    observed = _record_inventory(scope)
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("string", "Disputed owner", None, None),
+        expected_head_revision=0,
+        command_key="foreign-tenant-citation-attestation",
+    )
+    with Session(db.engine) as session, session.begin():
+        source = session.get(EvidenceRecord, observed.object_ids["evidence_record_id"])
+        values = {
+            column.name: getattr(source, column.name)
+            for column in EvidenceRecord.__table__.columns
+            if column.name not in {"id", "created_at"}
+        }
+        values.update(
+            organization_id=scope.foreign_organization_id,
+            created_by_id=scope.foreign_actor_id,
+            collector_id=scope.foreign_actor_id,
+            source_identity="foreign-tenant:governing-owner",
+            source_version="foreign-tenant-probe",
+            supersedes_id=None,
+        )
+        foreign_leaf = EvidenceRecord(**values)
+        session.add(foreign_leaf)
+        session.flush()
+
+        legitimate = session.get(
+            EvidenceRecord, submitted.object_ids["conflict_evidence_id"]
+        )
+        conflict_values = {
+            column.name: getattr(legitimate, column.name)
+            for column in EvidenceRecord.__table__.columns
+            if column.name not in {"id", "created_at"}
+        }
+        conflict_value = TypedEvidenceValue(
+            "json", {"conflicting_evidence_ids": [foreign_leaf.id]}, None, None
+        )
+        conflict_values.update(
+            source_identity=f"conflict:foreign-tenant-probe:{scope.request_id}",
+            source_version="foreign-tenant-conflict-probe",
+            value_json=conflict_value.value,
+            source_checksum=sha256_canonical(conflict_value),
+            cited_evidence_ids=[foreign_leaf.id],
+            supersedes_id=None,
+        )
+        synthetic_conflict = EvidenceRecord(**conflict_values)
+        session.add(synthetic_conflict)
+        session.flush()
+        conflict_id = synthetic_conflict.id
+        foreign_leaf_id = foreign_leaf.id
+    _grant_decision_authority(scope)
+
+    with pytest.raises(NotFound, match="governing_evidence_not_found"):
+        TransformationEvidenceService.resolve_conflict(
+            actor=scope.actor,
+            conflict_evidence_id=conflict_id,
+            governing_evidence_id=foreign_leaf_id,
+            rationale="Foreign tenant evidence must never govern.",
+            command_key="reject-foreign-tenant-governing-leaf",
+        )
 
 
 def test_decline_and_expiry_do_not_complete_required_request(evidence_scope):

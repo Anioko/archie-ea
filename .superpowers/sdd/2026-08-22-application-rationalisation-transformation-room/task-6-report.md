@@ -306,3 +306,57 @@ Both `DATABASE_URL` and `TEST_DATABASE_URL` were set to
 The only remaining concern is the repository's pre-existing warning volume
 (SQLAlchemy lifecycle/deprecation and detached test-user warnings); no new test
 failure, gate failure or skip remains in this fix round.
+
+## Review fix round 2 — global resolution provenance and conflict binding
+
+Fix commit subject: `fix: bind global evidence resolution provenance`. The
+exact SHA is recorded in the parent handoff because the report and fix are
+committed together.
+
+Conflict resolution now keeps the resolving request/candidate as the
+authorization and resolution-record provenance boundary while treating the
+selected leaf's candidate as provenance only. The locked handler still loads
+the conflict's exact tenant request, candidate, workstream and programme and
+rechecks decision authority there. It then accepts a cited leaf from any
+candidate only when the leaf has the exact actor tenant, subject type/ID and
+claim key and is the current record of its exact source-identity head.
+
+The two-workstream RED first failed with
+`governing_evidence_not_found` solely because the selected current cited leaf
+had been observed through the second candidate. The same case is GREEN and the
+new resolution retains the first/request candidate as its provenance while
+naming the second candidate's current leaf as governing evidence. Separate
+tests prove a cited but superseded leaf is rejected as noncurrent, a current
+post-conflict leaf is rejected as uncited, and even a maliciously cited
+foreign-tenant row is rejected before resolution persistence.
+
+The definer's `evidence.attest` conflict branch now requires the cited
+same-transaction attestation event's candidate to equal the new conflict
+record/request candidate. This closes a database-only confused-deputy path in
+which a correctly fenced candidate-B attestation receipt and event could derive
+its valid natural key and then advance candidate A's otherwise exact conflict
+head.
+
+The RED integration used the actual restricted runtime login, real tables,
+same transaction, live receipt/token/lease, guarded function and deferred
+ledger trigger; candidate B's receipt successfully advanced both B's
+attestation and A's conflict. The corrected function rejects the second move
+with `attestation candidate does not match conflict request candidate`, rolls
+the transaction back, and the counterpart with both records/request on
+candidate B commits two exactly bound events. No trigger or runtime privilege
+was bypassed or mocked.
+
+### Review fix round 2 verification
+
+Both database variables used the required
+`postgresql://postgres@127.0.0.1:5439/flask_test` URL.
+
+- Task 6 evidence/concurrency/guard/runtime files: **50 passed**, 0 failed.
+- Full Transformation Room regression: **193 passed**, 0 failed.
+- `schema-drift`, `raw-sql-tenancy`, `lint-core`, `compile` and
+  `undefined-exports`: each **1 passed**, 0 failed, 0 skipped.
+- Focused Ruff over every changed Python/test file: **all checks passed**.
+- `git diff --check`: clean.
+
+The only concern remains the repository's pre-existing warning volume; this
+round introduced no test failure, gate failure or skip.
