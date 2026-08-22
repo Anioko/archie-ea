@@ -157,12 +157,26 @@ def benefit_create(initiative_id):
 @portfolio_bp.route("/programmes/<int:programme_id>/benefits", methods=["POST"])
 @login_required
 def programme_benefit_create(programme_id):
+    return _create_programme_benefit(programme_id)
+
+
+@portfolio_bp.route("/programmes/benefits", methods=["POST"])
+@login_required
+def selected_programme_benefit_create():
+    programme_id = _int_or_none(request.form.get("programme_id"))
+    if programme_id is None:
+        abort(400)
+    return _create_programme_benefit(programme_id)
+
+
+def _create_programme_benefit(programme_id):
     from app.models.benefit import Benefit
     from app.models.strategic import StrategicInitiative
 
     programme = db.session.scalar(
         db.select(StrategicInitiative).where(
             StrategicInitiative.id == programme_id,
+            StrategicInitiative.organization_id == current_user.organization_id,
             StrategicInitiative.record_kind == "transformation_programme",
         )
     )

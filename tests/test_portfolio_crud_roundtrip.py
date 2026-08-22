@@ -278,6 +278,28 @@ class TestBenefitLifecycle:
             db.session.delete(row)
             db.session.commit()
 
+    def test_detail_form_selected_programme_creates_canonical_benefit(
+        self, app, client, org_a
+    ):
+        from app import db
+        from app.models.benefit import Benefit
+
+        _login(client, org_a["user_id"])
+        name = f"Selected programme benefit {uuid.uuid4().hex[:6]}"
+        response = client.post(
+            "/portfolio/programmes/benefits",
+            data={"programme_id": org_a["programme_id"], "name": name},
+        )
+
+        assert response.status_code in (302, 303)
+        with app.app_context():
+            row = db.session.query(Benefit).filter_by(name=name).one_or_none()
+            assert row is not None
+            assert row.strategic_initiative_id == org_a["programme_id"]
+            assert row.legacy_enterprise_initiative_id is None
+            db.session.delete(row)
+            db.session.commit()
+
     def test_measuring_writes_the_actual_and_computes_realisation(self, app, client, org_a):
         from app import db
         from app.models.benefit import Benefit
@@ -480,6 +502,43 @@ class TestPagesRender:
         _login(client, org_a["user_id"])
         resp = client.get(f"/portfolio/{org_a['initiative_id']}")
         assert resp.status_code == 200, resp.status_code
+
+    def test_initiative_detail_uses_canonical_programme_benefit_form(
+        self, app, client, org_a
+    ):
+        _login(client, org_a["user_id"])
+        response = client.get(f"/portfolio/{org_a['initiative_id']}")
+
+        assert response.status_code == 200
+        assert b'action="/portfolio/programmes/benefits"' in response.data
+        assert (
+            f'action="/portfolio/initiatives/{org_a["initiative_id"]}/benefits"'.encode()
+            not in response.data
+        )
+        assert b'name="programme_id"' in response.data
+        assert f'value="{org_a["programme_id"]}"'.encode() in response.data
+
+    def test_initiative_detail_without_programme_has_honest_unavailable_state(
+        self, app, client, org_a
+    ):
+        from app import db
+        from app.models.strategic import StrategicInitiative
+
+        with app.app_context():
+            programme = db.session.get(StrategicInitiative, org_a["programme_id"])
+            programme.record_kind = None
+            db.session.commit()
+
+        _login(client, org_a["user_id"])
+        response = client.get(f"/portfolio/{org_a['initiative_id']}")
+
+        assert response.status_code == 200
+        assert b'action="/portfolio/programmes/benefits"' not in response.data
+        assert (
+            f'action="/portfolio/initiatives/{org_a["initiative_id"]}/benefits"'.encode()
+            not in response.data
+        )
+        assert b"no transformation programme is available" in response.data.lower()
 
     def test_demand_queue_and_form_render(self, app, client, org_a):
         _login(client, org_a["user_id"])
