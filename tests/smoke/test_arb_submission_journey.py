@@ -60,6 +60,7 @@ def test_journey_template_keeps_failure_taxonomy_and_canonical_success_contract(
     assert "Submission context not found" in template
     assert "arbSubmissionError.kind === 'blocked'" in template
     assert "arbSubmitResult.review_item_id && arbSubmitResult.review_number" in template
+    assert 'role="status" aria-live="polite" aria-atomic="true"' in template
 
 
 def test_blocked_submission_recovers_once_to_one_canonical_review(browser, live_server, seeded, arb_solution):

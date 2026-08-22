@@ -453,7 +453,8 @@
             </div>
 
             {# ARB submission success + post-submit actions #}
-            <div x-show="arbSubmitResult && arbSubmitResult.review_item_id && arbSubmitResult.review_number" x-cloak class="space-y-3">
+            <div x-show="arbSubmitResult && arbSubmitResult.review_item_id && arbSubmitResult.review_number" x-cloak
+                 role="status" aria-live="polite" aria-atomic="true" class="space-y-3">
                 <div class="rounded-md border border-success/30 bg-success/5 px-4 py-3">
                     <div class="flex items-center justify-between flex-wrap gap-3">
                         <div class="flex items-center gap-2">
