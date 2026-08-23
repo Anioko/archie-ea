@@ -108,7 +108,7 @@ def public_journey_scope(app, _schema):
                 vendor_risk="low",
                 obsolescence_risk="high",
                 health_status="at_risk",
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
             dependency_target = ApplicationComponent(
                 organization_id=organization.id,

@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Mapping, Protocol, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
@@ -19,7 +19,13 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
 from app import db
-from app.models.application_portfolio import ApplicationComponent
+from app.models.application_portfolio import (
+    APPLICATION_LIFECYCLE_STAGES,
+    APPLICATION_RISK_LEVELS,
+    ApplicationComponent,
+)
+from app.models.application_rationalization import ApplicationDependency
+from app.models.business_capabilities import BusinessCapability
 from app.models.strategic import StrategicInitiative
 from app.models.transformation_evidence import (
     EvidenceClaimHead,
@@ -74,6 +80,41 @@ _INVENTORY_OBSERVATION_CLAIMS = frozenset(
         "risk",
         "source_freshness",
     }
+)
+_PLACEHOLDER_VALUES = frozenset(
+    {
+        "-",
+        "—",
+        "n/a",
+        "na",
+        "none",
+        "not applicable",
+        "not available",
+        "tbd",
+        "to be determined",
+        "unknown",
+        "unavailable",
+    }
+)
+_LEGACY_LIFECYCLE_VALUES = frozenset(
+    {"planning", "development", "testing", "operational", "deprecated", "retired"}
+)
+_LIFECYCLE_ALIASES = {
+    "active": "operational",
+    "decommissioned": "retired",
+    "inactive": "retired",
+    "live": "operational",
+    "production": "operational",
+    "sunset": "deprecated",
+}
+_LIFECYCLE_VALUES = frozenset(
+    value.casefold()
+    for value in (*APPLICATION_LIFECYCLE_STAGES, *_LEGACY_LIFECYCLE_VALUES)
+)
+_ASSESSED_LEVELS = APPLICATION_RISK_LEVELS
+_IMPACT_LEVELS = frozenset({"none", "limited", "material", "critical"})
+_RISK_FIELDS = frozenset(
+    {"technical_risk", "business_risk", "vendor_risk", "obsolescence_risk"}
 )
 ATTESTATION_OVERRIDE_ROLES = frozenset(
     {"application_architect", "enterprise_architect", "chief_architect"}
@@ -467,40 +508,82 @@ class TransformationEvidenceService:
             value, allow_canonical_scalars=allow_canonical_scalars
         )
         raw = value.value
+        if claim_key != "cost" and (value.unit is not None or value.currency is not None):
+            raise ValueError("only cost evidence may declare a unit or currency")
         if claim_key == "application_owner":
             if value.value_type == "string":
-                if not raw.strip():
-                    raise ValueError("application owner evidence must be nonblank")
+                owner = raw.strip()
+                if not owner or owner.casefold() in _PLACEHOLDER_VALUES:
+                    raise ValueError("application owner evidence must name a known owner")
+                value = TypedEvidenceValue("string", owner, None, None)
             elif value.value_type == "json":
-                names = raw.get("owner_names") if isinstance(raw, Mapping) else None
+                names = (
+                    raw.get("owner_names")
+                    if isinstance(raw, Mapping) and set(raw) == {"owner_names"}
+                    else None
+                )
                 if not isinstance(names, list) or not names or any(
-                    not isinstance(name, str) or not name.strip() for name in names
+                    not isinstance(name, str)
+                    or not name.strip()
+                    or name.strip().casefold() in _PLACEHOLDER_VALUES
+                    for name in names
                 ):
                     raise ValueError("application owner evidence must name an owner")
+                canonical_names = sorted({name.strip() for name in names}, key=str.casefold)
+                if len(canonical_names) != len(names):
+                    raise ValueError("application owner evidence contains duplicate owners")
+                value = TypedEvidenceValue(
+                    "json", {"owner_names": canonical_names}, None, None
+                )
             else:
                 raise ValueError("application owner evidence has the wrong type")
         elif claim_key == "lifecycle":
-            if value.value_type != "string" or not raw.strip() or raw.strip().lower() in {
-                "unknown",
-                "unavailable",
-            }:
-                raise ValueError("lifecycle evidence must be nonblank and known")
+            if value.value_type != "string":
+                raise ValueError("lifecycle evidence has the wrong type")
+            lifecycle = raw.strip().casefold()
+            lifecycle = _LIFECYCLE_ALIASES.get(lifecycle, lifecycle)
+            if lifecycle not in _LIFECYCLE_VALUES:
+                raise ValueError("lifecycle evidence is not a canonical lifecycle")
+            value = TypedEvidenceValue("string", lifecycle, None, None)
         elif claim_key == "cost":
             if value.value_type != "number" or value.unit != "annual_tco":
                 raise ValueError("cost evidence requires a number in annual_tco units")
             if value.currency not in ISO_4217_CURRENCIES:
                 raise ValueError("cost evidence requires an ISO 4217 currency")
+            if isinstance(raw, float):
+                raise ValueError("cost evidence must use an exact decimal number")
+            try:
+                amount = Decimal(str(raw))
+                canonical_amount = amount.quantize(Decimal("0.01"))
+            except (InvalidOperation, ValueError):
+                raise ValueError("cost evidence must use a finite decimal number") from None
+            if not amount.is_finite() or amount < 0 or amount != canonical_amount:
+                raise ValueError(
+                    "cost evidence must be non-negative with at most two decimal places"
+                )
+            value = TypedEvidenceValue(
+                "number", format(canonical_amount, "f"), "annual_tco", value.currency
+            )
         elif claim_key == "business_criticality":
             if (
                 value.value_type != "json"
                 or not isinstance(raw, Mapping)
+                or set(raw) != {"value", "source_field"}
                 or not isinstance(raw.get("value"), str)
-                or not raw["value"].strip()
-                or raw["value"].strip().lower() in {"unknown", "unavailable"}
+                or raw["value"].strip().casefold() not in _ASSESSED_LEVELS
                 or raw.get("source_field")
                 not in {"business_criticality", "criticality"}
             ):
                 raise ValueError("business criticality evidence is incomplete")
+            value = TypedEvidenceValue(
+                "json",
+                {
+                    "value": raw["value"].strip().casefold(),
+                    "source_field": raw["source_field"],
+                },
+                None,
+                None,
+            )
         elif claim_key in {"capability_impact", "dependency_impact"}:
             id_key = (
                 "capability_ids"
@@ -510,6 +593,7 @@ class TransformationEvidenceService:
             if (
                 value.value_type != "json"
                 or not isinstance(raw, Mapping)
+                or set(raw) != {id_key, "impact"}
                 or not isinstance(raw.get(id_key), list)
                 or any(
                     isinstance(item, bool)
@@ -518,62 +602,114 @@ class TransformationEvidenceService:
                     for item in raw[id_key]
                 )
                 or not isinstance(raw.get("impact"), str)
-                or not raw["impact"].strip()
-                or raw["impact"].strip().lower() in {"unknown", "unavailable"}
+                or raw["impact"].strip().casefold() not in _IMPACT_LEVELS
             ):
                 raise ValueError(f"{claim_key.replace('_', ' ')} evidence is incomplete")
+            ids = raw[id_key]
+            impact = raw["impact"].strip().casefold()
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"{claim_key.replace('_', ' ')} IDs must be unique")
+            if (impact == "none") != (not ids):
+                raise ValueError(
+                    f"{claim_key.replace('_', ' ')} none semantics are incoherent"
+                )
+            value = TypedEvidenceValue(
+                "json", {id_key: sorted(ids), "impact": impact}, None, None
+            )
         elif claim_key == "risk":
-            required = {
-                "technical_risk",
-                "business_risk",
-                "vendor_risk",
-                "obsolescence_risk",
-            }
             if (
                 value.value_type != "json"
                 or not isinstance(raw, Mapping)
-                or set(raw) != required
+                or set(raw) != _RISK_FIELDS
                 or any(
                     not isinstance(raw[field], str)
-                    or not raw[field].strip()
-                    or raw[field].strip().lower() in {"unknown", "unavailable"}
-                    for field in required
+                    or raw[field].strip().casefold() not in _ASSESSED_LEVELS
+                    for field in _RISK_FIELDS
                 )
             ):
                 raise ValueError("risk evidence must contain every known risk dimension")
+            value = TypedEvidenceValue(
+                "json",
+                {field: raw[field].strip().casefold() for field in sorted(_RISK_FIELDS)},
+                None,
+                None,
+            )
         elif claim_key == "source_freshness":
-            observed_at = raw.get("observed_at") if isinstance(raw, Mapping) else None
-            parsed_observed_at = None
-            if isinstance(observed_at, str) and observed_at.strip():
-                try:
-                    parsed_observed_at = datetime.fromisoformat(
-                        observed_at.strip().replace("Z", "+00:00")
-                    )
-                except ValueError:
-                    parsed_observed_at = None
             if (
                 value.value_type != "json"
                 or not isinstance(raw, Mapping)
-                or parsed_observed_at is None
-                or parsed_observed_at.tzinfo is None
-                or raw.get("freshness_status") not in {"fresh", "not_applicable"}
-                or not isinstance(raw.get("source_system"), str)
-                or not raw["source_system"].strip()
+                or set(raw)
+                != {"observed_at", "freshness_status", "source_system"}
             ):
                 raise ValueError("source freshness evidence is incomplete")
+            observed_at = raw["observed_at"]
+            try:
+                parsed_observed_at = (
+                    datetime.fromisoformat(observed_at.strip().replace("Z", "+00:00"))
+                    if isinstance(observed_at, str) and observed_at.strip()
+                    else None
+                )
+            except ValueError:
+                parsed_observed_at = None
+            if parsed_observed_at is None or parsed_observed_at.tzinfo is None:
+                raise ValueError("source freshness observed_at is invalid")
+            if _utc(parsed_observed_at) > utcnow() + timedelta(seconds=1):
+                raise ValueError("source freshness observed_at cannot be in the future")
+            if raw["freshness_status"] not in {"fresh", "stale"}:
+                raise ValueError("source freshness status is invalid")
+            if raw["source_system"] != "application-inventory":
+                raise ValueError("source freshness source system is invalid")
             value = TypedEvidenceValue(
                 value.value_type,
                 {
-                    **dict(raw),
                     "observed_at": _utc(parsed_observed_at).isoformat(),
-                    "source_system": raw["source_system"].strip(),
+                    "freshness_status": raw["freshness_status"],
+                    "source_system": "application-inventory",
                 },
-                value.unit,
-                value.currency,
+                None,
+                None,
             )
         else:
             raise ValueError("claim is not part of the governed evidence contract")
         return value
+
+    @classmethod
+    def _validate_claim_references(
+        cls, session, actor, candidate, claim_key: str, value: TypedEvidenceValue
+    ) -> None:
+        if claim_key == "capability_impact":
+            ids = set(value.value["capability_ids"])
+            found = set(
+                session.scalars(
+                    select(BusinessCapability.id).where(
+                        BusinessCapability.organization_id == actor.organization_id,
+                        BusinessCapability.id.in_(ids or {-1}),
+                    )
+                ).all()
+            )
+            if found != ids:
+                raise NotFound("capability_impact_reference_not_found")
+        elif claim_key == "dependency_impact":
+            ids = set(value.value["dependency_ids"])
+            dependencies = session.execute(
+                select(
+                    ApplicationDependency.id,
+                    ApplicationDependency.source_app_id,
+                    ApplicationDependency.target_app_id,
+                ).where(
+                    ApplicationDependency.organization_id == actor.organization_id,
+                    ApplicationDependency.id.in_(ids or {-1}),
+                )
+            ).all()
+            if {row.id for row in dependencies} != ids:
+                raise NotFound("dependency_impact_reference_not_found")
+            if candidate.subject_type != "application" or any(
+                candidate.subject_id not in {row.source_app_id, row.target_app_id}
+                for row in dependencies
+            ):
+                raise ValueError(
+                    "dependency impact references must involve the evidence subject"
+                )
 
     @classmethod
     def _inventory_claim_value(
@@ -652,13 +788,12 @@ class TransformationEvidenceService:
             != EVIDENCE_CLAIM_CONTRACT_VERSION
         ):
             return False
-        if (
-            getattr(record, "source_type", None) != "attestation"
-            and getattr(record, "source_type", None) != "governance_resolution"
-            and (
-                getattr(record, "source_type", None) != "application-inventory"
-                or request_claim not in _INVENTORY_OBSERVATION_CLAIMS
-            )
+        source_type = getattr(record, "source_type", None)
+        if source_type == "attestation" and request_claim == "source_freshness":
+            return False
+        if source_type != "attestation" and (
+            source_type != "application-inventory"
+            or request_claim not in _INVENTORY_OBSERVATION_CLAIMS
         ):
             return False
         try:
@@ -1209,6 +1344,8 @@ class TransformationEvidenceService:
     ):
         typed = cls._typed_value(value)
         if request.claim_contract_version == EVIDENCE_CLAIM_CONTRACT_VERSION:
+            if request.claim_key == "source_freshness":
+                raise CommandConflict("source_freshness_authoritative_source_required")
             typed = cls._validate_claim_value(
                 request.claim_key, typed, allow_canonical_scalars=True
             )
@@ -1282,8 +1419,13 @@ class TransformationEvidenceService:
         if request.claim_contract_version == EVIDENCE_CLAIM_CONTRACT_VERSION:
             if payload.get("claim_contract_version") != EVIDENCE_CLAIM_CONTRACT_VERSION:
                 raise CommandConflict("evidence_claim_contract_changed")
+            if request.claim_key == "source_freshness":
+                raise CommandConflict("source_freshness_authoritative_source_required")
             value = cls._validate_claim_value(
                 request.claim_key, value, allow_canonical_scalars=True
+            )
+            cls._validate_claim_references(
+                session, actor, candidate, request.claim_key, value
             )
         else:
             value = cls._typed_value(value)
@@ -1515,11 +1657,22 @@ class TransformationEvidenceService:
             raise NotFound("evidence_record_not_found")
         if evidence.classification == "conflict":
             raise CommandConflict("evidence_conflict_unresolved")
-        if (
-            request.claim_contract_version == EVIDENCE_CLAIM_CONTRACT_VERSION
-            and not cls.record_satisfies_contract(request, evidence)
-        ):
-            raise CommandConflict("evidence_claim_contract_invalid")
+        if request.claim_contract_version == EVIDENCE_CLAIM_CONTRACT_VERSION:
+            if not cls.record_satisfies_contract(request, evidence):
+                raise CommandConflict("evidence_claim_contract_invalid")
+            canonical_value = cls._validate_claim_value(
+                request.claim_key,
+                TypedEvidenceValue(
+                    evidence.value_type,
+                    evidence.value_json,
+                    evidence.unit,
+                    evidence.currency,
+                ),
+                allow_canonical_scalars=True,
+            )
+            cls._validate_claim_references(
+                session, actor, candidate, request.claim_key, canonical_value
+            )
         is_current = session.scalar(
             select(EvidenceClaimHead.id).where(
                 EvidenceClaimHead.organization_id == actor.organization_id,
@@ -1893,6 +2046,22 @@ class TransformationEvidenceService:
         )
         if governing is None:
             raise NotFound("governing_evidence_not_found")
+        if request.claim_contract_version == EVIDENCE_CLAIM_CONTRACT_VERSION:
+            if not cls.record_satisfies_contract(request, governing):
+                raise CommandConflict("governing_evidence_claim_contract_invalid")
+            governing_value = cls._validate_claim_value(
+                request.claim_key,
+                TypedEvidenceValue(
+                    governing.value_type,
+                    governing.value_json,
+                    governing.unit,
+                    governing.currency,
+                ),
+                allow_canonical_scalars=True,
+            )
+            cls._validate_claim_references(
+                session, actor, candidate, request.claim_key, governing_value
+            )
         resolution_source_identity = canonical_source_identity(
             "governance_resolution", f"resolution:conflict:{conflict.id}"
         )
@@ -2016,17 +2185,21 @@ class TransformationEvidenceService:
             "decision authority selected governing source",
         )
         resolution_id = mutation.object_ids["evidence_record_id"]
-        request.submitted_evidence_id = resolution_id
+        request.submitted_evidence_id = governing.id
         request.revision += 1
         session.flush()
         object_ids = {
             **mutation.object_ids,
             "evidence_request_id": request.id,
+            "governing_evidence_id": governing.id,
+            "resolution_evidence_id": resolution_id,
         }
         response = {
             **mutation.response,
             "request_id": request.id,
             "request_revision": request.revision,
+            "governing_evidence_id": governing.id,
+            "resolution_evidence_id": resolution_id,
         }
         return DomainMutationResult(
             object_ids,
@@ -2038,6 +2211,7 @@ class TransformationEvidenceService:
                     "payload": {
                         "request_id": request.id,
                         "resolution_evidence_id": resolution_id,
+                        "governing_evidence_id": governing.id,
                         "revision": request.revision,
                     },
                 },

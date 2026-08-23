@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select, text
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
+from app.models.application_rationalization import ApplicationDependency
+from app.models.business_capabilities import BusinessCapability
 from app.models.organization import Organization
 from app.models.transformation_evidence import (
     EvidenceClaimHead,
@@ -39,6 +42,7 @@ from app.modules.transformation_room.evidence_service import (
     parse_positive_int,
     sha256_canonical,
 )
+from app.modules.transformation_room.gate_service import TransformationGateService
 
 from tests.test_rationalisation_discovery_service import (
     _discover,
@@ -56,6 +60,8 @@ class EvidenceScope:
     workstream_id: int
     candidate_id: int
     application_id: int
+    capability_id: int
+    dependency_id: int
     request_id: int
     actor: ActorContext
     foreign_actor: ActorContext
@@ -115,6 +121,8 @@ def evidence_scope(app, _schema):
             workstream_id=seeded.workstream_id,
             candidate_id=accepted.object_ids["candidate_id"],
             application_id=seeded.application_id,
+            capability_id=seeded.capability_id,
+            dependency_id=seeded.dependency_id,
             request_id=accepted.object_ids["evidence_request_id"],
             actor=seeded.actor,
             foreign_actor=ActorContext(
@@ -265,7 +273,7 @@ def test_required_claim_contract_rejects_relabeling_and_empty_semantics(
         for key, value in _plan_all_requests(scope).object_ids.items()
         if key == "request_lifecycle_id"
     )
-    with pytest.raises(ValueError, match="lifecycle evidence must be nonblank"):
+    with pytest.raises(ValueError, match="lifecycle evidence"):
         TransformationEvidenceService.submit_attestation(
             actor=scope.actor,
             request_id=lifecycle_request_id,
@@ -296,7 +304,7 @@ def test_required_claim_contract_rejects_relabeling_and_empty_semantics(
         for key, value in _plan_all_requests(scope).object_ids.items()
         if key == "request_source_freshness_id"
     )
-    with pytest.raises(ValueError, match="source freshness evidence is incomplete"):
+    with pytest.raises(CommandConflict, match="authoritative_source_required"):
         TransformationEvidenceService.submit_attestation(
             actor=scope.actor,
             request_id=freshness_request_id,
@@ -315,12 +323,224 @@ def test_required_claim_contract_rejects_relabeling_and_empty_semantics(
         )
 
 
+@pytest.mark.parametrize(
+    ("claim_key", "value"),
+    (
+        ("application_owner", TypedEvidenceValue("string", "N/A", None, None)),
+        (
+            "application_owner",
+            TypedEvidenceValue(
+                "json",
+                {"owner_names": ["Retail Operations"], "untrusted": True},
+                None,
+                None,
+            ),
+        ),
+        ("lifecycle", TypedEvidenceValue("string", "banana", None, None)),
+        (
+            "cost",
+            TypedEvidenceValue("number", Decimal("-0.01"), "annual_tco", "GBP"),
+        ),
+        (
+            "cost",
+            TypedEvidenceValue("number", 0.1, "annual_tco", "GBP"),
+        ),
+        (
+            "cost",
+            TypedEvidenceValue(
+                "number", Decimal("12.345"), "annual_tco", "GBP"
+            ),
+        ),
+        (
+            "business_criticality",
+            TypedEvidenceValue(
+                "json",
+                {"value": "severe", "source_field": "business_criticality"},
+                None,
+                None,
+            ),
+        ),
+        (
+            "capability_impact",
+            TypedEvidenceValue(
+                "json", {"capability_ids": [], "impact": "material"}, None, None
+            ),
+        ),
+        (
+            "capability_impact",
+            TypedEvidenceValue(
+                "json", {"capability_ids": [3, 3], "impact": "material"}, None, None
+            ),
+        ),
+        (
+            "dependency_impact",
+            TypedEvidenceValue(
+                "json", {"dependency_ids": [4], "impact": "none"}, None, None
+            ),
+        ),
+        (
+            "risk",
+            TypedEvidenceValue(
+                "json",
+                {
+                    "technical_risk": "severe",
+                    "business_risk": "medium",
+                    "vendor_risk": "low",
+                    "obsolescence_risk": "critical",
+                },
+                None,
+                None,
+            ),
+        ),
+        (
+            "source_freshness",
+            TypedEvidenceValue(
+                "json",
+                {
+                    "observed_at": "not-a-timestamp",
+                    "freshness_status": "fresh",
+                    "source_system": "application-inventory",
+                },
+                None,
+                None,
+            ),
+        ),
+        (
+            "source_freshness",
+            TypedEvidenceValue(
+                "json",
+                {
+                    "observed_at": (
+                        datetime.now(timezone.utc) + timedelta(days=1)
+                    ).isoformat(),
+                    "freshness_status": "fresh",
+                    "source_system": "application-inventory",
+                },
+                None,
+                None,
+            ),
+        ),
+        (
+            "source_freshness",
+            TypedEvidenceValue(
+                "json",
+                {
+                    "observed_at": datetime.now(timezone.utc).isoformat(),
+                    "freshness_status": "fresh",
+                    "source_system": "application-inventory",
+                    "claimed_by_client": True,
+                },
+                None,
+                None,
+            ),
+        ),
+    ),
+)
+def test_claim_contract_rejects_noncanonical_or_incoherent_semantics(
+    claim_key, value
+):
+    """Every governed claim has an exact schema and canonical vocabulary."""
+    with pytest.raises(ValueError):
+        TransformationEvidenceService._validate_claim_value(claim_key, value)
+
+
+def test_source_freshness_cannot_be_self_declared_by_attestation(evidence_scope):
+    planned = _plan_all_requests(evidence_scope)
+
+    with pytest.raises(CommandConflict, match="authoritative_source_required"):
+        TransformationEvidenceService.submit_attestation(
+            actor=evidence_scope.actor,
+            request_id=planned.object_ids["request_source_freshness_id"],
+            value=TypedEvidenceValue(
+                "json",
+                {
+                    "observed_at": datetime.now(timezone.utc).isoformat(),
+                    "freshness_status": "fresh",
+                    "source_system": "application-inventory",
+                },
+                None,
+                None,
+            ),
+            expected_head_revision=0,
+            command_key="reject-self-declared-freshness",
+        )
+
+
+@pytest.mark.parametrize("claim_key", ("capability_impact", "dependency_impact"))
+def test_impact_claim_rejects_cross_tenant_references(evidence_scope, claim_key):
+    scope = evidence_scope
+    with Session(db.engine) as session, session.begin():
+        foreign_source = ApplicationComponent(
+            organization_id=scope.foreign_organization_id,
+            name=f"Foreign source {uuid.uuid4().hex[:8]}",
+        )
+        foreign_target = ApplicationComponent(
+            organization_id=scope.foreign_organization_id,
+            name=f"Foreign target {uuid.uuid4().hex[:8]}",
+        )
+        session.add_all((foreign_source, foreign_target))
+        session.flush()
+        foreign_capability = BusinessCapability(
+            organization_id=scope.foreign_organization_id,
+            name=f"Foreign capability {uuid.uuid4().hex[:8]}",
+            code=f"EVID-{uuid.uuid4().hex[:10]}",
+            level=2,
+        )
+        foreign_dependency = ApplicationDependency(
+            organization_id=scope.foreign_organization_id,
+            source_app_id=foreign_source.id,
+            target_app_id=foreign_target.id,
+            dependency_type="api_call",
+        )
+        session.add_all((foreign_capability, foreign_dependency))
+        session.flush()
+        foreign_id = (
+            foreign_capability.id
+            if claim_key == "capability_impact"
+            else foreign_dependency.id
+        )
+    planned = _plan_all_requests(scope)
+    id_key = (
+        "capability_ids" if claim_key == "capability_impact" else "dependency_ids"
+    )
+
+    with pytest.raises(NotFound, match=f"{claim_key}_reference_not_found"):
+        TransformationEvidenceService.submit_attestation(
+            actor=scope.actor,
+            request_id=planned.object_ids[f"request_{claim_key}_id"],
+            value=TypedEvidenceValue(
+                "json", {id_key: [foreign_id], "impact": "material"}, None, None
+            ),
+            expected_head_revision=0,
+            command_key=f"reject-foreign-{claim_key}",
+        )
+
+
+def test_cost_claim_is_persisted_as_canonical_decimal(evidence_scope):
+    planned = _plan_all_requests(evidence_scope)
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=evidence_scope.actor,
+        request_id=planned.object_ids["request_cost_id"],
+        value=TypedEvidenceValue(
+            "number", Decimal("125000"), "annual_tco", "GBP"
+        ),
+        expected_head_revision=0,
+        command_key="canonical-decimal-cost",
+    )
+
+    with Session(db.engine) as session:
+        record = session.get(
+            EvidenceRecord, submitted.object_ids["evidence_record_id"]
+        )
+    assert record.value_json == "125000.00"
+
+
 def test_planned_observation_submits_and_accepts_the_bound_request(evidence_scope):
     scope = evidence_scope
     with Session(db.engine) as session, session.begin():
         application = session.get(ApplicationComponent, scope.application_id)
         application.application_owner = "Retail Operations"
-        application.updated_at = datetime.now(timezone.utc)
+        application.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     planned = _plan_all_requests(scope)
     request_id = planned.object_ids["request_application_owner_id"]
 
@@ -402,6 +622,8 @@ def _accept_same_subject_in_second_workstream(scope: EvidenceScope, *, key: str)
         workstream_id=workstream_id,
         candidate_id=0,
         application_id=scope.application_id,
+        capability_id=scope.capability_id,
+        dependency_id=scope.dependency_id,
         request_id=0,
         actor=scope.actor,
         foreign_actor=scope.foreign_actor,
@@ -834,6 +1056,8 @@ def test_shared_subject_heads_are_membership_authorized_not_candidate_owned(
         workstream_id=second_workstream_id,
         candidate_id=0,
         application_id=scope.application_id,
+        capability_id=scope.capability_id,
+        dependency_id=scope.dependency_id,
         request_id=0,
         actor=scope.actor,
         foreign_actor=scope.foreign_actor,
@@ -916,7 +1140,7 @@ def test_disagreement_creates_conflict_and_decision_authority_resolution(evidenc
     accepted = TransformationEvidenceService.accept_request(
         actor=scope.actor,
         request_id=scope.request_id,
-        evidence_id=resolution_id,
+        evidence_id=observed.object_ids["evidence_record_id"],
         expected_revision=3,
         command_key="accept-governed-resolution",
     )
@@ -938,9 +1162,152 @@ def test_disagreement_creates_conflict_and_decision_authority_resolution(evidenc
         conflict.id,
         observed.object_ids["evidence_record_id"],
     }
-    assert request.submitted_evidence_id == resolution.id
-    assert request.accepted_evidence_id == resolution.id
+    assert request.submitted_evidence_id == observed.object_ids["evidence_record_id"]
+    assert request.accepted_evidence_id == observed.object_ids["evidence_record_id"]
     assert accepted.response["revision"] == 4
+
+
+def test_exact_eight_contract_accepts_governing_leaf_after_conflict_resolution(
+    evidence_scope,
+):
+    """Resolution provenance must not replace the selected typed claim value."""
+    scope = evidence_scope
+    with Session(db.engine) as session, session.begin():
+        application = session.get(ApplicationComponent, scope.application_id)
+        application.application_owner = "Retail Operations"
+        application.lifecycle_status = "operational"
+        application.business_criticality = "high"
+        application.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    second = _accept_same_subject_in_second_workstream(
+        scope, key="exact-eight-owner-provenance"
+    )
+    TransformationEvidenceService.plan_required_requests(
+        actor=scope.actor,
+        candidate_id=second.object_ids["candidate_id"],
+        assignments={claim: scope.actor_id for claim in REQUIRED_EVIDENCE_CLAIMS},
+        command_key="exact-eight-owner-provenance-plan",
+    )
+    owner_observation = TransformationEvidenceService.record_observation(
+        actor=scope.actor,
+        candidate_id=second.object_ids["candidate_id"],
+        claim_key="application_owner",
+        adapter_key="application-inventory",
+        source_key=str(scope.application_id),
+        expected_head_revision=0,
+        command_key="exact-eight-owner-observation",
+    )
+    planned = _plan_all_requests(scope, key="exact-eight-conflict-plan")
+    owner_attestation = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=planned.object_ids["request_application_owner_id"],
+        value=TypedEvidenceValue("string", "Different owner", None, None),
+        expected_head_revision=0,
+        command_key="exact-eight-owner-disagreement",
+    )
+    _grant_decision_authority(scope)
+    resolved = TransformationEvidenceService.resolve_conflict(
+        actor=scope.actor,
+        conflict_evidence_id=owner_attestation.object_ids["conflict_evidence_id"],
+        governing_evidence_id=owner_observation.object_ids["evidence_record_id"],
+        rationale="The current application inventory owns this fact.",
+        command_key="exact-eight-owner-resolution",
+    )
+    accepted_owner = TransformationEvidenceService.accept_request(
+        actor=scope.actor,
+        request_id=planned.object_ids["request_application_owner_id"],
+        evidence_id=owner_observation.object_ids["evidence_record_id"],
+        expected_revision=resolved.response["request_revision"],
+        command_key="exact-eight-owner-acceptance",
+    )
+
+    inventory_claims = (
+        "lifecycle",
+        "business_criticality",
+        "risk",
+        "source_freshness",
+    )
+    for claim_key in inventory_claims:
+        submitted = TransformationEvidenceService.record_observation(
+            actor=scope.actor,
+            candidate_id=scope.candidate_id,
+            claim_key=claim_key,
+            adapter_key="application-inventory",
+            source_key=str(scope.application_id),
+            expected_head_revision=0,
+            command_key=f"exact-eight-observe-{claim_key}",
+        )
+        TransformationEvidenceService.accept_request(
+            actor=scope.actor,
+            request_id=planned.object_ids[f"request_{claim_key}_id"],
+            evidence_id=submitted.object_ids["evidence_record_id"],
+            expected_revision=submitted.response["request_revision"],
+            command_key=f"exact-eight-accept-{claim_key}",
+        )
+
+    attested_values = {
+        "cost": TypedEvidenceValue(
+            "number", Decimal("125000.00"), "annual_tco", "GBP"
+        ),
+        "capability_impact": TypedEvidenceValue(
+            "json",
+            {"capability_ids": [scope.capability_id], "impact": "material"},
+            None,
+            None,
+        ),
+        "dependency_impact": TypedEvidenceValue(
+            "json",
+            {"dependency_ids": [scope.dependency_id], "impact": "material"},
+            None,
+            None,
+        ),
+    }
+    for claim_key, value in attested_values.items():
+        submitted = TransformationEvidenceService.submit_attestation(
+            actor=scope.actor,
+            request_id=planned.object_ids[f"request_{claim_key}_id"],
+            value=value,
+            expected_head_revision=0,
+            command_key=f"exact-eight-attest-{claim_key}",
+        )
+        TransformationEvidenceService.accept_request(
+            actor=scope.actor,
+            request_id=planned.object_ids[f"request_{claim_key}_id"],
+            evidence_id=submitted.object_ids["evidence_record_id"],
+            expected_revision=submitted.response["revision"],
+            command_key=f"exact-eight-accept-{claim_key}",
+        )
+
+    with Session(db.engine) as session, session.begin():
+        request = session.get(
+            EvidenceRequest, planned.object_ids["request_application_owner_id"]
+        )
+        resolution = session.get(
+            EvidenceRecord, resolved.object_ids["evidence_record_id"]
+        )
+        workstream = session.get(ProgrammeWorkstream, scope.workstream_id)
+        workstream.lifecycle_stage = "evidence"
+        assert request.submitted_evidence_id == owner_observation.object_ids[
+            "evidence_record_id"
+        ]
+        assert request.accepted_evidence_id == owner_observation.object_ids[
+            "evidence_record_id"
+        ]
+        assert resolution.value_json["governing_evidence_id"] == (
+            owner_observation.object_ids["evidence_record_id"]
+        )
+        assert resolution.cited_evidence_ids == [
+            owner_attestation.object_ids["conflict_evidence_id"],
+            owner_observation.object_ids["evidence_record_id"],
+        ]
+
+    gate = TransformationGateService.evaluate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="options",
+    )
+    assert accepted_owner.response["status"] == "accepted"
+    assert gate.allowed is True
+    assert gate.blockers == ()
 
 
 def test_resolution_accepts_current_cited_leaf_from_another_candidate_provenance(
