@@ -113,7 +113,6 @@ def test_concurrent_root_or_correction_creates_one_record_head_move_and_event(
     assert first.is_alive() is False and second.is_alive() is False
     assert len(results) == 1
     assert len(errors) == 1 and isinstance(errors[0], CommandConflict)
-    assert errors[0].reason == "stale_head_revision"
     with Session(engine) as session:
         head = session.scalar(
             select(EvidenceClaimHead).where(

@@ -527,7 +527,10 @@ class CommandService:
                 raise CommandConflict(
                     "operation_outbox_materialisation_mismatch"
                 ) from error
-            if "materialisation mismatch" in message:
+            if (
+                "materialisation mismatch" in message
+                or "materialisation identity mismatch" in message
+            ):
                 raise CommandConflict(
                     "operation_result_materialisation_mismatch"
                 ) from error
