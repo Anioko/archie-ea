@@ -497,9 +497,15 @@ class TransformationGateService:
             "arb", "conditions", "approved_actions",
             "delivery", "measurements", "outcome_reviews",
         })
+        evidence_waivers = tuple(
+            row
+            for row in evidence_requests
+            if row.waiver_id is not None
+            and row.interim_accountable_id in tenant_user_ids
+        )
         return PolicySnapshot(
             programme, workstream, roles, outcomes, measures, accepted_candidates,
-            active_evidence_heads, evidence_records, evidence_requests, (),
+            active_evidence_heads, evidence_records, evidence_requests, evidence_waivers,
             option_versions, decision_briefs, brief_versions, (), (), (),
             work_packages, roadmap_items, benefits, (), (),
             (), frozenset(authorized_waiver_authority_ids), unavailable,
@@ -623,6 +629,16 @@ class TransformationGateService:
             and _current(expiry)
         )
 
+    @classmethod
+    def _valid_evidence_waiver(cls, snapshot, row):
+        return bool(
+            cls._valid_waiver(snapshot, row)
+            and _value(row, "waiver_id") == _value(row, "id")
+            and _value(row, "status") in {"declined", "expired"}
+            and _value(row, "interim_accountable_id")
+            and _value(row, "waived_at") is not None
+        )
+
     @staticmethod
     def _effectively_fresh(record):
         expires_at = _value(record, "freshness_expires_at")
@@ -733,7 +749,8 @@ class TransformationGateService:
             )
             owner_waiver = any(_value(row, "candidate_id") == candidate.id
                                and _value(row, "claim_key") == "application_owner"
-                               and cls._valid_waiver(snapshot, row) and _value(row, "interim_owner_id")
+                               and cls._valid_evidence_waiver(snapshot, row)
+                               and _value(row, "interim_accountable_id")
                                for row in snapshot.evidence_waivers)
             if not owner_evidence and not owner_waiver:
                 block("application_owner_evidence_required", "Resolve application ownership with accepted evidence or a controlled waiver.", "candidate", candidate.id, f"{room}/evidence")
@@ -758,12 +775,12 @@ class TransformationGateService:
                 _value(row, "status") == "accepted"
                 and _value(row, "accepted_evidence_id") in valid_accepted_ids
             )
-            or (_value(row, "status") in {"declined", "unavailable"} and _value(row, "acknowledgement_id"))
             or (
-                _value(row, "status") == "expired"
+                _value(row, "status") in {"declined", "expired"}
                 and _value(row, "waiver_id")
-                and cls._valid_waiver(snapshot, row)
+                and cls._valid_evidence_waiver(snapshot, row)
             )
+            or (_value(row, "status") == "declined" and _value(row, "acknowledgement_id"))
             for row in snapshot.evidence_requests)
         if not requests_complete:
             block("required_evidence_incomplete", "Complete or explicitly acknowledge every required evidence request.", "workstream", workstream_id, f"{room}/evidence")

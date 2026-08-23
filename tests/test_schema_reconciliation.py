@@ -9,6 +9,7 @@ from sqlalchemy import Column, Integer, String, Table, create_engine, inspect, t
 
 from app import db
 from app.commands.reconcile_schema import _reconcile
+from app.models.transformation_db_guards import inspect_transformation_db_guards
 
 
 @pytest.fixture
@@ -188,7 +189,11 @@ def test_pre_task6_evidence_waiver_constraint_reconciles_idempotently(
     label = "constraint.ck_evidence_request_waiver_complete"
     with app.app_context():
         dry_added, dry_failed, _missing, _blocking = _reconcile(dry_run=True)
-        assert dry_failed == []
+        assert dry_failed
+        assert all(
+            item.startswith("transformation_db_guards:function_missing:")
+            for item in dry_failed
+        )
         assert f"{label} :: CHECK NOT VALID THEN VALIDATE" in dry_added
         with isolated_engine.connect() as connection:
             assert connection.scalar(
@@ -266,13 +271,111 @@ def test_pre_task7_schema_creates_decision_tables_and_partial_scope_indexes_idem
         )
 
 
+def test_task7_guards_install_and_repair_inside_the_active_non_public_schema(
+    app, pre_feature_transformation_schema
+):
+    """Catches guard DDL, inspection, triggers or grants silently targeting public."""
+    schema_name, isolated_engine = pre_feature_transformation_schema
+    with app.app_context():
+        first_added, first_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert first_failed == []
+        second_added, second_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert second_failed == []
+        assert not any(item.startswith("transformation_db_guards:") for item in second_added)
+
+        with isolated_engine.begin() as connection:
+            assert inspect_transformation_db_guards(connection) == []
+            function_schemas = connection.execute(
+                text(
+                    "SELECT DISTINCT namespace.nspname "
+                    "FROM pg_proc proc "
+                    "JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace "
+                    "WHERE proc.proname IN "
+                    "('archie_reject_transformation_mutation', "
+                    " 'archie_guard_decision_citation_membership', "
+                    " 'archie_insert_decision_brief_citations', "
+                    " 'archie_guard_transformation_receipt', "
+                    " 'archie_guard_evidence_head', "
+                    " 'archie_guard_evidence_event_binding', "
+                    " 'archie_advance_evidence_head') "
+                    "AND namespace.nspname = current_schema()"
+                )
+            ).scalars().all()
+            assert function_schemas == [schema_name]
+            trigger_schemas = connection.execute(
+                text(
+                    "SELECT DISTINCT function_namespace.nspname "
+                    "FROM pg_trigger trigger "
+                    "JOIN pg_class target ON target.oid = trigger.tgrelid "
+                    "JOIN pg_namespace target_namespace "
+                    "  ON target_namespace.oid = target.relnamespace "
+                    "JOIN pg_proc proc ON proc.oid = trigger.tgfoid "
+                    "JOIN pg_namespace function_namespace "
+                    "  ON function_namespace.oid = proc.pronamespace "
+                    "WHERE target_namespace.nspname = current_schema() "
+                    "AND NOT trigger.tgisinternal"
+                )
+            ).scalars().all()
+            assert trigger_schemas == [schema_name]
+
+            receipt_id = connection.scalar(
+                text(
+                    "INSERT INTO command_idempotency_records "
+                    "(organization_id, actor_id, operation, idempotency_key, "
+                    " request_digest, natural_key, status, lease_generation, "
+                    " claim_token, claimant_request_id, lease_expires_at, attempt_count) "
+                    "VALUES (1, 1, 'brief.freeze', 'isolated-guard', :digest, "
+                    " 'brief:999:version:1', 'in_progress', 1, :token, "
+                    " 'isolated-guard', clock_timestamp() + interval '1 minute', 1) "
+                    "RETURNING id"
+                ),
+                {"digest": "d" * 64, "token": "t" * 64},
+            )
+            result_id = connection.scalar(
+                text(
+                    "INSERT INTO operation_results "
+                    "(organization_id, actor_id, operation, natural_key, "
+                    " request_digest, receipt_id, receipt_generation, "
+                    " object_ids, response_json) "
+                    "VALUES (1, 1, 'brief.freeze', 'isolated-result', :digest, "
+                    " :receipt_id, 1, '{}'::json, '{}'::json) RETURNING id"
+                ),
+                {"digest": "d" * 64, "receipt_id": receipt_id},
+            )
+            with pytest.raises(Exception, match="append-only"):
+                with connection.begin_nested():
+                    connection.execute(
+                        text(
+                            "UPDATE operation_results "
+                            "SET response_json = CAST(:bad_payload AS json) "
+                            "WHERE id = :result_id AND organization_id = 1"
+                        ),
+                        {"bad_payload": '{"bad":true}', "result_id": result_id},
+                    )
+
+        with isolated_engine.begin() as connection:
+            with pytest.raises(Exception, match="citation membership is frozen"):
+                with connection.begin_nested():
+                    connection.execute(
+                        text(
+                            "INSERT INTO decision_brief_option_citations "
+                            "(organization_id, brief_version_id, option_version_id) "
+                            "VALUES (1, 999999, 999999)"
+                        )
+                    )
+
+
 def test_genuine_pre_feature_schema_backfills_roadmap_and_repairs_delivery_fks(
     app, pre_feature_transformation_schema
 ):
     _schema_name, isolated_engine = pre_feature_transformation_schema
     with app.app_context():
         dry_added, dry_failed, _missing, _blocking = _reconcile(dry_run=True)
-        assert dry_failed == []
+        assert dry_failed
+        assert all(
+            item.startswith("transformation_db_guards:function_missing:")
+            for item in dry_failed
+        )
         assert any(
             item.startswith("strategic_roadmap_items.organization_id ::")
             for item in dry_added

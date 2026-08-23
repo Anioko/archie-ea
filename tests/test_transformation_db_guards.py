@@ -221,6 +221,7 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                     'archie_guard_transformation_receipt',
                     'archie_guard_evidence_head',
                     'archie_guard_evidence_event_binding',
+                    'archie_insert_decision_brief_citations',
                     'archie_advance_evidence_head'
                 )
                 ORDER BY proname
@@ -244,7 +245,7 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
         ("trg_transformation_receipt_guard", "command_idempotency_records"),
         ("trg_transformation_result_immutable", "operation_results"),
     ]
-    assert len(functions) == 5
+    assert len(functions) == 6
     assert all(row.prosecdef is True for row in functions)
     assert all("search_path=pg_catalog, public" in row.proconfig for row in functions)
 

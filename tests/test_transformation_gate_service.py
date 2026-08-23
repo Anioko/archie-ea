@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app import db
 from app.models.benefit import Benefit
+from app.models.transformation_evidence import EvidenceRequest
 from app.models.transformation_programme import ProgrammeWorkstream
 from app.models.user import User
 from app.modules.transformation_room.domain import (
@@ -27,11 +28,15 @@ from app.modules.transformation_room.gate_service import (
     PolicySnapshot,
     TransformationGateService,
 )
+from app.modules.transformation_room.evidence_service import TransformationEvidenceService
 from app.modules.transformation_room.programme_service import TransformationProgrammeService
 
 from tests.test_transformation_programme_service import _intake, programme_fixture
 from tests.test_transformation_option_service import DecisionScope, decision_scope
-from tests.test_transformation_evidence_service import evidence_scope
+from tests.test_transformation_evidence_service import (
+    _grant_decision_authority,
+    evidence_scope,
+)
 
 
 def _row(**values):
@@ -414,6 +419,37 @@ def test_evidence_gate_requires_accepted_request_and_its_exact_global_head():
     )
     assert "required_evidence_incomplete" in {row.code for row in blockers}
 
+
+@pytest.mark.parametrize("unavailable_status", ("declined", "expired"))
+def test_evidence_gate_treats_task6_waiver_as_explicit_request_completion(
+    unavailable_status,
+):
+    """Pins declined and expired requests to the same exact Task 6 waiver contract."""
+    snapshot = _policy_snapshot("evidence", "options")
+    original = snapshot.evidence_requests[-1]
+    waived = replace_namespace(
+        original,
+        organization_id=snapshot.programme.organization_id,
+        status=unavailable_status,
+        accepted_evidence_id=None,
+        waiver_id=original.id,
+        waiver_authority_id=7,
+        waiver_reason="Governed evidence is unavailable during this decision window.",
+        waiver_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        interim_accountable_id=7,
+        waived_at=datetime.now(timezone.utc),
+    )
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(
+            snapshot,
+            evidence_requests=(*snapshot.evidence_requests[:-1], waived),
+            evidence_waivers=(waived,),
+        ),
+        TransformationGateService.require_valid_transition("evidence", "options"),
+    )
+
+    assert "required_evidence_incomplete" not in {row.code for row in blockers}
+
     open_request = replace_namespace(snapshot.evidence_requests[0], status="open")
     blockers, _, _ = TransformationGateService.evaluate_requirements(
         replace(
@@ -476,6 +512,156 @@ def test_real_task6_rows_allow_discovery_only_while_current_and_fresh(
     )
     assert stale.allowed is False
     assert {row.code for row in stale.blockers} == {
+        "application_owner_evidence_required"
+    }
+
+
+@pytest.mark.parametrize("unavailable_status", ("declined", "expired"))
+def test_real_task6_waiver_releases_discovery_only_with_exact_current_contract(
+    decision_scope: DecisionScope,
+    unavailable_status,
+):
+    """Pins the gate to Task 6's persisted waiver fields and exact request identity."""
+    scope = decision_scope
+    _grant_decision_authority(scope)
+    with Session(db.engine) as session, session.begin():
+        workstream = session.get(ProgrammeWorkstream, scope.workstream_id)
+        workstream.lifecycle_stage = "discover"
+        request = session.scalar(
+            select(EvidenceRequest).where(
+                EvidenceRequest.organization_id == scope.organization_id,
+                EvidenceRequest.candidate_id == scope.candidate_id,
+                EvidenceRequest.claim_key == "application_owner",
+            )
+        )
+        request.status = "open"
+        request.submitted_evidence_id = None
+        request.accepted_evidence_id = None
+        request.submitted_at = None
+        request.accepted_at = None
+        if unavailable_status == "expired":
+            request.due_at = datetime.now(timezone.utc) - timedelta(days=1)
+        request_id = request.id
+    with Session(db.engine) as session:
+        revision = session.get(EvidenceRequest, request_id).revision
+
+    if unavailable_status == "declined":
+        changed = TransformationEvidenceService.decline_request(
+            actor=scope.actor,
+            request_id=request_id,
+            reason="The named source cannot provide evidence in this decision window.",
+            expected_revision=revision,
+            command_key=f"gate-waiver-decline-{request_id}",
+        )
+    else:
+        changed = TransformationEvidenceService.expire_request(
+            actor=scope.actor,
+            request_id=request_id,
+            expected_revision=revision,
+            command_key=f"gate-waiver-expire-{request_id}",
+        )
+    TransformationEvidenceService.waive_unavailable_request(
+        actor=scope.actor,
+        request_id=request_id,
+        reason="The accountable owner will validate the decision before governance.",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        interim_accountable_id=scope.actor_id,
+        expected_revision=changed.response["revision"],
+        command_key=f"gate-waiver-authorise-{unavailable_status}-{request_id}",
+    )
+
+    snapshot = TransformationGateService.load_policy_snapshot(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+    )
+    gate = TransformationGateService.evaluate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="evidence",
+    )
+
+    assert len(snapshot.evidence_waivers) == 1
+    waiver = snapshot.evidence_waivers[0]
+    assert waiver.id == request_id
+    assert waiver.waiver_id == request_id
+    assert waiver.waiver_authority_id == scope.actor_id
+    assert waiver.interim_accountable_id == scope.actor_id
+    assert waiver.waiver_reason
+    assert waiver.waiver_expires_at > datetime.now(timezone.utc)
+    assert gate.allowed is True
+
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE evidence_requests SET waiver_id = id + 1 "
+                "WHERE id = :request_id AND organization_id = :organization_id"
+            ),
+            {"request_id": request_id, "organization_id": scope.organization_id},
+        )
+    mismatched = TransformationGateService.evaluate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="evidence",
+    )
+    assert {row.code for row in mismatched.blockers} == {
+        "application_owner_evidence_required"
+    }
+
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE evidence_requests SET waiver_id = id, "
+                "waiver_expires_at = :expired "
+                "WHERE id = :request_id AND organization_id = :organization_id"
+            ),
+            {
+                "expired": datetime.now(timezone.utc) - timedelta(seconds=1),
+                "request_id": request_id,
+                "organization_id": scope.organization_id,
+            },
+        )
+    expired = TransformationGateService.evaluate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="evidence",
+    )
+    assert {row.code for row in expired.blockers} == {
+        "application_owner_evidence_required"
+    }
+
+    ordinary = User(
+        organization_id=scope.organization_id,
+        email=f"waiver-nonauthority-{uuid.uuid4().hex[:10]}@example.test",
+        confirmed=True,
+        enterprise_role="application_owner",
+    )
+    db.session.add(ordinary)
+    db.session.commit()
+    ordinary_id = ordinary.id
+    db.session.remove()
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE evidence_requests SET waiver_expires_at = :current_expiry, "
+                "waiver_authority_id = :ordinary_id "
+                "WHERE id = :request_id AND organization_id = :organization_id"
+            ),
+            {
+                "current_expiry": datetime.now(timezone.utc) + timedelta(days=7),
+                "ordinary_id": ordinary_id,
+                "request_id": request_id,
+                "organization_id": scope.organization_id,
+            },
+        )
+    unauthorized = TransformationGateService.evaluate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="evidence",
+    )
+    assert {row.code for row in unauthorized.blockers} == {
         "application_owner_evidence_required"
     }
 

@@ -29,6 +29,7 @@ from app.models.transformation_evidence import (
     EvidenceRequest,
 )
 from app.models.user import User
+from app.models.transformation_db_guards import ensure_transformation_db_guards
 from app.modules.transformation_room.decision_service import (
     DecisionBriefService,
     TransformationOptionService,
@@ -49,6 +50,13 @@ from tests.test_transformation_evidence_service import (
     evidence_scope,
 )
 from tests.test_transformation_option_service import DecisionScope, decision_scope
+
+
+@pytest.fixture(scope="module", autouse=True)
+def decision_guard_schema(app, _schema):
+    """Install the current guard contract on a long-lived shared test database."""
+    with app.app_context(), db.engine.begin() as connection:
+        ensure_transformation_db_guards(connection)
 
 
 def _freeze_options(scope: DecisionScope):
@@ -178,6 +186,50 @@ def test_brief_hash_binds_sorted_citation_and_snapshot_membership(decision_scope
     assert not DecisionBriefService.verify_hash(version)
 
 
+def test_citation_creation_is_fenced_and_survives_a_nested_savepoint(decision_scope):
+    """Catches 32-bit subtransaction xmin being compared with an epoch-wide txid."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    statements = []
+
+    def capture_savepoint(_conn, _cursor, statement, _params, _context, _many):
+        if statement.lstrip().upper().startswith("SAVEPOINT"):
+            statements.append(statement)
+
+    event.listen(db.engine, "before_cursor_execute", capture_savepoint)
+    try:
+        result = _freeze_brief(
+            scope,
+            option_version_ids,
+            key="brief-citations-inside-savepoint",
+        )
+    finally:
+        event.remove(db.engine, "before_cursor_execute", capture_savepoint)
+
+    with Session(db.engine) as session:
+        option_count = session.scalar(
+            select(func.count())
+            .select_from(DecisionBriefOptionCitation)
+            .where(
+                DecisionBriefOptionCitation.organization_id == scope.organization_id,
+                DecisionBriefOptionCitation.brief_version_id
+                == result.object_ids["decision_brief_version_id"],
+            )
+        )
+        evidence_count = session.scalar(
+            select(func.count())
+            .select_from(DecisionBriefEvidenceCitation)
+            .where(
+                DecisionBriefEvidenceCitation.organization_id == scope.organization_id,
+                DecisionBriefEvidenceCitation.brief_version_id
+                == result.object_ids["decision_brief_version_id"],
+            )
+        )
+    assert statements
+    assert option_count == len(option_version_ids)
+    assert evidence_count == 1
+
+
 def test_workstream_brief_rejects_candidate_scoped_options(decision_scope):
     """Catches a NULL-candidate brief silently mixing candidate decisions."""
     scope = decision_scope
@@ -278,6 +330,126 @@ def test_readiness_uses_only_latest_versions_in_exact_candidate_scope(decision_s
 
     assert tuple(readiness.option_version_ids) == (latest, first_versions[1])
     assert workstream_version not in readiness.option_version_ids
+
+
+def test_freeze_rejects_a_stale_option_version_and_an_incomplete_latest_set(
+    decision_scope,
+):
+    """Catches callers pinning history or omitting a latest scoped alternative."""
+    scope = decision_scope
+    first_versions = _freeze_options(scope)
+    with Session(db.engine) as session, session.begin():
+        option = session.get(TransformationOption, scope.option_ids[0])
+        option.title = "Tolerate with current controls"
+    latest = TransformationOptionService.freeze_version(
+        actor=scope.actor,
+        option_id=scope.option_ids[0],
+        expected_revision=3,
+        command_key="brief-stale-option-v2",
+    ).object_ids["option_version_id"]
+
+    with pytest.raises(CommandConflict, match="option_version_not_latest"):
+        _freeze_brief(
+            scope,
+            first_versions,
+            key="reject-stale-option-version",
+        )
+    with pytest.raises(CommandConflict, match="option_version_set_not_current"):
+        _freeze_brief(
+            scope,
+            (latest,),
+            key="reject-omitted-latest-option",
+        )
+
+
+def test_new_option_version_and_brief_freeze_serialize_on_scope_lock(
+    app, decision_scope
+):
+    """Pins a concurrent v2 commit ahead of brief freeze to a stale-version rejection."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    engine = db.engine
+    option_has_scope_lock = threading.Event()
+    release_option = threading.Event()
+    brief_entered = threading.Event()
+    option_results = []
+    brief_errors = []
+
+    with Session(engine) as session, session.begin():
+        option = session.get(TransformationOption, scope.option_ids[0])
+        option.title = "Tolerate after concurrent review"
+
+    def pause_option(_conn, _cursor, statement, _params, _context, _many):
+        if (
+            threading.current_thread().name == "new-option-version"
+            and statement.lstrip().upper().startswith("SELECT")
+            and "programme_workstreams" in statement.lower()
+            and "for update" in statement.lower()
+        ):
+            option_has_scope_lock.set()
+            if not release_option.wait(timeout=10):
+                raise TimeoutError("option version pause was not released")
+
+    def freeze_option():
+        with app.app_context():
+            try:
+                option_results.append(
+                    TransformationOptionService.freeze_version(
+                        actor=replace(scope.actor, request_id="option-v2-race"),
+                        option_id=scope.option_ids[0],
+                        expected_revision=3,
+                        command_key="option-v2-race",
+                    )
+                )
+            finally:
+                db.session.remove()
+
+    def freeze_brief():
+        with app.app_context():
+            brief_entered.set()
+            try:
+                _freeze_brief(
+                    scope,
+                    option_version_ids,
+                    key="brief-vs-option-race",
+                    actor=replace(scope.actor, request_id="brief-vs-option-race"),
+                )
+            except Exception as error:  # asserted after both workers finish
+                brief_errors.append(error)
+            finally:
+                db.session.remove()
+
+    event.listen(engine, "after_cursor_execute", pause_option)
+    option_worker = threading.Thread(
+        target=freeze_option, name="new-option-version", daemon=True
+    )
+    brief_worker = threading.Thread(
+        target=freeze_brief, name="brief-after-option-version", daemon=True
+    )
+    try:
+        option_worker.start()
+        assert option_has_scope_lock.wait(timeout=10)
+        brief_worker.start()
+        assert brief_entered.wait(timeout=5)
+        time.sleep(0.2)
+        assert brief_worker.is_alive() is True
+    finally:
+        release_option.set()
+        option_worker.join(timeout=10)
+        brief_worker.join(timeout=10)
+        event.remove(engine, "after_cursor_execute", pause_option)
+
+    assert option_worker.is_alive() is False and brief_worker.is_alive() is False
+    assert len(option_results) == 1
+    assert len(brief_errors) == 1
+    assert isinstance(brief_errors[0], CommandConflict)
+    assert brief_errors[0].reason == "option_version_not_latest"
+    with Session(engine) as session:
+        assert session.scalar(
+            select(func.count())
+            .select_from(DecisionBriefVersion)
+            .where(DecisionBriefVersion.organization_id == scope.organization_id)
+        ) == 0
 
 
 def test_freeze_rejects_omitted_current_source_from_server_evidence_universe(

@@ -214,6 +214,44 @@ CREATE TABLE evidence_head_events (
     created_txid bigint NOT NULL DEFAULT txid_current(),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     UNIQUE (organization_id, head_id, revision)
+);
+CREATE TABLE decision_brief_option_citations (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    brief_version_id integer NOT NULL,
+    option_version_id integer NOT NULL
+);
+CREATE TABLE decision_briefs (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    workstream_id integer NOT NULL,
+    status varchar(30) NOT NULL,
+    revision integer NOT NULL
+);
+CREATE TABLE decision_brief_versions (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    brief_id integer NOT NULL,
+    workstream_id integer NOT NULL,
+    source_revision integer NOT NULL,
+    created_by_id integer NOT NULL,
+    submitted_by_id integer NOT NULL,
+    content_hash varchar(64) NOT NULL,
+    option_version_ids json NOT NULL,
+    cited_evidence_ids json NOT NULL,
+    frozen_payload json NOT NULL
+);
+CREATE TABLE decision_brief_evidence_citations (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    brief_version_id integer NOT NULL,
+    evidence_record_id integer NOT NULL,
+    evidence_head_id integer NOT NULL,
+    head_revision_at_freeze integer NOT NULL,
+    current_record_id_at_freeze integer NOT NULL,
+    was_current boolean NOT NULL,
+    acknowledged boolean NOT NULL,
+    freshness_status varchar(30) NOT NULL
 )
 """
 
@@ -1055,12 +1093,14 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
             cursor.execute(
                 "SELECT has_table_privilege(%s, 'evidence_head_events', 'SELECT'), "
                 "has_table_privilege(%s, 'evidence_head_events', 'INSERT'), "
+                "has_table_privilege(%s, 'decision_brief_option_citations', 'INSERT'), "
+                "has_table_privilege(%s, 'decision_brief_evidence_citations', 'INSERT'), "
                 "has_function_privilege(%s, "
                 "'public.archie_advance_evidence_head(bigint,bigint,integer,bigint,bigint,integer,text)', "
                 "'EXECUTE')",
-                (role_database.runtime_role,) * 3,
+                (role_database.runtime_role,) * 5,
             )
-            assert cursor.fetchone() == (True, False, True)
+            assert cursor.fetchone() == (True, False, False, False, True)
             cursor.execute(
                 "SELECT p.proname, pg_get_function_identity_arguments(p.oid) "
                 "FROM pg_proc p "
@@ -1073,14 +1113,19 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 ") AND has_function_privilege(%s, p.oid, 'EXECUTE')",
                 (role_database.runtime_role,),
             )
-            assert cursor.fetchall() == [
+            assert sorted(cursor.fetchall()) == sorted([
                 (
                     "archie_advance_evidence_head",
                     "p_head_id bigint, p_new_record_id bigint, "
                     "p_expected_revision integer, p_actor_id bigint, "
                     "p_receipt_id bigint, p_generation integer, p_claim_token text",
-                )
-            ]
+                ),
+                (
+                    "archie_insert_decision_brief_citations",
+                    "p_brief_version_id bigint, p_actor_id bigint, "
+                    "p_receipt_id bigint, p_generation integer, p_claim_token text",
+                ),
+            ])
 
             cursor.execute(
                 "INSERT INTO command_idempotency_records "

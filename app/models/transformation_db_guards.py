@@ -71,24 +71,47 @@ SET search_path = pg_catalog, public
 AS $$
 DECLARE
     parent_organization_id bigint;
-    parent_created_xmin xid;
+    parent_brief_id bigint;
+    parent_source_revision integer;
+    parent_created_by_id bigint;
     frozen_membership jsonb;
 BEGIN
     SELECT version.organization_id,
-           version.xmin,
+           version.brief_id,
+           version.source_revision,
+           version.created_by_id,
            CASE
                WHEN TG_TABLE_NAME = 'decision_brief_option_citations'
                    THEN version.option_version_ids::jsonb
                ELSE version.cited_evidence_ids::jsonb
            END
-      INTO parent_organization_id, parent_created_xmin, frozen_membership
+      INTO parent_organization_id, parent_brief_id, parent_source_revision,
+           parent_created_by_id, frozen_membership
       FROM public.decision_brief_versions AS version
      WHERE version.id = NEW.brief_version_id
      FOR KEY SHARE;
 
     IF NOT FOUND
        OR parent_organization_id IS DISTINCT FROM NEW.organization_id
-       OR parent_created_xmin::text::bigint IS DISTINCT FROM txid_current() THEN
+       OR NOT EXISTS (
+           SELECT 1
+             FROM public.decision_briefs AS brief
+             JOIN public.command_idempotency_records AS receipt
+               ON receipt.organization_id = brief.organization_id
+              AND receipt.actor_id = parent_created_by_id
+              AND receipt.operation = 'brief.freeze'
+              AND receipt.natural_key =
+                  'brief:' || brief.id::text || ':version:' ||
+                  parent_source_revision::text
+              AND receipt.status = 'in_progress'
+              AND receipt.lease_generation > 0
+              AND receipt.claim_token IS NOT NULL
+              AND receipt.lease_expires_at > clock_timestamp()
+            WHERE brief.id = parent_brief_id
+              AND brief.organization_id = parent_organization_id
+              AND brief.status = 'draft'
+              AND brief.revision = parent_source_revision
+       ) THEN
         RAISE EXCEPTION 'decision brief citation membership is frozen'
             USING ERRCODE = '55000';
     END IF;
@@ -108,6 +131,130 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
     RETURN NEW;
+END;
+$$
+"""
+
+
+_DECISION_CITATION_INSERT_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_insert_decision_brief_citations(
+    p_brief_version_id bigint,
+    p_actor_id bigint,
+    p_receipt_id bigint,
+    p_generation integer,
+    p_claim_token text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    version_id bigint;
+    version_organization_id bigint;
+    version_brief_id bigint;
+    version_workstream_id bigint;
+    version_source_revision integer;
+    version_created_by_id bigint;
+    version_submitted_by_id bigint;
+    version_content_hash text;
+    version_option_ids jsonb;
+    version_evidence_ids jsonb;
+    version_payload jsonb;
+    stored_option_ids bigint[];
+    payload_option_ids bigint[];
+    stored_evidence_ids bigint[];
+    payload_evidence_ids bigint[];
+BEGIN
+    SELECT id, organization_id, brief_id, workstream_id, source_revision,
+           created_by_id, submitted_by_id, content_hash,
+           option_version_ids::jsonb, cited_evidence_ids::jsonb,
+           frozen_payload::jsonb
+      INTO version_id, version_organization_id, version_brief_id,
+           version_workstream_id, version_source_revision,
+           version_created_by_id, version_submitted_by_id,
+           version_content_hash, version_option_ids, version_evidence_ids,
+           version_payload
+      FROM public.decision_brief_versions
+     WHERE id = p_brief_version_id
+     FOR KEY SHARE;
+
+    IF NOT FOUND
+       OR version_created_by_id IS DISTINCT FROM p_actor_id
+       OR version_submitted_by_id IS DISTINCT FROM p_actor_id
+       OR version_content_hash !~ '^[0-9a-f]{64}$'
+       OR NOT EXISTS (
+           SELECT 1
+             FROM public.decision_briefs AS brief
+             JOIN public.command_idempotency_records AS receipt
+               ON receipt.id = p_receipt_id
+              AND receipt.organization_id = brief.organization_id
+              AND receipt.actor_id = p_actor_id
+              AND receipt.operation = 'brief.freeze'
+              AND receipt.natural_key =
+                  'brief:' || brief.id::text || ':version:' ||
+                  version_source_revision::text
+              AND receipt.status = 'in_progress'
+              AND receipt.lease_generation = p_generation
+              AND receipt.claim_token = p_claim_token
+              AND receipt.lease_expires_at > clock_timestamp()
+            WHERE brief.id = version_brief_id
+              AND brief.organization_id = version_organization_id
+              AND brief.workstream_id = version_workstream_id
+              AND brief.status = 'draft'
+              AND brief.revision = version_source_revision
+       ) THEN
+        RAISE EXCEPTION 'decision brief citation command fence is invalid'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT COALESCE(array_agg(value::bigint ORDER BY value::bigint), ARRAY[]::bigint[])
+      INTO stored_option_ids
+      FROM jsonb_array_elements_text(version_option_ids);
+    SELECT COALESCE(array_agg((item->>'id')::bigint ORDER BY (item->>'id')::bigint),
+                    ARRAY[]::bigint[])
+      INTO payload_option_ids
+      FROM jsonb_array_elements(version_payload->'option_versions') item;
+    SELECT COALESCE(array_agg(value::bigint ORDER BY value::bigint), ARRAY[]::bigint[])
+      INTO stored_evidence_ids
+      FROM jsonb_array_elements_text(version_evidence_ids);
+    SELECT COALESCE(array_agg((item->>'id')::bigint ORDER BY (item->>'id')::bigint),
+                    ARRAY[]::bigint[])
+      INTO payload_evidence_ids
+      FROM jsonb_array_elements(version_payload->'evidence') item;
+
+    IF stored_option_ids IS DISTINCT FROM payload_option_ids
+       OR cardinality(stored_option_ids) IS DISTINCT FROM
+          cardinality(ARRAY(SELECT DISTINCT unnest(stored_option_ids)))
+       OR stored_evidence_ids IS DISTINCT FROM payload_evidence_ids
+       OR cardinality(stored_evidence_ids) IS DISTINCT FROM
+          cardinality(ARRAY(SELECT DISTINCT unnest(stored_evidence_ids))) THEN
+        RAISE EXCEPTION 'decision brief citation membership does not match frozen hash payload'
+            USING ERRCODE = '55000';
+    END IF;
+
+    INSERT INTO public.decision_brief_option_citations
+        (organization_id, brief_version_id, option_version_id)
+    SELECT version_organization_id, version_id, option_id
+      FROM unnest(stored_option_ids) option_id
+     ORDER BY option_id;
+
+    INSERT INTO public.decision_brief_evidence_citations
+        (organization_id, brief_version_id, evidence_record_id,
+         evidence_head_id, head_revision_at_freeze,
+         current_record_id_at_freeze, was_current, acknowledged,
+         freshness_status)
+    SELECT version_organization_id,
+           version_id,
+           (item->>'id')::bigint,
+           (item->'head'->>'id')::bigint,
+           (item->'head'->>'revision')::integer,
+           (item->'head'->>'current_record_id')::bigint,
+           (item->>'was_current')::boolean,
+           (item->>'acknowledged')::boolean,
+           item->>'freshness_status'
+      FROM jsonb_array_elements(version_payload->'evidence') item
+     ORDER BY (item->>'id')::bigint;
 END;
 $$
 """
@@ -839,10 +986,32 @@ def _expected_function_body(create_sql: str) -> str:
     return _normalise_function_body(body.replace("%%", "%"))
 
 
+def _guard_schema(connection) -> tuple[str, str]:
+    schema = connection.exec_driver_sql("SELECT current_schema()").scalar_one()
+    return schema, connection.dialect.identifier_preparer.quote(schema)
+
+
+def _render_guard_sql(connection, create_sql: str, quoted_schema: str) -> str:
+    del connection
+    return create_sql.replace("public.", f"{quoted_schema}.").replace(
+        "SET search_path = pg_catalog, public",
+        f"SET search_path = pg_catalog, {quoted_schema}",
+    )
+
+
+def _qualified_name(connection, quoted_schema: str, object_name: str) -> str:
+    return (
+        f"{quoted_schema}."
+        f"{connection.dialect.identifier_preparer.quote(object_name)}"
+    )
+
+
 def inspect_transformation_db_guards(connection) -> list[str]:
     """Return semantic guard drift without changing database state."""
     if connection.dialect.name != "postgresql":
         return []
+    schema, quoted_schema = _guard_schema(connection)
+    expected_search_path = f"search_path=pg_catalog, {quoted_schema}"
     drift: list[str] = []
     for function_name, create_sql in _FUNCTION_SPECS:
         row = connection.exec_driver_sql(
@@ -850,21 +1019,22 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             SELECT proc.prosrc, proc.prosecdef, proc.proconfig
             FROM pg_proc proc
             JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
-            WHERE namespace.nspname = 'public'
+            WHERE namespace.nspname = %s
               AND proc.proname = %s
               AND proc.pronargs = 0
               AND proc.prorettype = 'trigger'::regtype
             """,
-            (function_name,),
+            (schema, function_name),
         ).first()
         if row is None:
             drift.append(f"function_missing:{function_name}")
             continue
-        if _normalise_function_body(row.prosrc) != _expected_function_body(create_sql):
+        rendered_sql = _render_guard_sql(connection, create_sql, quoted_schema)
+        if _normalise_function_body(row.prosrc) != _expected_function_body(rendered_sql):
             drift.append(f"function_body:{function_name}")
         if row.prosecdef is not True:
             drift.append(f"function_security:{function_name}")
-        if "search_path=pg_catalog, public" not in (row.proconfig or []):
+        if expected_search_path not in (row.proconfig or []):
             drift.append(f"function_search_path:{function_name}")
 
     advance = connection.exec_driver_sql(
@@ -872,27 +1042,56 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         SELECT proc.prosrc, proc.prosecdef, proc.proconfig
         FROM pg_proc proc
         JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
-        WHERE namespace.nspname = 'public'
+        WHERE namespace.nspname = %s
           AND proc.proname = 'archie_advance_evidence_head'
           AND proc.pronargs = 7
           AND proc.prorettype = 'integer'::regtype
-        """
+        """,
+        (schema,),
     ).first()
     if advance is None:
         drift.append("function_missing:archie_advance_evidence_head")
     else:
         if _normalise_function_body(advance.prosrc) != _expected_function_body(
-            _EVIDENCE_HEAD_ADVANCE_SQL
+            _render_guard_sql(connection, _EVIDENCE_HEAD_ADVANCE_SQL, quoted_schema)
         ):
             drift.append("function_body:archie_advance_evidence_head")
         if advance.prosecdef is not True:
             drift.append("function_security:archie_advance_evidence_head")
-        if "search_path=pg_catalog, public" not in (advance.proconfig or []):
+        if expected_search_path not in (advance.proconfig or []):
             drift.append("function_search_path:archie_advance_evidence_head")
 
+    citation_insert = connection.exec_driver_sql(
+        """
+        SELECT proc.prosrc, proc.prosecdef, proc.proconfig
+        FROM pg_proc proc
+        JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+        WHERE namespace.nspname = %s
+          AND proc.proname = 'archie_insert_decision_brief_citations'
+          AND proc.pronargs = 5
+          AND proc.prorettype = 'void'::regtype
+        """,
+        (schema,),
+    ).first()
+    if citation_insert is None:
+        drift.append("function_missing:archie_insert_decision_brief_citations")
+    else:
+        rendered_insert = _render_guard_sql(
+            connection, _DECISION_CITATION_INSERT_SQL, quoted_schema
+        )
+        if _normalise_function_body(citation_insert.prosrc) != _expected_function_body(
+            rendered_insert
+        ):
+            drift.append("function_body:archie_insert_decision_brief_citations")
+        if citation_insert.prosecdef is not True:
+            drift.append("function_security:archie_insert_decision_brief_citations")
+        if expected_search_path not in (citation_insert.proconfig or []):
+            drift.append("function_search_path:archie_insert_decision_brief_citations")
+
     for table_name, trigger_name, function_name in _TRIGGER_SPECS:
+        qualified_table = _qualified_name(connection, quoted_schema, table_name)
         table_present = connection.exec_driver_sql(
-            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
         ).scalar()
         if not table_present:
             continue
@@ -910,14 +1109,14 @@ def inspect_transformation_db_guards(connection) -> list[str]:
               AND trigger.tgrelid = to_regclass(%s)
               AND NOT trigger.tgisinternal
             """,
-            (trigger_name, f"public.{table_name}"),
+            (trigger_name, qualified_table),
         ).first()
         if row is None:
             drift.append(f"trigger_missing:{trigger_name}")
             continue
         if row.tgenabled != "O":
             drift.append(f"trigger_disabled:{trigger_name}")
-        if row.function_schema != "public" or row.function_name != function_name:
+        if row.function_schema != schema or row.function_name != function_name:
             drift.append(f"trigger_function:{trigger_name}")
         # Evidence heads also guard INSERT so they can only start empty at revision 0.
         expected_tgtype = 31 if table_name == "evidence_claim_heads" else 27
@@ -929,8 +1128,9 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             drift.append(f"trigger_columns:{trigger_name}")
 
     for table_name, trigger_name in _CITATION_INSERT_TRIGGER_SPECS:
+        qualified_table = _qualified_name(connection, quoted_schema, table_name)
         if not connection.exec_driver_sql(
-            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
         ).scalar():
             continue
         row = connection.exec_driver_sql(
@@ -947,7 +1147,7 @@ def inspect_transformation_db_guards(connection) -> list[str]:
               AND trigger.tgrelid = to_regclass(%s)
               AND NOT trigger.tgisinternal
             """,
-            (trigger_name, f"public.{table_name}"),
+            (trigger_name, qualified_table),
         ).first()
         if row is None:
             drift.append(f"trigger_missing:{trigger_name}")
@@ -957,13 +1157,16 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             or row.tgtype != 7
             or row.has_when
             or row.update_columns
-            or row.function_schema != "public"
+            or row.function_schema != schema
             or row.function_name != "archie_guard_decision_citation_membership"
         ):
             drift.append(f"trigger_shape:{trigger_name}")
 
+    qualified_events = _qualified_name(
+        connection, quoted_schema, "evidence_head_events"
+    )
     if connection.exec_driver_sql(
-        "SELECT to_regclass('public.evidence_head_events') IS NOT NULL"
+        "SELECT to_regclass(%s) IS NOT NULL", (qualified_events,)
     ).scalar():
         row = connection.exec_driver_sql(
             """
@@ -977,10 +1180,10 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             JOIN pg_proc proc ON proc.oid = trigger.tgfoid
             JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
             WHERE trigger.tgname = %s
-              AND trigger.tgrelid = to_regclass('public.evidence_head_events')
+              AND trigger.tgrelid = to_regclass(%s)
               AND NOT trigger.tgisinternal
             """,
-            (_EVIDENCE_EVENT_BINDING_TRIGGER,),
+            (_EVIDENCE_EVENT_BINDING_TRIGGER, qualified_events),
         ).first()
         if row is None:
             drift.append(
@@ -992,7 +1195,7 @@ def inspect_transformation_db_guards(connection) -> list[str]:
                     f"trigger_disabled:{_EVIDENCE_EVENT_BINDING_TRIGGER}"
                 )
             if (
-                row.function_schema != "public"
+                row.function_schema != schema
                 or row.function_name != "archie_guard_evidence_event_binding"
             ):
                 drift.append(
@@ -1015,10 +1218,13 @@ def inspect_transformation_db_guards(connection) -> list[str]:
     return drift
 
 
-def _repair_triggers(connection) -> None:
+def _repair_triggers(connection, schema: str, quoted_schema: str) -> None:
     for table_name, trigger_name, function_name in _TRIGGER_SPECS:
+        qualified_table = _qualified_name(connection, quoted_schema, table_name)
+        qualified_function = _qualified_name(connection, quoted_schema, function_name)
+        quoted_trigger = connection.dialect.identifier_preparer.quote(trigger_name)
         table_present = connection.exec_driver_sql(
-            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
         ).scalar()
         if not table_present:
             continue
@@ -1036,7 +1242,7 @@ def _repair_triggers(connection) -> None:
               AND trigger.tgrelid = to_regclass(%s)
               AND NOT trigger.tgisinternal
             """,
-            (trigger_name, f"public.{table_name}"),
+            (trigger_name, qualified_table),
         ).first()
         expected_tgtype = 31 if table_name == "evidence_claim_heads" else 27
         correct = (
@@ -1045,13 +1251,13 @@ def _repair_triggers(connection) -> None:
             and row.tgtype == expected_tgtype
             and not row.has_when
             and not row.update_columns
-            and row.function_schema == "public"
+            and row.function_schema == schema
             and row.function_name == function_name
         )
         if correct:
             continue
         connection.exec_driver_sql(
-            f"DROP TRIGGER IF EXISTS {trigger_name} ON public.{table_name}"
+            f"DROP TRIGGER IF EXISTS {quoted_trigger} ON {qualified_table}"
         )
         events = (
             "INSERT OR UPDATE OR DELETE"
@@ -1059,15 +1265,20 @@ def _repair_triggers(connection) -> None:
             else "UPDATE OR DELETE"
         )
         connection.exec_driver_sql(
-            f"CREATE TRIGGER {trigger_name} "
-            f"BEFORE {events} ON public.{table_name} "
+            f"CREATE TRIGGER {quoted_trigger} "
+            f"BEFORE {events} ON {qualified_table} "
             "FOR EACH ROW "
-            f"EXECUTE FUNCTION public.{function_name}()"
+            f"EXECUTE FUNCTION {qualified_function}()"
         )
 
     for table_name, trigger_name in _CITATION_INSERT_TRIGGER_SPECS:
+        qualified_table = _qualified_name(connection, quoted_schema, table_name)
+        qualified_function = _qualified_name(
+            connection, quoted_schema, "archie_guard_decision_citation_membership"
+        )
+        quoted_trigger = connection.dialect.identifier_preparer.quote(trigger_name)
         if not connection.exec_driver_sql(
-            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
         ).scalar():
             continue
         row = connection.exec_driver_sql(
@@ -1084,7 +1295,7 @@ def _repair_triggers(connection) -> None:
               AND trigger.tgrelid = to_regclass(%s)
               AND NOT trigger.tgisinternal
             """,
-            (trigger_name, f"public.{table_name}"),
+            (trigger_name, qualified_table),
         ).first()
         correct = (
             row is not None
@@ -1092,22 +1303,25 @@ def _repair_triggers(connection) -> None:
             and row.tgtype == 7
             and not row.has_when
             and not row.update_columns
-            and row.function_schema == "public"
+            and row.function_schema == schema
             and row.function_name == "archie_guard_decision_citation_membership"
         )
         if correct:
             continue
         connection.exec_driver_sql(
-            f"DROP TRIGGER IF EXISTS {trigger_name} ON public.{table_name}"
+            f"DROP TRIGGER IF EXISTS {quoted_trigger} ON {qualified_table}"
         )
         connection.exec_driver_sql(
-            f"CREATE TRIGGER {trigger_name} BEFORE INSERT ON public.{table_name} "
+            f"CREATE TRIGGER {quoted_trigger} BEFORE INSERT ON {qualified_table} "
             "FOR EACH ROW EXECUTE FUNCTION "
-            "public.archie_guard_decision_citation_membership()"
+            f"{qualified_function}()"
         )
 
+    qualified_events = _qualified_name(
+        connection, quoted_schema, "evidence_head_events"
+    )
     if not connection.exec_driver_sql(
-        "SELECT to_regclass('public.evidence_head_events') IS NOT NULL"
+        "SELECT to_regclass(%s) IS NOT NULL", (qualified_events,)
     ).scalar():
         return
     row = connection.exec_driver_sql(
@@ -1122,10 +1336,10 @@ def _repair_triggers(connection) -> None:
         JOIN pg_proc proc ON proc.oid = trigger.tgfoid
         JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
         WHERE trigger.tgname = %s
-          AND trigger.tgrelid = to_regclass('public.evidence_head_events')
+          AND trigger.tgrelid = to_regclass(%s)
           AND NOT trigger.tgisinternal
         """,
-        (_EVIDENCE_EVENT_BINDING_TRIGGER,),
+        (_EVIDENCE_EVENT_BINDING_TRIGGER, qualified_events),
     ).first()
     correct = (
         row is not None
@@ -1135,19 +1349,22 @@ def _repair_triggers(connection) -> None:
         and row.tginitdeferred
         and not row.has_when
         and not row.update_columns
-        and row.function_schema == "public"
+        and row.function_schema == schema
         and row.function_name == "archie_guard_evidence_event_binding"
     )
     if not correct:
         connection.exec_driver_sql(
             "DROP TRIGGER IF EXISTS trg_evidence_event_binding "
-            "ON public.evidence_head_events"
+            f"ON {qualified_events}"
+        )
+        qualified_function = _qualified_name(
+            connection, quoted_schema, "archie_guard_evidence_event_binding"
         )
         connection.exec_driver_sql(
             "CREATE CONSTRAINT TRIGGER trg_evidence_event_binding "
-            "AFTER INSERT ON public.evidence_head_events "
+            f"AFTER INSERT ON {qualified_events} "
             "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
-            "EXECUTE FUNCTION public.archie_guard_evidence_event_binding()"
+            f"EXECUTE FUNCTION {qualified_function}()"
         )
 
 
@@ -1159,36 +1376,52 @@ def ensure_transformation_db_guards(
     """Install/refresh guards once under a transaction-scoped advisory lock."""
     if connection.dialect.name != "postgresql":
         return
+    schema, quoted_schema = _guard_schema(connection)
     connection.exec_driver_sql(
-        "SELECT pg_advisory_xact_lock(hashtext("
-        "'archie_transformation_command_db_guards'))"
+        "SELECT pg_advisory_xact_lock(hashtext(%s))",
+        (f"archie_transformation_command_db_guards:{schema}",),
     )
-    connection.exec_driver_sql(_IMMUTABILITY_FUNCTION_SQL)
-    connection.exec_driver_sql(_DECISION_CITATION_MEMBERSHIP_SQL)
-    connection.exec_driver_sql(_RECEIPT_FUNCTION_SQL)
-    connection.exec_driver_sql(_EVIDENCE_HEAD_GUARD_SQL)
-    connection.exec_driver_sql(_EVIDENCE_EVENT_BINDING_SQL)
-    connection.exec_driver_sql(_EVIDENCE_HEAD_ADVANCE_SQL)
+    for create_sql in (
+        _IMMUTABILITY_FUNCTION_SQL,
+        _DECISION_CITATION_MEMBERSHIP_SQL,
+        _DECISION_CITATION_INSERT_SQL,
+        _RECEIPT_FUNCTION_SQL,
+        _EVIDENCE_HEAD_GUARD_SQL,
+        _EVIDENCE_EVENT_BINDING_SQL,
+        _EVIDENCE_HEAD_ADVANCE_SQL,
+    ):
+        connection.exec_driver_sql(
+            _render_guard_sql(connection, create_sql, quoted_schema)
+        )
+    trigger_functions = (
+        "archie_reject_transformation_mutation",
+        "archie_guard_decision_citation_membership",
+        "archie_guard_transformation_receipt",
+        "archie_guard_evidence_head",
+        "archie_guard_evidence_event_binding",
+    )
+    for function_name in trigger_functions:
+        qualified_function = _qualified_name(
+            connection, quoted_schema, function_name
+        )
+        connection.exec_driver_sql(
+            f"REVOKE ALL ON FUNCTION {qualified_function}() FROM PUBLIC"
+        )
+    qualified_advance = _qualified_name(
+        connection, quoted_schema, "archie_advance_evidence_head"
+    )
+    qualified_insert = _qualified_name(
+        connection, quoted_schema, "archie_insert_decision_brief_citations"
+    )
+    advance_signature = (
+        "bigint, bigint, integer, bigint, bigint, integer, text"
+    )
+    insert_signature = "bigint, bigint, bigint, integer, text"
     connection.exec_driver_sql(
-        "REVOKE ALL ON FUNCTION public.archie_reject_transformation_mutation() FROM PUBLIC"
+        f"REVOKE ALL ON FUNCTION {qualified_advance}({advance_signature}) FROM PUBLIC"
     )
     connection.exec_driver_sql(
-        "REVOKE ALL ON FUNCTION "
-        "public.archie_guard_decision_citation_membership() FROM PUBLIC"
-    )
-    connection.exec_driver_sql(
-        "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() FROM PUBLIC"
-    )
-    connection.exec_driver_sql(
-        "REVOKE ALL ON FUNCTION public.archie_guard_evidence_head() FROM PUBLIC"
-    )
-    connection.exec_driver_sql(
-        "REVOKE ALL ON FUNCTION "
-        "public.archie_guard_evidence_event_binding() FROM PUBLIC"
-    )
-    connection.exec_driver_sql(
-        "REVOKE ALL ON FUNCTION public.archie_advance_evidence_head("
-        "bigint, bigint, integer, bigint, bigint, integer, text) FROM PUBLIC"
+        f"REVOKE ALL ON FUNCTION {qualified_insert}({insert_signature}) FROM PUBLIC"
     )
     runtime_role_exists = connection.exec_driver_sql(
         "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s)",
@@ -1198,80 +1431,81 @@ def ensure_transformation_db_guards(
         runtime_role
     )
     if runtime_role_exists:
+        for function_name in trigger_functions:
+            qualified_function = _qualified_name(
+                connection, quoted_schema, function_name
+            )
+            connection.exec_driver_sql(
+                f"REVOKE ALL ON FUNCTION {qualified_function}() "
+                f"FROM {runtime_role_identifier}"
+            )
         connection.exec_driver_sql(
-            "REVOKE ALL ON FUNCTION "
-            "public.archie_reject_transformation_mutation() "
-            f"FROM {runtime_role_identifier}"
-        )
-        connection.exec_driver_sql(
-            "REVOKE ALL ON FUNCTION "
-            "public.archie_guard_decision_citation_membership() "
-            f"FROM {runtime_role_identifier}"
-        )
-        connection.exec_driver_sql(
-            "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() "
-            f"FROM {runtime_role_identifier}"
-        )
-        connection.exec_driver_sql(
-            "REVOKE ALL ON FUNCTION public.archie_guard_evidence_head() "
-            f"FROM {runtime_role_identifier}"
-        )
-        connection.exec_driver_sql(
-            "REVOKE ALL ON FUNCTION "
-            "public.archie_guard_evidence_event_binding() "
-            f"FROM {runtime_role_identifier}"
-        )
-        connection.exec_driver_sql(
-            "GRANT EXECUTE ON FUNCTION public.archie_advance_evidence_head("
-            "bigint, bigint, integer, bigint, bigint, integer, text) "
+            f"GRANT EXECUTE ON FUNCTION {qualified_advance}({advance_signature}) "
             f"TO {runtime_role_identifier}"
         )
-    _repair_triggers(connection)
+        connection.exec_driver_sql(
+            f"GRANT EXECUTE ON FUNCTION {qualified_insert}({insert_signature}) "
+            f"TO {runtime_role_identifier}"
+        )
+    _repair_triggers(connection, schema, quoted_schema)
     # The runtime role gets only the columns required by the service protocol.
     # It never owns these objects and has no DELETE or TRUNCATE privilege.
     for table_name in _COMMAND_TABLES:
+        qualified_table = _qualified_name(connection, quoted_schema, table_name)
         present = connection.exec_driver_sql(
-            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
         ).scalar()
         if present:
             connection.exec_driver_sql(
-                f"REVOKE ALL ON TABLE public.{table_name} FROM PUBLIC"
+                f"REVOKE ALL ON TABLE {qualified_table} FROM PUBLIC"
             )
     if runtime_role_exists:
         for table_name in _COMMAND_TABLES:
+            qualified_table = _qualified_name(connection, quoted_schema, table_name)
             present = connection.exec_driver_sql(
-                f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+                "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
             ).scalar()
             if present:
                 connection.exec_driver_sql(
-                    f"REVOKE ALL ON TABLE public.{table_name} "
+                    f"REVOKE ALL ON TABLE {qualified_table} "
                     f"FROM {runtime_role_identifier}"
                 )
                 privileges = (
                     "SELECT"
-                    if table_name == "evidence_head_events"
+                    if table_name
+                    in {
+                        "evidence_head_events",
+                        "decision_brief_option_citations",
+                        "decision_brief_evidence_citations",
+                    }
                     else "SELECT, INSERT"
                 )
                 connection.exec_driver_sql(
-                    f"GRANT {privileges} ON TABLE public.{table_name} "
+                    f"GRANT {privileges} ON TABLE {qualified_table} "
                     f"TO {runtime_role_identifier}"
                 )
+        qualified_outbox = _qualified_name(
+            connection, quoted_schema, "transformation_outbox_events"
+        )
         if connection.exec_driver_sql(
-            "SELECT to_regclass('public.transformation_outbox_events') IS NOT NULL"
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_outbox,)
         ).scalar():
             connection.exec_driver_sql(
                 "GRANT UPDATE (delivery_attempts, published_at) ON TABLE "
-                "public.transformation_outbox_events "
+                f"{qualified_outbox} "
                 f"TO {runtime_role_identifier}"
             )
+        qualified_receipts = _qualified_name(
+            connection, quoted_schema, "command_idempotency_records"
+        )
         if connection.exec_driver_sql(
-            "SELECT to_regclass('public.command_idempotency_records') IS NOT NULL"
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_receipts,)
         ).scalar():
             connection.exec_driver_sql(
                 "GRANT UPDATE (status, lease_generation, claim_token, "
                 "claimant_request_id, lease_expires_at, operation_result_id, "
                 "attempt_count, last_error_class, updated_at, completed_at) "
-                "ON TABLE public.command_idempotency_records "
+                f"ON TABLE {qualified_receipts} "
                 f"TO {runtime_role_identifier}"
             )
     remaining_drift = inspect_transformation_db_guards(connection)

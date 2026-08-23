@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Sequence
 
-from sqlalchemy import func, or_, select, tuple_
+from sqlalchemy import func, or_, select, text, tuple_
 from sqlalchemy.orm import Session
 
 from app import db
@@ -18,8 +18,6 @@ from app.models.business_capabilities import BusinessCapability
 from app.models.transformation_decision import (
     OPTION_EXCEPTION_TYPES,
     DecisionBrief,
-    DecisionBriefEvidenceCitation,
-    DecisionBriefOptionCitation,
     DecisionBriefVersion,
     DecisionEvent,
     TransformationOption,
@@ -959,30 +957,26 @@ class DecisionBriefService:
         brief_version.content_hash = _sha256_canonical(
             cls.reconstruct_canonical_payload(brief_version)
         )
-        session.add(brief_version)
-        session.flush()
-        option_rows = [
-            DecisionBriefOptionCitation(
-                organization_id=actor.organization_id,
-                brief_version_id=brief_version.id,
-                option_version_id=row.id,
+        with session.begin_nested():
+            session.add(brief_version)
+            session.flush()
+            schema = session.scalar(text("SELECT current_schema()"))
+            quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
+            session.execute(
+                text(
+                    f"SELECT {quoted_schema}.archie_insert_decision_brief_citations("
+                    "CAST(:brief_version_id AS bigint), CAST(:actor_id AS bigint), "
+                    "CAST(:receipt_id AS bigint), CAST(:generation AS integer), "
+                    "CAST(:claim_token AS text))"
+                ),
+                {
+                    "brief_version_id": brief_version.id,
+                    "actor_id": actor.user_id,
+                    "receipt_id": claim.receipt_id,
+                    "generation": claim.generation,
+                    "claim_token": claim.claim_token,
+                },
             )
-            for row in versions
-        ]
-        evidence_rows_to_insert = [
-            DecisionBriefEvidenceCitation(
-                organization_id=actor.organization_id,
-                brief_version_id=brief_version.id,
-                evidence_record_id=item["evidence_record_id"],
-                evidence_head_id=item["evidence_head_id"],
-                head_revision_at_freeze=item["head_revision_at_freeze"],
-                current_record_id_at_freeze=item["current_record_id_at_freeze"],
-                was_current=item["was_current"],
-                acknowledged=item["acknowledged"],
-                freshness_status=item["freshness_status"],
-            )
-            for item in evidence_citations
-        ]
         decision_event = DecisionEvent(
             organization_id=actor.organization_id,
             brief_id=brief.id,
@@ -998,7 +992,7 @@ class DecisionBriefService:
             command_generation=claim.generation,
             created_at=created_at,
         )
-        session.add_all((*option_rows, *evidence_rows_to_insert, decision_event))
+        session.add(decision_event)
         brief.status = "frozen"
         brief.revision += 1
         brief.updated_at = created_at
@@ -1058,6 +1052,24 @@ class DecisionBriefService:
 
     @classmethod
     def _lock_option_versions(cls, session, actor, brief, requested_ids):
+        option_scope = (
+            TransformationOption.candidate_id.is_(None)
+            if brief.candidate_id is None
+            else TransformationOption.candidate_id == brief.candidate_id
+        )
+        option_roots = tuple(
+            session.scalars(
+                select(TransformationOption)
+                .where(
+                    TransformationOption.organization_id == actor.organization_id,
+                    TransformationOption.workstream_id == brief.workstream_id,
+                    option_scope,
+                )
+                .order_by(TransformationOption.id)
+                .with_for_update()
+            ).all()
+        )
+        root_ids = tuple(row.id for row in option_roots)
         rows = session.scalars(
             select(TransformationOptionVersion)
             .where(
@@ -1078,6 +1090,48 @@ class DecisionBriefService:
         ):
             raise CommandConflict("option_version_scope_mismatch")
         if any(not TransformationOptionService.verify_version_hash(row) for row in versions):
+            raise CommandConflict("option_version_hash_invalid")
+        all_versions = tuple(
+            session.scalars(
+                select(TransformationOptionVersion)
+                .where(
+                    TransformationOptionVersion.organization_id
+                    == actor.organization_id,
+                    TransformationOptionVersion.option_id.in_(root_ids or (-1,)),
+                    TransformationOptionVersion.workstream_id == brief.workstream_id,
+                    (
+                        TransformationOptionVersion.candidate_id.is_(None)
+                        if brief.candidate_id is None
+                        else TransformationOptionVersion.candidate_id
+                        == brief.candidate_id
+                    ),
+                )
+                .order_by(
+                    TransformationOptionVersion.option_id,
+                    TransformationOptionVersion.version.desc(),
+                    TransformationOptionVersion.id.desc(),
+                )
+                .with_for_update()
+            ).all()
+        )
+        latest_by_option = {}
+        for row in all_versions:
+            latest_by_option.setdefault(row.option_id, row)
+        if any(
+            latest_by_option.get(row.option_id) is None
+            or latest_by_option[row.option_id].id != row.id
+            for row in versions
+        ):
+            raise CommandConflict("option_version_not_latest")
+        latest_ids = {
+            row.id for option_id, row in latest_by_option.items() if option_id in root_ids
+        }
+        if set(requested_ids) != latest_ids:
+            raise CommandConflict("option_version_set_not_current")
+        if any(
+            not TransformationOptionService.verify_version_hash(row)
+            for row in latest_by_option.values()
+        ):
             raise CommandConflict("option_version_hash_invalid")
         return versions
 

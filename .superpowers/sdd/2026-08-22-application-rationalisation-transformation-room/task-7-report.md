@@ -150,3 +150,46 @@ This section supersedes the narrower original descriptions wherever they differ.
 
 - Round commit subject: `fix: harden transformation decision evidence`.
 - No Task 7-scoped failures or skips remain. The earlier repository-wide verifier concern remains unchanged: no new repository-wide green claim is made beyond the explicit suites and gates above.
+
+## Review fix round 2/5 — 23 August 2026
+
+This section supersedes the round-1 citation-membership implementation and extends the gate, option-currentness, and schema descriptions. The changes were implemented test-first against PostgreSQL with `postgresql://postgres@127.0.0.1:5439/flask_test` supplied explicitly as both `TEST_DATABASE_URL` and `DATABASE_URL`.
+
+### RED and GREEN
+
+- The first round-2 RED run produced **6 failures**: two real Task 6 waiver integration cases, stale-option and option-version race cases, nested-savepoint citation creation, and non-public guard installation.
+- The final combined Task 1–7 Transformation Room, runtime-role, direct-guard, and reconciliation suite is **253 passed** in 109.04 seconds, with no failures or skips.
+- The direct guard/runtime-role tranche is **31 passed** in 47.20 seconds.
+- The gate and reconciliation tranche is **62 passed** in 52.72 seconds.
+- `schema-drift`, `raw-sql-tenancy`, `lint-core`, `compile`, and `undefined-exports` are green with zero failures and zero skips. Changed-file Ruff and `git diff --check` are green.
+- A repository-wide `python scripts/verify.py` run was started after the focused green evidence, but produced no output or final summary during its long full-test phase and was bounded under the coordinator's standing instruction. It is recorded as **incomplete, not green**; the explicit 253-test and individual-gate results above are the completion evidence.
+
+### Task 6 waiver projection and gates
+
+- Policy snapshots now load persisted Task 6 `EvidenceRequest` waivers rather than projecting an empty waiver collection. The gate consumes the canonical `waiver_id`, `waiver_authority_id`, `waiver_reason`, `waiver_expires_at`, `interim_accountable_id`, `waived_at`, request status, tenant, candidate, and claim fields.
+- Only an exact waiver whose `waiver_id` equals its request ID, whose request is `declined` or `expired`, whose authority is currently authorized in the tenant/programme/workstream, whose interim accountable user is in the tenant, and whose expiry is still future can release the request.
+- Real service-created declined and expired waivers release Discover readiness. Mismatched IDs, elapsed expiry, and a persisted same-tenant non-authority fail closed. Evidence request completion applies the same Task 6 contract for both declined and expired statuses.
+
+### Latest scoped alternatives and serialization
+
+- Brief freeze now locks every logical option root in deterministic ID order for the brief's exact workstream/candidate scope, then locks and derives each root's latest immutable version.
+- Every requested version must be the latest version of its logical option, and the requested set must equal the complete set of latest scoped alternatives. A stale v1 after v2 is committed returns `option_version_not_latest`; omitting a latest alternative returns `option_version_set_not_current`.
+- Readiness and gate evaluation continue to expose only latest versions in the same exact scope. The new PostgreSQL race pauses option v2 creation while it owns the real workstream lock, proves brief freeze blocks, then commits v2; brief freeze subsequently observes v1 as stale and creates no brief version.
+
+### Function-only citation membership
+
+- The prior `xmin::bigint = txid_current()` membership exception has been removed. It was unsound across PostgreSQL subtransactions and mixed a 32-bit row XID with an epoch-wide transaction identifier.
+- Runtime direct `INSERT` is revoked on both citation tables. Citation rows are created only by `archie_insert_decision_brief_citations(...)`, a `SECURITY DEFINER` function with a fixed `pg_catalog` plus target-schema search path.
+- The function verifies the exact in-progress Task 3 receipt ID, operation, natural key, actor, lease generation, claim token, and unexpired lease; the still-draft brief root and source revision; the immutable parent scope and actor; and sorted unique option/evidence memberships matching the frozen hash-bound payload. It derives all citation values from that parent payload rather than trusting caller-supplied citation rows.
+- A deploy-owner direct post-freeze insert remains rejected by the membership trigger. Runtime direct insert is rejected by privilege. Legitimate service creation places the parent version and function call inside a real nested savepoint, and the PostgreSQL integration test proves both citation sets are created successfully without XID equality assumptions.
+
+### Schema-aware guard installation and reconciliation
+
+- Guard creation, inspection, trigger repair, privilege repair, and advisory locking now resolve the connection's current target schema. Schema, table, trigger, function, and runtime-role identifiers are quoted through the PostgreSQL dialect rather than interpolated as untrusted names.
+- Every definer function is rendered with a fixed `search_path = pg_catalog, <quoted-target-schema>` and explicitly qualified target objects. Public-schema production behavior is preserved when `current_schema()` is `public`.
+- The isolated long-lived-schema test reconciles twice, requires zero semantic guard drift, proves all functions and trigger targets remain in the non-public schema, rejects a direct immutable-row update, and rejects a direct citation insert. Dry-run inspection now correctly reports guards missing from the active isolated schema instead of borrowing same-named public functions.
+
+### Round commit and concerns
+
+- Intended commit subject: `fix: fence decision citations across schemas`.
+- No round-2 scoped failure or skip remains. The only verification limitation is the explicitly incomplete repository-wide verifier run described above; the complete 253-test Transformation Room suite and required individual gates are green.
