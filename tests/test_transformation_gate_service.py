@@ -135,7 +135,11 @@ def _policy_snapshot(source: str, target: str, **changes):
             claim_key=claim_key,
             classification="observed",
             source_identity=f"application:501:{claim_key}",
-            source_type="attestation",
+            source_type=(
+                "application-inventory"
+                if claim_key == "source_freshness"
+                else "attestation"
+            ),
             claim_contract_version=EVIDENCE_CLAIM_CONTRACT_VERSION,
             value_type=contract_values[claim_key][0],
             value_json=contract_values[claim_key][1],

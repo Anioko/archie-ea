@@ -486,6 +486,64 @@ def test_committed_result_replays_after_simulated_lost_response(command_fixture)
     assert all(uuid.UUID(event_id).version == 5 for event_id in event_ids)
 
 
+def test_new_idempotency_key_replays_one_natural_result_with_original_provenance(
+    command_fixture,
+):
+    """Transport-key rotation must not rewrite the effect's receipt identity."""
+    payload = {"name": command_fixture.domain_name, "scope": {"a": 1}}
+    natural_key = "programme-intake:stable-natural-operation"
+
+    def execute(key, handler):
+        return CommandService.execute(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            idempotency_key=key,
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=_allow_command,
+            handler=handler,
+        )
+
+    first = execute("stable-natural-first", _mutation(command_fixture))
+    replay = execute(
+        "stable-natural-second",
+        lambda _session, _claim: pytest.fail(
+            "a new transport key reran an immutable natural operation"
+        ),
+    )
+
+    assert replay.created is False and replay.idempotent is True
+    assert replay.operation_result_id == first.operation_result_id
+    assert replay.object_ids == first.object_ids
+    assert replay.response == first.response
+    assert _counts(command_fixture) == (1, 1, 1)
+    with Session(db.engine) as session:
+        result = session.get(OperationResult, first.operation_result_id)
+        materialisation = session.scalar(
+            select(CommandMaterialisation).where(
+                CommandMaterialisation.organization_id
+                == command_fixture.organization_id,
+                CommandMaterialisation.operation == "programme.create",
+                CommandMaterialisation.natural_key == natural_key,
+            )
+        )
+        receipts = session.scalars(
+            select(CommandIdempotencyRecord)
+            .where(
+                CommandIdempotencyRecord.organization_id
+                == command_fixture.organization_id,
+                CommandIdempotencyRecord.operation == "programme.create",
+                CommandIdempotencyRecord.natural_key == natural_key,
+            )
+            .order_by(CommandIdempotencyRecord.id)
+        ).all()
+    assert len(receipts) == 2
+    assert all(receipt.status == "succeeded" for receipt in receipts)
+    assert {receipt.operation_result_id for receipt in receipts} == {result.id}
+    assert result.receipt_id == materialisation.receipt_id == receipts[0].id
+    assert result.receipt_generation == materialisation.receipt_generation == 1
+
+
 @pytest.mark.parametrize("deleted_ordinal", (0, None))
 def test_replay_restores_exact_missing_outbox_documents(
     command_fixture, deleted_ordinal

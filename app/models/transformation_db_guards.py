@@ -209,6 +209,40 @@ BEGIN
         secs => lease_milliseconds::double precision / 1000.0
     );
 
+    -- A different idempotency key may legitimately name the same immutable
+    -- natural operation.  Reconcile it before granting a second live lease so
+    -- the domain handler cannot rerun merely because the caller rotated its
+    -- transport key.  The new receipt points at the original result while the
+    -- result keeps its original receipt/generation provenance.
+    SELECT existing_result.* INTO result
+      FROM public.operation_results AS existing_result
+     WHERE existing_result.organization_id = command_org_id
+       AND existing_result.actor_id = command_actor_id
+       AND existing_result.operation = command_operation
+       AND existing_result.natural_key = command_natural_key
+       AND existing_result.request_digest = command_request_digest;
+    IF FOUND THEN
+        INSERT INTO public.command_idempotency_records (
+            organization_id, actor_id, operation, idempotency_key,
+            request_digest, natural_key, status, lease_generation, claim_token,
+            claimant_request_id, lease_expires_at, operation_result_id,
+            attempt_count, completed_at
+        ) VALUES (
+            command_org_id, command_actor_id, command_operation,
+            command_idempotency_key, command_request_digest, command_natural_key,
+            'succeeded', 1, new_claim_token, new_claimant_request_id, NULL,
+            result.id, 1, now_at_database
+        ) ON CONFLICT (organization_id, actor_id, operation, idempotency_key)
+          DO NOTHING
+        RETURNING id INTO inserted_id;
+        IF inserted_id IS NOT NULL THEN
+            RETURN QUERY SELECT 'reconciled', inserted_id, 1, NULL::text,
+                                result.id::bigint, NULL::text, NULL::text,
+                                NULL::double precision;
+            RETURN;
+        END IF;
+    END IF;
+
     INSERT INTO public.command_idempotency_records (
         organization_id, actor_id, operation, idempotency_key,
         request_digest, natural_key, status, lease_generation, claim_token,
@@ -613,6 +647,7 @@ DECLARE
     command_claimant_request_id text;
     lease_milliseconds integer;
     receipt record;
+    origin_receipt record;
     result record;
     materialisation record;
     event_document jsonb;
@@ -680,11 +715,24 @@ BEGIN
        AND existing.actor_id = command_actor_id
        AND existing.operation = command_operation
        AND existing.natural_key = command_natural_key
-       AND existing.request_digest = command_request_digest
-       AND existing.receipt_id = receipt.id
-       AND existing.receipt_generation = receipt.lease_generation;
+       AND existing.request_digest = command_request_digest;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'operation result repair identity mismatch'
+            USING ERRCODE = '55000';
+    END IF;
+    SELECT existing.* INTO origin_receipt
+      FROM public.command_idempotency_records AS existing
+     WHERE existing.id = result.receipt_id
+       AND existing.organization_id = command_org_id
+       AND existing.actor_id = command_actor_id
+       AND existing.operation = command_operation
+       AND existing.request_digest = command_request_digest
+       AND existing.natural_key = command_natural_key
+       AND existing.status = 'succeeded'
+       AND existing.lease_generation = result.receipt_generation
+       AND existing.operation_result_id = result.id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'operation result origin receipt mismatch'
             USING ERRCODE = '55000';
     END IF;
 
@@ -730,15 +778,15 @@ BEGIN
             receipt_id, receipt_generation, object_ids, response_json, outbox_events
         ) VALUES (
             command_org_id, command_actor_id, command_operation, command_natural_key,
-            command_request_digest, receipt.id, receipt.lease_generation,
+            command_request_digest, result.receipt_id, result.receipt_generation,
             result.object_ids, result.response_json, event_documents
         );
         PERFORM set_config('archie.signed_envelope_repair', 'off', TRUE);
     ELSE
         IF materialisation.actor_id IS DISTINCT FROM command_actor_id
            OR materialisation.request_digest IS DISTINCT FROM command_request_digest
-           OR materialisation.receipt_id IS DISTINCT FROM receipt.id
-           OR materialisation.receipt_generation IS DISTINCT FROM receipt.lease_generation
+           OR materialisation.receipt_id IS DISTINCT FROM result.receipt_id
+           OR materialisation.receipt_generation IS DISTINCT FROM result.receipt_generation
            OR materialisation.object_ids::jsonb IS DISTINCT FROM result.object_ids::jsonb
            OR materialisation.response_json::jsonb IS DISTINCT FROM result.response_json::jsonb
            OR jsonb_typeof(materialisation.outbox_events::jsonb) <> 'array' THEN

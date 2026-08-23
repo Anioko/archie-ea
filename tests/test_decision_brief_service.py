@@ -1050,16 +1050,18 @@ def test_superseded_global_head_citation_blocks_without_exact_acknowledgement(
         application = session.get(ApplicationComponent, scope.application_id)
         application.application_owner = "Changed canonical owner"
     evidence_scope = EvidenceScope(
-        scope.organization_id,
-        0,
-        scope.actor_id,
-        0,
-        scope.workstream_id,
-        scope.candidate_id,
-        scope.application_id,
-        0,
-        scope.actor,
-        scope.actor,
+        organization_id=scope.organization_id,
+        foreign_organization_id=0,
+        actor_id=scope.actor_id,
+        foreign_actor_id=0,
+        workstream_id=scope.workstream_id,
+        candidate_id=scope.candidate_id,
+        application_id=scope.application_id,
+        capability_id=0,
+        dependency_id=0,
+        request_id=0,
+        actor=scope.actor,
+        foreign_actor=scope.actor,
     )
     corrected = _record_inventory(
         evidence_scope,
