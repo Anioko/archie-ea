@@ -357,3 +357,120 @@ All database-backed commands used the port-5439 PostgreSQL URL above.
   boot/schema, dependency/security and changed-file checks are green.
 
 Round commit subject: `fix: require signed transformation commands`.
+
+## Review fix round 5/5 — 23 August 2026
+
+This section supersedes the round-4 role-bootstrap privilege description.  The
+round was implemented test-first with
+`postgresql://postgres@127.0.0.1:5439/flask_test` supplied explicitly as both
+`TEST_DATABASE_URL` and `DATABASE_URL`.
+
+### RED evidence
+
+- The Compose-order test failed because neither deployment path had a
+  post-schema ACL completion service on which every runtime process depended.
+- A fresh-table test showed the deploy role's default ACL immediately gave a
+  future table `SELECT`, `INSERT`, `UPDATE`, and `DELETE`, its sequence usage,
+  and its function public execution before any deliberate privilege review.
+- Installing the Task 7 guards and rerunning `configure_database_roles()` gave
+  runtime `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on the raw-secret
+  `archie_command_capability_keys` table and reopened protected draft/version/
+  citation writes.  It also revoked the four approved definer-function grants.
+- An injected exception immediately after a real table grant demonstrated the
+  missing fail-closed runtime fence: the database ACL transaction rolled back,
+  but runtime remained able to log in.
+- The first concurrency probe paused before the transaction commit and passed,
+  so it was discarded as incapable of catching the reported break.  Its
+  replacement ran restricted read/write attackers across the bootstrap commit
+  and failed because runtime read the capability-key material and could commit a
+  forged decision-brief draft after the broad grant became visible.
+- The first compatibility run then exposed seven legitimate-control failures:
+  the old blanket defaults had implicitly supplied ordinary-table DML and
+  protected insert-sequence access during schema creation.  Those dependencies
+  were replaced with the post-schema finalizer and explicit protected-sequence
+  grants; the least-privilege defaults were not relaxed.
+
+### Monotonic least-privilege bootstrap
+
+- `transformation_privilege_policy.py` is now the dependency-free single source
+  of truth for the exact protected table privileges, the two column-scoped
+  update grants, the four runtime-callable definer functions, and the absolute
+  no-access capability-key table.  Both role bootstrap and guard reconciliation
+  consume it, so either may run repeatedly without undoing the other.
+- The bootstrap no longer executes an `ALL TABLES` or default-write grant.  In
+  one transaction per target database it takes an advisory lock, transfers
+  ownership, revokes public/runtime relation and sequence ACLs, grants ordinary
+  application DML one quoted object at a time, applies the exact protected ACL,
+  grants only sequences needed by directly insertable tables, revokes all future
+  table/sequence/function defaults, and restores only the approved functions.
+- Before any target ACL work, a cluster-wide serialized phase commits runtime as
+  `NOLOGIN`, strips memberships and database grants, and terminates its existing
+  target-database sessions.  Runtime is restored to `LOGIN` only after every
+  target ACL transaction commits.  Any failure rolls back the target ACL in
+  full and deliberately leaves runtime fenced rather than exposing an old or
+  partial state.
+- `archie_command_capability_keys` is never the target of a runtime grant.  Its
+  table ACL and the internal HMAC/verifier functions remain owner/deploy only.
+  Protected receipts, immutable records, evidence heads/events, drafts,
+  versions, citations and decision events retain the guard contract's exact
+  table, column, sequence and function privileges with no `DELETE`, `TRUNCATE`,
+  schema `CREATE`, ownership, or unrestricted `UPDATE` path.
+- Future deploy-owned tables, sequences and functions start with no runtime or
+  public access.  A post-schema `database-acl` one-shot explicitly classifies
+  the now-existing objects and commits their safe ACL.  Both Compose paths now
+  enforce `database-bootstrap -> schema-deploy -> database-acl -> app`, and web,
+  development and worker processes cannot start when ACL finalization fails.
+  Neither bootstrap/ACL service receives the transformation command secret.
+
+### Final GREEN evidence
+
+All database-backed commands used the port-5439 PostgreSQL URL above.
+
+- Focused future-default, guard-rerun, rollback/fence, concurrency, capability-
+  distribution and Compose-order tranche: **6 passed**.
+- Actual restricted-runtime bypass matrix: **16 passed** in 51.85 seconds.
+- Task 3 command regressions: **27 passed** in 44.28 seconds.
+- Task 7 option/brief/guard/runtime/schema-reconciliation tranche:
+  **100 passed** in 152.75 seconds.
+- Complete Transformation Room programme/command/discovery/gate/evidence/
+  option/brief/guard/runtime/reconciliation slice: **273 passed** in 180.01
+  seconds, with no failures or skips.
+- Security hardening regression: **25 passed**.
+- Static verifier: **30 passed, 0 failed, 1 skipped**.  The sole skip remains the
+  unchanged absent vendored Tailwind CLI for `css-build`; it is not counted as
+  verified, and no template, CSS or front-end JavaScript changed.
+- `boot-health`: **1 passed, 0 failed, 0 skipped**.
+- `schema-drift`: the first run competed with the simultaneous boot-health app
+  reflection and failed without producing a drift measurement; the required
+  isolated rerun was **1 passed, 0 failed, 0 skipped**, measurement `0 <= 0`.
+- `deployed-deps` and `dependency-cves`: each **1 passed, 0 failed, 0 skipped**;
+  the CVE measurement is `2 <= 3`.
+- Changed-file Ruff, byte compilation and `git diff --check`: green.
+
+### Self-review
+
+- Re-traced the concrete source-to-sink path after implementation.  No other
+  blanket current/default table grant remains in the repository.  The only
+  bootstrap callers are the two pre-schema and two post-schema Compose services
+  plus the real PostgreSQL tests.
+- Challenged the shared policy by checking both outcomes for every protected
+  table: permitted reads/inserts and column updates still work in the full
+  runtime matrix, while key reads, forged drafts/versions/citations, arbitrary
+  function execution, full updates, deletes, truncation, trigger/DDL bypass and
+  role escalation remain denied.  HMAC capability issuance/rotation, exact
+  canonical UTF-8 hashes, governed draft creation, replay, revocation and
+  concurrency tests remain green through the Task 3 and Task 7 suites.
+- Mutation check: removing the key no-access entry, restoring default writes,
+  broadening any protected mapping, removing transaction rollback/runtime
+  fencing, or bypassing the final Compose dependency is caught by at least one
+  new behavior-level PostgreSQL or deployment-order test.
+- Legitimate controls prove fresh objects are unusable before ACL finalization,
+  ordinary application insert/update/read/delete works afterwards, protected
+  insert sequences still work, and repeated bootstrap/guard installation is
+  monotonic on existing databases.
+- Remaining verification limitation: the unchanged `css-build` gate cannot run
+  without the vendored Tailwind CLI.  No aggregate repository-wide full-pytest
+  claim is made; the owning 273-test Transformation slice and the explicit gates
+  above are the recorded completion evidence.
+
+Round commit subject: `fix: make transformation ACL bootstrap monotonic`.

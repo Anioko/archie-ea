@@ -33,6 +33,22 @@ services:
       database-bootstrap:
         condition: service_completed_successfully
 
+  database-acl:
+    build:
+      context: .
+    command: python scripts/database/configure_roles.py
+    restart: "no"
+    volumes:
+      - './:/app'
+    environment:
+      DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      DATABASE_NAMES: archie,archie_test
+      DATABASE_DEPLOY_PASSWORD: ${DATABASE_DEPLOY_PASSWORD}
+      DATABASE_RUNTIME_PASSWORD: ${DATABASE_RUNTIME_PASSWORD}
+    depends_on:
+      schema-deploy:
+        condition: service_completed_successfully
+
   server:
     build:
       context: .
@@ -145,7 +161,7 @@ services:
       retries: 3
       start_period: 420s
     depends_on:
-      schema-deploy:
+      database-acl:
         condition: service_completed_successfully
       redis:
         condition: service_started
@@ -181,7 +197,7 @@ services:
       SQLALCHEMY_POOL_SIZE: "4"
       SQLALCHEMY_MAX_OVERFLOW: "2"
     depends_on:
-      schema-deploy:
+      database-acl:
         condition: service_completed_successfully
       redis:
         condition: service_started

@@ -1,8 +1,9 @@
 """Idempotently separate PostgreSQL deployment ownership from app runtime.
 
-This script is deliberately standalone: a one-shot deployment container runs it
-with the PostgreSQL bootstrap credential, while web and worker containers never
-receive that credential or the schema-owner credential.
+This script is deliberately standalone: one-shot deployment containers run it
+before and after schema deployment with the PostgreSQL bootstrap credential,
+while web and worker containers never receive that credential or the schema-
+owner credential.
 """
 
 from __future__ import annotations
@@ -14,6 +15,13 @@ from collections.abc import Iterable
 import psycopg2
 from psycopg2 import sql
 
+from scripts.database.transformation_privilege_policy import (
+    PROTECTED_RUNTIME_TABLE_PRIVILEGES,
+    PROTECTED_RUNTIME_UPDATE_COLUMNS,
+    RUNTIME_EXECUTE_FUNCTIONS,
+    RUNTIME_NO_ACCESS_TABLES,
+)
+
 
 DEPLOY_ROLE = "archie_deploy"
 RUNTIME_ROLE = "archie_runtime"
@@ -23,17 +31,18 @@ def _psycopg_url(url: str) -> str:
     return url.replace("postgresql+psycopg2://", "postgresql://", 1)
 
 
-def _ensure_login_role(cursor, *, role: str, password: str) -> None:
+def _ensure_role(
+    cursor, *, role: str, password: str, can_login: bool
+) -> None:
     cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
     if cursor.fetchone() is None:
-        cursor.execute(
-            sql.SQL("CREATE ROLE {} LOGIN").format(sql.Identifier(role))
-        )
+        cursor.execute(sql.SQL("CREATE ROLE {}").format(sql.Identifier(role)))
+    login = sql.SQL("LOGIN") if can_login else sql.SQL("NOLOGIN")
     cursor.execute(
         sql.SQL(
-            "ALTER ROLE {} WITH LOGIN PASSWORD %s NOSUPERUSER NOCREATEDB "
+            "ALTER ROLE {} WITH {} PASSWORD %s NOSUPERUSER NOCREATEDB "
             "NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS"
-        ).format(sql.Identifier(role)),
+        ).format(sql.Identifier(role), login),
         (password,),
     )
 
@@ -144,12 +153,186 @@ def _transfer_public_objects(
         )
 
 
+def _public_relations(cursor) -> tuple[tuple[str, str], ...]:
+    cursor.execute(
+        """
+        SELECT relation.relname, relation.relkind
+        FROM pg_class relation
+        JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_depend dependency
+              WHERE dependency.classid = 'pg_class'::regclass
+                AND dependency.objid = relation.oid
+                AND dependency.deptype = 'e'
+          )
+        ORDER BY relation.relname
+        """
+    )
+    return tuple(cursor.fetchall())
+
+
+def _runtime_table_privileges(table_name: str, relation_kind: str) -> tuple[str, ...]:
+    if table_name in RUNTIME_NO_ACCESS_TABLES:
+        return ()
+    protected = PROTECTED_RUNTIME_TABLE_PRIVILEGES.get(table_name)
+    if protected is not None:
+        return protected
+    if relation_kind in {"r", "p", "f"}:
+        return ("SELECT", "INSERT", "UPDATE", "DELETE")
+    return ("SELECT",)
+
+
+def _configure_table_privileges(cursor, *, runtime_role: str) -> None:
+    runtime = sql.Identifier(runtime_role)
+    for table_name, relation_kind in _public_relations(cursor):
+        table = sql.SQL("{}.{}").format(
+            sql.Identifier("public"), sql.Identifier(table_name)
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON TABLE {} FROM PUBLIC").format(table)
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON TABLE {} FROM {}").format(
+                table, runtime
+            )
+        )
+        privileges = _runtime_table_privileges(table_name, relation_kind)
+        if privileges:
+            cursor.execute(
+                sql.SQL("GRANT {} ON TABLE {} TO {}").format(
+                    sql.SQL(", ").join(map(sql.SQL, privileges)),
+                    table,
+                    runtime,
+                )
+            )
+        update_columns = PROTECTED_RUNTIME_UPDATE_COLUMNS.get(table_name, ())
+        if update_columns:
+            cursor.execute(
+                sql.SQL("GRANT UPDATE ({}) ON TABLE {} TO {}").format(
+                    sql.SQL(", ").join(map(sql.Identifier, update_columns)),
+                    table,
+                    runtime,
+                )
+            )
+
+
+def _public_sequences(cursor) -> tuple[tuple[str, str | None], ...]:
+    cursor.execute(
+        """
+        SELECT DISTINCT sequence.relname, owned_table.relname
+        FROM pg_class sequence
+        JOIN pg_namespace namespace ON namespace.oid = sequence.relnamespace
+        LEFT JOIN pg_depend ownership
+          ON ownership.classid = 'pg_class'::regclass
+         AND ownership.objid = sequence.oid
+         AND ownership.refclassid = 'pg_class'::regclass
+         AND ownership.deptype IN ('a', 'i')
+        LEFT JOIN pg_class owned_table ON owned_table.oid = ownership.refobjid
+        WHERE namespace.nspname = 'public'
+          AND sequence.relkind = 'S'
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_depend dependency
+              WHERE dependency.classid = 'pg_class'::regclass
+                AND dependency.objid = sequence.oid
+                AND dependency.deptype = 'e'
+          )
+        ORDER BY sequence.relname, owned_table.relname
+        """
+    )
+    return tuple(cursor.fetchall())
+
+
+def _configure_sequence_privileges(cursor, *, runtime_role: str) -> None:
+    runtime = sql.Identifier(runtime_role)
+    for sequence_name, owned_table_name in _public_sequences(cursor):
+        sequence = sql.SQL("{}.{}").format(
+            sql.Identifier("public"), sql.Identifier(sequence_name)
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON SEQUENCE {} FROM PUBLIC").format(
+                sequence
+            )
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON SEQUENCE {} FROM {}").format(
+                sequence, runtime
+            )
+        )
+        if owned_table_name is not None:
+            privileges = _runtime_table_privileges(owned_table_name, "r")
+            if "INSERT" not in privileges:
+                continue
+        cursor.execute(
+            sql.SQL("GRANT USAGE, SELECT ON SEQUENCE {} TO {}").format(
+                sequence, runtime
+            )
+        )
+
+
+def _configure_function_privileges(cursor, *, runtime_role: str) -> None:
+    runtime = sql.Identifier(runtime_role)
+    for function_name, identity_arguments in RUNTIME_EXECUTE_FUNCTIONS:
+        cursor.execute(
+            "SELECT to_regprocedure(%s)",
+            (f"public.{function_name}({identity_arguments})",),
+        )
+        if cursor.fetchone()[0] is None:
+            continue
+        function = sql.SQL("{}.{}({})").format(
+            sql.Identifier("public"),
+            sql.Identifier(function_name),
+            sql.SQL(identity_arguments),
+        )
+        cursor.execute(
+            sql.SQL("GRANT EXECUTE ON FUNCTION {} TO {}").format(
+                function, runtime
+            )
+        )
+
+
+def _configure_default_privileges(
+    cursor, *, deploy_role: str, runtime_role: str
+) -> None:
+    deploy = sql.Identifier(deploy_role)
+    runtime = sql.Identifier(runtime_role)
+    for object_type in ("TABLES", "SEQUENCES"):
+        cursor.execute(
+            sql.SQL(
+                "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+                "REVOKE ALL PRIVILEGES ON {} FROM PUBLIC"
+            ).format(deploy, sql.SQL(object_type))
+        )
+        cursor.execute(
+            sql.SQL(
+                "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+                "REVOKE ALL PRIVILEGES ON {} FROM {}"
+            ).format(deploy, sql.SQL(object_type), runtime)
+        )
+    cursor.execute(
+        sql.SQL(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {} "
+            "REVOKE ALL PRIVILEGES ON FUNCTIONS FROM PUBLIC"
+        ).format(deploy)
+    )
+    cursor.execute(
+        sql.SQL(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {} "
+            "REVOKE ALL PRIVILEGES ON FUNCTIONS FROM {}"
+        ).format(deploy, runtime)
+    )
+
+
 def _configure_database(
     *, admin_url: str, database_name: str, deploy_role: str, runtime_role: str
 ) -> None:
     with psycopg2.connect(_psycopg_url(admin_url), dbname=database_name) as connection:
-        connection.autocommit = True
         with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                (f"archie_runtime_acl:public:{runtime_role}",),
+            )
             cursor.execute(
                 sql.SQL("ALTER SCHEMA public OWNER TO {}").format(
                     sql.Identifier(deploy_role)
@@ -171,39 +354,14 @@ def _configure_database(
                     sql.Identifier(runtime_role)
                 )
             )
-            cursor.execute(
-                sql.SQL(
-                    "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
-                    "IN SCHEMA public TO {}"
-                ).format(sql.Identifier(runtime_role))
+            _configure_table_privileges(cursor, runtime_role=runtime_role)
+            _configure_sequence_privileges(cursor, runtime_role=runtime_role)
+            _configure_default_privileges(
+                cursor,
+                deploy_role=deploy_role,
+                runtime_role=runtime_role,
             )
-            cursor.execute(
-                sql.SQL(
-                    "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}"
-                ).format(sql.Identifier(runtime_role))
-            )
-            cursor.execute(
-                sql.SQL(
-                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                    "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {}"
-                ).format(
-                    sql.Identifier(deploy_role), sql.Identifier(runtime_role)
-                )
-            )
-            cursor.execute(
-                sql.SQL(
-                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                    "GRANT USAGE, SELECT ON SEQUENCES TO {}"
-                ).format(
-                    sql.Identifier(deploy_role), sql.Identifier(runtime_role)
-                )
-            )
-            cursor.execute(
-                sql.SQL(
-                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                    "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
-                ).format(sql.Identifier(deploy_role))
-            )
+            _configure_function_privileges(cursor, runtime_role=runtime_role)
 
 
 def configure_database_roles(
@@ -222,18 +380,43 @@ def configure_database_roles(
     if not names:
         raise ValueError("at least one target database is required")
 
-    with psycopg2.connect(_psycopg_url(admin_url)) as connection:
-        connection.autocommit = True
-        with connection.cursor() as cursor:
-            _ensure_login_role(cursor, role=deploy_role, password=deploy_password)
-            _ensure_login_role(cursor, role=runtime_role, password=runtime_password)
-            _revoke_role_memberships(cursor, member_role=runtime_role)
+    coordinator = psycopg2.connect(_psycopg_url(admin_url))
+    lock_key = f"archie_database_role_bootstrap:{deploy_role}:{runtime_role}"
+    lock_acquired = False
+    try:
+        with coordinator.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_lock(hashtext(%s))", (lock_key,))
+            lock_acquired = True
+        coordinator.commit()
+
+        with coordinator.cursor() as cursor:
             for database_name in names:
                 cursor.execute(
                     "SELECT 1 FROM pg_database WHERE datname = %s", (database_name,)
                 )
                 if cursor.fetchone() is None:
-                    raise ValueError(f"target database does not exist: {database_name}")
+                    raise ValueError(
+                        f"target database does not exist: {database_name}"
+                    )
+
+            _ensure_role(
+                cursor,
+                role=deploy_role,
+                password=deploy_password,
+                can_login=True,
+            )
+            # Commit a cluster-visible fence before touching any database ACL.
+            # Existing sessions are terminated immediately afterwards; a failed
+            # bootstrap deliberately leaves runtime NOLOGIN rather than exposing
+            # a partial or stale privilege state.
+            _ensure_role(
+                cursor,
+                role=runtime_role,
+                password=runtime_password,
+                can_login=False,
+            )
+            _revoke_role_memberships(cursor, member_role=runtime_role)
+            for database_name in names:
                 cursor.execute(
                     sql.SQL("ALTER DATABASE {} OWNER TO {}").format(
                         sql.Identifier(database_name), sql.Identifier(deploy_role)
@@ -245,18 +428,61 @@ def configure_database_roles(
                     )
                 )
                 cursor.execute(
+                    sql.SQL("REVOKE CONNECT ON DATABASE {} FROM {}").format(
+                        sql.Identifier(database_name), sql.Identifier(runtime_role)
+                    )
+                )
+        coordinator.commit()
+
+        with coordinator.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_terminate_backend(pid) "
+                "FROM pg_stat_activity "
+                "WHERE usename = %s "
+                "AND datname = ANY(%s) "
+                "AND pid <> pg_backend_pid()",
+                (runtime_role, list(names)),
+            )
+            cursor.fetchall()
+        coordinator.commit()
+
+        for database_name in names:
+            _configure_database(
+                admin_url=admin_url,
+                database_name=database_name,
+                deploy_role=deploy_role,
+                runtime_role=runtime_role,
+            )
+
+        with coordinator.cursor() as cursor:
+            for database_name in names:
+                cursor.execute(
                     sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
                         sql.Identifier(database_name), sql.Identifier(runtime_role)
                     )
                 )
-
-    for database_name in names:
-        _configure_database(
-            admin_url=admin_url,
-            database_name=database_name,
-            deploy_role=deploy_role,
-            runtime_role=runtime_role,
-        )
+            _ensure_role(
+                cursor,
+                role=runtime_role,
+                password=runtime_password,
+                can_login=True,
+            )
+        coordinator.commit()
+    except BaseException:
+        coordinator.rollback()
+        raise
+    finally:
+        if lock_acquired:
+            try:
+                with coordinator.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT pg_advisory_unlock(hashtext(%s))", (lock_key,)
+                    )
+                    cursor.fetchone()
+                coordinator.commit()
+            except psycopg2.Error:
+                coordinator.rollback()
+        coordinator.close()
 
 
 def main() -> None:

@@ -78,6 +78,24 @@ services:
       - flask-network
     restart: "no"
 
+  database-acl:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: runtime
+    command: python scripts/database/configure_roles.py
+    environment:
+      - DATABASE_ADMIN_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      - DATABASE_NAMES=flask_app
+      - DATABASE_DEPLOY_PASSWORD=${DATABASE_DEPLOY_PASSWORD}
+      - DATABASE_RUNTIME_PASSWORD=${DATABASE_RUNTIME_PASSWORD}
+    depends_on:
+      schema-deploy:
+        condition: service_completed_successfully
+    networks:
+      - flask-network
+    restart: "no"
+
   # Flask application (production)
   web:
     build:
@@ -88,7 +106,7 @@ services:
         - flask-app:latest
     container_name: flask-web
     depends_on:
-      schema-deploy:
+      database-acl:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -124,7 +142,7 @@ services:
       target: development
     container_name: flask-web-dev
     depends_on:
-      schema-deploy:
+      database-acl:
         condition: service_completed_successfully
       redis:
         condition: service_healthy

@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -101,6 +102,65 @@ class IsolatedRoleDatabase:
             host=parsed.hostname,
             port=parsed.port,
             database=self.database_name,
+        )
+
+
+def _render_statement(cursor, statement) -> str:
+    if isinstance(statement, pg_sql.Composable):
+        return statement.as_string(cursor)
+    return str(statement)
+
+
+class _InterceptingCursor:
+    """Delegate to psycopg2 while exposing executed SQL to one test callback."""
+
+    def __init__(self, cursor, after_execute):
+        self._cursor = cursor
+        self._after_execute = after_execute
+
+    def __enter__(self):
+        self._cursor.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._cursor.__exit__(exc_type, exc_value, traceback)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+    def execute(self, statement, parameters=None):
+        result = self._cursor.execute(statement, parameters)
+        self._after_execute(_render_statement(self._cursor, statement))
+        return result
+
+
+class _InterceptingConnection:
+    """Keep real transaction semantics while intercepting cursor execution."""
+
+    def __init__(self, connection, after_execute):
+        object.__setattr__(self, "_connection", connection)
+        object.__setattr__(self, "_after_execute", after_execute)
+
+    def __enter__(self):
+        self._connection.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return self._connection.__exit__(exc_type, exc_value, traceback)
+        finally:
+            self._connection.close()
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._connection, name, value)
+
+    def cursor(self, *args, **kwargs):
+        return _InterceptingCursor(
+            self._connection.cursor(*args, **kwargs),
+            self._after_execute,
         )
 
 
@@ -333,6 +393,14 @@ def guarded_runtime_database(isolated_role_database):
                 runtime_role=role_database.runtime_role,
                 capability_secrets=(COMMAND_CAPABILITY_SECRET,),
             )
+        configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
         yield role_database
     finally:
         deploy_engine.dispose()
@@ -1186,17 +1254,28 @@ def test_compose_paths_separate_database_deployment_from_runtime():
 
     for document, runtime_services in ((main, ("server", "worker")), (optimized, ("web", "web-dev"))):
         services = document["services"]
-        assert {"database-bootstrap", "schema-deploy"} <= services.keys()
+        assert {"database-bootstrap", "schema-deploy", "database-acl"} <= services.keys()
         bootstrap_env = _environment(services["database-bootstrap"])
         deploy_env = _environment(services["schema-deploy"])
+        acl_env = _environment(services["database-acl"])
         assert "postgresql://postgres:" in bootstrap_env["DATABASE_ADMIN_URL"]
+        assert "postgresql://postgres:" in acl_env["DATABASE_ADMIN_URL"]
         assert f"postgresql://{DEPLOY_ROLE}:" in deploy_env["DATABASE_URL"]
+        assert services["schema-deploy"]["depends_on"]["database-bootstrap"] == {
+            "condition": "service_completed_successfully"
+        }
+        assert services["database-acl"]["depends_on"]["schema-deploy"] == {
+            "condition": "service_completed_successfully"
+        }
         for service_name in runtime_services:
             runtime_env = _environment(services[service_name])
             assert f"postgresql://{RUNTIME_ROLE}:" in runtime_env["DATABASE_URL"]
             assert "postgresql://postgres:" not in runtime_env["DATABASE_URL"]
             assert "DATABASE_ADMIN_URL" not in runtime_env
             assert "DATABASE_DEPLOY_PASSWORD" not in runtime_env
+            assert services[service_name]["depends_on"]["database-acl"] == {
+                "condition": "service_completed_successfully"
+            }
 
     optimized_backup = _environment(optimized["services"]["backup"])
     assert optimized_backup["PGPASSWORD"] == "${POSTGRES_PASSWORD}"
@@ -1217,6 +1296,9 @@ def test_compose_provisions_command_capability_to_schema_and_app_only():
         assert "TRANSFORMATION_COMMAND_CAPABILITY_SECRET" not in _environment(
             services["database-bootstrap"]
         )
+        assert "TRANSFORMATION_COMMAND_CAPABILITY_SECRET" not in _environment(
+            services["database-acl"]
+        )
         assert _environment(services["schema-deploy"])[
             "TRANSFORMATION_COMMAND_CAPABILITY_SECRET"
         ] == "${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}"
@@ -1226,6 +1308,397 @@ def test_compose_provisions_command_capability_to_schema_and_app_only():
                 "${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}"
             )
             assert "DATABASE_DEPLOY_PASSWORD" not in runtime
+
+
+def test_new_tables_have_no_implicit_runtime_access_until_acl_finalization(
+    isolated_role_database,
+):
+    """Catches default privileges silently giving every future table write access."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = isolated_role_database
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    deploy_engine = create_engine(
+        role_database.url(
+            role=role_database.deploy_role,
+            password=role_database.deploy_password,
+        )
+    )
+    try:
+        with deploy_engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE future_runtime_records "
+                "(id serial PRIMARY KEY, payload text NOT NULL)"
+            )
+            connection.exec_driver_sql(
+                "CREATE FUNCTION future_runtime_probe() RETURNS integer "
+                "LANGUAGE sql AS 'SELECT 1'"
+            )
+
+        maintenance = psycopg2.connect(
+            _maintenance_url(), dbname=role_database.database_name
+        )
+        try:
+            with maintenance.cursor() as cursor:
+                cursor.execute(
+                    "SELECT has_table_privilege(%s, 'future_runtime_records', 'SELECT'), "
+                    "has_table_privilege(%s, 'future_runtime_records', 'INSERT'), "
+                    "has_table_privilege(%s, 'future_runtime_records', 'UPDATE'), "
+                    "has_table_privilege(%s, 'future_runtime_records', 'DELETE'), "
+                    "has_sequence_privilege(%s, 'future_runtime_records_id_seq', 'USAGE'), "
+                    "has_function_privilege(%s, 'future_runtime_probe()', 'EXECUTE')",
+                    (role_database.runtime_role,) * 6,
+                )
+                assert cursor.fetchone() == (False, False, False, False, False, False)
+        finally:
+            maintenance.close()
+
+        configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+
+        parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+        raw = psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            dbname=role_database.database_name,
+            user=role_database.runtime_role,
+            password=role_database.runtime_password,
+        )
+        try:
+            with raw.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO future_runtime_records (payload) VALUES ('created') "
+                    "RETURNING id"
+                )
+                record_id = cursor.fetchone()[0]
+                cursor.execute(
+                    "UPDATE future_runtime_records SET payload = 'updated' WHERE id = %s",
+                    (record_id,),
+                )
+                cursor.execute(
+                    "SELECT payload FROM future_runtime_records WHERE id = %s",
+                    (record_id,),
+                )
+                assert cursor.fetchone() == ("updated",)
+                cursor.execute(
+                    "DELETE FROM future_runtime_records WHERE id = %s",
+                    (record_id,),
+                )
+                with pytest.raises(psycopg2.Error):
+                    cursor.execute("SELECT future_runtime_probe()")
+            raw.rollback()
+        finally:
+            raw.close()
+    finally:
+        deploy_engine.dispose()
+
+
+def test_role_bootstrap_after_guards_preserves_exact_runtime_acl(
+    guarded_runtime_database,
+):
+    """Catches an idempotent bootstrap reopening protected transformation tables."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = guarded_runtime_database
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+
+    expected_table_acl = {
+        "archie_command_capability_keys": (False, False, False, False, False),
+        "command_idempotency_records": (True, False, False, False, False),
+        "operation_results": (True, True, False, False, False),
+        "transformation_outbox_events": (True, True, False, False, False),
+        "evidence_records": (True, True, False, False, False),
+        "evidence_claim_heads": (True, True, False, False, False),
+        "evidence_head_events": (True, False, False, False, False),
+        "decision_briefs": (True, False, False, False, False),
+        "decision_brief_versions": (True, False, False, False, False),
+        "decision_brief_option_citations": (True, False, False, False, False),
+        "decision_brief_evidence_citations": (True, False, False, False, False),
+    }
+    maintenance = psycopg2.connect(
+        _maintenance_url(), dbname=role_database.database_name
+    )
+    try:
+        with maintenance.cursor() as cursor:
+            for table_name, expected in expected_table_acl.items():
+                cursor.execute(
+                    "SELECT has_table_privilege(%s, %s, 'SELECT'), "
+                    "has_table_privilege(%s, %s, 'INSERT'), "
+                    "has_table_privilege(%s, %s, 'UPDATE'), "
+                    "has_table_privilege(%s, %s, 'DELETE'), "
+                    "has_table_privilege(%s, %s, 'TRUNCATE')",
+                    (
+                        role_database.runtime_role,
+                        table_name,
+                        role_database.runtime_role,
+                        table_name,
+                        role_database.runtime_role,
+                        table_name,
+                        role_database.runtime_role,
+                        table_name,
+                        role_database.runtime_role,
+                        table_name,
+                    ),
+                )
+                assert cursor.fetchone() == expected, table_name
+
+            cursor.execute(
+                "SELECT has_column_privilege(%s, 'command_idempotency_records', "
+                "'status', 'UPDATE'), "
+                "has_column_privilege(%s, 'command_idempotency_records', "
+                "'idempotency_key', 'UPDATE'), "
+                "has_column_privilege(%s, 'transformation_outbox_events', "
+                "'delivery_attempts', 'UPDATE'), "
+                "has_column_privilege(%s, 'transformation_outbox_events', "
+                "'payload_json', 'UPDATE'), "
+                "has_schema_privilege(%s, 'public', 'CREATE')",
+                (role_database.runtime_role,) * 5,
+            )
+            assert cursor.fetchone() == (True, False, True, False, False)
+
+            cursor.execute(
+                "SELECT has_function_privilege(%s, "
+                "'archie_claim_transformation_command(text,text)', 'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'archie_create_decision_brief(text,text,text)', 'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'archie_freeze_decision_brief_version(bigint,bigint,bigint,integer,text,text,text,integer,text,jsonb,text)', "
+                "'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'archie_advance_evidence_head(bigint,bigint,integer,bigint,bigint,integer,text)', "
+                "'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'archie_verify_command_capability(text,text,text)', 'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'archie_hmac_sha256(bytea,bytea)', 'EXECUTE')",
+                (role_database.runtime_role,) * 6,
+            )
+            assert cursor.fetchone() == (True, True, True, True, False, False)
+    finally:
+        maintenance.close()
+
+
+def test_role_bootstrap_failure_rolls_back_acl_and_keeps_runtime_fenced(
+    guarded_runtime_database,
+    monkeypatch,
+):
+    """Catches a mid-bootstrap failure committing a prefix of privilege changes."""
+    import scripts.database.configure_roles as roles
+
+    role_database = guarded_runtime_database
+    deploy_engine = create_engine(
+        role_database.url(
+            role=role_database.deploy_role,
+            password=role_database.deploy_password,
+        )
+    )
+    try:
+        with deploy_engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE bootstrap_acl_probe "
+                "(id serial PRIMARY KEY, payload text NOT NULL)"
+            )
+            connection.exec_driver_sql(
+                f'REVOKE ALL ON TABLE bootstrap_acl_probe FROM "{role_database.runtime_role}"'
+            )
+
+        real_connect = psycopg2.connect
+        raised = False
+
+        def fail_after_probe_grant(statement):
+            nonlocal raised
+            normalized = " ".join(statement.upper().split())
+            is_current_blanket_grant = " ON ALL TABLES IN SCHEMA PUBLIC " in (
+                f" {normalized} "
+            )
+            is_explicit_probe_grant = (
+                "GRANT " in normalized
+                and "BOOTSTRAP_ACL_PROBE" in normalized
+                and " ON TABLE " in f" {normalized} "
+            )
+            if not raised and (is_current_blanket_grant or is_explicit_probe_grant):
+                raised = True
+                raise RuntimeError("injected ACL finalization failure")
+
+        def intercepted_connect(*args, **kwargs):
+            connection = real_connect(*args, **kwargs)
+            if kwargs.get("dbname") == role_database.database_name:
+                return _InterceptingConnection(connection, fail_after_probe_grant)
+            return connection
+
+        monkeypatch.setattr(roles.psycopg2, "connect", intercepted_connect)
+        with pytest.raises(RuntimeError, match="injected ACL finalization failure"):
+            roles.configure_database_roles(
+                admin_url=_maintenance_url(),
+                database_names=(role_database.database_name,),
+                deploy_password=role_database.deploy_password,
+                runtime_password=role_database.runtime_password,
+                deploy_role=role_database.deploy_role,
+                runtime_role=role_database.runtime_role,
+            )
+        assert raised
+
+        maintenance = real_connect(
+            _maintenance_url(), dbname=role_database.database_name
+        )
+        try:
+            with maintenance.cursor() as cursor:
+                cursor.execute(
+                    "SELECT has_table_privilege(%s, 'bootstrap_acl_probe', 'SELECT'), "
+                    "has_table_privilege(%s, 'bootstrap_acl_probe', 'INSERT'), "
+                    "has_table_privilege(%s, 'decision_briefs', 'INSERT'), "
+                    "has_table_privilege(%s, 'archie_command_capability_keys', 'SELECT'), "
+                    "(SELECT rolcanlogin FROM pg_roles WHERE rolname = %s)",
+                    (role_database.runtime_role,) * 5,
+                )
+                assert cursor.fetchone() == (False, False, False, False, False)
+        finally:
+            maintenance.close()
+    finally:
+        deploy_engine.dispose()
+
+
+def test_concurrent_runtime_cannot_observe_acl_bootstrap_intermediate_state(
+    guarded_runtime_database,
+):
+    """Catches runtime attempts reading keys or forging drafts during ACL repair."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = guarded_runtime_database
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    bootstrap_finished = threading.Event()
+    reader_ready = threading.Event()
+    writer_ready = threading.Event()
+    reader_finished = threading.Event()
+    writer_finished = threading.Event()
+    secret_read_succeeded = threading.Event()
+    forged_write_committed = threading.Event()
+
+    def connect_runtime():
+        return psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            dbname=role_database.database_name,
+            user=role_database.runtime_role,
+            password=role_database.runtime_password,
+            connect_timeout=2,
+        )
+
+    def read_attacker():
+        first_attempt = True
+        while True:
+            post_bootstrap_attempt = bootstrap_finished.is_set()
+            connection = None
+            try:
+                connection = connect_runtime()
+                with connection.cursor() as cursor:
+                    cursor.execute("SET statement_timeout = '3s'")
+                    cursor.execute(
+                        "SELECT secret IS NOT NULL "
+                        "FROM archie_command_capability_keys LIMIT 1"
+                    )
+                    if cursor.fetchone() == (True,):
+                        secret_read_succeeded.set()
+            except psycopg2.Error:
+                pass
+            finally:
+                if connection is not None:
+                    connection.close()
+            if first_attempt:
+                reader_ready.set()
+                first_attempt = False
+            if post_bootstrap_attempt:
+                reader_finished.set()
+                return
+
+    def write_attacker():
+        first_attempt = True
+        while True:
+            post_bootstrap_attempt = bootstrap_finished.is_set()
+            connection = None
+            try:
+                connection = connect_runtime()
+                with connection.cursor() as cursor:
+                    cursor.execute("SET statement_timeout = '3s'")
+                    cursor.execute(
+                        "INSERT INTO decision_briefs "
+                        "(organization_id, workstream_id, status, revision) "
+                        "VALUES (91001, 92001, 'draft', 1)"
+                    )
+                connection.commit()
+                forged_write_committed.set()
+            except psycopg2.Error:
+                if connection is not None:
+                    try:
+                        connection.rollback()
+                    except psycopg2.Error:
+                        pass
+            finally:
+                if connection is not None:
+                    connection.close()
+            if first_attempt:
+                writer_ready.set()
+                first_attempt = False
+            if post_bootstrap_attempt:
+                writer_finished.set()
+                return
+
+    reader = threading.Thread(target=read_attacker, daemon=True)
+    writer = threading.Thread(target=write_attacker, daemon=True)
+    reader.start()
+    writer.start()
+    assert reader_ready.wait(10)
+    assert writer_ready.wait(10)
+
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    bootstrap_finished.set()
+    assert reader_finished.wait(15)
+    assert writer_finished.wait(15)
+    reader.join(timeout=5)
+    writer.join(timeout=5)
+
+    assert secret_read_succeeded.is_set() is False
+    assert forged_write_committed.is_set() is False
+
+    maintenance = psycopg2.connect(
+        _maintenance_url(), dbname=role_database.database_name
+    )
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM decision_briefs "
+                "WHERE organization_id = 91001 AND workstream_id = 92001"
+            )
+            assert cursor.fetchone() == (0,)
+    finally:
+        maintenance.close()
 
 
 def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(

@@ -26,6 +26,11 @@ from app.models.transformation_evidence import (
     EvidenceHeadEvent,
     EvidenceRecord,
 )
+from scripts.database.transformation_privilege_policy import (
+    PROTECTED_RUNTIME_TABLE_PRIVILEGES,
+    PROTECTED_RUNTIME_UPDATE_COLUMNS,
+    RUNTIME_EXECUTE_FUNCTIONS,
+)
 
 
 TRANSFORMATION_RUNTIME_ROLE = "archie_runtime"
@@ -2402,25 +2407,7 @@ _CITATION_INSERT_TRIGGER_SPECS = (
 )
 
 
-_IMMUTABLE_TABLES = (
-    "operation_results",
-    "transformation_outbox_events",
-    "candidate_signals",
-    "evidence_records",
-    "evidence_head_events",
-    "transformation_option_versions",
-    "decision_brief_versions",
-    "decision_brief_option_citations",
-    "decision_brief_evidence_citations",
-    "decision_events",
-)
-
-
-_COMMAND_TABLES = _IMMUTABLE_TABLES + (
-    "command_idempotency_records",
-    "evidence_claim_heads",
-    "decision_briefs",
-)
+_COMMAND_TABLES = tuple(PROTECTED_RUNTIME_TABLE_PRIVILEGES)
 
 
 def _normalise_function_body(body: str) -> str:
@@ -3072,22 +3059,14 @@ def ensure_transformation_db_guards(
                 f"REVOKE ALL ON FUNCTION {qualified_function}() "
                 f"FROM {runtime_role_identifier}"
             )
-        connection.exec_driver_sql(
-            f"GRANT EXECUTE ON FUNCTION {qualified_advance}({advance_signature}) "
-            f"TO {runtime_role_identifier}"
-        )
-        connection.exec_driver_sql(
-            f"GRANT EXECUTE ON FUNCTION {qualified_freeze}({freeze_signature}) "
-            f"TO {runtime_role_identifier}"
-        )
-        connection.exec_driver_sql(
-            f"GRANT EXECUTE ON FUNCTION {qualified_claim}({claim_signature}) "
-            f"TO {runtime_role_identifier}"
-        )
-        connection.exec_driver_sql(
-            f"GRANT EXECUTE ON FUNCTION {qualified_create_brief}"
-            f"({create_brief_signature}) TO {runtime_role_identifier}"
-        )
+        for function_name, signature in RUNTIME_EXECUTE_FUNCTIONS:
+            qualified_function = _qualified_name(
+                connection, quoted_schema, function_name
+            )
+            connection.exec_driver_sql(
+                f"GRANT EXECUTE ON FUNCTION {qualified_function}({signature}) "
+                f"TO {runtime_role_identifier}"
+            )
     _repair_triggers(connection, schema, quoted_schema)
     # The runtime role gets only the columns required by the service protocol.
     # It never owns these objects and has no DELETE or TRUNCATE privilege.
@@ -3111,47 +3090,74 @@ def ensure_transformation_db_guards(
                     f"REVOKE ALL ON TABLE {qualified_table} "
                     f"FROM {runtime_role_identifier}"
                 )
-                privileges = (
-                    "SELECT"
-                    if table_name
-                    in {
-                        "command_idempotency_records",
-                        "evidence_head_events",
-                        "decision_briefs",
-                        "decision_brief_versions",
-                        "decision_brief_option_citations",
-                        "decision_brief_evidence_citations",
-                    }
-                    else "SELECT, INSERT"
+                privileges = ", ".join(
+                    PROTECTED_RUNTIME_TABLE_PRIVILEGES[table_name]
                 )
                 connection.exec_driver_sql(
                     f"GRANT {privileges} ON TABLE {qualified_table} "
                     f"TO {runtime_role_identifier}"
                 )
-        qualified_outbox = _qualified_name(
-            connection, quoted_schema, "transformation_outbox_events"
-        )
-        if connection.exec_driver_sql(
-            "SELECT to_regclass(%s) IS NOT NULL", (qualified_outbox,)
-        ).scalar():
-            connection.exec_driver_sql(
-                "GRANT UPDATE (delivery_attempts, published_at) ON TABLE "
-                f"{qualified_outbox} "
-                f"TO {runtime_role_identifier}"
+        for table_name, columns in PROTECTED_RUNTIME_UPDATE_COLUMNS.items():
+            qualified_table = _qualified_name(
+                connection, quoted_schema, table_name
             )
-        qualified_receipts = _qualified_name(
-            connection, quoted_schema, "command_idempotency_records"
-        )
-        if connection.exec_driver_sql(
-            "SELECT to_regclass(%s) IS NOT NULL", (qualified_receipts,)
-        ).scalar():
-            connection.exec_driver_sql(
-                "GRANT UPDATE (status, lease_generation, claim_token, "
-                "claimant_request_id, lease_expires_at, operation_result_id, "
-                "attempt_count, last_error_class, updated_at, completed_at) "
-                f"ON TABLE {qualified_receipts} "
-                f"TO {runtime_role_identifier}"
+            if connection.exec_driver_sql(
+                "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
+            ).scalar():
+                quoted_columns = ", ".join(
+                    connection.dialect.identifier_preparer.quote(column)
+                    for column in columns
+                )
+                connection.exec_driver_sql(
+                    f"GRANT UPDATE ({quoted_columns}) ON TABLE {qualified_table} "
+                    f"TO {runtime_role_identifier}"
+                )
+        for table_name, privileges in PROTECTED_RUNTIME_TABLE_PRIVILEGES.items():
+            qualified_table = _qualified_name(
+                connection, quoted_schema, table_name
             )
+            if not connection.exec_driver_sql(
+                "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
+            ).scalar():
+                continue
+            sequence_names = connection.exec_driver_sql(
+                """
+                SELECT sequence.relname
+                FROM pg_class sequence
+                JOIN pg_namespace sequence_namespace
+                  ON sequence_namespace.oid = sequence.relnamespace
+                JOIN pg_depend ownership
+                  ON ownership.classid = 'pg_class'::regclass
+                 AND ownership.objid = sequence.oid
+                 AND ownership.refclassid = 'pg_class'::regclass
+                 AND ownership.deptype IN ('a', 'i')
+                JOIN pg_class owned_table ON owned_table.oid = ownership.refobjid
+                JOIN pg_namespace table_namespace
+                  ON table_namespace.oid = owned_table.relnamespace
+                WHERE sequence.relkind = 'S'
+                  AND sequence_namespace.nspname = %s
+                  AND table_namespace.nspname = %s
+                  AND owned_table.relname = %s
+                ORDER BY sequence.relname
+                """,
+                (schema, schema, table_name),
+            ).scalars().all()
+            for sequence_name in sequence_names:
+                qualified_sequence = _qualified_name(
+                    connection, quoted_schema, sequence_name
+                )
+                connection.exec_driver_sql(
+                    f"REVOKE ALL ON SEQUENCE {qualified_sequence} FROM PUBLIC"
+                )
+                connection.exec_driver_sql(
+                    f"REVOKE ALL ON SEQUENCE {qualified_sequence} "
+                    f"FROM {runtime_role_identifier}"
+                )
+                if "INSERT" in privileges:
+                    connection.exec_driver_sql(
+                        f"GRANT USAGE, SELECT ON SEQUENCE {qualified_sequence} "
+                        f"TO {runtime_role_identifier}"
+                    )
     remaining_drift = inspect_transformation_db_guards(connection)
     if remaining_drift:
         raise RuntimeError(
