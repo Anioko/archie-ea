@@ -104,11 +104,125 @@ def _runtime_membership_snapshot(
     return outbound_roles, direct_inbound_roles, transitive_inbound_roles
 
 
+def _rehome_dependent_membership_grants(
+    cursor, *, grantor_role_names: tuple[str, ...]
+) -> tuple[tuple[str, str, bool, bool, bool], ...]:
+    """Duplicate dependent grants under the bootstrap administrator."""
+    if not grantor_role_names:
+        return ()
+    cursor.execute(
+        """
+        SELECT granted.rolname,
+               member.rolname,
+               membership.admin_option,
+               membership.inherit_option,
+               membership.set_option
+        FROM pg_auth_members membership
+        JOIN pg_roles granted ON granted.oid = membership.roleid
+        JOIN pg_roles member ON member.oid = membership.member
+        JOIN pg_roles grantor ON grantor.oid = membership.grantor
+        WHERE grantor.rolname = ANY(%s)
+        ORDER BY granted.rolname, member.rolname, grantor.rolname
+        """,
+        (list(grantor_role_names),),
+    )
+    dependent_grants = tuple(cursor.fetchall())
+    for granted_role, member_role, admin, inherit, can_set in dependent_grants:
+        cursor.execute(
+            sql.SQL(
+                "GRANT {} TO {} WITH ADMIN {}, INHERIT {}, SET {} "
+                "GRANTED BY CURRENT_USER"
+            ).format(
+                sql.Identifier(granted_role),
+                sql.Identifier(member_role),
+                sql.SQL("TRUE" if admin else "FALSE"),
+                sql.SQL("TRUE" if inherit else "FALSE"),
+                sql.SQL("TRUE" if can_set else "FALSE"),
+            )
+        )
+    for granted_role, member_role, admin, inherit, can_set in dependent_grants:
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_auth_members membership
+                JOIN pg_roles granted ON granted.oid = membership.roleid
+                JOIN pg_roles member ON member.oid = membership.member
+                JOIN pg_roles grantor ON grantor.oid = membership.grantor
+                WHERE granted.rolname = %s
+                  AND member.rolname = %s
+                  AND membership.admin_option = %s
+                  AND membership.inherit_option = %s
+                  AND membership.set_option = %s
+                  AND grantor.rolname <> ALL(%s)
+            )
+            """,
+            (
+                granted_role,
+                member_role,
+                admin,
+                inherit,
+                can_set,
+                list(grantor_role_names),
+            ),
+        )
+        if cursor.fetchone() != (True,):
+            raise RuntimeError(
+                "runtime membership dependency re-home could not be proven: "
+                f"grant={granted_role!r}, member={member_role!r}"
+            )
+    return dependent_grants
+
+
+def _verify_rehomed_membership_grants(
+    cursor,
+    *,
+    dependent_grants: tuple[tuple[str, str, bool, bool, bool], ...],
+    former_grantor_role_names: tuple[str, ...],
+) -> None:
+    for granted_role, member_role, admin, inherit, can_set in dependent_grants:
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_auth_members membership
+                JOIN pg_roles granted ON granted.oid = membership.roleid
+                JOIN pg_roles member ON member.oid = membership.member
+                JOIN pg_roles grantor ON grantor.oid = membership.grantor
+                WHERE granted.rolname = %s
+                  AND member.rolname = %s
+                  AND membership.admin_option = %s
+                  AND membership.inherit_option = %s
+                  AND membership.set_option = %s
+                  AND grantor.rolname <> ALL(%s)
+            )
+            """,
+            (
+                granted_role,
+                member_role,
+                admin,
+                inherit,
+                can_set,
+                list(former_grantor_role_names),
+            ),
+        )
+        if cursor.fetchone() != (True,):
+            raise RuntimeError(
+                "runtime membership dependency was lost during cleanup: "
+                f"grant={granted_role!r}, member={member_role!r}"
+            )
+
+
 def _strip_runtime_memberships(cursor, *, runtime_role: str) -> tuple[str, ...]:
     """Remove every inherited/SET ROLE path into or out of runtime."""
     outbound, direct_inbound, transitive_inbound = _runtime_membership_snapshot(
         cursor,
         runtime_role=runtime_role,
+    )
+    former_grantors = tuple(dict.fromkeys((runtime_role, *transitive_inbound)))
+    dependent_grants = _rehome_dependent_membership_grants(
+        cursor,
+        grantor_role_names=former_grantors,
     )
     for granted_role in outbound:
         cursor.execute(
@@ -124,6 +238,11 @@ def _strip_runtime_memberships(cursor, *, runtime_role: str) -> tuple[str, ...]:
                 sql.Identifier(member_role),
             )
         )
+    _verify_rehomed_membership_grants(
+        cursor,
+        dependent_grants=dependent_grants,
+        former_grantor_role_names=former_grantors,
+    )
     remaining_outbound, remaining_inbound, _ = _runtime_membership_snapshot(
         cursor,
         runtime_role=runtime_role,
@@ -179,7 +298,7 @@ def _verify_runtime_login_state(
 def _recover_runtime_nologin(
     *, admin_url: str, runtime_role: str, runtime_password: str
 ) -> None:
-    """Best-effort recovery used on every failed bootstrap phase."""
+    """Durably fence login, memberships, and already-connected sessions."""
     with psycopg2.connect(_psycopg_url(admin_url)) as recovery:
         with recovery.cursor() as cursor:
             _ensure_role(
@@ -188,10 +307,27 @@ def _recover_runtime_nologin(
                 password=runtime_password,
                 can_login=False,
             )
+        recovery.commit()
     _verify_runtime_login_state(
         admin_url=admin_url,
         runtime_role=runtime_role,
         expected_can_login=False,
+    )
+    with psycopg2.connect(_psycopg_url(admin_url)) as membership_recovery:
+        with membership_recovery.cursor() as cursor:
+            inbound_role_names = _strip_runtime_memberships(
+                cursor,
+                runtime_role=runtime_role,
+            )
+        membership_recovery.commit()
+    _verify_runtime_memberships_cleared(
+        admin_url=admin_url,
+        runtime_role=runtime_role,
+    )
+    _terminate_runtime_capable_sessions(
+        admin_url=admin_url,
+        runtime_role=runtime_role,
+        inbound_role_names=inbound_role_names,
     )
 
 
@@ -214,7 +350,6 @@ def _verify_runtime_memberships_cleared(
 def _runtime_capable_session_pids(
     cursor,
     *,
-    database_names: tuple[str, ...],
     role_names: tuple[str, ...],
 ) -> tuple[int, ...]:
     cursor.execute(
@@ -222,92 +357,100 @@ def _runtime_capable_session_pids(
         SELECT activity.pid
         FROM pg_stat_activity activity
         WHERE activity.usename = ANY(%s)
-          AND activity.datname = ANY(%s)
           AND activity.pid <> pg_backend_pid()
         ORDER BY activity.pid
         """,
-        (list(role_names), list(database_names)),
+        (list(role_names),),
     )
     return tuple(row[0] for row in cursor.fetchall())
 
 
+def _runtime_capable_session_pids_from_fresh_connection(
+    *, admin_url: str, role_names: tuple[str, ...]
+) -> tuple[int, ...]:
+    with psycopg2.connect(_psycopg_url(admin_url)) as proof:
+        proof.set_session(isolation_level="READ COMMITTED")
+        with proof.cursor() as cursor:
+            return _runtime_capable_session_pids(
+                cursor,
+                role_names=role_names,
+            )
+
+
 def _terminate_runtime_capable_sessions(
-    connection,
     *,
-    database_names: tuple[str, ...],
+    admin_url: str,
     runtime_role: str,
     inbound_role_names: tuple[str, ...],
 ) -> None:
     """Terminate and prove absence of every session able to use runtime ACLs."""
     role_names = tuple(dict.fromkeys((runtime_role, *inbound_role_names)))
-    with connection.cursor() as cursor:
-        pids = _runtime_capable_session_pids(
-            cursor,
-            database_names=database_names,
-            role_names=role_names,
-        )
-        cursor.execute(
-            "SELECT to_regprocedure("
-            "'pg_catalog.pg_terminate_backend(integer,bigint)') IS NOT NULL"
-        )
-        supports_timeout = cursor.fetchone()[0]
-        termination_results: tuple[tuple[int, bool], ...] = ()
-        if pids:
-            if supports_timeout:
-                cursor.execute(
-                    """
-                    SELECT activity.pid,
-                           pg_catalog.pg_terminate_backend(activity.pid, %s)
-                    FROM pg_stat_activity activity
-                    WHERE activity.pid = ANY(%s)
-                      AND activity.usename = ANY(%s)
-                      AND activity.datname = ANY(%s)
-                    ORDER BY activity.pid
-                    """,
-                    (
-                        SESSION_TERMINATION_TIMEOUT_MS,
-                        list(pids),
-                        list(role_names),
-                        list(database_names),
-                    ),
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT activity.pid,
-                           pg_catalog.pg_terminate_backend(activity.pid)
-                    FROM pg_stat_activity activity
-                    WHERE activity.pid = ANY(%s)
-                      AND activity.usename = ANY(%s)
-                      AND activity.datname = ANY(%s)
-                    ORDER BY activity.pid
-                    """,
-                    (list(pids), list(role_names), list(database_names)),
-                )
-            termination_results = tuple(cursor.fetchall())
-    connection.commit()
-
-    failed_pids = tuple(pid for pid, terminated in termination_results if not terminated)
-    deadline = time.monotonic() + SESSION_TERMINATION_POLL_SECONDS
-    while True:
-        with connection.cursor() as cursor:
-            remaining = _runtime_capable_session_pids(
+    with psycopg2.connect(_psycopg_url(admin_url)) as termination:
+        termination.set_session(isolation_level="READ COMMITTED")
+        with termination.cursor() as cursor:
+            pids = _runtime_capable_session_pids(
                 cursor,
-                database_names=database_names,
                 role_names=role_names,
             )
-        connection.commit()
+            cursor.execute(
+                "SELECT to_regprocedure("
+                "'pg_catalog.pg_terminate_backend(integer,bigint)') IS NOT NULL"
+            )
+            supports_timeout = cursor.fetchone()[0]
+            termination_results: tuple[tuple[int, bool], ...] = ()
+            if pids:
+                if supports_timeout:
+                    cursor.execute(
+                        """
+                        SELECT activity.pid,
+                               pg_catalog.pg_terminate_backend(activity.pid, %s)
+                        FROM pg_stat_activity activity
+                        WHERE activity.pid = ANY(%s)
+                          AND activity.usename = ANY(%s)
+                        ORDER BY activity.pid
+                        """,
+                        (
+                            SESSION_TERMINATION_TIMEOUT_MS,
+                            list(pids),
+                            list(role_names),
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT activity.pid,
+                               pg_catalog.pg_terminate_backend(activity.pid)
+                        FROM pg_stat_activity activity
+                        WHERE activity.pid = ANY(%s)
+                          AND activity.usename = ANY(%s)
+                        ORDER BY activity.pid
+                        """,
+                        (list(pids), list(role_names)),
+                    )
+                termination_results = tuple(cursor.fetchall())
+
+    returned_pids = tuple(pid for pid, _terminated in termination_results)
+    failed_pids = tuple(
+        pid for pid, terminated in termination_results if terminated is not True
+    )
+    if returned_pids != pids or failed_pids:
+        raise RuntimeError(
+            "runtime-capable session termination result was not exact and true; "
+            f"requested pids={pids!r}, returned={termination_results!r}"
+        )
+
+    deadline = time.monotonic() + SESSION_TERMINATION_POLL_SECONDS
+    while True:
+        remaining = _runtime_capable_session_pids_from_fresh_connection(
+            admin_url=admin_url,
+            role_names=role_names,
+        )
         if not remaining:
             return
-        if failed_pids or time.monotonic() >= deadline:
-            detail = (
-                f"; pg_terminate_backend returned false for {failed_pids!r}"
-                if failed_pids
-                else ""
-            )
+        if time.monotonic() >= deadline:
             raise RuntimeError(
                 "runtime-capable session termination could not be proven; "
-                f"remaining pids={remaining!r}{detail}"
+                f"remaining pids={remaining!r}"
             )
         time.sleep(SESSION_TERMINATION_POLL_INTERVAL_SECONDS)
 
@@ -461,6 +604,14 @@ def _configure_table_privileges(cursor, *, runtime_role: str) -> None:
         )
         columns = _relation_columns(cursor, table_name=table_name)
         if columns:
+            cursor.execute(
+                sql.SQL(
+                    "REVOKE ALL PRIVILEGES ({}) ON TABLE {} FROM PUBLIC"
+                ).format(
+                    sql.SQL(", ").join(map(sql.Identifier, columns)),
+                    table,
+                )
+            )
             cursor.execute(
                 sql.SQL(
                     "REVOKE ALL PRIVILEGES ({}) ON TABLE {} FROM {}"
@@ -631,7 +782,19 @@ def _configure_default_privileges(
 ) -> None:
     deploy = sql.Identifier(deploy_role)
     runtime = sql.Identifier(runtime_role)
-    for object_type in ("TABLES", "SEQUENCES"):
+    for object_type in ("TABLES", "SEQUENCES", "FUNCTIONS"):
+        cursor.execute(
+            sql.SQL(
+                "ALTER DEFAULT PRIVILEGES FOR ROLE {} "
+                "REVOKE ALL PRIVILEGES ON {} FROM PUBLIC"
+            ).format(deploy, sql.SQL(object_type))
+        )
+        cursor.execute(
+            sql.SQL(
+                "ALTER DEFAULT PRIVILEGES FOR ROLE {} "
+                "REVOKE ALL PRIVILEGES ON {} FROM {}"
+            ).format(deploy, sql.SQL(object_type), runtime)
+        )
         cursor.execute(
             sql.SQL(
                 "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
@@ -644,30 +807,6 @@ def _configure_default_privileges(
                 "REVOKE ALL PRIVILEGES ON {} FROM {}"
             ).format(deploy, sql.SQL(object_type), runtime)
         )
-    cursor.execute(
-        sql.SQL(
-            "ALTER DEFAULT PRIVILEGES FOR ROLE {} "
-            "REVOKE ALL PRIVILEGES ON FUNCTIONS FROM PUBLIC"
-        ).format(deploy)
-    )
-    cursor.execute(
-        sql.SQL(
-            "ALTER DEFAULT PRIVILEGES FOR ROLE {} "
-            "REVOKE ALL PRIVILEGES ON FUNCTIONS FROM {}"
-        ).format(deploy, runtime)
-    )
-    cursor.execute(
-        sql.SQL(
-            "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-            "REVOKE ALL PRIVILEGES ON FUNCTIONS FROM PUBLIC"
-        ).format(deploy)
-    )
-    cursor.execute(
-        sql.SQL(
-            "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-            "REVOKE ALL PRIVILEGES ON FUNCTIONS FROM {}"
-        ).format(deploy, runtime)
-    )
 
 
 def _acl_verification_failure(
@@ -909,33 +1048,59 @@ def _verify_default_privileges(
 ) -> None:
     cursor.execute(
         """
-        SELECT defaults.defaclobjtype,
-               COALESCE(namespace.nspname, '<global>'),
-               expanded.privilege_type
-        FROM pg_default_acl defaults
-        LEFT JOIN pg_namespace namespace
-          ON namespace.oid = defaults.defaclnamespace
-        CROSS JOIN LATERAL aclexplode(defaults.defaclacl) expanded
-        JOIN pg_roles deploy ON deploy.oid = defaults.defaclrole
+        WITH object_types(object_type) AS (
+            VALUES ('r'::"char"), ('S'::"char"), ('f'::"char")
+        ),
+        deploy AS (
+            SELECT oid FROM pg_roles WHERE rolname = %s
+        ),
+        global_defaults AS (
+            SELECT object_types.object_type,
+                   COALESCE(defaults.defaclacl,
+                            acldefault(object_types.object_type, deploy.oid)) AS acl
+            FROM object_types
+            CROSS JOIN deploy
+            LEFT JOIN pg_default_acl defaults
+              ON defaults.defaclrole = deploy.oid
+             AND defaults.defaclnamespace = 0
+             AND defaults.defaclobjtype = object_types.object_type
+        ),
+        schema_defaults AS (
+            SELECT defaults.defaclobjtype AS object_type,
+                   defaults.defaclacl AS acl
+            FROM pg_default_acl defaults
+            JOIN deploy ON deploy.oid = defaults.defaclrole
+            JOIN pg_namespace namespace
+              ON namespace.oid = defaults.defaclnamespace
+            WHERE namespace.nspname = 'public'
+              AND defaults.defaclobjtype IN ('r', 'S', 'f')
+        ),
+        effective_acl AS (
+            SELECT global_defaults.object_type,
+                   '<global>'::text AS scope,
+                   expanded.grantee,
+                   expanded.privilege_type
+            FROM global_defaults
+            CROSS JOIN LATERAL aclexplode(global_defaults.acl) expanded
+          UNION ALL
+            SELECT schema_defaults.object_type,
+                   'public'::text AS scope,
+                   expanded.grantee,
+                   expanded.privilege_type
+            FROM schema_defaults
+            CROSS JOIN LATERAL aclexplode(schema_defaults.acl) expanded
+        )
+        SELECT effective_acl.object_type,
+               effective_acl.scope,
+               effective_acl.privilege_type
+        FROM effective_acl
         JOIN pg_roles runtime ON runtime.rolname = %s
-        WHERE deploy.rolname = %s
-          AND expanded.grantee IN (0, runtime.oid)
-          AND (
-              (
-                  defaults.defaclobjtype IN ('r', 'S')
-                  AND namespace.nspname = 'public'
-              )
-              OR (
-                  defaults.defaclobjtype = 'f'
-                  AND (
-                      defaults.defaclnamespace = 0
-                      OR namespace.nspname = 'public'
-                  )
-              )
-          )
-        ORDER BY defaults.defaclobjtype, namespace.nspname, expanded.privilege_type
+        WHERE effective_acl.grantee IN (0, runtime.oid)
+        ORDER BY effective_acl.object_type,
+                 effective_acl.scope,
+                 effective_acl.privilege_type
         """,
-        (runtime_role, deploy_role),
+        (deploy_role, runtime_role),
     )
     leaked_defaults = tuple(cursor.fetchall())
     if leaked_defaults:
@@ -1203,8 +1368,7 @@ def configure_database_roles(
         )
 
         _terminate_runtime_capable_sessions(
-            coordinator,
-            database_names=names,
+            admin_url=admin_url,
             runtime_role=runtime_role,
             inbound_role_names=inbound_role_names,
         )
@@ -1250,8 +1414,8 @@ def configure_database_roles(
             )
         except BaseException as fence_error:
             raise RuntimeError(
-                "database role bootstrap failed and runtime NOLOGIN "
-                "could not be proven"
+                "database role bootstrap failed and the runtime NOLOGIN, "
+                "membership, and session termination fence could not be proven"
             ) from fence_error
         raise
     finally:

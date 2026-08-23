@@ -236,6 +236,144 @@ class _FailedTerminationConnection:
         )
 
 
+class _TerminationResultCursor:
+    """Override one termination result after the real attacker has gone away."""
+
+    def __init__(self, cursor, override_result):
+        self._cursor = cursor
+        self._override_result = override_result
+        self._fake_rows = None
+
+    def __enter__(self):
+        self._cursor.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._cursor.__exit__(exc_type, exc_value, traceback)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+    def execute(self, statement, parameters=None):
+        rendered = " ".join(_render_statement(self._cursor, statement).upper().split())
+        if (
+            "PG_TERMINATE_BACKEND" in rendered
+            and "FROM PG_STAT_ACTIVITY" in rendered
+            and self._override_result is not None
+        ):
+            override = self._override_result()
+            if override is not None:
+                self._fake_rows = list(override)
+                return None
+        self._fake_rows = None
+        return self._cursor.execute(statement, parameters)
+
+    def fetchall(self):
+        if self._fake_rows is not None:
+            rows = self._fake_rows
+            self._fake_rows = []
+            return rows
+        return self._cursor.fetchall()
+
+    def fetchone(self):
+        if self._fake_rows is not None:
+            if not self._fake_rows:
+                return None
+            return self._fake_rows.pop(0)
+        return self._cursor.fetchone()
+
+
+class _TerminationResultConnection:
+    def __init__(self, connection, override_result):
+        object.__setattr__(self, "_connection", connection)
+        object.__setattr__(self, "_override_result", override_result)
+
+    def __enter__(self):
+        self._connection.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return self._connection.__exit__(exc_type, exc_value, traceback)
+        finally:
+            self._connection.close()
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._connection, name, value)
+
+    def cursor(self, *args, **kwargs):
+        return _TerminationResultCursor(
+            self._connection.cursor(*args, **kwargs),
+            self._override_result,
+        )
+
+
+class _LegacyTerminationCursor:
+    """Make a current PostgreSQL server exercise the one-argument fallback."""
+
+    def __init__(self, cursor, observe_statement):
+        self._cursor = cursor
+        self._observe_statement = observe_statement
+        self._supports_timeout_result = None
+
+    def __enter__(self):
+        self._cursor.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._cursor.__exit__(exc_type, exc_value, traceback)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+    def execute(self, statement, parameters=None):
+        rendered = " ".join(_render_statement(self._cursor, statement).upper().split())
+        self._observe_statement(rendered)
+        if "TO_REGPROCEDURE" in rendered and "PG_TERMINATE_BACKEND" in rendered:
+            self._supports_timeout_result = (False,)
+            return None
+        self._supports_timeout_result = None
+        return self._cursor.execute(statement, parameters)
+
+    def fetchone(self):
+        if self._supports_timeout_result is not None:
+            result = self._supports_timeout_result
+            self._supports_timeout_result = None
+            return result
+        return self._cursor.fetchone()
+
+
+class _LegacyTerminationConnection:
+    def __init__(self, connection, observe_statement):
+        object.__setattr__(self, "_connection", connection)
+        object.__setattr__(self, "_observe_statement", observe_statement)
+
+    def __enter__(self):
+        self._connection.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return self._connection.__exit__(exc_type, exc_value, traceback)
+        finally:
+            self._connection.close()
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._connection, name, value)
+
+    def cursor(self, *args, **kwargs):
+        return _LegacyTerminationCursor(
+            self._connection.cursor(*args, **kwargs),
+            self._observe_statement,
+        )
+
+
 class _SkippingCursor:
     """Skip one deliberately selected ACL statement without faking verification."""
 
@@ -1530,6 +1668,242 @@ def test_new_tables_have_no_implicit_runtime_access_until_acl_finalization(
         deploy_engine.dispose()
 
 
+def test_global_table_and_sequence_default_acl_drift_is_removed(
+    isolated_role_database,
+):
+    """Catches schema-only repair leaving additive global defaults effective."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = isolated_role_database
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    deploy = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.deploy_role,
+        password=role_database.deploy_password,
+    )
+    deploy.autocommit = True
+    try:
+        with deploy.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO PUBLIC"
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES GRANT INSERT ON TABLES TO {}"
+                ).format(pg_sql.Identifier(role_database.runtime_role))
+            )
+            cursor.execute(
+                pg_sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES GRANT SELECT ON SEQUENCES TO PUBLIC"
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES GRANT USAGE ON SEQUENCES TO {}"
+                ).format(pg_sql.Identifier(role_database.runtime_role))
+            )
+
+        configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+
+        with deploy.cursor() as cursor:
+            cursor.execute(
+                "CREATE TABLE global_default_future_records "
+                "(id serial PRIMARY KEY, payload text NOT NULL)"
+            )
+            cursor.execute("CREATE SEQUENCE global_default_future_standalone_seq")
+
+        maintenance = psycopg2.connect(
+            _maintenance_url(), dbname=role_database.database_name
+        )
+        try:
+            with maintenance.cursor() as cursor:
+                cursor.execute(
+                    "SELECT relation.relname, "
+                    "NOT EXISTS ("
+                    "SELECT 1 FROM aclexplode(relation.relacl) acl "
+                    "JOIN pg_roles runtime ON runtime.rolname = %s "
+                    "WHERE acl.grantee IN (0, runtime.oid)) "
+                    "FROM pg_class relation "
+                    "JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace "
+                    "WHERE namespace.nspname = 'public' "
+                    "AND relation.relname = ANY(%s) "
+                    "ORDER BY relation.relname",
+                    (
+                        role_database.runtime_role,
+                        [
+                            "global_default_future_records",
+                            "global_default_future_records_id_seq",
+                            "global_default_future_standalone_seq",
+                        ],
+                    ),
+                )
+                assert cursor.fetchall() == [
+                    ("global_default_future_records", True),
+                    ("global_default_future_records_id_seq", True),
+                    ("global_default_future_standalone_seq", True),
+                ]
+        finally:
+            maintenance.close()
+    finally:
+        deploy.close()
+
+
+def test_default_acl_verifier_accounts_for_builtin_public_function_execute(
+    isolated_role_database,
+    monkeypatch,
+):
+    """Catches an absent global function row hiding PostgreSQL's PUBLIC default."""
+    import scripts.database.configure_roles as roles
+
+    role_database = isolated_role_database
+    roles.configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    deploy = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.deploy_role,
+        password=role_database.deploy_password,
+    )
+    deploy.autocommit = True
+    with deploy.cursor() as cursor:
+        cursor.execute(
+            "ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC"
+        )
+    deploy.close()
+
+    real_connect = psycopg2.connect
+    skipped = False
+
+    def should_skip(statement):
+        nonlocal skipped
+        normalized = " ".join(statement.replace('"', "").upper().split())
+        is_global_public_function_revoke = (
+            normalized.startswith("ALTER DEFAULT PRIVILEGES FOR ROLE ")
+            and " IN SCHEMA " not in normalized
+            and "ON FUNCTIONS FROM PUBLIC" in normalized
+        )
+        if is_global_public_function_revoke:
+            skipped = True
+            return True
+        return False
+
+    def intercepted_connect(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        if kwargs.get("dbname") == role_database.database_name:
+            return _SkippingConnection(connection, should_skip)
+        return connection
+
+    monkeypatch.setattr(roles.psycopg2, "connect", intercepted_connect)
+    with pytest.raises(RuntimeError, match="default privileges"):
+        roles.configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+    assert skipped
+
+
+def test_public_column_acl_drift_converges_independently_of_table_acl_repair(
+    guarded_runtime_database,
+    monkeypatch,
+):
+    """Catches PUBLIC column grants surviving when only table ACLs are revoked."""
+    import scripts.database.configure_roles as roles
+
+    role_database = guarded_runtime_database
+    real_connect = psycopg2.connect
+    maintenance = real_connect(
+        _maintenance_url(), dbname=role_database.database_name
+    )
+    maintenance.autocommit = True
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "GRANT SELECT (secret) ON archie_command_capability_keys TO PUBLIC"
+            )
+            cursor.execute(
+                pg_sql.SQL(
+                    "GRANT SELECT (secret) ON archie_command_capability_keys TO {}"
+                ).format(pg_sql.Identifier(role_database.runtime_role))
+            )
+
+        skipped = False
+
+        def should_skip(statement):
+            nonlocal skipped
+            normalized = " ".join(statement.replace('"', "").upper().split())
+            if (
+                normalized
+                == "REVOKE ALL PRIVILEGES ON TABLE PUBLIC.ARCHIE_COMMAND_CAPABILITY_KEYS FROM PUBLIC"
+            ):
+                skipped = True
+                return True
+            return False
+
+        def intercepted_connect(*args, **kwargs):
+            connection = real_connect(*args, **kwargs)
+            if kwargs.get("dbname") == role_database.database_name:
+                return _SkippingConnection(connection, should_skip)
+            return connection
+
+        monkeypatch.setattr(roles.psycopg2, "connect", intercepted_connect)
+        roles.configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+        assert skipped
+
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT has_column_privilege(%s, "
+                "'archie_command_capability_keys', 'secret', 'SELECT'), "
+                "NOT EXISTS ("
+                "SELECT 1 FROM pg_attribute attribute "
+                "CROSS JOIN LATERAL aclexplode(attribute.attacl) acl "
+                "WHERE attribute.attrelid = "
+                "'archie_command_capability_keys'::regclass "
+                "AND attribute.attname = 'secret' AND acl.grantee = 0)",
+                (role_database.runtime_role,),
+            )
+            assert cursor.fetchone() == (False, True)
+    finally:
+        maintenance.close()
+
+
 def test_role_bootstrap_after_guards_preserves_exact_runtime_acl(
     guarded_runtime_database,
 ):
@@ -1844,6 +2218,12 @@ def test_bootstrap_revokes_inbound_runtime_membership_and_terminates_all_session
             user=inbound_role,
             password=inbound_password,
         )
+        with inbound.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL("SET ROLE {}").format(
+                    pg_sql.Identifier(role_database.runtime_role)
+                )
+            )
         for connection in (direct, inbound):
             with connection.cursor() as cursor:
                 cursor.execute("SELECT count(*) FROM operation_results")
@@ -1968,6 +2348,351 @@ def test_bootstrap_revokes_inbound_runtime_membership_and_terminates_all_session
         maintenance.close()
 
 
+def test_bootstrap_terminates_runtime_session_in_non_target_database(
+    guarded_runtime_database,
+):
+    """Catches database-local polling of cluster-global runtime sessions."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = guarded_runtime_database
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    non_target_database = f"{role_database.database_name}_outside"
+    attacker = None
+    maintenance = psycopg2.connect(_maintenance_url())
+    maintenance.autocommit = True
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL("CREATE DATABASE {}").format(
+                    pg_sql.Identifier(non_target_database)
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                    pg_sql.Identifier(non_target_database),
+                    pg_sql.Identifier(role_database.runtime_role),
+                )
+            )
+
+        attacker = psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            dbname=non_target_database,
+            user=role_database.runtime_role,
+            password=role_database.runtime_password,
+        )
+        with attacker.cursor() as cursor:
+            cursor.execute("SELECT pg_backend_pid()")
+            attacker_pid = cursor.fetchone()[0]
+        attacker.rollback()
+
+        configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+
+        with pytest.raises(psycopg2.Error):
+            with attacker.cursor() as cursor:
+                cursor.execute("SELECT 1")
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM pg_stat_activity WHERE pid = %s",
+                (attacker_pid,),
+            )
+            assert cursor.fetchone() == (0,)
+    finally:
+        if attacker is not None:
+            attacker.close()
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = %s AND pid <> pg_backend_pid()",
+                (non_target_database,),
+            )
+            cursor.execute(
+                pg_sql.SQL("DROP DATABASE IF EXISTS {}").format(
+                    pg_sql.Identifier(non_target_database)
+                )
+            )
+        maintenance.close()
+
+
+def test_outbound_membership_cleanup_preserves_dependent_grants(
+    isolated_role_database,
+):
+    """Catches CASCADE deleting grants made through runtime's ADMIN option."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = isolated_role_database
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    parent_role = f"{role_database.runtime_role}_outbound"
+    dependent_role = f"{role_database.runtime_role}_dependent"
+    maintenance = psycopg2.connect(_maintenance_url())
+    maintenance.autocommit = True
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    runtime = None
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
+                    pg_sql.Identifier(parent_role)
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
+                    pg_sql.Identifier(dependent_role)
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("GRANT {} TO {} WITH ADMIN TRUE").format(
+                    pg_sql.Identifier(parent_role),
+                    pg_sql.Identifier(role_database.runtime_role),
+                )
+            )
+
+        runtime = psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            dbname=role_database.database_name,
+            user=role_database.runtime_role,
+            password=role_database.runtime_password,
+        )
+        runtime.autocommit = True
+        with runtime.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL(
+                    "GRANT {} TO {} WITH ADMIN TRUE, INHERIT FALSE, SET TRUE"
+                ).format(
+                    pg_sql.Identifier(parent_role),
+                    pg_sql.Identifier(dependent_role),
+                )
+            )
+        runtime.close()
+        runtime = None
+
+        configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT grantor.rolname, membership.admin_option, "
+                "membership.inherit_option, membership.set_option "
+                "FROM pg_auth_members membership "
+                "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                "JOIN pg_roles member ON member.oid = membership.member "
+                "JOIN pg_roles grantor ON grantor.oid = membership.grantor "
+                "WHERE granted.rolname = %s AND member.rolname = %s",
+                (parent_role, dependent_role),
+            )
+            dependent_grants = cursor.fetchall()
+            assert dependent_grants == [("postgres", True, False, True)]
+            cursor.execute(
+                "SELECT count(*) FROM pg_auth_members membership "
+                "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                "JOIN pg_roles member ON member.oid = membership.member "
+                "WHERE granted.rolname = %s AND member.rolname = %s",
+                (parent_role, role_database.runtime_role),
+            )
+            assert cursor.fetchone() == (0,)
+    finally:
+        if runtime is not None:
+            runtime.close()
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                    pg_sql.Identifier(dependent_role)
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                    pg_sql.Identifier(parent_role)
+                )
+            )
+        maintenance.close()
+
+
+@pytest.mark.parametrize("reported_result", ["false", "missing", "wrong_pid"])
+def test_every_requested_session_termination_requires_exact_true_result(
+    guarded_runtime_database,
+    monkeypatch,
+    reported_result,
+):
+    """Catches false or mismatched results hidden by a session exiting itself."""
+    import scripts.database.configure_roles as roles
+
+    role_database = guarded_runtime_database
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    attacker = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.runtime_role,
+        password=role_database.runtime_password,
+    )
+    with attacker.cursor() as cursor:
+        cursor.execute("SELECT pg_backend_pid()")
+        attacker_pid = cursor.fetchone()[0]
+    attacker.rollback()
+    real_connect = psycopg2.connect
+    override_used = False
+
+    def override_result():
+        nonlocal override_used
+        if override_used:
+            return None
+        override_used = True
+        attacker.close()
+        if reported_result == "false":
+            return ((attacker_pid, False),)
+        if reported_result == "wrong_pid":
+            return ((attacker_pid + 100_000, True),)
+        return ()
+
+    def intercepted_connect(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        if kwargs.get("dbname") is None:
+            return _TerminationResultConnection(connection, override_result)
+        return connection
+
+    monkeypatch.setattr(roles.psycopg2, "connect", intercepted_connect)
+    with pytest.raises(RuntimeError, match="termination result"):
+        roles.configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+    assert override_used
+
+    maintenance = real_connect(_maintenance_url())
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT rolcanlogin FROM pg_roles WHERE rolname = %s",
+                (role_database.runtime_role,),
+            )
+            assert cursor.fetchone() == (False,)
+    finally:
+        maintenance.close()
+
+
+def test_session_termination_uses_timeout_and_fresh_proof_connection(
+    guarded_runtime_database,
+    monkeypatch,
+):
+    """Catches polling in the coordinator's old transaction snapshot."""
+    import scripts.database.configure_roles as roles
+
+    role_database = guarded_runtime_database
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    attacker = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.runtime_role,
+        password=role_database.runtime_password,
+    )
+    attacker.rollback()
+    real_connect = psycopg2.connect
+    session_query_connection_ids = set()
+    used_timeout_overload = False
+    next_connection_id = 0
+
+    def intercepted_connect(*args, **kwargs):
+        nonlocal next_connection_id
+        connection = real_connect(*args, **kwargs)
+        connection_id = next_connection_id
+        next_connection_id += 1
+
+        def observe(statement):
+            nonlocal used_timeout_overload
+            normalized = " ".join(statement.upper().split())
+            if "FROM PG_STAT_ACTIVITY ACTIVITY" in normalized:
+                session_query_connection_ids.add(connection_id)
+            if "PG_TERMINATE_BACKEND(ACTIVITY.PID, %S)" in normalized:
+                used_timeout_overload = True
+
+        return _InterceptingConnection(connection, observe)
+
+    monkeypatch.setattr(roles.psycopg2, "connect", intercepted_connect)
+    roles.configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    attacker.close()
+
+    assert used_timeout_overload
+    assert len(session_query_connection_ids) >= 2
+
+
+def test_session_termination_uses_legacy_one_argument_fallback(
+    guarded_runtime_database,
+    monkeypatch,
+):
+    """Pins compatibility with PostgreSQL lacking termination timeouts."""
+    import scripts.database.configure_roles as roles
+
+    role_database = guarded_runtime_database
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    attacker = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.runtime_role,
+        password=role_database.runtime_password,
+    )
+    attacker.rollback()
+    real_connect = psycopg2.connect
+    used_legacy_overload = False
+
+    def observe(statement):
+        nonlocal used_legacy_overload
+        if "PG_TERMINATE_BACKEND(ACTIVITY.PID)" in statement:
+            used_legacy_overload = True
+
+    def intercepted_connect(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        if kwargs.get("dbname") is None:
+            return _LegacyTerminationConnection(connection, observe)
+        return connection
+
+    monkeypatch.setattr(roles.psycopg2, "connect", intercepted_connect)
+    roles.configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    attacker.close()
+
+    assert used_legacy_overload
+
+
 def test_unproved_session_termination_aborts_with_runtime_nologin(
     guarded_runtime_database,
     monkeypatch,
@@ -2020,6 +2745,135 @@ def test_unproved_session_termination_aborts_with_runtime_nologin(
             maintenance.close()
     finally:
         attacker.close()
+
+
+def test_post_login_failure_recovery_refences_memberships_and_sessions(
+    guarded_runtime_database,
+    monkeypatch,
+):
+    """Catches a post-LOGIN connection retaining runtime access after recovery."""
+    import scripts.database.configure_roles as roles
+
+    role_database = guarded_runtime_database
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    inbound_role = f"{role_database.runtime_role}_recovery"
+    inbound_password = f"recovery-{uuid.uuid4().hex}"
+    real_connect = psycopg2.connect
+    real_verify = roles._verify_runtime_login_state
+    maintenance = real_connect(_maintenance_url())
+    maintenance.autocommit = True
+    attackers = []
+    injected = False
+    try:
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL("CREATE ROLE {} LOGIN INHERIT PASSWORD %s").format(
+                    pg_sql.Identifier(inbound_role)
+                ),
+                (inbound_password,),
+            )
+
+        def fail_after_login(*, admin_url, runtime_role, expected_can_login):
+            nonlocal injected
+            real_verify(
+                admin_url=admin_url,
+                runtime_role=runtime_role,
+                expected_can_login=expected_can_login,
+            )
+            if not expected_can_login or injected:
+                return
+            injected = True
+            with maintenance.cursor() as cursor:
+                cursor.execute(
+                    pg_sql.SQL("GRANT {} TO {}").format(
+                        pg_sql.Identifier(runtime_role),
+                        pg_sql.Identifier(inbound_role),
+                    )
+                )
+            direct = real_connect(
+                host=parsed.hostname,
+                port=parsed.port,
+                dbname=role_database.database_name,
+                user=runtime_role,
+                password=role_database.runtime_password,
+            )
+            inbound = real_connect(
+                host=parsed.hostname,
+                port=parsed.port,
+                dbname=role_database.database_name,
+                user=inbound_role,
+                password=inbound_password,
+            )
+            with inbound.cursor() as cursor:
+                cursor.execute(
+                    pg_sql.SQL("SET ROLE {}").format(
+                        pg_sql.Identifier(runtime_role)
+                    )
+                )
+                cursor.execute("SELECT count(*) FROM operation_results")
+                assert cursor.fetchone() is not None
+            inbound.rollback()
+            attackers.extend((direct, inbound))
+            raise RuntimeError("injected post-LOGIN verification failure")
+
+        monkeypatch.setattr(
+            roles,
+            "_verify_runtime_login_state",
+            fail_after_login,
+        )
+        with pytest.raises(
+            RuntimeError, match="injected post-LOGIN verification failure"
+        ):
+            roles.configure_database_roles(
+                admin_url=_maintenance_url(),
+                database_names=(role_database.database_name,),
+                deploy_password=role_database.deploy_password,
+                runtime_password=role_database.runtime_password,
+                deploy_role=role_database.deploy_role,
+                runtime_role=role_database.runtime_role,
+            )
+        assert injected
+
+        for attacker in attackers:
+            with pytest.raises(psycopg2.Error):
+                with attacker.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT rolcanlogin FROM pg_roles WHERE rolname = %s",
+                (role_database.runtime_role,),
+            )
+            assert cursor.fetchone() == (False,)
+            cursor.execute(
+                "SELECT count(*) FROM pg_auth_members membership "
+                "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                "JOIN pg_roles member ON member.oid = membership.member "
+                "WHERE granted.rolname = %s AND member.rolname = %s",
+                (role_database.runtime_role, inbound_role),
+            )
+            assert cursor.fetchone() == (0,)
+            cursor.execute(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE usename = ANY(%s)",
+                ([role_database.runtime_role, inbound_role],),
+            )
+            assert cursor.fetchone() == (0,)
+    finally:
+        for attacker in attackers:
+            attacker.close()
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE usename = %s AND pid <> pg_backend_pid()",
+                (inbound_role,),
+            )
+            cursor.execute(
+                pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                    pg_sql.Identifier(inbound_role)
+                )
+            )
+        maintenance.close()
 
 
 def test_second_target_acl_verification_failure_keeps_runtime_fenced(
