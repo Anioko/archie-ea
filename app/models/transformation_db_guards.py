@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+
+from flask import current_app, has_app_context
 from sqlalchemy import event
 
 from app.models.transformation_execution import (
@@ -25,6 +29,291 @@ from app.models.transformation_evidence import (
 
 
 TRANSFORMATION_RUNTIME_ROLE = "archie_runtime"
+COMMAND_CAPABILITY_SECRET_ENV = "TRANSFORMATION_COMMAND_CAPABILITY_SECRET"
+COMMAND_CAPABILITY_PREVIOUS_SECRETS_ENV = (
+    "TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS"
+)
+
+
+_COMMAND_CAPABILITY_TABLE_SQL = r"""
+CREATE TABLE IF NOT EXISTS public.archie_command_capability_keys (
+    key_id text PRIMARY KEY,
+    secret bytea NOT NULL,
+    active boolean NOT NULL DEFAULT TRUE,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    retired_at timestamptz
+)
+"""
+
+
+_HMAC_SHA256_FUNCTION_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_hmac_sha256(p_data bytea, p_key bytea)
+RETURNS bytea
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    block_key bytea;
+    inner_pad bytea := decode(repeat('36', 64), 'hex');
+    outer_pad bytea := decode(repeat('5c', 64), 'hex');
+    position integer;
+BEGIN
+    block_key := CASE WHEN length(p_key) > 64 THEN sha256(p_key) ELSE p_key END;
+    block_key := block_key || decode(repeat('00', 64 - length(block_key)), 'hex');
+    FOR position IN 0..63 LOOP
+        inner_pad := set_byte(
+            inner_pad, position,
+            get_byte(inner_pad, position) # get_byte(block_key, position)
+        );
+        outer_pad := set_byte(
+            outer_pad, position,
+            get_byte(outer_pad, position) # get_byte(block_key, position)
+        );
+    END LOOP;
+    RETURN sha256(outer_pad || sha256(inner_pad || p_data));
+END;
+$$
+"""
+
+
+_VERIFY_COMMAND_CAPABILITY_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_verify_command_capability(
+    p_document text,
+    p_capability text,
+    p_schema_version text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STRICT
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    document jsonb;
+    signing_secret bytea;
+    supplied bytea;
+BEGIN
+    BEGIN
+        document := p_document::jsonb;
+        supplied := decode(p_capability, 'hex');
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'command capability is invalid' USING ERRCODE = '42501';
+    END;
+    IF jsonb_typeof(document) <> 'object'
+       OR document->>'schema_version' IS DISTINCT FROM p_schema_version
+       OR length(p_capability) <> 64 THEN
+        RAISE EXCEPTION 'command capability is invalid' USING ERRCODE = '42501';
+    END IF;
+    SELECT capability.secret
+      INTO signing_secret
+      FROM public.archie_command_capability_keys AS capability
+     WHERE capability.key_id = document->>'key_id'
+       AND capability.active IS TRUE;
+    IF NOT FOUND OR supplied IS DISTINCT FROM public.archie_hmac_sha256(
+        convert_to(p_document, 'UTF8'), signing_secret
+    ) THEN
+        RAISE EXCEPTION 'command capability is invalid' USING ERRCODE = '42501';
+    END IF;
+    RETURN document;
+END;
+$$
+"""
+
+
+_CLAIM_COMMAND_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_claim_transformation_command(
+    p_document text,
+    p_capability text
+)
+RETURNS TABLE (
+    claim_outcome text,
+    command_receipt_id bigint,
+    command_generation integer,
+    command_claim_token text,
+    operation_result_id bigint,
+    conflict_reason text,
+    conflict_error_class text,
+    retry_after_seconds double precision
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    document jsonb;
+    command_org_id bigint;
+    command_actor_id bigint;
+    command_operation text;
+    command_idempotency_key text;
+    command_request_digest text;
+    command_natural_key text;
+    new_claim_token text;
+    new_claimant_request_id text;
+    lease_milliseconds integer;
+    now_at_database timestamptz := clock_timestamp();
+    expires_at timestamptz;
+    receipt record;
+    result record;
+    inserted_id bigint;
+BEGIN
+    document := public.archie_verify_command_capability(
+        p_document, p_capability, 'transformation-command-claim-r1'
+    );
+    BEGIN
+        command_org_id := (document->>'organization_id')::bigint;
+        command_actor_id := (document->>'actor_id')::bigint;
+        command_operation := document->>'operation';
+        command_idempotency_key := document->>'idempotency_key';
+        command_request_digest := document->>'request_digest';
+        command_natural_key := document->>'natural_key';
+        new_claim_token := document->>'claim_token';
+        new_claimant_request_id := document->>'claimant_request_id';
+        lease_milliseconds := (document->>'lease_milliseconds')::integer;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'command capability fields are invalid' USING ERRCODE = '42501';
+    END;
+    IF document IS DISTINCT FROM jsonb_build_object(
+           'schema_version', 'transformation-command-claim-r1',
+           'key_id', document->>'key_id',
+           'organization_id', command_org_id,
+           'actor_id', command_actor_id,
+           'operation', command_operation,
+           'idempotency_key', command_idempotency_key,
+           'request_digest', command_request_digest,
+           'natural_key', command_natural_key,
+           'claim_token', new_claim_token,
+           'claimant_request_id', new_claimant_request_id,
+           'lease_milliseconds', lease_milliseconds
+       )
+       OR command_org_id <= 0 OR command_actor_id <= 0
+       OR command_operation IS NULL OR command_operation = ''
+       OR command_idempotency_key IS NULL OR command_idempotency_key = ''
+       OR command_natural_key IS NULL OR command_natural_key = ''
+       OR length(command_request_digest) <> 64
+       OR length(new_claim_token) <> 64
+       OR new_claimant_request_id IS NULL OR new_claimant_request_id = ''
+       OR lease_milliseconds < 10 OR lease_milliseconds > 3600000 THEN
+        RAISE EXCEPTION 'command capability fields are invalid' USING ERRCODE = '42501';
+    END IF;
+    expires_at := now_at_database + make_interval(
+        secs => lease_milliseconds::double precision / 1000.0
+    );
+
+    INSERT INTO public.command_idempotency_records (
+        organization_id, actor_id, operation, idempotency_key,
+        request_digest, natural_key, status, lease_generation, claim_token,
+        claimant_request_id, lease_expires_at, attempt_count
+    ) VALUES (
+        command_org_id, command_actor_id, command_operation,
+        command_idempotency_key, command_request_digest, command_natural_key,
+        'in_progress', 1, new_claim_token, new_claimant_request_id, expires_at, 1
+    ) ON CONFLICT (organization_id, actor_id, operation, idempotency_key)
+      DO NOTHING
+    RETURNING id INTO inserted_id;
+    IF inserted_id IS NOT NULL THEN
+        RETURN QUERY SELECT 'claimed', inserted_id, 1, new_claim_token,
+                            NULL::bigint, NULL::text, NULL::text, NULL::double precision;
+        RETURN;
+    END IF;
+
+    SELECT existing.* INTO receipt
+      FROM public.command_idempotency_records AS existing
+     WHERE existing.organization_id = command_org_id
+       AND existing.actor_id = command_actor_id
+       AND existing.operation = command_operation
+       AND existing.idempotency_key = command_idempotency_key
+     FOR UPDATE;
+    now_at_database := clock_timestamp();
+    expires_at := now_at_database + make_interval(
+        secs => lease_milliseconds::double precision / 1000.0
+    );
+    IF receipt.request_digest IS DISTINCT FROM command_request_digest THEN
+        RETURN QUERY SELECT 'conflict', receipt.id::bigint, receipt.lease_generation,
+                            NULL::text, NULL::bigint, 'idempotency_digest_mismatch',
+                            NULL::text, NULL::double precision;
+        RETURN;
+    END IF;
+    IF receipt.natural_key IS DISTINCT FROM command_natural_key THEN
+        RETURN QUERY SELECT 'conflict', receipt.id::bigint, receipt.lease_generation,
+                            NULL::text, NULL::bigint, 'idempotency_natural_key_mismatch',
+                            NULL::text, NULL::double precision;
+        RETURN;
+    END IF;
+
+    SELECT existing_result.* INTO result
+      FROM public.operation_results AS existing_result
+     WHERE existing_result.organization_id = command_org_id
+       AND existing_result.actor_id = command_actor_id
+       AND existing_result.operation = command_operation
+       AND existing_result.natural_key = command_natural_key;
+    IF FOUND THEN
+        IF result.request_digest IS DISTINCT FROM command_request_digest THEN
+            RETURN QUERY SELECT 'conflict', receipt.id::bigint, receipt.lease_generation,
+                                NULL::text, result.id::bigint, 'natural_key_digest_mismatch',
+                                NULL::text, NULL::double precision;
+            RETURN;
+        END IF;
+        IF receipt.status <> 'succeeded'
+           OR receipt.operation_result_id IS DISTINCT FROM result.id THEN
+            UPDATE public.command_idempotency_records
+               SET status = 'succeeded', operation_result_id = result.id,
+                   lease_expires_at = NULL, completed_at = now_at_database
+             WHERE id = receipt.id;
+        END IF;
+        RETURN QUERY SELECT 'reconciled', receipt.id::bigint,
+                            receipt.lease_generation, NULL::text, result.id::bigint,
+                            NULL::text, NULL::text, NULL::double precision;
+        RETURN;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.operation_results AS existing_result
+         WHERE existing_result.organization_id = command_org_id
+           AND existing_result.operation = command_operation
+           AND existing_result.natural_key = command_natural_key
+    ) THEN
+        RETURN QUERY SELECT 'conflict', receipt.id::bigint, receipt.lease_generation,
+                            NULL::text, NULL::bigint,
+                            'natural_key_owned_by_another_actor', NULL::text,
+                            NULL::double precision;
+        RETURN;
+    END IF;
+    IF receipt.status = 'failed_non_retryable' THEN
+        RETURN QUERY SELECT 'conflict', receipt.id::bigint, receipt.lease_generation,
+                            NULL::text, NULL::bigint, 'failed_non_retryable',
+                            receipt.last_error_class::text, NULL::double precision;
+        RETURN;
+    END IF;
+    IF receipt.status = 'in_progress'
+       AND receipt.lease_expires_at IS NOT NULL
+       AND receipt.lease_expires_at > now_at_database THEN
+        RETURN QUERY SELECT 'conflict', receipt.id::bigint, receipt.lease_generation,
+                            NULL::text, NULL::bigint, 'active_lease', NULL::text,
+                            greatest(0.001, extract(epoch FROM
+                                (receipt.lease_expires_at - now_at_database)))
+                                ::double precision;
+        RETURN;
+    END IF;
+
+    UPDATE public.command_idempotency_records
+       SET status = 'in_progress',
+           lease_generation = receipt.lease_generation + 1,
+           claim_token = new_claim_token,
+           claimant_request_id = new_claimant_request_id,
+           lease_expires_at = expires_at,
+           operation_result_id = NULL,
+           attempt_count = receipt.attempt_count + 1,
+           completed_at = NULL
+     WHERE id = receipt.id
+    RETURNING * INTO receipt;
+    RETURN QUERY SELECT 'claimed', receipt.id::bigint, receipt.lease_generation,
+                        receipt.claim_token::text, NULL::bigint, NULL::text, NULL::text,
+                        NULL::double precision;
+END;
+$$
+"""
 
 
 _IMMUTABILITY_FUNCTION_SQL = r"""
@@ -136,37 +425,368 @@ $$
 """
 
 
-_CANONICAL_JSON_FUNCTION_SQL = r"""
-CREATE OR REPLACE FUNCTION public.archie_canonical_jsonb(p_value jsonb)
-RETURNS text
+_DECISION_BRIEF_CREATE_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_create_decision_brief(
+    p_capability_document text,
+    p_capability text,
+    p_request_document text
+)
+RETURNS TABLE (
+    decision_brief_id bigint,
+    decision_brief_revision integer,
+    decision_brief_created boolean
+)
 LANGUAGE plpgsql
-IMMUTABLE
-STRICT
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
+#variable_conflict use_variable
 DECLARE
-    rendered text;
+    capability_document jsonb;
+    request_payload jsonb;
+    command_organization_id bigint;
+    command_actor_id bigint;
+    command_receipt_id bigint;
+    command_generation integer;
+    command_claim_token text;
+    command_natural_key text;
+    command_request_digest text;
+    workstream_id bigint;
+    candidate_id bigint;
+    recommendation_option_id bigint;
+    decision_authority_id bigint;
+    workstream_programme_id bigint;
+    exception_payload jsonb;
+    exception_authority_id bigint;
+    existing record;
+    inserted_id bigint;
 BEGIN
-    IF jsonb_typeof(p_value) = 'object' THEN
-        SELECT '{' || COALESCE(
-            string_agg(to_jsonb(entry.key)::text || ':' ||
-                       public.archie_canonical_jsonb(entry.value), ',' ORDER BY entry.key),
-            ''
-        ) || '}'
-          INTO rendered
-          FROM jsonb_each(p_value) AS entry;
-        RETURN rendered;
-    ELSIF jsonb_typeof(p_value) = 'array' THEN
-        SELECT '[' || COALESCE(
-            string_agg(public.archie_canonical_jsonb(entry.value), ',' ORDER BY entry.ordinality),
-            ''
-        ) || ']'
-          INTO rendered
-          FROM jsonb_array_elements(p_value) WITH ORDINALITY AS entry(value, ordinality);
-        RETURN rendered;
+    capability_document := public.archie_verify_command_capability(
+        p_capability_document,
+        p_capability,
+        'transformation-command-execution-r1'
+    );
+    BEGIN
+        request_payload := p_request_document::jsonb;
+        command_organization_id :=
+            (capability_document->>'organization_id')::bigint;
+        command_actor_id := (capability_document->>'actor_id')::bigint;
+        command_receipt_id := (capability_document->>'receipt_id')::bigint;
+        command_generation := (capability_document->>'generation')::integer;
+        command_claim_token := capability_document->>'claim_token';
+        command_natural_key := capability_document->>'natural_key';
+        command_request_digest := capability_document->>'request_digest';
+        workstream_id := (request_payload->>'workstream_id')::bigint;
+        candidate_id := NULLIF(request_payload->>'candidate_id', '')::bigint;
+        recommendation_option_id :=
+            (request_payload->>'recommendation_option_id')::bigint;
+        decision_authority_id :=
+            (request_payload->>'decision_authority_id')::bigint;
+        exception_payload := request_payload->'option_exception';
+        exception_authority_id := NULLIF(
+            exception_payload->>'authority_id', ''
+        )::bigint;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'decision brief create document is invalid'
+            USING ERRCODE = '42501';
+    END;
+
+    IF jsonb_typeof(request_payload) <> 'object'
+       OR request_payload IS DISTINCT FROM jsonb_build_object(
+           'workstream_id', workstream_id,
+           'candidate_id', candidate_id,
+           'title', request_payload->>'title',
+           'recommendation_option_id', recommendation_option_id,
+           'decision_authority_id', decision_authority_id,
+           'unknown_codes', request_payload->'unknown_codes',
+           'conflicts', request_payload->'conflicts',
+           'expected_impacts', request_payload->'expected_impacts',
+           'option_exception', exception_payload
+       )
+       OR workstream_id <= 0
+       OR (candidate_id IS NOT NULL AND candidate_id <= 0)
+       OR recommendation_option_id <= 0 OR decision_authority_id <= 0
+       OR NULLIF(btrim(request_payload->>'title'), '') IS NULL
+       OR length(request_payload->>'title') > 255
+       OR jsonb_typeof(request_payload->'unknown_codes') <> 'array'
+       OR jsonb_typeof(request_payload->'conflicts') <> 'array'
+       OR jsonb_typeof(request_payload->'expected_impacts') <> 'array'
+       OR (
+           exception_payload <> 'null'::jsonb
+           AND (
+               jsonb_typeof(exception_payload) <> 'object'
+               OR exception_payload IS DISTINCT FROM jsonb_build_object(
+                   'type', exception_payload->>'type',
+                   'name', exception_payload->>'name',
+                   'reason', exception_payload->>'reason',
+                   'authority_id', exception_authority_id
+               )
+               OR exception_payload->>'type' NOT IN ('policy', 'legal')
+               OR NULLIF(btrim(exception_payload->>'name'), '') IS NULL
+               OR NULLIF(btrim(exception_payload->>'reason'), '') IS NULL
+               OR exception_authority_id IS NULL OR exception_authority_id <= 0
+           )
+       ) THEN
+        RAISE EXCEPTION 'decision brief create fields are invalid'
+            USING ERRCODE = '42501';
     END IF;
-    RETURN p_value::text;
+
+    IF capability_document IS DISTINCT FROM jsonb_build_object(
+        'schema_version', 'transformation-command-execution-r1',
+        'key_id', capability_document->>'key_id',
+        'organization_id', command_organization_id,
+        'actor_id', command_actor_id,
+        'operation', 'brief.create',
+        'idempotency_key', capability_document->>'idempotency_key',
+        'request_digest', command_request_digest,
+        'natural_key',
+            'brief:workstream:' || workstream_id::text ||
+            ':candidate:' || COALESCE(candidate_id::text, 'all'),
+        'receipt_id', command_receipt_id,
+        'generation', command_generation,
+        'claim_token', command_claim_token,
+        'claimant_request_id', capability_document->>'claimant_request_id'
+    ) THEN
+        RAISE EXCEPTION 'decision brief create capability is invalid'
+            USING ERRCODE = '42501';
+    END IF;
+
+    PERFORM 1
+      FROM public.command_idempotency_records AS receipt
+     WHERE receipt.id = command_receipt_id
+       AND receipt.organization_id = command_organization_id
+       AND receipt.actor_id = command_actor_id
+       AND receipt.operation = 'brief.create'
+       AND receipt.idempotency_key = capability_document->>'idempotency_key'
+       AND receipt.request_digest = command_request_digest
+       AND receipt.natural_key = command_natural_key
+       AND receipt.status = 'in_progress'
+       AND receipt.lease_generation = command_generation
+       AND receipt.claim_token = command_claim_token
+       AND receipt.claimant_request_id =
+           capability_document->>'claimant_request_id'
+       AND receipt.lease_expires_at > clock_timestamp()
+       AND receipt.operation_result_id IS NULL
+     FOR UPDATE;
+    IF NOT FOUND OR command_request_digest IS DISTINCT FROM encode(
+        sha256(convert_to(p_request_document, 'UTF8')), 'hex'
+    ) THEN
+        RAISE EXCEPTION 'decision brief create command fence is invalid'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT workstream.programme_id
+      INTO workstream_programme_id
+      FROM public.programme_workstreams AS workstream
+      JOIN public.strategic_initiatives AS programme
+        ON programme.id = workstream.programme_id
+       AND programme.organization_id = workstream.organization_id
+       AND programme.record_kind = 'transformation_programme'
+       AND programme.status <> 'archived'
+       AND programme.archived_at IS NULL
+     WHERE workstream.id = workstream_id
+       AND workstream.organization_id = command_organization_id
+     FOR UPDATE OF programme, workstream;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'decision brief workstream is outside active tenant scope'
+            USING ERRCODE = '55000';
+    END IF;
+
+    PERFORM 1
+      FROM public.users AS governed_user
+     WHERE governed_user.organization_id = command_organization_id
+       AND governed_user.id IN (
+           command_actor_id, decision_authority_id,
+           COALESCE(exception_authority_id, decision_authority_id)
+       )
+     ORDER BY governed_user.id
+     FOR UPDATE;
+    PERFORM 1
+      FROM public.programme_role_assignments AS assignment
+     WHERE assignment.organization_id = command_organization_id
+       AND assignment.programme_id = workstream_programme_id
+       AND assignment.user_id IN (
+           command_actor_id, decision_authority_id,
+           COALESCE(exception_authority_id, decision_authority_id)
+       )
+       AND (assignment.workstream_id IS NULL OR
+            assignment.workstream_id = workstream_id)
+     ORDER BY assignment.id
+     FOR UPDATE;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM public.users AS actor
+         WHERE actor.id = command_actor_id
+           AND actor.organization_id = command_organization_id
+           AND (
+               actor.enterprise_role IN (
+                   'enterprise_architect', 'chief_architect', 'cto',
+                   'platform_admin', 'organization_admin', 'administrator'
+               )
+               OR actor.is_org_admin IS TRUE OR actor.is_platform_admin IS TRUE
+               OR EXISTS (
+                   SELECT 1
+                     FROM public.programme_role_assignments AS assignment
+                    WHERE assignment.organization_id = command_organization_id
+                      AND assignment.programme_id = workstream_programme_id
+                      AND assignment.user_id = command_actor_id
+                      AND (assignment.workstream_id IS NULL OR
+                           assignment.workstream_id = workstream_id)
+                      AND assignment.role IN ('programme_owner', 'workstream_lead')
+                      AND assignment.effective_from <= CURRENT_DATE
+                      AND (assignment.effective_to IS NULL OR
+                           assignment.effective_to >= CURRENT_DATE)
+               )
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief actor is not currently authorized'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF candidate_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1
+          FROM public.transformation_candidates AS candidate
+         WHERE candidate.id = candidate_id
+           AND candidate.organization_id = command_organization_id
+           AND candidate.workstream_id = workstream_id
+           AND candidate.inclusion_status = 'accepted'
+         FOR UPDATE
+    ) THEN
+        RAISE EXCEPTION 'decision brief candidate is outside governed scope'
+            USING ERRCODE = '55000';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+          FROM public.transformation_options AS recommendation
+         WHERE recommendation.id = recommendation_option_id
+           AND recommendation.organization_id = command_organization_id
+           AND recommendation.workstream_id = workstream_id
+           AND recommendation.candidate_id IS NOT DISTINCT FROM candidate_id
+         FOR UPDATE
+    ) THEN
+        RAISE EXCEPTION 'decision brief recommendation is outside governed scope'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM public.users AS authority
+         WHERE authority.id = decision_authority_id
+           AND authority.organization_id = command_organization_id
+           AND (
+               authority.enterprise_role IN (
+                   'chief_architect', 'cto', 'enterprise_architect',
+                   'platform_admin', 'organization_admin', 'administrator'
+               )
+               OR authority.is_org_admin IS TRUE
+               OR authority.is_platform_admin IS TRUE
+               OR EXISTS (
+                   SELECT 1
+                     FROM public.programme_role_assignments AS assignment
+                    WHERE assignment.organization_id = command_organization_id
+                      AND assignment.programme_id = workstream_programme_id
+                      AND assignment.user_id = decision_authority_id
+                      AND (assignment.workstream_id IS NULL OR
+                           assignment.workstream_id = workstream_id)
+                      AND assignment.role = 'decision_authority'
+                      AND assignment.effective_from <= CURRENT_DATE
+                      AND (assignment.effective_to IS NULL OR
+                           assignment.effective_to >= CURRENT_DATE)
+               )
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief decision authority is not current'
+            USING ERRCODE = '42501';
+    END IF;
+    IF exception_payload <> 'null'::jsonb AND NOT EXISTS (
+        SELECT 1
+          FROM public.users AS authority
+         WHERE authority.id = exception_authority_id
+           AND authority.organization_id = command_organization_id
+           AND (
+               authority.enterprise_role IN (
+                   'chief_architect', 'cto', 'enterprise_architect',
+                   'platform_admin', 'organization_admin', 'administrator'
+               )
+               OR authority.is_org_admin IS TRUE
+               OR authority.is_platform_admin IS TRUE
+               OR EXISTS (
+                   SELECT 1
+                     FROM public.programme_role_assignments AS assignment
+                    WHERE assignment.organization_id = command_organization_id
+                      AND assignment.programme_id = workstream_programme_id
+                      AND assignment.user_id = exception_authority_id
+                      AND (assignment.workstream_id IS NULL OR
+                           assignment.workstream_id = workstream_id)
+                      AND assignment.role = 'decision_authority'
+                      AND assignment.effective_from <= CURRENT_DATE
+                      AND (assignment.effective_to IS NULL OR
+                           assignment.effective_to >= CURRENT_DATE)
+               )
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief exception authority is not current'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT brief.* INTO existing
+      FROM public.decision_briefs AS brief
+     WHERE brief.organization_id = command_organization_id
+       AND brief.workstream_id = workstream_id
+       AND brief.candidate_id IS NOT DISTINCT FROM candidate_id
+     FOR UPDATE;
+    IF FOUND THEN
+        IF existing.status <> 'draft'
+           OR existing.title IS DISTINCT FROM request_payload->>'title'
+           OR existing.recommendation_option_id IS DISTINCT FROM
+              recommendation_option_id
+           OR existing.decision_authority_id IS DISTINCT FROM
+              decision_authority_id
+           OR existing.unknown_codes::jsonb IS DISTINCT FROM
+              request_payload->'unknown_codes'
+           OR existing.conflicts::jsonb IS DISTINCT FROM
+              request_payload->'conflicts'
+           OR existing.expected_impacts::jsonb IS DISTINCT FROM
+              request_payload->'expected_impacts'
+           OR existing.option_exception_type IS DISTINCT FROM
+              exception_payload->>'type'
+           OR existing.option_exception_name IS DISTINCT FROM
+              exception_payload->>'name'
+           OR existing.option_exception_reason IS DISTINCT FROM
+              exception_payload->>'reason'
+           OR existing.option_exception_authority_id IS DISTINCT FROM
+              exception_authority_id THEN
+            RAISE EXCEPTION 'decision brief scope already has a different case'
+                USING ERRCODE = '55000';
+        END IF;
+        decision_brief_id := existing.id;
+        decision_brief_revision := existing.revision;
+        decision_brief_created := FALSE;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    INSERT INTO public.decision_briefs (
+        organization_id, workstream_id, candidate_id, title,
+        recommendation_option_id, decision_authority_id,
+        unknown_codes, conflicts, expected_impacts,
+        option_exception_type, option_exception_name,
+        option_exception_reason, option_exception_authority_id,
+        status, revision
+    ) VALUES (
+        command_organization_id, workstream_id, candidate_id,
+        request_payload->>'title', recommendation_option_id,
+        decision_authority_id, request_payload->'unknown_codes',
+        request_payload->'conflicts', request_payload->'expected_impacts',
+        exception_payload->>'type', exception_payload->>'name',
+        exception_payload->>'reason', exception_authority_id,
+        'draft', 1
+    ) RETURNING id INTO inserted_id;
+    decision_brief_id := inserted_id;
+    decision_brief_revision := 1;
+    decision_brief_created := TRUE;
+    RETURN NEXT;
 END;
 $$
 """
@@ -179,8 +799,12 @@ CREATE OR REPLACE FUNCTION public.archie_freeze_decision_brief_version(
     p_receipt_id bigint,
     p_generation integer,
     p_claim_token text,
+    p_capability_document text,
+    p_capability text,
     p_expected_revision integer,
-    p_frozen_payload jsonb
+    p_request_document text,
+    p_frozen_payload jsonb,
+    p_canonical_document text
 )
 RETURNS TABLE (
     decision_brief_version_id bigint,
@@ -210,7 +834,11 @@ DECLARE
     workstream_objective text;
     workstream_scope jsonb;
     receipt_digest text;
+    receipt_idempotency_key text;
+    receipt_natural_key text;
+    receipt_claimant_request_id text;
     receipt_created_at timestamptz;
+    capability_document jsonb;
     computed_request_digest text;
     payload_option_ids bigint[];
     latest_option_ids bigint[];
@@ -281,8 +909,10 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
 
-    SELECT receipt.request_digest, receipt.created_at
-      INTO receipt_digest, receipt_created_at
+    SELECT receipt.request_digest, receipt.idempotency_key,
+           receipt.natural_key, receipt.claimant_request_id, receipt.created_at
+      INTO receipt_digest, receipt_idempotency_key, receipt_natural_key,
+           receipt_claimant_request_id, receipt_created_at
       FROM public.command_idempotency_records AS receipt
      WHERE receipt.id = p_receipt_id
        AND receipt.organization_id = brief_organization_id
@@ -299,6 +929,29 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'decision brief command fence is invalid'
             USING ERRCODE = '55000';
+    END IF;
+
+    capability_document := public.archie_verify_command_capability(
+        p_capability_document,
+        p_capability,
+        'transformation-command-execution-r1'
+    );
+    IF capability_document IS DISTINCT FROM jsonb_build_object(
+        'schema_version', 'transformation-command-execution-r1',
+        'key_id', capability_document->>'key_id',
+        'organization_id', brief_organization_id,
+        'actor_id', p_actor_id,
+        'operation', 'brief.freeze',
+        'idempotency_key', receipt_idempotency_key,
+        'request_digest', receipt_digest,
+        'natural_key', receipt_natural_key,
+        'receipt_id', p_receipt_id,
+        'generation', p_generation,
+        'claim_token', p_claim_token,
+        'claimant_request_id', receipt_claimant_request_id
+    ) THEN
+        RAISE EXCEPTION 'decision brief command capability is invalid'
+            USING ERRCODE = '42501';
     END IF;
 
     PERFORM 1
@@ -916,8 +1569,17 @@ BEGIN
         'assertions', p_frozen_payload->'human_assertions',
         'expected_revision', p_expected_revision
     );
+    BEGIN
+        IF p_request_document::jsonb IS DISTINCT FROM request_payload THEN
+            RAISE EXCEPTION 'decision brief request document does not match payload'
+                USING ERRCODE = '55000';
+        END IF;
+    EXCEPTION WHEN invalid_text_representation THEN
+        RAISE EXCEPTION 'decision brief request document is invalid'
+            USING ERRCODE = '55000';
+    END;
     computed_request_digest := encode(
-        sha256(convert_to(public.archie_canonical_jsonb(request_payload), 'UTF8')),
+        sha256(convert_to(p_request_document, 'UTF8')),
         'hex'
     );
     IF receipt_digest IS DISTINCT FROM computed_request_digest THEN
@@ -965,8 +1627,17 @@ BEGIN
         'blockers_cleared', TRUE,
         'unknowns_acknowledged', TRUE
     );
+    BEGIN
+        IF p_canonical_document::jsonb IS DISTINCT FROM hash_envelope THEN
+            RAISE EXCEPTION 'decision brief canonical document does not match snapshot'
+                USING ERRCODE = '55000';
+        END IF;
+    EXCEPTION WHEN invalid_text_representation THEN
+        RAISE EXCEPTION 'decision brief canonical document is invalid'
+            USING ERRCODE = '55000';
+    END;
     computed_hash := encode(
-        sha256(convert_to(public.archie_canonical_jsonb(hash_envelope), 'UTF8')),
+        sha256(convert_to(p_canonical_document, 'UTF8')),
         'hex'
     );
 
@@ -974,7 +1645,7 @@ BEGIN
         organization_id, brief_id, workstream_id, version, source_revision,
         frozen_payload, recommendation_option_version_id, option_version_ids,
         cited_evidence_ids, outcome_ids, measure_ids, policy_version,
-        created_by_id, created_at, content_hash, submitted_by_id,
+        created_by_id, created_at, content_hash, canonical_document, submitted_by_id,
         submitter_authorized, decision_authority_id, human_reviewed_ai,
         blockers_cleared, unknowns_acknowledged
     ) VALUES (
@@ -984,7 +1655,8 @@ BEGIN
         to_jsonb(payload_option_ids), to_jsonb(payload_evidence_ids),
         to_jsonb(payload_outcome_ids), to_jsonb(payload_measure_ids),
         p_frozen_payload->>'policy_version', p_actor_id, frozen_at,
-        computed_hash, p_actor_id, TRUE, brief_decision_authority_id, TRUE,
+        computed_hash, p_canonical_document, p_actor_id,
+        TRUE, brief_decision_authority_id, TRUE,
         TRUE, TRUE
     ) RETURNING id INTO inserted_version_id;
 
@@ -1782,6 +2454,83 @@ def _qualified_name(connection, quoted_schema: str, object_name: str) -> str:
     )
 
 
+def _configured_capability_secrets(
+    explicit: tuple[str, ...] | None = None,
+) -> tuple[tuple[str, bytes], ...]:
+    if explicit is None:
+        if has_app_context():
+            current = str(
+                current_app.config.get(COMMAND_CAPABILITY_SECRET_ENV, "") or ""
+            )
+            previous = str(
+                current_app.config.get(
+                    COMMAND_CAPABILITY_PREVIOUS_SECRETS_ENV, ""
+                )
+                or ""
+            )
+        else:
+            current = os.environ.get(COMMAND_CAPABILITY_SECRET_ENV, "")
+            previous = os.environ.get(
+                COMMAND_CAPABILITY_PREVIOUS_SECRETS_ENV, ""
+            )
+        values = (current, *(item for item in previous.split(",") if item.strip()))
+    else:
+        values = explicit
+    decoded: list[tuple[str, bytes]] = []
+    seen: set[str] = set()
+    for value in values:
+        normalized = value.strip()
+        if not normalized:
+            continue
+        try:
+            secret = bytes.fromhex(normalized)
+        except ValueError as error:
+            raise ValueError(
+                f"{COMMAND_CAPABILITY_SECRET_ENV} must contain hexadecimal bytes"
+            ) from error
+        if len(secret) < 32:
+            raise ValueError(
+                f"{COMMAND_CAPABILITY_SECRET_ENV} must contain at least 32 bytes"
+            )
+        key_id = hashlib.sha256(secret).hexdigest()
+        if key_id not in seen:
+            decoded.append((key_id, secret))
+            seen.add(key_id)
+    if not decoded:
+        raise ValueError(f"{COMMAND_CAPABILITY_SECRET_ENV} is required")
+    return tuple(decoded)
+
+
+def _provision_capability_keys(
+    connection,
+    quoted_schema: str,
+    secrets: tuple[tuple[str, bytes], ...],
+) -> None:
+    connection.exec_driver_sql(
+        _render_guard_sql(connection, _COMMAND_CAPABILITY_TABLE_SQL, quoted_schema)
+    )
+    qualified_keys = _qualified_name(
+        connection, quoted_schema, "archie_command_capability_keys"
+    )
+    connection.exec_driver_sql(f"REVOKE ALL ON TABLE {qualified_keys} FROM PUBLIC")
+    active_ids = []
+    for key_id, secret in secrets:
+        active_ids.append(key_id)
+        connection.exec_driver_sql(
+            f"INSERT INTO {qualified_keys} (key_id, secret, active, retired_at) "
+            "VALUES (%s, %s, TRUE, NULL) "
+            "ON CONFLICT (key_id) DO UPDATE "
+            "SET secret = EXCLUDED.secret, active = TRUE, retired_at = NULL",
+            (key_id, secret),
+        )
+    connection.exec_driver_sql(
+        f"UPDATE {qualified_keys} SET active = FALSE, "
+        "retired_at = COALESCE(retired_at, clock_timestamp()) "
+        "WHERE active IS TRUE AND NOT (key_id = ANY(%s))",
+        (active_ids,),
+    )
+
+
 def inspect_transformation_db_guards(connection) -> list[str]:
     """Return semantic guard drift without changing database state."""
     if connection.dialect.name != "postgresql":
@@ -1789,6 +2538,13 @@ def inspect_transformation_db_guards(connection) -> list[str]:
     schema, quoted_schema = _guard_schema(connection)
     expected_search_path = f"search_path=pg_catalog, {quoted_schema}"
     drift: list[str] = []
+    qualified_keys = _qualified_name(
+        connection, quoted_schema, "archie_command_capability_keys"
+    )
+    if not connection.exec_driver_sql(
+        "SELECT to_regclass(%s) IS NOT NULL", (qualified_keys,)
+    ).scalar():
+        drift.append("table_missing:archie_command_capability_keys")
     for function_name, create_sql in _FUNCTION_SPECS:
         row = connection.exec_driver_sql(
             """
@@ -1807,6 +2563,40 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             continue
         rendered_sql = _render_guard_sql(connection, create_sql, quoted_schema)
         if _normalise_function_body(row.prosrc) != _expected_function_body(rendered_sql):
+            drift.append(f"function_body:{function_name}")
+        if row.prosecdef is not True:
+            drift.append(f"function_security:{function_name}")
+        if expected_search_path not in (row.proconfig or []):
+            drift.append(f"function_search_path:{function_name}")
+
+    for function_name, create_sql, argument_count, return_type in (
+        ("archie_hmac_sha256", _HMAC_SHA256_FUNCTION_SQL, 2, "bytea"),
+        (
+            "archie_verify_command_capability",
+            _VERIFY_COMMAND_CAPABILITY_SQL,
+            3,
+            "jsonb",
+        ),
+        ("archie_claim_transformation_command", _CLAIM_COMMAND_SQL, 2, "record"),
+        ("archie_create_decision_brief", _DECISION_BRIEF_CREATE_SQL, 3, "record"),
+    ):
+        row = connection.exec_driver_sql(
+            """
+            SELECT proc.prosrc, proc.prosecdef, proc.proconfig
+            FROM pg_proc proc
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE namespace.nspname = %s
+              AND proc.proname = %s
+              AND proc.pronargs = %s
+              AND proc.prorettype = %s::regtype
+            """,
+            (schema, function_name, argument_count, return_type),
+        ).first()
+        if row is None:
+            drift.append(f"function_missing:{function_name}")
+            continue
+        rendered = _render_guard_sql(connection, create_sql, quoted_schema)
+        if _normalise_function_body(row.prosrc) != _expected_function_body(rendered):
             drift.append(f"function_body:{function_name}")
         if row.prosecdef is not True:
             drift.append(f"function_security:{function_name}")
@@ -1837,33 +2627,6 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         if expected_search_path not in (advance.proconfig or []):
             drift.append("function_search_path:archie_advance_evidence_head")
 
-    canonical_json = connection.exec_driver_sql(
-        """
-        SELECT proc.prosrc, proc.prosecdef, proc.proconfig
-        FROM pg_proc proc
-        JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
-        WHERE namespace.nspname = %s
-          AND proc.proname = 'archie_canonical_jsonb'
-          AND proc.pronargs = 1
-          AND proc.prorettype = 'text'::regtype
-        """,
-        (schema,),
-    ).first()
-    if canonical_json is None:
-        drift.append("function_missing:archie_canonical_jsonb")
-    else:
-        rendered_canonical = _render_guard_sql(
-            connection, _CANONICAL_JSON_FUNCTION_SQL, quoted_schema
-        )
-        if _normalise_function_body(canonical_json.prosrc) != _expected_function_body(
-            rendered_canonical
-        ):
-            drift.append("function_body:archie_canonical_jsonb")
-        if canonical_json.prosecdef is not True:
-            drift.append("function_security:archie_canonical_jsonb")
-        if expected_search_path not in (canonical_json.proconfig or []):
-            drift.append("function_search_path:archie_canonical_jsonb")
-
     freeze_brief = connection.exec_driver_sql(
         """
         SELECT proc.prosrc, proc.prosecdef, proc.proconfig
@@ -1871,7 +2634,7 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
         WHERE namespace.nspname = %s
           AND proc.proname = 'archie_freeze_decision_brief_version'
-          AND proc.pronargs = 7
+          AND proc.pronargs = 11
           AND proc.prorettype = 'record'::regtype
         """,
         (schema,),
@@ -2175,6 +2938,7 @@ def ensure_transformation_db_guards(
     connection,
     *,
     runtime_role: str = TRANSFORMATION_RUNTIME_ROLE,
+    capability_secrets: tuple[str, ...] | None = None,
 ):
     """Install/refresh guards once under a transaction-scoped advisory lock."""
     if connection.dialect.name != "postgresql":
@@ -2184,10 +2948,32 @@ def ensure_transformation_db_guards(
         "SELECT pg_advisory_xact_lock(hashtext(%s))",
         (f"archie_transformation_command_db_guards:{schema}",),
     )
+    configured_secrets = _configured_capability_secrets(capability_secrets)
+    _provision_capability_keys(connection, quoted_schema, configured_secrets)
+    legacy_freeze = _qualified_name(
+        connection, quoted_schema, "archie_freeze_decision_brief_version"
+    )
+    connection.exec_driver_sql(
+        f"DROP FUNCTION IF EXISTS {legacy_freeze}"
+        "(bigint, bigint, bigint, integer, text, integer, jsonb)"
+    )
+    connection.exec_driver_sql(
+        f"DROP FUNCTION IF EXISTS {legacy_freeze}"
+        "(bigint, bigint, bigint, integer, text, text, text, integer, jsonb)"
+    )
+    legacy_canonical = _qualified_name(
+        connection, quoted_schema, "archie_canonical_jsonb"
+    )
+    connection.exec_driver_sql(
+        f"DROP FUNCTION IF EXISTS {legacy_canonical}(jsonb)"
+    )
     for create_sql in (
+        _HMAC_SHA256_FUNCTION_SQL,
+        _VERIFY_COMMAND_CAPABILITY_SQL,
+        _CLAIM_COMMAND_SQL,
         _IMMUTABILITY_FUNCTION_SQL,
         _DECISION_CITATION_MEMBERSHIP_SQL,
-        _CANONICAL_JSON_FUNCTION_SQL,
+        _DECISION_BRIEF_CREATE_SQL,
         _DECISION_BRIEF_FREEZE_SQL,
         _RECEIPT_FUNCTION_SQL,
         _EVIDENCE_HEAD_GUARD_SQL,
@@ -2214,24 +3000,48 @@ def ensure_transformation_db_guards(
     qualified_advance = _qualified_name(
         connection, quoted_schema, "archie_advance_evidence_head"
     )
-    qualified_canonical = _qualified_name(
-        connection, quoted_schema, "archie_canonical_jsonb"
-    )
     qualified_freeze = _qualified_name(
         connection, quoted_schema, "archie_freeze_decision_brief_version"
+    )
+    qualified_create_brief = _qualified_name(
+        connection, quoted_schema, "archie_create_decision_brief"
+    )
+    qualified_hmac = _qualified_name(
+        connection, quoted_schema, "archie_hmac_sha256"
+    )
+    qualified_verify_capability = _qualified_name(
+        connection, quoted_schema, "archie_verify_command_capability"
+    )
+    qualified_claim = _qualified_name(
+        connection, quoted_schema, "archie_claim_transformation_command"
     )
     advance_signature = (
         "bigint, bigint, integer, bigint, bigint, integer, text"
     )
-    freeze_signature = "bigint, bigint, bigint, integer, text, integer, jsonb"
+    freeze_signature = (
+        "bigint, bigint, bigint, integer, text, text, text, integer, text, jsonb, text"
+    )
+    claim_signature = "text, text"
+    create_brief_signature = "text, text, text"
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON FUNCTION {qualified_hmac}(bytea, bytea) FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON FUNCTION {qualified_verify_capability}(text, text, text) "
+        "FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON FUNCTION {qualified_claim}({claim_signature}) FROM PUBLIC"
+    )
     connection.exec_driver_sql(
         f"REVOKE ALL ON FUNCTION {qualified_advance}({advance_signature}) FROM PUBLIC"
     )
     connection.exec_driver_sql(
-        f"REVOKE ALL ON FUNCTION {qualified_canonical}(jsonb) FROM PUBLIC"
+        f"REVOKE ALL ON FUNCTION {qualified_freeze}({freeze_signature}) FROM PUBLIC"
     )
     connection.exec_driver_sql(
-        f"REVOKE ALL ON FUNCTION {qualified_freeze}({freeze_signature}) FROM PUBLIC"
+        f"REVOKE ALL ON FUNCTION {qualified_create_brief}({create_brief_signature}) "
+        "FROM PUBLIC"
     )
     legacy_insert = _qualified_name(
         connection, quoted_schema, "archie_insert_decision_brief_citations"
@@ -2248,6 +3058,12 @@ def ensure_transformation_db_guards(
         runtime_role
     )
     if runtime_role_exists:
+        qualified_keys = _qualified_name(
+            connection, quoted_schema, "archie_command_capability_keys"
+        )
+        connection.exec_driver_sql(
+            f"REVOKE ALL ON TABLE {qualified_keys} FROM {runtime_role_identifier}"
+        )
         for function_name in trigger_functions:
             qualified_function = _qualified_name(
                 connection, quoted_schema, function_name
@@ -2263,6 +3079,14 @@ def ensure_transformation_db_guards(
         connection.exec_driver_sql(
             f"GRANT EXECUTE ON FUNCTION {qualified_freeze}({freeze_signature}) "
             f"TO {runtime_role_identifier}"
+        )
+        connection.exec_driver_sql(
+            f"GRANT EXECUTE ON FUNCTION {qualified_claim}({claim_signature}) "
+            f"TO {runtime_role_identifier}"
+        )
+        connection.exec_driver_sql(
+            f"GRANT EXECUTE ON FUNCTION {qualified_create_brief}"
+            f"({create_brief_signature}) TO {runtime_role_identifier}"
         )
     _repair_triggers(connection, schema, quoted_schema)
     # The runtime role gets only the columns required by the service protocol.
@@ -2291,6 +3115,7 @@ def ensure_transformation_db_guards(
                     "SELECT"
                     if table_name
                     in {
+                        "command_idempotency_records",
                         "evidence_head_events",
                         "decision_briefs",
                         "decision_brief_versions",

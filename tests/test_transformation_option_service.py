@@ -309,6 +309,18 @@ def test_freeze_persists_complete_decimal_canonical_snapshot_and_replays(decisio
     assert version.captured_at.tzinfo is not None
 
 
+def test_option_fact_validation_rejects_binary_float(decision_scope):
+    """Catches IEEE-754 rounding entering facts that require Decimal fidelity."""
+    scope = decision_scope
+    with Session(db.engine) as session:
+        option = session.get(TransformationOption, scope.option_ids[0])
+        session.expunge(option)
+    option.cost_min = 0.1
+
+    with pytest.raises(ValueError, match="cost_min must use Decimal"):
+        TransformationOptionService.canonical_option_payload(option, 1)
+
+
 def _altered_version(version, field, replacement):
     values = {
         column.name: getattr(version, column.name)

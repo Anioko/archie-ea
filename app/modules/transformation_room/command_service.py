@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import hmac
 import json
+import math
 import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -12,8 +14,7 @@ from decimal import Decimal
 from typing import Any, Callable, Mapping, TypeAlias
 
 from flask import current_app
-from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app import db
@@ -44,9 +45,9 @@ def _canonical_json_default(value: Any):
     raise TypeError(f"{type(value).__name__} is not canonical JSON")
 
 
-def canonical_request_digest(payload: Mapping[str, Any]) -> str:
-    """Return SHA-256 over UTF-8, sorted, whitespace-free canonical JSON."""
-    canonical = json.dumps(
+def canonical_request_document(payload: Mapping[str, Any]) -> str:
+    """Return the exact UTF-8 command document used at every hash boundary."""
+    return json.dumps(
         payload,
         sort_keys=True,
         separators=(",", ":"),
@@ -54,7 +55,11 @@ def canonical_request_digest(payload: Mapping[str, Any]) -> str:
         allow_nan=False,
         default=_canonical_json_default,
     )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def canonical_request_digest(payload: Mapping[str, Any]) -> str:
+    """Return SHA-256 over the exact canonical request document."""
+    return hashlib.sha256(canonical_request_document(payload).encode("utf-8")).hexdigest()
 
 
 OperationNaturalKeyResolver: TypeAlias = Callable[
@@ -97,19 +102,93 @@ class CommandService:
         return secrets.token_hex(32)
 
     @staticmethod
+    def _capability_secret() -> tuple[str, bytes]:
+        encoded = str(
+            current_app.config.get("TRANSFORMATION_COMMAND_CAPABILITY_SECRET", "")
+            or ""
+        ).strip()
+        try:
+            secret = bytes.fromhex(encoded)
+        except ValueError as error:
+            raise RuntimeError(
+                "TRANSFORMATION_COMMAND_CAPABILITY_SECRET must be hexadecimal"
+            ) from error
+        if len(secret) < 32:
+            raise RuntimeError(
+                "TRANSFORMATION_COMMAND_CAPABILITY_SECRET must contain at least 32 bytes"
+            )
+        return hashlib.sha256(secret).hexdigest(), secret
+
+    @classmethod
+    def _signed_capability(cls, payload: Mapping[str, Any]) -> tuple[str, str]:
+        key_id, secret = cls._capability_secret()
+        document = canonical_request_document({**dict(payload), "key_id": key_id})
+        capability = hmac.new(secret, document.encode("utf-8"), hashlib.sha256).hexdigest()
+        return document, capability
+
+    @classmethod
+    def _execution_capability(
+        cls,
+        *,
+        actor: ActorContext,
+        operation: str,
+        idempotency_key: str,
+        request_digest: str,
+        natural_key: str,
+        receipt_id: int,
+        generation: int,
+        claim_token: str,
+        claimant_request_id: str,
+    ) -> tuple[str, str]:
+        return cls._signed_capability(
+            {
+                "schema_version": "transformation-command-execution-r1",
+                "organization_id": actor.organization_id,
+                "actor_id": actor.user_id,
+                "operation": operation,
+                "idempotency_key": idempotency_key,
+                "request_digest": request_digest,
+                "natural_key": natural_key,
+                "receipt_id": receipt_id,
+                "generation": generation,
+                "claim_token": claim_token,
+                "claimant_request_id": claimant_request_id,
+            }
+        )
+
+    @staticmethod
     def _require_authorizer(authorizer: OperationAuthorizer) -> OperationAuthorizer:
         if not callable(authorizer):
             raise TypeError("authorizer must be callable")
         return authorizer
 
-    @staticmethod
-    def claim_from_record(record: CommandIdempotencyRecord) -> CommandClaim:
+    @classmethod
+    def claim_from_record(cls, record: CommandIdempotencyRecord) -> CommandClaim:
+        actor = ActorContext(
+            user_id=record.actor_id,
+            organization_id=record.organization_id,
+            roles=frozenset(),
+            request_id=record.claimant_request_id,
+        )
+        capability_document, capability_mac = cls._execution_capability(
+            actor=actor,
+            operation=record.operation,
+            idempotency_key=record.idempotency_key,
+            request_digest=record.request_digest,
+            natural_key=record.natural_key,
+            receipt_id=record.id,
+            generation=record.lease_generation,
+            claim_token=record.claim_token,
+            claimant_request_id=record.claimant_request_id,
+        )
         return CommandClaim(
             receipt_id=record.id,
             generation=record.lease_generation,
             claim_token=record.claim_token,
             request_digest=record.request_digest,
             natural_key=record.natural_key,
+            capability_document=capability_document,
+            capability_mac=capability_mac,
         )
 
     @classmethod
@@ -257,142 +336,79 @@ class CommandService:
             raise ValueError("request_digest must be a SHA-256 hexadecimal digest")
 
         token = cls._new_claim_token()
+        lease_milliseconds = max(10, math.ceil(cls._lease_seconds() * 1000.0))
+        claim_document, claim_capability = cls._signed_capability(
+            {
+                "schema_version": "transformation-command-claim-r1",
+                "organization_id": actor.organization_id,
+                "actor_id": actor.user_id,
+                "operation": operation,
+                "idempotency_key": idempotency_key,
+                "request_digest": request_digest,
+                "natural_key": natural_key,
+                "claim_token": token,
+                "claimant_request_id": actor.request_id,
+                "lease_milliseconds": lease_milliseconds,
+            }
+        )
         with Session(db.engine, expire_on_commit=False) as session, session.begin():
             # Authorization is mandatory and precedes both receipt creation and
             # immutable-result reconciliation. Resolvers never carry hidden auth.
             authorizer(session, actor, operation, natural_key)
-            now = cls._database_now(session)
-            expiry = now + timedelta(seconds=cls._lease_seconds())
-            insert = (
-                postgresql_insert(CommandIdempotencyRecord)
-                .values(
-                    organization_id=actor.organization_id,
-                    actor_id=actor.user_id,
-                    operation=operation,
-                    idempotency_key=idempotency_key,
-                    request_digest=request_digest,
-                    natural_key=natural_key,
-                    status="in_progress",
-                    lease_generation=1,
-                    claim_token=token,
-                    claimant_request_id=actor.request_id,
-                    lease_expires_at=expiry,
-                    attempt_count=1,
-                )
-                .on_conflict_do_nothing(
-                    index_elements=(
-                        CommandIdempotencyRecord.organization_id,
-                        CommandIdempotencyRecord.actor_id,
-                        CommandIdempotencyRecord.operation,
-                        CommandIdempotencyRecord.idempotency_key,
+            schema = session.scalar(text("SELECT current_schema()"))
+            quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
+            row = session.execute(
+                text(
+                    f"SELECT * FROM {quoted_schema}.archie_claim_transformation_command("
+                    "CAST(:document AS text), CAST(:capability AS text))"
+                ),
+                {"document": claim_document, "capability": claim_capability},
+            ).mappings().one()
+            if row["claim_outcome"] == "reconciled":
+                result = session.scalar(
+                    select(OperationResult).where(
+                        OperationResult.id == row["operation_result_id"],
+                        OperationResult.organization_id == actor.organization_id,
+                        OperationResult.actor_id == actor.user_id,
+                        OperationResult.operation == operation,
+                        OperationResult.natural_key == natural_key,
                     )
                 )
-                .returning(CommandIdempotencyRecord.id)
-            )
-            inserted_id = session.scalar(insert)
-            if inserted_id is not None:
-                return CommandClaim(
-                    receipt_id=inserted_id,
-                    generation=1,
-                    claim_token=token,
-                    request_digest=request_digest,
-                    natural_key=natural_key,
-                )
-
-            receipt = session.execute(
-                select(CommandIdempotencyRecord)
-                .where(
-                    CommandIdempotencyRecord.organization_id
-                    == actor.organization_id,
-                    CommandIdempotencyRecord.actor_id == actor.user_id,
-                    CommandIdempotencyRecord.operation == operation,
-                    CommandIdempotencyRecord.idempotency_key == idempotency_key,
-                )
-                .with_for_update()
-            ).scalar_one()
-            # The upsert may have waited on a competing transaction. Refresh
-            # database time after owning the row so a reclaimed lease cannot
-            # already be expired when it is written.
-            now = cls._database_now(session)
-            expiry = now + timedelta(seconds=cls._lease_seconds())
-
-            if receipt.request_digest != request_digest:
-                raise CommandConflict(
-                    "idempotency_digest_mismatch", receipt_id=receipt.id
-                )
-            if receipt.natural_key != natural_key:
-                raise CommandConflict(
-                    "idempotency_natural_key_mismatch", receipt_id=receipt.id
-                )
-
-            result = cls._find_result(
-                session,
-                organization_id=actor.organization_id,
-                actor_id=actor.user_id,
+                if result is None:
+                    raise CommandConflict("operation_result_missing_after_reconcile")
+                return cls.to_command_result(result, created=False, idempotent=True)
+            if row["claim_outcome"] == "conflict":
+                details = {"receipt_id": row["command_receipt_id"]}
+                if row["conflict_error_class"] is not None:
+                    details["error_class"] = row["conflict_error_class"]
+                if row["retry_after_seconds"] is not None:
+                    details["generation"] = row["command_generation"]
+                    details["retry_after_seconds"] = row["retry_after_seconds"]
+                if row["operation_result_id"] is not None:
+                    details["operation_result_id"] = row["operation_result_id"]
+                raise CommandConflict(row["conflict_reason"], **details)
+            if row["claim_outcome"] != "claimed":
+                raise RuntimeError("command claim function returned an unknown outcome")
+            capability_document, capability_mac = cls._execution_capability(
+                actor=actor,
                 operation=operation,
+                idempotency_key=idempotency_key,
+                request_digest=request_digest,
                 natural_key=natural_key,
+                receipt_id=row["command_receipt_id"],
+                generation=row["command_generation"],
+                claim_token=row["command_claim_token"],
+                claimant_request_id=actor.request_id,
             )
-            if result is not None:
-                if result.request_digest != request_digest:
-                    raise CommandConflict(
-                        "natural_key_digest_mismatch",
-                        operation_result_id=result.id,
-                    )
-                if (
-                    receipt.status != "succeeded"
-                    or receipt.operation_result_id != result.id
-                ):
-                    receipt.status = "succeeded"
-                    receipt.operation_result_id = result.id
-                    receipt.lease_expires_at = None
-                    receipt.completed_at = now
-                    session.flush()
-                return cls.to_command_result(
-                    result, created=False, idempotent=True
-                )
-            result_owner = session.scalar(
-                select(OperationResult.actor_id).where(
-                    OperationResult.organization_id == actor.organization_id,
-                    OperationResult.operation == operation,
-                    OperationResult.natural_key == natural_key,
-                )
+            return CommandClaim(
+                receipt_id=row["command_receipt_id"],
+                generation=row["command_generation"],
+                claim_token=row["command_claim_token"],
+                request_digest=request_digest,
+                natural_key=natural_key,
+                capability_document=capability_document,
+                capability_mac=capability_mac,
             )
-            if result_owner is not None:
-                raise CommandConflict("natural_key_owned_by_another_actor")
-
-            if receipt.status == "failed_non_retryable":
-                raise CommandConflict(
-                    "failed_non_retryable",
-                    receipt_id=receipt.id,
-                    error_class=receipt.last_error_class,
-                )
-
-            lease_active = (
-                receipt.status == "in_progress"
-                and receipt.lease_expires_at is not None
-                and receipt.lease_expires_at > now
-            )
-            if lease_active:
-                retry_after = max(
-                    0.001, (receipt.lease_expires_at - now).total_seconds()
-                )
-                raise CommandConflict(
-                    "active_lease",
-                    receipt_id=receipt.id,
-                    generation=receipt.lease_generation,
-                    retry_after_seconds=retry_after,
-                )
-
-            receipt.status = "in_progress"
-            receipt.lease_generation += 1
-            receipt.claim_token = token
-            receipt.claimant_request_id = actor.request_id
-            receipt.lease_expires_at = expiry
-            receipt.operation_result_id = None
-            receipt.attempt_count += 1
-            receipt.completed_at = None
-            session.flush()
-            return cls.claim_from_record(receipt)
 
     @staticmethod
     def _find_result(
@@ -630,5 +646,6 @@ __all__ = [
     "CommandService",
     "OperationAuthorizer",
     "OperationNaturalKeyResolver",
+    "canonical_request_document",
     "canonical_request_digest",
 ]

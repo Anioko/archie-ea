@@ -103,6 +103,16 @@ class Config:
             "Set SECRET_KEY in your .env file for production use."
         )
     SQLALCHEMY_COMMIT_ON_TEARDOWN = True
+    # Separate from SECRET_KEY so database command capabilities can be rotated
+    # without invalidating sessions. This value is shared only by the schema
+    # owner (which installs the verifier key) and application processes (which
+    # sign exact command documents); it is never exposed through database SQL.
+    TRANSFORMATION_COMMAND_CAPABILITY_SECRET = os.environ.get(
+        "TRANSFORMATION_COMMAND_CAPABILITY_SECRET", ""
+    )
+    TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = os.environ.get(
+        "TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS", ""
+    )
 
     # Session security — 8-hour session lifetime, 30-day remember-me cookie
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
@@ -388,6 +398,8 @@ class DevelopmentConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = False
+    TRANSFORMATION_COMMAND_CAPABILITY_SECRET = "74" * 32
+    TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = ""
 
     # Brute-force protection is a production control; under test it throttles the
     # suite instead of an attacker. /account/login is capped at 10 POSTs per
@@ -509,6 +521,10 @@ class ProductionConfig(Config):
 
         Config.init_app(app)
         assert os.environ.get("SECRET_KEY"), "SECRET_KEY IS NOT SET!"
+        if not app.config.get("TRANSFORMATION_COMMAND_CAPABILITY_SECRET"):
+            raise ValueError(
+                "TRANSFORMATION_COMMAND_CAPABILITY_SECRET is required in production"
+            )
 
         # Trust the nginx reverse proxy's forwarded headers (X-Forwarded-Proto /
         # -For) so request.scheme/host reflect the real client-facing protocol.

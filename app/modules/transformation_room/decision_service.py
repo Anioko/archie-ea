@@ -41,6 +41,7 @@ from app.models.unified_capability import ValueStream
 from app.modules.transformation_room.command_service import (
     CommandService,
     OperationAuthorizer,
+    canonical_request_document,
 )
 from app.modules.transformation_room.domain import (
     ActorContext,
@@ -160,6 +161,8 @@ def _required_list(value: Any, field: str) -> list[Any]:
 def _decimal(value: Any, field: str) -> Decimal:
     if isinstance(value, bool) or value is None:
         raise ValueError(f"{field} is required")
+    if isinstance(value, float):
+        raise ValueError(f"{field} must use Decimal or an exact decimal string")
     try:
         parsed = Decimal(str(value))
     except (InvalidOperation, ValueError) as error:
@@ -609,6 +612,207 @@ class DecisionBriefService:
     """Evaluate and freeze exact option/evidence/outcome decision dossiers."""
 
     @classmethod
+    def create_brief(
+        cls,
+        *,
+        actor: ActorContext,
+        workstream_id: int,
+        candidate_id: int | None,
+        title: str,
+        recommendation_option_id: int,
+        decision_authority_id: int,
+        unknown_codes: Sequence[str],
+        conflicts: Sequence[str],
+        expected_impacts: Sequence[str],
+        command_key: str,
+        option_exception: Mapping[str, Any] | None = None,
+    ) -> CommandResult:
+        """Create one governed, tenant-scoped draft through the DB boundary."""
+        workstream_id = _positive_id(workstream_id, "workstream_id")
+        if candidate_id is not None:
+            candidate_id = _positive_id(candidate_id, "candidate_id")
+        recommendation_option_id = _positive_id(
+            recommendation_option_id, "recommendation_option_id"
+        )
+        decision_authority_id = _positive_id(
+            decision_authority_id, "decision_authority_id"
+        )
+
+        def text_values(values, field):
+            if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+                raise ValueError(f"{field} must be a sequence")
+            normalized = tuple(_required_text(value, field) for value in values)
+            if len(set(normalized)) != len(normalized):
+                raise ValueError(f"duplicate {field}")
+            return normalized
+
+        exception = None
+        if option_exception is not None:
+            if not isinstance(option_exception, Mapping):
+                raise ValueError("option_exception must be a mapping")
+            if set(option_exception) != {"type", "name", "reason", "authority_id"}:
+                raise ValueError("option_exception fields are invalid")
+            exception_type = _required_text(
+                option_exception.get("type"), "option_exception.type"
+            )
+            if exception_type not in OPTION_EXCEPTION_TYPES:
+                raise ValueError("option_exception.type is invalid")
+            exception = {
+                "type": exception_type,
+                "name": _required_text(
+                    option_exception.get("name"), "option_exception.name"
+                ),
+                "reason": _required_text(
+                    option_exception.get("reason"), "option_exception.reason"
+                ),
+                "authority_id": _positive_id(
+                    option_exception.get("authority_id"),
+                    "option_exception.authority_id",
+                ),
+            }
+        request = _canonical_value(
+            {
+                "workstream_id": workstream_id,
+                "candidate_id": candidate_id,
+                "title": _required_text(title, "title"),
+                "recommendation_option_id": recommendation_option_id,
+                "decision_authority_id": decision_authority_id,
+                "unknown_codes": text_values(unknown_codes, "unknown_codes"),
+                "conflicts": text_values(conflicts, "conflicts"),
+                "expected_impacts": text_values(expected_impacts, "expected_impacts"),
+                "option_exception": exception,
+            }
+        )
+        natural_key = (
+            f"brief:workstream:{workstream_id}:candidate:"
+            f"{candidate_id if candidate_id is not None else 'all'}"
+        )
+        return CommandService.execute(
+            actor=actor,
+            operation="brief.create",
+            idempotency_key=command_key,
+            payload=request,
+            natural_key=natural_key,
+            authorizer=cls.authorise_brief_create(
+                workstream_id, candidate_id, recommendation_option_id,
+                decision_authority_id, exception
+            ),
+            handler=lambda session, claim: cls._create_locked_draft(
+                session, actor, request, claim
+            ),
+        )
+
+    @classmethod
+    def authorise_brief_create(
+        cls,
+        workstream_id,
+        candidate_id,
+        recommendation_option_id,
+        decision_authority_id,
+        option_exception,
+    ) -> OperationAuthorizer:
+        expected_key = (
+            f"brief:workstream:{workstream_id}:candidate:"
+            f"{candidate_id if candidate_id is not None else 'all'}"
+        )
+
+        def authorize(session, actor, operation, natural_key):
+            if operation != "brief.create" or natural_key != expected_key:
+                raise NotAuthorised("brief_create_command_mismatch")
+            programme, workstream = _programme_for_workstream(
+                session, actor, workstream_id, lock=False
+            )
+            TransformationProgrammeService._require_programme_authority(
+                session,
+                actor,
+                programme.id,
+                workstream.id,
+                OPTION_DRAFT_ROLES,
+                "brief_create_not_authorised",
+            )
+            if candidate_id is not None:
+                candidate = session.scalar(
+                    select(TransformationCandidate.id).where(
+                        TransformationCandidate.id == candidate_id,
+                        TransformationCandidate.organization_id
+                        == actor.organization_id,
+                        TransformationCandidate.workstream_id == workstream.id,
+                        TransformationCandidate.inclusion_status == "accepted",
+                    )
+                )
+                if candidate is None:
+                    raise NotFound("brief_candidate_not_found")
+            option_scope = (
+                TransformationOption.candidate_id.is_(None)
+                if candidate_id is None
+                else TransformationOption.candidate_id == candidate_id
+            )
+            recommendation = session.scalar(
+                select(TransformationOption.id).where(
+                    TransformationOption.id == recommendation_option_id,
+                    TransformationOption.organization_id == actor.organization_id,
+                    TransformationOption.workstream_id == workstream.id,
+                    option_scope,
+                )
+            )
+            if recommendation is None:
+                raise NotFound("brief_recommendation_not_found")
+            if not cls._user_has_decision_authority(
+                session,
+                actor.organization_id,
+                programme.id,
+                workstream.id,
+                decision_authority_id,
+                lock=False,
+            ):
+                raise NotAuthorised("decision_authority_invalid")
+            if option_exception is not None and not cls._user_has_decision_authority(
+                session,
+                actor.organization_id,
+                programme.id,
+                workstream.id,
+                option_exception["authority_id"],
+                lock=False,
+            ):
+                raise NotAuthorised("option_exception_authority_invalid")
+
+        return authorize
+
+    @staticmethod
+    def _created_brief_mutation(brief_id, revision):
+        response = {"decision_brief_id": brief_id, "revision": revision}
+        return DomainMutationResult(
+            {"decision_brief_id": brief_id},
+            response,
+            (
+                {
+                    "event_type": "transformation.decision_brief_created",
+                    "payload": response,
+                },
+            ),
+        )
+
+    @classmethod
+    def _create_locked_draft(cls, session, actor, request, claim):
+        schema = session.scalar(text("SELECT current_schema()"))
+        quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
+        created = session.execute(
+            text(
+                f"SELECT * FROM {quoted_schema}.archie_create_decision_brief("
+                "CAST(:capability_document AS text), CAST(:capability AS text), "
+                "CAST(:request_document AS text))"
+            ),
+            {
+                "capability_document": claim.capability_document,
+                "capability": claim.capability_mac,
+                "request_document": canonical_request_document(request),
+            },
+        ).mappings().one()
+        return cls._created_brief_mutation(
+            created["decision_brief_id"], created["decision_brief_revision"]
+        )
+
+    @classmethod
     def evaluate(cls, *, actor: ActorContext, brief_id: int) -> BriefReadiness:
         brief = cls.load_brief_for_tenant(actor, brief_id)
         option_ids = cls.current_option_version_ids(brief, actor=actor)
@@ -931,6 +1135,31 @@ class DecisionBriefService:
             source_revision=request["expected_revision"],
             created_at=created_at,
         )
+        request_document = canonical_request_document(request)
+        canonical_document = _canonical_json(
+            cls._hash_envelope(
+                organization_id=actor.organization_id,
+                brief_id=brief.id,
+                workstream_id=workstream.id,
+                version=next_version,
+                source_revision=request["expected_revision"],
+                created_by_id=actor.user_id,
+                created_at=created_at,
+                frozen_payload=frozen_payload,
+                recommendation_option_version_id=recommendation.id,
+                option_version_ids=[row.id for row in versions],
+                cited_evidence_ids=[row.id for row in evidence_rows],
+                outcome_ids=[row.id for row in outcomes],
+                measure_ids=[row.id for row in measures],
+                policy_version=TransformationGateService.POLICY_VERSION,
+                submitted_by_id=actor.user_id,
+                submitter_authorized=True,
+                decision_authority_id=brief.decision_authority_id,
+                human_reviewed_ai=True,
+                blockers_cleared=True,
+                unknowns_acknowledged=True,
+            )
+        )
         from_state = brief.status
         with session.begin_nested():
             schema = session.scalar(text("SELECT current_schema()"))
@@ -940,8 +1169,12 @@ class DecisionBriefService:
                     f"SELECT * FROM {quoted_schema}.archie_freeze_decision_brief_version("
                     "CAST(:brief_id AS bigint), CAST(:actor_id AS bigint), "
                     "CAST(:receipt_id AS bigint), CAST(:generation AS integer), "
-                    "CAST(:claim_token AS text), CAST(:expected_revision AS integer), "
-                    "CAST(:frozen_payload AS jsonb))"
+                    "CAST(:claim_token AS text), CAST(:capability_document AS text), "
+                    "CAST(:capability_mac AS text), "
+                    "CAST(:expected_revision AS integer), "
+                    "CAST(:request_document AS text), "
+                    "CAST(:frozen_payload AS jsonb), "
+                    "CAST(:canonical_document AS text))"
                 ),
                 {
                     "brief_id": brief.id,
@@ -949,13 +1182,17 @@ class DecisionBriefService:
                     "receipt_id": claim.receipt_id,
                     "generation": claim.generation,
                     "claim_token": claim.claim_token,
+                    "capability_document": claim.capability_document,
+                    "capability_mac": claim.capability_mac,
                     "expected_revision": request["expected_revision"],
+                    "request_document": request_document,
                     "frozen_payload": json.dumps(
                         frozen_payload,
                         sort_keys=True,
                         separators=(",", ":"),
                         ensure_ascii=False,
                     ),
+                    "canonical_document": canonical_document,
                 },
             ).mappings().one()
         decision_event = DecisionEvent(
@@ -1672,13 +1909,27 @@ class DecisionBriefService:
 
     @classmethod
     def verify_hash(cls, version: DecisionBriefVersion) -> bool:
-        payload = cls.reconstruct_canonical_payload(version)
+        document = version.canonical_document
+        if not isinstance(document, str) or not document:
+            return False
+        try:
+            parsed = json.loads(document)
+            expected = _canonical_value(cls.reconstruct_canonical_payload(version))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if parsed != expected or _canonical_json(parsed) != document:
+            return False
         return hmac.compare_digest(
-            version.content_hash, _sha256_canonical(payload)
+            version.content_hash,
+            hashlib.sha256(document.encode("utf-8")).hexdigest(),
         )
+
+
+DecisionService = DecisionBriefService
 
 
 __all__ = [
     "DecisionBriefService",
+    "DecisionService",
     "TransformationOptionService",
 ]

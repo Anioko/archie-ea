@@ -23,6 +23,8 @@ class CommandClaim:
     claim_token: str
     request_digest: str
     natural_key: str
+    capability_document: str
+    capability_mac: str
 
 
 @dataclass(frozen=True)

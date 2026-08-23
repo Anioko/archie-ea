@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import uuid
@@ -22,6 +23,52 @@ from app.models.transformation_db_guards import ensure_transformation_db_guards
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY_ROLE = "archie_deploy"
 RUNTIME_ROLE = "archie_runtime"
+COMMAND_CAPABILITY_SECRET = "63" * 32
+
+
+def _claim_runtime_command(
+    cursor,
+    *,
+    organization_id,
+    actor_id,
+    operation,
+    command_key,
+    request_digest,
+    natural_key,
+    claim_token,
+    request_id,
+    capability_secret=COMMAND_CAPABILITY_SECRET,
+):
+    """Exercise the same deployment-secret boundary as CommandService."""
+    secret = bytes.fromhex(capability_secret)
+    document = json.dumps(
+        {
+            "schema_version": "transformation-command-claim-r1",
+            "key_id": hashlib.sha256(secret).hexdigest(),
+            "organization_id": organization_id,
+            "actor_id": actor_id,
+            "operation": operation,
+            "idempotency_key": command_key,
+            "request_digest": request_digest,
+            "natural_key": natural_key,
+            "claim_token": claim_token,
+            "claimant_request_id": request_id,
+            "lease_milliseconds": 60000,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    capability = hmac.new(
+        secret, document.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    cursor.execute(
+        "SELECT * FROM public.archie_claim_transformation_command(%s, %s)",
+        (document, capability),
+    )
+    claimed = cursor.fetchone()
+    assert claimed[0] == "claimed"
+    return claimed[1]
 
 
 def _environment(service: dict) -> dict[str, str]:
@@ -136,7 +183,8 @@ CREATE TABLE command_idempotency_records (
     last_error_class varchar(255),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-    completed_at timestamptz
+    completed_at timestamptz,
+    UNIQUE (organization_id, actor_id, operation, idempotency_key)
 );
 CREATE TABLE operation_results (
     id serial PRIMARY KEY,
@@ -149,7 +197,8 @@ CREATE TABLE operation_results (
     receipt_generation integer NOT NULL,
     object_ids json NOT NULL,
     response_json json NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    UNIQUE (organization_id, operation, natural_key)
 );
 CREATE TABLE transformation_outbox_events (
     id serial PRIMARY KEY,
@@ -282,6 +331,7 @@ def guarded_runtime_database(isolated_role_database):
             ensure_transformation_db_guards(
                 connection,
                 runtime_role=role_database.runtime_role,
+                capability_secrets=(COMMAND_CAPABILITY_SECRET,),
             )
         yield role_database
     finally:
@@ -311,23 +361,17 @@ def _runtime_attestation_conflict_pair(role_database, *, conflict_candidate_id: 
     claim_token = "c" * 64
     try:
         cursor = raw.cursor()
-        cursor.execute(
-            "INSERT INTO command_idempotency_records "
-            "(organization_id, actor_id, operation, idempotency_key, "
-            "request_digest, natural_key, status, lease_generation, "
-            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
-            "VALUES (%s, %s, 'evidence.attest', 'candidate-binding', %s, %s, "
-            "'in_progress', 1, %s, 'candidate-binding-request', "
-            "clock_timestamp() + interval '1 minute', 1) RETURNING id",
-            (
-                organization_id,
-                actor_id,
-                "d" * 64,
-                natural_key,
-                claim_token,
-            ),
+        receipt_id = _claim_runtime_command(
+            cursor,
+            organization_id=organization_id,
+            actor_id=actor_id,
+            operation="evidence.attest",
+            command_key="candidate-binding",
+            request_digest="d" * 64,
+            natural_key=natural_key,
+            claim_token=claim_token,
+            request_id="candidate-binding-request",
         )
-        receipt_id = cursor.fetchone()[0]
         cursor.execute(
             "INSERT INTO evidence_requests "
             "(organization_id, candidate_id, subject_type, subject_id, "
@@ -531,6 +575,140 @@ def test_restricted_runtime_cannot_forge_receipt_brief_version_and_citations(
     assert artifact_count == 0
 
 
+def test_restricted_runtime_receipts_require_server_signed_claim(
+    guarded_runtime_database,
+):
+    """Catches restoring direct receipt minting or exposing the owner-only HMAC key."""
+    role_database = guarded_runtime_database
+    deploy_engine = create_engine(
+        role_database.url(
+            role=role_database.deploy_role,
+            password=role_database.deploy_password,
+        )
+    )
+    try:
+        with deploy_engine.connect() as connection:
+            privileges = connection.exec_driver_sql(
+                "SELECT "
+                "has_table_privilege(%s, 'command_idempotency_records', 'INSERT'), "
+                "has_table_privilege(%s, 'archie_command_capability_keys', 'SELECT'), "
+                "has_function_privilege(%s, "
+                "'public.archie_claim_transformation_command(text,text)', 'EXECUTE')",
+                (role_database.runtime_role,) * 3,
+            ).one()
+    finally:
+        deploy_engine.dispose()
+
+    assert privileges == (False, False, True)
+
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    raw = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.runtime_role,
+        password=role_database.runtime_password,
+    )
+    try:
+        with raw.cursor() as cursor, pytest.raises(psycopg2.Error):
+            cursor.execute(
+                "INSERT INTO command_idempotency_records "
+                "(organization_id, actor_id, operation, idempotency_key, "
+                " request_digest, natural_key, status, lease_generation, "
+                " claim_token, claimant_request_id, lease_expires_at, attempt_count) "
+                "VALUES (1, 2, 'brief.freeze', 'forged', %s, 'brief:3:version:1', "
+                " 'in_progress', 1, %s, 'forged-request', "
+                " clock_timestamp() + interval '1 minute', 1)",
+                ("d" * 64, "t" * 64),
+            )
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def test_capability_key_rotation_accepts_overlap_then_retires_previous_key(
+    guarded_runtime_database,
+):
+    role_database = guarded_runtime_database
+    next_secret = "64" * 32
+    deploy_engine = create_engine(
+        role_database.url(
+            role=role_database.deploy_role,
+            password=role_database.deploy_password,
+        )
+    )
+    try:
+        with deploy_engine.begin() as connection:
+            ensure_transformation_db_guards(
+                connection,
+                runtime_role=role_database.runtime_role,
+                capability_secrets=(next_secret, COMMAND_CAPABILITY_SECRET),
+            )
+        parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+        raw = psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            dbname=role_database.database_name,
+            user=role_database.runtime_role,
+            password=role_database.runtime_password,
+        )
+        try:
+            with raw.cursor() as cursor:
+                old_receipt = _claim_runtime_command(
+                    cursor,
+                    organization_id=81001,
+                    actor_id=82001,
+                    operation="rotation.probe",
+                    command_key="overlap-old",
+                    request_digest="8" * 64,
+                    natural_key="rotation:old",
+                    claim_token="9" * 64,
+                    request_id="rotation-overlap",
+                )
+            raw.commit()
+            assert old_receipt > 0
+
+            with deploy_engine.begin() as connection:
+                ensure_transformation_db_guards(
+                    connection,
+                    runtime_role=role_database.runtime_role,
+                    capability_secrets=(next_secret,),
+                )
+
+            with raw.cursor() as cursor, pytest.raises(psycopg2.Error):
+                _claim_runtime_command(
+                    cursor,
+                    organization_id=81001,
+                    actor_id=82001,
+                    operation="rotation.probe",
+                    command_key="retired-old",
+                    request_digest="8" * 64,
+                    natural_key="rotation:retired",
+                    claim_token="a" * 64,
+                    request_id="rotation-retired",
+                )
+            raw.rollback()
+            with raw.cursor() as cursor:
+                current_receipt = _claim_runtime_command(
+                    cursor,
+                    organization_id=81001,
+                    actor_id=82001,
+                    operation="rotation.probe",
+                    command_key="current-new",
+                    request_digest="8" * 64,
+                    natural_key="rotation:current",
+                    claim_token="b" * 64,
+                    request_id="rotation-current",
+                    capability_secret=next_secret,
+                )
+            raw.commit()
+            assert current_receipt > old_receipt
+        finally:
+            raw.close()
+    finally:
+        deploy_engine.dispose()
+
+
 def _runtime_conflict_resolution(role_database, *, supersede_governing_leaf: bool):
     """Call the definer directly with a current or superseded cited source leaf."""
     parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
@@ -552,25 +730,17 @@ def _runtime_conflict_resolution(role_database, *, supersede_governing_leaf: boo
     claim_token = "e" * 64
 
     def insert_receipt(cursor, *, natural_key: str, command_key: str):
-        cursor.execute(
-            "INSERT INTO command_idempotency_records "
-            "(organization_id, actor_id, operation, idempotency_key, "
-            "request_digest, natural_key, status, lease_generation, "
-            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
-            "VALUES (%s, %s, 'evidence.observe', %s, %s, %s, "
-            "'in_progress', 1, %s, %s, clock_timestamp() + interval '1 minute', 1) "
-            "RETURNING id",
-            (
-                organization_id,
-                actor_id,
-                command_key,
-                "f" * 64,
-                natural_key,
-                claim_token,
-                f"{command_key}-request",
-            ),
+        return _claim_runtime_command(
+            cursor,
+            organization_id=organization_id,
+            actor_id=actor_id,
+            operation="evidence.observe",
+            command_key=command_key,
+            request_digest="f" * 64,
+            natural_key=natural_key,
+            claim_token=claim_token,
+            request_id=f"{command_key}-request",
         )
-        return cursor.fetchone()[0]
 
     try:
         cursor = raw.cursor()
@@ -686,26 +856,20 @@ def _runtime_conflict_resolution(role_database, *, supersede_governing_leaf: boo
             (organization_id, subject_id, claim_key, resolution_identity),
         )
         resolution_head_id = cursor.fetchone()[0]
-        cursor.execute(
-            "INSERT INTO command_idempotency_records "
-            "(organization_id, actor_id, operation, idempotency_key, "
-            "request_digest, natural_key, status, lease_generation, "
-            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
-            "VALUES (%s, %s, 'evidence.conflict.resolve', 'runtime-resolution', %s, %s, "
-            "'in_progress', 1, %s, 'runtime-resolution-request', "
-            "clock_timestamp() + interval '1 minute', 1) RETURNING id",
-            (
-                organization_id,
-                actor_id,
-                "a" * 64,
-                (
-                    f"evidence-conflict-resolution:{conflict_record_id}:"
-                    f"{governing_record_id}"
-                ),
-                claim_token,
+        resolution_receipt_id = _claim_runtime_command(
+            cursor,
+            organization_id=organization_id,
+            actor_id=actor_id,
+            operation="evidence.conflict.resolve",
+            command_key="runtime-resolution",
+            request_digest="a" * 64,
+            natural_key=(
+                f"evidence-conflict-resolution:{conflict_record_id}:"
+                f"{governing_record_id}"
             ),
+            claim_token=claim_token,
+            request_id="runtime-resolution-request",
         )
-        resolution_receipt_id = cursor.fetchone()[0]
         cursor.execute(
             "INSERT INTO evidence_records "
             "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
@@ -825,23 +989,17 @@ def _runtime_same_source_resolution_attack(
             (organization_id, subject_id, claim_key, resolution_identity),
         )
         governing_head_id = cursor.fetchone()[0]
-        cursor.execute(
-            "INSERT INTO command_idempotency_records "
-            "(organization_id, actor_id, operation, idempotency_key, "
-            "request_digest, natural_key, status, lease_generation, "
-            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
-            "VALUES (%s, %s, 'evidence.observe', 'self-governing-root', %s, %s, "
-            "'in_progress', 1, %s, 'self-governing-root-request', "
-            "clock_timestamp() + interval '1 minute', 1) RETURNING id",
-            (
-                organization_id,
-                actor_id,
-                "2" * 64,
-                f"evidence:{candidate_id}:{claim_key}:{source_digest}:1",
-                claim_token,
-            ),
+        observation_receipt_id = _claim_runtime_command(
+            cursor,
+            organization_id=organization_id,
+            actor_id=actor_id,
+            operation="evidence.observe",
+            command_key="self-governing-root",
+            request_digest="2" * 64,
+            natural_key=f"evidence:{candidate_id}:{claim_key}:{source_digest}:1",
+            claim_token=claim_token,
+            request_id="self-governing-root-request",
         )
-        observation_receipt_id = cursor.fetchone()[0]
         cursor.execute(
             "INSERT INTO evidence_records "
             "(id, organization_id, candidate_id, subject_type, subject_id, claim_key, "
@@ -888,26 +1046,20 @@ def _runtime_same_source_resolution_attack(
         raw.commit()
         before = persisted_state(cursor)
 
-        cursor.execute(
-            "INSERT INTO command_idempotency_records "
-            "(organization_id, actor_id, operation, idempotency_key, "
-            "request_digest, natural_key, status, lease_generation, "
-            "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
-            "VALUES (%s, %s, 'evidence.conflict.resolve', 'self-governing-attack', "
-            "%s, %s, 'in_progress', 1, %s, 'self-governing-attack-request', "
-            "clock_timestamp() + interval '1 minute', 1) RETURNING id",
-            (
-                organization_id,
-                actor_id,
-                "3" * 64,
-                (
-                    f"evidence-conflict-resolution:{conflict_record_id}:"
-                    f"{governing_record_id}"
-                ),
-                claim_token,
+        resolution_receipt_id = _claim_runtime_command(
+            cursor,
+            organization_id=organization_id,
+            actor_id=actor_id,
+            operation="evidence.conflict.resolve",
+            command_key="self-governing-attack",
+            request_digest="3" * 64,
+            natural_key=(
+                f"evidence-conflict-resolution:{conflict_record_id}:"
+                f"{governing_record_id}"
             ),
+            claim_token=claim_token,
+            request_id="self-governing-attack-request",
         )
-        resolution_receipt_id = cursor.fetchone()[0]
         cursor.execute(
             "INSERT INTO evidence_records "
             "(organization_id, candidate_id, subject_type, subject_id, claim_key, "
@@ -1050,6 +1202,32 @@ def test_compose_paths_separate_database_deployment_from_runtime():
     assert optimized_backup["PGPASSWORD"] == "${POSTGRES_PASSWORD}"
 
 
+def test_compose_provisions_command_capability_to_schema_and_app_only():
+    """Catches deploy/app capability keys diverging or reaching database bootstrap."""
+    main = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    optimized = yaml.safe_load(
+        (ROOT / "docker-compose.optimized.yml").read_text(encoding="utf-8")
+    )
+
+    for document, runtime_services in (
+        (main, ("server", "worker")),
+        (optimized, ("web", "web-dev")),
+    ):
+        services = document["services"]
+        assert "TRANSFORMATION_COMMAND_CAPABILITY_SECRET" not in _environment(
+            services["database-bootstrap"]
+        )
+        assert _environment(services["schema-deploy"])[
+            "TRANSFORMATION_COMMAND_CAPABILITY_SECRET"
+        ] == "${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}"
+        for service_name in runtime_services:
+            runtime = _environment(services[service_name])
+            assert runtime["TRANSFORMATION_COMMAND_CAPABILITY_SECRET"] == (
+                "${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}"
+            )
+            assert "DATABASE_DEPLOY_PASSWORD" not in runtime
+
+
 def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
     isolated_role_database,
 ):
@@ -1123,6 +1301,7 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
             ensure_transformation_db_guards(
                 connection,
                 runtime_role=role_database.runtime_role,
+                capability_secrets=(COMMAND_CAPABILITY_SECRET,),
             )
 
         parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
@@ -1187,11 +1366,13 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 "has_table_privilege(%s, 'decision_brief_evidence_citations', 'INSERT'), "
                 "has_function_privilege(%s, "
                 "'public.archie_advance_evidence_head(bigint,bigint,integer,bigint,bigint,integer,text)', "
-                "'EXECUTE')",
-                (role_database.runtime_role,) * 7,
+                "'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'public.archie_create_decision_brief(text,text,text)', 'EXECUTE')",
+                (role_database.runtime_role,) * 8,
             )
             assert cursor.fetchone() == (
-                True, False, False, False, False, False, True
+                True, False, False, False, False, False, True, True
             )
             cursor.execute(
                 "SELECT p.proname, pg_get_function_identity_arguments(p.oid) "
@@ -1213,32 +1394,35 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                     "p_receipt_id bigint, p_generation integer, p_claim_token text",
                 ),
                 (
+                    "archie_claim_transformation_command",
+                    "p_document text, p_capability text",
+                ),
+                (
+                    "archie_create_decision_brief",
+                    "p_capability_document text, p_capability text, "
+                    "p_request_document text",
+                ),
+                (
                     "archie_freeze_decision_brief_version",
                     "p_brief_id bigint, p_actor_id bigint, "
                     "p_receipt_id bigint, p_generation integer, p_claim_token text, "
-                    "p_expected_revision integer, p_frozen_payload jsonb",
+                    "p_capability_document text, p_capability text, "
+                    "p_expected_revision integer, p_request_document text, "
+                    "p_frozen_payload jsonb, p_canonical_document text",
                 ),
             ])
 
-            cursor.execute(
-                "INSERT INTO command_idempotency_records "
-                "(organization_id, actor_id, operation, idempotency_key, "
-                "request_digest, natural_key, status, lease_generation, "
-                "claim_token, claimant_request_id, lease_expires_at, attempt_count) "
-                "VALUES (%s, %s, %s, %s, %s, %s, 'in_progress', 1, %s, %s, "
-                "clock_timestamp() + interval '1 minute', 1) RETURNING id",
-                (
-                    41001,
-                    42001,
-                    "runtime.probe",
-                    "runtime-probe",
-                    "a" * 64,
-                    "runtime:probe",
-                    "b" * 64,
-                    "runtime-request",
-                ),
+            receipt_id = _claim_runtime_command(
+                cursor,
+                organization_id=41001,
+                actor_id=42001,
+                operation="runtime.probe",
+                command_key="runtime-probe",
+                request_digest="a" * 64,
+                natural_key="runtime:probe",
+                claim_token="b" * 64,
+                request_id="runtime-request",
             )
-            receipt_id = cursor.fetchone()[0]
             cursor.execute(
                 "INSERT INTO operation_results "
                 "(organization_id, actor_id, operation, natural_key, "

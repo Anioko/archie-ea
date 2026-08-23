@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 import time
 import uuid
@@ -11,6 +13,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import event, func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app import db
@@ -34,11 +37,14 @@ from app.modules.transformation_room.decision_service import (
     DecisionBriefService,
     TransformationOptionService,
 )
+from app.modules.transformation_room.command_service import CommandService
 from app.modules.transformation_room.domain import (
+    ActorContext,
     BlockedByEvidence,
     CommandConflict,
     HumanAssertions,
     NotAuthorised,
+    NotFound,
     TypedEvidenceValue,
 )
 from app.modules.transformation_room.evidence_service import TransformationEvidenceService
@@ -59,6 +65,11 @@ from tests.test_transformation_option_service import (
 @pytest.fixture(scope="module", autouse=True)
 def decision_guard_schema(app, _schema):
     """Install the current guard contract on a long-lived shared test database."""
+    from app.commands.reconcile_schema import _reconcile
+
+    with app.app_context():
+        _added, failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert failed == []
     with app.app_context(), db.engine.begin() as connection:
         ensure_transformation_db_guards(connection)
 
@@ -104,6 +115,196 @@ def _freeze_brief(
         expected_revision=revision,
         command_key=key,
     )
+
+
+def _remove_fixture_brief(scope: DecisionScope) -> None:
+    """Expose the fixture's real governed scope to draft-creation tests."""
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "DELETE FROM decision_briefs "
+                "WHERE id = :brief_id AND organization_id = :organization_id"
+            ),
+            {"brief_id": scope.brief_id, "organization_id": scope.organization_id},
+        )
+
+
+def _create_brief(scope: DecisionScope, *, actor=None, key="brief-create"):
+    return DecisionBriefService.create_brief(
+        actor=actor or scope.actor,
+        workstream_id=scope.workstream_id,
+        candidate_id=scope.candidate_id,
+        title="Application rationalisation decision",
+        recommendation_option_id=scope.option_ids[1],
+        decision_authority_id=scope.actor_id,
+        unknown_codes=("cost_source_unknown",),
+        conflicts=("Operational cutover window requires confirmation",),
+        expected_impacts=("Lower run cost after controlled migration",),
+        command_key=key,
+    )
+
+
+def test_create_brief_is_governed_and_replays_one_draft(decision_scope):
+    scope = decision_scope
+    _remove_fixture_brief(scope)
+
+    created = _create_brief(scope)
+    replay = _create_brief(scope)
+
+    with Session(db.engine) as session:
+        brief = session.get(DecisionBrief, created.object_ids["decision_brief_id"])
+        count = session.scalar(
+            select(func.count()).select_from(DecisionBrief).where(
+                DecisionBrief.organization_id == scope.organization_id,
+                DecisionBrief.workstream_id == scope.workstream_id,
+                DecisionBrief.candidate_id == scope.candidate_id,
+            )
+        )
+    assert created.created is True and created.idempotent is False
+    assert replay.created is False and replay.idempotent is True
+    assert replay.operation_result_id == created.operation_result_id
+    assert count == 1
+    assert brief.status == "draft" and brief.revision == 1
+    assert brief.recommendation_option_id == scope.option_ids[1]
+
+
+def test_create_brief_rejects_cross_tenant_and_current_non_authority(
+    app, decision_scope, evidence_scope
+):
+    scope = decision_scope
+    _remove_fixture_brief(scope)
+
+    with pytest.raises(NotFound):
+        _create_brief(scope, actor=evidence_scope.foreign_actor, key="cross-tenant")
+
+    with app.app_context():
+        user = User(
+            email=f"brief-reader-{uuid.uuid4().hex}@example.test",
+            organization_id=scope.organization_id,
+            confirmed=True,
+            enterprise_role="portfolio_manager",
+        )
+        db.session.add(user)
+        db.session.flush()
+        reader = ActorContext(
+            user.id,
+            scope.organization_id,
+            frozenset({"chief_architect"}),
+            f"brief-reader-{uuid.uuid4().hex}",
+        )
+        db.session.commit()
+        db.session.remove()
+
+    with pytest.raises(NotAuthorised):
+        _create_brief(scope, actor=reader, key="non-authority")
+
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(func.count()).select_from(DecisionBrief).where(
+                DecisionBrief.organization_id == scope.organization_id,
+                DecisionBrief.workstream_id == scope.workstream_id,
+                DecisionBrief.candidate_id == scope.candidate_id,
+            )
+        ) == 0
+
+
+def test_create_brief_concurrency_converges_on_one_draft(app, decision_scope):
+    scope = decision_scope
+    _remove_fixture_brief(scope)
+    barrier = threading.Barrier(2)
+    results = []
+    errors = []
+
+    def create(key):
+        with app.app_context():
+            barrier.wait(timeout=10)
+            try:
+                results.append(_create_brief(scope, key=key))
+            except Exception as error:  # noqa: BLE001 - capture racing outcome
+                errors.append((key, error))
+
+    threads = [
+        threading.Thread(target=create, args=(f"brief-race-{index}",), daemon=True)
+        for index in (1, 2)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive()
+
+    # A contender whose transaction met the unique natural-result boundary
+    # must reconcile through its original idempotency key after the winner.
+    for key, _error in errors:
+        results.append(_create_brief(scope, key=key))
+
+    with Session(db.engine) as session:
+        brief_ids = tuple(
+            session.scalars(
+                select(DecisionBrief.id).where(
+                    DecisionBrief.organization_id == scope.organization_id,
+                    DecisionBrief.workstream_id == scope.workstream_id,
+                    DecisionBrief.candidate_id == scope.candidate_id,
+                )
+            ).all()
+        )
+    assert len(results) == 2
+    assert len(brief_ids) == 1
+    assert {result.object_ids["decision_brief_id"] for result in results} == {
+        brief_ids[0]
+    }
+
+
+def test_create_brief_definer_rejects_unsigned_execution_claim(
+    monkeypatch, decision_scope
+):
+    scope = decision_scope
+    _remove_fixture_brief(scope)
+    monkeypatch.setattr(
+        CommandService,
+        "_execution_capability",
+        classmethod(lambda cls, **_kwargs: ("{}", "0" * 64)),
+    )
+
+    with pytest.raises(DBAPIError, match="command capability is invalid"):
+        _create_brief(scope, key="brief-create-unsigned-capability")
+
+
+def test_create_brief_definer_rechecks_role_after_claim(
+    monkeypatch, decision_scope
+):
+    """Catches receipt-time authority being trusted at the locked create boundary."""
+    scope = decision_scope
+    _remove_fixture_brief(scope)
+    execute_claim = CommandService._execute_claim.__func__
+    revoked = False
+
+    def revoke_then_execute(service, **kwargs):
+        nonlocal revoked
+        if not revoked:
+            with Session(db.engine) as session, session.begin():
+                user = session.get(User, scope.actor_id)
+                user.enterprise_role = "portfolio_manager"
+            revoked = True
+        return execute_claim(service, **kwargs)
+
+    monkeypatch.setattr(
+        CommandService,
+        "_execute_claim",
+        classmethod(revoke_then_execute),
+    )
+    with pytest.raises(DBAPIError, match="actor is not currently authorized"):
+        _create_brief(scope, key="brief-create-role-recheck")
+
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(func.count()).select_from(DecisionBrief).where(
+                DecisionBrief.organization_id == scope.organization_id,
+                DecisionBrief.workstream_id == scope.workstream_id,
+                DecisionBrief.candidate_id == scope.candidate_id,
+            )
+        ) == 0
 
 
 def test_evaluate_and_freeze_pin_exact_current_graph_and_verify_hash(decision_scope):
@@ -170,6 +371,93 @@ def test_evaluate_and_freeze_pin_exact_current_graph_and_verify_hash(decision_sc
         assert DecisionBriefService.verify_hash(version) is False
 
 
+def test_brief_hash_uses_stored_python_canonical_utf8_document(decision_scope):
+    """Catches SQL re-rendering exponent floats or Unicode keys before hashing."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    exact_value = {
+        "évidence": {
+            "tiny": 1e-7,
+            "huge": 1e20,
+            "nested": [{"zèbre": "résumé", "a": None}],
+        }
+    }
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE evidence_records SET value_json = CAST(:value AS json) "
+                "WHERE id = :evidence_id AND organization_id = :organization_id"
+            ),
+            {
+                "value": json.dumps(exact_value, ensure_ascii=True),
+                "evidence_id": scope.evidence_id,
+                "organization_id": scope.organization_id,
+            },
+        )
+
+    result = _freeze_brief(
+        scope,
+        option_version_ids,
+        key="brief-exact-canonical-document",
+    )
+    with Session(db.engine) as session:
+        version = session.get(
+            DecisionBriefVersion,
+            result.object_ids["decision_brief_version_id"],
+        )
+        session.expunge(version)
+
+    assert version.canonical_document.encode("utf-8").decode("utf-8") == (
+        version.canonical_document
+    )
+    assert hashlib.sha256(version.canonical_document.encode("utf-8")).hexdigest() == (
+        version.content_hash
+    )
+    assert json.loads(version.canonical_document)["frozen_payload"]["evidence"][0][
+        "value"
+    ]["évidence"]["tiny"] == 1e-7
+    assert DecisionBriefService.verify_hash(version) is True
+
+    parsed = json.loads(version.canonical_document)
+    parsed["frozen_payload"]["objective"] = "tampered canonical document"
+    version.canonical_document = json.dumps(
+        parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    assert DecisionBriefService.verify_hash(version) is False
+
+
+def test_brief_freeze_rejects_canonical_text_for_a_different_snapshot(
+    monkeypatch, decision_scope
+):
+    """Catches hashing supplied bytes without binding their parsed payload."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    from app.modules.transformation_room import decision_service as service_module
+
+    canonical_json = service_module._canonical_json
+
+    def mismatched_document(value):
+        document = canonical_json(value)
+        if isinstance(value, dict) and value.get("schema_version") == (
+            "decision-brief-hash-r1.1"
+        ):
+            parsed = json.loads(document)
+            parsed["frozen_payload"]["objective"] = "different snapshot"
+            return json.dumps(
+                parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
+        return document
+
+    monkeypatch.setattr(service_module, "_canonical_json", mismatched_document)
+    with pytest.raises(DBAPIError, match="canonical document does not match snapshot"):
+        _freeze_brief(
+            scope,
+            option_version_ids,
+            key="brief-mismatched-canonical-document",
+        )
+
+
 def test_brief_hash_binds_sorted_citation_and_snapshot_membership(decision_scope):
     """Catches membership columns changing without invalidating the brief digest."""
     scope = decision_scope
@@ -232,6 +520,26 @@ def test_citation_creation_is_fenced_and_survives_a_nested_savepoint(decision_sc
     assert statements
     assert option_count == len(option_version_ids)
     assert evidence_count == 1
+
+
+def test_brief_freeze_definer_rejects_unsigned_execution_claim(
+    monkeypatch, decision_scope
+):
+    """Catches a forged/reclaimed receipt being sufficient to impersonate an actor."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    monkeypatch.setattr(
+        CommandService,
+        "_execution_capability",
+        classmethod(lambda cls, **_kwargs: ("{}", "0" * 64)),
+    )
+
+    with pytest.raises(DBAPIError, match="command capability is invalid"):
+        _freeze_brief(
+            scope,
+            option_version_ids,
+            key="brief-unsigned-execution-capability",
+        )
 
 
 def test_workstream_brief_rejects_candidate_scoped_options(decision_scope):

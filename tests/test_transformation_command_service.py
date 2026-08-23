@@ -21,6 +21,7 @@ from app.models.transformation_execution import (
     OperationOutboxEvent,
     OperationResult,
 )
+from app.models.transformation_db_guards import ensure_transformation_db_guards
 from app.models.user import User
 from app.modules.transformation_room.command_service import (
     CommandService,
@@ -43,6 +44,13 @@ class CommandFixture:
     organization_id: int
     user_id: int
     domain_name: str
+
+
+@pytest.fixture(scope="module", autouse=True)
+def command_guard_schema(app, _schema):
+    """Install the current signed-command boundary for focused Task 3 runs."""
+    with app.app_context(), db.engine.begin() as connection:
+        ensure_transformation_db_guards(connection)
 
 
 def test_database_now_normalizes_session_timezone_to_utc(app):

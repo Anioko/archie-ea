@@ -192,6 +192,10 @@ def test_pre_task6_evidence_waiver_constraint_reconciles_idempotently(
         assert dry_failed
         assert all(
             item.startswith("transformation_db_guards:function_missing:")
+            or item == (
+                "transformation_db_guards:"
+                "table_missing:archie_command_capability_keys"
+            )
             for item in dry_failed
         )
         assert f"{label} :: CHECK NOT VALID THEN VALIDATE" in dry_added
@@ -292,8 +296,11 @@ def test_task7_guards_install_and_repair_inside_the_active_non_public_schema(
                     "JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace "
                     "WHERE proc.proname IN "
                     "('archie_reject_transformation_mutation', "
+                    " 'archie_hmac_sha256', "
+                    " 'archie_verify_command_capability', "
+                    " 'archie_claim_transformation_command', "
                     " 'archie_guard_decision_citation_membership', "
-                    " 'archie_canonical_jsonb', "
+                    " 'archie_create_decision_brief', "
                     " 'archie_freeze_decision_brief_version', "
                     " 'archie_guard_transformation_receipt', "
                     " 'archie_guard_evidence_head', "
@@ -375,6 +382,10 @@ def test_genuine_pre_feature_schema_backfills_roadmap_and_repairs_delivery_fks(
         assert dry_failed
         assert all(
             item.startswith("transformation_db_guards:function_missing:")
+            or item == (
+                "transformation_db_guards:"
+                "table_missing:archie_command_capability_keys"
+            )
             for item in dry_failed
         )
         assert any(

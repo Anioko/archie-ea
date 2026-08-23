@@ -236,3 +236,124 @@ This section supersedes round 2's parent-version-plus-citation-function protocol
 
 - Intended commit subject: `fix: make decision brief freeze server-owned`.
 - No round-3 scoped failure or skip remains. The only limitation is the bounded aggregate-static/repository-wide verifier noted above; the explicit 230-test Transformation Room slice, post-review focused concurrency/runtime checks, and required individual gates are the completion evidence.
+
+## Review fix round 4/5 — 23 August 2026
+
+This section supersedes round 3's runtime receipt trust and SQL canonical-JSON
+hashing architecture. The round was implemented test-first with
+`postgresql://postgres@127.0.0.1:5439/flask_test` supplied explicitly as both
+`TEST_DATABASE_URL` and `DATABASE_URL`.
+
+### RED evidence
+
+- The deployment-compose test first failed because neither schema deployment nor
+  application runtime received a transformation command capability secret.
+- The restricted-role receipt-boundary test first failed because the owner-only
+  key table and signed claim function did not exist; temporarily reverting the
+  execution-capability check then made the unsigned freeze exploit test fail with
+  `DID NOT RAISE`.
+- The exact-document hash test first failed because `DecisionBriefVersion` had no
+  `canonical_document`; the next run caught the corresponding missing column on
+  the long-lived PostgreSQL schema before additive reconciliation was corrected.
+- Governed creation first failed with `AttributeError` because
+  `DecisionBriefService.create_brief` did not exist. Normal/replay, cross-tenant,
+  non-authority, concurrency, unsigned-capability and post-claim revocation cases
+  were then driven green.
+- The binary-float fact test first failed with `DID NOT RAISE`; decimal-domain
+  validation now rejects IEEE-754 floats before option canonicalization.
+
+### Server-issued command capabilities
+
+- Runtime direct `INSERT` on `command_idempotency_records` is revoked. A runtime
+  SQL session cannot read `archie_command_capability_keys`, whose key material is
+  owner-only, and it cannot execute the internal HMAC/verifier functions.
+- `CommandService` canonicalizes and HMAC-SHA256 signs a claim document binding
+  tenant, actor, operation, idempotency key, request digest, natural key, claim
+  token, request ID and lease. `archie_claim_transformation_command(text,text)` is
+  the sole receipt create/reclaim/reconcile path and verifies that exact signed
+  document before touching a receipt.
+- A second signed execution document binds the resulting receipt ID, generation
+  and token to the same tenant/actor/operation/key/digest/natural key. Both the
+  brief-create and brief-freeze definers require it; an unsigned or altered
+  execution claim fails with SQLSTATE `42501`.
+- The current secret and comma-separated previous secrets are supplied from the
+  deployment environment. Reconciliation provisions current/overlap keys without
+  exposing them, marks removed keys inactive, and preserves their audit rows.
+  The rotation test proves the old key works during overlap, fails after retirement,
+  and the new key continues to mint claims. No secret is logged or returned.
+- Production fails closed when the current capability secret is absent. Both
+  compose paths pass the key only to schema deployment and application processes,
+  never the database bootstrap service; `.env.example` documents generation and
+  overlap rotation.
+
+### One canonical UTF-8 document
+
+- Python's canonical serializer now creates the exact request and brief hash
+  documents. PostgreSQL parses each supplied text only to compare its JSON value
+  with the locked server-derived payload, then hashes the original UTF-8 text
+  bytes. It never independently re-renders JSON.
+- `DecisionBriefVersion.canonical_document` stores those exact bytes as text via
+  additive existing-database reconciliation. `verify_hash` parses the stored
+  document, compares it with reconstructed persisted facts, requires Python
+  canonical form, and hashes that same stored UTF-8 document.
+- The obsolete recursive `archie_canonical_jsonb(jsonb)` function is dropped on
+  reconciliation. Tests cover exponent-form floats, Decimal-backed option/outcome/
+  measure facts, non-ASCII key ordering, nested objects and UTC timezone values;
+  a valid canonical document for a different snapshot is rejected at the DB
+  boundary.
+- Numeric option facts reject binary float input and require `Decimal` or an exact
+  decimal string before canonicalization.
+
+### Governed draft creation
+
+- `DecisionBriefService.create_brief` (also exported as `DecisionService`) is the
+  authorized/idempotent application path for candidate or workstream decision
+  scopes. It binds the natural scope, exact request digest and command receipt.
+- `archie_create_decision_brief(text,text,text)` is a fixed-search-path
+  `SECURITY DEFINER` boundary. It verifies the signed execution claim and exact
+  request document, locks the active tenant programme/workstream, and rechecks the
+  current actor role, accepted candidate (when candidate-scoped), exact recommendation
+  option scope, decision authority and policy/legal exception authority before
+  inserting revision 1 in draft state.
+- Existing exact drafts reconcile idempotently; a different or non-draft case in
+  the same partial-unique scope fails closed. Concurrent callers converge on one
+  draft, and a contender reconciles through its original idempotency key.
+- Runtime retains no direct draft `INSERT`. Tests prove normal creation, replay,
+  cross-tenant denial, same-tenant non-authority denial, concurrent convergence,
+  unsigned-capability denial and a committed role revocation between receipt claim
+  and locked creation.
+
+### Final GREEN evidence
+
+All database-backed commands used the port-5439 PostgreSQL URL above.
+
+- Task 3 command regressions: **27 passed** in 21.65 seconds.
+- Final Task 7/runtime/guard/reconciliation tranche: **96 passed** in 164.33
+  seconds, with no failures or skips.
+- Complete Transformation Room programme/command/discovery/gate/evidence/option/
+  brief/guard/runtime/reconciliation suite: **269 passed** in 205.16 seconds,
+  with no failures or skips.
+- Security hardening regression: **25 passed**.
+- Static verifier: **30 passed, 0 failed, 1 skipped**. The sole skip is the
+  pre-existing absent vendored Tailwind CLI for `css-build`; it is explicitly not
+  counted as verified. No template, CSS or front-end JavaScript changed.
+- `boot-health` and `schema-drift`: **2 passed, 0 failed, 0 skipped**;
+  schema drift measurement remains `0 <= 0`.
+- `deployed-deps` and `dependency-cves`: **2 passed, 0 failed, 0 skipped**;
+  CVE measurement is `2 <= 3`.
+- Changed-file Ruff and `git diff --check`: green.
+
+### Files and concern
+
+- Capability/config/deployment: `.env.example`, `config.py`, both compose files,
+  `app/modules/transformation_room/command_service.py`, domain claim type, and
+  `app/models/transformation_db_guards.py`.
+- Exact hash and governed creation: `app/models/transformation_decision.py` and
+  `app/modules/transformation_room/decision_service.py`.
+- Regression coverage: command, option, brief, DB-guard, runtime-role and schema-
+  reconciliation tests.
+- The only unverified static gate is the unchanged `css-build` tooling absence
+  stated above. The requested Task 3, Task 7/runtime, complete Transformation Room,
+  boot/schema, dependency/security and changed-file checks are green.
+
+Round commit subject: `fix: require signed transformation commands`.

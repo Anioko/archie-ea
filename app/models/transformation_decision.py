@@ -334,6 +334,10 @@ class DecisionBriefVersion(TenantMixin, db.Model):
         db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
     )
     content_hash = db.Column(db.String(64), nullable=False)
+    # Exact UTF-8 text produced by the Python canonical serializer. Nullable
+    # for add-only reconciliation of historical databases; all new freezes
+    # require and populate it atomically.
+    canonical_document = db.Column(db.Text, nullable=True)
     submitted_by_id = db.Column(
         db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
