@@ -794,6 +794,11 @@ def test_new_option_version_and_brief_freeze_serialize_on_scope_lock(
             .select_from(DecisionEvent)
             .where(DecisionEvent.organization_id == scope.organization_id)
         ) == 0
+        assert session.scalar(
+            select(func.count())
+            .select_from(DecisionEvent)
+            .where(DecisionEvent.organization_id == scope.organization_id)
+        ) == 0
 
 
 def test_freeze_rejects_omitted_current_source_from_server_evidence_universe(

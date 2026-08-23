@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import re
 
+from sqlalchemy import select
+
+from app import db
 from app.models.solution_models import Solution
 from app.models.transformation_programme import WORKSTREAM_TYPES
+from app.models.strategic import StrategicInitiative
+from app.models.user import User
 from app.modules.solutions_strategic.v2.services.programme_setup_service import ProgrammeSetupService
 
 from tests.test_transformation_programme_service import _intake, _rows, programme_fixture
@@ -220,6 +225,119 @@ def test_no_javascript_validation_rerenders_honest_input_and_errors(
     assert _rows(programme_fixture)["programme"] is None
 
 
+def test_owner_picker_keeps_same_tenant_non_current_owner_for_no_js_retry(
+    app, programme_fixture, login_as
+):
+    with app.app_context():
+        alternate = User(
+            email=f"alternate-owner-{programme_fixture.owner_id}@example.test",
+            first_name="Amina",
+            last_name="Rahman",
+            organization_id=programme_fixture.organization_id,
+            confirmed=True,
+            enterprise_role="programme_owner",
+        )
+        db.session.add(alternate)
+        db.session.commit()
+        alternate_id = alternate.id
+
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    page = client.get("/solutions/new-programme")
+    html = page.get_data(as_text=True)
+    form = _form_payload(
+        programme_fixture.owner_id,
+        owner_id_fallback=str(alternate_id),
+        name="   ",
+        csrf_token=_hidden_value(html, "csrf_token"),
+        command_key=_hidden_value(html, "command_key"),
+    )
+
+    invalid = client.post("/solutions/create-programme", data=form)
+    body = invalid.get_data(as_text=True)
+
+    assert invalid.status_code == 400
+    assert _hidden_value(body, "owner_id") == str(alternate_id)
+    assert re.search(
+        rf'<option value="{alternate_id}" selected>Amina Rahman', body
+    )
+    assert 'ownerQuery: "Amina Rahman"' in body
+    assert 'selectedOwnerName: "Amina Rahman"' in body
+
+    form["name"] = "No-JavaScript owner programme"
+    created = client.post("/solutions/create-programme", data=form)
+    assert created.status_code == 303
+    with app.app_context():
+        programme = db.session.scalar(
+            select(StrategicInitiative).where(
+                StrategicInitiative.organization_id
+                == programme_fixture.organization_id,
+                StrategicInitiative.name == "No-JavaScript owner programme",
+            )
+        )
+        assert programme.owner_id == alternate_id
+
+
+def test_owner_picker_clears_hidden_identity_when_visible_query_diverges(
+    app, programme_fixture, login_as
+):
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    body = client.get("/solutions/new-programme").get_data(as_text=True)
+
+    assert 'readonly :readonly="false"' in body
+    assert '@input="ownerQueryChanged"' in body
+    assert "this.form.owner_id = null" in body
+    assert "this.form.outcome.owner_id = null" in body
+    assert "this.ownerQuery.trim() !== this.selectedOwnerName.trim()" in body
+
+
+def test_json_creation_keeps_same_tenant_non_current_owner_compatibility(
+    app, programme_fixture, login_as
+):
+    with app.app_context():
+        alternate = User(
+            email=f"json-owner-{programme_fixture.owner_id}@example.test",
+            first_name="JSON",
+            last_name="Owner",
+            organization_id=programme_fixture.organization_id,
+            confirmed=True,
+            enterprise_role="programme_owner",
+        )
+        db.session.add(alternate)
+        db.session.commit()
+        alternate_id = alternate.id
+
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    request = _intake(alternate_id)
+    response = client.post(
+        "/solutions/create-programme",
+        json={
+            "name": "JSON owner compatibility",
+            "objective": request.objective,
+            "owner_id": alternate_id,
+            "target_date": request.target_date.isoformat(),
+            "workstream_type": request.workstream_type,
+            "scope_expression": request.scope_expression,
+            "outcome": request.outcome,
+        },
+        headers={"Idempotency-Key": "json-non-current-owner"},
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["programme_id"]
+    with app.app_context():
+        programme = db.session.scalar(
+            select(StrategicInitiative).where(
+                StrategicInitiative.organization_id
+                == programme_fixture.organization_id,
+                StrategicInitiative.name == "JSON owner compatibility",
+            )
+        )
+        assert programme.owner_id == alternate_id
+
+
 def test_form_post_uses_login_csrf_and_tenant_authorisation_conventions(
     app, programme_fixture, login_as
 ):
@@ -231,6 +349,8 @@ def test_form_post_uses_login_csrf_and_tenant_authorisation_conventions(
 
     client = app.test_client()
     login_as(client, programme_fixture.owner_id)
+    with app.app_context():
+        foreign_email = db.session.get(User, programme_fixture.foreign_owner_id).email
     page = client.get("/solutions/new-programme")
     html = page.get_data(as_text=True)
     form = _form_payload(
@@ -242,4 +362,6 @@ def test_form_post_uses_login_csrf_and_tenant_authorisation_conventions(
 
     assert response.status_code == 404
     assert "owner_not_found" in response.get_data(as_text=True)
+    assert _hidden_value(response.get_data(as_text=True), "owner_id") == ""
+    assert foreign_email not in response.get_data(as_text=True)
     assert _rows(programme_fixture)["programme"] is None

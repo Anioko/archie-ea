@@ -11,6 +11,8 @@ from datetime import date
 from flask import g, jsonify, redirect, render_template, request
 from flask_login import current_user, login_required
 
+from app.models.user import User
+
 from .solution_design_routes import solution_design_bp
 
 logger = logging.getLogger(__name__)
@@ -53,12 +55,42 @@ def _render_programme_form(*, values=None, errors=(), command_key=None, status=2
     form_values = _empty_programme_form()
     if values:
         form_values.update(values)
+    organization_id = getattr(g, "current_org_id", None)
+    owners = (
+        User.query.filter(User.organization_id == organization_id)
+        .order_by(User.email.asc(), User.id.asc())
+        .all()
+        if organization_id is not None
+        else []
+    )
+    try:
+        selected_owner_id = int(form_values.get("owner_id") or 0)
+    except (TypeError, ValueError):
+        selected_owner_id = 0
+    selected_owner = next(
+        (owner for owner in owners if owner.id == selected_owner_id), None
+    )
+    if selected_owner is None:
+        form_values["owner_id"] = ""
+        selected_owner_label = ""
+    else:
+        form_values["owner_id"] = selected_owner.id
+        selected_owner_label = selected_owner.full_name()
     return (
         render_template(
             "solutions/programme_wizard.html",
             programme_form=form_values,
             programme_form_errors=tuple(errors),
             programme_command_key=command_key or str(uuid.uuid4()),
+            programme_owner_label=selected_owner_label,
+            programme_owner_options=tuple(
+                {
+                    "id": owner.id,
+                    "name": owner.full_name(),
+                    "email": owner.email,
+                }
+                for owner in owners
+            ),
         ),
         status,
     )
@@ -66,7 +98,8 @@ def _render_programme_form(*, values=None, errors=(), command_key=None, status=2
 
 def _form_programme_payload():
     values = {key: value for key, value in request.form.items()}
-    owner_value = values.get("owner_id", "")
+    owner_value = values.get("owner_id_fallback") or values.get("owner_id", "")
+    values["owner_id"] = owner_value
     try:
         owner_id = int(owner_value)
     except (TypeError, ValueError):
