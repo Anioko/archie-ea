@@ -40,9 +40,11 @@ _TRANSFORMATION_TABLES = (
     "programme_outcome_commitments",
     "measure_definitions",
     "command_idempotency_records",
+    "command_materialisations",
     "operation_results",
     "transformation_outbox_events",
     "transformation_candidates",
+    "candidate_overlap_dispositions",
     "candidate_signals",
     "evidence_records",
     "evidence_claim_heads",
@@ -662,7 +664,10 @@ def _ensure_membership_triggers(*, dry_run, existing_tables, added, failed):
                     SELECT tg.tgname
                     FROM pg_trigger tg
                     JOIN pg_class cls ON cls.oid = tg.tgrelid
-                    WHERE cls.relname = :table_name AND NOT tg.tgisinternal
+                    JOIN pg_namespace namespace ON namespace.oid = cls.relnamespace
+                    WHERE cls.relname = :table_name
+                      AND namespace.nspname = current_schema()
+                      AND NOT tg.tgisinternal
                     """
                 ),
                 {"table_name": table},
@@ -671,8 +676,6 @@ def _ensure_membership_triggers(*, dry_run, existing_tables, added, failed):
         if "trg_transformation_membership" not in trigger_names:
             missing_triggers.append(table)
 
-    if not missing_triggers:
-        return
     if dry_run:
         added.extend(
             f"trigger.{table}.trg_transformation_membership :: CREATE CONSTRAINT TRIGGER"
@@ -680,6 +683,9 @@ def _ensure_membership_triggers(*, dry_run, existing_tables, added, failed):
         )
         return
     try:
+        # Function bodies evolve independently of their trigger objects.  Refresh
+        # the canonical body on every applying reconciliation and condition only
+        # the trigger creation below.
         db.session.execute(text(_MEMBERSHIP_FUNCTION_SQL))
         for table in missing_triggers:
             db.session.execute(

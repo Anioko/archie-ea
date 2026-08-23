@@ -97,6 +97,7 @@ def programme_fixture(app, _schema):
                 for table_name in (
                     "transformation_outbox_events",
                     "operation_results",
+                    "command_materialisations",
                     "command_idempotency_records",
                     "measure_definitions",
                     "programme_outcome_commitments",
@@ -260,7 +261,11 @@ def _claim_task4_mutation(kind: str, fixture: ProgrammeFixture):
             )
     elif kind == "archive":
         operation = "programme.archive"
-        payload = {"programme_id": programme_id, "expected_revision": 1}
+        payload = {
+            "programme_id": programme_id,
+            "rationale": "Close the programme after its governed test decision.",
+            "expected_revision": 1,
+        }
         natural_key = f"programme-archive:{programme_id}:1"
         authorizer = TransformationProgrammeService.authorise_programme_archive(
             programme_id, 1
@@ -630,6 +635,32 @@ def test_nullable_target_date_requires_persisted_reason(programme_fixture):
         )
 
 
+def test_role_assignment_requires_an_explicit_effective_from(programme_fixture):
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="role-date-programme",
+        request=_intake(programme_fixture.owner_id),
+    )
+
+    with pytest.raises(ValueError, match="effective_from is required"):
+        TransformationProgrammeService.assign_role(
+            actor=programme_fixture.actor,
+            programme_id=created.object_ids["programme_id"],
+            workstream_id=created.object_ids["workstream_id"],
+            user_id=programme_fixture.owner_id,
+            role="contributor",
+            effective_from=None,
+            effective_to=None,
+            expected_revision=1,
+            command_key="role-without-effective-from",
+        )
+
+    with Session(db.engine) as session:
+        assert session.get(
+            ProgrammeWorkstream, created.object_ids["workstream_id"]
+        ).revision == 1
+
+
 def test_assign_role_reauthorises_replay_from_current_server_state(programme_fixture):
     """Catches persisted role-command success replaying after the caller loses authority."""
     created = TransformationProgrammeService.create_programme(
@@ -828,7 +859,7 @@ def test_update_objective_checks_revision_and_changes_only_owned_fields(programm
             workstream_id=created.object_ids["workstream_id"],
             objective="Stale overwrite",
             scope_expression={"business_units": ["Retail"]},
-            expected_revision=1,
+            expected_revision=3,
             command_key="stale-objective-update",
         )
 
@@ -840,9 +871,18 @@ def test_archive_is_soft_versioned_and_retains_children(programme_fixture):
         command_key="archive-programme",
         request=_intake(programme_fixture.owner_id),
     )
+    with pytest.raises(ValueError, match="archive rationale is required"):
+        TransformationProgrammeService.archive(
+            actor=programme_fixture.actor,
+            programme_id=created.object_ids["programme_id"],
+            rationale="   ",
+            expected_revision=1,
+            command_key="archive-without-rationale",
+        )
     archived = TransformationProgrammeService.archive(
         actor=programme_fixture.actor,
         programme_id=created.object_ids["programme_id"],
+        rationale="The programme was superseded by an approved portfolio decision.",
         expected_revision=1,
         command_key="archive-command",
     )
@@ -858,6 +898,18 @@ def test_archive_is_soft_versioned_and_retains_children(programme_fixture):
                 ProgrammeWorkstream.organization_id == programme_fixture.organization_id,
             )
         ) == 1
+        event = session.scalar(
+            select(OperationOutboxEvent).where(
+                OperationOutboxEvent.organization_id
+                == programme_fixture.organization_id,
+                OperationOutboxEvent.operation_result_id
+                == archived.operation_result_id,
+                OperationOutboxEvent.event_type == "programme.archived",
+            )
+        )
+        assert event.payload_json["rationale"] == (
+            "The programme was superseded by an approved portfolio decision."
+        )
 
 
 def test_archived_programme_rejects_role_and_objective_mutations(programme_fixture):
@@ -870,6 +922,7 @@ def test_archived_programme_rejects_role_and_objective_mutations(programme_fixtu
     TransformationProgrammeService.archive(
         actor=programme_fixture.actor,
         programme_id=created.object_ids["programme_id"],
+        rationale="This history is retained after closure.",
         expected_revision=1,
         command_key="archive-before-mutation",
     )

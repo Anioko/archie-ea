@@ -789,6 +789,11 @@ def test_new_option_version_and_brief_freeze_serialize_on_scope_lock(
             .select_from(DecisionBriefVersion)
             .where(DecisionBriefVersion.organization_id == scope.organization_id)
         ) == 0
+        assert session.scalar(
+            select(func.count())
+            .select_from(DecisionEvent)
+            .where(DecisionEvent.organization_id == scope.organization_id)
+        ) == 0
 
 
 def test_freeze_rejects_omitted_current_source_from_server_evidence_universe(
@@ -1178,11 +1183,52 @@ def test_locked_brief_handler_rechecks_role_revoked_after_command_authorization(
             .select_from(DecisionBriefVersion)
             .where(DecisionBriefVersion.organization_id == scope.organization_id)
         ) == 0
-        assert session.scalar(
-            select(func.count())
-            .select_from(DecisionEvent)
-            .where(DecisionEvent.organization_id == scope.organization_id)
-        ) == 0
+
+
+def test_brief_freeze_locks_actor_and_authorities_in_global_user_order(
+    decision_scope,
+):
+    """Catches swapped actor/authority pairs taking singleton user locks."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    with Session(db.engine) as session, session.begin():
+        authority = User(
+            email=f"ordered-authority-{uuid.uuid4().hex[:10]}@example.test",
+            organization_id=scope.organization_id,
+            confirmed=True,
+            enterprise_role="enterprise_architect",
+        )
+        authority.role = None
+        session.add(authority)
+        session.flush()
+        brief = session.get(DecisionBrief, scope.brief_id)
+        brief.decision_authority_id = authority.id
+
+    locked_user_queries = []
+
+    def capture(_conn, _cursor, statement, _params, _context, _many):
+        normalized = " ".join(statement.lower().split())
+        if (
+            normalized.startswith("select")
+            and " from users " in f" {normalized} "
+            and "for update" in normalized
+        ):
+            locked_user_queries.append(normalized)
+
+    event.listen(db.engine, "before_cursor_execute", capture)
+    try:
+        _freeze_brief(
+            scope,
+            option_version_ids,
+            key="brief-global-principal-lock-order",
+            revision=2,
+        )
+    finally:
+        event.remove(db.engine, "before_cursor_execute", capture)
+
+    assert locked_user_queries
+    assert "users.id in" in locked_user_queries[0]
+    assert "order by users.id" in locked_user_queries[0]
 
 
 def test_concurrent_same_revision_brief_freeze_serializes_one_snapshot(app, decision_scope):

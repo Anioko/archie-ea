@@ -665,6 +665,22 @@ CREATE TABLE command_idempotency_records (
     completed_at timestamptz,
     UNIQUE (organization_id, actor_id, operation, idempotency_key)
 );
+CREATE TABLE command_materialisations (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    actor_id integer NOT NULL,
+    operation varchar(120) NOT NULL,
+    natural_key varchar(512) NOT NULL,
+    request_digest varchar(64) NOT NULL,
+    receipt_id integer NOT NULL,
+    receipt_generation integer NOT NULL,
+    object_ids json NOT NULL,
+    response_json json NOT NULL,
+    outbox_events json NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    UNIQUE (organization_id, operation, natural_key),
+    UNIQUE (receipt_id)
+);
 CREATE TABLE operation_results (
     id serial PRIMARY KEY,
     organization_id integer NOT NULL,
@@ -727,6 +743,21 @@ CREATE TABLE evidence_requests (
     subject_id integer NOT NULL,
     claim_key varchar(100) NOT NULL,
     assigned_to_id integer NOT NULL
+);
+CREATE TABLE candidate_overlap_dispositions (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    candidate_id integer NOT NULL,
+    signal_digest varchar(64) NOT NULL,
+    decision varchar(40) NOT NULL,
+    overlapping_application_ids json NOT NULL,
+    rationale text NOT NULL,
+    target_application_id integer,
+    decided_by_id integer NOT NULL,
+    command_receipt_id integer NOT NULL,
+    command_generation integer NOT NULL,
+    decided_at timestamptz NOT NULL,
+    UNIQUE (organization_id, candidate_id)
 );
 CREATE TABLE evidence_head_events (
     id serial PRIMARY KEY,
@@ -2080,8 +2111,10 @@ def test_role_bootstrap_after_guards_preserves_exact_runtime_acl(
     expected_table_acl = {
         "archie_command_capability_keys": (False, False, False, False, False),
         "command_idempotency_records": (True, False, False, False, False),
+        "command_materialisations": (True, True, False, False, False),
         "operation_results": (True, True, False, False, False),
         "transformation_outbox_events": (True, True, False, False, False),
+        "candidate_overlap_dispositions": (True, True, False, False, False),
         "evidence_records": (True, True, False, False, False),
         "evidence_claim_heads": (True, True, False, False, False),
         "evidence_head_events": (True, False, False, False, False),

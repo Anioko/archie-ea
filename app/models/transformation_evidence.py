@@ -26,6 +26,8 @@ class TransformationCandidate(TenantMixin, db.Model):
         db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     accepted_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    ruleset_version = db.Column(db.String(160), nullable=True)
+    ruleset_digest = db.Column(db.String(64), nullable=True)
     revision = db.Column(
         db.Integer, nullable=False, default=1, server_default="1"
     )
@@ -48,6 +50,68 @@ class TransformationCandidate(TenantMixin, db.Model):
         ),
         db.CheckConstraint(
             "revision > 0", name="ck_transformation_candidate_revision"
+        ),
+    )
+
+
+class CandidateOverlapDisposition(TenantMixin, db.Model):
+    """Immutable human disposition of a positive capability-overlap signal."""
+
+    __tablename__ = "candidate_overlap_dispositions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transformation_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    signal_digest = db.Column(db.String(64), nullable=False)
+    decision = db.Column(db.String(40), nullable=False)
+    overlapping_application_ids = db.Column(db.JSON, nullable=False)
+    rationale = db.Column(db.Text, nullable=False)
+    target_application_id = db.Column(
+        db.Integer,
+        db.ForeignKey("application_components.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    decided_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    command_receipt_id = db.Column(
+        db.Integer,
+        db.ForeignKey("command_idempotency_records.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    command_generation = db.Column(db.Integer, nullable=False)
+    decided_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    candidate = db.relationship("TransformationCandidate", foreign_keys=[candidate_id])
+    decided_by = db.relationship("User", foreign_keys=[decided_by_id])
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id",
+            "candidate_id",
+            name="uq_candidate_overlap_disposition",
+        ),
+        db.CheckConstraint(
+            "decision IN ('confirmed_duplicate', 'justified_distinct', 'merge_repoint')",
+            name="ck_candidate_overlap_disposition_decision",
+        ),
+        db.CheckConstraint(
+            "length(signal_digest) = 64",
+            name="ck_candidate_overlap_disposition_digest",
+        ),
+        db.CheckConstraint(
+            "command_generation > 0",
+            name="ck_candidate_overlap_disposition_generation",
+        ),
+        db.CheckConstraint(
+            "length(btrim(rationale)) > 0",
+            name="ck_candidate_overlap_disposition_rationale",
         ),
     )
 
@@ -126,6 +190,7 @@ class EvidenceRecord(TenantMixin, db.Model):
     subject_type = db.Column(db.String(40), nullable=False)
     subject_id = db.Column(db.Integer, nullable=False, index=True)
     claim_key = db.Column(db.String(100), nullable=False)
+    claim_contract_version = db.Column(db.String(80), nullable=True)
 
     value_json = db.Column(db.JSON, nullable=False)
     value_type = db.Column(db.String(30), nullable=False)
@@ -324,6 +389,7 @@ class EvidenceRequest(TenantMixin, db.Model):
     subject_type = db.Column(db.String(40), nullable=False)
     subject_id = db.Column(db.Integer, nullable=False, index=True)
     claim_key = db.Column(db.String(100), nullable=False)
+    claim_contract_version = db.Column(db.String(80), nullable=True)
     assigned_to_id = db.Column(
         db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -392,6 +458,7 @@ class EvidenceRequest(TenantMixin, db.Model):
 
 
 __all__ = [
+    "CandidateOverlapDisposition",
     "CandidateSignal",
     "EvidenceClaimHead",
     "EvidenceHeadEvent",

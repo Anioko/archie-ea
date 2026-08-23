@@ -526,6 +526,41 @@ def test_transformation_fk_checks_and_membership_triggers_are_installed(app, _sc
         } <= trigger_tables
 
 
+def test_membership_function_is_refreshed_when_all_triggers_already_exist(app, _schema):
+    """Catches trigger presence incorrectly suppressing function upgrades."""
+    from app.commands.reconcile_schema import _MEMBERSHIP_FUNCTION_SQL, _reconcile
+
+    stale_sql = """
+        CREATE OR REPLACE FUNCTION archie_validate_transformation_membership()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            RAISE EXCEPTION 'stale membership function';
+        END;
+        $$
+    """
+    with app.app_context():
+        try:
+            db.session.execute(text(stale_sql))
+            db.session.commit()
+            _added, failed, _missing, _blocking = _reconcile(dry_run=False)
+            assert failed == []
+            definition = db.session.scalar(
+                text(
+                    "SELECT pg_get_functiondef(proc.oid) "
+                    "FROM pg_proc proc "
+                    "JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace "
+                    "WHERE proc.proname = 'archie_validate_transformation_membership' "
+                    "AND namespace.nspname = current_schema()"
+                )
+            )
+            assert "stale membership function" not in definition
+            assert "workstream programme is outside its tenant" in definition
+        finally:
+            db.session.rollback()
+            db.session.execute(text(_MEMBERSHIP_FUNCTION_SQL))
+            db.session.commit()
+
+
 def test_canonical_programme_and_workstream_fks_use_delete_restrict(app, _schema):
     expected = {
         ("work_packages", "strategic_initiative_id"),

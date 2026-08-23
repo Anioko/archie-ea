@@ -9,6 +9,7 @@ from flask import current_app, has_app_context
 from sqlalchemy import event
 
 from app.models.transformation_execution import (
+    CommandMaterialisation,
     CommandIdempotencyRecord,
     OperationOutboxEvent,
     OperationResult,
@@ -21,6 +22,7 @@ from app.models.transformation_decision import (
     TransformationOptionVersion,
 )
 from app.models.transformation_evidence import (
+    CandidateOverlapDisposition,
     CandidateSignal,
     EvidenceClaimHead,
     EvidenceHeadEvent,
@@ -2332,6 +2334,11 @@ _FUNCTION_SPECS = (
 
 _TRIGGER_SPECS = (
     (
+        "command_materialisations",
+        "trg_command_materialisation_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
         "operation_results",
         "trg_transformation_result_immutable",
         "archie_reject_transformation_mutation",
@@ -2349,6 +2356,11 @@ _TRIGGER_SPECS = (
     (
         "candidate_signals",
         "trg_candidate_signal_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "candidate_overlap_dispositions",
+        "trg_candidate_overlap_disposition_immutable",
         "archie_reject_transformation_mutation",
     ),
     (
@@ -3167,9 +3179,11 @@ def ensure_transformation_db_guards(
 
 
 @event.listens_for(CommandIdempotencyRecord.__table__, "after_create")
+@event.listens_for(CommandMaterialisation.__table__, "after_create")
 @event.listens_for(OperationResult.__table__, "after_create")
 @event.listens_for(OperationOutboxEvent.__table__, "after_create")
 @event.listens_for(CandidateSignal.__table__, "after_create")
+@event.listens_for(CandidateOverlapDisposition.__table__, "after_create")
 @event.listens_for(EvidenceRecord.__table__, "after_create")
 @event.listens_for(EvidenceClaimHead.__table__, "after_create")
 @event.listens_for(EvidenceHeadEvent.__table__, "after_create")

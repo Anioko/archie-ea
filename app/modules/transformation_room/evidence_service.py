@@ -28,7 +28,11 @@ from app.models.transformation_evidence import (
     EvidenceRequest,
     TransformationCandidate,
 )
-from app.models.transformation_programme import ProgrammeRoleAssignment, ProgrammeWorkstream
+from app.models.transformation_programme import (
+    ISO_4217_CURRENCIES,
+    ProgrammeRoleAssignment,
+    ProgrammeWorkstream,
+)
 from app.models.user import User
 from app.modules.transformation_room.command_service import CommandService, OperationAuthorizer
 from app.modules.transformation_room.domain import (
@@ -44,12 +48,33 @@ from app.modules.transformation_room.domain import (
     TypedEvidenceValue,
 )
 from app.modules.transformation_room.programme_service import (
+    OBJECTIVE_ROLES,
     READ_ROLES,
     TransformationProgrammeService,
 )
 
 
 INVENTORY_FRESHNESS = timedelta(days=90)
+EVIDENCE_CLAIM_CONTRACT_VERSION = "application-rationalisation-evidence-r1"
+REQUIRED_EVIDENCE_CLAIMS = (
+    "application_owner",
+    "lifecycle",
+    "cost",
+    "business_criticality",
+    "capability_impact",
+    "dependency_impact",
+    "risk",
+    "source_freshness",
+)
+_INVENTORY_OBSERVATION_CLAIMS = frozenset(
+    {
+        "application_owner",
+        "lifecycle",
+        "business_criticality",
+        "risk",
+        "source_freshness",
+    }
+)
 ATTESTATION_OVERRIDE_ROLES = frozenset(
     {"application_architect", "enterprise_architect", "chief_architect"}
 )
@@ -152,10 +177,24 @@ def canonical_source_identity(adapter_key: str, source_identity: str) -> str:
         raise ValueError("source_identity is required")
     parsed = urlsplit(identity)
     if parsed.scheme and parsed.netloc:
+        userinfo, separator, _host = parsed.netloc.rpartition("@")
+        hostname = parsed.hostname
+        if not hostname:
+            raise ValueError("source URI host is required")
+        canonical_host = hostname.lower()
+        if ":" in canonical_host and not canonical_host.startswith("["):
+            canonical_host = f"[{canonical_host}]"
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise ValueError("source URI port is invalid") from error
+        canonical_netloc = (
+            f"{userinfo}@" if separator else ""
+        ) + canonical_host + (f":{port}" if port is not None else "")
         return urlunsplit(
             (
                 parsed.scheme.lower(),
-                parsed.netloc.lower(),
+                canonical_netloc,
                 parsed.path,
                 parsed.query,
                 parsed.fragment,
@@ -378,16 +417,30 @@ class TransformationEvidenceService:
         return value
 
     @classmethod
-    def _typed_value(cls, value: TypedEvidenceValue) -> TypedEvidenceValue:
+    def _typed_value(
+        cls,
+        value: TypedEvidenceValue,
+        *,
+        allow_canonical_scalars: bool = False,
+    ) -> TypedEvidenceValue:
         if not isinstance(value, TypedEvidenceValue):
             raise TypeError("value must be TypedEvidenceValue")
         value_type = value.value_type.strip().lower() if isinstance(value.value_type, str) else ""
         if value_type not in {"string", "number", "boolean", "date", "datetime", "json", "unknown"}:
             raise ValueError("value_type is not supported")
         raw = value.value
+        canonical_number = False
+        if allow_canonical_scalars and value_type == "number" and isinstance(raw, str):
+            try:
+                canonical_number = Decimal(raw).is_finite()
+            except ArithmeticError:
+                canonical_number = False
         valid = {
             "string": isinstance(raw, str),
-            "number": isinstance(raw, (int, float, Decimal)) and not isinstance(raw, bool),
+            "number": (
+                isinstance(raw, (int, float, Decimal)) and not isinstance(raw, bool)
+            )
+            or canonical_number,
             "boolean": isinstance(raw, bool),
             "date": isinstance(raw, date) and not isinstance(raw, datetime),
             "datetime": isinstance(raw, datetime),
@@ -401,6 +454,227 @@ class TransformationEvidenceService:
         if currency is not None and len(currency) != 3:
             raise ValueError("currency must be a three-letter code")
         return TypedEvidenceValue(value_type, _json_value(raw), unit or None, currency or None)
+
+    @classmethod
+    def _validate_claim_value(
+        cls,
+        claim_key: str,
+        value: TypedEvidenceValue,
+        *,
+        allow_canonical_scalars: bool = False,
+    ) -> TypedEvidenceValue:
+        value = cls._typed_value(
+            value, allow_canonical_scalars=allow_canonical_scalars
+        )
+        raw = value.value
+        if claim_key == "application_owner":
+            if value.value_type == "string":
+                if not raw.strip():
+                    raise ValueError("application owner evidence must be nonblank")
+            elif value.value_type == "json":
+                names = raw.get("owner_names") if isinstance(raw, Mapping) else None
+                if not isinstance(names, list) or not names or any(
+                    not isinstance(name, str) or not name.strip() for name in names
+                ):
+                    raise ValueError("application owner evidence must name an owner")
+            else:
+                raise ValueError("application owner evidence has the wrong type")
+        elif claim_key == "lifecycle":
+            if value.value_type != "string" or not raw.strip() or raw.strip().lower() in {
+                "unknown",
+                "unavailable",
+            }:
+                raise ValueError("lifecycle evidence must be nonblank and known")
+        elif claim_key == "cost":
+            if value.value_type != "number" or value.unit != "annual_tco":
+                raise ValueError("cost evidence requires a number in annual_tco units")
+            if value.currency not in ISO_4217_CURRENCIES:
+                raise ValueError("cost evidence requires an ISO 4217 currency")
+        elif claim_key == "business_criticality":
+            if (
+                value.value_type != "json"
+                or not isinstance(raw, Mapping)
+                or not isinstance(raw.get("value"), str)
+                or not raw["value"].strip()
+                or raw["value"].strip().lower() in {"unknown", "unavailable"}
+                or raw.get("source_field")
+                not in {"business_criticality", "criticality"}
+            ):
+                raise ValueError("business criticality evidence is incomplete")
+        elif claim_key in {"capability_impact", "dependency_impact"}:
+            id_key = (
+                "capability_ids"
+                if claim_key == "capability_impact"
+                else "dependency_ids"
+            )
+            if (
+                value.value_type != "json"
+                or not isinstance(raw, Mapping)
+                or not isinstance(raw.get(id_key), list)
+                or any(
+                    isinstance(item, bool)
+                    or not isinstance(item, int)
+                    or item <= 0
+                    for item in raw[id_key]
+                )
+                or not isinstance(raw.get("impact"), str)
+                or not raw["impact"].strip()
+                or raw["impact"].strip().lower() in {"unknown", "unavailable"}
+            ):
+                raise ValueError(f"{claim_key.replace('_', ' ')} evidence is incomplete")
+        elif claim_key == "risk":
+            required = {
+                "technical_risk",
+                "business_risk",
+                "vendor_risk",
+                "obsolescence_risk",
+            }
+            if (
+                value.value_type != "json"
+                or not isinstance(raw, Mapping)
+                or set(raw) != required
+                or any(
+                    not isinstance(raw[field], str)
+                    or not raw[field].strip()
+                    or raw[field].strip().lower() in {"unknown", "unavailable"}
+                    for field in required
+                )
+            ):
+                raise ValueError("risk evidence must contain every known risk dimension")
+        elif claim_key == "source_freshness":
+            observed_at = raw.get("observed_at") if isinstance(raw, Mapping) else None
+            parsed_observed_at = None
+            if isinstance(observed_at, str) and observed_at.strip():
+                try:
+                    parsed_observed_at = datetime.fromisoformat(
+                        observed_at.strip().replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    parsed_observed_at = None
+            if (
+                value.value_type != "json"
+                or not isinstance(raw, Mapping)
+                or parsed_observed_at is None
+                or parsed_observed_at.tzinfo is None
+                or raw.get("freshness_status") not in {"fresh", "not_applicable"}
+                or not isinstance(raw.get("source_system"), str)
+                or not raw["source_system"].strip()
+            ):
+                raise ValueError("source freshness evidence is incomplete")
+            value = TypedEvidenceValue(
+                value.value_type,
+                {
+                    **dict(raw),
+                    "observed_at": _utc(parsed_observed_at).isoformat(),
+                    "source_system": raw["source_system"].strip(),
+                },
+                value.unit,
+                value.currency,
+            )
+        else:
+            raise ValueError("claim is not part of the governed evidence contract")
+        return value
+
+    @classmethod
+    def _inventory_claim_value(
+        cls,
+        claim_key: str,
+        version: SourceVersion,
+        freshness: FreshnessResult,
+    ) -> TypedEvidenceValue:
+        snapshot = version.value.value
+        if version.value.value_type != "json" or not isinstance(snapshot, Mapping):
+            raise CommandConflict("claim_adapter_schema_mismatch")
+        if claim_key == "application_owner":
+            names = []
+            for field in ("application_owner", "business_owner", "technical_owner"):
+                name = snapshot.get(field)
+                if isinstance(name, str) and name.strip() and name.strip() not in names:
+                    names.append(name.strip())
+            value = TypedEvidenceValue("json", {"owner_names": names}, None, None)
+        elif claim_key == "lifecycle":
+            value = TypedEvidenceValue(
+                "string", snapshot.get("lifecycle_status"), None, None
+            )
+        elif claim_key == "business_criticality":
+            field = (
+                "business_criticality"
+                if snapshot.get("business_criticality") is not None
+                else "criticality"
+            )
+            value = TypedEvidenceValue(
+                "json",
+                {"value": snapshot.get(field), "source_field": field},
+                None,
+                None,
+            )
+        elif claim_key == "risk":
+            value = TypedEvidenceValue(
+                "json",
+                {
+                    field: snapshot.get(field)
+                    for field in (
+                        "technical_risk",
+                        "business_risk",
+                        "vendor_risk",
+                        "obsolescence_risk",
+                    )
+                },
+                None,
+                None,
+            )
+        elif claim_key == "source_freshness":
+            value = TypedEvidenceValue(
+                "json",
+                {
+                    "observed_at": _utc(version.observed_at).isoformat(),
+                    "freshness_status": freshness.status,
+                    "source_system": "application-inventory",
+                },
+                None,
+                None,
+            )
+        else:
+            raise CommandConflict("claim_adapter_pair_not_supported")
+        try:
+            return cls._validate_claim_value(claim_key, value)
+        except (TypeError, ValueError) as error:
+            raise CommandConflict("authoritative_claim_semantics_unavailable") from error
+
+    @classmethod
+    def record_satisfies_contract(cls, request, record) -> bool:
+        request_claim = getattr(request, "claim_key", None)
+        if (
+            request_claim not in REQUIRED_EVIDENCE_CLAIMS
+            or getattr(request, "claim_contract_version", None)
+            != EVIDENCE_CLAIM_CONTRACT_VERSION
+            or getattr(record, "claim_contract_version", None)
+            != EVIDENCE_CLAIM_CONTRACT_VERSION
+        ):
+            return False
+        if (
+            getattr(record, "source_type", None) != "attestation"
+            and getattr(record, "source_type", None) != "governance_resolution"
+            and (
+                getattr(record, "source_type", None) != "application-inventory"
+                or request_claim not in _INVENTORY_OBSERVATION_CLAIMS
+            )
+        ):
+            return False
+        try:
+            cls._validate_claim_value(
+                request_claim,
+                TypedEvidenceValue(
+                    getattr(record, "value_type", None),
+                    getattr(record, "value_json", None),
+                    getattr(record, "unit", None),
+                    getattr(record, "currency", None),
+                ),
+                allow_canonical_scalars=True,
+            )
+        except (TypeError, ValueError):
+            return False
+        return True
 
     @staticmethod
     def _evidence_natural_key(payload: Mapping[str, Any]) -> str:
@@ -537,6 +811,169 @@ class TransformationEvidenceService:
         return request, candidate, workstream, programme
 
     @classmethod
+    def plan_required_requests(
+        cls,
+        *,
+        actor: ActorContext,
+        candidate_id: int,
+        assignments: Mapping[str, int],
+        command_key: str,
+        due_at: datetime | None = None,
+    ) -> CommandResult:
+        candidate_id = parse_positive_int(candidate_id)
+        if not isinstance(assignments, Mapping):
+            raise TypeError("assignments must be a claim-to-user mapping")
+        if set(assignments) != set(REQUIRED_EVIDENCE_CLAIMS):
+            raise ValueError("assignments must cover the exact required claim set")
+        canonical_assignments = {
+            claim: parse_positive_int(assignments[claim])
+            for claim in REQUIRED_EVIDENCE_CLAIMS
+        }
+        canonical_due_at = _utc(due_at).isoformat() if due_at is not None else None
+        payload = {
+            "candidate_id": candidate_id,
+            "claim_contract_version": EVIDENCE_CLAIM_CONTRACT_VERSION,
+            "assignments": canonical_assignments,
+            "due_at": canonical_due_at,
+        }
+        natural_key = (
+            f"evidence-request-plan:{candidate_id}:"
+            f"{EVIDENCE_CLAIM_CONTRACT_VERSION}"
+        )
+
+        def authorize(session, runtime_actor, operation, supplied_key):
+            if operation != "evidence.request.plan" or supplied_key != natural_key:
+                raise NotAuthorised("evidence_request_plan_command_mismatch")
+            _candidate, workstream, programme = cls._load_scope(
+                session, runtime_actor, candidate_id, lock=False
+            )
+            TransformationProgrammeService._require_programme_authority(
+                session,
+                runtime_actor,
+                programme.id,
+                workstream.id,
+                OBJECTIVE_ROLES,
+                "evidence_request_plan_not_authorised",
+            )
+
+        return CommandService.execute(
+            actor=actor,
+            operation="evidence.request.plan",
+            idempotency_key=cls._require_command_key(command_key),
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=authorize,
+            handler=lambda session, claim: cls._plan_required_requests_locked(
+                session, actor, payload, claim
+            ),
+        )
+
+    @classmethod
+    def _plan_required_requests_locked(cls, session, actor, payload, claim):
+        candidate, workstream, programme = cls._load_scope(
+            session, actor, payload["candidate_id"], lock=True
+        )
+        TransformationProgrammeService._require_programme_authority(
+            session,
+            actor,
+            programme.id,
+            workstream.id,
+            OBJECTIVE_ROLES,
+            "evidence_request_plan_not_authorised",
+            lock=True,
+        )
+        assignment_ids = sorted(set(payload["assignments"].values()))
+        tenant_assignees = set(
+            session.scalars(
+                select(User.id).where(
+                    User.organization_id == actor.organization_id,
+                    User.id.in_(assignment_ids),
+                    User.confirmed.is_(True),
+                )
+            ).all()
+        )
+        if tenant_assignees != set(assignment_ids):
+            raise NotAuthorised("evidence_request_assignee_outside_tenant")
+        existing = {
+            row.claim_key: row
+            for row in session.scalars(
+                select(EvidenceRequest)
+                .where(
+                    EvidenceRequest.organization_id == actor.organization_id,
+                    EvidenceRequest.candidate_id == candidate.id,
+                )
+                .with_for_update()
+            ).all()
+        }
+        unknown_claims = set(existing) - set(REQUIRED_EVIDENCE_CLAIMS)
+        if unknown_claims:
+            raise CommandConflict("candidate_has_noncontract_evidence_requests")
+        planned = []
+        due_at = (
+            datetime.fromisoformat(payload["due_at"])
+            if payload["due_at"] is not None
+            else None
+        )
+        for claim_key in REQUIRED_EVIDENCE_CLAIMS:
+            request = existing.get(claim_key)
+            if request is None:
+                request = EvidenceRequest(
+                    organization_id=actor.organization_id,
+                    workstream_id=workstream.id,
+                    candidate_id=candidate.id,
+                    subject_type=candidate.subject_type,
+                    subject_id=candidate.subject_id,
+                    claim_key=claim_key,
+                    claim_contract_version=EVIDENCE_CLAIM_CONTRACT_VERSION,
+                    assigned_to_id=payload["assignments"][claim_key],
+                    required=True,
+                    status="open",
+                    due_at=due_at,
+                    created_by_id=actor.user_id,
+                    revision=1,
+                )
+                session.add(request)
+            else:
+                if (
+                    request.status != "open"
+                    or request.submitted_evidence_id is not None
+                    or request.accepted_evidence_id is not None
+                    or request.claim_contract_version
+                    not in {None, EVIDENCE_CLAIM_CONTRACT_VERSION}
+                ):
+                    raise CommandConflict("evidence_request_plan_conflict")
+                request.claim_contract_version = EVIDENCE_CLAIM_CONTRACT_VERSION
+                request.assigned_to_id = payload["assignments"][claim_key]
+                request.required = True
+                request.due_at = due_at
+            planned.append(request)
+        session.flush()
+        object_ids = {
+            f"request_{request.claim_key}_id": request.id for request in planned
+        }
+        response = {
+            "candidate_id": candidate.id,
+            "claim_contract_version": EVIDENCE_CLAIM_CONTRACT_VERSION,
+            "request_ids": [request.id for request in planned],
+        }
+        return DomainMutationResult(
+            object_ids,
+            response,
+            (
+                {
+                    "event_type": "evidence.requests_planned",
+                    "payload": {
+                        **response,
+                        "assignments": dict(payload["assignments"]),
+                        "due_at": payload["due_at"],
+                        "command_receipt_id": claim.receipt_id,
+                        "command_generation": claim.generation,
+                    },
+                },
+            ),
+        )
+
+    @classmethod
     def record_observation(
         cls,
         *,
@@ -559,11 +996,16 @@ class TransformationEvidenceService:
         source_identity = canonical_source_identity(
             adapter_name, resolution.source_identity
         )
+        canonical_source_key = (
+            str(resolution.canonical_subject_id)
+            if isinstance(adapter, ApplicationInventoryEvidenceAdapter)
+            else unicodedata.normalize("NFC", str(source_key)).strip()
+        )
         payload = {
             "candidate_id": candidate_id,
             "claim_key": claim_key,
             "adapter_key": adapter_name,
-            "source_key": unicodedata.normalize("NFC", str(source_key)).strip(),
+            "source_key": canonical_source_key,
             "source_identity": source_identity,
             "expected_head_revision": expected_head_revision,
         }
@@ -637,10 +1079,39 @@ class TransformationEvidenceService:
         )
         if not adapter.authorise_correction(persisted, resolution):
             raise NotAuthorised("evidence_observation_not_authorised")
-        value = cls._typed_value(version.value)
-        checksum = sha256_canonical(value)
-        if version.checksum and version.checksum.lower() != checksum:
+        raw_value = cls._typed_value(version.value)
+        raw_checksum = sha256_canonical(raw_value)
+        if version.checksum and version.checksum.lower() != raw_checksum:
             raise CommandConflict("source_checksum_mismatch")
+        request = session.scalar(
+            select(EvidenceRequest)
+            .where(
+                EvidenceRequest.organization_id == actor.organization_id,
+                EvidenceRequest.candidate_id == candidate.id,
+                EvidenceRequest.claim_key == payload["claim_key"],
+            )
+            .with_for_update()
+        )
+        governed_request = bool(
+            request is not None
+            and request.claim_contract_version
+            == EVIDENCE_CLAIM_CONTRACT_VERSION
+        )
+        if governed_request:
+            if (
+                adapter_name != "application-inventory"
+                or not isinstance(adapter, ApplicationInventoryEvidenceAdapter)
+                or payload["claim_key"] not in _INVENTORY_OBSERVATION_CLAIMS
+            ):
+                raise CommandConflict("claim_adapter_pair_not_supported")
+            if request.status != "open":
+                raise CommandConflict("evidence_request_not_open")
+            value = cls._inventory_claim_value(
+                payload["claim_key"], version, freshness
+            )
+        else:
+            value = raw_value
+        checksum = sha256_canonical(value)
         source_version = version.version.strip() if isinstance(version.version, str) else ""
         if not source_version:
             source_version = f"snapshot:{checksum}"
@@ -669,8 +1140,11 @@ class TransformationEvidenceService:
             "cited_evidence_ids": [],
             "confidence": None,
             "confidence_method": None,
+            "claim_contract_version": (
+                EVIDENCE_CLAIM_CONTRACT_VERSION if governed_request else None
+            ),
         }
-        return cls._append_and_advance(
+        mutation = cls._append_and_advance(
             session,
             actor,
             candidate,
@@ -681,6 +1155,38 @@ class TransformationEvidenceService:
             payload["expected_head_revision"],
             claim,
             "canonical source observation",
+        )
+        if not governed_request:
+            return mutation
+        now = CommandService._database_now(session)
+        request.status = "submitted"
+        request.submitted_evidence_id = mutation.object_ids["evidence_record_id"]
+        request.submitted_at = now
+        request.revision += 1
+        session.flush()
+        response = {
+            **dict(mutation.response),
+            "request_id": request.id,
+            "request_status": request.status,
+            "request_revision": request.revision,
+        }
+        return DomainMutationResult(
+            {
+                **dict(mutation.object_ids),
+                "evidence_request_id": request.id,
+            },
+            response,
+            (
+                *mutation.outbox_events,
+                {
+                    "event_type": "evidence.request_submitted",
+                    "payload": {
+                        "request_id": request.id,
+                        "evidence_id": request.submitted_evidence_id,
+                        "revision": request.revision,
+                    },
+                },
+            ),
         )
 
     @classmethod
@@ -702,6 +1208,10 @@ class TransformationEvidenceService:
         cls, request, value, expected_head_revision, source_identity
     ):
         typed = cls._typed_value(value)
+        if request.claim_contract_version == EVIDENCE_CLAIM_CONTRACT_VERSION:
+            typed = cls._validate_claim_value(
+                request.claim_key, typed, allow_canonical_scalars=True
+            )
         return {
             "request_id": request.id,
             "candidate_id": request.candidate_id,
@@ -709,6 +1219,7 @@ class TransformationEvidenceService:
             "source_identity": source_identity,
             "expected_head_revision": cls._expected_revision(expected_head_revision),
             "value": asdict(typed),
+            "claim_contract_version": request.claim_contract_version,
         }
 
     @classmethod
@@ -767,7 +1278,15 @@ class TransformationEvidenceService:
         cls._request_actor(session, actor, request, programme, workstream, lock=True)
         if request.status != "open":
             raise CommandConflict("evidence_request_not_open")
-        value = cls._typed_value(TypedEvidenceValue(**payload["value"]))
+        value = TypedEvidenceValue(**payload["value"])
+        if request.claim_contract_version == EVIDENCE_CLAIM_CONTRACT_VERSION:
+            if payload.get("claim_contract_version") != EVIDENCE_CLAIM_CONTRACT_VERSION:
+                raise CommandConflict("evidence_claim_contract_changed")
+            value = cls._validate_claim_value(
+                request.claim_key, value, allow_canonical_scalars=True
+            )
+        else:
+            value = cls._typed_value(value)
         now = CommandService._database_now(session)
         checksum = sha256_canonical(value)
         mutation = cls._append_and_advance(
@@ -802,6 +1321,7 @@ class TransformationEvidenceService:
                 "cited_evidence_ids": [],
                 "confidence": None,
                 "confidence_method": None,
+                "claim_contract_version": request.claim_contract_version,
             },
             payload["expected_head_revision"],
             claim,
@@ -875,6 +1395,7 @@ class TransformationEvidenceService:
                     "cited_evidence_ids": cited,
                     "confidence": None,
                     "confidence_method": None,
+                    "claim_contract_version": request.claim_contract_version,
                 },
                 0,
                 claim,
@@ -926,7 +1447,10 @@ class TransformationEvidenceService:
             "evidence_id": parse_positive_int(evidence_id),
             "expected_revision": parse_positive_int(expected_revision),
         }
-        natural_key = f"evidence-request-accept:{request_id}:{expected_revision}"
+        natural_key = (
+            f"evidence-request-accept:{payload['request_id']}:"
+            f"{payload['expected_revision']}"
+        )
         return CommandService.execute(
             actor=actor,
             operation="evidence.request.accept",
@@ -991,6 +1515,11 @@ class TransformationEvidenceService:
             raise NotFound("evidence_record_not_found")
         if evidence.classification == "conflict":
             raise CommandConflict("evidence_conflict_unresolved")
+        if (
+            request.claim_contract_version == EVIDENCE_CLAIM_CONTRACT_VERSION
+            and not cls.record_satisfies_contract(request, evidence)
+        ):
+            raise CommandConflict("evidence_claim_contract_invalid")
         is_current = session.scalar(
             select(EvidenceClaimHead.id).where(
                 EvidenceClaimHead.organization_id == actor.organization_id,
@@ -1077,7 +1606,10 @@ class TransformationEvidenceService:
             "expected_revision": parse_positive_int(expected_revision),
             **extra,
         }
-        natural_key = f"evidence-request-{action}:{request_id}:{expected_revision}"
+        natural_key = (
+            f"evidence-request-{action}:{payload['request_id']}:"
+            f"{payload['expected_revision']}"
+        )
         operation = f"evidence.request.{action}"
 
         def authorize(session, runtime_actor, supplied_operation, supplied_key):
@@ -1189,7 +1721,10 @@ class TransformationEvidenceService:
             "interim_accountable_id": parse_positive_int(interim_accountable_id),
             "expected_revision": parse_positive_int(expected_revision),
         }
-        natural_key = f"evidence-request-waive:{request_id}:{expected_revision}"
+        natural_key = (
+            f"evidence-request-waive:{payload['request_id']}:"
+            f"{payload['expected_revision']}"
+        )
 
         def authorize(session, runtime_actor, operation, supplied_key):
             if operation != "evidence.request.waive" or supplied_key != natural_key:
@@ -1276,8 +1811,8 @@ class TransformationEvidenceService:
             "rationale": rationale,
         }
         natural_key = (
-            f"evidence-conflict-resolution:{conflict_evidence_id}:"
-            f"{governing_evidence_id}"
+            f"evidence-conflict-resolution:{payload['conflict_evidence_id']}:"
+            f"{payload['governing_evidence_id']}"
         )
         return CommandService.execute(
             actor=actor,

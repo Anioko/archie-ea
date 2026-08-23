@@ -33,13 +33,18 @@ from app.modules.transformation_room.domain import (
 )
 from app.modules.transformation_room.evidence_service import (
     ApplicationInventoryEvidenceAdapter,
+    REQUIRED_EVIDENCE_CLAIMS,
     TransformationEvidenceService,
     canonical_source_identity,
     parse_positive_int,
     sha256_canonical,
 )
 
-from tests.test_rationalisation_discovery_service import _discover, _seed_scope
+from tests.test_rationalisation_discovery_service import (
+    _discover,
+    _justified_distinct,
+    _seed_scope,
+)
 
 
 @dataclass(frozen=True)
@@ -81,6 +86,7 @@ def evidence_scope(app, _schema):
             workstream_id=seeded.workstream_id,
             application_id=seeded.application_id,
             signal_digests=discovered.signal_digests,
+            overlap_disposition=_justified_distinct(seeded),
             inclusion_reason="Govern this canonical inventory subject",
             command_key=f"evidence-candidate-{suffix}",
         )
@@ -129,11 +135,13 @@ def evidence_scope(app, _schema):
                 for table_name in (
                     "transformation_outbox_events",
                     "operation_results",
+                    "command_materialisations",
                     "command_idempotency_records",
                     "evidence_head_events",
                     "evidence_claim_heads",
                     "evidence_records",
                     "candidate_signals",
+                    "candidate_overlap_dispositions",
                     "evidence_requests",
                     "transformation_candidates",
                     "application_dependencies",
@@ -175,6 +183,177 @@ def _record_inventory(scope: EvidenceScope, *, expected_revision=0, key="invento
         expected_head_revision=expected_revision,
         command_key=key,
     )
+
+
+def _plan_all_requests(scope: EvidenceScope, *, key="plan-all-evidence"):
+    return TransformationEvidenceService.plan_required_requests(
+        actor=scope.actor,
+        candidate_id=scope.candidate_id,
+        assignments={claim: scope.actor_id for claim in REQUIRED_EVIDENCE_CLAIMS},
+        command_key=key,
+    )
+
+
+def _justified_distinct_candidate(candidate):
+    overlap = next(
+        signal
+        for signal in candidate.signals
+        if signal.rule_code == "capability_overlap"
+    )
+    overlap_ids = overlap.observed_values["overlapping_application_ids"]
+    assert overlap_ids
+    return {
+        "decision": "justified_distinct",
+        "overlapping_application_ids": overlap_ids,
+        "rationale": "The applications serve materially different operating contexts.",
+    }
+
+
+def test_required_request_plan_materialises_exact_contract_and_replays(evidence_scope):
+    scope = evidence_scope
+    created = _plan_all_requests(scope)
+    replayed = _plan_all_requests(scope)
+
+    with Session(db.engine) as session:
+        requests = session.scalars(
+            select(EvidenceRequest)
+            .where(
+                EvidenceRequest.organization_id == scope.organization_id,
+                EvidenceRequest.candidate_id == scope.candidate_id,
+            )
+            .order_by(EvidenceRequest.claim_key)
+        ).all()
+    assert {request.claim_key for request in requests} == set(
+        REQUIRED_EVIDENCE_CLAIMS
+    )
+    assert len(requests) == len(REQUIRED_EVIDENCE_CLAIMS) == 8
+    assert all(request.required and request.status == "open" for request in requests)
+    assert all(request.claim_contract_version for request in requests)
+    assert created.created is True
+    assert replayed.created is False and replayed.idempotent is True
+    assert replayed.object_ids == created.object_ids
+
+    with pytest.raises(NotFound):
+        TransformationEvidenceService.plan_required_requests(
+            actor=scope.foreign_actor,
+            candidate_id=scope.candidate_id,
+            assignments={
+                claim: scope.foreign_actor_id for claim in REQUIRED_EVIDENCE_CLAIMS
+            },
+            command_key="foreign-plan-probe",
+        )
+
+
+def test_required_claim_contract_rejects_relabeling_and_empty_semantics(
+    evidence_scope,
+):
+    scope = evidence_scope
+    _plan_all_requests(scope)
+
+    with pytest.raises(CommandConflict, match="claim_adapter_pair_not_supported"):
+        TransformationEvidenceService.record_observation(
+            actor=scope.actor,
+            candidate_id=scope.candidate_id,
+            claim_key="cost",
+            adapter_key="application-inventory",
+            source_key=str(scope.application_id),
+            expected_head_revision=0,
+            command_key="reject-inventory-as-cost",
+        )
+    lifecycle_request_id = next(
+        value
+        for key, value in _plan_all_requests(scope).object_ids.items()
+        if key == "request_lifecycle_id"
+    )
+    with pytest.raises(ValueError, match="lifecycle evidence must be nonblank"):
+        TransformationEvidenceService.submit_attestation(
+            actor=scope.actor,
+            request_id=lifecycle_request_id,
+            value=TypedEvidenceValue("string", "   ", None, None),
+            expected_head_revision=0,
+            command_key="reject-empty-lifecycle",
+        )
+    capability_request_id = next(
+        value
+        for key, value in _plan_all_requests(scope).object_ids.items()
+        if key == "request_capability_impact_id"
+    )
+    with pytest.raises(ValueError, match="capability impact evidence is incomplete"):
+        TransformationEvidenceService.submit_attestation(
+            actor=scope.actor,
+            request_id=capability_request_id,
+            value=TypedEvidenceValue(
+                "json",
+                {"capability_ids": [], "impact": "unknown"},
+                None,
+                None,
+            ),
+            expected_head_revision=0,
+            command_key="reject-unknown-capability-impact",
+        )
+    freshness_request_id = next(
+        value
+        for key, value in _plan_all_requests(scope).object_ids.items()
+        if key == "request_source_freshness_id"
+    )
+    with pytest.raises(ValueError, match="source freshness evidence is incomplete"):
+        TransformationEvidenceService.submit_attestation(
+            actor=scope.actor,
+            request_id=freshness_request_id,
+            value=TypedEvidenceValue(
+                "json",
+                {
+                    "observed_at": "not-a-timestamp",
+                    "freshness_status": "fresh",
+                    "source_system": "application-inventory",
+                },
+                None,
+                None,
+            ),
+            expected_head_revision=0,
+            command_key="reject-invalid-freshness-timestamp",
+        )
+
+
+def test_planned_observation_submits_and_accepts_the_bound_request(evidence_scope):
+    scope = evidence_scope
+    with Session(db.engine) as session, session.begin():
+        application = session.get(ApplicationComponent, scope.application_id)
+        application.application_owner = "Retail Operations"
+        application.updated_at = datetime.now(timezone.utc)
+    planned = _plan_all_requests(scope)
+    request_id = planned.object_ids["request_application_owner_id"]
+
+    observed = TransformationEvidenceService.record_observation(
+        actor=scope.actor,
+        candidate_id=scope.candidate_id,
+        claim_key="application_owner",
+        adapter_key="application-inventory",
+        source_key=f"00{scope.application_id}",
+        expected_head_revision=0,
+        command_key="planned-owner-observation",
+    )
+    accepted = TransformationEvidenceService.accept_request(
+        actor=scope.actor,
+        request_id=request_id,
+        evidence_id=observed.object_ids["evidence_record_id"],
+        expected_revision=observed.response["request_revision"],
+        command_key="accept-planned-owner-observation",
+    )
+
+    with Session(db.engine) as session:
+        request = session.get(EvidenceRequest, request_id)
+        record = session.get(
+            EvidenceRecord, observed.object_ids["evidence_record_id"]
+        )
+    assert observed.response["request_id"] == request_id
+    assert request.submitted_evidence_id == record.id
+    assert request.accepted_evidence_id == record.id
+    assert request.status == "accepted"
+    assert accepted.response["revision"] == observed.response["request_revision"] + 1
+    assert record.value_type == "json"
+    assert record.value_json == {"owner_names": ["Retail Operations"]}
+    assert record.claim_contract_version == request.claim_contract_version
 
 
 def _grant_decision_authority(scope: EvidenceScope):
@@ -237,6 +416,7 @@ def _accept_same_subject_in_second_workstream(scope: EvidenceScope, *, key: str)
         workstream_id=workstream_id,
         application_id=scope.application_id,
         signal_digests=discovered.signal_digests,
+        overlap_disposition=_justified_distinct_candidate(discovered),
         inclusion_reason="Exercise global governed evidence heads",
         command_key=f"{key}-candidate",
     )
@@ -278,6 +458,9 @@ def test_strict_source_helpers_preserve_opaque_keys_and_reject_bad_ids():
     assert canonical_source_identity(
         "  InVenTory  ", "HTTPS://Inventory.EXAMPLE/Apps/CaseSensitive?Key=ABC"
     ) == "https://inventory.example/Apps/CaseSensitive?Key=ABC"
+    assert canonical_source_identity(
+        "inventory", "HTTPS://CaseSensitive:Secret@Inventory.EXAMPLE/Apps"
+    ) == "https://CaseSensitive:Secret@inventory.example/Apps"
     assert canonical_source_identity(" Attestation ", "User:CaseSensitive") == (
         "attestation:user:CaseSensitive"
     )
@@ -330,8 +513,13 @@ def test_inventory_observation_versions_metadata_and_active_head(evidence_scope)
     assert [event.revision for event in events] == [1, 2]
     assert {row.id for row in active} == {current.id}
 
+    replayed = _record_inventory(
+        scope, expected_revision=1, key="natural-key-correction-replay"
+    )
+    assert replayed.created is False and replayed.idempotent is True
+    assert replayed.object_ids == correction.object_ids
     with pytest.raises(CommandConflict, match="stale_head_revision"):
-        _record_inventory(scope, expected_revision=1, key="stale-correction")
+        _record_inventory(scope, expected_revision=3, key="stale-correction")
     with Session(db.engine) as session:
         assert session.scalar(
             select(func.count())
@@ -444,6 +632,43 @@ def test_attestation_agreement_submits_then_accepts_request(evidence_scope):
     assert evidence.classification == "attested"
     assert evidence.source_identity == f"attestation:user:{scope.actor_id}"
     assert len(heads) == 2
+
+
+def test_request_command_natural_key_uses_normalized_identifiers(evidence_scope):
+    """Equivalent textual IDs must replay the exact accepted request result."""
+    scope = evidence_scope
+    observed = _record_inventory(scope, key="normalized-request-observation")
+    with Session(db.engine) as session:
+        value = session.get(
+            EvidenceRecord, observed.object_ids["evidence_record_id"]
+        ).value_json
+    submitted = TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        value=TypedEvidenceValue("json", value, None, None),
+        expected_head_revision=0,
+        command_key="normalized-request-attestation",
+    )
+    evidence_id = submitted.object_ids["evidence_record_id"]
+
+    accepted = TransformationEvidenceService.accept_request(
+        actor=scope.actor,
+        request_id=f"00{scope.request_id}",
+        evidence_id=f"00{evidence_id}",
+        expected_revision="002",
+        command_key="normalized-request-accept",
+    )
+    replayed = TransformationEvidenceService.accept_request(
+        actor=scope.actor,
+        request_id=scope.request_id,
+        evidence_id=evidence_id,
+        expected_revision=2,
+        command_key="normalized-request-accept",
+    )
+
+    assert accepted.created is True
+    assert replayed.created is False and replayed.idempotent is True
+    assert replayed.object_ids == accepted.object_ids
 
 
 def test_accept_request_rejects_current_evidence_not_submitted_for_request(
@@ -623,6 +848,7 @@ def test_shared_subject_heads_are_membership_authorized_not_candidate_owned(
         workstream_id=second_workstream_id,
         application_id=scope.application_id,
         signal_digests=discovered.signal_digests,
+        overlap_disposition=_justified_distinct_candidate(discovered),
         inclusion_reason="Share the canonical evidence head",
         command_key="second-workstream-candidate",
     )

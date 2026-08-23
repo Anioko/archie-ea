@@ -149,6 +149,7 @@ def guard_fixture(app, _schema):
                 for table_name in (
                     "transformation_outbox_events",
                     "operation_results",
+                    "command_materialisations",
                     "command_idempotency_records",
                     "users",
                 ):
@@ -192,6 +193,8 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                 JOIN pg_class cls ON cls.oid = tg.tgrelid
                 WHERE NOT tg.tgisinternal
                   AND tg.tgname IN (
+                    'trg_candidate_overlap_disposition_immutable',
+                    'trg_command_materialisation_immutable',
                     'trg_transformation_result_immutable',
                     'trg_transformation_outbox_immutable',
                     'trg_transformation_receipt_guard',
@@ -234,6 +237,8 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
         ).all()
 
     assert triggers == [
+        ("trg_candidate_overlap_disposition_immutable", "candidate_overlap_dispositions"),
+        ("trg_command_materialisation_immutable", "command_materialisations"),
         ("trg_decision_brief_evidence_citation_immutable", "decision_brief_evidence_citations"),
         ("trg_decision_brief_evidence_citation_membership", "decision_brief_evidence_citations"),
         ("trg_decision_brief_option_citation_immutable", "decision_brief_option_citations"),

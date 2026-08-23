@@ -15,10 +15,13 @@ from typing import Any, Callable, Mapping, TypeAlias
 
 from flask import current_app
 from sqlalchemy import func, select, text
+from sqlalchemy.sql.elements import TextClause
+from sqlalchemy.sql.dml import Delete, Insert, Update
 from sqlalchemy.orm import Session
 
 from app import db
 from app.models.transformation_execution import (
+    CommandMaterialisation,
     CommandIdempotencyRecord,
     OperationOutboxEvent,
     OperationResult,
@@ -68,6 +71,73 @@ OperationNaturalKeyResolver: TypeAlias = Callable[
 OperationAuthorizer: TypeAlias = Callable[
     [Session, ActorContext, str, str], None
 ]
+
+
+class _FencedSession(Session):
+    """Acquire the locked command fence lazily, immediately before first write."""
+
+    _fence_actor: ActorContext | None = None
+    _fence_claim: CommandClaim | None = None
+    _fence_locked = False
+    _fence_checking = False
+
+    def configure_fence(self, actor: ActorContext, claim: CommandClaim) -> None:
+        self._fence_actor = actor
+        self._fence_claim = claim
+
+    def _ensure_locked_fence(self) -> None:
+        if self._fence_locked or self._fence_checking:
+            return
+        if self._fence_actor is None or self._fence_claim is None:
+            return
+        self._fence_checking = True
+        try:
+            # The fence SELECT must not autoflush the pending domain row whose
+            # write it is intended to authorize.
+            with self.no_autoflush:
+                CommandService.assert_fence(
+                    self,
+                    actor=self._fence_actor,
+                    claim=self._fence_claim,
+                    lock=True,
+                )
+            self._fence_locked = True
+        finally:
+            self._fence_checking = False
+
+    @staticmethod
+    def _mutates(statement: Any) -> bool:
+        if isinstance(statement, (Insert, Update, Delete)):
+            return True
+        if not isinstance(statement, TextClause):
+            return False
+        sql = statement.text.lstrip().lower()
+        if sql.startswith(("insert ", "update ", "delete ", "merge ", "call ")):
+            return True
+        return any(
+            function_name in sql
+            for function_name in (
+                "archie_advance_evidence_head(",
+                "archie_create_decision_brief(",
+                "archie_freeze_decision_brief_version(",
+            )
+        )
+
+    def execute(self, statement, params=None, *, execution_options=None, bind_arguments=None, **kw):
+        if self._mutates(statement):
+            self._ensure_locked_fence()
+        return super().execute(
+            statement,
+            params,
+            execution_options=execution_options or {},
+            bind_arguments=bind_arguments,
+            **kw,
+        )
+
+    def flush(self, objects=None):
+        if self.new or self.dirty or self.deleted:
+            self._ensure_locked_fence()
+        return super().flush(objects)
 
 
 class CommandService:
@@ -280,32 +350,63 @@ class CommandService:
         natural_key_resolver: OperationNaturalKeyResolver | None = None,
     ) -> CommandResult:
         command_result = None
-        with Session(db.engine, expire_on_commit=False) as session, session.begin():
+        with _FencedSession(db.engine, expire_on_commit=False) as session, session.begin():
+            session.configure_fence(actor, claim)
             if authorizer is not None:
                 authorizer(session, actor, operation, claim.natural_key)
             # This preflight is intentionally non-locking. A handler may run for
             # minutes; heartbeat/reclaim must remain able to advance the lease.
             # The result/outbox/finalisation boundary takes the row lock below.
             cls.assert_fence(session, actor=actor, claim=claim, lock=False)
-            mutation = (
-                natural_key_resolver(session, actor, claim.natural_key, claim)
-                if natural_key_resolver is not None
-                else None
+            mutation = cls.resolve_materialisation(
+                session,
+                actor=actor,
+                operation=operation,
+                claim=claim,
             )
+            recovered_from_materialisation = mutation is not None
+            if mutation is None and natural_key_resolver is not None:
+                mutation = natural_key_resolver(
+                    session, actor, claim.natural_key, claim
+                )
             reconciled = mutation is not None
             if mutation is None:
                 mutation = handler(session, claim)
             if not isinstance(mutation, DomainMutationResult):
                 source = "natural-key resolver" if reconciled else "command handler"
                 raise TypeError(f"{source} must return DomainMutationResult")
-            cls.assert_fence(session, actor=actor, claim=claim)
-            result = cls.insert_operation_result(
-                session,
-                actor=actor,
-                operation=operation,
-                claim=claim,
-                mutation=mutation,
+            # Backfill legacy natural-key recoveries as well as new handler
+            # effects. Once observed, every exact effect has the same immutable
+            # recovery contract even if it predates this additive table.
+            if not recovered_from_materialisation:
+                cls.persist_materialisation(
+                    session,
+                    actor=actor,
+                    operation=operation,
+                    claim=claim,
+                    mutation=mutation,
+                )
+            session._ensure_locked_fence()
+            result = (
+                cls.existing_operation_result(
+                    session,
+                    actor=actor,
+                    operation=operation,
+                    claim=claim,
+                    mutation=mutation,
+                )
+                if reconciled
+                else None
             )
+            created = result is None
+            if result is None:
+                result = cls.insert_operation_result(
+                    session,
+                    actor=actor,
+                    operation=operation,
+                    claim=claim,
+                    mutation=mutation,
+                )
             cls.finalise_succeeded(
                 session,
                 actor=actor,
@@ -313,9 +414,98 @@ class CommandService:
                 result_id=result.id,
             )
             command_result = cls.to_command_result(
-                result, created=not reconciled, idempotent=reconciled
+                result,
+                created=created and not reconciled,
+                idempotent=reconciled,
             )
         return command_result
+
+    @classmethod
+    def resolve_materialisation(
+        cls,
+        session: Session,
+        *,
+        actor: ActorContext,
+        operation: str,
+        claim: CommandClaim,
+    ) -> DomainMutationResult | None:
+        """Strictly recover only the exact actor/operation/payload materialisation."""
+        row = session.scalar(
+            select(CommandMaterialisation).where(
+                CommandMaterialisation.organization_id == actor.organization_id,
+                CommandMaterialisation.operation == operation,
+                CommandMaterialisation.natural_key == claim.natural_key,
+            )
+        )
+        if row is None:
+            return None
+        if row.actor_id != actor.user_id:
+            raise CommandConflict("natural_key_owned_by_another_actor")
+        if row.request_digest != claim.request_digest:
+            raise CommandConflict("natural_key_payload_conflict")
+        events = tuple(copy.deepcopy(row.outbox_events or ()))
+        return DomainMutationResult(
+            object_ids=copy.deepcopy(dict(row.object_ids)),
+            response=copy.deepcopy(dict(row.response_json)),
+            outbox_events=events,
+        )
+
+    @classmethod
+    def persist_materialisation(
+        cls,
+        session: Session,
+        *,
+        actor: ActorContext,
+        operation: str,
+        claim: CommandClaim,
+        mutation: DomainMutationResult,
+    ) -> CommandMaterialisation:
+        row = CommandMaterialisation(
+            organization_id=actor.organization_id,
+            actor_id=actor.user_id,
+            operation=operation,
+            natural_key=claim.natural_key,
+            request_digest=claim.request_digest,
+            receipt_id=claim.receipt_id,
+            receipt_generation=claim.generation,
+            object_ids=copy.deepcopy(dict(mutation.object_ids)),
+            response_json=copy.deepcopy(dict(mutation.response)),
+            outbox_events=copy.deepcopy(list(mutation.outbox_events)),
+        )
+        session.add(row)
+        session.flush()
+        return row
+
+    @classmethod
+    def existing_operation_result(
+        cls,
+        session: Session,
+        *,
+        actor: ActorContext,
+        operation: str,
+        claim: CommandClaim,
+        mutation: DomainMutationResult,
+    ) -> OperationResult | None:
+        """Return only the intact result for this exact recovered materialisation."""
+        result = session.scalar(
+            select(OperationResult).where(
+                OperationResult.organization_id == actor.organization_id,
+                OperationResult.operation == operation,
+                OperationResult.natural_key == claim.natural_key,
+            )
+        )
+        if result is None:
+            return None
+        if result.actor_id != actor.user_id:
+            raise CommandConflict("natural_key_owned_by_another_actor")
+        if result.request_digest != claim.request_digest:
+            raise CommandConflict("natural_key_payload_conflict")
+        if (
+            dict(result.object_ids) != dict(mutation.object_ids)
+            or dict(result.response_json) != dict(mutation.response)
+        ):
+            raise CommandConflict("operation_result_materialisation_mismatch")
+        return result
 
     @classmethod
     def claim_or_reconcile(

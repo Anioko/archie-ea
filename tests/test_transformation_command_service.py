@@ -11,12 +11,14 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app import db
 from app.models.organization import Organization
 from app.models.strategic import StrategicInitiative
 from app.models.transformation_execution import (
+    CommandMaterialisation,
     CommandIdempotencyRecord,
     OperationOutboxEvent,
     OperationResult,
@@ -114,6 +116,7 @@ def command_fixture(app, _schema):
                 for table_name in (
                     "transformation_outbox_events",
                     "operation_results",
+                    "command_materialisations",
                     "command_idempotency_records",
                     "strategic_initiatives",
                     "users",
@@ -617,6 +620,155 @@ def test_domain_row_only_crash_is_reconciled_by_operation_resolver(command_fixtu
     assert handler_called is False
     assert _receipt(command_fixture, "domain-row-only").status == "succeeded"
     assert _counts(command_fixture) == (1, 1, 1)
+    with Session(db.engine) as session:
+        recovered_envelope = session.scalar(
+            select(CommandMaterialisation).where(
+                CommandMaterialisation.organization_id
+                == command_fixture.organization_id,
+                CommandMaterialisation.actor_id == command_fixture.user_id,
+                CommandMaterialisation.operation == "programme.create",
+                CommandMaterialisation.natural_key
+                == "programme-intake:domain-row-only",
+            )
+        )
+        assert recovered_envelope is not None
+        assert recovered_envelope.object_ids == {"programme_id": programme_id}
+
+
+def test_builtin_materialisation_recovers_exact_result_after_receipt_result_damage(
+    command_fixture,
+):
+    """Every command persists an operation-bound recovery envelope, not ad-hoc lookup logic."""
+    first = _execute(command_fixture, key="builtin-materialisation")
+    with Session(db.engine) as session:
+        materialisation = session.scalar(
+            select(CommandMaterialisation).where(
+                CommandMaterialisation.organization_id
+                == command_fixture.organization_id,
+                CommandMaterialisation.actor_id == command_fixture.user_id,
+                CommandMaterialisation.operation == "programme.create",
+                CommandMaterialisation.natural_key
+                == "programme-intake:builtin-materialisation",
+            )
+        )
+        assert materialisation is not None
+        assert materialisation.request_digest == canonical_request_digest(
+            {"name": command_fixture.domain_name, "scope": {"b": 2, "a": 1}}
+        )
+        assert materialisation.object_ids == first.object_ids
+        assert materialisation.response_json == first.response
+
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "DELETE FROM transformation_outbox_events "
+                "WHERE operation_result_id = :result_id"
+            ),
+            {"result_id": first.operation_result_id},
+        )
+        connection.execute(
+            text(
+                "UPDATE command_idempotency_records SET status = 'retryable_failure', "
+                "operation_result_id = NULL, lease_expires_at = clock_timestamp() - interval '1 second' "
+                "WHERE organization_id = :organization_id AND actor_id = :actor_id "
+                "AND operation = 'programme.create' AND idempotency_key = :command_key"
+            ),
+            {
+                "organization_id": command_fixture.organization_id,
+                "actor_id": command_fixture.user_id,
+                "command_key": "builtin-materialisation",
+            },
+        )
+        connection.execute(
+            text("DELETE FROM operation_results WHERE id = :result_id"),
+            {"result_id": first.operation_result_id},
+        )
+
+    replay = _execute(
+        command_fixture,
+        key="builtin-materialisation",
+        handler=lambda _session, _claim: pytest.fail(
+            "a damaged receipt reran a materialised domain mutation"
+        ),
+    )
+
+    assert replay.created is False and replay.idempotent is True
+    assert replay.object_ids == first.object_ids
+    assert replay.response == first.response
+    assert _counts(command_fixture) == (1, 1, 1)
+
+
+def test_locked_generation_fence_precedes_first_real_domain_write(command_fixture):
+    """The receipt generation is locked before the handler's first database mutation."""
+    statements = []
+
+    def capture(_conn, _cursor, statement, _parameters, _context, _many):
+        lowered = " ".join(statement.lower().split())
+        if "command_idempotency_records" in lowered or "strategic_initiatives" in lowered:
+            statements.append(lowered)
+
+    event.listen(db.engine, "before_cursor_execute", capture)
+    try:
+        _execute(command_fixture, key="fence-before-first-write")
+    finally:
+        event.remove(db.engine, "before_cursor_execute", capture)
+
+    first_domain_insert = next(
+        index
+        for index, statement in enumerate(statements)
+        if statement.startswith("insert into strategic_initiatives")
+    )
+    locked_fences = [
+        index
+        for index, statement in enumerate(statements)
+        if "from command_idempotency_records" in statement
+        and "for update" in statement
+    ]
+    assert locked_fences
+    assert min(locked_fences) < first_domain_insert, "\n".join(statements)
+
+
+def test_stale_generation_is_rejected_before_first_real_domain_write(
+    command_fixture,
+):
+    """A reclaimed receipt must stop its stale handler before any domain INSERT."""
+    domain_inserts = []
+
+    def capture(_conn, _cursor, statement, _parameters, _context, _many):
+        normalized = " ".join(statement.lower().split())
+        if normalized.startswith("insert into strategic_initiatives"):
+            domain_inserts.append(normalized)
+
+    def reclaim_then_write(session, claim):
+        with db.engine.begin() as connection:
+            connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+            connection.execute(
+                text(
+                    "UPDATE command_idempotency_records "
+                    "SET lease_generation = lease_generation + 1 "
+                    "WHERE id = :receipt_id AND organization_id = :organization_id"
+                ),
+                {
+                    "receipt_id": claim.receipt_id,
+                    "organization_id": command_fixture.organization_id,
+                },
+            )
+        return _mutation(command_fixture)(session, claim)
+
+    event.listen(db.engine, "before_cursor_execute", capture)
+    try:
+        with pytest.raises(StaleClaim, match="stale_or_expired_claim"):
+            _execute(
+                command_fixture,
+                key="stale-before-first-write",
+                handler=reclaim_then_write,
+            )
+    finally:
+        event.remove(db.engine, "before_cursor_execute", capture)
+
+    assert domain_inserts == []
+    assert _counts(command_fixture) == (0, 0, 0)
 
 
 def test_result_replay_runs_authorizer_before_returning_persisted_result(

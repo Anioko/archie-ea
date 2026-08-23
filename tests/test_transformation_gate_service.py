@@ -13,6 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app import db
+from app.models.application_portfolio import ApplicationComponent
 from app.models.benefit import Benefit
 from app.models.transformation_evidence import EvidenceRequest
 from app.models.transformation_programme import ProgrammeWorkstream
@@ -28,7 +29,11 @@ from app.modules.transformation_room.gate_service import (
     PolicySnapshot,
     TransformationGateService,
 )
-from app.modules.transformation_room.evidence_service import TransformationEvidenceService
+from app.modules.transformation_room.evidence_service import (
+    EVIDENCE_CLAIM_CONTRACT_VERSION,
+    REQUIRED_EVIDENCE_CLAIMS,
+    TransformationEvidenceService,
+)
 from app.modules.transformation_room.programme_service import TransformationProgrammeService
 
 from tests.test_transformation_programme_service import _intake, programme_fixture
@@ -77,6 +82,50 @@ def _policy_snapshot(source: str, target: str, **changes):
         subject_exists=True,
         duplicates_resolved=True,
     )
+    contract_values = {
+        "application_owner": ("string", "Retail Operations", None, None),
+        "lifecycle": ("string", "active", None, None),
+        "cost": ("number", 125000, "annual_tco", "GBP"),
+        "business_criticality": (
+            "json",
+            {"value": "high", "source_field": "business_criticality"},
+            None,
+            None,
+        ),
+        "capability_impact": (
+            "json",
+            {"capability_ids": [1], "impact": "material"},
+            None,
+            None,
+        ),
+        "dependency_impact": (
+            "json",
+            {"dependency_ids": [1], "impact": "material"},
+            None,
+            None,
+        ),
+        "risk": (
+            "json",
+            {
+                "technical_risk": "high",
+                "business_risk": "medium",
+                "vendor_risk": "low",
+                "obsolescence_risk": "high",
+            },
+            None,
+            None,
+        ),
+        "source_freshness": (
+            "json",
+            {
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "freshness_status": "fresh",
+                "source_system": "application-inventory",
+            },
+            None,
+            None,
+        ),
+    }
     evidence = tuple(
         _row(
             id=20 + offset,
@@ -86,7 +135,12 @@ def _policy_snapshot(source: str, target: str, **changes):
             claim_key=claim_key,
             classification="observed",
             source_identity=f"application:501:{claim_key}",
-            source_type="application_inventory",
+            source_type="attestation",
+            claim_contract_version=EVIDENCE_CLAIM_CONTRACT_VERSION,
+            value_type=contract_values[claim_key][0],
+            value_json=contract_values[claim_key][1],
+            unit=contract_values[claim_key][2],
+            currency=contract_values[claim_key][3],
             freshness_status="fresh",
             freshness_expires_at=datetime.now(timezone.utc) + timedelta(days=30),
             cited_evidence_ids=(),
@@ -112,6 +166,7 @@ def _policy_snapshot(source: str, target: str, **changes):
             subject_type="application",
             subject_id=501,
             claim_key=row.claim_key,
+            claim_contract_version=EVIDENCE_CLAIM_CONTRACT_VERSION,
             required=True,
             status="accepted",
             accepted_evidence_id=row.id,
@@ -526,6 +581,45 @@ def test_real_task6_rows_allow_discovery_only_while_current_and_fresh(
     with Session(db.engine) as session, session.begin():
         workstream = session.get(ProgrammeWorkstream, scope.workstream_id)
         workstream.lifecycle_stage = "discover"
+        application = session.get(ApplicationComponent, scope.application_id)
+        application.application_owner = "Retail Operations"
+        application.updated_at = datetime.now(timezone.utc)
+        owner_request = session.scalar(
+            select(EvidenceRequest).where(
+                EvidenceRequest.organization_id == scope.organization_id,
+                EvidenceRequest.candidate_id == scope.candidate_id,
+                EvidenceRequest.claim_key == "application_owner",
+            )
+        )
+        owner_request.status = "open"
+        owner_request.submitted_evidence_id = None
+        owner_request.accepted_evidence_id = None
+        owner_request.submitted_at = None
+        owner_request.accepted_at = None
+
+    planned = TransformationEvidenceService.plan_required_requests(
+        actor=scope.actor,
+        candidate_id=scope.candidate_id,
+        assignments={claim: scope.actor_id for claim in REQUIRED_EVIDENCE_CLAIMS},
+        command_key="gate-typed-request-plan",
+    )
+    owner_observation = TransformationEvidenceService.record_observation(
+        actor=scope.actor,
+        candidate_id=scope.candidate_id,
+        claim_key="application_owner",
+        adapter_key="application-inventory",
+        source_key=str(scope.application_id),
+        expected_head_revision=1,
+        command_key="gate-typed-owner-observation",
+    )
+    TransformationEvidenceService.accept_request(
+        actor=scope.actor,
+        request_id=planned.object_ids["request_application_owner_id"],
+        evidence_id=owner_observation.object_ids["evidence_record_id"],
+        expected_revision=owner_observation.response["request_revision"],
+        command_key="gate-typed-owner-acceptance",
+    )
+    typed_evidence_id = owner_observation.object_ids["evidence_record_id"]
 
     ready = TransformationGateService.evaluate(
         actor=scope.actor,
@@ -543,7 +637,7 @@ def test_real_task6_rows_allow_discovery_only_while_current_and_fresh(
             ),
             {
                 "expired": datetime.now(timezone.utc) - timedelta(seconds=1),
-                "record_id": scope.evidence_id,
+                "record_id": typed_evidence_id,
                 "organization_id": scope.organization_id,
             },
         )
@@ -1122,6 +1216,7 @@ def test_archived_programme_cannot_be_evaluated_or_transitioned(programme_fixtur
     TransformationProgrammeService.archive(
         actor=programme_fixture.actor,
         programme_id=created.object_ids["programme_id"],
+        rationale="Archive the programme after its governing test decision.",
         expected_revision=1,
         command_key="archive-for-gate",
     )

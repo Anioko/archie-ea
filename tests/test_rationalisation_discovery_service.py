@@ -23,6 +23,7 @@ from app.models.business_capabilities import BusinessCapability
 from app.models.organization import Organization
 from app.models.strategic import StrategicInitiative
 from app.models.transformation_evidence import (
+    CandidateOverlapDisposition,
     CandidateSignal,
     EvidenceRequest,
     TransformationCandidate,
@@ -194,6 +195,14 @@ def _discover(scope: DiscoveryScope):
         workstream_id=scope.workstream_id,
         filters=DiscoveryFilters(business_unit_ids=(), capability_ids=()),
     )
+
+
+def _justified_distinct(scope: DiscoveryScope):
+    return {
+        "decision": "justified_distinct",
+        "overlapping_application_ids": [scope.sibling_application_id],
+        "rationale": "The applications serve materially different operating contexts.",
+    }
 
 
 def test_discovery_exposes_seven_real_signals_and_writes_nothing(db_session):
@@ -409,7 +418,9 @@ def committed_scope(app, _schema):
                 for table_name in (
                     "transformation_outbox_events",
                     "operation_results",
+                    "command_materialisations",
                     "command_idempotency_records",
+                    "candidate_overlap_dispositions",
                     "candidate_signals",
                     "evidence_requests",
                     "transformation_candidates",
@@ -455,6 +466,7 @@ def test_acceptance_recomputes_citations_replays_and_does_not_copy_application(
         workstream_id=scope.workstream_id,
         application_id=scope.application_id,
         signal_digests=discovered.signal_digests,
+        overlap_disposition=_justified_distinct(scope),
         inclusion_reason="  Duplicate capability and material risk  ",
         command_key="accept-target",
     )
@@ -463,6 +475,7 @@ def test_acceptance_recomputes_citations_replays_and_does_not_copy_application(
         workstream_id=scope.workstream_id,
         application_id=scope.application_id,
         signal_digests=discovered.signal_digests,
+        overlap_disposition=_justified_distinct(scope),
         inclusion_reason="Duplicate capability and material risk",
         command_key="accept-target",
     )
@@ -514,14 +527,79 @@ def test_acceptance_recomputes_citations_replays_and_does_not_copy_application(
     assert workstream.lifecycle_stage == "discover" and workstream.revision == 1
     assert app_count_after == app_count_before
 
-    with pytest.raises(CommandConflict, match="candidate_already_accepted"):
+    with Session(db.engine) as session:
+        disposition = session.scalar(
+            select(CandidateOverlapDisposition).where(
+                CandidateOverlapDisposition.organization_id
+                == scope.organization_id,
+                CandidateOverlapDisposition.candidate_id == candidate.id,
+            )
+        )
+    assert disposition.decision == "justified_distinct"
+    assert disposition.overlapping_application_ids == [scope.sibling_application_id]
+    assert disposition.decided_by_id == scope.actor_id
+
+    with pytest.raises(CommandConflict, match="natural_key_payload_conflict"):
         RationalisationDiscoveryService.accept_candidate(
             actor=scope.actor,
             workstream_id=scope.workstream_id,
             application_id=scope.application_id,
             signal_digests=discovered.signal_digests,
+            overlap_disposition=_justified_distinct(scope),
             inclusion_reason="Same subject, second command",
             command_key="accept-target-again",
+        )
+
+
+def test_acceptance_requires_the_exact_current_rule_set(committed_scope):
+    scope = committed_scope
+    discovered = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+
+    with pytest.raises(CommandConflict, match="candidate_signal_set_incomplete"):
+        RationalisationDiscoveryService.accept_candidate(
+            actor=scope.actor,
+            workstream_id=scope.workstream_id,
+            application_id=scope.application_id,
+            signal_digests=discovered.signal_digests[:-1],
+            overlap_disposition=_justified_distinct(scope),
+            inclusion_reason="A subset must never define the governed basis.",
+            command_key="reject-signal-subset",
+        )
+
+
+def test_positive_overlap_requires_authorised_immutable_disposition(committed_scope):
+    scope = committed_scope
+    discovered = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+
+    with pytest.raises(
+        CommandConflict, match="capability_overlap_disposition_required"
+    ):
+        RationalisationDiscoveryService.accept_candidate(
+            actor=scope.actor,
+            workstream_id=scope.workstream_id,
+            application_id=scope.application_id,
+            signal_digests=discovered.signal_digests,
+            inclusion_reason="Positive overlap cannot resolve itself.",
+            command_key="missing-overlap-disposition",
+        )
+
+    with pytest.raises(NotAuthorised, match="overlap_disposition_subject_outside_tenant"):
+        RationalisationDiscoveryService.accept_candidate(
+            actor=scope.actor,
+            workstream_id=scope.workstream_id,
+            application_id=scope.application_id,
+            signal_digests=discovered.signal_digests,
+            overlap_disposition={
+                "decision": "justified_distinct",
+                "overlapping_application_ids": [scope.sibling_application_id + 10_000_000],
+                "rationale": "A foreign or nonexistent subject cannot be dispositioned.",
+            },
+            inclusion_reason="Reject a non-tenant overlap reference.",
+            command_key="foreign-overlap-disposition",
         )
 
 
@@ -538,6 +616,7 @@ def test_live_discovery_gate_loads_accepted_candidate_signals_and_owner_request(
         workstream_id=scope.workstream_id,
         application_id=scope.application_id,
         signal_digests=discovered.signal_digests,
+        overlap_disposition=_justified_distinct(scope),
         inclusion_reason="Accepted scope still needs owner evidence",
         command_key="live-gate-candidate",
     )
@@ -748,6 +827,7 @@ def test_acceptance_replay_reauthorises_from_persisted_role(committed_scope):
         workstream_id=scope.workstream_id,
         application_id=scope.application_id,
         signal_digests=discovered.signal_digests,
+        overlap_disposition=_justified_distinct(scope),
         inclusion_reason="Authorised first call",
         command_key="reauthorise-replay",
     )
@@ -766,6 +846,7 @@ def test_acceptance_replay_reauthorises_from_persisted_role(committed_scope):
             workstream_id=scope.workstream_id,
             application_id=scope.application_id,
             signal_digests=discovered.signal_digests,
+            overlap_disposition=_justified_distinct(scope),
             inclusion_reason="Authorised first call",
             command_key="reauthorise-replay",
         )
@@ -782,6 +863,11 @@ def test_locked_acceptance_rechecks_role_revoked_after_command_claim(committed_s
         "application_id": scope.application_id,
         "signal_digests": tuple(sorted(discovered.signal_digests)),
         "inclusion_reason": "Authority must survive until persistence",
+        "overlap_disposition": (
+            RationalisationDiscoveryService._normalise_overlap_disposition(
+                _justified_distinct(scope)
+            )
+        ),
     }
     natural_key = (
         f"candidate:{scope.workstream_id}:application:{scope.application_id}"
@@ -879,6 +965,11 @@ def test_candidate_commit_serializes_with_concurrent_authority_revocation(
         "application_id": scope.application_id,
         "signal_digests": tuple(sorted(discovered.signal_digests)),
         "inclusion_reason": "Authority and mutation must serialize",
+        "overlap_disposition": (
+            RationalisationDiscoveryService._normalise_overlap_disposition(
+                _justified_distinct(scope)
+            )
+        ),
     }
     claim = CommandService.claim_or_reconcile(
         actor=scope.actor,
@@ -1041,6 +1132,7 @@ def test_candidate_signal_is_database_immutable(committed_scope):
         workstream_id=scope.workstream_id,
         application_id=scope.application_id,
         signal_digests=discovered.signal_digests,
+        overlap_disposition=_justified_distinct(scope),
         inclusion_reason="Freeze the discovery basis",
         command_key="immutable-signal",
     )

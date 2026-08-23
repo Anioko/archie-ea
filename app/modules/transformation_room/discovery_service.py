@@ -25,6 +25,7 @@ from app.models.application_rationalization import ApplicationDependency
 from app.models.business_capabilities import BusinessCapability
 from app.models.strategic import StrategicInitiative
 from app.models.transformation_evidence import (
+    CandidateOverlapDisposition,
     CandidateSignal,
     EvidenceRequest,
     TransformationCandidate,
@@ -103,6 +104,25 @@ def _signal_digest(
         allow_nan=False,
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _accepted_ruleset_digest(signals: Sequence[DiscoverySignal]) -> str:
+    document = [
+        {
+            "rule_code": signal.rule_code,
+            "rule_version": signal.rule_version,
+            "content_hash": signal.content_hash,
+        }
+        for signal in sorted(signals, key=lambda item: item.rule_code)
+    ]
+    return hashlib.sha256(
+        json.dumps(
+            document,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _normalize_category(value: Any, allowed_values: frozenset[str]) -> str | None:
@@ -488,6 +508,7 @@ class RationalisationDiscoveryService:
         signal_digests: Sequence[str],
         inclusion_reason: str,
         command_key: str,
+        overlap_disposition: Mapping[str, Any] | None = None,
     ) -> CommandResult:
         if not isinstance(workstream_id, int) or workstream_id <= 0:
             raise ValueError("workstream_id must be a positive integer")
@@ -508,11 +529,13 @@ class RationalisationDiscoveryService:
             for digest in digests
         ):
             raise ValueError("signal_digests must contain SHA-256 hexadecimal digests")
+        disposition = cls._normalise_overlap_disposition(overlap_disposition)
         request = {
             "workstream_id": workstream_id,
             "application_id": application_id,
             "signal_digests": digests,
             "inclusion_reason": reason,
+            "overlap_disposition": disposition,
         }
         return CommandService.execute(
             actor=actor,
@@ -661,7 +684,6 @@ class RationalisationDiscoveryService:
     def _accept_recomputed_candidate(
         cls, session, actor, request, claim
     ) -> DomainMutationResult:
-        del claim
         workstream, programme = cls._load_workstream_graph(
             session, actor, request["workstream_id"], lock=True
         )
@@ -700,13 +722,68 @@ class RationalisationDiscoveryService:
         )
         current_by_digest = {signal.content_hash: signal for signal in current_signals}
         selected_digests = tuple(request["signal_digests"])
-        if any(digest not in current_by_digest for digest in selected_digests):
+        current_digests = frozenset(current_by_digest)
+        selected_digest_set = frozenset(selected_digests)
+        if not selected_digest_set.issubset(current_digests):
             raise CommandConflict("candidate_signals_stale")
+        if selected_digest_set != current_digests:
+            raise CommandConflict("candidate_signal_set_incomplete")
         selected_signals = tuple(
             signal for signal in current_signals if signal.content_hash in selected_digests
         )
         if len(selected_signals) != len(selected_digests):
             raise CommandConflict("candidate_signals_stale")
+
+        overlap_signal = next(
+            signal
+            for signal in current_signals
+            if signal.rule_code == "capability_overlap"
+        )
+        overlap_values = overlap_signal.observed_values
+        overlap_count = overlap_values.get("overlap_count")
+        overlap_ids = tuple(overlap_values.get("overlapping_application_ids") or ())
+        disposition_payload = request.get("overlap_disposition")
+        if isinstance(overlap_count, int) and overlap_count > 0:
+            if disposition_payload is None:
+                raise CommandConflict("capability_overlap_disposition_required")
+            supplied_overlap_ids = tuple(
+                disposition_payload["overlapping_application_ids"]
+            )
+            tenant_supplied_ids = tuple(
+                session.scalars(
+                    select(ApplicationComponent.id)
+                    .where(
+                        ApplicationComponent.organization_id
+                        == actor.organization_id,
+                        ApplicationComponent.id.in_(supplied_overlap_ids),
+                        ApplicationComponent.deleted_at.is_(None),
+                    )
+                    .order_by(ApplicationComponent.id)
+                ).all()
+            )
+            if tenant_supplied_ids != supplied_overlap_ids:
+                raise NotAuthorised("overlap_disposition_subject_outside_tenant")
+            if tuple(disposition_payload["overlapping_application_ids"]) != overlap_ids:
+                raise CommandConflict("capability_overlap_disposition_stale")
+            tenant_overlap_ids = tuple(
+                session.scalars(
+                    select(ApplicationComponent.id)
+                    .where(
+                        ApplicationComponent.organization_id
+                        == actor.organization_id,
+                        ApplicationComponent.id.in_(overlap_ids),
+                        ApplicationComponent.deleted_at.is_(None),
+                    )
+                    .order_by(ApplicationComponent.id)
+                ).all()
+            )
+            if tenant_overlap_ids != overlap_ids:
+                raise NotAuthorised("overlap_disposition_subject_outside_tenant")
+            target_id = disposition_payload.get("target_application_id")
+            if target_id is not None and target_id not in overlap_ids:
+                raise NotAuthorised("overlap_disposition_subject_outside_tenant")
+        elif disposition_payload is not None:
+            raise CommandConflict("capability_overlap_disposition_not_applicable")
 
         # Receipt authorization runs in an earlier claim transaction. Recheck
         # persisted authority after owning the aggregate locks so a role revoked
@@ -729,6 +806,8 @@ class RationalisationDiscoveryService:
             inclusion_reason=request["inclusion_reason"],
             accepted_by_id=actor.user_id,
             accepted_at=evaluated_at,
+            ruleset_version=cls.RULESET_VERSION,
+            ruleset_digest=_accepted_ruleset_digest(current_signals),
             revision=1,
         )
         session.add(candidate)
@@ -754,6 +833,24 @@ class RationalisationDiscoveryService:
             )
             session.add(persisted)
             persisted_signals.append(persisted)
+        overlap_disposition = None
+        if disposition_payload is not None:
+            overlap_disposition = CandidateOverlapDisposition(
+                organization_id=actor.organization_id,
+                candidate_id=candidate.id,
+                signal_digest=overlap_signal.content_hash,
+                decision=disposition_payload["decision"],
+                overlapping_application_ids=list(overlap_ids),
+                rationale=disposition_payload["rationale"],
+                target_application_id=disposition_payload.get(
+                    "target_application_id"
+                ),
+                decided_by_id=actor.user_id,
+                command_receipt_id=claim.receipt_id,
+                command_generation=claim.generation,
+                decided_at=evaluated_at,
+            )
+            session.add(overlap_disposition)
         evidence_request = None
         if not cls._application_has_owner(session, actor, application):
             assignee_id = cls._owner_request_assignee(
@@ -784,6 +881,8 @@ class RationalisationDiscoveryService:
         )
         if evidence_request is not None:
             object_ids["evidence_request_id"] = evidence_request.id
+        if overlap_disposition is not None:
+            object_ids["overlap_disposition_id"] = overlap_disposition.id
         response = {
             "candidate_id": candidate.id,
             "signal_ids": [signal.id for signal in persisted_signals],
@@ -802,10 +901,56 @@ class RationalisationDiscoveryService:
                         "workstream_id": workstream.id,
                         "application_id": application.id,
                         "signal_digests": list(selected_digests),
+                        "ruleset_version": cls.RULESET_VERSION,
+                        "ruleset_digest": candidate.ruleset_digest,
+                        "overlap_disposition_id": (
+                            overlap_disposition.id
+                            if overlap_disposition is not None
+                            else None
+                        ),
                     },
                 },
             ),
         )
+
+    @staticmethod
+    def _normalise_overlap_disposition(value):
+        if value is None:
+            return None
+        if not isinstance(value, Mapping):
+            raise ValueError("overlap_disposition must be an object")
+        decision = value.get("decision")
+        if decision not in {
+            "confirmed_duplicate",
+            "justified_distinct",
+            "merge_repoint",
+        }:
+            raise ValueError("overlap disposition decision is not supported")
+        rationale = value.get("rationale")
+        rationale = rationale.strip() if isinstance(rationale, str) else ""
+        if not rationale:
+            raise ValueError("overlap disposition rationale is required")
+        overlap_ids = RationalisationDiscoveryService._positive_ids(
+            value.get("overlapping_application_ids"),
+            "overlap_disposition.overlapping_application_ids",
+        )
+        if not overlap_ids:
+            raise ValueError("overlap disposition applications are required")
+        target_id = value.get("target_application_id")
+        if target_id is not None and (
+            isinstance(target_id, bool)
+            or not isinstance(target_id, int)
+            or target_id <= 0
+        ):
+            raise ValueError("overlap disposition target must be a positive integer")
+        if decision in {"confirmed_duplicate", "merge_repoint"} and target_id is None:
+            raise ValueError("overlap disposition target is required")
+        return {
+            "decision": decision,
+            "overlapping_application_ids": overlap_ids,
+            "rationale": rationale,
+            "target_application_id": target_id,
+        }
 
     @staticmethod
     def _validate_filters(filters: DiscoveryFilters) -> None:

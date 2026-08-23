@@ -22,6 +22,7 @@ from app.models.transformation_decision import (
     TransformationOptionVersion,
 )
 from app.models.transformation_evidence import (
+    CandidateOverlapDisposition,
     CandidateSignal,
     EvidenceClaimHead,
     EvidenceRecord,
@@ -394,6 +395,75 @@ class TransformationGateService:
         signals_by_candidate: dict[int, list[CandidateSignal]] = {}
         for signal in candidate_signals:
             signals_by_candidate.setdefault(signal.candidate_id, []).append(signal)
+        overlap_dispositions = tuple(
+            session.scalars(
+                select(CandidateOverlapDisposition).where(
+                    CandidateOverlapDisposition.organization_id
+                    == actor.organization_id,
+                    CandidateOverlapDisposition.candidate_id.in_(
+                        candidate_ids or [-1]
+                    ),
+                )
+            ).all()
+        )
+        disposition_by_candidate = {
+            row.candidate_id: row for row in overlap_dispositions
+        }
+        from app.modules.transformation_room.discovery_service import (
+            RationalisationDiscoveryService,
+            _accepted_ruleset_digest,
+        )
+
+        expected_rule_versions = {
+            rule.code: rule.rule_version
+            for rule in RationalisationDiscoveryService.signal_rules()
+        }
+
+        def duplicate_resolution_is_current(candidate):
+            signals = signals_by_candidate.get(candidate.id, ())
+            if (
+                candidate.ruleset_version
+                != RationalisationDiscoveryService.RULESET_VERSION
+                or candidate.ruleset_digest != _accepted_ruleset_digest(signals)
+                or {
+                    signal.rule_code: signal.rule_version for signal in signals
+                }
+                != expected_rule_versions
+            ):
+                return False
+            overlap = next(
+                (
+                    signal
+                    for signal in signals
+                    if signal.rule_code == "capability_overlap"
+                ),
+                None,
+            )
+            if overlap is None or not isinstance(overlap.payload_json, Mapping):
+                return False
+            values = overlap.payload_json.get("observed_values")
+            if (
+                overlap.payload_json.get("unknown_code") is not None
+                or not isinstance(values, Mapping)
+            ):
+                return False
+            overlap_count = values.get("overlap_count")
+            overlap_ids = values.get("overlapping_application_ids")
+            if overlap_count == 0 and overlap_ids == []:
+                return True
+            if not isinstance(overlap_count, int) or overlap_count <= 0:
+                return False
+            disposition = disposition_by_candidate.get(candidate.id)
+            return bool(
+                disposition is not None
+                and disposition.signal_digest == overlap.content_hash
+                and disposition.overlapping_application_ids == overlap_ids
+                and disposition.decision
+                in {"confirmed_duplicate", "justified_distinct", "merge_repoint"}
+                and isinstance(disposition.rationale, str)
+                and disposition.rationale.strip()
+            )
+
         accepted_candidates = tuple(
             CandidatePolicyProjection(
                 id=row.id,
@@ -406,14 +476,7 @@ class TransformationGateService:
                     row.subject_type == "application"
                     and row.subject_id in existing_application_ids
                 ),
-                duplicates_resolved=any(
-                    signal.rule_code == "capability_overlap"
-                    and isinstance(signal.payload_json, Mapping)
-                    and signal.payload_json.get("unknown_code") is None
-                    and isinstance(signal.content_hash, str)
-                    and len(signal.content_hash) == 64
-                    for signal in signals_by_candidate.get(row.id, ())
-                ),
+                duplicates_resolved=duplicate_resolution_is_current(row),
             )
             for row in candidate_rows
         )
@@ -649,6 +712,11 @@ class TransformationGateService:
 
     @classmethod
     def _current_evidence_state(cls, snapshot):
+        from app.modules.transformation_room.evidence_service import (
+            REQUIRED_EVIDENCE_CLAIMS,
+            TransformationEvidenceService,
+        )
+
         records_by_id = {
             _value(row, "id"): row
             for row in snapshot.evidence_records
@@ -711,6 +779,12 @@ class TransformationGateService:
                 or _value(accepted, "subject_type") != _value(request, "subject_type")
                 or _value(accepted, "subject_id") != _value(request, "subject_id")
                 or _value(accepted, "claim_key") != _value(request, "claim_key")
+                or (
+                    _value(request, "claim_key") in REQUIRED_EVIDENCE_CLAIMS
+                    and not TransformationEvidenceService.record_satisfies_contract(
+                        request, accepted
+                    )
+                )
             ):
                 continue
             valid_by_candidate.setdefault(

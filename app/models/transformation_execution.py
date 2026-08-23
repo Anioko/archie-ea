@@ -115,6 +115,62 @@ class OperationResult(TenantMixin, db.Model):
     )
 
 
+class CommandMaterialisation(TenantMixin, db.Model):
+    """Immutable recovery envelope for one exact natural-key domain mutation.
+
+    This row is committed atomically with the domain mutation.  It deliberately
+    does not depend on ``operation_results``: a damaged receipt/result envelope
+    can therefore be rebuilt without guessing from mutable domain state.
+    """
+
+    __tablename__ = "command_materialisations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    actor_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    operation = db.Column(db.String(120), nullable=False)
+    natural_key = db.Column(db.String(512), nullable=False)
+    request_digest = db.Column(db.String(64), nullable=False)
+    receipt_id = db.Column(
+        db.Integer,
+        db.ForeignKey("command_idempotency_records.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    receipt_generation = db.Column(db.Integer, nullable=False)
+    object_ids = db.Column(db.JSON, nullable=False)
+    response_json = db.Column(db.JSON, nullable=False)
+    outbox_events = db.Column(db.JSON, nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+
+    actor = db.relationship("User", foreign_keys=[actor_id])
+    receipt = db.relationship("CommandIdempotencyRecord", foreign_keys=[receipt_id])
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id",
+            "operation",
+            "natural_key",
+            name="uq_command_materialisation_natural_key",
+        ),
+        db.UniqueConstraint("receipt_id", name="uq_command_materialisation_receipt"),
+        db.CheckConstraint(
+            "length(request_digest) = 64",
+            name="ck_command_materialisation_digest",
+        ),
+        db.CheckConstraint(
+            "receipt_generation > 0",
+            name="ck_command_materialisation_generation",
+        ),
+    )
+
+
 class OperationOutboxEvent(TenantMixin, db.Model):
     """Append-only, at-least-once delivery payload with a deduplication ID."""
 
@@ -156,6 +212,7 @@ class OperationOutboxEvent(TenantMixin, db.Model):
 
 __all__ = [
     "COMMAND_STATUSES",
+    "CommandMaterialisation",
     "CommandIdempotencyRecord",
     "OperationOutboxEvent",
     "OperationResult",

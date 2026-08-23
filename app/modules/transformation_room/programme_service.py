@@ -340,6 +340,8 @@ class TransformationProgrammeService:
         if role not in PROGRAMME_ROLES:
             raise ValueError("role is not supported")
         effective_from = _date(effective_from, "effective_from")
+        if effective_from is None:
+            raise ValueError("effective_from is required")
         effective_to = _date(effective_to, "effective_to")
         if effective_to is not None and effective_to < effective_from:
             raise ValueError("effective_to must not precede effective_from")
@@ -617,10 +619,15 @@ class TransformationProgrammeService:
         *,
         actor: ActorContext,
         programme_id: int,
+        rationale: str,
         expected_revision: int,
         command_key: str,
     ) -> CommandResult:
-        payload = {"programme_id": programme_id, "expected_revision": expected_revision}
+        payload = {
+            "programme_id": programme_id,
+            "rationale": _required_text(rationale, "archive rationale"),
+            "expected_revision": expected_revision,
+        }
         return CommandService.execute(
             actor=actor,
             operation="programme.archive",
@@ -669,11 +676,21 @@ class TransformationProgrammeService:
         programme.archived_at = datetime.now(timezone.utc)
         programme.revision += 1
         session.flush()
-        response = {"programme_id": programme.id, "status": programme.status, "revision": programme.revision}
+        response = {
+            "programme_id": programme.id,
+            "status": programme.status,
+            "revision": programme.revision,
+            "rationale": payload["rationale"],
+        }
         return DomainMutationResult(
             response,
             response,
-            ({"event_type": "programme.archived", "payload": response},),
+            (
+                {
+                    "event_type": "programme.archived",
+                    "payload": {**response, "actor_id": actor.user_id},
+                },
+            ),
         )
 
     @classmethod

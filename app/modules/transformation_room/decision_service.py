@@ -9,6 +9,7 @@ import math
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Sequence
+from types import SimpleNamespace
 
 from sqlalchemy import func, or_, select, text, tuple_
 from sqlalchemy.orm import Session
@@ -207,6 +208,140 @@ def _programme_for_workstream(session, actor, workstream_id, *, lock):
 
 class TransformationOptionService:
     """Freeze complete option drafts and compare only persisted versions."""
+
+    @classmethod
+    def create_draft(
+        cls,
+        *,
+        actor: ActorContext,
+        workstream_id: int,
+        candidate_id: int | None,
+        draft: Mapping[str, Any],
+        command_key: str,
+    ) -> CommandResult:
+        workstream_id = _positive_id(workstream_id, "workstream_id")
+        if candidate_id is not None:
+            candidate_id = _positive_id(candidate_id, "candidate_id")
+        if not isinstance(draft, Mapping):
+            raise TypeError("draft must be an object")
+        forbidden = {
+            "id",
+            "organization_id",
+            "workstream_id",
+            "candidate_id",
+            "revision",
+            "created_at",
+            "updated_at",
+        }
+        supplied_forbidden = forbidden.intersection(draft)
+        if supplied_forbidden:
+            raise ValueError("server-owned option fields are not accepted")
+        probe = SimpleNamespace(
+            id=0,
+            workstream_id=workstream_id,
+            candidate_id=candidate_id,
+            **dict(draft),
+        )
+        content = cls.canonical_option_payload(probe, 1)["content"]
+        payload = {
+            "workstream_id": workstream_id,
+            "candidate_id": candidate_id,
+            "content": content,
+        }
+        content_digest = _sha256_canonical(payload)
+        natural_key = (
+            f"option-draft:{workstream_id}:{candidate_id or 'workstream'}:"
+            f"{content_digest}"
+        )
+
+        def authorize(session, runtime_actor, operation, supplied_key):
+            if operation != "option.create" or supplied_key != natural_key:
+                raise NotAuthorised("option_create_command_mismatch")
+            programme, workstream = _programme_for_workstream(
+                session, runtime_actor, workstream_id, lock=False
+            )
+            if workstream.lifecycle_stage != "options":
+                raise CommandConflict("option_create_requires_options_stage")
+            TransformationProgrammeService._require_programme_authority(
+                session,
+                runtime_actor,
+                programme.id,
+                workstream.id,
+                OPTION_DRAFT_ROLES,
+                "option_create_not_authorised",
+            )
+
+        return CommandService.execute(
+            actor=actor,
+            operation="option.create",
+            idempotency_key=_required_text(command_key, "command_key"),
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=authorize,
+            handler=lambda session, claim: cls._create_draft_locked(
+                session, actor, payload, claim
+            ),
+        )
+
+    @classmethod
+    def _create_draft_locked(cls, session, actor, payload, claim):
+        programme, workstream = _programme_for_workstream(
+            session, actor, payload["workstream_id"], lock=True
+        )
+        if workstream.lifecycle_stage != "options":
+            raise CommandConflict("option_create_requires_options_stage")
+        candidate_id = payload["candidate_id"]
+        if candidate_id is not None:
+            candidate = session.scalar(
+                select(TransformationCandidate.id).where(
+                    TransformationCandidate.id == candidate_id,
+                    TransformationCandidate.organization_id == actor.organization_id,
+                    TransformationCandidate.workstream_id == workstream.id,
+                    TransformationCandidate.inclusion_status == "accepted",
+                )
+            )
+            if candidate is None:
+                raise NotFound("option_candidate_not_found")
+        TransformationProgrammeService._require_programme_authority(
+            session,
+            actor,
+            programme.id,
+            workstream.id,
+            OPTION_DRAFT_ROLES,
+            "option_create_not_authorised",
+            lock=True,
+        )
+        content = dict(payload["content"])
+        cls._lock_reference_entities(session, actor, content)
+        option = TransformationOption(
+            organization_id=actor.organization_id,
+            workstream_id=workstream.id,
+            candidate_id=candidate_id,
+            **content,
+            revision=1,
+        )
+        session.add(option)
+        session.flush()
+        response = {
+            "option_id": option.id,
+            "workstream_id": workstream.id,
+            "candidate_id": candidate_id,
+            "revision": option.revision,
+        }
+        return DomainMutationResult(
+            {"option_id": option.id},
+            response,
+            (
+                {
+                    "event_type": "transformation.option_created",
+                    "payload": {
+                        **response,
+                        "command_receipt_id": claim.receipt_id,
+                        "command_generation": claim.generation,
+                    },
+                },
+            ),
+        )
 
     @classmethod
     def freeze_version(
@@ -1069,6 +1204,7 @@ class DecisionBriefService:
             raise CommandConflict("stale_revision")
         if brief.status != "draft":
             raise CommandConflict("brief_not_draft")
+        cls._lock_decision_principals(session, actor, brief)
         TransformationProgrammeService._require_programme_authority(
             session,
             actor,
@@ -1395,6 +1531,33 @@ class DecisionBriefService:
             "reason": brief.option_exception_reason.strip(),
             "authority_id": brief.option_exception_authority_id,
         }
+
+    @staticmethod
+    def _lock_decision_principals(session, actor, brief):
+        """Acquire every principal lock in one global order before role checks."""
+        user_ids = tuple(
+            sorted(
+                {
+                    user_id
+                    for user_id in (
+                        actor.user_id,
+                        brief.decision_authority_id,
+                        brief.option_exception_authority_id,
+                    )
+                    if user_id is not None
+                }
+            )
+        )
+        session.scalars(
+            select(User)
+            .where(
+                User.organization_id == actor.organization_id,
+                User.id.in_(user_ids),
+            )
+            .order_by(User.id)
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        ).all()
 
     @classmethod
     def _user_has_decision_authority(

@@ -15,8 +15,20 @@
       subtitle='Start with a business objective, an accountable outcome and the first governed workstream.'
   ) }}
 
-  <form class="mt-6 space-y-6" @submit.prevent="submit" novalidate>
+  <form class="mt-6 space-y-6" method="post"
+        action="{{ url_for('solution_design.create_programme') }}"
+        @submit.prevent="submit" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="command_key" value="{{ programme_command_key }}">
+
+    {% if programme_form_errors %}
+    <div class="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+         role="alert" data-testid="programme-form-errors">
+      <ul class="grid gap-1">
+        {% for error in programme_form_errors %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
 
     <section class="rounded-lg border border-border bg-card p-6" aria-labelledby="programme-heading">
       <h2 id="programme-heading" class="text-lg font-semibold text-foreground">Programme intent</h2>
@@ -24,12 +36,14 @@
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Programme name
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="name" x-model.trim="form.name" required autocomplete="off">
+                 name="name" value="{{ programme_form.name }}"
+                 x-model.trim="form.name" required autocomplete="off">
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Business objective
           <textarea class="min-h-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
-                    name="objective" x-model.trim="form.objective" required></textarea>
+                    name="objective" x-model.trim="form.objective"
+                    required>{{ programme_form.objective }}</textarea>
         </label>
       </div>
     </section>
@@ -39,7 +53,8 @@
       <div class="mt-4 grid gap-4 sm:grid-cols-2">
         <div class="relative sm:col-span-2">
           <label for="owner-search" class="text-sm font-medium text-foreground">Programme owner</label>
-          <input type="hidden" name="owner_id" :value="form.owner_id">
+          <input type="hidden" name="owner_id" value="{{ programme_form.owner_id }}"
+                 :value="form.owner_id">
           <input id="owner-search" class="mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
                  type="search" x-model="ownerQuery" @input.debounce.250ms="searchOwners"
                  @focus="ownerOpen = true" autocomplete="off" role="combobox"
@@ -65,12 +80,14 @@
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Target date
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 type="date" name="target_date" x-model="form.target_date">
+                 type="date" name="target_date" value="{{ programme_form.target_date }}"
+                 x-model="form.target_date">
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           If the target date is not known
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
                  name="target_date_unavailable_reason"
+                 value="{{ programme_form.target_date_unavailable_reason }}"
                  x-model.trim="form.target_date_unavailable_reason"
                  placeholder="Why the date is unavailable">
         </label>
@@ -84,20 +101,21 @@
           Workstream type
           <select class="h-9 rounded-md border border-border bg-background px-3 text-sm"
                   name="workstream_type" x-model="form.workstream_type" required>
-            <option value="application_rationalisation">Application rationalisation</option>
-            <option value="process">Process</option>
-            <option value="organisation_skills">Organisation and skills</option>
-            <option value="policy_control">Policy and control</option>
-            <option value="data">Data</option>
-            <option value="supplier">Supplier</option>
-            <option value="technology">Technology</option>
-            <option value="other">Other</option>
+            <option value="application_rationalisation"{% if programme_form.workstream_type == 'application_rationalisation' %} selected{% endif %}>Application rationalisation</option>
+            <option value="process"{% if programme_form.workstream_type == 'process' %} selected{% endif %}>Process</option>
+            <option value="organisation_skills"{% if programme_form.workstream_type == 'organisation_skills' %} selected{% endif %}>Organisation and skills</option>
+            <option value="policy_control"{% if programme_form.workstream_type == 'policy_control' %} selected{% endif %}>Policy and control</option>
+            <option value="data"{% if programme_form.workstream_type == 'data' %} selected{% endif %}>Data</option>
+            <option value="supplier"{% if programme_form.workstream_type == 'supplier' %} selected{% endif %}>Supplier</option>
+            <option value="technology"{% if programme_form.workstream_type == 'technology' %} selected{% endif %}>Technology</option>
+            <option value="other"{% if programme_form.workstream_type == 'other' %} selected{% endif %}>Other</option>
           </select>
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Business units in scope
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="scope_expression" x-model.trim="form.business_units" required
+                 name="scope_expression" value="{{ programme_form.scope_expression }}"
+                 x-model.trim="form.business_units" required
                  placeholder="Retail, Operations">
         </label>
       </div>
@@ -109,57 +127,65 @@
         <label class="grid gap-2 text-sm font-medium text-foreground sm:col-span-2">
           Outcome statement
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="outcome" x-model.trim="form.outcome.statement" required>
+                 name="outcome" value="{{ programme_form.outcome }}"
+                 x-model.trim="form.outcome.statement" required>
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Improvement direction
           <select class="h-9 rounded-md border border-border bg-background px-3 text-sm"
                   name="direction" x-model="form.outcome.direction" required>
-            <option value="decrease">Decrease</option>
-            <option value="increase">Increase</option>
-            <option value="maintain">Maintain</option>
+            <option value="decrease"{% if programme_form.direction == 'decrease' %} selected{% endif %}>Decrease</option>
+            <option value="increase"{% if programme_form.direction == 'increase' %} selected{% endif %}>Increase</option>
+            <option value="maintain"{% if programme_form.direction == 'maintain' %} selected{% endif %}>Maintain</option>
           </select>
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Metric name
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="metric_name" x-model.trim="form.outcome.measure.metric_name" required>
+                 name="metric_name" value="{{ programme_form.metric_name }}"
+                 x-model.trim="form.outcome.measure.metric_name" required>
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Unit
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="unit" x-model.trim="form.outcome.measure.unit" required placeholder="GBP, %, count">
+                 name="unit" value="{{ programme_form.unit }}"
+                 x-model.trim="form.outcome.measure.unit" required placeholder="GBP, %, count">
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Currency, when monetary
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm uppercase"
-                 name="currency" maxlength="3" x-model.trim="form.outcome.measure.currency" placeholder="GBP">
+                 name="currency" maxlength="3" value="{{ programme_form.currency }}"
+                 x-model.trim="form.outcome.measure.currency" placeholder="GBP">
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Aggregation
           <select class="h-9 rounded-md border border-border bg-background px-3 text-sm"
                   name="aggregation" x-model="form.outcome.measure.aggregation" required>
-            <option value="sum">Sum</option>
-            <option value="average">Average</option>
-            <option value="minimum">Minimum</option>
-            <option value="maximum">Maximum</option>
-            <option value="latest">Latest</option>
+            <option value="sum"{% if programme_form.aggregation == 'sum' %} selected{% endif %}>Sum</option>
+            <option value="average"{% if programme_form.aggregation == 'average' %} selected{% endif %}>Average</option>
+            <option value="minimum"{% if programme_form.aggregation == 'minimum' %} selected{% endif %}>Minimum</option>
+            <option value="maximum"{% if programme_form.aggregation == 'maximum' %} selected{% endif %}>Maximum</option>
+            <option value="latest"{% if programme_form.aggregation == 'latest' %} selected{% endif %}>Latest</option>
           </select>
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Baseline value
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 type="number" step="any" name="baseline_value" x-model="form.outcome.measure.baseline_value">
+                 type="number" step="any" name="baseline_value"
+                 value="{{ programme_form.baseline_value }}"
+                 x-model="form.outcome.measure.baseline_value">
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Baseline unavailable reason
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="unavailable_reason" x-model.trim="form.outcome.measure.unavailable_reason">
+                 name="unavailable_reason" value="{{ programme_form.unavailable_reason }}"
+                 x-model.trim="form.outcome.measure.unavailable_reason">
         </label>
         <label class="grid gap-2 text-sm font-medium text-foreground">
           Target value
           <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
                  type="number" step="any" name="target_value"
+                 value="{{ programme_form.target_value }}"
                  x-model="form.outcome.measure.target_value" required>
         </label>
       </div>
@@ -182,22 +208,35 @@
 function transformationProgrammeIntake() {
   return {
     form: {
-      name: '', objective: '', owner_id: {{ current_user.id|tojson }},
-      target_date: '', target_date_unavailable_reason: '',
-      workstream_type: 'application_rationalisation', business_units: '',
+      name: {{ programme_form.name|tojson }},
+      objective: {{ programme_form.objective|tojson }},
+      owner_id: {{ programme_form.owner_id|tojson }},
+      target_date: {{ programme_form.target_date|tojson }},
+      target_date_unavailable_reason: {{ programme_form.target_date_unavailable_reason|tojson }},
+      workstream_type: {{ programme_form.workstream_type|tojson }},
+      business_units: {{ programme_form.scope_expression|tojson }},
       outcome: {
-        statement: '', owner_id: {{ current_user.id|tojson }}, direction: 'decrease',
-        measure: { metric_name: '', unit: '', currency: '', aggregation: 'sum',
-                   baseline_value: '', unavailable_reason: '', target_value: '' }
+        statement: {{ programme_form.outcome|tojson }},
+        owner_id: {{ programme_form.owner_id|tojson }},
+        direction: {{ programme_form.direction|tojson }},
+        measure: {
+          metric_name: {{ programme_form.metric_name|tojson }},
+          unit: {{ programme_form.unit|tojson }},
+          currency: {{ programme_form.currency|tojson }},
+          aggregation: {{ programme_form.aggregation|tojson }},
+          baseline_value: {{ programme_form.baseline_value|tojson }},
+          unavailable_reason: {{ programme_form.unavailable_reason|tojson }},
+          target_value: {{ programme_form.target_value|tojson }}
+        }
       }
     },
     ownerQuery: {{ current_user.full_name()|tojson }},
     selectedOwnerName: {{ current_user.full_name()|tojson }},
-    owners: [], ownerOpen: false, submitting: false, error: '', idempotencyKey: '',
+    owners: [], ownerOpen: false, submitting: false, error: '',
+    idempotencyKey: {{ programme_command_key|tojson }},
     init() {
       const storageKey = 'transformation-programme-intake-key';
-      this.idempotencyKey = sessionStorage.getItem(storageKey)
-        || (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      this.idempotencyKey = sessionStorage.getItem(storageKey) || this.idempotencyKey;
       sessionStorage.setItem(storageKey, this.idempotencyKey);
     },
     async searchOwners() {

@@ -211,6 +211,7 @@ def decision_scope(app, evidence_scope: EvidenceScope):
                 for table_name in (
                     "transformation_outbox_events",
                     "operation_results",
+                    "command_materialisations",
                     "command_idempotency_records",
                     "decision_events",
                     "decision_brief_evidence_citations",
@@ -242,6 +243,51 @@ def _freeze(scope: DecisionScope, option_id: int, *, key: str, revision: int = 1
         expected_revision=revision,
         command_key=key,
     )
+
+
+def test_public_option_draft_creation_is_tenant_authorised_and_replay_safe(
+    decision_scope,
+):
+    scope = decision_scope
+    values = _option_values(
+        scope, title="Retire", action_type="retire", ordinal=3
+    )
+    draft = {
+        key: value
+        for key, value in values.items()
+        if key
+        not in {
+            "organization_id",
+            "workstream_id",
+            "candidate_id",
+            "revision",
+        }
+    }
+    created = TransformationOptionService.create_draft(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        candidate_id=scope.candidate_id,
+        draft=draft,
+        command_key="public-retire-draft",
+    )
+    replayed = TransformationOptionService.create_draft(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        candidate_id=scope.candidate_id,
+        draft=draft,
+        command_key="public-retire-draft",
+    )
+
+    with Session(db.engine) as session:
+        option = session.get(
+            TransformationOption, created.object_ids["option_id"]
+        )
+    assert option.organization_id == scope.organization_id
+    assert option.candidate_id == scope.candidate_id
+    assert option.title == "Retire"
+    assert created.created is True
+    assert replayed.created is False and replayed.idempotent is True
+    assert replayed.object_ids == created.object_ids
 
 
 def test_decision_brief_scope_uses_separate_partial_unique_indexes():

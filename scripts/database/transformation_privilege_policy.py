@@ -19,9 +19,11 @@ RUNTIME_SEQUENCE_ALLOWLIST = frozenset()
 # are listed separately, so no entry here implies DELETE, TRUNCATE, REFERENCES,
 # TRIGGER, or an unrestricted UPDATE.
 PROTECTED_RUNTIME_TABLE_PRIVILEGES = {
+    "command_materialisations": ("SELECT", "INSERT"),
     "operation_results": ("SELECT", "INSERT"),
     "transformation_outbox_events": ("SELECT", "INSERT"),
     "candidate_signals": ("SELECT", "INSERT"),
+    "candidate_overlap_dispositions": ("SELECT", "INSERT"),
     "evidence_records": ("SELECT", "INSERT"),
     "evidence_head_events": ("SELECT",),
     "transformation_option_versions": ("SELECT", "INSERT"),
