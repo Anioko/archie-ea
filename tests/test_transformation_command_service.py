@@ -874,7 +874,7 @@ def test_reclaimed_pre_envelope_effect_fails_closed_without_provable_resolver(
 def test_builtin_materialisation_recovers_exact_result_after_receipt_result_damage(
     command_fixture,
 ):
-    """Every command persists an operation-bound recovery envelope, not ad-hoc lookup logic."""
+    """Damaged-result recovery preserves the immutable command provenance exactly."""
     first = _execute(command_fixture, key="builtin-materialisation")
     with Session(db.engine) as session:
         materialisation = session.scalar(
@@ -893,6 +893,25 @@ def test_builtin_materialisation_recovers_exact_result_after_receipt_result_dama
         )
         assert materialisation.object_ids == first.object_ids
         assert materialisation.response_json == first.response
+        original_receipt_id = materialisation.receipt_id
+        original_generation = materialisation.receipt_generation
+        original_outbox = tuple(
+            session.execute(
+                select(
+                    OperationOutboxEvent.event_id,
+                    OperationOutboxEvent.ordinal,
+                    OperationOutboxEvent.event_type,
+                    OperationOutboxEvent.payload_json,
+                )
+                .where(
+                    OperationOutboxEvent.organization_id
+                    == command_fixture.organization_id,
+                    OperationOutboxEvent.operation_result_id
+                    == first.operation_result_id,
+                )
+                .order_by(OperationOutboxEvent.ordinal)
+            ).all()
+        )
 
     with db.engine.begin() as connection:
         connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
@@ -933,6 +952,66 @@ def test_builtin_materialisation_recovers_exact_result_after_receipt_result_dama
     assert replay.object_ids == first.object_ids
     assert replay.response == first.response
     assert _counts(command_fixture) == (1, 1, 1)
+
+    with Session(db.engine) as session:
+        result = session.get(OperationResult, replay.operation_result_id)
+        receipt = session.get(CommandIdempotencyRecord, original_receipt_id)
+        repaired_outbox = tuple(
+            session.execute(
+                select(
+                    OperationOutboxEvent.event_id,
+                    OperationOutboxEvent.ordinal,
+                    OperationOutboxEvent.event_type,
+                    OperationOutboxEvent.payload_json,
+                )
+                .where(
+                    OperationOutboxEvent.organization_id
+                    == command_fixture.organization_id,
+                    OperationOutboxEvent.operation_result_id
+                    == replay.operation_result_id,
+                )
+                .order_by(OperationOutboxEvent.ordinal)
+            ).all()
+        )
+    assert result.receipt_id == original_receipt_id
+    assert result.receipt_generation == original_generation == 1
+    assert repaired_outbox == original_outbox
+    assert receipt.status == "succeeded"
+    assert receipt.lease_generation == original_generation + 1
+    assert receipt.operation_result_id == result.id
+
+    second_replay = _execute(
+        command_fixture,
+        key="builtin-materialisation",
+        handler=lambda _session, _claim: pytest.fail(
+            "a second damaged-result replay reran the domain mutation"
+        ),
+    )
+
+    assert second_replay.operation_result_id == replay.operation_result_id
+    assert second_replay.object_ids == first.object_ids
+    assert second_replay.response == first.response
+    assert second_replay.created is False and second_replay.idempotent is True
+    assert _counts(command_fixture) == (1, 1, 1)
+    with Session(db.engine) as session:
+        stable_outbox = tuple(
+            session.execute(
+                select(
+                    OperationOutboxEvent.event_id,
+                    OperationOutboxEvent.ordinal,
+                    OperationOutboxEvent.event_type,
+                    OperationOutboxEvent.payload_json,
+                )
+                .where(
+                    OperationOutboxEvent.organization_id
+                    == command_fixture.organization_id,
+                    OperationOutboxEvent.operation_result_id
+                    == second_replay.operation_result_id,
+                )
+                .order_by(OperationOutboxEvent.ordinal)
+            ).all()
+        )
+    assert stable_outbox == original_outbox
 
 
 def test_locked_generation_fence_precedes_first_real_domain_write(command_fixture):

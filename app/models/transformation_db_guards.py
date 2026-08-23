@@ -442,12 +442,16 @@ DECLARE
     command_claim_token text;
     command_claimant_request_id text;
     receipt record;
+    origin_receipt record;
     materialisation record;
     result record;
     event_document jsonb;
     event_ordinal bigint;
     existing_event record;
     result_id bigint;
+    result_receipt_id bigint;
+    result_receipt_generation integer;
+    recovering_materialisation boolean := FALSE;
 BEGIN
     capability := public.archie_verify_command_capability(
         p_capability_document,
@@ -512,6 +516,8 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'command envelope live fence is invalid' USING ERRCODE = '40001';
     END IF;
+    result_receipt_id := command_receipt_id;
+    result_receipt_generation := command_generation;
 
     SELECT existing.* INTO materialisation
       FROM public.command_materialisations AS existing
@@ -528,6 +534,28 @@ BEGIN
            OR materialisation.outbox_events::jsonb IS DISTINCT FROM request->'outbox_events' THEN
             RAISE EXCEPTION 'command materialisation identity mismatch'
                 USING ERRCODE = '23505';
+        END IF;
+        IF materialisation.receipt_generation IS DISTINCT FROM command_generation THEN
+            -- A reclaimed live fence may recover a result deleted after the
+            -- immutable domain envelope committed.  The signed execution
+            -- capability authorizes the repair, but the materialisation's
+            -- original receipt/generation remains the effect's provenance.
+            SELECT existing.* INTO origin_receipt
+              FROM public.command_idempotency_records AS existing
+             WHERE existing.id = materialisation.receipt_id
+               AND existing.organization_id = command_org_id
+               AND existing.actor_id = command_actor_id
+               AND existing.operation = command_operation
+               AND existing.request_digest = command_request_digest
+               AND existing.natural_key = command_natural_key
+               AND existing.lease_generation >= materialisation.receipt_generation;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'command materialisation origin receipt mismatch'
+                    USING ERRCODE = '55000';
+            END IF;
+            result_receipt_id := materialisation.receipt_id;
+            result_receipt_generation := materialisation.receipt_generation;
+            recovering_materialisation := TRUE;
         END IF;
     ELSE
         INSERT INTO public.command_materialisations (
@@ -548,22 +576,28 @@ BEGIN
     IF FOUND THEN
         IF result.actor_id IS DISTINCT FROM command_actor_id
            OR result.request_digest IS DISTINCT FROM command_request_digest
-           OR result.receipt_id IS DISTINCT FROM command_receipt_id
-           OR result.receipt_generation > command_generation
+           OR result.receipt_id IS DISTINCT FROM result_receipt_id
+           OR result.receipt_generation IS DISTINCT FROM result_receipt_generation
            OR result.object_ids::jsonb IS DISTINCT FROM request->'object_ids'
            OR result.response_json::jsonb IS DISTINCT FROM request->'response' THEN
             RAISE EXCEPTION 'operation result identity mismatch' USING ERRCODE = '23505';
         END IF;
         result_id := result.id;
     ELSE
+        IF recovering_materialisation THEN
+            PERFORM set_config('archie.signed_envelope_repair', 'on', TRUE);
+        END IF;
         INSERT INTO public.operation_results (
             organization_id, actor_id, operation, natural_key, request_digest,
             receipt_id, receipt_generation, object_ids, response_json
         ) VALUES (
             command_org_id, command_actor_id, command_operation, command_natural_key,
-            command_request_digest, command_receipt_id, command_generation,
+            command_request_digest, result_receipt_id, result_receipt_generation,
             request->'object_ids', request->'response'
         ) RETURNING id INTO result_id;
+        IF recovering_materialisation THEN
+            PERFORM set_config('archie.signed_envelope_repair', 'off', TRUE);
+        END IF;
     END IF;
 
     FOR event_document, event_ordinal IN
@@ -603,6 +637,9 @@ BEGIN
                     USING ERRCODE = '23505';
             END IF;
         ELSE
+            IF recovering_materialisation THEN
+                PERFORM set_config('archie.signed_envelope_repair', 'on', TRUE);
+            END IF;
             INSERT INTO public.transformation_outbox_events (
                 organization_id, operation_result_id, event_id, ordinal,
                 event_type, payload_json
@@ -610,6 +647,9 @@ BEGIN
                 command_org_id, result_id, event_document->>'event_id', event_ordinal,
                 event_document->>'event_type', event_document->'payload'
             );
+            IF recovering_materialisation THEN
+                PERFORM set_config('archie.signed_envelope_repair', 'off', TRUE);
+            END IF;
         END IF;
     END LOOP;
     IF (SELECT count(*) FROM public.transformation_outbox_events AS existing
@@ -656,6 +696,7 @@ DECLARE
     event_documents jsonb;
     normalized_events jsonb;
     supplied_event_id text;
+    materialisation_present boolean := FALSE;
 BEGIN
     document := public.archie_verify_command_capability(
         p_claim_document,
@@ -720,6 +761,24 @@ BEGIN
         RAISE EXCEPTION 'operation result repair identity mismatch'
             USING ERRCODE = '55000';
     END IF;
+    SELECT existing.* INTO materialisation
+      FROM public.command_materialisations AS existing
+     WHERE existing.organization_id = command_org_id
+       AND existing.operation = command_operation
+       AND existing.natural_key = command_natural_key;
+    materialisation_present := FOUND;
+    IF materialisation_present THEN
+        IF materialisation.actor_id IS DISTINCT FROM command_actor_id
+           OR materialisation.request_digest IS DISTINCT FROM command_request_digest
+           OR materialisation.receipt_id IS DISTINCT FROM result.receipt_id
+           OR materialisation.receipt_generation IS DISTINCT FROM result.receipt_generation
+           OR materialisation.object_ids::jsonb IS DISTINCT FROM result.object_ids::jsonb
+           OR materialisation.response_json::jsonb IS DISTINCT FROM result.response_json::jsonb
+           OR jsonb_typeof(materialisation.outbox_events::jsonb) <> 'array' THEN
+            RAISE EXCEPTION 'operation result materialisation mismatch'
+                USING ERRCODE = '23505';
+        END IF;
+    END IF;
     SELECT existing.* INTO origin_receipt
       FROM public.command_idempotency_records AS existing
      WHERE existing.id = result.receipt_id
@@ -729,19 +788,19 @@ BEGIN
        AND existing.request_digest = command_request_digest
        AND existing.natural_key = command_natural_key
        AND existing.status = 'succeeded'
-       AND existing.lease_generation = result.receipt_generation
+       AND (
+           (materialisation_present
+            AND existing.lease_generation >= result.receipt_generation)
+           OR (NOT materialisation_present
+               AND existing.lease_generation = result.receipt_generation)
+       )
        AND existing.operation_result_id = result.id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'operation result origin receipt mismatch'
             USING ERRCODE = '55000';
     END IF;
 
-    SELECT existing.* INTO materialisation
-      FROM public.command_materialisations AS existing
-     WHERE existing.organization_id = command_org_id
-       AND existing.operation = command_operation
-       AND existing.natural_key = command_natural_key;
-    IF NOT FOUND THEN
+    IF NOT materialisation_present THEN
         SELECT coalesce(
                    jsonb_agg(
                        jsonb_build_object(
@@ -783,16 +842,6 @@ BEGIN
         );
         PERFORM set_config('archie.signed_envelope_repair', 'off', TRUE);
     ELSE
-        IF materialisation.actor_id IS DISTINCT FROM command_actor_id
-           OR materialisation.request_digest IS DISTINCT FROM command_request_digest
-           OR materialisation.receipt_id IS DISTINCT FROM result.receipt_id
-           OR materialisation.receipt_generation IS DISTINCT FROM result.receipt_generation
-           OR materialisation.object_ids::jsonb IS DISTINCT FROM result.object_ids::jsonb
-           OR materialisation.response_json::jsonb IS DISTINCT FROM result.response_json::jsonb
-           OR jsonb_typeof(materialisation.outbox_events::jsonb) <> 'array' THEN
-            RAISE EXCEPTION 'operation result materialisation mismatch'
-                USING ERRCODE = '23505';
-        END IF;
         event_documents := materialisation.outbox_events::jsonb;
     END IF;
 
