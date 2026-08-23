@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from app import db
@@ -15,8 +16,15 @@ from app.models.application_portfolio import ApplicationComponent
 from app.models.benefit import Benefit
 from app.models.implementation_migration import WorkPackage
 from app.models.strategic import RoadmapItem, StrategicInitiative
+from app.models.transformation_decision import (
+    DecisionBrief,
+    DecisionBriefVersion,
+    TransformationOptionVersion,
+)
 from app.models.transformation_evidence import (
     CandidateSignal,
+    EvidenceClaimHead,
+    EvidenceRecord,
     EvidenceRequest,
     TransformationCandidate,
 )
@@ -392,14 +400,73 @@ class TransformationGateService:
                 TransformationCandidate.workstream_id == workstream.id,
             )
         ).all())
+        subject_pairs = sorted(
+            {(row.subject_type, row.subject_id) for row in candidate_rows}
+        )
+        active_evidence_heads = tuple(session.scalars(
+            select(EvidenceClaimHead)
+            .where(
+                EvidenceClaimHead.organization_id == actor.organization_id,
+                tuple_(
+                    EvidenceClaimHead.subject_type,
+                    EvidenceClaimHead.subject_id,
+                ).in_(subject_pairs or [("", -1)]),
+                EvidenceClaimHead.current_record_id.is_not(None),
+            )
+            .order_by(
+                EvidenceClaimHead.subject_type,
+                EvidenceClaimHead.subject_id,
+                EvidenceClaimHead.claim_key,
+                EvidenceClaimHead.source_identity,
+                EvidenceClaimHead.id,
+            )
+        ).all())
+        evidence_records = tuple(session.scalars(
+            select(EvidenceRecord)
+            .where(
+                EvidenceRecord.organization_id == actor.organization_id,
+                tuple_(EvidenceRecord.subject_type, EvidenceRecord.subject_id).in_(
+                    subject_pairs or [("", -1)]
+                ),
+            )
+            .order_by(EvidenceRecord.id)
+        ).all())
+        option_versions = tuple(session.scalars(
+            select(TransformationOptionVersion)
+            .where(
+                TransformationOptionVersion.organization_id == actor.organization_id,
+                TransformationOptionVersion.workstream_id == workstream.id,
+            )
+            .order_by(
+                TransformationOptionVersion.option_id,
+                TransformationOptionVersion.version,
+            )
+        ).all())
+        decision_briefs = tuple(session.scalars(
+            select(DecisionBrief)
+            .where(
+                DecisionBrief.organization_id == actor.organization_id,
+                DecisionBrief.workstream_id == workstream.id,
+            )
+            .order_by(DecisionBrief.id)
+        ).all())
+        brief_versions = tuple(session.scalars(
+            select(DecisionBriefVersion)
+            .where(
+                DecisionBriefVersion.organization_id == actor.organization_id,
+                DecisionBriefVersion.workstream_id == workstream.id,
+            )
+            .order_by(DecisionBriefVersion.version, DecisionBriefVersion.id)
+        ).all())
         unavailable = frozenset({
-            "options", "briefs", "arb", "conditions", "approved_actions",
+            "arb", "conditions", "approved_actions",
             "delivery", "measurements", "outcome_reviews",
         })
         return PolicySnapshot(
             programme, workstream, roles, outcomes, measures, accepted_candidates,
-            (), (), evidence_requests, (),
-            (), (), (), (), (), (), work_packages, roadmap_items, benefits, (), (),
+            active_evidence_heads, evidence_records, evidence_requests, (),
+            option_versions, decision_briefs, brief_versions, (), (), (),
+            work_packages, roadmap_items, benefits, (), (),
             (), frozenset(authorized_waiver_authority_ids), unavailable,
         )
 
@@ -580,8 +647,20 @@ class TransformationGateService:
         exception = any(_value(row, "workstream_id") == workstream_id and _text(row, "reason")
                         and _value(row, "authority_id") and _value(row, "constraint_type") in {"policy", "legal"}
                         for row in snapshot.option_exceptions)
-        hashes = {_value(row, "content_hash") for row in options
-                  if _value(row, "immutable") is True and _value(row, "content_hash")}
+        hashes = {
+            (
+                json.dumps(
+                    _value(row, "content_json"),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                if _value(row, "content_json")
+                else f"projection:{_value(row, 'content_hash')}"
+            )
+            for row in options
+            if _value(row, "immutable") is True
+            and _value(row, "content_hash")
+        }
         if len(hashes) < 2 and not (len(hashes) == 1 and exception):
             block("viable_options_required", "Freeze two distinct options or a reasoned policy/legal exception.", "workstream", workstream_id, f"{room}/options")
         required_fields = ("assumptions", "risks", "dependencies", "reversibility",

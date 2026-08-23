@@ -257,6 +257,7 @@ else:
     from .transformation_programme import *  # noqa - canonical programme aggregate children
     from .transformation_execution import *  # noqa - fenced commands and immutable results
     from .transformation_evidence import *  # noqa - candidates, signals, and evidence requests
+    from .transformation_decision import *  # noqa - immutable options and decision briefs
     from . import transformation_db_guards  # noqa: F401 - registers PostgreSQL guards
     from .strategy_layer import *  # noqa - StrategyResource, CourseOfAction, ValueStream (Strategy Layer completion)
     from .structural_elements import *  # noqa - Grouping, Junction, Location (Structural/Composite elements)

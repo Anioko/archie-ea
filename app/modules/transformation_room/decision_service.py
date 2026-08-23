@@ -1,0 +1,1444 @@
+"""Server-derived option comparisons and immutable decision-brief snapshots."""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import math
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
+from typing import Any, Mapping, Sequence
+
+from sqlalchemy import func, or_, select, tuple_
+from sqlalchemy.orm import Session
+
+from app import db
+from app.models.transformation_decision import (
+    OPTION_EXCEPTION_TYPES,
+    DecisionBrief,
+    DecisionBriefEvidenceCitation,
+    DecisionBriefOptionCitation,
+    DecisionBriefVersion,
+    DecisionEvent,
+    TransformationOption,
+    TransformationOptionVersion,
+)
+from app.models.transformation_evidence import (
+    EvidenceClaimHead,
+    EvidenceRecord,
+    TransformationCandidate,
+)
+from app.models.transformation_programme import (
+    ISO_4217_CURRENCIES,
+    MeasureDefinition,
+    ProgrammeOutcomeCommitment,
+    ProgrammeRoleAssignment,
+    ProgrammeWorkstream,
+)
+from app.models.user import User
+from app.modules.transformation_room.command_service import (
+    CommandService,
+    OperationAuthorizer,
+)
+from app.modules.transformation_room.domain import (
+    ActorContext,
+    BlockedByEvidence,
+    BriefReadiness,
+    CommandConflict,
+    CommandResult,
+    DomainMutationResult,
+    HumanAssertions,
+    NotAuthorised,
+    NotFound,
+    OptionComparison,
+)
+from app.modules.transformation_room.gate_service import TransformationGateService
+from app.modules.transformation_room.programme_service import (
+    OBJECTIVE_ROLES,
+    READ_ROLES,
+    TransformationProgrammeService,
+)
+
+
+OPTION_DRAFT_ROLES = OBJECTIVE_ROLES
+BRIEF_FREEZE_ROLES = OBJECTIVE_ROLES | frozenset({"decision_authority"})
+DECISION_AUTHORITY_ROLES = frozenset(
+    {
+        "chief_architect",
+        "cto",
+        "enterprise_architect",
+        "platform_admin",
+        "organization_admin",
+        "administrator",
+        "decision_authority",
+    }
+)
+
+
+def _utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _decimal_string(value: Decimal) -> str:
+    if not value.is_finite():
+        raise ValueError("canonical decimal must be finite")
+    normalized = value.normalize()
+    return "0" if normalized == 0 else format(normalized, "f")
+
+
+def _canonical_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _canonical_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_canonical_value(item) for item in value]
+    if isinstance(value, Decimal):
+        return _decimal_string(value)
+    if isinstance(value, datetime):
+        return _utc(value).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("canonical number must be finite")
+        return value
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    raise TypeError(f"{type(value).__name__} is not canonical JSON")
+
+
+def _canonical_json(value: Mapping[str, Any] | Sequence[Any]) -> str:
+    return json.dumps(
+        _canonical_value(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def _sha256_canonical(value: Mapping[str, Any] | Sequence[Any]) -> str:
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _positive_id(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{field} must contain positive integer IDs")
+    return value
+
+
+def _id_sequence(values: Sequence[int], field: str, *, required: bool = True) -> tuple[int, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise ValueError(f"{field} must be a sequence")
+    normalized = tuple(_positive_id(value, field) for value in values)
+    if required and not normalized:
+        raise ValueError(f"{field} is required")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError(f"duplicate {field}")
+    return normalized
+
+
+def _required_text(value: Any, field: str) -> str:
+    normalized = value.strip() if isinstance(value, str) else ""
+    if not normalized:
+        raise ValueError(f"{field} is required")
+    return normalized
+
+
+def _required_list(value: Any, field: str) -> list[Any]:
+    if not isinstance(value, (list, tuple)) or not value:
+        raise ValueError(f"{field} is required")
+    canonical = _canonical_value(value)
+    if not isinstance(canonical, list) or not canonical:
+        raise ValueError(f"{field} is required")
+    return canonical
+
+
+def _decimal(value: Any, field: str) -> Decimal:
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"{field} is required")
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError) as error:
+        raise ValueError(f"{field} must be numeric") from error
+    if not parsed.is_finite():
+        raise ValueError(f"{field} must be finite")
+    return parsed
+
+
+def _programme_for_workstream(session, actor, workstream_id, *, lock):
+    scope = session.scalar(
+        select(ProgrammeWorkstream).where(
+            ProgrammeWorkstream.id == workstream_id,
+            ProgrammeWorkstream.organization_id == actor.organization_id,
+        )
+    )
+    if scope is None:
+        raise NotFound("workstream_not_found")
+    programme = TransformationProgrammeService._programme_query(
+        session, actor, scope.programme_id, lock=lock
+    ).scalar_one_or_none()
+    if programme is None:
+        raise NotFound("programme_not_found")
+    TransformationProgrammeService._require_active_programme(programme)
+    if lock:
+        workstream = session.scalar(
+            select(ProgrammeWorkstream)
+            .where(
+                ProgrammeWorkstream.id == scope.id,
+                ProgrammeWorkstream.programme_id == programme.id,
+                ProgrammeWorkstream.organization_id == actor.organization_id,
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        if workstream is None:
+            raise NotFound("workstream_not_found")
+    else:
+        workstream = scope
+    return programme, workstream
+
+
+class TransformationOptionService:
+    """Freeze complete option drafts and compare only persisted versions."""
+
+    @classmethod
+    def freeze_version(
+        cls,
+        *,
+        actor: ActorContext,
+        option_id: int,
+        expected_revision: int,
+        command_key: str,
+    ) -> CommandResult:
+        option_id = _positive_id(option_id, "option_id")
+        expected_revision = _positive_id(expected_revision, "expected_revision")
+        option = cls.load_option_for_tenant(actor, option_id)
+        cls.authorise_draft(actor, option)
+        payload = cls.canonical_option_payload(option, expected_revision)
+        return CommandService.execute(
+            actor=actor,
+            operation="option.freeze",
+            idempotency_key=command_key,
+            payload=payload,
+            natural_key=f"option:{option.id}:version:{expected_revision}",
+            authorizer=cls.authorise_option_freeze(option.id, expected_revision),
+            handler=lambda session, claim: cls._lock_validate_and_insert_version(
+                session, actor, option.id, payload, claim
+            ),
+        )
+
+    @classmethod
+    def load_option_for_tenant(cls, actor: ActorContext, option_id: int):
+        with Session(db.engine) as session:
+            option = session.scalar(
+                select(TransformationOption).where(
+                    TransformationOption.id == option_id,
+                    TransformationOption.organization_id == actor.organization_id,
+                )
+            )
+            if option is None:
+                raise NotFound("option_not_found")
+            session.expunge(option)
+            return option
+
+    @classmethod
+    def authorise_draft(cls, actor, option, *, session=None):
+        owns_session = session is None
+        session = session or Session(db.engine)
+        try:
+            programme, workstream = _programme_for_workstream(
+                session, actor, option.workstream_id, lock=False
+            )
+            TransformationProgrammeService._require_programme_authority(
+                session,
+                actor,
+                programme.id,
+                workstream.id,
+                OPTION_DRAFT_ROLES,
+                "option_freeze_not_authorised",
+            )
+        finally:
+            if owns_session:
+                session.close()
+
+    @classmethod
+    def canonical_option_payload(cls, option, expected_revision):
+        currency = (
+            option.currency.strip().upper()
+            if isinstance(option.currency, str)
+            else option.currency
+        )
+        if currency not in ISO_4217_CURRENCIES:
+            raise ValueError("currency must be an ISO 4217 code")
+        if not isinstance(option.technology_required, bool):
+            raise ValueError("technology_required is required")
+        cost_min = _decimal(option.cost_min, "cost_min")
+        cost_max = _decimal(option.cost_max, "cost_max")
+        benefit_min = _decimal(option.benefit_min, "benefit_min")
+        benefit_max = _decimal(option.benefit_max, "benefit_max")
+        risk_min = _decimal(option.risk_min, "risk_min")
+        risk_max = _decimal(option.risk_max, "risk_max")
+        for field, minimum, maximum in (
+            ("cost", cost_min, cost_max),
+            ("benefit", benefit_min, benefit_max),
+            ("risk", risk_min, risk_max),
+        ):
+            if minimum > maximum:
+                raise ValueError(f"{field} range must be ordered")
+        content = {
+            "title": _required_text(option.title, "title"),
+            "action_type": _required_text(option.action_type, "action_type"),
+            "description": _required_text(option.description, "description"),
+            "assumptions": _required_list(option.assumptions, "assumptions"),
+            "dependencies": _required_list(option.dependencies, "dependencies"),
+            "impacts": _required_list(option.impacts, "impacts"),
+            "risks": _required_list(option.risks, "risks"),
+            "reversibility": _required_text(option.reversibility, "reversibility"),
+            "transition_approach": _required_text(
+                option.transition_approach, "transition_approach"
+            ),
+            "affected_capability_ids": _id_sequence(
+                option.affected_capability_ids,
+                "affected_capability_ids",
+            ),
+            "affected_value_stream_ids": _id_sequence(
+                option.affected_value_stream_ids,
+                "affected_value_stream_ids",
+            ),
+            "recommendation_rationale": _required_text(
+                option.recommendation_rationale, "recommendation_rationale"
+            ),
+            "cost_min": cost_min,
+            "cost_max": cost_max,
+            "benefit_min": benefit_min,
+            "benefit_max": benefit_max,
+            "risk_min": risk_min,
+            "risk_max": risk_max,
+            "currency": currency,
+            "technology_required": option.technology_required,
+        }
+        return _canonical_value(
+            {
+                "option_id": option.id,
+                "workstream_id": option.workstream_id,
+                "candidate_id": option.candidate_id,
+                "expected_revision": expected_revision,
+                "content": content,
+            }
+        )
+
+    @classmethod
+    def authorise_option_freeze(
+        cls, option_id: int, expected_revision: int
+    ) -> OperationAuthorizer:
+        expected_key = f"option:{option_id}:version:{expected_revision}"
+
+        def authorize(session, actor, operation, natural_key):
+            if operation != "option.freeze" or natural_key != expected_key:
+                raise NotAuthorised("option_freeze_command_mismatch")
+            option = session.scalar(
+                select(TransformationOption).where(
+                    TransformationOption.id == option_id,
+                    TransformationOption.organization_id == actor.organization_id,
+                )
+            )
+            if option is None:
+                raise NotFound("option_not_found")
+            cls.authorise_draft(actor, option, session=session)
+
+        return authorize
+
+    @classmethod
+    def _lock_validate_and_insert_version(
+        cls, session, actor, option_id, payload, claim
+    ):
+        scope = session.scalar(
+            select(TransformationOption).where(
+                TransformationOption.id == option_id,
+                TransformationOption.organization_id == actor.organization_id,
+            )
+        )
+        if scope is None:
+            raise NotFound("option_not_found")
+        programme, workstream = _programme_for_workstream(
+            session, actor, scope.workstream_id, lock=True
+        )
+        option = session.scalar(
+            select(TransformationOption)
+            .where(
+                TransformationOption.id == option_id,
+                TransformationOption.workstream_id == workstream.id,
+                TransformationOption.organization_id == actor.organization_id,
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        if option is None:
+            raise NotFound("option_not_found")
+        expected_revision = payload["expected_revision"]
+        if option.revision != expected_revision:
+            raise CommandConflict("stale_revision")
+        if option.candidate_id is not None:
+            candidate = session.scalar(
+                select(TransformationCandidate.id).where(
+                    TransformationCandidate.id == option.candidate_id,
+                    TransformationCandidate.organization_id == actor.organization_id,
+                    TransformationCandidate.workstream_id == workstream.id,
+                    TransformationCandidate.inclusion_status == "accepted",
+                )
+            )
+            if candidate is None:
+                raise CommandConflict("option_candidate_scope_changed")
+        TransformationProgrammeService._require_programme_authority(
+            session,
+            actor,
+            programme.id,
+            workstream.id,
+            OPTION_DRAFT_ROLES,
+            "option_freeze_not_authorised",
+            lock=True,
+        )
+        locked_payload = cls.canonical_option_payload(option, expected_revision)
+        if locked_payload != payload:
+            raise CommandConflict("option_draft_changed")
+        next_version = (
+            session.scalar(
+                select(func.max(TransformationOptionVersion.version)).where(
+                    TransformationOptionVersion.organization_id == actor.organization_id,
+                    TransformationOptionVersion.option_id == option.id,
+                )
+            )
+            or 0
+        ) + 1
+        captured_at = CommandService._database_now(session)
+        content = locked_payload["content"]
+        hash_envelope = {
+            "schema_version": "transformation-option-r1.1",
+            "organization_id": actor.organization_id,
+            "option_id": option.id,
+            "version": next_version,
+            "source_revision": expected_revision,
+            "captured_by_id": actor.user_id,
+            "captured_at": captured_at,
+            "content": content,
+        }
+        version = TransformationOptionVersion(
+            organization_id=actor.organization_id,
+            option_id=option.id,
+            workstream_id=workstream.id,
+            candidate_id=option.candidate_id,
+            version=next_version,
+            source_revision=expected_revision,
+            content_json=content,
+            cost_min=_decimal(content["cost_min"], "cost_min"),
+            cost_max=_decimal(content["cost_max"], "cost_max"),
+            benefit_min=_decimal(content["benefit_min"], "benefit_min"),
+            benefit_max=_decimal(content["benefit_max"], "benefit_max"),
+            risk_min=_decimal(content["risk_min"], "risk_min"),
+            risk_max=_decimal(content["risk_max"], "risk_max"),
+            currency=content["currency"],
+            technology_required=content["technology_required"],
+            captured_by_id=actor.user_id,
+            captured_at=captured_at,
+            content_hash=_sha256_canonical(hash_envelope),
+        )
+        session.add(version)
+        option.revision += 1
+        option.updated_at = captured_at
+        session.flush()
+        response = {
+            "option_id": option.id,
+            "option_version_id": version.id,
+            "version": version.version,
+            "source_revision": version.source_revision,
+            "content_hash": version.content_hash,
+        }
+        return DomainMutationResult(
+            {"option_id": option.id, "option_version_id": version.id},
+            response,
+            (
+                {
+                    "event_type": "transformation.option_version_frozen",
+                    "payload": {
+                        **response,
+                        "workstream_id": workstream.id,
+                        "command_receipt_id": claim.receipt_id,
+                        "command_generation": claim.generation,
+                    },
+                },
+            ),
+        )
+
+    @classmethod
+    def verify_version_hash(cls, version: TransformationOptionVersion) -> bool:
+        envelope = {
+            "schema_version": "transformation-option-r1.1",
+            "organization_id": version.organization_id,
+            "option_id": version.option_id,
+            "version": version.version,
+            "source_revision": version.source_revision,
+            "captured_by_id": version.captured_by_id,
+            "captured_at": version.captured_at,
+            "content": version.content_json,
+        }
+        return version.content_hash == _sha256_canonical(envelope)
+
+    @classmethod
+    def compare(
+        cls,
+        *,
+        actor: ActorContext,
+        option_version_ids: Sequence[int],
+    ) -> OptionComparison:
+        versions = cls.load_versions_for_tenant(actor, option_version_ids)
+        cls.require_same_decision_scope(versions)
+        currency = cls.single_currency_or_none(versions)
+        return OptionComparison(
+            tuple(row.id for row in versions),
+            currency,
+            cls.aggregate_range(versions, "cost", currency),
+            cls.aggregate_range(versions, "benefit", currency),
+            tuple(cls.comparison_conflicts(versions, currency)),
+        )
+
+    @classmethod
+    def load_versions_for_tenant(cls, actor, option_version_ids):
+        requested = _id_sequence(option_version_ids, "option_version_ids")
+        with Session(db.engine) as session:
+            rows = session.scalars(
+                select(TransformationOptionVersion).where(
+                    TransformationOptionVersion.organization_id == actor.organization_id,
+                    TransformationOptionVersion.id.in_(requested),
+                )
+            ).all()
+            by_id = {row.id: row for row in rows}
+            if len(by_id) != len(requested):
+                raise NotFound("option_versions_not_found")
+            versions = tuple(by_id[row_id] for row_id in requested)
+            cls.require_same_decision_scope(versions)
+            programme, workstream = _programme_for_workstream(
+                session, actor, versions[0].workstream_id, lock=False
+            )
+            TransformationProgrammeService._require_programme_authority(
+                session,
+                actor,
+                programme.id,
+                workstream.id,
+                READ_ROLES,
+                "option_read_not_authorised",
+            )
+            session.expunge_all()
+            return versions
+
+    @staticmethod
+    def require_same_decision_scope(versions):
+        scopes = {(row.workstream_id, row.candidate_id) for row in versions}
+        if len(scopes) != 1:
+            raise ValueError("option versions must share one decision scope")
+
+    @staticmethod
+    def single_currency_or_none(versions):
+        currencies = {row.currency for row in versions}
+        return next(iter(currencies)) if len(currencies) == 1 else None
+
+    @staticmethod
+    def aggregate_range(versions, prefix, currency):
+        if currency is None:
+            return None
+        minima = [getattr(row, f"{prefix}_min") for row in versions]
+        maxima = [getattr(row, f"{prefix}_max") for row in versions]
+        if any(value is None or not value.is_finite() for value in (*minima, *maxima)):
+            return None
+        return min(minima), max(maxima)
+
+    @staticmethod
+    def comparison_conflicts(_versions, currency):
+        return () if currency is not None else ("currency_mismatch",)
+
+
+class DecisionBriefService:
+    """Evaluate and freeze exact option/evidence/outcome decision dossiers."""
+
+    @classmethod
+    def evaluate(cls, *, actor: ActorContext, brief_id: int) -> BriefReadiness:
+        brief = cls.load_brief_for_tenant(actor, brief_id)
+        option_ids = cls.current_option_version_ids(brief, actor=actor)
+        evidence_ids = cls.current_evidence_ids(brief, actor=actor)
+        gate = TransformationGateService.evaluate(
+            actor=actor,
+            workstream_id=brief.workstream_id,
+            target_stage="decision_ready",
+        )
+        return BriefReadiness(gate.allowed, gate, option_ids, evidence_ids)
+
+    @classmethod
+    def load_brief_for_tenant(cls, actor, brief_id):
+        brief_id = _positive_id(brief_id, "brief_id")
+        with Session(db.engine) as session:
+            brief = session.scalar(
+                select(DecisionBrief).where(
+                    DecisionBrief.id == brief_id,
+                    DecisionBrief.organization_id == actor.organization_id,
+                )
+            )
+            if brief is None:
+                raise NotFound("decision_brief_not_found")
+            programme, workstream = _programme_for_workstream(
+                session, actor, brief.workstream_id, lock=False
+            )
+            TransformationProgrammeService._require_programme_authority(
+                session,
+                actor,
+                programme.id,
+                workstream.id,
+                READ_ROLES,
+                "brief_read_not_authorised",
+            )
+            session.expunge(brief)
+            return brief
+
+    @classmethod
+    def current_option_version_ids(cls, brief, *, actor):
+        with Session(db.engine) as session:
+            rows = session.scalars(
+                select(TransformationOptionVersion)
+                .where(
+                    TransformationOptionVersion.organization_id == actor.organization_id,
+                    TransformationOptionVersion.workstream_id == brief.workstream_id,
+                )
+                .order_by(
+                    TransformationOptionVersion.option_id,
+                    TransformationOptionVersion.version.desc(),
+                )
+            ).all()
+        latest = {}
+        for row in rows:
+            latest.setdefault(row.option_id, row.id)
+        return tuple(latest[key] for key in sorted(latest))
+
+    @classmethod
+    def current_evidence_ids(cls, brief, *, actor):
+        with Session(db.engine) as session:
+            candidates = session.scalars(
+                select(TransformationCandidate).where(
+                    TransformationCandidate.organization_id == actor.organization_id,
+                    TransformationCandidate.workstream_id == brief.workstream_id,
+                    TransformationCandidate.inclusion_status == "accepted",
+                )
+            ).all()
+            if brief.candidate_id is not None:
+                candidates = [row for row in candidates if row.id == brief.candidate_id]
+            pairs = {(row.subject_type, row.subject_id) for row in candidates}
+            if not pairs:
+                return ()
+            ids = session.scalars(
+                select(EvidenceClaimHead.current_record_id)
+                .where(
+                    EvidenceClaimHead.organization_id == actor.organization_id,
+                    tuple_(
+                        EvidenceClaimHead.subject_type, EvidenceClaimHead.subject_id
+                    ).in_(sorted(pairs)),
+                    EvidenceClaimHead.current_record_id.is_not(None),
+                )
+                .order_by(
+                    EvidenceClaimHead.subject_type,
+                    EvidenceClaimHead.subject_id,
+                    EvidenceClaimHead.claim_key,
+                    EvidenceClaimHead.source_identity,
+                    EvidenceClaimHead.id,
+                )
+            ).all()
+            return tuple(sorted(set(ids)))
+
+    @classmethod
+    def freeze(
+        cls,
+        *,
+        actor: ActorContext,
+        brief_id: int,
+        option_version_ids: Sequence[int],
+        evidence_ids: Sequence[int],
+        assertions: HumanAssertions,
+        expected_revision: int,
+        command_key: str,
+    ) -> CommandResult:
+        request = cls.build_freeze_request(
+            actor,
+            brief_id,
+            option_version_ids,
+            evidence_ids,
+            assertions,
+            expected_revision,
+        )
+        return CommandService.execute(
+            actor=actor,
+            operation="brief.freeze",
+            idempotency_key=command_key,
+            payload=request,
+            natural_key=f"brief:{brief_id}:version:{expected_revision}",
+            authorizer=cls.authorise_brief_freeze(brief_id, expected_revision),
+            handler=lambda session, claim: cls._freeze_locked_snapshot(
+                session, actor, request, claim
+            ),
+        )
+
+    @classmethod
+    def build_freeze_request(
+        cls,
+        actor,
+        brief_id,
+        option_version_ids,
+        evidence_ids,
+        assertions,
+        expected_revision,
+    ):
+        brief = cls.load_brief_for_tenant(actor, brief_id)
+        option_ids = _id_sequence(option_version_ids, "option_version_ids")
+        cited_ids = _id_sequence(evidence_ids, "evidence_ids")
+        expected_revision = _positive_id(expected_revision, "expected_revision")
+        if isinstance(assertions, Mapping):
+            forbidden = {
+                "client_totals",
+                "comparison_totals",
+                "cost_total",
+                "benefit_total",
+            }
+            if forbidden.intersection(assertions):
+                raise ValueError("client totals are not accepted")
+            try:
+                assertions = HumanAssertions(**dict(assertions))
+            except TypeError as error:
+                raise ValueError("invalid human assertions") from error
+        if not isinstance(assertions, HumanAssertions):
+            raise ValueError("assertions must be HumanAssertions")
+        if not isinstance(assertions.reviewed_ai_material, bool):
+            raise ValueError("reviewed_ai_material must be boolean")
+        unknown_codes = tuple(
+            _required_text(value, "acknowledged_unknown_codes")
+            for value in assertions.acknowledged_unknown_codes
+        )
+        if len(set(unknown_codes)) != len(unknown_codes):
+            raise ValueError("duplicate acknowledged_unknown_codes")
+        superseded_ids = _id_sequence(
+            assertions.acknowledged_superseded_evidence_ids,
+            "acknowledged_superseded_evidence_ids",
+            required=False,
+        )
+        rationale = _required_text(assertions.rationale, "assertion rationale")
+        return _canonical_value(
+            {
+                "brief_id": brief.id,
+                "workstream_id": brief.workstream_id,
+                "option_version_ids": option_ids,
+                "evidence_ids": cited_ids,
+                "assertions": {
+                    "reviewed_ai_material": assertions.reviewed_ai_material,
+                    "acknowledged_unknown_codes": unknown_codes,
+                    "acknowledged_superseded_evidence_ids": superseded_ids,
+                    "rationale": rationale,
+                },
+                "expected_revision": expected_revision,
+            }
+        )
+
+    @classmethod
+    def authorise_brief_freeze(
+        cls, brief_id: int, expected_revision: int
+    ) -> OperationAuthorizer:
+        expected_key = f"brief:{brief_id}:version:{expected_revision}"
+
+        def authorize(session, actor, operation, natural_key):
+            if operation != "brief.freeze" or natural_key != expected_key:
+                raise NotAuthorised("brief_freeze_command_mismatch")
+            brief = session.scalar(
+                select(DecisionBrief).where(
+                    DecisionBrief.id == brief_id,
+                    DecisionBrief.organization_id == actor.organization_id,
+                )
+            )
+            if brief is None:
+                raise NotFound("decision_brief_not_found")
+            programme, workstream = _programme_for_workstream(
+                session, actor, brief.workstream_id, lock=False
+            )
+            TransformationProgrammeService._require_programme_authority(
+                session,
+                actor,
+                programme.id,
+                workstream.id,
+                BRIEF_FREEZE_ROLES,
+                "brief_freeze_not_authorised",
+            )
+
+        return authorize
+
+    @classmethod
+    def _freeze_locked_snapshot(cls, session, actor, request, claim):
+        scope = session.scalar(
+            select(DecisionBrief).where(
+                DecisionBrief.id == request["brief_id"],
+                DecisionBrief.organization_id == actor.organization_id,
+            )
+        )
+        if scope is None:
+            raise NotFound("decision_brief_not_found")
+        programme, workstream = _programme_for_workstream(
+            session, actor, scope.workstream_id, lock=True
+        )
+        brief = session.scalar(
+            select(DecisionBrief)
+            .where(
+                DecisionBrief.id == scope.id,
+                DecisionBrief.workstream_id == workstream.id,
+                DecisionBrief.organization_id == actor.organization_id,
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        if brief is None:
+            raise NotFound("decision_brief_not_found")
+        if brief.revision != request["expected_revision"]:
+            raise CommandConflict("stale_revision")
+        if brief.status != "draft":
+            raise CommandConflict("brief_not_draft")
+        TransformationProgrammeService._require_programme_authority(
+            session,
+            actor,
+            programme.id,
+            workstream.id,
+            BRIEF_FREEZE_ROLES,
+            "brief_freeze_not_authorised",
+            lock=True,
+        )
+        cls._require_options_gate(session, actor, workstream)
+        versions = cls._lock_option_versions(
+            session, actor, brief, request["option_version_ids"]
+        )
+        cls._require_viable_options(session, actor, brief, versions, workstream)
+        recommendation = cls._recommendation_version(brief, versions)
+        candidates, candidate = cls._lock_candidate_scope(session, actor, brief)
+        evidence_rows, heads, evidence_citations = cls._lock_evidence_snapshot(
+            session,
+            actor,
+            candidates,
+            request["evidence_ids"],
+            request["assertions"],
+        )
+        outcomes, measures = cls._lock_outcomes_and_measures(
+            session, actor, programme, workstream
+        )
+        cls._validate_assertions(brief, request["assertions"], request["evidence_ids"])
+        if not outcomes or not measures:
+            raise BlockedByEvidence("outcome_measure_snapshot_required")
+        next_version = (
+            session.scalar(
+                select(func.max(DecisionBriefVersion.version)).where(
+                    DecisionBriefVersion.organization_id == actor.organization_id,
+                    DecisionBriefVersion.brief_id == brief.id,
+                )
+            )
+            or 0
+        ) + 1
+        created_at = CommandService._database_now(session)
+        frozen_payload = cls._build_frozen_payload(
+            actor=actor,
+            programme=programme,
+            workstream=workstream,
+            brief=brief,
+            candidate=candidate,
+            versions=versions,
+            recommendation=recommendation,
+            evidence_rows=evidence_rows,
+            heads=heads,
+            evidence_citations=evidence_citations,
+            outcomes=outcomes,
+            measures=measures,
+            assertions=request["assertions"],
+            version=next_version,
+            source_revision=request["expected_revision"],
+            created_at=created_at,
+        )
+        envelope = cls._hash_envelope(
+            organization_id=actor.organization_id,
+            brief_id=brief.id,
+            version=next_version,
+            source_revision=request["expected_revision"],
+            created_by_id=actor.user_id,
+            created_at=created_at,
+            frozen_payload=frozen_payload,
+        )
+        brief_version = DecisionBriefVersion(
+            organization_id=actor.organization_id,
+            brief_id=brief.id,
+            workstream_id=workstream.id,
+            version=next_version,
+            source_revision=request["expected_revision"],
+            frozen_payload=frozen_payload,
+            recommendation_option_version_id=recommendation.id,
+            option_version_ids=[row.id for row in versions],
+            cited_evidence_ids=[row.id for row in evidence_rows],
+            outcome_ids=[row.id for row in outcomes],
+            measure_ids=[row.id for row in measures],
+            policy_version=TransformationGateService.POLICY_VERSION,
+            created_by_id=actor.user_id,
+            created_at=created_at,
+            content_hash=_sha256_canonical(envelope),
+            submitted_by_id=actor.user_id,
+            submitter_authorized=True,
+            decision_authority_id=brief.decision_authority_id,
+            human_reviewed_ai=request["assertions"]["reviewed_ai_material"],
+            blockers_cleared=True,
+            unknowns_acknowledged=True,
+        )
+        session.add(brief_version)
+        session.flush()
+        option_rows = [
+            DecisionBriefOptionCitation(
+                organization_id=actor.organization_id,
+                brief_version_id=brief_version.id,
+                option_version_id=row.id,
+            )
+            for row in versions
+        ]
+        evidence_rows_to_insert = [
+            DecisionBriefEvidenceCitation(
+                organization_id=actor.organization_id,
+                brief_version_id=brief_version.id,
+                evidence_record_id=item["evidence_record_id"],
+                evidence_head_id=item["evidence_head_id"],
+                head_revision_at_freeze=item["head_revision_at_freeze"],
+                current_record_id_at_freeze=item["current_record_id_at_freeze"],
+                was_current=item["was_current"],
+                acknowledged=item["acknowledged"],
+                freshness_status=item["freshness_status"],
+            )
+            for item in evidence_citations
+        ]
+        decision_event = DecisionEvent(
+            organization_id=actor.organization_id,
+            brief_id=brief.id,
+            brief_version_id=brief_version.id,
+            event_type="brief.version_frozen",
+            from_state=brief.status,
+            to_state="frozen",
+            actor_id=actor.user_id,
+            rationale=request["assertions"]["rationale"],
+            conditions_json=[],
+            source_review_id=None,
+            command_receipt_id=claim.receipt_id,
+            command_generation=claim.generation,
+            created_at=created_at,
+        )
+        session.add_all((*option_rows, *evidence_rows_to_insert, decision_event))
+        brief.status = "frozen"
+        brief.revision += 1
+        brief.updated_at = created_at
+        session.flush()
+        response = {
+            "decision_brief_id": brief.id,
+            "decision_brief_version_id": brief_version.id,
+            "decision_event_id": decision_event.id,
+            "version": brief_version.version,
+            "content_hash": brief_version.content_hash,
+            "policy_version": brief_version.policy_version,
+        }
+        return DomainMutationResult(
+            {
+                "decision_brief_id": brief.id,
+                "decision_brief_version_id": brief_version.id,
+                "decision_event_id": decision_event.id,
+            },
+            response,
+            (
+                {
+                    "event_type": "transformation.decision_brief_frozen",
+                    "payload": {
+                        **response,
+                        "workstream_id": workstream.id,
+                        "option_version_ids": [row.id for row in versions],
+                        "evidence_ids": [row.id for row in evidence_rows],
+                    },
+                },
+            ),
+        )
+
+    @classmethod
+    def _require_options_gate(cls, session, actor, workstream):
+        snapshot = TransformationGateService._load_policy_snapshot(
+            session=session,
+            actor=actor,
+            workstream_id=workstream.id,
+            lock=True,
+        )
+        transition = TransformationGateService.require_valid_transition(
+            snapshot.workstream.lifecycle_stage, "decision_ready"
+        )
+        blockers, warnings, _evidence_ids = TransformationGateService.evaluate_requirements(
+            snapshot, transition
+        )
+        if blockers:
+            raise BlockedByEvidence(
+                "gate_requirements_not_met",
+                blockers=tuple(blockers),
+                warnings=tuple(warnings),
+                policy_version=TransformationGateService.POLICY_VERSION,
+            )
+
+    @classmethod
+    def _lock_option_versions(cls, session, actor, brief, requested_ids):
+        rows = session.scalars(
+            select(TransformationOptionVersion)
+            .where(
+                TransformationOptionVersion.organization_id == actor.organization_id,
+                TransformationOptionVersion.id.in_(requested_ids),
+            )
+            .order_by(TransformationOptionVersion.id)
+            .with_for_update()
+        ).all()
+        by_id = {row.id: row for row in rows}
+        if len(by_id) != len(requested_ids):
+            raise NotFound("option_versions_not_found")
+        versions = tuple(by_id[row_id] for row_id in requested_ids)
+        if any(row.workstream_id != brief.workstream_id for row in versions):
+            raise CommandConflict("option_version_scope_mismatch")
+        if brief.candidate_id is not None and any(
+            row.candidate_id != brief.candidate_id for row in versions
+        ):
+            raise CommandConflict("option_version_candidate_mismatch")
+        if any(not TransformationOptionService.verify_version_hash(row) for row in versions):
+            raise CommandConflict("option_version_hash_invalid")
+        return versions
+
+    @classmethod
+    def _require_viable_options(cls, session, actor, brief, versions, workstream):
+        distinct = {_sha256_canonical(row.content_json) for row in versions}
+        if len(distinct) >= 2:
+            return
+        exception = cls._option_exception(brief)
+        if exception is None:
+            raise BlockedByEvidence("viable_options_required")
+        if not cls._user_has_decision_authority(
+            session,
+            actor.organization_id,
+            workstream.programme_id,
+            workstream.id,
+            exception["authority_id"],
+            lock=True,
+        ):
+            raise NotAuthorised("option_exception_authority_invalid")
+
+    @staticmethod
+    def _option_exception(brief):
+        values = (
+            brief.option_exception_type,
+            brief.option_exception_name,
+            brief.option_exception_reason,
+            brief.option_exception_authority_id,
+        )
+        if not any(value is not None for value in values):
+            return None
+        if (
+            brief.option_exception_type not in OPTION_EXCEPTION_TYPES
+            or not isinstance(brief.option_exception_name, str)
+            or not brief.option_exception_name.strip()
+            or not isinstance(brief.option_exception_reason, str)
+            or not brief.option_exception_reason.strip()
+            or brief.option_exception_authority_id is None
+        ):
+            raise BlockedByEvidence("option_exception_incomplete")
+        return {
+            "type": brief.option_exception_type,
+            "name": brief.option_exception_name.strip(),
+            "reason": brief.option_exception_reason.strip(),
+            "authority_id": brief.option_exception_authority_id,
+        }
+
+    @classmethod
+    def _user_has_decision_authority(
+        cls, session, organization_id, programme_id, workstream_id, user_id, *, lock
+    ):
+        user_statement = select(User).where(
+            User.id == user_id,
+            User.organization_id == organization_id,
+        )
+        assignment_statement = (
+            select(ProgrammeRoleAssignment)
+            .where(
+                ProgrammeRoleAssignment.organization_id == organization_id,
+                ProgrammeRoleAssignment.programme_id == programme_id,
+                or_(
+                    ProgrammeRoleAssignment.workstream_id.is_(None),
+                    ProgrammeRoleAssignment.workstream_id == workstream_id,
+                ),
+                ProgrammeRoleAssignment.user_id == user_id,
+            )
+            .order_by(ProgrammeRoleAssignment.id)
+        )
+        if lock:
+            user_statement = user_statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
+            assignment_statement = assignment_statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
+        user = session.scalar(user_statement)
+        if user is None:
+            return False
+        roles = TransformationProgrammeService._server_roles(user)
+        today = date.today()
+        roles.update(
+            row.role
+            for row in session.scalars(assignment_statement).all()
+            if row.effective_from <= today
+            and (row.effective_to is None or row.effective_to >= today)
+        )
+        return bool(roles.intersection(DECISION_AUTHORITY_ROLES))
+
+    @staticmethod
+    def _recommendation_version(brief, versions):
+        matching = [row for row in versions if row.option_id == brief.recommendation_option_id]
+        if len(matching) != 1:
+            raise BlockedByEvidence("recommendation_option_version_required")
+        return matching[0]
+
+    @staticmethod
+    def _lock_candidate_scope(session, actor, brief):
+        candidates = tuple(
+            session.scalars(
+                select(TransformationCandidate)
+                .where(
+                    TransformationCandidate.organization_id == actor.organization_id,
+                    TransformationCandidate.workstream_id == brief.workstream_id,
+                    TransformationCandidate.inclusion_status == "accepted",
+                )
+                .order_by(TransformationCandidate.id)
+                .with_for_update()
+            ).all()
+        )
+        if not candidates:
+            raise BlockedByEvidence("candidate_scope_required")
+        selected = None
+        if brief.candidate_id is not None:
+            selected = next((row for row in candidates if row.id == brief.candidate_id), None)
+            if selected is None:
+                raise CommandConflict("brief_candidate_scope_changed")
+        return candidates, selected
+
+    @classmethod
+    def _lock_evidence_snapshot(
+        cls, session, actor, candidates, requested_ids, assertions
+    ):
+        records = session.scalars(
+            select(EvidenceRecord)
+            .where(
+                EvidenceRecord.organization_id == actor.organization_id,
+                EvidenceRecord.id.in_(requested_ids),
+            )
+            .order_by(EvidenceRecord.id)
+            .with_for_update()
+        ).all()
+        by_id = {row.id: row for row in records}
+        if len(by_id) != len(requested_ids):
+            raise NotFound("evidence_records_not_found")
+        ordered = tuple(by_id[row_id] for row_id in requested_ids)
+        membership = {(row.subject_type, row.subject_id) for row in candidates}
+        if any((row.subject_type, row.subject_id) not in membership for row in ordered):
+            raise CommandConflict("evidence_membership_changed")
+        conditions = [
+            (
+                EvidenceClaimHead.subject_type == row.subject_type,
+                EvidenceClaimHead.subject_id == row.subject_id,
+                EvidenceClaimHead.claim_key == row.claim_key,
+                EvidenceClaimHead.source_identity == row.source_identity,
+            )
+            for row in ordered
+        ]
+        heads = tuple(
+            session.scalars(
+                select(EvidenceClaimHead)
+                .where(
+                    EvidenceClaimHead.organization_id == actor.organization_id,
+                    or_(*(a & b & c & d for a, b, c, d in conditions)),
+                )
+                .order_by(
+                    EvidenceClaimHead.organization_id,
+                    EvidenceClaimHead.subject_type,
+                    EvidenceClaimHead.subject_id,
+                    EvidenceClaimHead.claim_key,
+                    EvidenceClaimHead.source_identity,
+                    EvidenceClaimHead.id,
+                )
+                .execution_options(populate_existing=True)
+                .with_for_update()
+            ).all()
+        )
+        head_by_key = {
+            (row.subject_type, row.subject_id, row.claim_key, row.source_identity): row
+            for row in heads
+        }
+        acknowledged_ids = set(assertions["acknowledged_superseded_evidence_ids"])
+        now = CommandService._database_now(session)
+        citations = []
+        for record in ordered:
+            key = (
+                record.subject_type,
+                record.subject_id,
+                record.claim_key,
+                record.source_identity,
+            )
+            head = head_by_key.get(key)
+            if head is None or head.current_record_id is None:
+                raise CommandConflict("evidence_head_changed")
+            was_current = head.current_record_id == record.id
+            expired = (
+                record.freshness_expires_at is not None
+                and _utc(record.freshness_expires_at) <= now
+            )
+            stale = record.freshness_status not in {"fresh", "not_applicable"} or expired
+            acknowledged = record.id in acknowledged_ids
+            if (not was_current or stale) and not acknowledged:
+                raise BlockedByEvidence(
+                    "evidence_acknowledgement_required", evidence_id=record.id
+                )
+            citations.append(
+                {
+                    "evidence_record_id": record.id,
+                    "evidence_head_id": head.id,
+                    "head_revision_at_freeze": head.revision,
+                    "current_record_id_at_freeze": head.current_record_id,
+                    "was_current": was_current,
+                    "acknowledged": acknowledged,
+                    "freshness_status": record.freshness_status,
+                }
+            )
+        if not acknowledged_ids.issubset({row.id for row in ordered}):
+            raise ValueError("acknowledged evidence must be cited")
+        return ordered, heads, tuple(citations)
+
+    @staticmethod
+    def _lock_outcomes_and_measures(session, actor, programme, workstream):
+        outcomes = tuple(
+            session.scalars(
+                select(ProgrammeOutcomeCommitment)
+                .where(
+                    ProgrammeOutcomeCommitment.organization_id == actor.organization_id,
+                    ProgrammeOutcomeCommitment.programme_id == programme.id,
+                    or_(
+                        ProgrammeOutcomeCommitment.workstream_id == workstream.id,
+                        ProgrammeOutcomeCommitment.workstream_id.is_(None),
+                    ),
+                )
+                .order_by(ProgrammeOutcomeCommitment.id)
+                .with_for_update()
+            ).all()
+        )
+        outcome_ids = [row.id for row in outcomes]
+        measures = tuple(
+            session.scalars(
+                select(MeasureDefinition)
+                .where(
+                    MeasureDefinition.organization_id == actor.organization_id,
+                    MeasureDefinition.outcome_commitment_id.in_(outcome_ids or [-1]),
+                )
+                .order_by(MeasureDefinition.id)
+                .with_for_update()
+            ).all()
+        )
+        return outcomes, measures
+
+    @staticmethod
+    def _validate_assertions(brief, assertions, evidence_ids):
+        if assertions["reviewed_ai_material"] is not True:
+            raise BlockedByEvidence("human_ai_review_required")
+        unknowns = {
+            _required_text(value, "brief unknown code") for value in brief.unknown_codes
+        }
+        acknowledged = set(assertions["acknowledged_unknown_codes"])
+        if not unknowns.issubset(acknowledged):
+            raise BlockedByEvidence("brief_unknowns_unacknowledged")
+        if not acknowledged.issubset(unknowns):
+            raise ValueError("acknowledged unknown code is not present on the brief")
+        if not set(assertions["acknowledged_superseded_evidence_ids"]).issubset(
+            set(evidence_ids)
+        ):
+            raise ValueError("acknowledged evidence must be cited")
+        _required_text(assertions["rationale"], "assertion rationale")
+
+    @classmethod
+    def _build_frozen_payload(
+        cls,
+        *,
+        actor,
+        programme,
+        workstream,
+        brief,
+        candidate,
+        versions,
+        recommendation,
+        evidence_rows,
+        heads,
+        evidence_citations,
+        outcomes,
+        measures,
+        assertions,
+        version,
+        source_revision,
+        created_at,
+    ):
+        head_by_id = {row.id: row for row in heads}
+        citation_by_record = {row["evidence_record_id"]: row for row in evidence_citations}
+        payload = {
+            "schema_version": "decision-brief-r1.1",
+            "organization_id": actor.organization_id,
+            "programme_id": programme.id,
+            "workstream_id": workstream.id,
+            "brief_id": brief.id,
+            "brief_version": version,
+            "source_revision": source_revision,
+            "title": brief.title,
+            "objective": workstream.objective,
+            "scope_expression": workstream.scope_expression,
+            "candidate": (
+                {
+                    "id": candidate.id,
+                    "subject_type": candidate.subject_type,
+                    "subject_id": candidate.subject_id,
+                }
+                if candidate is not None
+                else None
+            ),
+            "option_versions": [
+                {
+                    "id": row.id,
+                    "option_id": row.option_id,
+                    "version": row.version,
+                    "content_hash": row.content_hash,
+                    "content": row.content_json,
+                }
+                for row in versions
+            ],
+            "recommendation_option_version_id": recommendation.id,
+            "evidence": [
+                {
+                    "id": row.id,
+                    "subject_type": row.subject_type,
+                    "subject_id": row.subject_id,
+                    "claim_key": row.claim_key,
+                    "source_identity": row.source_identity,
+                    "source_version": row.source_version,
+                    "source_checksum": row.source_checksum,
+                    "value_type": row.value_type,
+                    "value": row.value_json,
+                    "classification": row.classification,
+                    "freshness_status": row.freshness_status,
+                    "freshness_expires_at": row.freshness_expires_at,
+                    "head": {
+                        "id": citation_by_record[row.id]["evidence_head_id"],
+                        "revision": citation_by_record[row.id]["head_revision_at_freeze"],
+                        "current_record_id": citation_by_record[row.id][
+                            "current_record_id_at_freeze"
+                        ],
+                        "source_identity": head_by_id[
+                            citation_by_record[row.id]["evidence_head_id"]
+                        ].source_identity,
+                    },
+                    "was_current": citation_by_record[row.id]["was_current"],
+                    "acknowledged": citation_by_record[row.id]["acknowledged"],
+                }
+                for row in evidence_rows
+            ],
+            "outcomes": [
+                {
+                    "id": row.id,
+                    "statement": row.statement,
+                    "owner_id": row.owner_id,
+                    "improvement_direction": row.improvement_direction,
+                    "target_date": row.target_date,
+                    "lifecycle": row.lifecycle,
+                }
+                for row in outcomes
+            ],
+            "measures": [
+                {
+                    "id": row.id,
+                    "outcome_commitment_id": row.outcome_commitment_id,
+                    "metric_name": row.metric_name,
+                    "unit": row.unit,
+                    "currency": row.currency,
+                    "aggregation": row.aggregation,
+                    "baseline_amount": row.baseline_amount,
+                    "target_amount": row.target_amount,
+                    "tolerance_amount": row.tolerance_amount,
+                    "baseline_value": row.baseline_value,
+                    "target_value": row.target_value,
+                    "baseline_date": row.baseline_date,
+                    "target_date": row.target_date,
+                    "cadence": row.cadence,
+                    "source_adapter": row.source_adapter,
+                    "source_key": row.source_key,
+                    "tolerance": row.tolerance,
+                    "unavailable_reason": row.unavailable_reason,
+                }
+                for row in measures
+            ],
+            "unknowns": brief.unknown_codes,
+            "conflicts": brief.conflicts,
+            "expected_impacts": brief.expected_impacts,
+            "human_assertions": assertions,
+            "option_exception": cls._option_exception(brief),
+            "decision_authority_id": brief.decision_authority_id,
+            "policy_version": TransformationGateService.POLICY_VERSION,
+            "created_by_id": actor.user_id,
+            "created_at": created_at,
+        }
+        return _canonical_value(payload)
+
+    @staticmethod
+    def _hash_envelope(
+        *,
+        organization_id,
+        brief_id,
+        version,
+        source_revision,
+        created_by_id,
+        created_at,
+        frozen_payload,
+    ):
+        return {
+            "schema_version": "decision-brief-hash-r1.1",
+            "organization_id": organization_id,
+            "brief_id": brief_id,
+            "version": version,
+            "source_revision": source_revision,
+            "created_by_id": created_by_id,
+            "created_at": created_at,
+            "frozen_payload": frozen_payload,
+        }
+
+    @classmethod
+    def reconstruct_canonical_payload(cls, version: DecisionBriefVersion):
+        return cls._hash_envelope(
+            organization_id=version.organization_id,
+            brief_id=version.brief_id,
+            version=version.version,
+            source_revision=version.source_revision,
+            created_by_id=version.created_by_id,
+            created_at=version.created_at,
+            frozen_payload=version.frozen_payload,
+        )
+
+    @classmethod
+    def verify_hash(cls, version: DecisionBriefVersion) -> bool:
+        payload = cls.reconstruct_canonical_payload(version)
+        return hmac.compare_digest(
+            version.content_hash, _sha256_canonical(payload)
+        )
+
+
+__all__ = [
+    "DecisionBriefService",
+    "TransformationOptionService",
+]

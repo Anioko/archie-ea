@@ -1,0 +1,496 @@
+"""Mutable decision roots and immutable Transformation Room snapshots."""
+
+from __future__ import annotations
+
+from sqlalchemy.orm import validates
+
+from app import db
+from app.models.mixins import TenantMixin
+from app.models.transformation_programme import ISO_4217_CURRENCIES
+
+
+OPTION_EXCEPTION_TYPES = ("policy", "legal")
+BRIEF_STATUSES = ("draft", "frozen", "in_governance", "terminal")
+
+
+def _sql_values(values):
+    return ", ".join(f"'{value}'" for value in values)
+
+
+class TransformationOption(TenantMixin, db.Model):
+    """Editable logical option; immutable versions preserve governed captures."""
+
+    __tablename__ = "transformation_options"
+
+    id = db.Column(db.Integer, primary_key=True)
+    workstream_id = db.Column(
+        db.Integer,
+        db.ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transformation_candidates.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    title = db.Column(db.String(255), nullable=False)
+    action_type = db.Column(db.String(80), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    assumptions = db.Column(db.JSON, nullable=False, default=list)
+    dependencies = db.Column(db.JSON, nullable=False, default=list)
+    impacts = db.Column(db.JSON, nullable=False, default=list)
+    risks = db.Column(db.JSON, nullable=False, default=list)
+    reversibility = db.Column(db.Text)
+    transition_approach = db.Column(db.Text)
+    affected_capability_ids = db.Column(db.JSON, nullable=False, default=list)
+    affected_value_stream_ids = db.Column(db.JSON, nullable=False, default=list)
+    recommendation_rationale = db.Column(db.Text)
+    cost_min = db.Column(db.Numeric(18, 2))
+    cost_max = db.Column(db.Numeric(18, 2))
+    benefit_min = db.Column(db.Numeric(18, 2))
+    benefit_max = db.Column(db.Numeric(18, 2))
+    risk_min = db.Column(db.Numeric(12, 4))
+    risk_max = db.Column(db.Numeric(12, 4))
+    currency = db.Column(db.String(3))
+    technology_required = db.Column(db.Boolean)
+    revision = db.Column(db.Integer, nullable=False, default=1, server_default="1")
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+
+    workstream = db.relationship("ProgrammeWorkstream", foreign_keys=[workstream_id])
+    candidate = db.relationship("TransformationCandidate", foreign_keys=[candidate_id])
+
+    __mapper_args__ = {"version_id_col": revision}
+    __table_args__ = (
+        db.CheckConstraint("revision > 0", name="ck_transformation_option_revision"),
+        db.CheckConstraint(
+            f"currency IS NULL OR currency IN ({_sql_values(ISO_4217_CURRENCIES)})",
+            name="ck_transformation_option_currency",
+        ),
+    )
+
+    @validates("currency")
+    def _validate_currency(self, _key, value):
+        if value is None:
+            return None
+        normalized = value.strip().upper() if isinstance(value, str) else value
+        if normalized not in ISO_4217_CURRENCIES:
+            raise ValueError("currency must be an ISO 4217 code")
+        return normalized
+
+
+class TransformationOptionVersion(TenantMixin, db.Model):
+    """Append-only canonical capture of one option draft revision."""
+
+    __tablename__ = "transformation_option_versions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    option_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transformation_options.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    workstream_id = db.Column(
+        db.Integer,
+        db.ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transformation_candidates.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    version = db.Column(db.Integer, nullable=False)
+    source_revision = db.Column(db.Integer, nullable=False)
+    content_json = db.Column(db.JSON, nullable=False)
+    cost_min = db.Column(db.Numeric(18, 2), nullable=False)
+    cost_max = db.Column(db.Numeric(18, 2), nullable=False)
+    benefit_min = db.Column(db.Numeric(18, 2), nullable=False)
+    benefit_max = db.Column(db.Numeric(18, 2), nullable=False)
+    risk_min = db.Column(db.Numeric(12, 4), nullable=False)
+    risk_max = db.Column(db.Numeric(12, 4), nullable=False)
+    currency = db.Column(db.String(3), nullable=False)
+    technology_required = db.Column(db.Boolean, nullable=False)
+    captured_by_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    captured_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+    content_hash = db.Column(db.String(64), nullable=False)
+
+    option = db.relationship("TransformationOption", foreign_keys=[option_id])
+    captured_by = db.relationship("User", foreign_keys=[captured_by_id])
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "option_id", "version", name="uq_transformation_option_version"
+        ),
+        db.UniqueConstraint(
+            "option_id", "source_revision", name="uq_transformation_option_source_revision"
+        ),
+        db.CheckConstraint("version > 0", name="ck_transformation_option_version"),
+        db.CheckConstraint(
+            "source_revision > 0", name="ck_transformation_option_source_revision"
+        ),
+        db.CheckConstraint(
+            "cost_min <= cost_max AND benefit_min <= benefit_max "
+            "AND risk_min <= risk_max",
+            name="ck_transformation_option_version_ranges",
+        ),
+        db.CheckConstraint(
+            f"currency IN ({_sql_values(ISO_4217_CURRENCIES)})",
+            name="ck_transformation_option_version_currency",
+        ),
+        db.CheckConstraint(
+            "length(content_hash) = 64", name="ck_transformation_option_version_hash"
+        ),
+    )
+
+    @property
+    def immutable(self):
+        return True
+
+    def _content(self, key):
+        return (self.content_json or {}).get(key)
+
+    @property
+    def assumptions(self):
+        return self._content("assumptions")
+
+    @property
+    def dependencies(self):
+        return self._content("dependencies")
+
+    @property
+    def impacts(self):
+        return self._content("impacts")
+
+    @property
+    def risks(self):
+        return self._content("risks")
+
+    @property
+    def reversibility(self):
+        return self._content("reversibility")
+
+    @property
+    def transition_approach(self):
+        return self._content("transition_approach")
+
+    @property
+    def affected_capability_ids(self):
+        return self._content("affected_capability_ids")
+
+    @property
+    def affected_value_stream_ids(self):
+        return self._content("affected_value_stream_ids")
+
+    @property
+    def recommendation_rationale(self):
+        return self._content("recommendation_rationale")
+
+
+class DecisionBrief(TenantMixin, db.Model):
+    """Stable logical decision case and mutable governance projection."""
+
+    __tablename__ = "decision_briefs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    workstream_id = db.Column(
+        db.Integer,
+        db.ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transformation_candidates.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    title = db.Column(db.String(255), nullable=False)
+    recommendation_option_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transformation_options.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    decision_authority_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    unknown_codes = db.Column(db.JSON, nullable=False, default=list)
+    conflicts = db.Column(db.JSON, nullable=False, default=list)
+    expected_impacts = db.Column(db.JSON, nullable=False, default=list)
+    option_exception_type = db.Column(db.String(20))
+    option_exception_name = db.Column(db.String(255))
+    option_exception_reason = db.Column(db.Text)
+    option_exception_authority_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    status = db.Column(db.String(30), nullable=False, default="draft", server_default="draft")
+    revision = db.Column(db.Integer, nullable=False, default=1, server_default="1")
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+
+    workstream = db.relationship("ProgrammeWorkstream", foreign_keys=[workstream_id])
+    candidate = db.relationship("TransformationCandidate", foreign_keys=[candidate_id])
+    recommendation_option = db.relationship(
+        "TransformationOption", foreign_keys=[recommendation_option_id]
+    )
+
+    __mapper_args__ = {"version_id_col": revision}
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id", "workstream_id", "candidate_id",
+            name="uq_decision_brief_scope",
+        ),
+        db.CheckConstraint("revision > 0", name="ck_decision_brief_revision"),
+        db.CheckConstraint(
+            f"status IN ({_sql_values(BRIEF_STATUSES)})", name="ck_decision_brief_status"
+        ),
+        db.CheckConstraint(
+            "(option_exception_type IS NULL AND option_exception_name IS NULL "
+            "AND option_exception_reason IS NULL AND option_exception_authority_id IS NULL) "
+            "OR (option_exception_type IN ('policy', 'legal') "
+            "AND option_exception_name IS NOT NULL AND option_exception_reason IS NOT NULL "
+            "AND option_exception_authority_id IS NOT NULL)",
+            name="ck_decision_brief_option_exception_complete",
+        ),
+    )
+
+    @property
+    def constraint_type(self):
+        return self.option_exception_type
+
+    @property
+    def reason(self):
+        return self.option_exception_reason
+
+    @property
+    def authority_id(self):
+        return self.option_exception_authority_id
+
+
+class DecisionBriefVersion(TenantMixin, db.Model):
+    """Append-only frozen decision dossier submitted to later governance."""
+
+    __tablename__ = "decision_brief_versions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    brief_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_briefs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    workstream_id = db.Column(
+        db.Integer,
+        db.ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    version = db.Column(db.Integer, nullable=False)
+    source_revision = db.Column(db.Integer, nullable=False)
+    frozen_payload = db.Column(db.JSON, nullable=False)
+    recommendation_option_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transformation_option_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    option_version_ids = db.Column(db.JSON, nullable=False)
+    cited_evidence_ids = db.Column(db.JSON, nullable=False)
+    outcome_ids = db.Column(db.JSON, nullable=False)
+    measure_ids = db.Column(db.JSON, nullable=False)
+    policy_version = db.Column(db.String(160), nullable=False)
+    created_by_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+    content_hash = db.Column(db.String(64), nullable=False)
+    submitted_by_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    submitter_authorized = db.Column(db.Boolean, nullable=False)
+    decision_authority_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    human_reviewed_ai = db.Column(db.Boolean, nullable=False)
+    blockers_cleared = db.Column(db.Boolean, nullable=False)
+    unknowns_acknowledged = db.Column(db.Boolean, nullable=False)
+
+    brief = db.relationship("DecisionBrief", foreign_keys=[brief_id])
+
+    __table_args__ = (
+        db.UniqueConstraint("brief_id", "version", name="uq_decision_brief_version"),
+        db.UniqueConstraint(
+            "brief_id", "source_revision", name="uq_decision_brief_source_revision"
+        ),
+        db.CheckConstraint("version > 0", name="ck_decision_brief_version"),
+        db.CheckConstraint(
+            "source_revision > 0", name="ck_decision_brief_source_revision"
+        ),
+        db.CheckConstraint(
+            "length(content_hash) = 64", name="ck_decision_brief_version_hash"
+        ),
+    )
+
+    @property
+    def immutable(self):
+        return True
+
+
+class DecisionBriefOptionCitation(TenantMixin, db.Model):
+    """Immutable exact option-version membership of one brief version."""
+
+    __tablename__ = "decision_brief_option_citations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    brief_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_brief_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    option_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("transformation_option_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "brief_version_id", "option_version_id",
+            name="uq_decision_brief_option_citation",
+        ),
+    )
+
+
+class DecisionBriefEvidenceCitation(TenantMixin, db.Model):
+    """Immutable exact evidence citation plus global-head state at freeze."""
+
+    __tablename__ = "decision_brief_evidence_citations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    brief_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_brief_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    evidence_record_id = db.Column(
+        db.Integer,
+        db.ForeignKey("evidence_records.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    evidence_head_id = db.Column(
+        db.Integer,
+        db.ForeignKey("evidence_claim_heads.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    head_revision_at_freeze = db.Column(db.Integer, nullable=False)
+    current_record_id_at_freeze = db.Column(
+        db.Integer,
+        db.ForeignKey("evidence_records.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    was_current = db.Column(db.Boolean, nullable=False)
+    acknowledged = db.Column(db.Boolean, nullable=False)
+    freshness_status = db.Column(db.String(30), nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "brief_version_id", "evidence_record_id",
+            name="uq_decision_brief_evidence_citation",
+        ),
+        db.CheckConstraint(
+            "head_revision_at_freeze > 0",
+            name="ck_decision_brief_evidence_head_revision",
+        ),
+        db.CheckConstraint(
+            "was_current OR acknowledged",
+            name="ck_decision_brief_evidence_acknowledged",
+        ),
+    )
+
+
+class DecisionEvent(TenantMixin, db.Model):
+    """Append-only workflow history owned only by a Decision Brief/ARB flow."""
+
+    __tablename__ = "decision_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    brief_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_briefs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    brief_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_brief_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    event_type = db.Column(db.String(100), nullable=False)
+    from_state = db.Column(db.String(40), nullable=False)
+    to_state = db.Column(db.String(40), nullable=False)
+    actor_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    rationale = db.Column(db.Text, nullable=False)
+    conditions_json = db.Column(
+        db.JSON, nullable=False, default=list, server_default=db.text("'[]'::json")
+    )
+    source_review_id = db.Column(db.Integer)
+    command_receipt_id = db.Column(
+        db.Integer,
+        db.ForeignKey("command_idempotency_records.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    command_generation = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "command_generation > 0", name="ck_decision_event_command_generation"
+        ),
+    )
+
+
+__all__ = [
+    "BRIEF_STATUSES",
+    "DecisionBrief",
+    "DecisionBriefEvidenceCitation",
+    "DecisionBriefOptionCitation",
+    "DecisionBriefVersion",
+    "DecisionEvent",
+    "OPTION_EXCEPTION_TYPES",
+    "TransformationOption",
+    "TransformationOptionVersion",
+]

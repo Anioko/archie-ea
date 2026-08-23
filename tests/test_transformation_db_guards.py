@@ -17,6 +17,13 @@ from app.models.transformation_execution import (
     OperationOutboxEvent,
     OperationResult,
 )
+from app.models.transformation_decision import (
+    DecisionBriefEvidenceCitation,
+    DecisionBriefOptionCitation,
+    DecisionBriefVersion,
+    DecisionEvent,
+    TransformationOptionVersion,
+)
 from app.models.transformation_evidence import (
     EvidenceClaimHead,
     EvidenceHeadEvent,
@@ -32,6 +39,7 @@ from tests.test_transformation_evidence_service import (
     _record_inventory,
     evidence_scope,
 )
+from tests.test_transformation_option_service import DecisionScope, decision_scope
 
 
 @dataclass(frozen=True)
@@ -189,7 +197,12 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                     'trg_evidence_record_immutable',
                     'trg_evidence_event_immutable',
                     'trg_evidence_event_binding',
-                    'trg_evidence_head_guard'
+                    'trg_evidence_head_guard',
+                    'trg_transformation_option_version_immutable',
+                    'trg_decision_brief_version_immutable',
+                    'trg_decision_brief_option_citation_immutable',
+                    'trg_decision_brief_evidence_citation_immutable',
+                    'trg_decision_event_immutable'
                   )
                 ORDER BY tg.tgname
                 """
@@ -213,10 +226,15 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
         ).all()
 
     assert triggers == [
+        ("trg_decision_brief_evidence_citation_immutable", "decision_brief_evidence_citations"),
+        ("trg_decision_brief_option_citation_immutable", "decision_brief_option_citations"),
+        ("trg_decision_brief_version_immutable", "decision_brief_versions"),
+        ("trg_decision_event_immutable", "decision_events"),
         ("trg_evidence_event_binding", "evidence_head_events"),
         ("trg_evidence_event_immutable", "evidence_head_events"),
         ("trg_evidence_head_guard", "evidence_claim_heads"),
         ("trg_evidence_record_immutable", "evidence_records"),
+        ("trg_transformation_option_version_immutable", "transformation_option_versions"),
         ("trg_transformation_outbox_immutable", "transformation_outbox_events"),
         ("trg_transformation_receipt_guard", "command_idempotency_records"),
         ("trg_transformation_result_immutable", "operation_results"),
@@ -710,6 +728,99 @@ def test_evidence_records_events_and_heads_reject_direct_mutation(
         ),
     ):
         with pytest.raises(Exception):
+            _direct_driver_execute(statement, parameters)
+
+
+def test_option_brief_versions_citations_and_decision_events_reject_direct_mutation(
+    decision_scope: DecisionScope,
+):
+    """Catches direct SQL rewriting any immutable Task 7 decision artifact."""
+    from app.modules.transformation_room.decision_service import (
+        DecisionBriefService,
+        TransformationOptionService,
+    )
+    from app.modules.transformation_room.domain import HumanAssertions
+
+    scope = decision_scope
+    option_version_ids = tuple(
+        TransformationOptionService.freeze_version(
+            actor=scope.actor,
+            option_id=option_id,
+            expected_revision=1,
+            command_key=f"guard-option-{ordinal}",
+        ).object_ids["option_version_id"]
+        for ordinal, option_id in enumerate(scope.option_ids, start=1)
+    )
+    frozen = DecisionBriefService.freeze(
+        actor=scope.actor,
+        brief_id=scope.brief_id,
+        option_version_ids=option_version_ids,
+        evidence_ids=(scope.evidence_id,),
+        assertions=HumanAssertions(
+            True,
+            ("cost_source_unknown",),
+            (),
+            "Human reviewed the complete guarded decision snapshot.",
+        ),
+        expected_revision=1,
+        command_key="guard-brief",
+    )
+    version_id = frozen.object_ids["decision_brief_version_id"]
+    with Session(db.engine) as session:
+        option_citation_id = session.scalar(
+            select(DecisionBriefOptionCitation.id).where(
+                DecisionBriefOptionCitation.organization_id == scope.organization_id,
+                DecisionBriefOptionCitation.brief_version_id == version_id,
+            )
+        )
+        evidence_citation_id = session.scalar(
+            select(DecisionBriefEvidenceCitation.id).where(
+                DecisionBriefEvidenceCitation.organization_id == scope.organization_id,
+                DecisionBriefEvidenceCitation.brief_version_id == version_id,
+            )
+        )
+        event_id = session.scalar(
+            select(DecisionEvent.id).where(
+                DecisionEvent.organization_id == scope.organization_id,
+                DecisionEvent.brief_version_id == version_id,
+            )
+        )
+
+    attempts = (
+        (
+            "UPDATE public.transformation_option_versions SET content_hash = %s "
+            "WHERE id = %s AND organization_id = %s",
+            ("a" * 64, option_version_ids[0], scope.organization_id),
+        ),
+        (
+            "DELETE FROM public.transformation_option_versions "
+            "WHERE id = %s AND organization_id = %s",
+            (option_version_ids[0], scope.organization_id),
+        ),
+        (
+            "UPDATE public.decision_brief_versions SET content_hash = %s "
+            "WHERE id = %s AND organization_id = %s",
+            ("b" * 64, version_id, scope.organization_id),
+        ),
+        (
+            "DELETE FROM public.decision_brief_option_citations "
+            "WHERE id = %s AND organization_id = %s",
+            (option_citation_id, scope.organization_id),
+        ),
+        (
+            "UPDATE public.decision_brief_evidence_citations "
+            "SET acknowledged = NOT acknowledged "
+            "WHERE id = %s AND organization_id = %s",
+            (evidence_citation_id, scope.organization_id),
+        ),
+        (
+            "DELETE FROM public.decision_events "
+            "WHERE id = %s AND organization_id = %s",
+            (event_id, scope.organization_id),
+        ),
+    )
+    for statement, parameters in attempts:
+        with pytest.raises(Exception, match="append-only"):
             _direct_driver_execute(statement, parameters)
 
 

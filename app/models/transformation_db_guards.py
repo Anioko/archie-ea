@@ -9,6 +9,13 @@ from app.models.transformation_execution import (
     OperationOutboxEvent,
     OperationResult,
 )
+from app.models.transformation_decision import (
+    DecisionBriefEvidenceCitation,
+    DecisionBriefOptionCitation,
+    DecisionBriefVersion,
+    DecisionEvent,
+    TransformationOptionVersion,
+)
 from app.models.transformation_evidence import (
     CandidateSignal,
     EvidenceClaimHead,
@@ -705,6 +712,31 @@ _TRIGGER_SPECS = (
         "trg_evidence_head_guard",
         "archie_guard_evidence_head",
     ),
+    (
+        "transformation_option_versions",
+        "trg_transformation_option_version_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "decision_brief_versions",
+        "trg_decision_brief_version_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "decision_brief_option_citations",
+        "trg_decision_brief_option_citation_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "decision_brief_evidence_citations",
+        "trg_decision_brief_evidence_citation_immutable",
+        "archie_reject_transformation_mutation",
+    ),
+    (
+        "decision_events",
+        "trg_decision_event_immutable",
+        "archie_reject_transformation_mutation",
+    ),
 )
 
 _EVIDENCE_EVENT_BINDING_TRIGGER = "trg_evidence_event_binding"
@@ -716,6 +748,11 @@ _IMMUTABLE_TABLES = (
     "candidate_signals",
     "evidence_records",
     "evidence_head_events",
+    "transformation_option_versions",
+    "decision_brief_versions",
+    "decision_brief_option_citations",
+    "decision_brief_evidence_citations",
+    "decision_events",
 )
 
 
@@ -1101,6 +1138,11 @@ def ensure_transformation_db_guards(
 @event.listens_for(EvidenceRecord.__table__, "after_create")
 @event.listens_for(EvidenceClaimHead.__table__, "after_create")
 @event.listens_for(EvidenceHeadEvent.__table__, "after_create")
+@event.listens_for(TransformationOptionVersion.__table__, "after_create")
+@event.listens_for(DecisionBriefVersion.__table__, "after_create")
+@event.listens_for(DecisionBriefOptionCitation.__table__, "after_create")
+@event.listens_for(DecisionBriefEvidenceCitation.__table__, "after_create")
+@event.listens_for(DecisionEvent.__table__, "after_create")
 def _install_transformation_guards_after_create(_target, connection, **_kwargs):
     ensure_transformation_db_guards(connection)
 
