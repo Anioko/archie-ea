@@ -10,6 +10,11 @@ from __future__ import annotations
 
 RUNTIME_NO_ACCESS_TABLES = frozenset({"archie_command_capability_keys"})
 
+# A standalone sequence must be named here before runtime can receive access.
+# The reviewed Wave 1 policy has no such exception: generated identifiers are
+# supplied only by a serial/identity sequence owned by an insertable column.
+RUNTIME_SEQUENCE_ALLOWLIST = frozenset()
+
 # Table-level privileges on guard-owned relations.  Column-level UPDATE grants
 # are listed separately, so no entry here implies DELETE, TRUNCATE, REFERENCES,
 # TRIGGER, or an unrestricted UPDATE.
@@ -69,4 +74,5 @@ __all__ = [
     "PROTECTED_RUNTIME_UPDATE_COLUMNS",
     "RUNTIME_EXECUTE_FUNCTIONS",
     "RUNTIME_NO_ACCESS_TABLES",
+    "RUNTIME_SEQUENCE_ALLOWLIST",
 ]
