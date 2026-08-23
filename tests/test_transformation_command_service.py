@@ -12,6 +12,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy import event
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app import db
@@ -482,7 +483,142 @@ def test_committed_result_replays_after_simulated_lost_response(command_fixture)
             .order_by(OperationOutboxEvent.ordinal)
         ).all()
     assert len(event_ids) == len(set(event_ids)) == 2
-    assert all(uuid.UUID(event_id).version == 4 for event_id in event_ids)
+    assert all(uuid.UUID(event_id).version == 5 for event_id in event_ids)
+
+
+@pytest.mark.parametrize("deleted_ordinal", (0, None))
+def test_replay_restores_exact_missing_outbox_documents(
+    command_fixture, deleted_ordinal
+):
+    """A surviving result repairs one missing event or the complete ordered set."""
+    key = f"outbox-repair-{deleted_ordinal}"
+    first = _execute(
+        command_fixture,
+        key=key,
+        handler=_mutation(command_fixture, events=2),
+    )
+    with Session(db.engine) as session:
+        before = session.execute(
+            select(
+                OperationOutboxEvent.ordinal,
+                OperationOutboxEvent.event_id,
+                OperationOutboxEvent.event_type,
+                OperationOutboxEvent.payload_json,
+            )
+            .where(OperationOutboxEvent.operation_result_id == first.operation_result_id)
+            .order_by(OperationOutboxEvent.ordinal)
+        ).all()
+    assert len(before) == 2
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        statement = (
+            "DELETE FROM transformation_outbox_events "
+            "WHERE operation_result_id = :result_id"
+        )
+        parameters = {"result_id": first.operation_result_id}
+        if deleted_ordinal is not None:
+            statement += " AND ordinal = :ordinal"
+            parameters["ordinal"] = deleted_ordinal
+        connection.execute(text(statement), parameters)
+
+    replay = _execute(
+        command_fixture,
+        key=key,
+        handler=lambda _session, _claim: pytest.fail(
+            "an outbox-only recovery reran domain work"
+        ),
+    )
+
+    with Session(db.engine) as session:
+        after = session.execute(
+            select(
+                OperationOutboxEvent.ordinal,
+                OperationOutboxEvent.event_id,
+                OperationOutboxEvent.event_type,
+                OperationOutboxEvent.payload_json,
+            )
+            .where(OperationOutboxEvent.operation_result_id == first.operation_result_id)
+            .order_by(OperationOutboxEvent.ordinal)
+        ).all()
+    assert replay.idempotent is True
+    assert after == before
+
+
+def test_replay_fails_closed_on_conflicting_extra_outbox_event(command_fixture):
+    first = _execute(command_fixture, key="outbox-extra")
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "INSERT INTO transformation_outbox_events "
+                "(organization_id, operation_result_id, event_id, ordinal, "
+                "event_type, payload_json) VALUES "
+                "(:organization_id, :result_id, :event_id, 99, "
+                "'forged.extra', '{}'::jsonb)"
+            ),
+            {
+                "organization_id": command_fixture.organization_id,
+                "result_id": first.operation_result_id,
+                "event_id": str(uuid.uuid4()),
+            },
+        )
+
+    with pytest.raises(
+        CommandConflict, match="operation_outbox_materialisation_mismatch"
+    ):
+        _execute(command_fixture, key="outbox-extra")
+
+
+@pytest.mark.parametrize("forgery", ("cross_tenant", "stale_generation"))
+def test_command_envelope_insert_requires_signed_live_fence(
+    command_fixture, forgery
+):
+    """Direct SQL cannot bind another tenant or stale generation to a receipt."""
+    payload = {"name": command_fixture.domain_name}
+    claim = CommandService.claim_or_reconcile(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="forged-envelope",
+        request_digest=canonical_request_digest(payload),
+        natural_key="programme-intake:forged-envelope",
+        authorizer=_allow_command,
+    )
+
+    with Session(db.engine) as session:
+        transaction = session.begin()
+        try:
+            organization_id = command_fixture.organization_id
+            generation = claim.generation
+            if forgery == "cross_tenant":
+                foreign_org = Organization(
+                    name=f"Forged command org {uuid.uuid4().hex[:8]}",
+                    slug=f"forged-command-{uuid.uuid4().hex[:8]}",
+                )
+                session.add(foreign_org)
+                session.flush()
+                organization_id = foreign_org.id
+            else:
+                generation += 1
+            session.add(
+                CommandMaterialisation(
+                    organization_id=organization_id,
+                    # Every foreign key is individually valid; the forged
+                    # organization/actor/receipt combination is not.
+                    actor_id=command_fixture.user_id,
+                    operation="programme.create",
+                    natural_key=claim.natural_key,
+                    request_digest=claim.request_digest,
+                    receipt_id=claim.receipt_id,
+                    receipt_generation=generation,
+                    object_ids={"programme_id": 999999},
+                    response_json={"programme_id": 999999},
+                    outbox_events=[],
+                )
+            )
+            with pytest.raises(DBAPIError):
+                session.flush()
+        finally:
+            transaction.rollback()
 
 
 def test_expired_lease_reconciles_existing_result_without_handler(command_fixture):
@@ -633,6 +769,48 @@ def test_domain_row_only_crash_is_reconciled_by_operation_resolver(command_fixtu
         )
         assert recovered_envelope is not None
         assert recovered_envelope.object_ids == {"programme_id": programme_id}
+
+
+def test_reclaimed_pre_envelope_effect_fails_closed_without_provable_resolver(
+    command_fixture,
+):
+    """Legacy domain-only effects are never guessed or silently re-executed."""
+    payload = {"name": command_fixture.domain_name}
+    claim = CommandService.claim_or_reconcile(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="unprovable-domain-only",
+        request_digest=canonical_request_digest(payload),
+        natural_key="programme-intake:unprovable-domain-only",
+        authorizer=_allow_command,
+    )
+    with Session(db.engine) as session, session.begin():
+        session.add(
+            StrategicInitiative(
+                organization_id=command_fixture.organization_id,
+                name=command_fixture.domain_name,
+                record_kind="transformation_programme",
+            )
+        )
+    _wait_for_expiry(claim)
+
+    with pytest.raises(CommandConflict, match="pre_envelope_domain_effect_unprovable"):
+        CommandService.execute(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            idempotency_key="unprovable-domain-only",
+            payload=payload,
+            natural_key="programme-intake:unprovable-domain-only",
+            authorizer=_allow_command,
+            natural_key_resolver=(
+                CommandService.fail_closed_pre_envelope_recovery
+            ),
+            handler=lambda _session, _claim: pytest.fail(
+                "an unprovable legacy effect reran domain work"
+            ),
+        )
+
+    assert _counts(command_fixture) == (1, 0, 0)
 
 
 def test_builtin_materialisation_recovers_exact_result_after_receipt_result_damage(

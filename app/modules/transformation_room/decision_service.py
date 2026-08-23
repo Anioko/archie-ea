@@ -278,6 +278,7 @@ class TransformationOptionService:
             payload=payload,
             natural_key=natural_key,
             authorizer=authorize,
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._create_draft_locked(
                 session, actor, payload, claim
             ),
@@ -364,6 +365,7 @@ class TransformationOptionService:
             payload=payload,
             natural_key=f"option:{option.id}:version:{expected_revision}",
             authorizer=cls.authorise_option_freeze(option.id, expected_revision),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._lock_validate_and_insert_version(
                 session, actor, option.id, payload, claim
             ),
@@ -832,6 +834,7 @@ class DecisionBriefService:
                 workstream_id, candidate_id, recommendation_option_id,
                 decision_authority_id, exception
             ),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._create_locked_draft(
                 session, actor, request, claim
             ),
@@ -1078,6 +1081,7 @@ class DecisionBriefService:
             payload=request,
             natural_key=f"brief:{brief_id}:version:{expected_revision}",
             authorizer=cls.authorise_brief_freeze(brief_id, expected_revision),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._freeze_locked_snapshot(
                 session, actor, request, claim
             ),

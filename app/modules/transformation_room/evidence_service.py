@@ -998,6 +998,7 @@ class TransformationEvidenceService:
             payload=payload,
             natural_key=natural_key,
             authorizer=authorize,
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._plan_required_requests_locked(
                 session, actor, payload, claim
             ),
@@ -1152,6 +1153,7 @@ class TransformationEvidenceService:
             payload=payload,
             natural_key=natural_key,
             authorizer=cls.authorise_observation(payload, natural_key),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._record_observation_locked(
                 session, actor, payload, claim
             ),
@@ -1382,6 +1384,7 @@ class TransformationEvidenceService:
             payload=payload,
             natural_key=natural_key,
             authorizer=cls.authorise_attestation(request.id, payload),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._submit_attestation_locked(
                 session, actor, payload, claim
             ),
@@ -1600,6 +1603,7 @@ class TransformationEvidenceService:
             payload=payload,
             natural_key=natural_key,
             authorizer=cls.authorise_request_acceptance(payload, natural_key),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._accept_request_locked(
                 session, actor, payload, claim
             ),
@@ -1782,6 +1786,7 @@ class TransformationEvidenceService:
             payload=payload,
             natural_key=natural_key,
             authorizer=authorize,
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._change_request_state_locked(
                 session, actor, payload, action, claim
             ),
@@ -1896,6 +1901,7 @@ class TransformationEvidenceService:
             payload=payload,
             natural_key=natural_key,
             authorizer=authorize,
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._waive_request_locked(
                 session, actor, payload, claim
             ),
@@ -1974,6 +1980,7 @@ class TransformationEvidenceService:
             payload=payload,
             natural_key=natural_key,
             authorizer=cls.authorise_conflict_resolution(payload, natural_key),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._resolve_conflict_locked(
                 session, actor, payload, claim
             ),

@@ -15,6 +15,7 @@ from typing import Any, Callable, Mapping, TypeAlias
 
 from flask import current_app
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.sql.elements import TextClause
 from sqlalchemy.sql.dml import Delete, Insert, Update
 from sqlalchemy.orm import Session
@@ -23,7 +24,6 @@ from app import db
 from app.models.transformation_execution import (
     CommandMaterialisation,
     CommandIdempotencyRecord,
-    OperationOutboxEvent,
     OperationResult,
 )
 from app.modules.transformation_room.domain import (
@@ -71,6 +71,8 @@ OperationNaturalKeyResolver: TypeAlias = Callable[
 OperationAuthorizer: TypeAlias = Callable[
     [Session, ActorContext, str, str], None
 ]
+
+_OUTBOX_EVENT_NAMESPACE = uuid.UUID("44e4837d-d6f2-58db-9a71-6130cfcc7206")
 
 
 class _FencedSession(Session):
@@ -120,6 +122,9 @@ class _FencedSession(Session):
                 "archie_advance_evidence_head(",
                 "archie_create_decision_brief(",
                 "archie_freeze_decision_brief_version(",
+                "archie_persist_command_envelope(",
+                "archie_persist_overlap_disposition(",
+                "archie_repair_command_envelope(",
             )
         )
 
@@ -231,6 +236,18 @@ class CommandService:
         if not callable(authorizer):
             raise TypeError("authorizer must be callable")
         return authorizer
+
+    @staticmethod
+    def fail_closed_pre_envelope_recovery(
+        _session: Session,
+        _actor: ActorContext,
+        _natural_key: str,
+        claim: CommandClaim,
+    ) -> None:
+        """Refuse a reclaimed legacy command when no exact envelope proves absence."""
+        if claim.generation > 1:
+            raise CommandConflict("pre_envelope_domain_effect_unprovable")
+        return None
 
     @classmethod
     def claim_from_record(cls, record: CommandIdempotencyRecord) -> CommandClaim:
@@ -375,38 +392,29 @@ class CommandService:
             if not isinstance(mutation, DomainMutationResult):
                 source = "natural-key resolver" if reconciled else "command handler"
                 raise TypeError(f"{source} must return DomainMutationResult")
-            # Backfill legacy natural-key recoveries as well as new handler
-            # effects. Once observed, every exact effect has the same immutable
-            # recovery contract even if it predates this additive table.
-            if not recovered_from_materialisation:
-                cls.persist_materialisation(
-                    session,
-                    actor=actor,
-                    operation=operation,
-                    claim=claim,
-                    mutation=mutation,
-                )
-            session._ensure_locked_fence()
-            result = (
-                cls.existing_operation_result(
-                    session,
-                    actor=actor,
-                    operation=operation,
-                    claim=claim,
-                    mutation=mutation,
-                )
-                if reconciled
-                else None
+            mutation = cls.canonicalize_outbox_events(
+                actor=actor,
+                operation=operation,
+                claim=claim,
+                mutation=mutation,
+                preserve_event_ids=recovered_from_materialisation,
             )
-            created = result is None
-            if result is None:
-                result = cls.insert_operation_result(
-                    session,
-                    actor=actor,
-                    operation=operation,
-                    claim=claim,
-                    mutation=mutation,
-                )
+            session._ensure_locked_fence()
+            result_was_present = cls._find_result(
+                session,
+                organization_id=actor.organization_id,
+                actor_id=actor.user_id,
+                operation=operation,
+                natural_key=claim.natural_key,
+            )
+            result = cls.persist_command_envelope(
+                session,
+                actor=actor,
+                operation=operation,
+                claim=claim,
+                mutation=mutation,
+            )
+            created = result_was_present is None
             cls.finalise_succeeded(
                 session,
                 actor=actor,
@@ -419,6 +427,125 @@ class CommandService:
                 idempotent=reconciled,
             )
         return command_result
+
+    @classmethod
+    def canonicalize_outbox_events(
+        cls,
+        *,
+        actor: ActorContext,
+        operation: str,
+        claim: CommandClaim,
+        mutation: DomainMutationResult,
+        preserve_event_ids: bool = False,
+    ) -> DomainMutationResult:
+        """Assign immutable UUIDv5 event identities before materialisation."""
+        canonical_events = []
+        for ordinal, event in enumerate(mutation.outbox_events):
+            if not isinstance(event, Mapping) or set(event) - {
+                "event_id",
+                "event_type",
+                "payload",
+            }:
+                raise ValueError("outbox events have an unsupported document shape")
+            event_type = event.get("event_type")
+            payload = event.get("payload")
+            if not isinstance(event_type, str) or not event_type.strip():
+                raise ValueError("outbox events require event_type and payload")
+            if not isinstance(payload, Mapping):
+                raise ValueError("outbox events require event_type and payload")
+            canonical_payload = copy.deepcopy(dict(payload))
+            seed = canonical_request_document(
+                {
+                    "organization_id": actor.organization_id,
+                    "actor_id": actor.user_id,
+                    "operation": operation,
+                    "natural_key": claim.natural_key,
+                    "request_digest": claim.request_digest,
+                    "ordinal": ordinal,
+                    "event_type": event_type.strip(),
+                    "payload": canonical_payload,
+                }
+            )
+            deterministic_id = str(uuid.uuid5(_OUTBOX_EVENT_NAMESPACE, seed))
+            supplied_id = event.get("event_id")
+            if supplied_id is not None:
+                try:
+                    supplied_id = str(uuid.UUID(str(supplied_id)))
+                except (ValueError, AttributeError):
+                    raise ValueError("outbox event_id must be a UUID") from None
+                if not preserve_event_ids and supplied_id != deterministic_id:
+                    raise ValueError("outbox event_id does not match command identity")
+            canonical_events.append(
+                {
+                    "event_id": supplied_id if preserve_event_ids and supplied_id else deterministic_id,
+                    "event_type": event_type.strip(),
+                    "payload": canonical_payload,
+                }
+            )
+        return DomainMutationResult(
+            object_ids=copy.deepcopy(dict(mutation.object_ids)),
+            response=copy.deepcopy(dict(mutation.response)),
+            outbox_events=tuple(canonical_events),
+        )
+
+    @classmethod
+    def persist_command_envelope(
+        cls,
+        session: Session,
+        *,
+        actor: ActorContext,
+        operation: str,
+        claim: CommandClaim,
+        mutation: DomainMutationResult,
+    ) -> OperationResult:
+        """Persist an exact result/materialisation/outbox through the signed fence."""
+        request_document = canonical_request_document(
+            {
+                "object_ids": copy.deepcopy(dict(mutation.object_ids)),
+                "response": copy.deepcopy(dict(mutation.response)),
+                "outbox_events": copy.deepcopy(list(mutation.outbox_events)),
+            }
+        )
+        schema = session.scalar(text("SELECT current_schema()"))
+        quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
+        try:
+            result_id = session.scalar(
+                text(
+                    f"SELECT {quoted_schema}.archie_persist_command_envelope("
+                    "CAST(:capability_document AS text), "
+                    "CAST(:capability AS text), CAST(:request_document AS text))"
+                ),
+                {
+                    "capability_document": claim.capability_document,
+                    "capability": claim.capability_mac,
+                    "request_document": request_document,
+                },
+            )
+        except DBAPIError as error:
+            message = str(error.orig).lower()
+            if "outbox" in message and "mismatch" in message:
+                raise CommandConflict(
+                    "operation_outbox_materialisation_mismatch"
+                ) from error
+            if "materialisation mismatch" in message:
+                raise CommandConflict(
+                    "operation_result_materialisation_mismatch"
+                ) from error
+            raise
+        result = session.scalar(
+            select(OperationResult).where(
+                OperationResult.id == result_id,
+                OperationResult.organization_id == actor.organization_id,
+                OperationResult.actor_id == actor.user_id,
+                OperationResult.operation == operation,
+                OperationResult.natural_key == claim.natural_key,
+                OperationResult.request_digest == claim.request_digest,
+                OperationResult.receipt_id == claim.receipt_id,
+            )
+        )
+        if result is None:
+            raise CommandConflict("operation_result_missing_after_persist")
+        return result
 
     @classmethod
     def resolve_materialisation(
@@ -451,61 +578,41 @@ class CommandService:
         )
 
     @classmethod
-    def persist_materialisation(
+    def repair_reconciled_envelope(
         cls,
         session: Session,
         *,
-        actor: ActorContext,
-        operation: str,
-        claim: CommandClaim,
-        mutation: DomainMutationResult,
-    ) -> CommandMaterialisation:
-        row = CommandMaterialisation(
-            organization_id=actor.organization_id,
-            actor_id=actor.user_id,
-            operation=operation,
-            natural_key=claim.natural_key,
-            request_digest=claim.request_digest,
-            receipt_id=claim.receipt_id,
-            receipt_generation=claim.generation,
-            object_ids=copy.deepcopy(dict(mutation.object_ids)),
-            response_json=copy.deepcopy(dict(mutation.response)),
-            outbox_events=copy.deepcopy(list(mutation.outbox_events)),
-        )
-        session.add(row)
-        session.flush()
-        return row
-
-    @classmethod
-    def existing_operation_result(
-        cls,
-        session: Session,
-        *,
-        actor: ActorContext,
-        operation: str,
-        claim: CommandClaim,
-        mutation: DomainMutationResult,
-    ) -> OperationResult | None:
-        """Return only the intact result for this exact recovered materialisation."""
-        result = session.scalar(
-            select(OperationResult).where(
-                OperationResult.organization_id == actor.organization_id,
-                OperationResult.operation == operation,
-                OperationResult.natural_key == claim.natural_key,
+        claim_document: str,
+        claim_capability: str,
+        operation_result_id: int,
+    ) -> int:
+        """Repair only provable immutable envelope documents via a signed DB path."""
+        schema = session.scalar(text("SELECT current_schema()"))
+        quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
+        try:
+            return session.scalar(
+                text(
+                    f"SELECT {quoted_schema}.archie_repair_command_envelope("
+                    "CAST(:claim_document AS text), "
+                    "CAST(:claim_capability AS text), :operation_result_id)"
+                ),
+                {
+                    "claim_document": claim_document,
+                    "claim_capability": claim_capability,
+                    "operation_result_id": operation_result_id,
+                },
             )
-        )
-        if result is None:
-            return None
-        if result.actor_id != actor.user_id:
-            raise CommandConflict("natural_key_owned_by_another_actor")
-        if result.request_digest != claim.request_digest:
-            raise CommandConflict("natural_key_payload_conflict")
-        if (
-            dict(result.object_ids) != dict(mutation.object_ids)
-            or dict(result.response_json) != dict(mutation.response)
-        ):
-            raise CommandConflict("operation_result_materialisation_mismatch")
-        return result
+        except DBAPIError as error:
+            message = str(error.orig).lower()
+            if "outbox" in message and "mismatch" in message:
+                raise CommandConflict(
+                    "operation_outbox_materialisation_mismatch"
+                ) from error
+            if "materialisation mismatch" in message:
+                raise CommandConflict(
+                    "operation_result_materialisation_mismatch"
+                ) from error
+            raise
 
     @classmethod
     def claim_or_reconcile(
@@ -555,6 +662,12 @@ class CommandService:
                 {"document": claim_document, "capability": claim_capability},
             ).mappings().one()
             if row["claim_outcome"] == "reconciled":
+                cls.repair_reconciled_envelope(
+                    session,
+                    claim_document=claim_document,
+                    claim_capability=claim_capability,
+                    operation_result_id=row["operation_result_id"],
+                )
                 result = session.scalar(
                     select(OperationResult).where(
                         OperationResult.id == row["operation_result_id"],
@@ -649,47 +762,6 @@ class CommandService:
         ):
             raise StaleClaim("stale_or_expired_claim", receipt_id=claim.receipt_id)
         return receipt
-
-    @classmethod
-    def insert_operation_result(
-        cls,
-        session: Session,
-        *,
-        actor: ActorContext,
-        operation: str,
-        claim: CommandClaim,
-        mutation: DomainMutationResult,
-    ) -> OperationResult:
-        result = OperationResult(
-            organization_id=actor.organization_id,
-            actor_id=actor.user_id,
-            operation=operation,
-            natural_key=claim.natural_key,
-            request_digest=claim.request_digest,
-            receipt_id=claim.receipt_id,
-            receipt_generation=claim.generation,
-            object_ids=copy.deepcopy(dict(mutation.object_ids)),
-            response_json=copy.deepcopy(dict(mutation.response)),
-        )
-        session.add(result)
-        session.flush()
-        for ordinal, event in enumerate(mutation.outbox_events):
-            event_type = event.get("event_type")
-            payload = event.get("payload")
-            if not event_type or not isinstance(payload, Mapping):
-                raise ValueError("outbox events require event_type and payload")
-            session.add(
-                OperationOutboxEvent(
-                    organization_id=actor.organization_id,
-                    operation_result_id=result.id,
-                    event_id=str(event.get("event_id") or uuid.uuid4()),
-                    ordinal=ordinal,
-                    event_type=str(event_type),
-                    payload_json=copy.deepcopy(dict(payload)),
-                )
-            )
-        session.flush()
-        return result
 
     @classmethod
     def finalise_succeeded(

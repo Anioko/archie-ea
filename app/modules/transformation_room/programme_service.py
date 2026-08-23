@@ -132,6 +132,7 @@ class TransformationProgrammeService:
             payload=asdict(validated),
             natural_key=natural_key,
             authorizer=cls.authorise_create_programme(validated, natural_key),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._insert_intake_graph(
                 session=session, actor=actor, request=validated, claim=claim
             ),
@@ -368,6 +369,7 @@ class TransformationProgrammeService:
             payload=payload,
             natural_key=canonical_role_assignment_key(payload),
             authorizer=cls.authorise_role_assignment_replay(payload),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._insert_role_assignment(
                 session, actor, programme, workstream, user, payload, claim
             ),
@@ -539,6 +541,7 @@ class TransformationProgrammeService:
             payload=payload,
             natural_key=f"objective:{workstream_id}:{expected_revision}",
             authorizer=cls.authorise_objective_update(workstream_id, expected_revision),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._update_objective_locked(session, actor, payload, claim),
         )
 
@@ -635,6 +638,7 @@ class TransformationProgrammeService:
             payload=payload,
             natural_key=f"programme-archive:{programme_id}:{expected_revision}",
             authorizer=cls.authorise_programme_archive(programme_id, expected_revision),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._archive_locked(session, actor, payload, claim),
         )
 

@@ -13,6 +13,7 @@ from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import event, func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app import db
@@ -21,6 +22,7 @@ from app.models.application_portfolio import ApplicationComponent
 from app.models.application_rationalization import ApplicationDependency
 from app.models.business_capabilities import BusinessCapability
 from app.models.organization import Organization
+from app.models.transformation_db_guards import ensure_transformation_db_guards
 from app.models.strategic import StrategicInitiative
 from app.models.transformation_evidence import (
     CandidateOverlapDisposition,
@@ -60,6 +62,12 @@ class DiscoveryScope:
     capability_id: int
     mapping_ids: tuple[int, int]
     actor: ActorContext
+
+
+@pytest.fixture(scope="module", autouse=True)
+def discovery_guard_schema(app, _schema):
+    with app.app_context(), db.engine.begin() as connection:
+        ensure_transformation_db_guards(connection)
 
 
 def _seed_scope(session, *, suffix: str, commit: bool = False) -> DiscoveryScope:
@@ -602,6 +610,96 @@ def test_positive_overlap_requires_authorised_immutable_disposition(committed_sc
             command_key="foreign-overlap-disposition",
         )
 
+
+@pytest.mark.parametrize("forgery", ("cross_tenant", "stale_generation"))
+def test_overlap_disposition_insert_is_bound_to_signed_live_candidate_command(
+    committed_scope, forgery
+):
+    """Direct SQL cannot forge a disposition's tenant or receipt generation."""
+    scope = committed_scope
+    discovered = next(
+        item for item in _discover(scope) if item.application_id == scope.application_id
+    )
+    overlap = next(
+        signal for signal in discovered.signals if signal.rule_code == "capability_overlap"
+    )
+    natural_key = f"candidate:{scope.workstream_id}:application:{scope.application_id}"
+    claim = CommandService.claim_or_reconcile(
+        actor=scope.actor,
+        operation="candidate.accept",
+        idempotency_key=f"overlap-guard-{forgery}",
+        request_digest="a" * 64,
+        natural_key=natural_key,
+        authorizer=RationalisationDiscoveryService.authorise_candidate_acceptance(
+            scope.workstream_id, scope.application_id
+        ),
+    )
+    with Session(db.engine) as session:
+        transaction = session.begin()
+        try:
+            candidate = TransformationCandidate(
+                organization_id=scope.organization_id,
+                workstream_id=scope.workstream_id,
+                subject_type="application",
+                subject_id=scope.application_id,
+                inclusion_status="accepted",
+                inclusion_reason="Database guard fixture",
+                accepted_by_id=scope.actor_id,
+                accepted_at=CommandService._database_now(session),
+                ruleset_version=RationalisationDiscoveryService.RULESET_VERSION,
+                ruleset_digest="b" * 64,
+                revision=1,
+            )
+            session.add(candidate)
+            session.flush()
+            session.add(
+                CandidateSignal(
+                    organization_id=scope.organization_id,
+                    candidate_id=candidate.id,
+                    rule_code="capability_overlap",
+                    rule_version=overlap.rule_version,
+                    payload_json={
+                        "observed_values": overlap.observed_values,
+                        "confidence": str(overlap.confidence),
+                        "unknown_code": overlap.unknown_code,
+                    },
+                    source_record_ids=overlap.source_record_ids,
+                    evaluated_at=overlap.evaluated_at,
+                    content_hash=overlap.content_hash,
+                )
+            )
+            session.flush()
+            organization_id = scope.organization_id
+            generation = claim.generation
+            if forgery == "cross_tenant":
+                foreign_org = Organization(
+                    name=f"Forged overlap {uuid.uuid4().hex[:8]}",
+                    slug=f"forged-overlap-{uuid.uuid4().hex[:8]}",
+                )
+                session.add(foreign_org)
+                session.flush()
+                organization_id = foreign_org.id
+            else:
+                generation += 1
+            session.add(
+                CandidateOverlapDisposition(
+                    organization_id=organization_id,
+                    candidate_id=candidate.id,
+                    signal_digest=overlap.content_hash,
+                    decision="justified_distinct",
+                    overlapping_application_ids=[scope.sibling_application_id],
+                    rationale="A forged row must fail before persistence.",
+                    target_application_id=None,
+                    decided_by_id=scope.actor_id,
+                    command_receipt_id=claim.receipt_id,
+                    command_generation=generation,
+                    decided_at=CommandService._database_now(session),
+                )
+            )
+            with pytest.raises(DBAPIError):
+                session.flush()
+        finally:
+            transaction.rollback()
 
 def test_live_discovery_gate_loads_accepted_candidate_signals_and_owner_request(
     committed_scope,

@@ -256,6 +256,7 @@ class TransformationGateService:
             payload=request,
             natural_key=f"transition:{workstream_id}:{expected_revision}:{target_stage}",
             authorizer=cls.authorise_transition(workstream_id, target_stage, expected_revision),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._locked_transition(session, actor, request, claim),
         )
 

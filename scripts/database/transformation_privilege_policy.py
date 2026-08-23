@@ -19,11 +19,11 @@ RUNTIME_SEQUENCE_ALLOWLIST = frozenset()
 # are listed separately, so no entry here implies DELETE, TRUNCATE, REFERENCES,
 # TRIGGER, or an unrestricted UPDATE.
 PROTECTED_RUNTIME_TABLE_PRIVILEGES = {
-    "command_materialisations": ("SELECT", "INSERT"),
-    "operation_results": ("SELECT", "INSERT"),
-    "transformation_outbox_events": ("SELECT", "INSERT"),
+    "command_materialisations": ("SELECT",),
+    "operation_results": ("SELECT",),
+    "transformation_outbox_events": ("SELECT",),
     "candidate_signals": ("SELECT", "INSERT"),
-    "candidate_overlap_dispositions": ("SELECT", "INSERT"),
+    "candidate_overlap_dispositions": ("SELECT",),
     "evidence_records": ("SELECT", "INSERT"),
     "evidence_head_events": ("SELECT",),
     "transformation_option_versions": ("SELECT", "INSERT"),
@@ -68,6 +68,9 @@ RUNTIME_EXECUTE_FUNCTIONS = (
     ),
     ("archie_claim_transformation_command", "text, text"),
     ("archie_create_decision_brief", "text, text, text"),
+    ("archie_persist_command_envelope", "text, text, text"),
+    ("archie_persist_overlap_disposition", "text, text, text"),
+    ("archie_repair_command_envelope", "text, text, bigint"),
 )
 
 

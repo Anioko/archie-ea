@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Any, Mapping, Sequence
 
 from flask import current_app
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.orm import Session, aliased
 
 from app import db
@@ -25,7 +25,6 @@ from app.models.application_rationalization import ApplicationDependency
 from app.models.business_capabilities import BusinessCapability
 from app.models.strategic import StrategicInitiative
 from app.models.transformation_evidence import (
-    CandidateOverlapDisposition,
     CandidateSignal,
     EvidenceRequest,
     TransformationCandidate,
@@ -35,6 +34,7 @@ from app.models.user import User
 from app.modules.transformation_room.command_service import (
     CommandService,
     OperationAuthorizer,
+    canonical_request_document,
 )
 from app.modules.transformation_room.domain import (
     ActorContext,
@@ -546,6 +546,7 @@ class RationalisationDiscoveryService:
             authorizer=cls.authorise_candidate_acceptance(
                 workstream_id, application_id
             ),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._accept_recomputed_candidate(
                 session, actor, request, claim
             ),
@@ -833,24 +834,19 @@ class RationalisationDiscoveryService:
             )
             session.add(persisted)
             persisted_signals.append(persisted)
-        overlap_disposition = None
+        overlap_disposition_id = None
         if disposition_payload is not None:
-            overlap_disposition = CandidateOverlapDisposition(
-                organization_id=actor.organization_id,
+            # The signed database path binds candidate, current signal,
+            # application references, decider and live command generation.
+            session.flush()
+            overlap_disposition_id = cls._persist_overlap_disposition(
+                session,
+                claim=claim,
                 candidate_id=candidate.id,
                 signal_digest=overlap_signal.content_hash,
-                decision=disposition_payload["decision"],
-                overlapping_application_ids=list(overlap_ids),
-                rationale=disposition_payload["rationale"],
-                target_application_id=disposition_payload.get(
-                    "target_application_id"
-                ),
-                decided_by_id=actor.user_id,
-                command_receipt_id=claim.receipt_id,
-                command_generation=claim.generation,
+                disposition=disposition_payload,
                 decided_at=evaluated_at,
             )
-            session.add(overlap_disposition)
         evidence_request = None
         if not cls._application_has_owner(session, actor, application):
             assignee_id = cls._owner_request_assignee(
@@ -881,8 +877,8 @@ class RationalisationDiscoveryService:
         )
         if evidence_request is not None:
             object_ids["evidence_request_id"] = evidence_request.id
-        if overlap_disposition is not None:
-            object_ids["overlap_disposition_id"] = overlap_disposition.id
+        if overlap_disposition_id is not None:
+            object_ids["overlap_disposition_id"] = overlap_disposition_id
         response = {
             "candidate_id": candidate.id,
             "signal_ids": [signal.id for signal in persisted_signals],
@@ -903,14 +899,48 @@ class RationalisationDiscoveryService:
                         "signal_digests": list(selected_digests),
                         "ruleset_version": cls.RULESET_VERSION,
                         "ruleset_digest": candidate.ruleset_digest,
-                        "overlap_disposition_id": (
-                            overlap_disposition.id
-                            if overlap_disposition is not None
-                            else None
-                        ),
+                        "overlap_disposition_id": overlap_disposition_id,
                     },
                 },
             ),
+        )
+
+    @staticmethod
+    def _persist_overlap_disposition(
+        session,
+        *,
+        claim,
+        candidate_id,
+        signal_digest,
+        disposition,
+        decided_at,
+    ) -> int:
+        request_document = canonical_request_document(
+            {
+                "candidate_id": candidate_id,
+                "signal_digest": signal_digest,
+                "decision": disposition["decision"],
+                "overlapping_application_ids": list(
+                    disposition["overlapping_application_ids"]
+                ),
+                "rationale": disposition["rationale"],
+                "target_application_id": disposition.get("target_application_id"),
+                "decided_at": decided_at,
+            }
+        )
+        schema = session.scalar(text("SELECT current_schema()"))
+        quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
+        return session.scalar(
+            text(
+                f"SELECT {quoted_schema}.archie_persist_overlap_disposition("
+                "CAST(:capability_document AS text), CAST(:capability AS text), "
+                "CAST(:request_document AS text))"
+            ),
+            {
+                "capability_document": claim.capability_document,
+                "capability": claim.capability_mac,
+                "request_document": request_document,
+            },
         )
 
     @staticmethod

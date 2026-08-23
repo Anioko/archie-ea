@@ -73,6 +73,45 @@ def _claim_runtime_command(
     return claimed[1]
 
 
+def _execution_capability(
+    *,
+    organization_id,
+    actor_id,
+    operation,
+    command_key,
+    request_digest,
+    natural_key,
+    receipt_id,
+    generation,
+    claim_token,
+    request_id,
+    capability_secret=COMMAND_CAPABILITY_SECRET,
+):
+    secret = bytes.fromhex(capability_secret)
+    document = json.dumps(
+        {
+            "schema_version": "transformation-command-execution-r1",
+            "key_id": hashlib.sha256(secret).hexdigest(),
+            "organization_id": organization_id,
+            "actor_id": actor_id,
+            "operation": operation,
+            "idempotency_key": command_key,
+            "request_digest": request_digest,
+            "natural_key": natural_key,
+            "receipt_id": receipt_id,
+            "generation": generation,
+            "claim_token": claim_token,
+            "claimant_request_id": request_id,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return document, hmac.new(
+        secret, document.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+
 def _environment(service: dict) -> dict[str, str]:
     environment = service.get("environment", {})
     if isinstance(environment, dict):
@@ -706,6 +745,31 @@ CREATE TABLE transformation_outbox_events (
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     published_at timestamptz,
     delivery_attempts integer NOT NULL DEFAULT 0
+);
+CREATE TABLE users (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL
+);
+CREATE TABLE application_components (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    deleted_at timestamptz
+);
+CREATE TABLE transformation_candidates (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    workstream_id integer NOT NULL,
+    subject_type varchar(40) NOT NULL,
+    subject_id integer NOT NULL,
+    accepted_by_id integer NOT NULL
+);
+CREATE TABLE candidate_signals (
+    id serial PRIMARY KEY,
+    organization_id integer NOT NULL,
+    candidate_id integer NOT NULL,
+    rule_code varchar(80) NOT NULL,
+    payload_json json NOT NULL,
+    content_hash varchar(64) NOT NULL
 );
 CREATE TABLE evidence_records (
     id serial PRIMARY KEY,
@@ -2111,10 +2175,10 @@ def test_role_bootstrap_after_guards_preserves_exact_runtime_acl(
     expected_table_acl = {
         "archie_command_capability_keys": (False, False, False, False, False),
         "command_idempotency_records": (True, False, False, False, False),
-        "command_materialisations": (True, True, False, False, False),
-        "operation_results": (True, True, False, False, False),
-        "transformation_outbox_events": (True, True, False, False, False),
-        "candidate_overlap_dispositions": (True, True, False, False, False),
+        "command_materialisations": (True, False, False, False, False),
+        "operation_results": (True, False, False, False, False),
+        "transformation_outbox_events": (True, False, False, False, False),
+        "candidate_overlap_dispositions": (True, False, False, False, False),
         "evidence_records": (True, True, False, False, False),
         "evidence_claim_heads": (True, True, False, False, False),
         "evidence_head_events": (True, False, False, False, False),
@@ -2178,10 +2242,18 @@ def test_role_bootstrap_after_guards_preserves_exact_runtime_acl(
                 "has_function_privilege(%s, "
                 "'archie_verify_command_capability(text,text,text)', 'EXECUTE'), "
                 "has_function_privilege(%s, "
-                "'archie_hmac_sha256(bytea,bytea)', 'EXECUTE')",
-                (role_database.runtime_role,) * 6,
+                "'archie_hmac_sha256(bytea,bytea)', 'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'archie_persist_command_envelope(text,text,text)', 'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'archie_repair_command_envelope(text,text,bigint)', 'EXECUTE'), "
+                "has_function_privilege(%s, "
+                "'archie_persist_overlap_disposition(text,text,text)', 'EXECUTE')",
+                (role_database.runtime_role,) * 9,
             )
-            assert cursor.fetchone() == (True, True, True, True, False, False)
+            assert cursor.fetchone() == (
+                True, True, True, True, False, False, True, True, True
+            )
     finally:
         maintenance.close()
 
@@ -4155,13 +4227,13 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
             )
             assert cursor.fetchone() == (
                 True,
-                True,
                 False,
                 False,
                 False,
-                True,
                 False,
                 True,
+                False,
+                False,
                 False,
             )
             cursor.execute(
@@ -4217,6 +4289,21 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                     "p_expected_revision integer, p_request_document text, "
                     "p_frozen_payload jsonb, p_canonical_document text",
                 ),
+                (
+                    "archie_persist_command_envelope",
+                    "p_capability_document text, p_capability text, "
+                    "p_request_document text",
+                ),
+                (
+                    "archie_persist_overlap_disposition",
+                    "p_capability_document text, p_capability text, "
+                    "p_request_document text",
+                ),
+                (
+                    "archie_repair_command_envelope",
+                    "p_claim_document text, p_claim_capability text, "
+                    "p_operation_result_id bigint",
+                ),
             ])
 
             receipt_id = _claim_runtime_command(
@@ -4230,20 +4317,37 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 claim_token="b" * 64,
                 request_id="runtime-request",
             )
+            capability_document, capability = _execution_capability(
+                organization_id=41001,
+                actor_id=42001,
+                operation="runtime.probe",
+                command_key="runtime-probe",
+                request_digest="a" * 64,
+                natural_key="runtime:probe",
+                receipt_id=receipt_id,
+                generation=1,
+                claim_token="b" * 64,
+                request_id="runtime-request",
+            )
+            event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "runtime:probe:0"))
+            request_document = json.dumps(
+                {
+                    "object_ids": {},
+                    "response": {},
+                    "outbox_events": [
+                        {
+                            "event_id": event_id,
+                            "event_type": "runtime.probe.created",
+                            "payload": {},
+                        }
+                    ],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
             cursor.execute(
-                "INSERT INTO operation_results "
-                "(organization_id, actor_id, operation, natural_key, "
-                "request_digest, receipt_id, receipt_generation, object_ids, "
-                "response_json) VALUES (%s, %s, %s, %s, %s, %s, 1, '{}', '{}') "
-                "RETURNING id",
-                (
-                    41001,
-                    42001,
-                    "runtime.probe",
-                    "runtime:probe",
-                    "a" * 64,
-                    receipt_id,
-                ),
+                "SELECT public.archie_persist_command_envelope(%s, %s, %s)",
+                (capability_document, capability, request_document),
             )
             result_id = cursor.fetchone()[0]
             cursor.execute(
@@ -4252,17 +4356,6 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 "completed_at = clock_timestamp() "
                 "WHERE id = %s AND organization_id = %s AND actor_id = %s",
                 (result_id, receipt_id, 41001, 42001),
-            )
-            cursor.execute(
-                "INSERT INTO transformation_outbox_events "
-                "(organization_id, operation_result_id, event_id, ordinal, "
-                "event_type, payload_json) VALUES (%s, %s, %s, 0, %s, '{}')",
-                (
-                    41001,
-                    result_id,
-                    str(uuid.uuid4()),
-                    "runtime.probe.created",
-                ),
             )
             cursor.execute(
                 "UPDATE transformation_outbox_events "
@@ -4281,6 +4374,15 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 "TRUNCATE TABLE public.operation_results",
                 "UPDATE public.operation_results SET request_digest = request_digest",
                 "DELETE FROM public.command_idempotency_records",
+                "INSERT INTO public.operation_results "
+                "(organization_id, actor_id, operation, natural_key, request_digest, "
+                "receipt_id, receipt_generation, object_ids, response_json) VALUES "
+                "(41001, 42001, 'runtime.probe', 'runtime:probe:forged', "
+                f"'{'c' * 64}', {receipt_id}, 1, '{{}}', '{{}}')",
+                "INSERT INTO public.transformation_outbox_events "
+                "(organization_id, operation_result_id, event_id, ordinal, "
+                "event_type, payload_json) VALUES "
+                f"(41001, {result_id}, '{uuid.uuid4()}', 1, 'forged', '{{}}')",
                 "INSERT INTO public.evidence_head_events DEFAULT VALUES",
                 "SELECT public.archie_guard_transformation_receipt()",
                 "CREATE TABLE public.runtime_guard_bypass (id integer)",

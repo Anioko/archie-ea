@@ -323,6 +323,768 @@ $$
 """
 
 
+_COMMAND_ENVELOPE_INSERT_GUARD_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_guard_command_envelope_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    IF current_setting('archie.signed_envelope_repair', TRUE) = 'on' THEN
+        RETURN NEW;
+    END IF;
+    IF TG_TABLE_NAME IN ('command_materialisations', 'operation_results') THEN
+        IF NOT EXISTS (
+            SELECT 1
+              FROM public.command_idempotency_records AS receipt
+             WHERE receipt.id = NEW.receipt_id
+               AND receipt.organization_id = NEW.organization_id
+               AND receipt.actor_id = NEW.actor_id
+               AND receipt.operation = NEW.operation
+               AND receipt.natural_key = NEW.natural_key
+               AND receipt.request_digest = NEW.request_digest
+               AND receipt.status = 'in_progress'
+               AND receipt.lease_generation = NEW.receipt_generation
+               AND receipt.claim_token IS NOT NULL
+               AND receipt.lease_expires_at > clock_timestamp()
+        ) THEN
+            RAISE EXCEPTION 'command envelope insert is outside its live fence'
+                USING ERRCODE = '55000';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'transformation_outbox_events' THEN
+        IF NOT EXISTS (
+            SELECT 1
+              FROM public.operation_results AS result
+              JOIN public.command_idempotency_records AS receipt
+                ON receipt.id = result.receipt_id
+               AND receipt.organization_id = result.organization_id
+               AND receipt.actor_id = result.actor_id
+               AND receipt.operation = result.operation
+               AND receipt.natural_key = result.natural_key
+               AND receipt.request_digest = result.request_digest
+               AND receipt.lease_generation = result.receipt_generation
+             WHERE result.id = NEW.operation_result_id
+               AND result.organization_id = NEW.organization_id
+               AND receipt.status = 'in_progress'
+               AND receipt.claim_token IS NOT NULL
+               AND receipt.lease_expires_at > clock_timestamp()
+        ) THEN
+            RAISE EXCEPTION 'outbox insert is outside its live command fence'
+                USING ERRCODE = '55000';
+        END IF;
+    ELSE
+        RAISE EXCEPTION 'unsupported command envelope table'
+            USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$
+"""
+
+
+_PERSIST_COMMAND_ENVELOPE_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_persist_command_envelope(
+    p_capability_document text,
+    p_capability text,
+    p_request_document text
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    capability jsonb;
+    request jsonb;
+    command_org_id bigint;
+    command_actor_id bigint;
+    command_operation text;
+    command_idempotency_key text;
+    command_request_digest text;
+    command_natural_key text;
+    command_receipt_id bigint;
+    command_generation integer;
+    command_claim_token text;
+    command_claimant_request_id text;
+    receipt record;
+    materialisation record;
+    result record;
+    event_document jsonb;
+    event_ordinal bigint;
+    existing_event record;
+    result_id bigint;
+BEGIN
+    capability := public.archie_verify_command_capability(
+        p_capability_document,
+        p_capability,
+        'transformation-command-execution-r1'
+    );
+    BEGIN
+        command_org_id := (capability->>'organization_id')::bigint;
+        command_actor_id := (capability->>'actor_id')::bigint;
+        command_operation := capability->>'operation';
+        command_idempotency_key := capability->>'idempotency_key';
+        command_request_digest := capability->>'request_digest';
+        command_natural_key := capability->>'natural_key';
+        command_receipt_id := (capability->>'receipt_id')::bigint;
+        command_generation := (capability->>'generation')::integer;
+        command_claim_token := capability->>'claim_token';
+        command_claimant_request_id := capability->>'claimant_request_id';
+        request := p_request_document::jsonb;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'command envelope fields are invalid' USING ERRCODE = '42501';
+    END;
+    IF capability IS DISTINCT FROM jsonb_build_object(
+           'schema_version', 'transformation-command-execution-r1',
+           'key_id', capability->>'key_id',
+           'organization_id', command_org_id,
+           'actor_id', command_actor_id,
+           'operation', command_operation,
+           'idempotency_key', command_idempotency_key,
+           'request_digest', command_request_digest,
+           'natural_key', command_natural_key,
+           'receipt_id', command_receipt_id,
+           'generation', command_generation,
+           'claim_token', command_claim_token,
+           'claimant_request_id', command_claimant_request_id
+       )
+       OR request IS DISTINCT FROM jsonb_build_object(
+           'object_ids', request->'object_ids',
+           'response', request->'response',
+           'outbox_events', request->'outbox_events'
+       )
+       OR jsonb_typeof(request->'object_ids') <> 'object'
+       OR jsonb_typeof(request->'response') <> 'object'
+       OR jsonb_typeof(request->'outbox_events') <> 'array' THEN
+        RAISE EXCEPTION 'command envelope fields are invalid' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT existing.* INTO receipt
+      FROM public.command_idempotency_records AS existing
+     WHERE existing.id = command_receipt_id
+       AND existing.organization_id = command_org_id
+       AND existing.actor_id = command_actor_id
+       AND existing.operation = command_operation
+       AND existing.idempotency_key = command_idempotency_key
+       AND existing.request_digest = command_request_digest
+       AND existing.natural_key = command_natural_key
+       AND existing.status = 'in_progress'
+       AND existing.lease_generation = command_generation
+       AND existing.claim_token = command_claim_token
+       AND existing.claimant_request_id = command_claimant_request_id
+       AND existing.lease_expires_at > clock_timestamp()
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'command envelope live fence is invalid' USING ERRCODE = '40001';
+    END IF;
+
+    SELECT existing.* INTO materialisation
+      FROM public.command_materialisations AS existing
+     WHERE existing.organization_id = command_org_id
+       AND existing.operation = command_operation
+       AND existing.natural_key = command_natural_key;
+    IF FOUND THEN
+        IF materialisation.actor_id IS DISTINCT FROM command_actor_id
+           OR materialisation.request_digest IS DISTINCT FROM command_request_digest
+           OR materialisation.receipt_id IS DISTINCT FROM command_receipt_id
+           OR materialisation.receipt_generation > command_generation
+           OR materialisation.object_ids::jsonb IS DISTINCT FROM request->'object_ids'
+           OR materialisation.response_json::jsonb IS DISTINCT FROM request->'response'
+           OR materialisation.outbox_events::jsonb IS DISTINCT FROM request->'outbox_events' THEN
+            RAISE EXCEPTION 'command materialisation identity mismatch'
+                USING ERRCODE = '23505';
+        END IF;
+    ELSE
+        INSERT INTO public.command_materialisations (
+            organization_id, actor_id, operation, natural_key, request_digest,
+            receipt_id, receipt_generation, object_ids, response_json, outbox_events
+        ) VALUES (
+            command_org_id, command_actor_id, command_operation, command_natural_key,
+            command_request_digest, command_receipt_id, command_generation,
+            request->'object_ids', request->'response', request->'outbox_events'
+        );
+    END IF;
+
+    SELECT existing.* INTO result
+      FROM public.operation_results AS existing
+     WHERE existing.organization_id = command_org_id
+       AND existing.operation = command_operation
+       AND existing.natural_key = command_natural_key;
+    IF FOUND THEN
+        IF result.actor_id IS DISTINCT FROM command_actor_id
+           OR result.request_digest IS DISTINCT FROM command_request_digest
+           OR result.receipt_id IS DISTINCT FROM command_receipt_id
+           OR result.receipt_generation > command_generation
+           OR result.object_ids::jsonb IS DISTINCT FROM request->'object_ids'
+           OR result.response_json::jsonb IS DISTINCT FROM request->'response' THEN
+            RAISE EXCEPTION 'operation result identity mismatch' USING ERRCODE = '23505';
+        END IF;
+        result_id := result.id;
+    ELSE
+        INSERT INTO public.operation_results (
+            organization_id, actor_id, operation, natural_key, request_digest,
+            receipt_id, receipt_generation, object_ids, response_json
+        ) VALUES (
+            command_org_id, command_actor_id, command_operation, command_natural_key,
+            command_request_digest, command_receipt_id, command_generation,
+            request->'object_ids', request->'response'
+        ) RETURNING id INTO result_id;
+    END IF;
+
+    FOR event_document, event_ordinal IN
+        SELECT item.value, item.ordinality - 1
+          FROM jsonb_array_elements(request->'outbox_events')
+               WITH ORDINALITY AS item(value, ordinality)
+         ORDER BY item.ordinality
+    LOOP
+        IF event_document IS DISTINCT FROM jsonb_build_object(
+               'event_id', event_document->>'event_id',
+               'event_type', event_document->>'event_type',
+               'payload', event_document->'payload'
+           )
+           OR coalesce(event_document->>'event_type', '') = ''
+           OR jsonb_typeof(event_document->'payload') <> 'object' THEN
+            RAISE EXCEPTION 'outbox event document is invalid' USING ERRCODE = '22023';
+        END IF;
+        BEGIN
+            IF (event_document->>'event_id')::uuid::text
+               IS DISTINCT FROM event_document->>'event_id' THEN
+                RAISE EXCEPTION 'outbox event id is noncanonical';
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION 'outbox event document is invalid'
+                USING ERRCODE = '22023';
+        END;
+        SELECT existing.* INTO existing_event
+          FROM public.transformation_outbox_events AS existing
+         WHERE existing.operation_result_id = result_id
+           AND existing.ordinal = event_ordinal;
+        IF FOUND THEN
+            IF existing_event.organization_id IS DISTINCT FROM command_org_id
+               OR existing_event.event_id IS DISTINCT FROM event_document->>'event_id'
+               OR existing_event.event_type IS DISTINCT FROM event_document->>'event_type'
+               OR existing_event.payload_json::jsonb IS DISTINCT FROM event_document->'payload' THEN
+                RAISE EXCEPTION 'operation outbox materialisation mismatch'
+                    USING ERRCODE = '23505';
+            END IF;
+        ELSE
+            INSERT INTO public.transformation_outbox_events (
+                organization_id, operation_result_id, event_id, ordinal,
+                event_type, payload_json
+            ) VALUES (
+                command_org_id, result_id, event_document->>'event_id', event_ordinal,
+                event_document->>'event_type', event_document->'payload'
+            );
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM public.transformation_outbox_events AS existing
+         WHERE existing.operation_result_id = result_id)
+       <> jsonb_array_length(request->'outbox_events') THEN
+        RAISE EXCEPTION 'operation outbox materialisation mismatch'
+            USING ERRCODE = '23505';
+    END IF;
+    RETURN result_id;
+END;
+$$
+"""
+
+
+_REPAIR_COMMAND_ENVELOPE_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_repair_command_envelope(
+    p_claim_document text,
+    p_claim_capability text,
+    p_operation_result_id bigint
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    document jsonb;
+    command_org_id bigint;
+    command_actor_id bigint;
+    command_operation text;
+    command_idempotency_key text;
+    command_request_digest text;
+    command_natural_key text;
+    command_claim_token text;
+    command_claimant_request_id text;
+    lease_milliseconds integer;
+    receipt record;
+    result record;
+    materialisation record;
+    event_document jsonb;
+    event_ordinal bigint;
+    existing_event record;
+    event_documents jsonb;
+    normalized_events jsonb;
+    supplied_event_id text;
+BEGIN
+    document := public.archie_verify_command_capability(
+        p_claim_document,
+        p_claim_capability,
+        'transformation-command-claim-r1'
+    );
+    BEGIN
+        command_org_id := (document->>'organization_id')::bigint;
+        command_actor_id := (document->>'actor_id')::bigint;
+        command_operation := document->>'operation';
+        command_idempotency_key := document->>'idempotency_key';
+        command_request_digest := document->>'request_digest';
+        command_natural_key := document->>'natural_key';
+        command_claim_token := document->>'claim_token';
+        command_claimant_request_id := document->>'claimant_request_id';
+        lease_milliseconds := (document->>'lease_milliseconds')::integer;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'command repair capability fields are invalid'
+            USING ERRCODE = '42501';
+    END;
+    IF document IS DISTINCT FROM jsonb_build_object(
+           'schema_version', 'transformation-command-claim-r1',
+           'key_id', document->>'key_id',
+           'organization_id', command_org_id,
+           'actor_id', command_actor_id,
+           'operation', command_operation,
+           'idempotency_key', command_idempotency_key,
+           'request_digest', command_request_digest,
+           'natural_key', command_natural_key,
+           'claim_token', command_claim_token,
+           'claimant_request_id', command_claimant_request_id,
+           'lease_milliseconds', lease_milliseconds
+       ) THEN
+        RAISE EXCEPTION 'command repair capability fields are invalid'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT existing.* INTO receipt
+      FROM public.command_idempotency_records AS existing
+     WHERE existing.organization_id = command_org_id
+       AND existing.actor_id = command_actor_id
+       AND existing.operation = command_operation
+       AND existing.idempotency_key = command_idempotency_key
+       AND existing.request_digest = command_request_digest
+       AND existing.natural_key = command_natural_key
+       AND existing.status = 'succeeded'
+       AND existing.operation_result_id = p_operation_result_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'command repair receipt identity mismatch'
+            USING ERRCODE = '55000';
+    END IF;
+    SELECT existing.* INTO result
+      FROM public.operation_results AS existing
+     WHERE existing.id = p_operation_result_id
+       AND existing.organization_id = command_org_id
+       AND existing.actor_id = command_actor_id
+       AND existing.operation = command_operation
+       AND existing.natural_key = command_natural_key
+       AND existing.request_digest = command_request_digest
+       AND existing.receipt_id = receipt.id
+       AND existing.receipt_generation = receipt.lease_generation;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'operation result repair identity mismatch'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT existing.* INTO materialisation
+      FROM public.command_materialisations AS existing
+     WHERE existing.organization_id = command_org_id
+       AND existing.operation = command_operation
+       AND existing.natural_key = command_natural_key;
+    IF NOT FOUND THEN
+        SELECT coalesce(
+                   jsonb_agg(
+                       jsonb_build_object(
+                           'event_id', existing.event_id,
+                           'event_type', existing.event_type,
+                           'payload', existing.payload_json::jsonb
+                       ) ORDER BY existing.ordinal
+                   ),
+                   '[]'::jsonb
+               )
+          INTO event_documents
+          FROM public.transformation_outbox_events AS existing
+         WHERE existing.organization_id = command_org_id
+           AND existing.operation_result_id = result.id;
+        IF EXISTS (
+            SELECT 1
+              FROM public.transformation_outbox_events AS existing
+             WHERE existing.organization_id = command_org_id
+               AND existing.operation_result_id = result.id
+               AND existing.ordinal <> (
+                   SELECT count(*)
+                     FROM public.transformation_outbox_events AS preceding
+                    WHERE preceding.organization_id = command_org_id
+                      AND preceding.operation_result_id = result.id
+                      AND preceding.ordinal < existing.ordinal
+               )
+        ) THEN
+            RAISE EXCEPTION 'operation outbox materialisation mismatch'
+                USING ERRCODE = '23505';
+        END IF;
+        PERFORM set_config('archie.signed_envelope_repair', 'on', TRUE);
+        INSERT INTO public.command_materialisations (
+            organization_id, actor_id, operation, natural_key, request_digest,
+            receipt_id, receipt_generation, object_ids, response_json, outbox_events
+        ) VALUES (
+            command_org_id, command_actor_id, command_operation, command_natural_key,
+            command_request_digest, receipt.id, receipt.lease_generation,
+            result.object_ids, result.response_json, event_documents
+        );
+        PERFORM set_config('archie.signed_envelope_repair', 'off', TRUE);
+    ELSE
+        IF materialisation.actor_id IS DISTINCT FROM command_actor_id
+           OR materialisation.request_digest IS DISTINCT FROM command_request_digest
+           OR materialisation.receipt_id IS DISTINCT FROM receipt.id
+           OR materialisation.receipt_generation IS DISTINCT FROM receipt.lease_generation
+           OR materialisation.object_ids::jsonb IS DISTINCT FROM result.object_ids::jsonb
+           OR materialisation.response_json::jsonb IS DISTINCT FROM result.response_json::jsonb
+           OR jsonb_typeof(materialisation.outbox_events::jsonb) <> 'array' THEN
+            RAISE EXCEPTION 'operation result materialisation mismatch'
+                USING ERRCODE = '23505';
+        END IF;
+        event_documents := materialisation.outbox_events::jsonb;
+    END IF;
+
+    normalized_events := '[]'::jsonb;
+    FOR event_document, event_ordinal IN
+        SELECT item.value, item.ordinality - 1
+          FROM jsonb_array_elements(event_documents)
+               WITH ORDINALITY AS item(value, ordinality)
+         ORDER BY item.ordinality
+    LOOP
+        IF event_document - 'event_id' IS DISTINCT FROM jsonb_build_object(
+               'event_type', event_document->'event_type',
+               'payload', event_document->'payload'
+           )
+           OR coalesce(event_document->>'event_type', '') = ''
+           OR jsonb_typeof(event_document->'payload') <> 'object' THEN
+            RAISE EXCEPTION 'outbox event document is invalid'
+                USING ERRCODE = '22023';
+        END IF;
+        supplied_event_id := event_document->>'event_id';
+        SELECT existing.* INTO existing_event
+          FROM public.transformation_outbox_events AS existing
+         WHERE existing.operation_result_id = result.id
+           AND existing.ordinal = event_ordinal;
+        IF supplied_event_id IS NULL THEN
+            IF NOT FOUND
+               OR existing_event.organization_id IS DISTINCT FROM command_org_id
+               OR existing_event.event_type IS DISTINCT FROM event_document->>'event_type'
+               OR existing_event.payload_json::jsonb IS DISTINCT FROM event_document->'payload' THEN
+                RAISE EXCEPTION 'operation outbox materialisation mismatch'
+                    USING ERRCODE = '23505';
+            END IF;
+            supplied_event_id := existing_event.event_id;
+        END IF;
+        BEGIN
+            IF supplied_event_id::uuid::text IS DISTINCT FROM supplied_event_id THEN
+                RAISE EXCEPTION 'outbox event id is noncanonical';
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION 'outbox event document is invalid'
+                USING ERRCODE = '22023';
+        END;
+        normalized_events := normalized_events || jsonb_build_array(
+            jsonb_build_object(
+                'event_id', supplied_event_id,
+                'event_type', event_document->>'event_type',
+                'payload', event_document->'payload'
+            )
+        );
+        IF FOUND THEN
+            IF existing_event.organization_id IS DISTINCT FROM command_org_id
+               OR existing_event.event_id IS DISTINCT FROM supplied_event_id
+               OR existing_event.event_type IS DISTINCT FROM event_document->>'event_type'
+               OR existing_event.payload_json::jsonb IS DISTINCT FROM event_document->'payload' THEN
+                RAISE EXCEPTION 'operation outbox materialisation mismatch'
+                    USING ERRCODE = '23505';
+            END IF;
+        ELSE
+            PERFORM set_config('archie.signed_envelope_repair', 'on', TRUE);
+            INSERT INTO public.transformation_outbox_events (
+                organization_id, operation_result_id, event_id, ordinal,
+                event_type, payload_json
+            ) VALUES (
+                command_org_id, result.id, supplied_event_id, event_ordinal,
+                event_document->>'event_type', event_document->'payload'
+            );
+            PERFORM set_config('archie.signed_envelope_repair', 'off', TRUE);
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM public.transformation_outbox_events AS existing
+         WHERE existing.operation_result_id = result.id)
+       <> jsonb_array_length(event_documents) THEN
+        RAISE EXCEPTION 'operation outbox materialisation mismatch'
+            USING ERRCODE = '23505';
+    END IF;
+    IF normalized_events IS DISTINCT FROM event_documents THEN
+        PERFORM set_config('archie.signed_envelope_repair', 'on', TRUE);
+        UPDATE public.command_materialisations
+           SET outbox_events = normalized_events
+         WHERE id = materialisation.id;
+        PERFORM set_config('archie.signed_envelope_repair', 'off', TRUE);
+    END IF;
+    RETURN result.id;
+END;
+$$
+"""
+
+
+_OVERLAP_DISPOSITION_INSERT_GUARD_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_guard_overlap_disposition_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    candidate record;
+    signal record;
+BEGIN
+    SELECT existing.* INTO candidate
+      FROM public.transformation_candidates AS existing
+     WHERE existing.id = NEW.candidate_id
+       AND existing.organization_id = NEW.organization_id
+       AND existing.subject_type = 'application';
+    IF NOT FOUND
+       OR NOT EXISTS (
+           SELECT 1
+             FROM public.application_components AS application
+            WHERE application.id = candidate.subject_id
+              AND application.organization_id = NEW.organization_id
+              AND application.deleted_at IS NULL
+       )
+       OR NOT EXISTS (
+           SELECT 1
+             FROM public.users AS decider
+            WHERE decider.id = NEW.decided_by_id
+              AND decider.organization_id = NEW.organization_id
+       )
+       OR NOT EXISTS (
+           SELECT 1
+             FROM public.command_idempotency_records AS receipt
+            WHERE receipt.id = NEW.command_receipt_id
+              AND receipt.organization_id = NEW.organization_id
+              AND receipt.actor_id = NEW.decided_by_id
+              AND receipt.operation = 'candidate.accept'
+              AND receipt.natural_key =
+                  'candidate:' || candidate.workstream_id::text ||
+                  ':application:' || candidate.subject_id::text
+              AND receipt.status = 'in_progress'
+              AND receipt.lease_generation = NEW.command_generation
+              AND receipt.claim_token IS NOT NULL
+              AND receipt.lease_expires_at > clock_timestamp()
+       ) THEN
+        RAISE EXCEPTION 'overlap disposition is outside its live command fence'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT existing.* INTO signal
+      FROM public.candidate_signals AS existing
+     WHERE existing.organization_id = NEW.organization_id
+       AND existing.candidate_id = NEW.candidate_id
+       AND existing.rule_code = 'capability_overlap'
+       AND existing.content_hash = NEW.signal_digest;
+    IF NOT FOUND
+       OR jsonb_typeof(NEW.overlapping_application_ids::jsonb) <> 'array'
+       OR jsonb_array_length(NEW.overlapping_application_ids::jsonb) = 0
+       OR signal.payload_json::jsonb->'observed_values'->'overlapping_application_ids'
+          IS DISTINCT FROM NEW.overlapping_application_ids::jsonb
+       OR EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements_text(
+                      NEW.overlapping_application_ids::jsonb
+                  ) AS overlap(application_id)
+            WHERE overlap.application_id !~ '^[1-9][0-9]*$'
+               OR NOT EXISTS (
+                   SELECT 1
+                     FROM public.application_components AS application
+                    WHERE application.id = overlap.application_id::bigint
+                      AND application.organization_id = NEW.organization_id
+                      AND application.deleted_at IS NULL
+               )
+       )
+       OR (
+           NEW.target_application_id IS NOT NULL
+           AND (
+               NOT (NEW.overlapping_application_ids::jsonb @>
+                    jsonb_build_array(NEW.target_application_id))
+               OR NOT EXISTS (
+                   SELECT 1
+                     FROM public.application_components AS target
+                    WHERE target.id = NEW.target_application_id
+                      AND target.organization_id = NEW.organization_id
+                      AND target.deleted_at IS NULL
+               )
+           )
+       ) THEN
+        RAISE EXCEPTION 'overlap disposition candidate or signal binding is invalid'
+            USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$
+"""
+
+
+_PERSIST_OVERLAP_DISPOSITION_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_persist_overlap_disposition(
+    p_capability_document text,
+    p_capability text,
+    p_request_document text
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    capability jsonb;
+    request jsonb;
+    command_org_id bigint;
+    command_actor_id bigint;
+    command_operation text;
+    command_idempotency_key text;
+    command_request_digest text;
+    command_natural_key text;
+    command_receipt_id bigint;
+    command_generation integer;
+    command_claim_token text;
+    command_claimant_request_id text;
+    requested_candidate_id bigint;
+    requested_target_application_id bigint;
+    decided_at timestamptz;
+    existing_disposition record;
+    disposition_id bigint;
+BEGIN
+    capability := public.archie_verify_command_capability(
+        p_capability_document,
+        p_capability,
+        'transformation-command-execution-r1'
+    );
+    BEGIN
+        command_org_id := (capability->>'organization_id')::bigint;
+        command_actor_id := (capability->>'actor_id')::bigint;
+        command_operation := capability->>'operation';
+        command_idempotency_key := capability->>'idempotency_key';
+        command_request_digest := capability->>'request_digest';
+        command_natural_key := capability->>'natural_key';
+        command_receipt_id := (capability->>'receipt_id')::bigint;
+        command_generation := (capability->>'generation')::integer;
+        command_claim_token := capability->>'claim_token';
+        command_claimant_request_id := capability->>'claimant_request_id';
+        request := p_request_document::jsonb;
+        requested_candidate_id := (request->>'candidate_id')::bigint;
+        requested_target_application_id := CASE
+            WHEN request->'target_application_id' = 'null'::jsonb THEN NULL
+            ELSE (request->>'target_application_id')::bigint
+        END;
+        decided_at := (request->>'decided_at')::timestamptz;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'overlap disposition fields are invalid'
+            USING ERRCODE = '42501';
+    END;
+    IF capability IS DISTINCT FROM jsonb_build_object(
+           'schema_version', 'transformation-command-execution-r1',
+           'key_id', capability->>'key_id',
+           'organization_id', command_org_id,
+           'actor_id', command_actor_id,
+           'operation', command_operation,
+           'idempotency_key', command_idempotency_key,
+           'request_digest', command_request_digest,
+           'natural_key', command_natural_key,
+           'receipt_id', command_receipt_id,
+           'generation', command_generation,
+           'claim_token', command_claim_token,
+           'claimant_request_id', command_claimant_request_id
+       )
+       OR request IS DISTINCT FROM jsonb_build_object(
+           'candidate_id', requested_candidate_id,
+           'signal_digest', request->>'signal_digest',
+           'decision', request->>'decision',
+           'overlapping_application_ids', request->'overlapping_application_ids',
+           'rationale', request->>'rationale',
+           'target_application_id', requested_target_application_id,
+           'decided_at', request->>'decided_at'
+       )
+       OR command_operation <> 'candidate.accept'
+       OR requested_candidate_id <= 0
+       OR length(request->>'signal_digest') <> 64
+       OR request->>'decision' NOT IN (
+           'confirmed_duplicate', 'justified_distinct', 'merge_repoint'
+       )
+       OR length(btrim(request->>'rationale')) = 0
+       OR jsonb_typeof(request->'overlapping_application_ids') <> 'array'
+       OR jsonb_array_length(request->'overlapping_application_ids') = 0
+       OR decided_at > clock_timestamp()
+       OR (
+           request->>'decision' IN ('confirmed_duplicate', 'merge_repoint')
+           AND requested_target_application_id IS NULL
+       ) THEN
+        RAISE EXCEPTION 'overlap disposition fields are invalid'
+            USING ERRCODE = '42501';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+          FROM public.command_idempotency_records AS receipt
+         WHERE receipt.id = command_receipt_id
+           AND receipt.organization_id = command_org_id
+           AND receipt.actor_id = command_actor_id
+           AND receipt.operation = command_operation
+           AND receipt.idempotency_key = command_idempotency_key
+           AND receipt.request_digest = command_request_digest
+           AND receipt.natural_key = command_natural_key
+           AND receipt.status = 'in_progress'
+           AND receipt.lease_generation = command_generation
+           AND receipt.claim_token = command_claim_token
+           AND receipt.claimant_request_id = command_claimant_request_id
+           AND receipt.lease_expires_at > clock_timestamp()
+         FOR UPDATE
+    ) THEN
+        RAISE EXCEPTION 'overlap disposition live fence is invalid'
+            USING ERRCODE = '40001';
+    END IF;
+
+    SELECT existing.* INTO existing_disposition
+     FROM public.candidate_overlap_dispositions AS existing
+     WHERE existing.organization_id = command_org_id
+       AND existing.candidate_id = requested_candidate_id;
+    IF FOUND THEN
+        IF existing_disposition.signal_digest IS DISTINCT FROM request->>'signal_digest'
+           OR existing_disposition.decision IS DISTINCT FROM request->>'decision'
+           OR existing_disposition.overlapping_application_ids::jsonb
+              IS DISTINCT FROM request->'overlapping_application_ids'
+           OR existing_disposition.rationale IS DISTINCT FROM request->>'rationale'
+           OR existing_disposition.target_application_id
+              IS DISTINCT FROM requested_target_application_id
+           OR existing_disposition.decided_by_id IS DISTINCT FROM command_actor_id
+           OR existing_disposition.command_receipt_id IS DISTINCT FROM command_receipt_id
+           OR existing_disposition.command_generation IS DISTINCT FROM command_generation
+           OR existing_disposition.decided_at IS DISTINCT FROM decided_at THEN
+            RAISE EXCEPTION 'overlap disposition materialisation mismatch'
+                USING ERRCODE = '23505';
+        END IF;
+        RETURN existing_disposition.id;
+    END IF;
+    INSERT INTO public.candidate_overlap_dispositions (
+        organization_id, candidate_id, signal_digest, decision,
+        overlapping_application_ids, rationale, target_application_id,
+        decided_by_id, command_receipt_id, command_generation, decided_at
+    ) VALUES (
+        command_org_id, requested_candidate_id, request->>'signal_digest', request->>'decision',
+        request->'overlapping_application_ids', request->>'rationale',
+        requested_target_application_id, command_actor_id, command_receipt_id,
+        command_generation, decided_at
+    ) RETURNING id INTO disposition_id;
+    RETURN disposition_id;
+END;
+$$
+"""
+
+
 _IMMUTABILITY_FUNCTION_SQL = r"""
 CREATE OR REPLACE FUNCTION public.archie_reject_transformation_mutation()
 RETURNS trigger
@@ -331,6 +1093,9 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 BEGIN
+    IF current_setting('archie.signed_envelope_repair', TRUE) = 'on' THEN
+        RETURN NEW;
+    END IF;
     IF TG_TABLE_NAME = 'transformation_outbox_events' AND TG_OP = 'UPDATE' THEN
         IF NEW.id = OLD.id
            AND NEW.organization_id = OLD.organization_id
@@ -2320,6 +3085,14 @@ $$
 
 _FUNCTION_SPECS = (
     (
+        "archie_guard_command_envelope_insert",
+        _COMMAND_ENVELOPE_INSERT_GUARD_SQL,
+    ),
+    (
+        "archie_guard_overlap_disposition_insert",
+        _OVERLAP_DISPOSITION_INSERT_GUARD_SQL,
+    ),
+    (
         "archie_reject_transformation_mutation",
         _IMMUTABILITY_FUNCTION_SQL,
     ),
@@ -2330,6 +3103,26 @@ _FUNCTION_SPECS = (
     ("archie_guard_transformation_receipt", _RECEIPT_FUNCTION_SQL),
     ("archie_guard_evidence_head", _EVIDENCE_HEAD_GUARD_SQL),
     ("archie_guard_evidence_event_binding", _EVIDENCE_EVENT_BINDING_SQL),
+)
+
+_COMMAND_ENVELOPE_INSERT_TRIGGER_SPECS = (
+    (
+        "command_materialisations",
+        "trg_command_materialisation_insert_guard",
+    ),
+    (
+        "operation_results",
+        "trg_transformation_result_insert_guard",
+    ),
+    (
+        "transformation_outbox_events",
+        "trg_transformation_outbox_insert_guard",
+    ),
+)
+
+_OVERLAP_DISPOSITION_INSERT_TRIGGER_SPEC = (
+    "candidate_overlap_dispositions",
+    "trg_candidate_overlap_disposition_insert_guard",
 )
 
 _TRIGGER_SPECS = (
@@ -2577,6 +3370,24 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             "jsonb",
         ),
         ("archie_claim_transformation_command", _CLAIM_COMMAND_SQL, 2, "record"),
+        (
+            "archie_persist_command_envelope",
+            _PERSIST_COMMAND_ENVELOPE_SQL,
+            3,
+            "bigint",
+        ),
+        (
+            "archie_persist_overlap_disposition",
+            _PERSIST_OVERLAP_DISPOSITION_SQL,
+            3,
+            "bigint",
+        ),
+        (
+            "archie_repair_command_envelope",
+            _REPAIR_COMMAND_ENVELOPE_SQL,
+            3,
+            "bigint",
+        ),
         ("archie_create_decision_brief", _DECISION_BRIEF_CREATE_SQL, 3, "record"),
     ):
         row = connection.exec_driver_sql(
@@ -2691,6 +3502,49 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             drift.append(f"trigger_when:{trigger_name}")
         if row.update_columns:
             drift.append(f"trigger_columns:{trigger_name}")
+
+    insert_guard_specs = (
+        *(
+            (table_name, trigger_name, "archie_guard_command_envelope_insert")
+            for table_name, trigger_name in _COMMAND_ENVELOPE_INSERT_TRIGGER_SPECS
+        ),
+        (*_OVERLAP_DISPOSITION_INSERT_TRIGGER_SPEC,
+         "archie_guard_overlap_disposition_insert"),
+    )
+    for table_name, trigger_name, expected_function in insert_guard_specs:
+        qualified_table = _qualified_name(connection, quoted_schema, table_name)
+        if not connection.exec_driver_sql(
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
+        ).scalar():
+            continue
+        row = connection.exec_driver_sql(
+            """
+            SELECT trigger.tgenabled, trigger.tgtype,
+                   trigger.tgqual IS NOT NULL AS has_when,
+                   trigger.tgattr::text AS update_columns,
+                   namespace.nspname AS function_schema,
+                   proc.proname AS function_name
+            FROM pg_trigger trigger
+            JOIN pg_proc proc ON proc.oid = trigger.tgfoid
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE trigger.tgname = %s
+              AND trigger.tgrelid = to_regclass(%s)
+              AND NOT trigger.tgisinternal
+            """,
+            (trigger_name, qualified_table),
+        ).first()
+        if row is None:
+            drift.append(f"trigger_missing:{trigger_name}")
+            continue
+        if (
+            row.tgenabled != "O"
+            or row.tgtype != 7
+            or row.has_when
+            or row.update_columns
+            or row.function_schema != schema
+            or row.function_name != expected_function
+        ):
+            drift.append(f"trigger_shape:{trigger_name}")
 
     for table_name, trigger_name in _CITATION_INSERT_TRIGGER_SPECS:
         qualified_table = _qualified_name(connection, quoted_schema, table_name)
@@ -2836,6 +3690,60 @@ def _repair_triggers(connection, schema: str, quoted_schema: str) -> None:
             f"EXECUTE FUNCTION {qualified_function}()"
         )
 
+    insert_guard_specs = (
+        *(
+            (table_name, trigger_name, "archie_guard_command_envelope_insert")
+            for table_name, trigger_name in _COMMAND_ENVELOPE_INSERT_TRIGGER_SPECS
+        ),
+        (*_OVERLAP_DISPOSITION_INSERT_TRIGGER_SPEC,
+         "archie_guard_overlap_disposition_insert"),
+    )
+    for table_name, trigger_name, expected_function in insert_guard_specs:
+        qualified_table = _qualified_name(connection, quoted_schema, table_name)
+        qualified_function = _qualified_name(
+            connection, quoted_schema, expected_function
+        )
+        quoted_trigger = connection.dialect.identifier_preparer.quote(trigger_name)
+        if not connection.exec_driver_sql(
+            "SELECT to_regclass(%s) IS NOT NULL", (qualified_table,)
+        ).scalar():
+            continue
+        row = connection.exec_driver_sql(
+            """
+            SELECT trigger.tgenabled, trigger.tgtype,
+                   trigger.tgqual IS NOT NULL AS has_when,
+                   trigger.tgattr::text AS update_columns,
+                   namespace.nspname AS function_schema,
+                   proc.proname AS function_name
+            FROM pg_trigger trigger
+            JOIN pg_proc proc ON proc.oid = trigger.tgfoid
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE trigger.tgname = %s
+              AND trigger.tgrelid = to_regclass(%s)
+              AND NOT trigger.tgisinternal
+            """,
+            (trigger_name, qualified_table),
+        ).first()
+        correct = (
+            row is not None
+            and row.tgenabled == "O"
+            and row.tgtype == 7
+            and not row.has_when
+            and not row.update_columns
+            and row.function_schema == schema
+            and row.function_name == expected_function
+        )
+        if correct:
+            continue
+        connection.exec_driver_sql(
+            f"DROP TRIGGER IF EXISTS {quoted_trigger} ON {qualified_table}"
+        )
+        connection.exec_driver_sql(
+            f"CREATE TRIGGER {quoted_trigger} "
+            f"BEFORE INSERT ON {qualified_table} FOR EACH ROW "
+            f"EXECUTE FUNCTION {qualified_function}()"
+        )
+
     for table_name, trigger_name in _CITATION_INSERT_TRIGGER_SPECS:
         qualified_table = _qualified_name(connection, quoted_schema, table_name)
         qualified_function = _qualified_name(
@@ -2970,6 +3878,11 @@ def ensure_transformation_db_guards(
         _HMAC_SHA256_FUNCTION_SQL,
         _VERIFY_COMMAND_CAPABILITY_SQL,
         _CLAIM_COMMAND_SQL,
+        _COMMAND_ENVELOPE_INSERT_GUARD_SQL,
+        _PERSIST_COMMAND_ENVELOPE_SQL,
+        _REPAIR_COMMAND_ENVELOPE_SQL,
+        _OVERLAP_DISPOSITION_INSERT_GUARD_SQL,
+        _PERSIST_OVERLAP_DISPOSITION_SQL,
         _IMMUTABILITY_FUNCTION_SQL,
         _DECISION_CITATION_MEMBERSHIP_SQL,
         _DECISION_BRIEF_CREATE_SQL,
@@ -2983,6 +3896,8 @@ def ensure_transformation_db_guards(
             _render_guard_sql(connection, create_sql, quoted_schema)
         )
     trigger_functions = (
+        "archie_guard_command_envelope_insert",
+        "archie_guard_overlap_disposition_insert",
         "archie_reject_transformation_mutation",
         "archie_guard_decision_citation_membership",
         "archie_guard_transformation_receipt",
@@ -3014,6 +3929,15 @@ def ensure_transformation_db_guards(
     qualified_claim = _qualified_name(
         connection, quoted_schema, "archie_claim_transformation_command"
     )
+    qualified_persist_envelope = _qualified_name(
+        connection, quoted_schema, "archie_persist_command_envelope"
+    )
+    qualified_repair_envelope = _qualified_name(
+        connection, quoted_schema, "archie_repair_command_envelope"
+    )
+    qualified_persist_overlap = _qualified_name(
+        connection, quoted_schema, "archie_persist_overlap_disposition"
+    )
     advance_signature = (
         "bigint, bigint, integer, bigint, bigint, integer, text"
     )
@@ -3031,6 +3955,18 @@ def ensure_transformation_db_guards(
     )
     connection.exec_driver_sql(
         f"REVOKE ALL ON FUNCTION {qualified_claim}({claim_signature}) FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON FUNCTION {qualified_persist_envelope}(text, text, text) "
+        "FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON FUNCTION {qualified_repair_envelope}(text, text, bigint) "
+        "FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON FUNCTION {qualified_persist_overlap}(text, text, text) "
+        "FROM PUBLIC"
     )
     connection.exec_driver_sql(
         f"REVOKE ALL ON FUNCTION {qualified_advance}({advance_signature}) FROM PUBLIC"
