@@ -104,16 +104,17 @@ def _runtime_membership_snapshot(
     return outbound_roles, direct_inbound_roles, transitive_inbound_roles
 
 
-def _rehome_dependent_membership_grants(
-    cursor, *, grantor_role_names: tuple[str, ...]
-) -> tuple[tuple[str, str, bool, bool, bool], ...]:
-    """Duplicate dependent grants under the bootstrap administrator."""
-    if not grantor_role_names:
+def _pg16_membership_grant_snapshot(
+    cursor,
+) -> tuple[tuple[str, str, str, bool, bool, bool], ...]:
+    """Return the exact PG16 membership graph, or nothing on older servers."""
+    if cursor.connection.server_version < 160_000:
         return ()
     cursor.execute(
         """
         SELECT granted.rolname,
                member.rolname,
+               grantor.rolname,
                membership.admin_option,
                membership.inherit_option,
                membership.set_option
@@ -121,12 +122,40 @@ def _rehome_dependent_membership_grants(
         JOIN pg_roles granted ON granted.oid = membership.roleid
         JOIN pg_roles member ON member.oid = membership.member
         JOIN pg_roles grantor ON grantor.oid = membership.grantor
-        WHERE grantor.rolname = ANY(%s)
         ORDER BY granted.rolname, member.rolname, grantor.rolname
-        """,
-        (list(grantor_role_names),),
+        """
     )
-    dependent_grants = tuple(cursor.fetchall())
+    return tuple(cursor.fetchall())
+
+
+def _removed_membership_grants(
+    *,
+    before: tuple[tuple[str, str, str, bool, bool, bool], ...],
+    after: tuple[tuple[str, str, str, bool, bool, bool], ...],
+    runtime_role: str,
+) -> tuple[tuple[str, str, bool, bool, bool], ...]:
+    """Return non-runtime membership states actually removed by CASCADE."""
+    surviving_states = {
+        (granted_role, member_role, admin, inherit, can_set)
+        for granted_role, member_role, _grantor, admin, inherit, can_set in after
+    }
+    removed_states = (
+        (granted_role, member_role, admin, inherit, can_set)
+        for granted_role, member_role, _grantor, admin, inherit, can_set in before
+        if granted_role != runtime_role
+        and member_role != runtime_role
+        and (granted_role, member_role, admin, inherit, can_set)
+        not in surviving_states
+    )
+    return tuple(dict.fromkeys(removed_states))
+
+
+def _rehome_dependent_membership_grants(
+    cursor,
+    *,
+    dependent_grants: tuple[tuple[str, str, bool, bool, bool], ...],
+) -> None:
+    """Restore only grants proven removed by a PostgreSQL 16 CASCADE."""
     for granted_role, member_role, admin, inherit, can_set in dependent_grants:
         cursor.execute(
             sql.SQL(
@@ -140,45 +169,12 @@ def _rehome_dependent_membership_grants(
                 sql.SQL("TRUE" if can_set else "FALSE"),
             )
         )
-    for granted_role, member_role, admin, inherit, can_set in dependent_grants:
-        cursor.execute(
-            """
-            SELECT EXISTS (
-                SELECT 1
-                FROM pg_auth_members membership
-                JOIN pg_roles granted ON granted.oid = membership.roleid
-                JOIN pg_roles member ON member.oid = membership.member
-                JOIN pg_roles grantor ON grantor.oid = membership.grantor
-                WHERE granted.rolname = %s
-                  AND member.rolname = %s
-                  AND membership.admin_option = %s
-                  AND membership.inherit_option = %s
-                  AND membership.set_option = %s
-                  AND grantor.rolname <> ALL(%s)
-            )
-            """,
-            (
-                granted_role,
-                member_role,
-                admin,
-                inherit,
-                can_set,
-                list(grantor_role_names),
-            ),
-        )
-        if cursor.fetchone() != (True,):
-            raise RuntimeError(
-                "runtime membership dependency re-home could not be proven: "
-                f"grant={granted_role!r}, member={member_role!r}"
-            )
-    return dependent_grants
 
 
 def _verify_rehomed_membership_grants(
     cursor,
     *,
     dependent_grants: tuple[tuple[str, str, bool, bool, bool], ...],
-    former_grantor_role_names: tuple[str, ...],
 ) -> None:
     for granted_role, member_role, admin, inherit, can_set in dependent_grants:
         cursor.execute(
@@ -194,7 +190,7 @@ def _verify_rehomed_membership_grants(
                   AND membership.admin_option = %s
                   AND membership.inherit_option = %s
                   AND membership.set_option = %s
-                  AND grantor.rolname <> ALL(%s)
+                  AND grantor.rolname = current_user
             )
             """,
             (
@@ -203,7 +199,6 @@ def _verify_rehomed_membership_grants(
                 admin,
                 inherit,
                 can_set,
-                list(former_grantor_role_names),
             ),
         )
         if cursor.fetchone() != (True,):
@@ -219,11 +214,7 @@ def _strip_runtime_memberships(cursor, *, runtime_role: str) -> tuple[str, ...]:
         cursor,
         runtime_role=runtime_role,
     )
-    former_grantors = tuple(dict.fromkeys((runtime_role, *transitive_inbound)))
-    dependent_grants = _rehome_dependent_membership_grants(
-        cursor,
-        grantor_role_names=former_grantors,
-    )
+    membership_grants_before = _pg16_membership_grant_snapshot(cursor)
     for granted_role in outbound:
         cursor.execute(
             sql.SQL("REVOKE {} FROM {} CASCADE").format(
@@ -238,10 +229,19 @@ def _strip_runtime_memberships(cursor, *, runtime_role: str) -> tuple[str, ...]:
                 sql.Identifier(member_role),
             )
         )
+    membership_grants_after = _pg16_membership_grant_snapshot(cursor)
+    dependent_grants = _removed_membership_grants(
+        before=membership_grants_before,
+        after=membership_grants_after,
+        runtime_role=runtime_role,
+    )
+    _rehome_dependent_membership_grants(
+        cursor,
+        dependent_grants=dependent_grants,
+    )
     _verify_rehomed_membership_grants(
         cursor,
         dependent_grants=dependent_grants,
-        former_grantor_role_names=former_grantors,
     )
     remaining_outbound, remaining_inbound, _ = _runtime_membership_snapshot(
         cursor,

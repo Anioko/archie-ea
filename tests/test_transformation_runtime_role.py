@@ -426,6 +426,151 @@ class _SkippingConnection:
         )
 
 
+def _render_unit_sql(statement) -> str:
+    """Render the limited psycopg SQL shapes used by membership unit tests."""
+    if isinstance(statement, pg_sql.SQL):
+        return statement.string
+    if isinstance(statement, pg_sql.Identifier):
+        return ".".join(
+            f'"{part.replace(chr(34), chr(34) * 2)}"'
+            for part in statement.strings
+        )
+    if isinstance(statement, pg_sql.Composed):
+        return "".join(_render_unit_sql(part) for part in statement.seq)
+    return str(statement)
+
+
+class _MembershipShapeCursor:
+    """Exercise membership cleanup without requiring both PostgreSQL versions."""
+
+    def __init__(self, *, server_version, before=(), after=()):
+        self.connection = type(
+            "MembershipShapeConnection",
+            (),
+            {"server_version": server_version},
+        )()
+        self.executed = []
+        self._membership_snapshots = iter((before, after))
+        self._rows = []
+
+    def execute(self, statement, parameters=None):
+        rendered = _render_unit_sql(statement)
+        normalized = " ".join(rendered.upper().split())
+        self.executed.append((rendered, parameters))
+        if normalized.startswith("SELECT GRANTED.ROLNAME") and (
+            "MEMBERSHIP.INHERIT_OPTION" in normalized
+        ):
+            if "WHERE GRANTOR.ROLNAME = ANY" in normalized:
+                # The pre-fix implementation selected every grant made by a
+                # runtime-capable role, rather than observing actual CASCADE
+                # removals. Keep RED diagnostic output on that exact defect.
+                self._rows = [
+                    ("parent", "dependent", True, False, True),
+                    ("unrelated_parent", "unrelated_member", False, True, True),
+                ]
+            else:
+                self._rows = list(next(self._membership_snapshots))
+        elif normalized.startswith("SELECT EXISTS"):
+            self._rows = [(True,)]
+        else:
+            self._rows = []
+
+    def fetchall(self):
+        rows = self._rows
+        self._rows = []
+        return rows
+
+    def fetchone(self):
+        if not self._rows:
+            return None
+        return self._rows.pop(0)
+
+
+def test_pg15_membership_cleanup_omits_pg16_catalog_and_grant_syntax(monkeypatch):
+    """Catches PostgreSQL 16-only membership SQL reaching shipped PostgreSQL 15."""
+    import scripts.database.configure_roles as roles
+
+    snapshots = iter(((('parent',), (), ()), ((), (), ())))
+    monkeypatch.setattr(
+        roles,
+        "_runtime_membership_snapshot",
+        lambda cursor, *, runtime_role: next(snapshots),
+    )
+    cursor = _MembershipShapeCursor(server_version=150_018)
+
+    roles._strip_runtime_memberships(cursor, runtime_role="runtime")
+
+    statements = tuple(
+        " ".join(statement.upper().split()) for statement, _ in cursor.executed
+    )
+    assert statements == ('REVOKE "PARENT" FROM "RUNTIME" CASCADE',)
+
+
+def test_pg16_membership_cleanup_rehomes_only_actual_cascade_removals(monkeypatch):
+    """Catches unrelated grants being duplicated merely because of their grantor."""
+    import scripts.database.configure_roles as roles
+
+    snapshots = iter(
+        (
+            (("parent",), (), ("inbound",)),
+            ((), (), ()),
+        )
+    )
+    monkeypatch.setattr(
+        roles,
+        "_runtime_membership_snapshot",
+        lambda cursor, *, runtime_role: next(snapshots),
+    )
+    before = (
+        ("parent", "runtime", "bootstrap", True, False, True),
+        ("parent", "dependent", "runtime", True, False, True),
+        (
+            "unrelated_parent",
+            "unrelated_member",
+            "inbound",
+            False,
+            True,
+            True,
+        ),
+    )
+    after = (
+        (
+            "unrelated_parent",
+            "unrelated_member",
+            "inbound",
+            False,
+            True,
+            True,
+        ),
+    )
+    cursor = _MembershipShapeCursor(
+        server_version=160_000,
+        before=before,
+        after=after,
+    )
+
+    roles._strip_runtime_memberships(cursor, runtime_role="runtime")
+
+    statements = tuple(
+        " ".join(statement.upper().split()) for statement, _ in cursor.executed
+    )
+    membership_queries = tuple(
+        statement
+        for statement in statements
+        if statement.startswith("SELECT GRANTED.ROLNAME")
+    )
+    grants = tuple(
+        statement for statement in statements if statement.startswith("GRANT ")
+    )
+    assert len(membership_queries) == 2
+    assert all("MEMBERSHIP.INHERIT_OPTION" in query for query in membership_queries)
+    assert all("MEMBERSHIP.SET_OPTION" in query for query in membership_queries)
+    assert grants == (
+        'GRANT "PARENT" TO "DEPENDENT" WITH ADMIN TRUE, INHERIT FALSE, '
+        'SET TRUE GRANTED BY CURRENT_USER',
+    )
+
+
 @pytest.fixture
 def isolated_role_database():
     """Unique cluster objects are always dropped, including after test failure."""
@@ -2444,6 +2589,7 @@ def test_outbound_membership_cleanup_preserves_dependent_grants(
     runtime = None
     try:
         with maintenance.cursor() as cursor:
+            server_version_num = maintenance.server_version
             cursor.execute(
                 pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
                     pg_sql.Identifier(parent_role)
@@ -2470,14 +2616,22 @@ def test_outbound_membership_cleanup_preserves_dependent_grants(
         )
         runtime.autocommit = True
         with runtime.cursor() as cursor:
-            cursor.execute(
-                pg_sql.SQL(
-                    "GRANT {} TO {} WITH ADMIN TRUE, INHERIT FALSE, SET TRUE"
-                ).format(
-                    pg_sql.Identifier(parent_role),
-                    pg_sql.Identifier(dependent_role),
+            if server_version_num >= 160_000:
+                cursor.execute(
+                    pg_sql.SQL(
+                        "GRANT {} TO {} WITH ADMIN TRUE, INHERIT FALSE, SET TRUE"
+                    ).format(
+                        pg_sql.Identifier(parent_role),
+                        pg_sql.Identifier(dependent_role),
+                    )
                 )
-            )
+            else:
+                cursor.execute(
+                    pg_sql.SQL("GRANT {} TO {} WITH ADMIN OPTION").format(
+                        pg_sql.Identifier(parent_role),
+                        pg_sql.Identifier(dependent_role),
+                    )
+                )
         runtime.close()
         runtime = None
 
@@ -2491,18 +2645,31 @@ def test_outbound_membership_cleanup_preserves_dependent_grants(
         )
 
         with maintenance.cursor() as cursor:
-            cursor.execute(
-                "SELECT grantor.rolname, membership.admin_option, "
-                "membership.inherit_option, membership.set_option "
-                "FROM pg_auth_members membership "
-                "JOIN pg_roles granted ON granted.oid = membership.roleid "
-                "JOIN pg_roles member ON member.oid = membership.member "
-                "JOIN pg_roles grantor ON grantor.oid = membership.grantor "
-                "WHERE granted.rolname = %s AND member.rolname = %s",
-                (parent_role, dependent_role),
-            )
+            if server_version_num >= 160_000:
+                cursor.execute(
+                    "SELECT grantor.rolname, membership.admin_option, "
+                    "membership.inherit_option, membership.set_option "
+                    "FROM pg_auth_members membership "
+                    "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                    "JOIN pg_roles member ON member.oid = membership.member "
+                    "JOIN pg_roles grantor ON grantor.oid = membership.grantor "
+                    "WHERE granted.rolname = %s AND member.rolname = %s",
+                    (parent_role, dependent_role),
+                )
+                expected_grants = [("postgres", True, False, True)]
+            else:
+                cursor.execute(
+                    "SELECT grantor.rolname, membership.admin_option "
+                    "FROM pg_auth_members membership "
+                    "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                    "JOIN pg_roles member ON member.oid = membership.member "
+                    "JOIN pg_roles grantor ON grantor.oid = membership.grantor "
+                    "WHERE granted.rolname = %s AND member.rolname = %s",
+                    (parent_role, dependent_role),
+                )
+                expected_grants = [(role_database.runtime_role, True)]
             dependent_grants = cursor.fetchall()
-            assert dependent_grants == [("postgres", True, False, True)]
+            assert dependent_grants == expected_grants
             cursor.execute(
                 "SELECT count(*) FROM pg_auth_members membership "
                 "JOIN pg_roles granted ON granted.oid = membership.roleid "
@@ -2525,6 +2692,135 @@ def test_outbound_membership_cleanup_preserves_dependent_grants(
                     pg_sql.Identifier(parent_role)
                 )
             )
+        maintenance.close()
+
+
+def test_membership_cleanup_preserves_unrelated_inbound_role_grant_provenance(
+    isolated_role_database,
+):
+    """Catches bootstrap duplicates of independent grants by an inbound role."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = isolated_role_database
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    inbound_group = f"{role_database.runtime_role}_inbound_group"
+    inbound_role = f"{role_database.runtime_role}_inbound_role"
+    unrelated_parent = f"{role_database.runtime_role}_unrelated_parent"
+    unrelated_member = f"{role_database.runtime_role}_unrelated_member"
+    maintenance = psycopg2.connect(_maintenance_url())
+    maintenance.autocommit = True
+    try:
+        with maintenance.cursor() as cursor:
+            server_version_num = maintenance.server_version
+            for role_name in (
+                inbound_group,
+                inbound_role,
+                unrelated_parent,
+                unrelated_member,
+            ):
+                cursor.execute(
+                    pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
+                        pg_sql.Identifier(role_name)
+                    )
+                )
+            cursor.execute(
+                pg_sql.SQL("GRANT {} TO {}").format(
+                    pg_sql.Identifier(role_database.runtime_role),
+                    pg_sql.Identifier(inbound_group),
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("GRANT {} TO {}").format(
+                    pg_sql.Identifier(inbound_group),
+                    pg_sql.Identifier(inbound_role),
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("GRANT {} TO {} WITH ADMIN OPTION").format(
+                    pg_sql.Identifier(unrelated_parent),
+                    pg_sql.Identifier(inbound_role),
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL("SET ROLE {}").format(pg_sql.Identifier(inbound_role))
+            )
+            try:
+                if server_version_num >= 160_000:
+                    cursor.execute(
+                        pg_sql.SQL(
+                            "GRANT {} TO {} WITH ADMIN FALSE, "
+                            "INHERIT FALSE, SET TRUE"
+                        ).format(
+                            pg_sql.Identifier(unrelated_parent),
+                            pg_sql.Identifier(unrelated_member),
+                        )
+                    )
+                else:
+                    cursor.execute(
+                        pg_sql.SQL("GRANT {} TO {}").format(
+                            pg_sql.Identifier(unrelated_parent),
+                            pg_sql.Identifier(unrelated_member),
+                        )
+                    )
+            finally:
+                cursor.execute("RESET ROLE")
+
+        configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+
+        with maintenance.cursor() as cursor:
+            if server_version_num >= 160_000:
+                cursor.execute(
+                    "SELECT grantor.rolname, membership.admin_option, "
+                    "membership.inherit_option, membership.set_option "
+                    "FROM pg_auth_members membership "
+                    "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                    "JOIN pg_roles member ON member.oid = membership.member "
+                    "JOIN pg_roles grantor ON grantor.oid = membership.grantor "
+                    "WHERE granted.rolname = %s AND member.rolname = %s "
+                    "ORDER BY grantor.rolname",
+                    (unrelated_parent, unrelated_member),
+                )
+                expected_grants = [(inbound_role, False, False, True)]
+            else:
+                cursor.execute(
+                    "SELECT grantor.rolname, membership.admin_option "
+                    "FROM pg_auth_members membership "
+                    "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                    "JOIN pg_roles member ON member.oid = membership.member "
+                    "JOIN pg_roles grantor ON grantor.oid = membership.grantor "
+                    "WHERE granted.rolname = %s AND member.rolname = %s "
+                    "ORDER BY grantor.rolname",
+                    (unrelated_parent, unrelated_member),
+                )
+                expected_grants = [(inbound_role, False)]
+            assert cursor.fetchall() == expected_grants
+    finally:
+        with maintenance.cursor() as cursor:
+            for role_name in (
+                unrelated_member,
+                inbound_role,
+                inbound_group,
+                unrelated_parent,
+            ):
+                cursor.execute(
+                    pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                        pg_sql.Identifier(role_name)
+                    )
+                )
         maintenance.close()
 
 
