@@ -48,6 +48,13 @@ _TRANSFORMATION_TABLES = (
     "evidence_claim_heads",
     "evidence_head_events",
     "evidence_requests",
+    "transformation_options",
+    "transformation_option_versions",
+    "decision_briefs",
+    "decision_brief_versions",
+    "decision_brief_option_citations",
+    "decision_brief_evidence_citations",
+    "decision_events",
 )
 
 _TRANSFORMATION_FOREIGN_KEYS = (
@@ -185,7 +192,20 @@ _MATERIALISATION_INDEXES = (
     ("uq_work_package_materialisation", "work_packages"),
     ("uq_roadmap_item_materialisation", "strategic_roadmap_items"),
     ("uq_benefit_materialisation", "benefits"),
+    ("uq_decision_brief_workstream_scope", "decision_briefs"),
+    ("uq_decision_brief_candidate_scope", "decision_briefs"),
 )
+
+_DECISION_BRIEF_SCOPE_INDEXES = {
+    "uq_decision_brief_workstream_scope": (
+        "organization_id, workstream_id",
+        "candidate_id IS NULL",
+    ),
+    "uq_decision_brief_candidate_scope": (
+        "organization_id, workstream_id, candidate_id",
+        "candidate_id IS NOT NULL",
+    ),
+}
 
 _MEMBERSHIP_TABLES = (
     "programme_workstreams",
@@ -219,7 +239,11 @@ def _create_transformation_tables(*, dry_run, existing_tables, added, failed):
             added.append(f"{label} :: CREATE TABLE")
             continue
         try:
-            table.create(bind=db.engine, checkfirst=True)
+            # ``existing_tables`` was read from the active/default schema.
+            # PostgreSQL's unqualified checkfirst lookup follows search_path
+            # and can mistake a same-named public fallback table for this
+            # schema's table, silently skipping the required CREATE.
+            table.create(bind=db.engine, checkfirst=False)
             existing_tables.add(table_name)
             added.append(f"{label} :: CREATE TABLE")
         except Exception as exc:  # noqa: BLE001 — aggregate every reconciliation failure
@@ -399,14 +423,20 @@ def _ensure_benefit_legacy_fk(*, dry_run, existing_tables, added, failed):
 
 
 def _ensure_materialisation_indexes(*, dry_run, existing_tables, added, failed):
-    """Install canonical partial uniqueness on pre-feature delivery tables."""
-    from sqlalchemy import inspect
+    """Install canonical partial uniqueness on upgraded transformation tables."""
+    from sqlalchemy import text
 
-    inspector = inspect(db.engine)
     for index_name, table_name in _MATERIALISATION_INDEXES:
         if table_name not in existing_tables:
             continue
-        if index_name in {item["name"] for item in inspector.get_indexes(table_name)}:
+        if db.session.scalar(
+            text(
+                "SELECT 1 FROM pg_indexes "
+                "WHERE schemaname = current_schema() "
+                "AND tablename = :table_name AND indexname = :index_name"
+            ),
+            {"table_name": table_name, "index_name": index_name},
+        ):
             continue
         table = db.metadata.tables[table_name]
         index = next((item for item in table.indexes if item.name == index_name), None)
@@ -418,10 +448,24 @@ def _ensure_materialisation_indexes(*, dry_run, existing_tables, added, failed):
             added.append(f"{label} :: CREATE UNIQUE INDEX")
             continue
         try:
-            index.create(bind=db.engine, checkfirst=True)
+            if index_name in _DECISION_BRIEF_SCOPE_INDEXES:
+                columns, predicate = _DECISION_BRIEF_SCOPE_INDEXES[index_name]
+                schema_name = db.session.scalar(text("SELECT current_schema()"))
+                quote = db.engine.dialect.identifier_preparer.quote
+                db.session.execute(
+                    text(
+                        f"CREATE UNIQUE INDEX {quote(index_name)} "
+                        f"ON {quote(schema_name)}.{quote(table_name)} ({columns}) "
+                        f"WHERE {predicate}"
+                    )
+                )
+                db.session.commit()
+            else:
+                # The catalog query above already checked the active schema.
+                index.create(bind=db.engine, checkfirst=False)
             added.append(f"{label} :: CREATE UNIQUE INDEX")
-            inspector = inspect(db.engine)
         except Exception as exc:  # noqa: BLE001
+            db.session.rollback()
             failed.append(f"{label}: {str(exc)[:120]}")
 
 
@@ -786,7 +830,8 @@ def _reconcile(dry_run=False):
     from sqlalchemy import inspect, text
 
     insp = inspect(db.engine)
-    existing_tables = set(insp.get_table_names())
+    active_schema = db.session.scalar(text("SELECT current_schema()"))
+    existing_tables = set(insp.get_table_names(schema=active_schema))
     dialect = db.engine.dialect
     added, failed, missing_tables, blocking = [], [], [], []
 
@@ -798,7 +843,7 @@ def _reconcile(dry_run=False):
     )
     # Table creation changes the catalog; do not keep using a stale inspector.
     insp = inspect(db.engine)
-    existing_tables = set(insp.get_table_names())
+    existing_tables = set(insp.get_table_names(schema=active_schema))
 
     for table in db.metadata.tables.values():
         if table.name not in existing_tables:

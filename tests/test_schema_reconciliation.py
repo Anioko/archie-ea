@@ -220,6 +220,52 @@ def test_pre_task6_evidence_waiver_constraint_reconciles_idempotently(
         assert not any(item.startswith(label) for item in second_added)
 
 
+def test_pre_task7_schema_creates_decision_tables_and_partial_scope_indexes_idempotently(
+    app, pre_feature_transformation_schema
+):
+    """Catches reconcile leaving long-lived databases without Task 7 uniqueness."""
+    _schema_name, isolated_engine = pre_feature_transformation_schema
+    expected_tables = {
+        "transformation_options",
+        "transformation_option_versions",
+        "decision_briefs",
+        "decision_brief_versions",
+        "decision_brief_option_citations",
+        "decision_brief_evidence_citations",
+        "decision_events",
+    }
+    expected_indexes = {
+        "uq_decision_brief_workstream_scope",
+        "uq_decision_brief_candidate_scope",
+    }
+    with app.app_context():
+        first_added, first_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert first_failed == []
+        with isolated_engine.connect() as connection:
+            assert expected_tables <= set(inspect(connection).get_table_names())
+            rows = connection.execute(
+                text(
+                    "SELECT indexname, indexdef FROM pg_indexes "
+                    "WHERE schemaname = current_schema() "
+                    "AND indexname IN "
+                    "('uq_decision_brief_workstream_scope', "
+                    " 'uq_decision_brief_candidate_scope')"
+                )
+            ).mappings().all()
+        assert {row["indexname"] for row in rows} == expected_indexes
+        assert any("candidate_id IS NULL" in row["indexdef"] for row in rows)
+        assert any("candidate_id IS NOT NULL" in row["indexdef"] for row in rows)
+
+        second_added, second_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert second_failed == []
+        assert not any(
+            item.startswith("index.uq_decision_brief_") for item in second_added
+        )
+        assert not expected_tables.intersection(
+            item.split(".", 1)[0] for item in second_added
+        )
+
+
 def test_genuine_pre_feature_schema_backfills_roadmap_and_repairs_delivery_fks(
     app, pre_feature_transformation_schema
 ):

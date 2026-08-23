@@ -254,9 +254,20 @@ class DecisionBrief(TenantMixin, db.Model):
 
     __mapper_args__ = {"version_id_col": revision}
     __table_args__ = (
-        db.UniqueConstraint(
-            "organization_id", "workstream_id", "candidate_id",
-            name="uq_decision_brief_scope",
+        db.Index(
+            "uq_decision_brief_workstream_scope",
+            "organization_id",
+            "workstream_id",
+            unique=True,
+            postgresql_where=db.text("candidate_id IS NULL"),
+        ),
+        db.Index(
+            "uq_decision_brief_candidate_scope",
+            "organization_id",
+            "workstream_id",
+            "candidate_id",
+            unique=True,
+            postgresql_where=db.text("candidate_id IS NOT NULL"),
         ),
         db.CheckConstraint("revision > 0", name="ck_decision_brief_revision"),
         db.CheckConstraint(

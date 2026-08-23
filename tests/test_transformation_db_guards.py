@@ -22,6 +22,7 @@ from app.models.transformation_decision import (
     DecisionBriefOptionCitation,
     DecisionBriefVersion,
     DecisionEvent,
+    TransformationOption,
     TransformationOptionVersion,
 )
 from app.models.transformation_evidence import (
@@ -201,7 +202,9 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                     'trg_transformation_option_version_immutable',
                     'trg_decision_brief_version_immutable',
                     'trg_decision_brief_option_citation_immutable',
+                    'trg_decision_brief_option_citation_membership',
                     'trg_decision_brief_evidence_citation_immutable',
+                    'trg_decision_brief_evidence_citation_membership',
                     'trg_decision_event_immutable'
                   )
                 ORDER BY tg.tgname
@@ -227,7 +230,9 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
 
     assert triggers == [
         ("trg_decision_brief_evidence_citation_immutable", "decision_brief_evidence_citations"),
+        ("trg_decision_brief_evidence_citation_membership", "decision_brief_evidence_citations"),
         ("trg_decision_brief_option_citation_immutable", "decision_brief_option_citations"),
+        ("trg_decision_brief_option_citation_membership", "decision_brief_option_citations"),
         ("trg_decision_brief_version_immutable", "decision_brief_versions"),
         ("trg_decision_event_immutable", "decision_events"),
         ("trg_evidence_event_binding", "evidence_head_events"),
@@ -822,6 +827,63 @@ def test_option_brief_versions_citations_and_decision_events_reject_direct_mutat
     for statement, parameters in attempts:
         with pytest.raises(Exception, match="append-only"):
             _direct_driver_execute(statement, parameters)
+
+
+def test_frozen_brief_rejects_post_freeze_citation_membership_insert(
+    decision_scope: DecisionScope,
+):
+    """Catches runtime appending a newly frozen option to an old brief version."""
+    from app.modules.transformation_room.decision_service import (
+        DecisionBriefService,
+        TransformationOptionService,
+    )
+    from app.modules.transformation_room.domain import HumanAssertions
+
+    scope = decision_scope
+    option_version_ids = tuple(
+        TransformationOptionService.freeze_version(
+            actor=scope.actor,
+            option_id=option_id,
+            expected_revision=1,
+            command_key=f"membership-option-{ordinal}",
+        ).object_ids["option_version_id"]
+        for ordinal, option_id in enumerate(scope.option_ids, start=1)
+    )
+    frozen = DecisionBriefService.freeze(
+        actor=scope.actor,
+        brief_id=scope.brief_id,
+        option_version_ids=option_version_ids,
+        evidence_ids=(scope.evidence_id,),
+        assertions=HumanAssertions(
+            True,
+            ("cost_source_unknown",),
+            (),
+            "Human reviewed the frozen membership boundary.",
+        ),
+        expected_revision=1,
+        command_key="membership-brief",
+    )
+    with Session(db.engine) as session, session.begin():
+        option = session.get(TransformationOption, scope.option_ids[0])
+        option.title = "A later option revision"
+    later_version_id = TransformationOptionService.freeze_version(
+        actor=scope.actor,
+        option_id=scope.option_ids[0],
+        expected_revision=3,
+        command_key="membership-later-option",
+    ).object_ids["option_version_id"]
+
+    with pytest.raises(Exception, match="citation membership is frozen"):
+        _direct_driver_execute(
+            "INSERT INTO public.decision_brief_option_citations "
+            "(organization_id, brief_version_id, option_version_id) "
+            "VALUES (%s, %s, %s)",
+            (
+                scope.organization_id,
+                frozen.object_ids["decision_brief_version_id"],
+                later_version_id,
+            ),
+        )
 
 
 def test_evidence_head_rejects_arbitrary_historical_cross_tenant_wrong_subject_and_jump(

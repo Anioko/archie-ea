@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Sequence
@@ -200,14 +200,49 @@ class TransformationGateService:
         ("rejected", "options"): frozenset({"arb"}),
     }
 
+    _UNSCOPED_DECISION = object()
+
     @classmethod
-    def evaluate(cls, *, actor: ActorContext, workstream_id: int, target_stage: str) -> GateResult:
+    def evaluate(
+        cls,
+        *,
+        actor: ActorContext,
+        workstream_id: int,
+        target_stage: str,
+        decision_candidate_id=_UNSCOPED_DECISION,
+    ) -> GateResult:
         snapshot = cls.load_policy_snapshot(actor=actor, workstream_id=workstream_id)
+        if decision_candidate_id is not cls._UNSCOPED_DECISION:
+            snapshot = cls.for_decision_scope(snapshot, decision_candidate_id)
         transition = cls.require_valid_transition(snapshot.workstream.lifecycle_stage, target_stage)
         blockers, warnings, evidence_ids = cls.evaluate_requirements(snapshot, transition)
         return GateResult(
             not blockers, transition.source, transition.target, cls.POLICY_VERSION,
             tuple(blockers), tuple(warnings), tuple(sorted(evidence_ids)),
+        )
+
+    @classmethod
+    def for_decision_scope(cls, snapshot, candidate_id):
+        """Project policy inputs to exactly one candidate or workstream decision."""
+        roots = tuple(
+            row
+            for row in snapshot.option_exceptions
+            if _value(row, "candidate_id") == candidate_id
+        )
+        root_ids = {_value(row, "id") for row in roots}
+        return replace(
+            snapshot,
+            option_versions=tuple(
+                row
+                for row in snapshot.option_versions
+                if _value(row, "candidate_id") == candidate_id
+            ),
+            option_exceptions=roots,
+            brief_versions=tuple(
+                row
+                for row in snapshot.brief_versions
+                if _value(row, "brief_id") in root_ids
+            ),
         )
 
     @classmethod
@@ -534,9 +569,12 @@ class TransformationGateService:
             current_id = _value(head, "current_record_id")
             if current_id is not None:
                 evidence_ids.add(current_id)
-        for evidence in snapshot.evidence_records:
-            if _value(evidence, "status") == "accepted" and _value(evidence, "id") is not None:
-                evidence_ids.add(_value(evidence, "id"))
+        evidence_ids.update(
+            _value(request, "accepted_evidence_id")
+            for request in snapshot.evidence_requests
+            if _value(request, "status") == "accepted"
+            and _value(request, "accepted_evidence_id") is not None
+        )
         return blockers, warnings, evidence_ids
 
     @classmethod
@@ -585,6 +623,85 @@ class TransformationGateService:
             and _current(expiry)
         )
 
+    @staticmethod
+    def _effectively_fresh(record):
+        expires_at = _value(record, "freshness_expires_at")
+        return bool(
+            _value(record, "freshness_status") in {"fresh", "not_applicable"}
+            and (expires_at is None or _current(expires_at))
+        )
+
+    @classmethod
+    def _current_evidence_state(cls, snapshot):
+        records_by_id = {
+            _value(row, "id"): row
+            for row in snapshot.evidence_records
+            if _value(row, "id") is not None
+        }
+        current = tuple(
+            records_by_id[current_id]
+            for current_id in (
+                _value(head, "current_record_id")
+                for head in snapshot.active_evidence_heads
+            )
+            if current_id in records_by_id
+        )
+        resolutions = tuple(
+            row
+            for row in current
+            if _value(row, "source_type") == "governance_resolution"
+        )
+        unresolved_conflict_ids = {
+            _value(conflict, "id")
+            for conflict in current
+            if _value(conflict, "classification") == "conflict"
+            and not any(
+                _value(resolution, "subject_type")
+                == _value(conflict, "subject_type")
+                and _value(resolution, "subject_id")
+                == _value(conflict, "subject_id")
+                and _value(resolution, "claim_key")
+                == _value(conflict, "claim_key")
+                and _value(conflict, "id")
+                in set(_value(resolution, "cited_evidence_ids", ()) or ())
+                for resolution in resolutions
+            )
+        }
+        head_current_by_key = {
+            (
+                _value(head, "subject_type"),
+                _value(head, "subject_id"),
+                _value(head, "claim_key"),
+                _value(head, "source_identity"),
+            ): _value(head, "current_record_id")
+            for head in snapshot.active_evidence_heads
+        }
+        valid_by_candidate: dict[int, list[object]] = {}
+        for request in snapshot.evidence_requests:
+            accepted = records_by_id.get(_value(request, "accepted_evidence_id"))
+            if (
+                _value(request, "status") != "accepted"
+                or accepted is None
+                or head_current_by_key.get(
+                    (
+                        _value(accepted, "subject_type"),
+                        _value(accepted, "subject_id"),
+                        _value(accepted, "claim_key"),
+                        _value(accepted, "source_identity"),
+                    )
+                )
+                != _value(accepted, "id")
+                or _value(accepted, "classification") == "conflict"
+                or _value(accepted, "subject_type") != _value(request, "subject_type")
+                or _value(accepted, "subject_id") != _value(request, "subject_id")
+                or _value(accepted, "claim_key") != _value(request, "claim_key")
+            ):
+                continue
+            valid_by_candidate.setdefault(
+                _value(request, "candidate_id"), []
+            ).append(accepted)
+        return current, unresolved_conflict_ids, valid_by_candidate
+
     @classmethod
     def _evaluate_discovery(cls, snapshot, block, room):
         workstream_id = snapshot.workstream.id
@@ -597,13 +714,23 @@ class TransformationGateService:
                                  for row in candidates):
             block("candidate_scope_incomplete", "Accept valid in-tenant candidates and resolve duplicates.", "workstream", workstream_id, f"{room}/discover")
             return
+        current_records, unresolved, valid_by_candidate = (
+            cls._current_evidence_state(snapshot)
+        )
         for candidate in candidates:
-            owner_evidence = any(_value(row, "candidate_id") == candidate.id
-                                 and _value(row, "claim_key") == "application_owner"
-                                 and _value(row, "status") == "accepted"
-                                 and _value(row, "freshness_status") == "fresh"
-                                 and _value(row, "conflict_resolved") is True
-                                 for row in snapshot.evidence_records)
+            owner_evidence = any(
+                _value(row, "claim_key") == "application_owner"
+                and cls._effectively_fresh(row)
+                and not any(
+                    _value(conflict, "id") in unresolved
+                    and _value(conflict, "subject_type")
+                    == _value(row, "subject_type")
+                    and _value(conflict, "subject_id") == _value(row, "subject_id")
+                    and _value(conflict, "claim_key") == _value(row, "claim_key")
+                    for conflict in current_records
+                )
+                for row in valid_by_candidate.get(candidate.id, ())
+            )
             owner_waiver = any(_value(row, "candidate_id") == candidate.id
                                and _value(row, "claim_key") == "application_owner"
                                and cls._valid_waiver(snapshot, row) and _value(row, "interim_owner_id")
@@ -617,36 +744,102 @@ class TransformationGateService:
         required_claims = {"application_owner", "lifecycle", "cost", "business_criticality",
                            "capability_impact", "dependency_impact", "risk", "source_freshness"}
         candidates = [row for row in snapshot.accepted_candidates if _value(row, "workstream_id") == workstream_id]
+        current_records, unresolved_conflict_ids, valid_by_candidate = (
+            cls._current_evidence_state(snapshot)
+        )
+        valid_accepted_ids = {
+            _value(row, "id")
+            for rows in valid_by_candidate.values()
+            for row in rows
+        }
         requests_complete = bool(snapshot.evidence_requests) and all(
             not _value(row, "required", False)
-            or (_value(row, "status") == "accepted" and _value(row, "accepted_evidence_id"))
+            or (
+                _value(row, "status") == "accepted"
+                and _value(row, "accepted_evidence_id") in valid_accepted_ids
+            )
             or (_value(row, "status") in {"declined", "unavailable"} and _value(row, "acknowledgement_id"))
-            or (_value(row, "status") == "expired"
-                and any(_value(waiver, "id") == _value(row, "waiver_id")
-                        and cls._valid_waiver(snapshot, waiver)
-                        for waiver in snapshot.evidence_waivers))
+            or (
+                _value(row, "status") == "expired"
+                and _value(row, "waiver_id")
+                and cls._valid_waiver(snapshot, row)
+            )
             for row in snapshot.evidence_requests)
         if not requests_complete:
             block("required_evidence_incomplete", "Complete or explicitly acknowledge every required evidence request.", "workstream", workstream_id, f"{room}/evidence")
         for candidate in candidates:
-            records = [row for row in snapshot.evidence_records if _value(row, "candidate_id") == candidate.id]
-            claims = {_value(row, "claim_key") for row in records if _value(row, "status") == "accepted"}
+            records = list(valid_by_candidate.get(candidate.id, ()))
+            claims = {_value(row, "claim_key") for row in records}
             if "application_owner" not in claims:
                 block("application_owner_evidence_required", "Resolve application ownership.", "candidate", candidate.id, f"{room}/evidence")
             if not required_claims.issubset(claims):
                 block("evidence_dimension_incomplete", "Evaluate every required evidence dimension.", "candidate", candidate.id, f"{room}/evidence")
-            if any(_value(row, "conflict_resolved") is not True for row in records):
+            candidate_subject = (
+                _value(candidate, "subject_type"),
+                _value(candidate, "subject_id"),
+            )
+            if any(
+                _value(row, "id") in unresolved_conflict_ids
+                and (
+                    _value(row, "subject_type"),
+                    _value(row, "subject_id"),
+                )
+                == candidate_subject
+                for row in current_records
+            ):
                 block("evidence_conflict_unresolved", "Resolve or explicitly govern evidence conflicts.", "candidate", candidate.id, f"{room}/evidence")
-            if any(_value(row, "freshness_status") != "fresh" for row in records):
+            if any(
+                (
+                    _value(row, "subject_type"),
+                    _value(row, "subject_id"),
+                )
+                == candidate_subject
+                and _value(row, "classification") != "conflict"
+                and _value(row, "source_type") != "governance_resolution"
+                and not cls._effectively_fresh(row)
+                for row in current_records
+            ):
                 block("evidence_freshness_invalid", "Refresh or acknowledge stale evidence.", "candidate", candidate.id, f"{room}/evidence")
 
     @classmethod
     def _evaluate_options(cls, snapshot, block, room):
         workstream_id = snapshot.workstream.id
-        options = [row for row in snapshot.option_versions if _value(row, "workstream_id") == workstream_id]
+        ordered = sorted(
+            (
+                row
+                for row in snapshot.option_versions
+                if _value(row, "workstream_id") == workstream_id
+            ),
+            key=lambda row: (
+                _value(row, "option_id", _value(row, "id")),
+                -int(_value(row, "version", 1)),
+            ),
+        )
+        latest = {}
+        for row in ordered:
+            latest.setdefault(_value(row, "option_id", _value(row, "id")), row)
+        options = list(latest.values())
         exception = any(_value(row, "workstream_id") == workstream_id and _text(row, "reason")
                         and _value(row, "authority_id") and _value(row, "constraint_type") in {"policy", "legal"}
                         for row in snapshot.option_exceptions)
+        corrupt = []
+        for row in options:
+            if isinstance(row, TransformationOptionVersion):
+                from app.modules.transformation_room.decision_service import (
+                    TransformationOptionService,
+                )
+
+                if not TransformationOptionService.verify_version_hash(row):
+                    corrupt.append(row)
+        if corrupt:
+            block(
+                "option_integrity_invalid",
+                "Replace corrupted immutable option versions.",
+                "workstream",
+                workstream_id,
+                f"{room}/options",
+            )
+            return
         hashes = {
             (
                 json.dumps(
@@ -687,14 +880,36 @@ class TransformationGateService:
     def _valid_briefs(cls, snapshot):
         evidence_ids = {_value(row, "id") for row in snapshot.evidence_records}
         option_ids = {_value(row, "id") for row in snapshot.option_versions}
-        return [row for row in snapshot.brief_versions
-                if _value(row, "workstream_id") == snapshot.workstream.id
-                and _value(row, "immutable") is True and _value(row, "content_hash")
+        latest = {}
+        for row in sorted(
+            snapshot.brief_versions,
+            key=lambda item: (
+                _value(item, "brief_id"),
+                -int(_value(item, "version", 1)),
+            ),
+        ):
+            latest.setdefault(_value(row, "brief_id"), row)
+        valid = []
+        for row in latest.values():
+            if isinstance(row, DecisionBriefVersion):
+                from app.modules.transformation_room.decision_service import (
+                    DecisionBriefService,
+                )
+
+                if not DecisionBriefService.verify_hash(row):
+                    continue
+            if (
+                _value(row, "workstream_id") == snapshot.workstream.id
+                and _value(row, "immutable") is True
+                and _value(row, "content_hash")
                 and _value(row, "policy_version") == cls.POLICY_VERSION
                 and bool(_value(row, "cited_evidence_ids", ()))
                 and set(_value(row, "cited_evidence_ids", ())).issubset(evidence_ids)
                 and bool(_value(row, "option_version_ids", ()))
-                and set(_value(row, "option_version_ids", ())).issubset(option_ids)]
+                and set(_value(row, "option_version_ids", ())).issubset(option_ids)
+            ):
+                valid.append(row)
+        return valid
 
     @classmethod
     def _evaluate_brief(cls, snapshot, block, room):
@@ -720,7 +935,7 @@ class TransformationGateService:
         workstream_id = snapshot.workstream.id
         briefs = cls._valid_briefs(snapshot)
         brief_ids = {_value(row, "id") for row in briefs}
-        subject_ids = {_value(row, "decision_brief_id") for row in briefs}
+        subject_ids = {_value(row, "brief_id") for row in briefs}
         decisions = {"evidence": "returned_for_evidence", "options": "returned_for_options",
                      "approved": "approved", "approved_with_conditions": "approved_with_conditions",
                      "rejected": "rejected"}
@@ -729,7 +944,7 @@ class TransformationGateService:
                     and _value(cycle, "subject_type") == "decision_brief"
                     and cls._cycle_brief_version_id(cycle) in brief_ids
                     and _value(cycle, "subject_id") in subject_ids
-                    and _value(cycle, "decision_brief_id") == _value(cycle, "subject_id")
+                    and _value(cycle, "brief_id") == _value(cycle, "subject_id")
                     and _value(cycle, "status") in {"decided", "terminal"}
                     and _value(cycle, "decision") == decisions[transition.target]
                     and _value(cycle, "target_stage") == transition.target
@@ -758,7 +973,7 @@ class TransformationGateService:
     def _matching_governance_cycles(cls, snapshot, decision):
         briefs = cls._valid_briefs(snapshot)
         brief_ids = {_value(row, "id") for row in briefs}
-        subject_ids = {_value(row, "decision_brief_id") for row in briefs}
+        subject_ids = {_value(row, "brief_id") for row in briefs}
         return [
             cycle
             for cycle in snapshot.arb_cycles
@@ -766,7 +981,7 @@ class TransformationGateService:
             and _value(cycle, "subject_type") == "decision_brief"
             and cls._cycle_brief_version_id(cycle) in brief_ids
             and _value(cycle, "subject_id") in subject_ids
-            and _value(cycle, "decision_brief_id") == _value(cycle, "subject_id")
+            and _value(cycle, "brief_id") == _value(cycle, "subject_id")
             and _value(cycle, "status") in {"decided", "terminal"}
             and _value(cycle, "decision") == decision
             and _value(cycle, "target_stage") == decision

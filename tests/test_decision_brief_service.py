@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import threading
 import time
+import uuid
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
-from sqlalchemy import event, func, select
+from sqlalchemy import event, func, select, text
 from sqlalchemy.orm import Session
 
 from app import db
@@ -20,7 +23,11 @@ from app.models.transformation_decision import (
     DecisionEvent,
     TransformationOption,
 )
-from app.models.transformation_evidence import EvidenceClaimHead, EvidenceRecord
+from app.models.transformation_evidence import (
+    EvidenceClaimHead,
+    EvidenceRecord,
+    EvidenceRequest,
+)
 from app.models.user import User
 from app.modules.transformation_room.decision_service import (
     DecisionBriefService,
@@ -31,10 +38,13 @@ from app.modules.transformation_room.domain import (
     CommandConflict,
     HumanAssertions,
     NotAuthorised,
+    TypedEvidenceValue,
 )
+from app.modules.transformation_room.evidence_service import TransformationEvidenceService
 
 from tests.test_transformation_evidence_service import (
     EvidenceScope,
+    _record_named_source,
     _record_inventory,
     evidence_scope,
 )
@@ -71,10 +81,11 @@ def _freeze_brief(
     key="brief-freeze",
     revision=1,
     actor=None,
+    brief_id=None,
 ):
     return DecisionBriefService.freeze(
         actor=actor or scope.actor,
-        brief_id=scope.brief_id,
+        brief_id=brief_id or scope.brief_id,
         option_version_ids=option_version_ids,
         evidence_ids=evidence_ids or (scope.evidence_id,),
         assertions=assertions or _assertions(scope),
@@ -145,6 +156,282 @@ def test_evaluate_and_freeze_pin_exact_current_graph_and_verify_hash(decision_sc
 
         version.frozen_payload["objective"] = "Altered after load"
         assert DecisionBriefService.verify_hash(version) is False
+
+
+def test_brief_hash_binds_sorted_citation_and_snapshot_membership(decision_scope):
+    """Catches membership columns changing without invalidating the brief digest."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    result = _freeze_brief(scope, option_version_ids)
+    with Session(db.engine) as session:
+        version = session.get(
+            DecisionBriefVersion,
+            result.object_ids["decision_brief_version_id"],
+        )
+        session.expunge(version)
+
+    assert DecisionBriefService.verify_hash(version)
+    version.option_version_ids = [option_version_ids[0]]
+    assert not DecisionBriefService.verify_hash(version)
+    version.option_version_ids = list(option_version_ids)
+    version.cited_evidence_ids = [scope.evidence_id, 2_000_000_000]
+    assert not DecisionBriefService.verify_hash(version)
+
+
+def test_workstream_brief_rejects_candidate_scoped_options(decision_scope):
+    """Catches a NULL-candidate brief silently mixing candidate decisions."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    with Session(db.engine) as session, session.begin():
+        brief = DecisionBrief(
+            organization_id=scope.organization_id,
+            workstream_id=scope.workstream_id,
+            candidate_id=None,
+            title="Workstream-wide rationalisation decision",
+            recommendation_option_id=scope.option_ids[1],
+            decision_authority_id=scope.actor_id,
+            unknown_codes=["cost_source_unknown"],
+            conflicts=[],
+            expected_impacts=["Govern the workstream portfolio"],
+            status="draft",
+            revision=1,
+        )
+        session.add(brief)
+        session.flush()
+        brief_id = brief.id
+
+    with pytest.raises(CommandConflict, match="option_version_scope_mismatch"):
+        _freeze_brief(
+            scope,
+            option_version_ids,
+            brief_id=brief_id,
+            key="reject-candidate-options-for-workstream-brief",
+        )
+
+
+def test_readiness_uses_only_latest_versions_in_exact_candidate_scope(decision_scope):
+    """Catches readiness mixing workstream options or historical versions."""
+    scope = decision_scope
+    first_versions = _freeze_options(scope)
+    with Session(db.engine) as session, session.begin():
+        option = session.get(TransformationOption, scope.option_ids[0])
+        option.title = "Tolerate with revised controls"
+    latest = TransformationOptionService.freeze_version(
+        actor=scope.actor,
+        option_id=scope.option_ids[0],
+        expected_revision=3,
+        command_key="latest-candidate-option",
+    ).object_ids["option_version_id"]
+    with Session(db.engine) as session, session.begin():
+        workstream_option = TransformationOption(
+            organization_id=scope.organization_id,
+            workstream_id=scope.workstream_id,
+            candidate_id=None,
+            title="Portfolio sequencing",
+            action_type="sequence",
+            description="Workstream-only sequencing alternative",
+            assumptions=["Portfolio funding remains available"],
+            dependencies=["Candidate decisions are complete"],
+            impacts=["Workstream sequencing changes"],
+            risks=["Schedule contention"],
+            reversibility="Reversible before mobilisation",
+            transition_approach="Sequence candidates in governed waves",
+            affected_capability_ids=[
+                session.get(TransformationOption, scope.option_ids[0]).affected_capability_ids[0]
+            ],
+            affected_value_stream_ids=[scope.value_stream_id],
+            recommendation_rationale="Avoids portfolio contention",
+            cost_min=1,
+            cost_max=2,
+            benefit_min=3,
+            benefit_max=4,
+            risk_min=Decimal("0.1"),
+            risk_max=Decimal("0.2"),
+            currency="GBP",
+            technology_required=False,
+            revision=1,
+        )
+        session.add(workstream_option)
+        session.flush()
+        workstream_option_id = workstream_option.id
+    workstream_version = TransformationOptionService.freeze_version(
+        actor=scope.actor,
+        option_id=workstream_option_id,
+        expected_revision=1,
+        command_key="workstream-only-option",
+    ).object_ids["option_version_id"]
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE transformation_option_versions "
+                "SET cost_min = cost_min + 1 "
+                "WHERE id = :version_id AND organization_id = :organization_id"
+            ),
+            {
+                "version_id": first_versions[0],
+                "organization_id": scope.organization_id,
+            },
+        )
+
+    readiness = DecisionBriefService.evaluate(actor=scope.actor, brief_id=scope.brief_id)
+
+    assert tuple(readiness.option_version_ids) == (latest, first_versions[1])
+    assert workstream_version not in readiness.option_version_ids
+
+
+def test_freeze_rejects_omitted_current_source_from_server_evidence_universe(
+    decision_scope, evidence_scope
+):
+    """Catches caller citations defining completeness instead of global heads."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    second = _record_named_source(
+        evidence_scope,
+        candidate_id=scope.candidate_id,
+        adapter_key=f"brief-source-{uuid.uuid4().hex[:8]}",
+        source_identity=f"external:brief-source:{uuid.uuid4().hex}",
+        value="Same governed owner claim",
+    )
+    second_id = second.object_ids["evidence_record_id"]
+
+    with pytest.raises(BlockedByEvidence, match="evidence_snapshot_incomplete"):
+        _freeze_brief(
+            scope,
+            option_version_ids,
+            evidence_ids=(scope.evidence_id,),
+            key="omit-current-source",
+        )
+
+    result = _freeze_brief(
+        scope,
+        option_version_ids,
+        evidence_ids=(scope.evidence_id, second_id),
+        key="complete-current-source-set",
+    )
+    with Session(db.engine) as session:
+        version = session.get(
+            DecisionBriefVersion,
+            result.object_ids["decision_brief_version_id"],
+        )
+    assert set(version.cited_evidence_ids) == {scope.evidence_id, second_id}
+
+
+def test_freeze_rejects_unaccepted_request_and_unresolved_current_conflict(
+    decision_scope, evidence_scope
+):
+    """Catches accepted-state/conflict completeness being inferred from citations."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    with Session(db.engine) as session, session.begin():
+        request = session.get(EvidenceRequest, evidence_scope.request_id)
+        request.status = "open"
+        request.submitted_evidence_id = None
+        request.accepted_evidence_id = None
+        request.submitted_at = None
+        request.accepted_at = None
+    TransformationEvidenceService.submit_attestation(
+        actor=scope.actor,
+        request_id=evidence_scope.request_id,
+        value=TypedEvidenceValue("string", "A conflicting owner", None, None),
+        expected_head_revision=0,
+        command_key="brief-unresolved-conflict",
+    )
+    evidence_ids = DecisionBriefService.current_evidence_ids(
+        DecisionBriefService.load_brief_for_tenant(scope.actor, scope.brief_id),
+        actor=scope.actor,
+    )
+
+    with pytest.raises(
+        BlockedByEvidence,
+        match="required_evidence_incomplete|evidence_conflict_unresolved",
+    ):
+        _freeze_brief(
+            scope,
+            option_version_ids,
+            evidence_ids=evidence_ids,
+            key="reject-unaccepted-conflicted-evidence",
+        )
+
+
+@pytest.mark.parametrize("authority_kind", ("foreign", "same_tenant_without_role"))
+def test_freeze_rejects_invalid_persisted_decision_authority(
+    decision_scope, evidence_scope, authority_kind
+):
+    """Catches an unvalidated authority ID being copied into the frozen brief."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    if authority_kind == "foreign":
+        authority_id = evidence_scope.foreign_actor_id
+    else:
+        suffix = uuid.uuid4().hex[:10]
+        user = User(
+            organization_id=scope.organization_id,
+            email=f"brief-nonauthority-{suffix}@example.test",
+            confirmed=True,
+            enterprise_role="application_owner",
+        )
+        db.session.add(user)
+        db.session.commit()
+        authority_id = user.id
+        db.session.remove()
+    with Session(db.engine) as session, session.begin():
+        session.get(DecisionBrief, scope.brief_id).decision_authority_id = authority_id
+
+    with pytest.raises(NotAuthorised, match="decision_authority_invalid"):
+        _freeze_brief(
+            scope,
+            option_version_ids,
+            key=f"reject-{authority_kind}-decision-authority",
+            revision=2,
+        )
+
+
+def test_citation_records_effective_expiry_at_freeze(decision_scope, evidence_scope):
+    """Catches a past expiry being frozen under its stale stored 'fresh' label."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    expiring = _record_named_source(
+        evidence_scope,
+        candidate_id=scope.candidate_id,
+        adapter_key=f"brief-expiry-{uuid.uuid4().hex[:8]}",
+        source_identity=f"external:brief-expiry:{uuid.uuid4().hex}",
+        value="Time-bounded owner evidence",
+    )
+    expiring_id = expiring.object_ids["evidence_record_id"]
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE evidence_records SET freshness_status = 'fresh', "
+                "freshness_expires_at = :expired "
+                "WHERE id = :record_id AND organization_id = :organization_id"
+            ),
+            {
+                "expired": datetime.now(timezone.utc) - timedelta(days=1),
+                "record_id": expiring_id,
+                "organization_id": scope.organization_id,
+            },
+        )
+
+    result = _freeze_brief(
+        scope,
+        option_version_ids,
+        evidence_ids=(scope.evidence_id, expiring_id),
+        assertions=_assertions(scope, superseded=(expiring_id,)),
+        key="freeze-effective-expiry",
+    )
+    with Session(db.engine) as session:
+        citation = session.scalar(
+            select(DecisionBriefEvidenceCitation).where(
+                DecisionBriefEvidenceCitation.organization_id == scope.organization_id,
+                DecisionBriefEvidenceCitation.brief_version_id
+                == result.object_ids["decision_brief_version_id"],
+                DecisionBriefEvidenceCitation.evidence_record_id == expiring_id,
+            )
+        )
+    assert citation.freshness_status == "expired"
+    assert citation.acknowledged is True
 
 
 def test_freeze_rejects_duplicate_ids_client_totals_and_unreviewed_ai(decision_scope):
@@ -257,19 +544,29 @@ def test_superseded_global_head_citation_blocks_without_exact_acknowledgement(
         key="brief-evidence-correction",
     )
     corrected_id = corrected.object_ids["evidence_record_id"]
+    with Session(db.engine) as session, session.begin():
+        request = session.scalar(
+            select(EvidenceRequest).where(
+                EvidenceRequest.organization_id == scope.organization_id,
+                EvidenceRequest.candidate_id == scope.candidate_id,
+                EvidenceRequest.claim_key == "application_owner",
+            )
+        )
+        request.submitted_evidence_id = corrected_id
+        request.accepted_evidence_id = corrected_id
 
     with pytest.raises(BlockedByEvidence, match="evidence_acknowledgement_required"):
         _freeze_brief(
             scope,
             option_version_ids,
-            evidence_ids=(scope.evidence_id,),
+            evidence_ids=(scope.evidence_id, corrected_id),
             key="brief-stale-unacknowledged",
         )
 
     result = _freeze_brief(
         scope,
         option_version_ids,
-        evidence_ids=(scope.evidence_id,),
+        evidence_ids=(scope.evidence_id, corrected_id),
         assertions=_assertions(scope, superseded=(scope.evidence_id,)),
         key="brief-stale-acknowledged",
     )
@@ -279,6 +576,7 @@ def test_superseded_global_head_citation_blocks_without_exact_acknowledgement(
                 DecisionBriefEvidenceCitation.organization_id == scope.organization_id,
                 DecisionBriefEvidenceCitation.brief_version_id
                 == result.object_ids["decision_brief_version_id"],
+                DecisionBriefEvidenceCitation.evidence_record_id == scope.evidence_id,
             )
         )
     assert citation.was_current is False and citation.acknowledged is True

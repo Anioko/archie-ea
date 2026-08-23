@@ -9,7 +9,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app import db
@@ -30,6 +30,8 @@ from app.modules.transformation_room.gate_service import (
 from app.modules.transformation_room.programme_service import TransformationProgrammeService
 
 from tests.test_transformation_programme_service import _intake, programme_fixture
+from tests.test_transformation_option_service import DecisionScope, decision_scope
+from tests.test_transformation_evidence_service import evidence_scope
 
 
 def _row(**values):
@@ -64,6 +66,8 @@ def _policy_snapshot(source: str, target: str, **changes):
         id=11,
         workstream_id=2,
         organization_id=10,
+        subject_type="application",
+        subject_id=501,
         inclusion_status="accepted",
         subject_exists=True,
         duplicates_resolved=True,
@@ -72,10 +76,15 @@ def _policy_snapshot(source: str, target: str, **changes):
         _row(
             id=20 + offset,
             candidate_id=11,
+            subject_type="application",
+            subject_id=501,
             claim_key=claim_key,
-            status="accepted",
+            classification="observed",
+            source_identity=f"application:501:{claim_key}",
+            source_type="application_inventory",
             freshness_status="fresh",
-            conflict_resolved=True,
+            freshness_expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            cited_evidence_ids=(),
         )
         for offset, claim_key in enumerate(
             (
@@ -95,6 +104,8 @@ def _policy_snapshot(source: str, target: str, **changes):
         _row(
             id=40 + offset,
             candidate_id=11,
+            subject_type="application",
+            subject_id=501,
             claim_key=row.claim_key,
             required=True,
             status="accepted",
@@ -104,12 +115,29 @@ def _policy_snapshot(source: str, target: str, **changes):
         )
         for offset, row in enumerate(evidence, start=1)
     )
+    heads = tuple(
+        _row(
+            id=50 + offset,
+            organization_id=10,
+            subject_type="application",
+            subject_id=501,
+            claim_key=row.claim_key,
+            source_identity=row.source_identity,
+            current_record_id=row.id,
+            revision=1,
+        )
+        for offset, row in enumerate(evidence, start=1)
+    )
     options = (
         _row(
             id=61,
+            option_id=601,
             workstream_id=2,
+            candidate_id=None,
+            version=1,
             immutable=True,
             content_hash="a" * 64,
+            content_json={"title": "Retire"},
             assumptions=("Funding remains available",),
             benefit_min=Decimal("100.00"),
             benefit_max=Decimal("120.00"),
@@ -127,9 +155,13 @@ def _policy_snapshot(source: str, target: str, **changes):
         ),
         _row(
             id=62,
+            option_id=602,
             workstream_id=2,
+            candidate_id=None,
+            version=1,
             immutable=True,
             content_hash="b" * 64,
+            content_json={"title": "Tolerate"},
             assumptions=("Supplier support continues",),
             benefit_min=Decimal("60.00"),
             benefit_max=Decimal("80.00"),
@@ -148,7 +180,7 @@ def _policy_snapshot(source: str, target: str, **changes):
     )
     brief = _row(
         id=71,
-        decision_brief_id=70,
+        brief_id=70,
         workstream_id=2,
         immutable=True,
         content_hash="c" * 64,
@@ -183,7 +215,7 @@ def _policy_snapshot(source: str, target: str, **changes):
         workstream_id=2,
         subject_type="decision_brief",
         subject_id=70,
-        decision_brief_id=70,
+        brief_id=70,
         brief_version_id=71,
         decision_brief_version_id=71,
         status="decided",
@@ -273,7 +305,7 @@ def _policy_snapshot(source: str, target: str, **changes):
         "outcomes": (outcome,),
         "measures": (measure,),
         "accepted_candidates": (candidate,),
-        "active_evidence_heads": (),
+        "active_evidence_heads": heads,
         "evidence_records": evidence,
         "evidence_requests": requests,
         "evidence_waivers": (),
@@ -300,6 +332,152 @@ def _policy_snapshot(source: str, target: str, **changes):
 
 def replace_namespace(row, **changes):
     return _row(**{**vars(row), **changes})
+
+
+@pytest.mark.parametrize(
+    ("source", "target"),
+    (("discover", "evidence"), ("evidence", "options")),
+)
+def test_discovery_and_evidence_gates_consume_task6_request_head_record_contract(
+    source, target
+):
+    """Catches policy evaluators reading fields Task 6 never persists."""
+    snapshot = _policy_snapshot(source, target)
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        snapshot,
+        TransformationGateService.require_valid_transition(source, target),
+    )
+    assert blockers == []
+
+
+def test_evidence_gate_uses_effective_freshness_and_explicit_conflict_resolution():
+    """Catches stale or unresolved current heads being treated as accepted evidence."""
+    snapshot = _policy_snapshot("evidence", "options")
+    stale = replace_namespace(
+        snapshot.evidence_records[0],
+        freshness_status="fresh",
+        freshness_expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    conflict = _row(
+        id=199,
+        candidate_id=11,
+        subject_type="application",
+        subject_id=501,
+        claim_key="application_owner",
+        classification="conflict",
+        source_identity="conflict:application-owner",
+        source_type="governance_conflict",
+        freshness_status="not_applicable",
+        freshness_expires_at=None,
+        cited_evidence_ids=(snapshot.evidence_records[0].id,),
+    )
+    conflict_head = _row(
+        id=299,
+        organization_id=10,
+        subject_type="application",
+        subject_id=501,
+        claim_key="application_owner",
+        source_identity=conflict.source_identity,
+        current_record_id=conflict.id,
+        revision=1,
+    )
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(
+            snapshot,
+            evidence_records=(stale, *snapshot.evidence_records[1:], conflict),
+            active_evidence_heads=(*snapshot.active_evidence_heads, conflict_head),
+        ),
+        TransformationGateService.require_valid_transition("evidence", "options"),
+    )
+    assert {row.code for row in blockers} == {
+        "evidence_conflict_unresolved",
+        "evidence_freshness_invalid",
+    }
+
+
+def test_evidence_gate_requires_accepted_request_and_its_exact_global_head():
+    """Catches accepted pointers borrowing currentness from a different source head."""
+    snapshot = _policy_snapshot("evidence", "options")
+    wrong_source_head = replace_namespace(
+        snapshot.active_evidence_heads[0],
+        source_identity="application:501:different-source",
+    )
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(
+            snapshot,
+            active_evidence_heads=(
+                wrong_source_head,
+                *snapshot.active_evidence_heads[1:],
+            ),
+        ),
+        TransformationGateService.require_valid_transition("evidence", "options"),
+    )
+    assert "required_evidence_incomplete" in {row.code for row in blockers}
+
+    open_request = replace_namespace(snapshot.evidence_requests[0], status="open")
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(
+            snapshot,
+            evidence_requests=(open_request, *snapshot.evidence_requests[1:]),
+        ),
+        TransformationGateService.require_valid_transition("evidence", "options"),
+    )
+    assert "required_evidence_incomplete" in {row.code for row in blockers}
+
+
+def test_options_gate_counts_latest_version_per_logical_option_only():
+    """Catches two revisions of one option masquerading as two alternatives."""
+    snapshot = _policy_snapshot("options", "decision_ready")
+    revised_same_option = replace_namespace(
+        snapshot.option_versions[1],
+        option_id=snapshot.option_versions[0].option_id,
+        version=2,
+    )
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(snapshot, option_versions=(snapshot.option_versions[0], revised_same_option)),
+        TransformationGateService.require_valid_transition("options", "decision_ready"),
+    )
+    assert {row.code for row in blockers} == {"viable_options_required"}
+
+
+def test_real_task6_rows_allow_discovery_only_while_current_and_fresh(
+    decision_scope: DecisionScope,
+):
+    """Catches snapshot projection diverging from persisted Task 6 rows."""
+    scope = decision_scope
+    with Session(db.engine) as session, session.begin():
+        workstream = session.get(ProgrammeWorkstream, scope.workstream_id)
+        workstream.lifecycle_stage = "discover"
+
+    ready = TransformationGateService.evaluate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="evidence",
+    )
+    assert ready.allowed is True
+
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE evidence_records SET freshness_expires_at = :expired "
+                "WHERE id = :record_id AND organization_id = :organization_id"
+            ),
+            {
+                "expired": datetime.now(timezone.utc) - timedelta(seconds=1),
+                "record_id": scope.evidence_id,
+                "organization_id": scope.organization_id,
+            },
+        )
+    stale = TransformationGateService.evaluate(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="evidence",
+    )
+    assert stale.allowed is False
+    assert {row.code for row in stale.blockers} == {
+        "application_owner_evidence_required"
+    }
 
 
 def test_objective_gate_is_pure_and_transition_is_locked(programme_fixture):
@@ -457,7 +635,7 @@ def test_execute_gate_rejects_orphaned_actions_work_and_benefit_contracts():
 @pytest.mark.parametrize(
     "cycle_change",
     (
-        {"subject_id": 999, "decision_brief_id": 999},
+        {"subject_id": 999, "brief_id": 999},
         {"status": "open", "decided_at": None},
     ),
 )

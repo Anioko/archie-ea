@@ -62,6 +62,57 @@ $$
 """
 
 
+_DECISION_CITATION_MEMBERSHIP_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_guard_decision_citation_membership()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    parent_organization_id bigint;
+    parent_created_xmin xid;
+    frozen_membership jsonb;
+BEGIN
+    SELECT version.organization_id,
+           version.xmin,
+           CASE
+               WHEN TG_TABLE_NAME = 'decision_brief_option_citations'
+                   THEN version.option_version_ids::jsonb
+               ELSE version.cited_evidence_ids::jsonb
+           END
+      INTO parent_organization_id, parent_created_xmin, frozen_membership
+      FROM public.decision_brief_versions AS version
+     WHERE version.id = NEW.brief_version_id
+     FOR KEY SHARE;
+
+    IF NOT FOUND
+       OR parent_organization_id IS DISTINCT FROM NEW.organization_id
+       OR parent_created_xmin::text::bigint IS DISTINCT FROM txid_current() THEN
+        RAISE EXCEPTION 'decision brief citation membership is frozen'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF TG_TABLE_NAME = 'decision_brief_option_citations' THEN
+        IF NOT frozen_membership @> jsonb_build_array(NEW.option_version_id) THEN
+            RAISE EXCEPTION 'decision brief citation membership is frozen'
+                USING ERRCODE = '55000';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'decision_brief_evidence_citations' THEN
+        IF NOT frozen_membership @> jsonb_build_array(NEW.evidence_record_id) THEN
+            RAISE EXCEPTION 'decision brief citation membership is frozen'
+                USING ERRCODE = '55000';
+        END IF;
+    ELSE
+        RAISE EXCEPTION 'unsupported decision brief citation table'
+            USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$
+"""
+
+
 _RECEIPT_FUNCTION_SQL = r"""
 CREATE OR REPLACE FUNCTION public.archie_guard_transformation_receipt()
 RETURNS trigger
@@ -671,6 +722,10 @@ _FUNCTION_SPECS = (
         "archie_reject_transformation_mutation",
         _IMMUTABILITY_FUNCTION_SQL,
     ),
+    (
+        "archie_guard_decision_citation_membership",
+        _DECISION_CITATION_MEMBERSHIP_SQL,
+    ),
     ("archie_guard_transformation_receipt", _RECEIPT_FUNCTION_SQL),
     ("archie_guard_evidence_head", _EVIDENCE_HEAD_GUARD_SQL),
     ("archie_guard_evidence_event_binding", _EVIDENCE_EVENT_BINDING_SQL),
@@ -740,6 +795,17 @@ _TRIGGER_SPECS = (
 )
 
 _EVIDENCE_EVENT_BINDING_TRIGGER = "trg_evidence_event_binding"
+
+_CITATION_INSERT_TRIGGER_SPECS = (
+    (
+        "decision_brief_option_citations",
+        "trg_decision_brief_option_citation_membership",
+    ),
+    (
+        "decision_brief_evidence_citations",
+        "trg_decision_brief_evidence_citation_membership",
+    ),
+)
 
 
 _IMMUTABLE_TABLES = (
@@ -862,6 +928,40 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         if row.update_columns:
             drift.append(f"trigger_columns:{trigger_name}")
 
+    for table_name, trigger_name in _CITATION_INSERT_TRIGGER_SPECS:
+        if not connection.exec_driver_sql(
+            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+        ).scalar():
+            continue
+        row = connection.exec_driver_sql(
+            """
+            SELECT trigger.tgenabled, trigger.tgtype,
+                   trigger.tgqual IS NOT NULL AS has_when,
+                   trigger.tgattr::text AS update_columns,
+                   namespace.nspname AS function_schema,
+                   proc.proname AS function_name
+            FROM pg_trigger trigger
+            JOIN pg_proc proc ON proc.oid = trigger.tgfoid
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE trigger.tgname = %s
+              AND trigger.tgrelid = to_regclass(%s)
+              AND NOT trigger.tgisinternal
+            """,
+            (trigger_name, f"public.{table_name}"),
+        ).first()
+        if row is None:
+            drift.append(f"trigger_missing:{trigger_name}")
+            continue
+        if (
+            row.tgenabled != "O"
+            or row.tgtype != 7
+            or row.has_when
+            or row.update_columns
+            or row.function_schema != "public"
+            or row.function_name != "archie_guard_decision_citation_membership"
+        ):
+            drift.append(f"trigger_shape:{trigger_name}")
+
     if connection.exec_driver_sql(
         "SELECT to_regclass('public.evidence_head_events') IS NOT NULL"
     ).scalar():
@@ -965,6 +1065,47 @@ def _repair_triggers(connection) -> None:
             f"EXECUTE FUNCTION public.{function_name}()"
         )
 
+    for table_name, trigger_name in _CITATION_INSERT_TRIGGER_SPECS:
+        if not connection.exec_driver_sql(
+            f"SELECT to_regclass('public.{table_name}') IS NOT NULL"
+        ).scalar():
+            continue
+        row = connection.exec_driver_sql(
+            """
+            SELECT trigger.tgenabled, trigger.tgtype,
+                   trigger.tgqual IS NOT NULL AS has_when,
+                   trigger.tgattr::text AS update_columns,
+                   namespace.nspname AS function_schema,
+                   proc.proname AS function_name
+            FROM pg_trigger trigger
+            JOIN pg_proc proc ON proc.oid = trigger.tgfoid
+            JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+            WHERE trigger.tgname = %s
+              AND trigger.tgrelid = to_regclass(%s)
+              AND NOT trigger.tgisinternal
+            """,
+            (trigger_name, f"public.{table_name}"),
+        ).first()
+        correct = (
+            row is not None
+            and row.tgenabled == "O"
+            and row.tgtype == 7
+            and not row.has_when
+            and not row.update_columns
+            and row.function_schema == "public"
+            and row.function_name == "archie_guard_decision_citation_membership"
+        )
+        if correct:
+            continue
+        connection.exec_driver_sql(
+            f"DROP TRIGGER IF EXISTS {trigger_name} ON public.{table_name}"
+        )
+        connection.exec_driver_sql(
+            f"CREATE TRIGGER {trigger_name} BEFORE INSERT ON public.{table_name} "
+            "FOR EACH ROW EXECUTE FUNCTION "
+            "public.archie_guard_decision_citation_membership()"
+        )
+
     if not connection.exec_driver_sql(
         "SELECT to_regclass('public.evidence_head_events') IS NOT NULL"
     ).scalar():
@@ -1023,12 +1164,17 @@ def ensure_transformation_db_guards(
         "'archie_transformation_command_db_guards'))"
     )
     connection.exec_driver_sql(_IMMUTABILITY_FUNCTION_SQL)
+    connection.exec_driver_sql(_DECISION_CITATION_MEMBERSHIP_SQL)
     connection.exec_driver_sql(_RECEIPT_FUNCTION_SQL)
     connection.exec_driver_sql(_EVIDENCE_HEAD_GUARD_SQL)
     connection.exec_driver_sql(_EVIDENCE_EVENT_BINDING_SQL)
     connection.exec_driver_sql(_EVIDENCE_HEAD_ADVANCE_SQL)
     connection.exec_driver_sql(
         "REVOKE ALL ON FUNCTION public.archie_reject_transformation_mutation() FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        "REVOKE ALL ON FUNCTION "
+        "public.archie_guard_decision_citation_membership() FROM PUBLIC"
     )
     connection.exec_driver_sql(
         "REVOKE ALL ON FUNCTION public.archie_guard_transformation_receipt() FROM PUBLIC"
@@ -1055,6 +1201,11 @@ def ensure_transformation_db_guards(
         connection.exec_driver_sql(
             "REVOKE ALL ON FUNCTION "
             "public.archie_reject_transformation_mutation() "
+            f"FROM {runtime_role_identifier}"
+        )
+        connection.exec_driver_sql(
+            "REVOKE ALL ON FUNCTION "
+            "public.archie_guard_decision_citation_membership() "
             f"FROM {runtime_role_identifier}"
         )
         connection.exec_driver_sql(

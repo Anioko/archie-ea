@@ -103,3 +103,50 @@ No template, CSS, or front-end JavaScript file was changed.
 
 - Commit subject: `feat: freeze transformation decision briefs`
 - Concern: the repository-wide verifier was intentionally stopped before its full-pytest phase completed, so no repository-wide green claim is made. Focused Task 7, complete Transformation Room, schema, tenancy, compile, export, lint, and direct database immutability evidence are all green.
+
+## Review fix round 1/5 — 23 August 2026
+
+This section supersedes the narrower original descriptions wherever they differ. The review hardening was implemented test-first against the same PostgreSQL database URL for both `TEST_DATABASE_URL` and `DATABASE_URL`.
+
+### RED and GREEN
+
+- The first review test tranche exposed **19 failing assertions and one fixture setup error** across evidence gates, decision scope, evidence-universe completeness, authority validation, integrity binding, citation immutability, partial uniqueness, governed-subject naming, and expiry projection.
+- Two final focused RED checks then demonstrated that a request could borrow currentness from a differently identified source head, and that readiness rejected a corrupt historical option even when its latest version was valid. Both now pass.
+- Final Task 7/gate/guard/reconciliation suite: **118 passed** in 67.03 seconds.
+- Complete Transformation Room core suite: **213 passed** in 77.95 seconds.
+- Rationalisation discovery suite: **27 passed** in 37.50 seconds.
+- `schema-drift`, `raw-sql-tenancy`, `lint-core`, `compile`, and `undefined-exports`: **all green, zero failures, zero skips**.
+- Changed-file Ruff, byte compilation, and `git diff --check`: green.
+
+### Current evidence and strict decision scope
+
+- Discover and Evidence gates now consume Task 6's actual `EvidenceRequest`, `EvidenceClaimHead`, and `EvidenceRecord` fields. Acceptance requires an accepted request whose evidence is the current record of the exact `(subject_type, subject_id, claim_key, source_identity)` head.
+- Effective freshness is computed from both the persisted label and expiry timestamp. Current conflicts block until a current governance-resolution record for the same subject and claim explicitly cites the conflict.
+- Candidate briefs accept only option versions for that exact candidate. Workstream briefs accept only workstream-scoped options where `candidate_id IS NULL`; candidate options cannot leak into a workstream decision.
+- Gate and readiness evaluation group by stable option root, consume only each root's latest version, verify the latest version hash, and preserve exact candidate-versus-workstream scope. A corrupt superseded version does not replace or contaminate a valid latest version.
+
+### Complete frozen universe and authority
+
+- The locked freeze handler derives the required evidence universe from every current global head in the decision scope and every persisted request for the scoped candidates. Caller-supplied citations cannot omit a material current source.
+- Heads, records, and requests are locked in deterministic identity order. Required requests must be accepted against the exact current non-conflict record; omitted heads, unaccepted evidence, and unresolved current conflicts fail closed. `blockers_cleared` is persisted only after those checks complete.
+- The persisted decision authority is reloaded by explicit tenant ID and must hold a current server-derived decision role for the programme/workstream. User and role-assignment rows are locked through commit. Foreign-tenant and same-tenant non-authorities are rejected.
+- Task 3's operation-specific authorizer still runs before claim/replay and the locked handler still owns mutable revision/readiness checks. The full suite keeps the option/brief race, revocation, and replay tests green.
+
+### Integrity and immutable membership
+
+- The option SHA-256 envelope now binds organization, workstream, candidate, logical option/version metadata, canonical content, every duplicated cost/benefit/risk bound, currency, and technology flag. Comparison and gate consumers verify the digest before using current versions.
+- Capability and value-stream identifiers are locked and validated against their canonical tenant-scoped models; missing and foreign identifiers are rejected rather than copied into a frozen payload.
+- The brief digest binds scope, normalized frozen payload, recommendation, sorted option/evidence/outcome/measure memberships, policy, submitter, authority, review, blocker, and acknowledgement fields.
+- Citation `UPDATE`/`DELETE` remain append-only. New PostgreSQL `BEFORE INSERT` guards permit citation creation only in the transaction that created the parent brief version, using the immutable row's `xmin`, and only for IDs already bound into the parent's hashed membership. Later runtime inserts fail with `decision brief citation membership is frozen`.
+- Citation freshness records the computed effective state at freeze, including `expired` when the expiry timestamp has elapsed, while retaining the exact acknowledgement flag.
+
+### Schema and governed subject contract
+
+- Decision-brief uniqueness now uses two PostgreSQL partial unique indexes: `(organization_id, workstream_id)` for workstream briefs and `(organization_id, workstream_id, candidate_id)` for candidate briefs.
+- Reconciliation creates the seven Task 7 tables in dependency order and installs both partial indexes idempotently. Catalog checks and creates are bound to the active schema so a same-named table or index later on `search_path` cannot mask missing local schema objects.
+- Governed brief matching consistently uses the canonical `brief_id` root field; version links continue to use their explicit brief-version identifier.
+
+### Round commit and concerns
+
+- Round commit subject: `fix: harden transformation decision evidence`.
+- No Task 7-scoped failures or skips remain. The earlier repository-wide verifier concern remains unchanged: no new repository-wide green claim is made beyond the explicit suites and gates above.

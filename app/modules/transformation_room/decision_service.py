@@ -14,6 +14,7 @@ from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.orm import Session
 
 from app import db
+from app.models.business_capabilities import BusinessCapability
 from app.models.transformation_decision import (
     OPTION_EXCEPTION_TYPES,
     DecisionBrief,
@@ -27,6 +28,7 @@ from app.models.transformation_decision import (
 from app.models.transformation_evidence import (
     EvidenceClaimHead,
     EvidenceRecord,
+    EvidenceRequest,
     TransformationCandidate,
 )
 from app.models.transformation_programme import (
@@ -37,6 +39,7 @@ from app.models.transformation_programme import (
     ProgrammeWorkstream,
 )
 from app.models.user import User
+from app.models.unified_capability import ValueStream
 from app.modules.transformation_room.command_service import (
     CommandService,
     OperationAuthorizer,
@@ -415,16 +418,6 @@ class TransformationOptionService:
         ) + 1
         captured_at = CommandService._database_now(session)
         content = locked_payload["content"]
-        hash_envelope = {
-            "schema_version": "transformation-option-r1.1",
-            "organization_id": actor.organization_id,
-            "option_id": option.id,
-            "version": next_version,
-            "source_revision": expected_revision,
-            "captured_by_id": actor.user_id,
-            "captured_at": captured_at,
-            "content": content,
-        }
         version = TransformationOptionVersion(
             organization_id=actor.organization_id,
             option_id=option.id,
@@ -443,7 +436,11 @@ class TransformationOptionService:
             technology_required=content["technology_required"],
             captured_by_id=actor.user_id,
             captured_at=captured_at,
-            content_hash=_sha256_canonical(hash_envelope),
+            content_hash="0" * 64,
+        )
+        cls._lock_reference_entities(session, actor, content)
+        version.content_hash = _sha256_canonical(
+            cls.reconstruct_canonical_version(version)
         )
         session.add(version)
         option.revision += 1
@@ -473,18 +470,67 @@ class TransformationOptionService:
         )
 
     @classmethod
-    def verify_version_hash(cls, version: TransformationOptionVersion) -> bool:
-        envelope = {
+    def reconstruct_canonical_version(cls, version: TransformationOptionVersion):
+        return {
             "schema_version": "transformation-option-r1.1",
             "organization_id": version.organization_id,
             "option_id": version.option_id,
+            "workstream_id": version.workstream_id,
+            "candidate_id": version.candidate_id,
             "version": version.version,
             "source_revision": version.source_revision,
             "captured_by_id": version.captured_by_id,
             "captured_at": version.captured_at,
             "content": version.content_json,
+            "comparison": {
+                "cost_min": version.cost_min,
+                "cost_max": version.cost_max,
+                "benefit_min": version.benefit_min,
+                "benefit_max": version.benefit_max,
+                "risk_min": version.risk_min,
+                "risk_max": version.risk_max,
+                "currency": version.currency,
+                "technology_required": version.technology_required,
+            },
         }
-        return version.content_hash == _sha256_canonical(envelope)
+
+    @classmethod
+    def verify_version_hash(cls, version: TransformationOptionVersion) -> bool:
+        return hmac.compare_digest(
+            version.content_hash,
+            _sha256_canonical(cls.reconstruct_canonical_version(version)),
+        )
+
+    @staticmethod
+    def _lock_reference_entities(session, actor, content):
+        capability_ids = tuple(content["affected_capability_ids"])
+        value_stream_ids = tuple(content["affected_value_stream_ids"])
+        capabilities = tuple(
+            session.scalars(
+                select(BusinessCapability.id)
+                .where(
+                    BusinessCapability.organization_id == actor.organization_id,
+                    BusinessCapability.id.in_(capability_ids),
+                )
+                .order_by(BusinessCapability.id)
+                .with_for_update()
+            ).all()
+        )
+        if set(capabilities) != set(capability_ids):
+            raise NotFound("affected_capabilities_not_found")
+        value_streams = tuple(
+            session.scalars(
+                select(ValueStream.id)
+                .where(
+                    ValueStream.organization_id == actor.organization_id,
+                    ValueStream.id.in_(value_stream_ids),
+                )
+                .order_by(ValueStream.id)
+                .with_for_update()
+            ).all()
+        )
+        if set(value_streams) != set(value_stream_ids):
+            raise NotFound("affected_value_streams_not_found")
 
     @classmethod
     def compare(
@@ -519,6 +565,8 @@ class TransformationOptionService:
                 raise NotFound("option_versions_not_found")
             versions = tuple(by_id[row_id] for row_id in requested)
             cls.require_same_decision_scope(versions)
+            if any(not cls.verify_version_hash(row) for row in versions):
+                raise CommandConflict("option_version_hash_invalid")
             programme, workstream = _programme_for_workstream(
                 session, actor, versions[0].workstream_id, lock=False
             )
@@ -571,6 +619,7 @@ class DecisionBriefService:
             actor=actor,
             workstream_id=brief.workstream_id,
             target_stage="decision_ready",
+            decision_candidate_id=brief.candidate_id,
         )
         return BriefReadiness(gate.allowed, gate, option_ids, evidence_ids)
 
@@ -603,21 +652,33 @@ class DecisionBriefService:
     @classmethod
     def current_option_version_ids(cls, brief, *, actor):
         with Session(db.engine) as session:
+            candidate_scope = (
+                TransformationOptionVersion.candidate_id.is_(None)
+                if brief.candidate_id is None
+                else TransformationOptionVersion.candidate_id == brief.candidate_id
+            )
             rows = session.scalars(
                 select(TransformationOptionVersion)
                 .where(
                     TransformationOptionVersion.organization_id == actor.organization_id,
                     TransformationOptionVersion.workstream_id == brief.workstream_id,
+                    candidate_scope,
                 )
                 .order_by(
                     TransformationOptionVersion.option_id,
                     TransformationOptionVersion.version.desc(),
                 )
             ).all()
-        latest = {}
-        for row in rows:
-            latest.setdefault(row.option_id, row.id)
-        return tuple(latest[key] for key in sorted(latest))
+            latest = {}
+            for row in rows:
+                latest.setdefault(row.option_id, row)
+            current = tuple(latest[key] for key in sorted(latest))
+            if any(
+                not TransformationOptionService.verify_version_hash(row)
+                for row in current
+            ):
+                raise CommandConflict("option_version_hash_invalid")
+            return tuple(row.id for row in current)
 
     @classmethod
     def current_evidence_ids(cls, brief, *, actor):
@@ -696,8 +757,10 @@ class DecisionBriefService:
         expected_revision,
     ):
         brief = cls.load_brief_for_tenant(actor, brief_id)
-        option_ids = _id_sequence(option_version_ids, "option_version_ids")
-        cited_ids = _id_sequence(evidence_ids, "evidence_ids")
+        option_ids = tuple(
+            sorted(_id_sequence(option_version_ids, "option_version_ids"))
+        )
+        cited_ids = tuple(sorted(_id_sequence(evidence_ids, "evidence_ids")))
         expected_revision = _positive_id(expected_revision, "expected_revision")
         if isinstance(assertions, Mapping):
             forbidden = {
@@ -813,10 +876,19 @@ class DecisionBriefService:
             "brief_freeze_not_authorised",
             lock=True,
         )
-        cls._require_options_gate(session, actor, workstream)
+        if not cls._user_has_decision_authority(
+            session,
+            actor.organization_id,
+            programme.id,
+            workstream.id,
+            brief.decision_authority_id,
+            lock=True,
+        ):
+            raise NotAuthorised("decision_authority_invalid")
         versions = cls._lock_option_versions(
             session, actor, brief, request["option_version_ids"]
         )
+        cls._require_options_gate(session, actor, workstream, brief)
         cls._require_viable_options(session, actor, brief, versions, workstream)
         recommendation = cls._recommendation_version(brief, versions)
         candidates, candidate = cls._lock_candidate_scope(session, actor, brief)
@@ -861,15 +933,6 @@ class DecisionBriefService:
             source_revision=request["expected_revision"],
             created_at=created_at,
         )
-        envelope = cls._hash_envelope(
-            organization_id=actor.organization_id,
-            brief_id=brief.id,
-            version=next_version,
-            source_revision=request["expected_revision"],
-            created_by_id=actor.user_id,
-            created_at=created_at,
-            frozen_payload=frozen_payload,
-        )
         brief_version = DecisionBriefVersion(
             organization_id=actor.organization_id,
             brief_id=brief.id,
@@ -885,13 +948,16 @@ class DecisionBriefService:
             policy_version=TransformationGateService.POLICY_VERSION,
             created_by_id=actor.user_id,
             created_at=created_at,
-            content_hash=_sha256_canonical(envelope),
+            content_hash="0" * 64,
             submitted_by_id=actor.user_id,
             submitter_authorized=True,
             decision_authority_id=brief.decision_authority_id,
             human_reviewed_ai=request["assertions"]["reviewed_ai_material"],
             blockers_cleared=True,
             unknowns_acknowledged=True,
+        )
+        brief_version.content_hash = _sha256_canonical(
+            cls.reconstruct_canonical_payload(brief_version)
         )
         session.add(brief_version)
         session.flush()
@@ -966,12 +1032,15 @@ class DecisionBriefService:
         )
 
     @classmethod
-    def _require_options_gate(cls, session, actor, workstream):
+    def _require_options_gate(cls, session, actor, workstream, brief):
         snapshot = TransformationGateService._load_policy_snapshot(
             session=session,
             actor=actor,
             workstream_id=workstream.id,
             lock=True,
+        )
+        snapshot = TransformationGateService.for_decision_scope(
+            snapshot, brief.candidate_id
         )
         transition = TransformationGateService.require_valid_transition(
             snapshot.workstream.lifecycle_stage, "decision_ready"
@@ -1002,12 +1071,12 @@ class DecisionBriefService:
         if len(by_id) != len(requested_ids):
             raise NotFound("option_versions_not_found")
         versions = tuple(by_id[row_id] for row_id in requested_ids)
-        if any(row.workstream_id != brief.workstream_id for row in versions):
-            raise CommandConflict("option_version_scope_mismatch")
-        if brief.candidate_id is not None and any(
-            row.candidate_id != brief.candidate_id for row in versions
+        if any(
+            row.workstream_id != brief.workstream_id
+            or row.candidate_id != brief.candidate_id
+            for row in versions
         ):
-            raise CommandConflict("option_version_candidate_mismatch")
+            raise CommandConflict("option_version_scope_mismatch")
         if any(not TransformationOptionService.verify_version_hash(row) for row in versions):
             raise CommandConflict("option_version_hash_invalid")
         return versions
@@ -1106,14 +1175,18 @@ class DecisionBriefService:
 
     @staticmethod
     def _lock_candidate_scope(session, actor, brief):
+        statement = select(TransformationCandidate).where(
+            TransformationCandidate.organization_id == actor.organization_id,
+            TransformationCandidate.workstream_id == brief.workstream_id,
+            TransformationCandidate.inclusion_status == "accepted",
+        )
+        if brief.candidate_id is not None:
+            statement = statement.where(
+                TransformationCandidate.id == brief.candidate_id
+            )
         candidates = tuple(
             session.scalars(
-                select(TransformationCandidate)
-                .where(
-                    TransformationCandidate.organization_id == actor.organization_id,
-                    TransformationCandidate.workstream_id == brief.workstream_id,
-                    TransformationCandidate.inclusion_status == "accepted",
-                )
+                statement
                 .order_by(TransformationCandidate.id)
                 .with_for_update()
             ).all()
@@ -1122,7 +1195,7 @@ class DecisionBriefService:
             raise BlockedByEvidence("candidate_scope_required")
         selected = None
         if brief.candidate_id is not None:
-            selected = next((row for row in candidates if row.id == brief.candidate_id), None)
+            selected = candidates[0] if candidates else None
             if selected is None:
                 raise CommandConflict("brief_candidate_scope_changed")
         return candidates, selected
@@ -1131,37 +1204,17 @@ class DecisionBriefService:
     def _lock_evidence_snapshot(
         cls, session, actor, candidates, requested_ids, assertions
     ):
-        records = session.scalars(
-            select(EvidenceRecord)
-            .where(
-                EvidenceRecord.organization_id == actor.organization_id,
-                EvidenceRecord.id.in_(requested_ids),
-            )
-            .order_by(EvidenceRecord.id)
-            .with_for_update()
-        ).all()
-        by_id = {row.id: row for row in records}
-        if len(by_id) != len(requested_ids):
-            raise NotFound("evidence_records_not_found")
-        ordered = tuple(by_id[row_id] for row_id in requested_ids)
         membership = {(row.subject_type, row.subject_id) for row in candidates}
-        if any((row.subject_type, row.subject_id) not in membership for row in ordered):
-            raise CommandConflict("evidence_membership_changed")
-        conditions = [
-            (
-                EvidenceClaimHead.subject_type == row.subject_type,
-                EvidenceClaimHead.subject_id == row.subject_id,
-                EvidenceClaimHead.claim_key == row.claim_key,
-                EvidenceClaimHead.source_identity == row.source_identity,
-            )
-            for row in ordered
-        ]
         heads = tuple(
             session.scalars(
                 select(EvidenceClaimHead)
                 .where(
                     EvidenceClaimHead.organization_id == actor.organization_id,
-                    or_(*(a & b & c & d for a, b, c, d in conditions)),
+                    tuple_(
+                        EvidenceClaimHead.subject_type,
+                        EvidenceClaimHead.subject_id,
+                    ).in_(sorted(membership)),
+                    EvidenceClaimHead.current_record_id.is_not(None),
                 )
                 .order_by(
                     EvidenceClaimHead.organization_id,
@@ -1175,11 +1228,123 @@ class DecisionBriefService:
                 .with_for_update()
             ).all()
         )
+        if not heads:
+            raise BlockedByEvidence("required_evidence_incomplete")
+        current_ids = {row.current_record_id for row in heads}
+        missing_current = current_ids - set(requested_ids)
+        if missing_current:
+            raise BlockedByEvidence(
+                "evidence_snapshot_incomplete",
+                missing_evidence_ids=tuple(sorted(missing_current)),
+            )
+        all_record_ids = set(requested_ids) | current_ids
+        records = tuple(
+            session.scalars(
+                select(EvidenceRecord)
+                .where(
+                    EvidenceRecord.organization_id == actor.organization_id,
+                    EvidenceRecord.id.in_(all_record_ids),
+                )
+                .order_by(EvidenceRecord.id)
+                .with_for_update()
+            ).all()
+        )
+        by_id = {row.id: row for row in records}
+        if set(requested_ids) - set(by_id):
+            raise NotFound("evidence_records_not_found")
+        ordered = tuple(by_id[row_id] for row_id in requested_ids)
+        if any((row.subject_type, row.subject_id) not in membership for row in ordered):
+            raise CommandConflict("evidence_membership_changed")
         head_by_key = {
             (row.subject_type, row.subject_id, row.claim_key, row.source_identity): row
             for row in heads
         }
         acknowledged_ids = set(assertions["acknowledged_superseded_evidence_ids"])
+        if not acknowledged_ids.issubset(set(requested_ids)):
+            raise ValueError("acknowledged evidence must be cited")
+        candidate_ids = tuple(sorted(row.id for row in candidates))
+        requests = tuple(
+            session.scalars(
+                select(EvidenceRequest)
+                .where(
+                    EvidenceRequest.organization_id == actor.organization_id,
+                    EvidenceRequest.candidate_id.in_(candidate_ids),
+                )
+                .order_by(EvidenceRequest.candidate_id, EvidenceRequest.claim_key, EvidenceRequest.id)
+                .execution_options(populate_existing=True)
+                .with_for_update()
+            ).all()
+        )
+        accepted_claims = set()
+        incomplete_required = []
+        for request in requests:
+            accepted = by_id.get(request.accepted_evidence_id)
+            key = (
+                request.subject_type,
+                request.subject_id,
+                request.claim_key,
+            )
+            head = (
+                head_by_key.get(
+                    (
+                        accepted.subject_type,
+                        accepted.subject_id,
+                        accepted.claim_key,
+                        accepted.source_identity,
+                    )
+                )
+                if accepted is not None
+                else None
+            )
+            valid = bool(
+                request.status == "accepted"
+                and accepted is not None
+                and accepted.classification != "conflict"
+                and accepted.subject_type == request.subject_type
+                and accepted.subject_id == request.subject_id
+                and accepted.claim_key == request.claim_key
+                and head is not None
+                and head.current_record_id == accepted.id
+            )
+            if valid:
+                accepted_claims.add(key)
+            elif request.required:
+                incomplete_required.append(request.id)
+        if incomplete_required or not accepted_claims:
+            raise BlockedByEvidence(
+                "required_evidence_incomplete",
+                evidence_request_ids=tuple(incomplete_required),
+            )
+
+        current_records = tuple(by_id[row_id] for row_id in sorted(current_ids))
+        if any(
+            (row.subject_type, row.subject_id, row.claim_key) not in accepted_claims
+            for row in current_records
+        ):
+            raise BlockedByEvidence("evidence_not_accepted")
+        current_conflicts = [
+            row for row in current_records if row.classification == "conflict"
+        ]
+        current_resolutions = [
+            row for row in current_records if row.source_type == "governance_resolution"
+        ]
+        unresolved = [
+            conflict
+            for conflict in current_conflicts
+            if not any(
+                resolution.subject_type == conflict.subject_type
+                and resolution.subject_id == conflict.subject_id
+                and resolution.claim_key == conflict.claim_key
+                and conflict.id in set(resolution.cited_evidence_ids or ())
+                for resolution in current_resolutions
+            )
+        ]
+        if unresolved:
+            raise BlockedByEvidence(
+                "evidence_conflict_unresolved",
+                evidence_ids=tuple(row.id for row in unresolved),
+            )
+
         now = CommandService._database_now(session)
         citations = []
         for record in ordered:
@@ -1211,11 +1376,11 @@ class DecisionBriefService:
                     "current_record_id_at_freeze": head.current_record_id,
                     "was_current": was_current,
                     "acknowledged": acknowledged,
-                    "freshness_status": record.freshness_status,
+                    "freshness_status": (
+                        "expired" if expired else record.freshness_status
+                    ),
                 }
             )
-        if not acknowledged_ids.issubset({row.id for row in ordered}):
-            raise ValueError("acknowledged evidence must be cited")
         return ordered, heads, tuple(citations)
 
     @staticmethod
@@ -1333,7 +1498,9 @@ class DecisionBriefService:
                     "value_type": row.value_type,
                     "value": row.value_json,
                     "classification": row.classification,
-                    "freshness_status": row.freshness_status,
+                    "freshness_status": citation_by_record[row.id][
+                        "freshness_status"
+                    ],
                     "freshness_expires_at": row.freshness_expires_at,
                     "head": {
                         "id": citation_by_record[row.id]["evidence_head_id"],
@@ -1401,21 +1568,47 @@ class DecisionBriefService:
         *,
         organization_id,
         brief_id,
+        workstream_id,
         version,
         source_revision,
         created_by_id,
         created_at,
         frozen_payload,
+        recommendation_option_version_id,
+        option_version_ids,
+        cited_evidence_ids,
+        outcome_ids,
+        measure_ids,
+        policy_version,
+        submitted_by_id,
+        submitter_authorized,
+        decision_authority_id,
+        human_reviewed_ai,
+        blockers_cleared,
+        unknowns_acknowledged,
     ):
         return {
             "schema_version": "decision-brief-hash-r1.1",
             "organization_id": organization_id,
             "brief_id": brief_id,
+            "workstream_id": workstream_id,
             "version": version,
             "source_revision": source_revision,
             "created_by_id": created_by_id,
             "created_at": created_at,
             "frozen_payload": frozen_payload,
+            "recommendation_option_version_id": recommendation_option_version_id,
+            "option_version_ids": sorted(option_version_ids),
+            "cited_evidence_ids": sorted(cited_evidence_ids),
+            "outcome_ids": sorted(outcome_ids),
+            "measure_ids": sorted(measure_ids),
+            "policy_version": policy_version,
+            "submitted_by_id": submitted_by_id,
+            "submitter_authorized": submitter_authorized,
+            "decision_authority_id": decision_authority_id,
+            "human_reviewed_ai": human_reviewed_ai,
+            "blockers_cleared": blockers_cleared,
+            "unknowns_acknowledged": unknowns_acknowledged,
         }
 
     @classmethod
@@ -1423,11 +1616,24 @@ class DecisionBriefService:
         return cls._hash_envelope(
             organization_id=version.organization_id,
             brief_id=version.brief_id,
+            workstream_id=version.workstream_id,
             version=version.version,
             source_revision=version.source_revision,
             created_by_id=version.created_by_id,
             created_at=version.created_at,
             frozen_payload=version.frozen_payload,
+            recommendation_option_version_id=version.recommendation_option_version_id,
+            option_version_ids=version.option_version_ids,
+            cited_evidence_ids=version.cited_evidence_ids,
+            outcome_ids=version.outcome_ids,
+            measure_ids=version.measure_ids,
+            policy_version=version.policy_version,
+            submitted_by_id=version.submitted_by_id,
+            submitter_authorized=version.submitter_authorized,
+            decision_authority_id=version.decision_authority_id,
+            human_reviewed_ai=version.human_reviewed_ai,
+            blockers_cleared=version.blockers_cleared,
+            unknowns_acknowledged=version.unknowns_acknowledged,
         )
 
     @classmethod

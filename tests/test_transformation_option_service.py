@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -14,11 +15,13 @@ from sqlalchemy.orm import Session
 
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping
+from app.models.business_capabilities import BusinessCapability
 from app.models.transformation_decision import (
     DecisionBrief,
     TransformationOption,
     TransformationOptionVersion,
 )
+from app.models.transformation_evidence import EvidenceRequest
 from app.models.transformation_programme import (
     MeasureDefinition,
     ProgrammeOutcomeCommitment,
@@ -151,6 +154,17 @@ def decision_scope(app, evidence_scope: EvidenceScope):
             value_stream_id = value_stream.id
         evidence = _record_inventory(scope, key=f"decision-evidence-{suffix}")
         with Session(db.engine) as session, session.begin():
+            request = session.scalar(
+                select(EvidenceRequest).where(
+                    EvidenceRequest.organization_id == scope.organization_id,
+                    EvidenceRequest.id == scope.request_id,
+                )
+            )
+            request.status = "accepted"
+            request.submitted_evidence_id = evidence.object_ids["evidence_record_id"]
+            request.accepted_evidence_id = evidence.object_ids["evidence_record_id"]
+            request.submitted_at = datetime.now(timezone.utc)
+            request.accepted_at = datetime.now(timezone.utc)
             option_one = TransformationOption(
                 **_option_values(scope, title="Tolerate", action_type="tolerate", ordinal=1)
             )
@@ -212,9 +226,12 @@ def decision_scope(app, evidence_scope: EvidenceScope):
                     connection.execute(
                         text(
                             f'DELETE FROM "{table_name}" '
-                            "WHERE organization_id = :organization_id"
+                            "WHERE organization_id IN (:organization_id, :foreign_id)"
                         ),
-                        {"organization_id": scope.organization_id},
+                        {
+                            "organization_id": scope.organization_id,
+                            "foreign_id": scope.foreign_organization_id,
+                        },
                     )
 
 
@@ -224,6 +241,31 @@ def _freeze(scope: DecisionScope, option_id: int, *, key: str, revision: int = 1
         option_id=option_id,
         expected_revision=revision,
         command_key=key,
+    )
+
+
+def test_decision_brief_scope_uses_separate_partial_unique_indexes():
+    """Catches PostgreSQL NULL semantics allowing duplicate workstream briefs."""
+    indexes = {index.name: index for index in DecisionBrief.__table__.indexes}
+    workstream = indexes["uq_decision_brief_workstream_scope"]
+    candidate = indexes["uq_decision_brief_candidate_scope"]
+
+    assert workstream.unique is True
+    assert [column.name for column in workstream.columns] == [
+        "organization_id",
+        "workstream_id",
+    ]
+    assert "candidate_id IS NULL" in str(
+        workstream.dialect_options["postgresql"]["where"]
+    )
+    assert candidate.unique is True
+    assert [column.name for column in candidate.columns] == [
+        "organization_id",
+        "workstream_id",
+        "candidate_id",
+    ]
+    assert "candidate_id IS NOT NULL" in str(
+        candidate.dialect_options["postgresql"]["where"]
     )
 
 
@@ -265,6 +307,107 @@ def test_freeze_persists_complete_decimal_canonical_snapshot_and_replays(decisio
     assert len(version.content_hash) == 64
     assert version.captured_by_id == scope.actor_id
     assert version.captured_at.tzinfo is not None
+
+
+def _altered_version(version, field, replacement):
+    values = {
+        column.name: getattr(version, column.name)
+        for column in TransformationOptionVersion.__table__.columns
+    }
+    values[field] = replacement
+    return TransformationOptionVersion(**values)
+
+
+def test_option_hash_binds_scope_and_every_comparison_column(decision_scope):
+    """Catches duplicated numeric/scope columns escaping the integrity digest."""
+    scope = decision_scope
+    frozen = _freeze(scope, scope.option_ids[0], key="hash-all-option-facts")
+    with Session(db.engine) as session:
+        version = session.get(
+            TransformationOptionVersion,
+            frozen.object_ids["option_version_id"],
+        )
+        session.expunge(version)
+
+    assert TransformationOptionService.verify_version_hash(version)
+    for field, replacement in (
+        ("workstream_id", version.workstream_id + 1),
+        ("candidate_id", None),
+        ("cost_min", version.cost_min + Decimal("1.00")),
+        ("cost_max", version.cost_max + Decimal("1.00")),
+        ("benefit_min", version.benefit_min + Decimal("1.00")),
+        ("benefit_max", version.benefit_max + Decimal("1.00")),
+        ("risk_min", version.risk_min + Decimal("0.01")),
+        ("risk_max", version.risk_max + Decimal("0.01")),
+        ("currency", "USD"),
+        ("technology_required", not version.technology_required),
+    ):
+        assert not TransformationOptionService.verify_version_hash(
+            _altered_version(version, field, replacement)
+        ), field
+
+
+def test_compare_rejects_a_database_corrupt_comparison_column(decision_scope):
+    """Catches comparison trusting duplicated columns without verifying the hash."""
+    scope = decision_scope
+    frozen = _freeze(scope, scope.option_ids[0], key="compare-integrity")
+    version_id = frozen.object_ids["option_version_id"]
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE transformation_option_versions "
+                "SET cost_min = cost_min + 1 "
+                "WHERE id = :version_id AND organization_id = :organization_id"
+            ),
+            {"version_id": version_id, "organization_id": scope.organization_id},
+        )
+
+    with pytest.raises(CommandConflict, match="option_version_hash_invalid"):
+        TransformationOptionService.compare(
+            actor=scope.actor,
+            option_version_ids=(version_id,),
+        )
+
+
+@pytest.mark.parametrize("reference_kind", ("missing", "foreign"))
+def test_freeze_rejects_non_tenant_capability_and_value_stream_ids(
+    decision_scope, evidence_scope, reference_kind
+):
+    """Catches syntax-only reference IDs entering a governed option snapshot."""
+    scope = decision_scope
+    if reference_kind == "missing":
+        capability_id = value_stream_id = 2_000_000_000
+    else:
+        suffix = uuid.uuid4().hex[:8]
+        with Session(db.engine) as session, session.begin():
+            capability = BusinessCapability(
+                organization_id=evidence_scope.foreign_organization_id,
+                name=f"Foreign capability {suffix}",
+                code=f"FC-{suffix}",
+                level=1,
+            )
+            value_stream = ValueStream(
+                organization_id=evidence_scope.foreign_organization_id,
+                name=f"Foreign value stream {suffix}",
+                code=f"FV-{suffix}",
+                value_stream_type="internal",
+            )
+            session.add_all((capability, value_stream))
+            session.flush()
+            capability_id, value_stream_id = capability.id, value_stream.id
+    with Session(db.engine) as session, session.begin():
+        option = session.get(TransformationOption, scope.option_ids[0])
+        option.affected_capability_ids = [capability_id]
+        option.affected_value_stream_ids = [value_stream_id]
+
+    with pytest.raises(NotFound, match="affected_(capabilities|value_streams)_not_found"):
+        _freeze(
+            scope,
+            scope.option_ids[0],
+            key=f"reject-{reference_kind}-references",
+            revision=2,
+        )
 
 
 @pytest.mark.parametrize(
