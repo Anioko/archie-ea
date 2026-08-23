@@ -3406,14 +3406,14 @@ def _provision_capability_keys(
     for key_id, secret in secrets:
         active_ids.append(key_id)
         connection.exec_driver_sql(
-            f"INSERT INTO {qualified_keys} (key_id, secret, active, retired_at) "
+            f"INSERT INTO {qualified_keys} (key_id, secret, active, retired_at) "  # nosec B608 -- schema and literal table name are dialect-quoted; values are bound
             "VALUES (%s, %s, TRUE, NULL) "
             "ON CONFLICT (key_id) DO UPDATE "
             "SET secret = EXCLUDED.secret, active = TRUE, retired_at = NULL",
             (key_id, secret),
         )
     connection.exec_driver_sql(
-        f"UPDATE {qualified_keys} SET active = FALSE, "
+        f"UPDATE {qualified_keys} SET active = FALSE, "  # nosec B608 -- schema and literal table name are dialect-quoted; values are bound
         "retired_at = COALESCE(retired_at, clock_timestamp()) "
         "WHERE active IS TRUE AND NOT (key_id = ANY(%s))",
         (active_ids,),

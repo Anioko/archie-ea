@@ -659,7 +659,7 @@ class CommandService:
             quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
             row = session.execute(
                 text(
-                    f"SELECT * FROM {quoted_schema}.archie_claim_transformation_command("
+                    f"SELECT * FROM {quoted_schema}.archie_claim_transformation_command("  # nosec B608 -- current schema is dialect-quoted; function name is literal; values are bound
                     "CAST(:document AS text), CAST(:capability AS text))"
                 ),
                 {"document": claim_document, "capability": claim_capability},

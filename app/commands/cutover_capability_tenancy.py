@@ -129,7 +129,7 @@ def _relationship_rows(connection, capability_id: int) -> list[tuple[int, str]]:
         active = "AND m.is_active IS NOT FALSE" if "is_active" in columns else ""
         rows = connection.execute(
             text(
-                f"SELECT a.id, a.organization_id FROM {_quoted(mapping_table)} AS m "
+                f"SELECT a.id, a.organization_id FROM {_quoted(mapping_table)} AS m "  # nosec B608 -- identifier comes from a fixed tuple and is quoted
                 "JOIN application_components AS a ON a.id = m.application_component_id "
                 "WHERE m.unified_capability_id = :capability_id "
                 f"AND a.organization_id IS NOT NULL {active}"
@@ -157,7 +157,7 @@ def _relationship_rows(connection, capability_id: int) -> list[tuple[int, str]]:
             parameters["inactive_statuses"] = list(inactive_statuses)
         rows = connection.execute(
             text(
-                f"SELECT id, organization_id FROM {_quoted(table_name)} "
+                f"SELECT id, organization_id FROM {_quoted(table_name)} "  # nosec B608 -- identifiers come from a fixed tuple and are quoted
                 f"WHERE {_quoted(capability_column)} = :capability_id "
                 f"AND organization_id IS NOT NULL {status_filter}"
             ),
@@ -276,7 +276,7 @@ def _foreign_key_counts(connection, foreign_keys: Sequence[dict[str, str]]) -> d
         result[key] = int(
             connection.execute(
                 text(
-                    f"SELECT count(*) FROM {_quoted(table_name)} "
+                    f"SELECT count(*) FROM {_quoted(table_name)} "  # nosec B608 -- catalog identifiers are quoted
                     f"WHERE {_quoted(column_name)} IS NOT NULL"
                 )
             ).scalar_one()
@@ -293,7 +293,7 @@ def _foreign_key_orphans(connection, foreign_keys: Sequence[dict[str, str]]) -> 
         result[key] = int(
             connection.execute(
                 text(
-                    f"SELECT count(*) FROM {_quoted(table_name)} AS source "
+                    f"SELECT count(*) FROM {_quoted(table_name)} AS source "  # nosec B608 -- catalog identifiers are quoted
                     "LEFT JOIN unified_capabilities AS target "
                     f"ON target.id = source.{_quoted(column_name)} "
                     f"WHERE source.{_quoted(column_name)} IS NOT NULL AND target.id IS NULL"
@@ -309,12 +309,12 @@ def _owner_expression(connection, table_name: str, alias: str = "source") -> str
         return f"{alias}.organization_id"
     if "application_component_id" in columns:
         return (
-            f"(SELECT app.organization_id FROM application_components AS app "
+            f"(SELECT app.organization_id FROM application_components AS app "  # nosec B608 -- alias is fixed by internal callers
             f"WHERE app.id = {alias}.application_component_id)"
         )
     if "work_package_id" in columns and _table_columns(connection, "work_packages"):
         return (
-            f"(SELECT package.organization_id FROM work_packages AS package "
+            f"(SELECT package.organization_id FROM work_packages AS package "  # nosec B608 -- alias is fixed by internal callers
             f"WHERE package.id = {alias}.work_package_id)"
         )
     return "NULL::integer"
@@ -409,7 +409,7 @@ def _resolve_duplicate(
         column = _quoted(column_name)
         connection.execute(
             text(
-                f"SELECT 1 FROM {table} AS source "
+                f"SELECT 1 FROM {table} AS source "  # nosec B608 -- catalog identifiers are quoted; IDs are bound
                 f"WHERE source.{column} IN (:source_id, :target_id) FOR UPDATE"
             ),
             {"source_id": source_id, "target_id": target_id},
@@ -417,7 +417,7 @@ def _resolve_duplicate(
         source_links = int(
             connection.execute(
                 text(
-                    f"SELECT count(*) FROM {table} AS source "
+                    f"SELECT count(*) FROM {table} AS source "  # nosec B608 -- catalog identifiers are quoted; ID is bound
                     f"WHERE source.{column} = :source_id"
                 ),
                 {"source_id": source_id},
@@ -430,7 +430,7 @@ def _resolve_duplicate(
         eligible = int(
             connection.execute(
                 text(
-                    f"SELECT count(*) FROM {table} AS source "
+                    f"SELECT count(*) FROM {table} AS source "  # nosec B608 -- catalog identifiers are quoted; values are bound
                     f"WHERE source.{column} = :source_id "
                     f"AND {ownership_predicate}"
                 ),
@@ -445,7 +445,7 @@ def _resolve_duplicate(
         target_links_before = int(
             connection.execute(
                 text(
-                    f"SELECT count(*) FROM {table} AS source "
+                    f"SELECT count(*) FROM {table} AS source "  # nosec B608 -- catalog identifiers are quoted; ID is bound
                     f"WHERE source.{column} = :target_id"
                 ),
                 {"target_id": target_id},
@@ -453,7 +453,7 @@ def _resolve_duplicate(
         )
         result = connection.execute(
             text(
-                f"UPDATE {table} AS source SET {column} = :target_id "
+                f"UPDATE {table} AS source SET {column} = :target_id "  # nosec B608 -- catalog identifiers are quoted; IDs are bound
                 f"WHERE source.{column} = :source_id "
                 f"AND {ownership_predicate}"
             ),
@@ -470,7 +470,7 @@ def _resolve_duplicate(
         writes += result.rowcount
         source_links_after, target_links_after = connection.execute(
             text(
-                f"SELECT count(*) FILTER (WHERE source.{column} = :source_id), "
+                f"SELECT count(*) FILTER (WHERE source.{column} = :source_id), "  # nosec B608 -- catalog identifiers are quoted; IDs are bound
                 f"count(*) FILTER (WHERE source.{column} = :target_id) "
                 f"FROM {table} AS source"
             ),

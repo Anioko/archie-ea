@@ -168,13 +168,13 @@ def merge_duplicate_rows(
         params = {"loser_ids": list(accepted_ids), "org_id": organization_id}
         if not accepted_ids:
             continue
-        count_sql = db.text(f"SELECT COUNT(*) FROM {fk_table} WHERE {fk_col} = ANY(:loser_ids){org_clause}")
+        count_sql = db.text(f"SELECT COUNT(*) FROM {fk_table} WHERE {fk_col} = ANY(:loser_ids){org_clause}")  # nosec B608 -- identifiers come from ORM metadata; IDs are bound
         affected = db.session.execute(count_sql, params).scalar() or 0
         if affected:
             fk_repoint_counts[fk_table] = affected
         if not dry_run and affected:
             update_sql = db.text(
-                f"UPDATE {fk_table} SET {fk_col} = :winner_id WHERE {fk_col} = ANY(:loser_ids){org_clause}"
+                f"UPDATE {fk_table} SET {fk_col} = :winner_id WHERE {fk_col} = ANY(:loser_ids){org_clause}"  # nosec B608 -- identifiers come from ORM metadata; IDs are bound
             )
             db.session.execute(update_sql, {"winner_id": winner_id, "loser_ids": list(accepted_ids), "org_id": organization_id})
 
@@ -228,7 +228,7 @@ def dedupe_model(model_key: str, dry_run: bool = True) -> dict:
             params = {"loser_ids": list(loser_ids), "org_id": org_id}
 
             count_sql = db.text(
-                f"SELECT COUNT(*) FROM {fk_table} WHERE {fk_col} = ANY(:loser_ids){org_clause}"
+                f"SELECT COUNT(*) FROM {fk_table} WHERE {fk_col} = ANY(:loser_ids){org_clause}"  # nosec B608 -- identifiers come from ORM metadata; IDs are bound
             )
             affected = db.session.execute(count_sql, params).scalar() or 0
             if affected:
@@ -236,7 +236,7 @@ def dedupe_model(model_key: str, dry_run: bool = True) -> dict:
 
             if not dry_run and affected:
                 update_sql = db.text(
-                    f"UPDATE {fk_table} SET {fk_col} = :winner_id "
+                    f"UPDATE {fk_table} SET {fk_col} = :winner_id "  # nosec B608 -- identifiers come from ORM metadata; IDs are bound
                     f"WHERE {fk_col} = ANY(:loser_ids){org_clause}"
                 )
                 db.session.execute(

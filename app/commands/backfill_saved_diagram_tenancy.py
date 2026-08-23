@@ -90,7 +90,7 @@ def backfill_saved_diagram_tenancy(dry_run, org_id):
         click.echo(f"  + {TABLE}: added organization_id")
 
     orphans = conn.execute(
-        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')
+        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')  # nosec B608 -- table identifier is a module literal
     ).scalar()
     if not orphans:
         click.echo("  no orphaned rows — nothing to assign")
@@ -107,7 +107,7 @@ def backfill_saved_diagram_tenancy(dry_run, org_id):
     derived = 0
     if derivable:
         derive_sql = text(
-            f'UPDATE "{TABLE}" AS d SET organization_id = agg.org '
+            f'UPDATE "{TABLE}" AS d SET organization_id = agg.org '  # nosec B608 -- table identifiers are module literals
             f'FROM ( '
             f'  SELECT sde.diagram_id AS did, '
             f'         MIN(ae.organization_id) AS org, '
@@ -120,7 +120,7 @@ def backfill_saved_diagram_tenancy(dry_run, org_id):
         )
         if dry_run:
             preview = conn.execute(text(
-                f'SELECT count(*) FROM "{TABLE}" d WHERE d.organization_id IS NULL AND EXISTS ('
+                f'SELECT count(*) FROM "{TABLE}" d WHERE d.organization_id IS NULL AND EXISTS ('  # nosec B608 -- table identifiers are module literals
                 f'  SELECT 1 FROM "{ELEMENTS}" sde JOIN "{ARCHIMATE}" ae ON ae.id = sde.element_id '
                 f'  WHERE sde.diagram_id = d.id '
                 f'  GROUP BY sde.diagram_id HAVING COUNT(DISTINCT ae.organization_id) = 1)'
@@ -131,7 +131,7 @@ def backfill_saved_diagram_tenancy(dry_run, org_id):
             click.echo(f"  + {TABLE}: derived org for {derived} diagram(s) from member elements")
 
     remaining = conn.execute(
-        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')
+        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')  # nosec B608 -- table identifier is a module literal
     ).scalar()
 
     if remaining:
@@ -139,7 +139,7 @@ def backfill_saved_diagram_tenancy(dry_run, org_id):
         mixed = 0
         if derivable:
             mixed = conn.execute(text(
-                f'SELECT count(*) FROM "{TABLE}" d WHERE d.organization_id IS NULL AND EXISTS ('
+                f'SELECT count(*) FROM "{TABLE}" d WHERE d.organization_id IS NULL AND EXISTS ('  # nosec B608 -- table identifiers are module literals
                 f'  SELECT 1 FROM "{ELEMENTS}" sde JOIN "{ARCHIMATE}" ae ON ae.id = sde.element_id '
                 f'  WHERE sde.diagram_id = d.id '
                 f'  GROUP BY sde.diagram_id HAVING COUNT(DISTINCT ae.organization_id) > 1)'
@@ -152,7 +152,7 @@ def backfill_saved_diagram_tenancy(dry_run, org_id):
             db.session.rollback()
             return
         conn.execute(
-            text(f'UPDATE "{TABLE}" SET organization_id = :o WHERE organization_id IS NULL'),
+            text(f'UPDATE "{TABLE}" SET organization_id = :o WHERE organization_id IS NULL'),  # nosec B608 -- table identifier is a module literal; org is bound
             {"o": target},
         )
         click.echo(f"  + {TABLE}: assigned {remaining} un-derivable diagram(s) to org {target}")

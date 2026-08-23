@@ -936,7 +936,7 @@ class DecisionBriefService:
         quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
         created = session.execute(
             text(
-                f"SELECT * FROM {quoted_schema}.archie_create_decision_brief("
+                f"SELECT * FROM {quoted_schema}.archie_create_decision_brief("  # nosec B608 -- current schema is dialect-quoted; function name is literal; values are bound
                 "CAST(:capability_document AS text), CAST(:capability AS text), "
                 "CAST(:request_document AS text))"
             ),
@@ -1306,7 +1306,7 @@ class DecisionBriefService:
             quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
             frozen = session.execute(
                 text(
-                    f"SELECT * FROM {quoted_schema}.archie_freeze_decision_brief_version("
+                    f"SELECT * FROM {quoted_schema}.archie_freeze_decision_brief_version("  # nosec B608 -- current schema is dialect-quoted; function name is literal; values are bound
                     "CAST(:brief_id AS bigint), CAST(:actor_id AS bigint), "
                     "CAST(:receipt_id AS bigint), CAST(:generation AS integer), "
                     "CAST(:claim_token AS text), CAST(:capability_document AS text), "
