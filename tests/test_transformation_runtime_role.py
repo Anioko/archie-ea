@@ -7,6 +7,7 @@ import hmac
 import json
 import os
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -486,7 +487,7 @@ class _MembershipShapeCursor:
         return self._rows.pop(0)
 
 
-def test_pg15_membership_cleanup_omits_pg16_catalog_and_grant_syntax(monkeypatch):
+def test_pg15_membership_cleanup_uses_only_cross_version_membership_sql(monkeypatch):
     """Catches PostgreSQL 16-only membership SQL reaching shipped PostgreSQL 15."""
     import scripts.database.configure_roles as roles
 
@@ -503,7 +504,17 @@ def test_pg15_membership_cleanup_omits_pg16_catalog_and_grant_syntax(monkeypatch
     statements = tuple(
         " ".join(statement.upper().split()) for statement, _ in cursor.executed
     )
-    assert statements == ('REVOKE "PARENT" FROM "RUNTIME" CASCADE',)
+    assert statements == (
+        "SELECT PG_ADVISORY_XACT_LOCK(HASHTEXT(%S))",
+        "LOCK TABLE PG_CATALOG.PG_AUTH_MEMBERS IN SHARE ROW EXCLUSIVE MODE",
+        'REVOKE "PARENT" FROM "RUNTIME" CASCADE',
+    )
+    assert cursor.executed[0][1] == (
+        "archie_runtime_membership_cleanup:runtime",
+    )
+    assert all("INHERIT_OPTION" not in statement for statement in statements)
+    assert all("SET_OPTION" not in statement for statement in statements)
+    assert all("WITH ADMIN TRUE" not in statement for statement in statements)
 
 
 def test_pg16_membership_cleanup_rehomes_only_actual_cascade_removals(monkeypatch):
@@ -523,7 +534,8 @@ def test_pg16_membership_cleanup_rehomes_only_actual_cascade_removals(monkeypatc
     )
     before = (
         ("parent", "runtime", "bootstrap", True, False, True),
-        ("parent", "dependent", "runtime", True, False, True),
+        ("parent", "dependent", "runtime", True, False, False),
+        ("parent", "dependent", "inbound", False, True, True),
         (
             "unrelated_parent",
             "unrelated_member",
@@ -566,7 +578,7 @@ def test_pg16_membership_cleanup_rehomes_only_actual_cascade_removals(monkeypatc
     assert all("MEMBERSHIP.INHERIT_OPTION" in query for query in membership_queries)
     assert all("MEMBERSHIP.SET_OPTION" in query for query in membership_queries)
     assert grants == (
-        'GRANT "PARENT" TO "DEPENDENT" WITH ADMIN TRUE, INHERIT FALSE, '
+        'GRANT "PARENT" TO "DEPENDENT" WITH ADMIN TRUE, INHERIT TRUE, '
         'SET TRUE GRANTED BY CURRENT_USER',
     )
 
@@ -2601,7 +2613,7 @@ def test_outbound_membership_cleanup_preserves_dependent_grants(
                 )
             )
             cursor.execute(
-                pg_sql.SQL("GRANT {} TO {} WITH ADMIN TRUE").format(
+                pg_sql.SQL("GRANT {} TO {} WITH ADMIN OPTION").format(
                     pg_sql.Identifier(parent_role),
                     pg_sql.Identifier(role_database.runtime_role),
                 )
@@ -2692,6 +2704,346 @@ def test_outbound_membership_cleanup_preserves_dependent_grants(
                     pg_sql.Identifier(parent_role)
                 )
             )
+        maintenance.close()
+
+
+def test_membership_cleanup_unions_removed_and_current_grantor_options(
+    isolated_role_database,
+):
+    """Catches re-homing that weakens true options on a surviving grant."""
+    from scripts.database.configure_roles import configure_database_roles
+
+    role_database = isolated_role_database
+    configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    parent_role = f"{role_database.runtime_role}_option_parent"
+    dependent_role = f"{role_database.runtime_role}_option_dependent"
+    unrelated_parent = f"{role_database.runtime_role}_other_parent"
+    unrelated_member = f"{role_database.runtime_role}_other_member"
+    maintenance = psycopg2.connect(_maintenance_url())
+    maintenance.autocommit = True
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    runtime = None
+    try:
+        if maintenance.server_version < 160_000:
+            pytest.skip("grantor-specific membership options require PostgreSQL 16+")
+        with maintenance.cursor() as cursor:
+            cursor.execute("SELECT current_user")
+            bootstrap_role = cursor.fetchone()[0]
+            for role_name in (
+                parent_role,
+                dependent_role,
+                unrelated_parent,
+                unrelated_member,
+            ):
+                cursor.execute(
+                    pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
+                        pg_sql.Identifier(role_name)
+                    )
+                )
+            cursor.execute(
+                pg_sql.SQL("GRANT {} TO {} WITH ADMIN OPTION").format(
+                    pg_sql.Identifier(parent_role),
+                    pg_sql.Identifier(role_database.runtime_role),
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL(
+                    "GRANT {} TO {} WITH ADMIN FALSE, INHERIT TRUE, SET TRUE "
+                    "GRANTED BY CURRENT_USER"
+                ).format(
+                    pg_sql.Identifier(parent_role),
+                    pg_sql.Identifier(dependent_role),
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL(
+                    "GRANT {} TO {} WITH ADMIN FALSE, INHERIT FALSE, SET TRUE "
+                    "GRANTED BY CURRENT_USER"
+                ).format(
+                    pg_sql.Identifier(unrelated_parent),
+                    pg_sql.Identifier(unrelated_member),
+                )
+            )
+
+        runtime = psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            dbname=role_database.database_name,
+            user=role_database.runtime_role,
+            password=role_database.runtime_password,
+        )
+        runtime.autocommit = True
+        with runtime.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL(
+                    "GRANT {} TO {} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE"
+                ).format(
+                    pg_sql.Identifier(parent_role),
+                    pg_sql.Identifier(dependent_role),
+                )
+            )
+        runtime.close()
+        runtime = None
+
+        configure_database_roles(
+            admin_url=_maintenance_url(),
+            database_names=(role_database.database_name,),
+            deploy_password=role_database.deploy_password,
+            runtime_password=role_database.runtime_password,
+            deploy_role=role_database.deploy_role,
+            runtime_role=role_database.runtime_role,
+        )
+
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT grantor.rolname, membership.admin_option, "
+                "membership.inherit_option, membership.set_option "
+                "FROM pg_auth_members membership "
+                "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                "JOIN pg_roles member ON member.oid = membership.member "
+                "JOIN pg_roles grantor ON grantor.oid = membership.grantor "
+                "WHERE granted.rolname = %s AND member.rolname = %s "
+                "ORDER BY grantor.rolname",
+                (parent_role, dependent_role),
+            )
+            assert cursor.fetchall() == [(bootstrap_role, True, True, True)]
+            cursor.execute(
+                "SELECT grantor.rolname, membership.admin_option, "
+                "membership.inherit_option, membership.set_option "
+                "FROM pg_auth_members membership "
+                "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                "JOIN pg_roles member ON member.oid = membership.member "
+                "JOIN pg_roles grantor ON grantor.oid = membership.grantor "
+                "WHERE granted.rolname = %s AND member.rolname = %s "
+                "ORDER BY grantor.rolname",
+                (unrelated_parent, unrelated_member),
+            )
+            assert cursor.fetchall() == [(bootstrap_role, False, False, True)]
+    finally:
+        if runtime is not None:
+            runtime.close()
+        with maintenance.cursor() as cursor:
+            for role_name in (
+                dependent_role,
+                unrelated_member,
+                parent_role,
+                unrelated_parent,
+            ):
+                cursor.execute(
+                    pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                        pg_sql.Identifier(role_name)
+                    )
+                )
+        maintenance.close()
+
+
+def test_membership_cleanup_serializes_unrelated_external_revoke(
+    isolated_role_database,
+):
+    """Catches a concurrent unrelated REVOKE being mistaken for CASCADE."""
+    import scripts.database.configure_roles as roles
+
+    role_database = isolated_role_database
+    roles.configure_database_roles(
+        admin_url=_maintenance_url(),
+        database_names=(role_database.database_name,),
+        deploy_password=role_database.deploy_password,
+        runtime_password=role_database.runtime_password,
+        deploy_role=role_database.deploy_role,
+        runtime_role=role_database.runtime_role,
+    )
+    parent_role = f"{role_database.runtime_role}_race_parent"
+    dependent_role = f"{role_database.runtime_role}_race_dependent"
+    unrelated_parent = f"{role_database.runtime_role}_race_other_parent"
+    unrelated_member = f"{role_database.runtime_role}_race_other_member"
+    maintenance = psycopg2.connect(_maintenance_url())
+    maintenance.autocommit = True
+    runtime = None
+    bootstrap = None
+    observer = None
+    revoker_thread = None
+    snapshot_seen = threading.Event()
+    revoke_started = threading.Event()
+    revoke_finished = threading.Event()
+    revoke_waited_on_lock = threading.Event()
+    revoker_errors = []
+    application_name = f"archie-membership-revoker-{uuid.uuid4().hex}"
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+
+    def revoke_unrelated_membership():
+        connection = None
+        try:
+            assert snapshot_seen.wait(timeout=5)
+            connection = psycopg2.connect(
+                _maintenance_url(),
+                application_name=application_name,
+            )
+            with connection.cursor() as cursor:
+                revoke_started.set()
+                cursor.execute(
+                    pg_sql.SQL("REVOKE {} FROM {}").format(
+                        pg_sql.Identifier(unrelated_parent),
+                        pg_sql.Identifier(unrelated_member),
+                    )
+                )
+            connection.commit()
+        except BaseException as exc:
+            revoker_errors.append(exc)
+        finally:
+            if connection is not None:
+                connection.close()
+            revoke_finished.set()
+
+    before_snapshot_observed = False
+
+    def observe_membership_sql(statement):
+        nonlocal before_snapshot_observed
+        normalized = " ".join(statement.upper().split())
+        if before_snapshot_observed or not (
+            normalized.startswith("SELECT GRANTED.ROLNAME")
+            and "MEMBERSHIP.INHERIT_OPTION" in normalized
+        ):
+            return
+        before_snapshot_observed = True
+        snapshot_seen.set()
+        if not revoke_started.wait(timeout=5):
+            return
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            with observer.cursor() as cursor:
+                cursor.execute(
+                    "SELECT wait_event_type FROM pg_stat_activity "
+                    "WHERE application_name = %s",
+                    (application_name,),
+                )
+                row = cursor.fetchone()
+            observer.rollback()
+            if row == ("Lock",):
+                revoke_waited_on_lock.set()
+                return
+            if revoke_finished.is_set():
+                return
+            time.sleep(0.01)
+
+    try:
+        if maintenance.server_version < 160_000:
+            pytest.skip("grantor-specific membership cleanup requires PostgreSQL 16+")
+        with maintenance.cursor() as cursor:
+            for role_name in (
+                parent_role,
+                dependent_role,
+                unrelated_parent,
+                unrelated_member,
+            ):
+                cursor.execute(
+                    pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
+                        pg_sql.Identifier(role_name)
+                    )
+                )
+            cursor.execute(
+                pg_sql.SQL("GRANT {} TO {} WITH ADMIN OPTION").format(
+                    pg_sql.Identifier(parent_role),
+                    pg_sql.Identifier(role_database.runtime_role),
+                )
+            )
+            cursor.execute(
+                pg_sql.SQL(
+                    "GRANT {} TO {} WITH ADMIN FALSE, INHERIT FALSE, SET TRUE"
+                ).format(
+                    pg_sql.Identifier(unrelated_parent),
+                    pg_sql.Identifier(unrelated_member),
+                )
+            )
+
+        runtime = psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            dbname=role_database.database_name,
+            user=role_database.runtime_role,
+            password=role_database.runtime_password,
+        )
+        runtime.autocommit = True
+        with runtime.cursor() as cursor:
+            cursor.execute(
+                pg_sql.SQL(
+                    "GRANT {} TO {} WITH ADMIN TRUE, INHERIT FALSE, SET TRUE"
+                ).format(
+                    pg_sql.Identifier(parent_role),
+                    pg_sql.Identifier(dependent_role),
+                )
+            )
+        runtime.close()
+        runtime = None
+
+        observer = psycopg2.connect(_maintenance_url())
+        revoker_thread = threading.Thread(
+            target=revoke_unrelated_membership,
+            daemon=True,
+        )
+        revoker_thread.start()
+        bootstrap = psycopg2.connect(_maintenance_url())
+        with bootstrap.cursor() as cursor:
+            roles._strip_runtime_memberships(
+                _InterceptingCursor(cursor, observe_membership_sql),
+                runtime_role=role_database.runtime_role,
+            )
+        bootstrap.commit()
+        revoker_thread.join(timeout=5)
+
+        assert before_snapshot_observed
+        assert revoke_waited_on_lock.is_set()
+        assert revoke_finished.is_set()
+        assert revoker_errors == []
+        with maintenance.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM pg_auth_members membership "
+                "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                "JOIN pg_roles member ON member.oid = membership.member "
+                "WHERE granted.rolname = %s AND member.rolname = %s",
+                (unrelated_parent, unrelated_member),
+            )
+            assert cursor.fetchone() == (0,)
+            cursor.execute(
+                "SELECT bool_or(membership.admin_option), "
+                "bool_or(membership.inherit_option), "
+                "bool_or(membership.set_option) "
+                "FROM pg_auth_members membership "
+                "JOIN pg_roles granted ON granted.oid = membership.roleid "
+                "JOIN pg_roles member ON member.oid = membership.member "
+                "WHERE granted.rolname = %s AND member.rolname = %s",
+                (parent_role, dependent_role),
+            )
+            assert cursor.fetchone() == (True, False, True)
+    finally:
+        snapshot_seen.set()
+        if bootstrap is not None:
+            bootstrap.rollback()
+            bootstrap.close()
+        if revoker_thread is not None:
+            revoker_thread.join(timeout=5)
+        if observer is not None:
+            observer.close()
+        if runtime is not None:
+            runtime.close()
+        with maintenance.cursor() as cursor:
+            for role_name in (
+                dependent_role,
+                unrelated_member,
+                parent_role,
+                unrelated_parent,
+            ):
+                cursor.execute(
+                    pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+                        pg_sql.Identifier(role_name)
+                    )
+                )
         maintenance.close()
 
 

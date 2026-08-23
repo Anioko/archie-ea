@@ -139,24 +139,66 @@ def _removed_membership_grants(
         (granted_role, member_role, admin, inherit, can_set)
         for granted_role, member_role, _grantor, admin, inherit, can_set in after
     }
-    removed_states = (
+    removed_options_by_pair: dict[tuple[str, str], tuple[bool, bool, bool]] = {}
+    for granted_role, member_role, _grantor, admin, inherit, can_set in before:
+        membership_state = (
+            granted_role,
+            member_role,
+            admin,
+            inherit,
+            can_set,
+        )
+        if (
+            granted_role == runtime_role
+            or member_role == runtime_role
+            or membership_state in surviving_states
+        ):
+            continue
+        pair = (granted_role, member_role)
+        prior = removed_options_by_pair.get(pair, (False, False, False))
+        removed_options_by_pair[pair] = (
+            prior[0] or admin,
+            prior[1] or inherit,
+            prior[2] or can_set,
+        )
+    return tuple(
         (granted_role, member_role, admin, inherit, can_set)
-        for granted_role, member_role, _grantor, admin, inherit, can_set in before
-        if granted_role != runtime_role
-        and member_role != runtime_role
-        and (granted_role, member_role, admin, inherit, can_set)
-        not in surviving_states
+        for (granted_role, member_role), (
+            admin,
+            inherit,
+            can_set,
+        ) in removed_options_by_pair.items()
     )
-    return tuple(dict.fromkeys(removed_states))
 
 
 def _rehome_dependent_membership_grants(
     cursor,
     *,
     dependent_grants: tuple[tuple[str, str, bool, bool, bool], ...],
-) -> None:
-    """Restore only grants proven removed by a PostgreSQL 16 CASCADE."""
+) -> tuple[tuple[str, str, bool, bool, bool], ...]:
+    """Consolidate removed options into the surviving current-user grant."""
+    consolidated_grants = []
     for granted_role, member_role, admin, inherit, can_set in dependent_grants:
+        cursor.execute(
+            """
+            SELECT membership.admin_option,
+                   membership.inherit_option,
+                   membership.set_option
+            FROM pg_auth_members membership
+            JOIN pg_roles granted ON granted.oid = membership.roleid
+            JOIN pg_roles member ON member.oid = membership.member
+            JOIN pg_roles grantor ON grantor.oid = membership.grantor
+            WHERE granted.rolname = %s
+              AND member.rolname = %s
+              AND grantor.rolname = current_user
+            """,
+            (granted_role, member_role),
+        )
+        surviving_current_user_options = cursor.fetchone()
+        if surviving_current_user_options is not None:
+            admin = admin or surviving_current_user_options[0]
+            inherit = inherit or surviving_current_user_options[1]
+            can_set = can_set or surviving_current_user_options[2]
         cursor.execute(
             sql.SQL(
                 "GRANT {} TO {} WITH ADMIN {}, INHERIT {}, SET {} "
@@ -169,6 +211,10 @@ def _rehome_dependent_membership_grants(
                 sql.SQL("TRUE" if can_set else "FALSE"),
             )
         )
+        consolidated_grants.append(
+            (granted_role, member_role, admin, inherit, can_set)
+        )
+    return tuple(consolidated_grants)
 
 
 def _verify_rehomed_membership_grants(
@@ -210,6 +256,17 @@ def _verify_rehomed_membership_grants(
 
 def _strip_runtime_memberships(cursor, *, runtime_role: str) -> tuple[str, ...]:
     """Remove every inherited/SET ROLE path into or out of runtime."""
+    cursor.execute(
+        "SELECT pg_advisory_xact_lock(hashtext(%s))",
+        (f"archie_runtime_membership_cleanup:{runtime_role}",),
+    )
+    # Advisory locks serialize every Archie bootstrap and recovery path.  The
+    # catalog lock also blocks arbitrary role GRANT/REVOKE writers that do not
+    # participate in Archie's advisory-lock convention, keeping the two graph
+    # snapshots attributable to this transaction's CASCADE operations.
+    cursor.execute(
+        "LOCK TABLE pg_catalog.pg_auth_members IN SHARE ROW EXCLUSIVE MODE"
+    )
     outbound, direct_inbound, transitive_inbound = _runtime_membership_snapshot(
         cursor,
         runtime_role=runtime_role,
@@ -235,13 +292,13 @@ def _strip_runtime_memberships(cursor, *, runtime_role: str) -> tuple[str, ...]:
         after=membership_grants_after,
         runtime_role=runtime_role,
     )
-    _rehome_dependent_membership_grants(
+    consolidated_grants = _rehome_dependent_membership_grants(
         cursor,
         dependent_grants=dependent_grants,
     )
     _verify_rehomed_membership_grants(
         cursor,
-        dependent_grants=dependent_grants,
+        dependent_grants=consolidated_grants,
     )
     remaining_outbound, remaining_inbound, _ = _runtime_membership_snapshot(
         cursor,
