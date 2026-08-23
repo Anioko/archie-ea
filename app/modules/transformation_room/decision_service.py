@@ -931,58 +931,39 @@ class DecisionBriefService:
             source_revision=request["expected_revision"],
             created_at=created_at,
         )
-        brief_version = DecisionBriefVersion(
-            organization_id=actor.organization_id,
-            brief_id=brief.id,
-            workstream_id=workstream.id,
-            version=next_version,
-            source_revision=request["expected_revision"],
-            frozen_payload=frozen_payload,
-            recommendation_option_version_id=recommendation.id,
-            option_version_ids=[row.id for row in versions],
-            cited_evidence_ids=[row.id for row in evidence_rows],
-            outcome_ids=[row.id for row in outcomes],
-            measure_ids=[row.id for row in measures],
-            policy_version=TransformationGateService.POLICY_VERSION,
-            created_by_id=actor.user_id,
-            created_at=created_at,
-            content_hash="0" * 64,
-            submitted_by_id=actor.user_id,
-            submitter_authorized=True,
-            decision_authority_id=brief.decision_authority_id,
-            human_reviewed_ai=request["assertions"]["reviewed_ai_material"],
-            blockers_cleared=True,
-            unknowns_acknowledged=True,
-        )
-        brief_version.content_hash = _sha256_canonical(
-            cls.reconstruct_canonical_payload(brief_version)
-        )
+        from_state = brief.status
         with session.begin_nested():
-            session.add(brief_version)
-            session.flush()
             schema = session.scalar(text("SELECT current_schema()"))
             quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
-            session.execute(
+            frozen = session.execute(
                 text(
-                    f"SELECT {quoted_schema}.archie_insert_decision_brief_citations("
-                    "CAST(:brief_version_id AS bigint), CAST(:actor_id AS bigint), "
+                    f"SELECT * FROM {quoted_schema}.archie_freeze_decision_brief_version("
+                    "CAST(:brief_id AS bigint), CAST(:actor_id AS bigint), "
                     "CAST(:receipt_id AS bigint), CAST(:generation AS integer), "
-                    "CAST(:claim_token AS text))"
+                    "CAST(:claim_token AS text), CAST(:expected_revision AS integer), "
+                    "CAST(:frozen_payload AS jsonb))"
                 ),
                 {
-                    "brief_version_id": brief_version.id,
+                    "brief_id": brief.id,
                     "actor_id": actor.user_id,
                     "receipt_id": claim.receipt_id,
                     "generation": claim.generation,
                     "claim_token": claim.claim_token,
+                    "expected_revision": request["expected_revision"],
+                    "frozen_payload": json.dumps(
+                        frozen_payload,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                    ),
                 },
-            )
+            ).mappings().one()
         decision_event = DecisionEvent(
             organization_id=actor.organization_id,
             brief_id=brief.id,
-            brief_version_id=brief_version.id,
+            brief_version_id=frozen["decision_brief_version_id"],
             event_type="brief.version_frozen",
-            from_state=brief.status,
+            from_state=from_state,
             to_state="frozen",
             actor_id=actor.user_id,
             rationale=request["assertions"]["rationale"],
@@ -990,25 +971,22 @@ class DecisionBriefService:
             source_review_id=None,
             command_receipt_id=claim.receipt_id,
             command_generation=claim.generation,
-            created_at=created_at,
+            created_at=frozen["decision_brief_created_at"],
         )
         session.add(decision_event)
-        brief.status = "frozen"
-        brief.revision += 1
-        brief.updated_at = created_at
         session.flush()
         response = {
             "decision_brief_id": brief.id,
-            "decision_brief_version_id": brief_version.id,
+            "decision_brief_version_id": frozen["decision_brief_version_id"],
             "decision_event_id": decision_event.id,
-            "version": brief_version.version,
-            "content_hash": brief_version.content_hash,
-            "policy_version": brief_version.policy_version,
+            "version": frozen["decision_brief_version_number"],
+            "content_hash": frozen["decision_brief_content_hash"],
+            "policy_version": TransformationGateService.POLICY_VERSION,
         }
         return DomainMutationResult(
             {
                 "decision_brief_id": brief.id,
-                "decision_brief_version_id": brief_version.id,
+                "decision_brief_version_id": frozen["decision_brief_version_id"],
                 "decision_event_id": decision_event.id,
             },
             response,
@@ -1117,6 +1095,8 @@ class DecisionBriefService:
         latest_by_option = {}
         for row in all_versions:
             latest_by_option.setdefault(row.option_id, row)
+        if set(latest_by_option) != set(root_ids):
+            raise CommandConflict("option_version_missing")
         if any(
             latest_by_option.get(row.option_id) is None
             or latest_by_option[row.option_id].id != row.id

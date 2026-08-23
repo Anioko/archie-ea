@@ -193,3 +193,46 @@ This section supersedes the round-1 citation-membership implementation and exten
 
 - Intended commit subject: `fix: fence decision citations across schemas`.
 - No round-2 scoped failure or skip remains. The only verification limitation is the explicitly incomplete repository-wide verifier run described above; the complete 253-test Transformation Room suite and required individual gates are green.
+
+## Review fix round 3/5 — 23 August 2026
+
+This section supersedes round 2's parent-version-plus-citation-function protocol. The round was implemented test-first with `postgresql://postgres@127.0.0.1:5439/flask_test` supplied explicitly as both `TEST_DATABASE_URL` and `DATABASE_URL`.
+
+### RED and GREEN
+
+- The round-3 RED run produced **4 failures**: the restricted runtime role successfully composed a forged draft, receipt, brief version, and citation call; freeze accepted a scope containing a third logical option root with no version; and two waiver cases were released by raw request fields without a valid Task 6 waiver projection.
+- The complete Transformation Room Task 1–7, runtime-role, direct-guard, and reconciliation slice is **230 passed** in 136.84 seconds, with no failures or skips.
+- The direct guard/runtime/reconciliation tranche is **49 passed** in 95.03 seconds.
+- After the final deterministic lock-order review, normal freeze/hash verification, nested-savepoint creation, the real same-revision concurrency race, and the restricted-role exploit are **4 passed**; the waiver-projection and guard-installation checks are **5 passed**.
+- `compile`, `undefined-names`, `redefinitions`, `lint-core`, `raw-sql-tenancy` (`0 <= 0`), `boot-health`, and `schema-drift` (`0 <= 0`) are green with zero failures and zero skips. Changed-file Ruff and `git diff --check` are green.
+- The aggregate `python scripts/verify.py --tag static` run produced no summary within the bounded window and was stopped. Its relevant correctness, compilation, lint, and tenancy gates were then run individually and passed. No aggregate-static or repository-wide green claim is made.
+
+### Atomic server-owned brief freeze
+
+- Runtime can no longer insert a `decision_briefs` draft, a `decision_brief_versions` row, or either citation membership. The runtime role retains read access, while the deploy owner retains schema/reconciliation authority. The obsolete citation-only definer is dropped during idempotent guard installation.
+- `archie_freeze_decision_brief_version(...)` is the only runtime entry point. In one fixed-search-path `SECURITY DEFINER` operation it locks the active programme/workstream, exact draft and expected revision, exact in-progress Task 3 receipt, current users/role assignments, scoped option roots/versions, candidates, global evidence heads/records/requests, outcomes, and measures in deterministic order.
+- The operation binds tenant, actor, `brief.freeze` operation, natural key, request digest, receipt ID, claim token, lease generation and expiry, draft identity/revision, current decision authority, and any policy/legal exception authority. Revocation or scope changes observed at the lock boundary fail before an artifact is inserted.
+- The server validates the canonical frozen payload against persisted draft/programme/candidate facts, the complete latest option universe, exact version content, current/acknowledged evidence and head state, effective expiry, accepted request/current-head relationships, explicit conflict resolution, outcomes, measures, unknown acknowledgements, and the human-review assertion.
+- `archie_canonical_jsonb(...)` supplies deterministic recursive JSON rendering inside PostgreSQL. The freeze operation recomputes the Task 3 request SHA-256 and the complete decision-brief integrity envelope, inserts the version and both sorted citation sets, and advances the draft to frozen atomically. The Python verifier accepts the resulting digest, proving parity with the persisted contract.
+- A legitimate service freeze continues to work inside a nested savepoint. The real PostgreSQL two-session same-revision test still yields one frozen version and one losing stale command. A restricted-role forged draft/receipt/version/citation sequence fails and leaves zero artifacts.
+
+### Complete latest option scope
+
+- Every eligible `TransformationOption` root in the exact candidate or workstream scope must have an immutable version. The selected set must equal the latest version of every root; an unversioned third root now returns `option_version_missing` instead of disappearing from comparison and readiness.
+- Existing one-option policy/legal exception coverage now constructs a genuine one-root scope. It therefore continues to prove the exception rule without contradicting complete-root membership.
+
+### Authority-validated Task 6 waiver projection
+
+- Evidence gate completion derives waived request IDs only from `snapshot.evidence_waivers` entries that pass the existing tenant, identity, status, expiry, interim-accountable, and current-authority validation.
+- Truthy `waiver_id`, `waiver_authority_id`, or `interim_accountable_id` fields on a raw request never release a blocker. Missing projection and a projection with a nonexistent authority both retain `required_evidence_incomplete`; valid persisted Task 6 declined and expired waivers remain green.
+
+### Schema, immutability, and reconciliation
+
+- Guard inspection and repair now track the canonical JSON and atomic freeze functions in both public and isolated non-public schemas, with fixed `pg_catalog` plus explicitly quoted target-schema search paths.
+- Runtime grants expose only the evidence-head advance and atomic brief-freeze operations. Direct version/citation/draft writes remain revoked after repeated role bootstrap and guard reconciliation.
+- Partial decision-brief uniqueness, immutable update/delete triggers, post-freeze citation membership triggers, schema-drift detection, and isolated-schema idempotence remain green.
+
+### Round commit and concerns
+
+- Intended commit subject: `fix: make decision brief freeze server-owned`.
+- No round-3 scoped failure or skip remains. The only limitation is the bounded aggregate-static/repository-wide verifier noted above; the explicit 230-test Transformation Room slice, post-review focused concurrency/runtime checks, and required individual gates are the completion evidence.

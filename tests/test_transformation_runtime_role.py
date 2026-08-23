@@ -443,6 +443,94 @@ def _runtime_attestation_conflict_pair(role_database, *, conflict_candidate_id: 
         raw.close()
 
 
+def test_restricted_runtime_cannot_forge_receipt_brief_version_and_citations(
+    guarded_runtime_database,
+):
+    """Catches runtime composing writable command/version rows into a forged dossier."""
+    role_database = guarded_runtime_database
+    parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+    raw = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=role_database.runtime_role,
+        password=role_database.runtime_password,
+    )
+    exploit_succeeded = False
+    try:
+        cursor = raw.cursor()
+        cursor.execute(
+            "INSERT INTO decision_briefs "
+            "(organization_id, workstream_id, status, revision) "
+            "VALUES (71001, 72001, 'draft', 1) RETURNING id"
+        )
+        brief_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO command_idempotency_records "
+            "(organization_id, actor_id, operation, idempotency_key, "
+            " request_digest, natural_key, status, lease_generation, "
+            " claim_token, claimant_request_id, lease_expires_at, attempt_count) "
+            "VALUES (71001, 73001, 'brief.freeze', 'forged-brief', %s, %s, "
+            " 'in_progress', 1, %s, 'forged-request', "
+            " clock_timestamp() + interval '1 minute', 1) RETURNING id",
+            (
+                "d" * 64,
+                f"brief:{brief_id}:version:1",
+                "t" * 64,
+            ),
+        )
+        receipt_id = cursor.fetchone()[0]
+        frozen_payload = {
+            "option_versions": [{"id": 74001}],
+            "evidence": [],
+        }
+        cursor.execute(
+            "INSERT INTO decision_brief_versions "
+            "(organization_id, brief_id, workstream_id, source_revision, "
+            " created_by_id, submitted_by_id, content_hash, "
+            " option_version_ids, cited_evidence_ids, frozen_payload) "
+            "VALUES (71001, %s, 72001, 1, 73001, 73001, %s, %s::json, "
+            " '[]'::json, %s::json) RETURNING id",
+            (
+                brief_id,
+                "a" * 64,
+                json.dumps([74001]),
+                json.dumps(frozen_payload),
+            ),
+        )
+        version_id = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT public.archie_insert_decision_brief_citations("
+            "%s, 73001, %s, 1, %s)",
+            (version_id, receipt_id, "t" * 64),
+        )
+        raw.commit()
+        exploit_succeeded = True
+    except psycopg2.Error:
+        raw.rollback()
+    finally:
+        raw.close()
+
+    deploy_engine = create_engine(
+        role_database.url(
+            role=role_database.deploy_role,
+            password=role_database.deploy_password,
+        )
+    )
+    try:
+        with deploy_engine.connect() as connection:
+            artifact_count = connection.exec_driver_sql(
+                "SELECT (SELECT count(*) FROM decision_brief_versions) + "
+                "(SELECT count(*) FROM decision_brief_option_citations) + "
+                "(SELECT count(*) FROM decision_brief_evidence_citations)"
+            ).scalar_one()
+    finally:
+        deploy_engine.dispose()
+
+    assert exploit_succeeded is False
+    assert artifact_count == 0
+
+
 def _runtime_conflict_resolution(role_database, *, supersede_governing_leaf: bool):
     """Call the definer directly with a current or superseded cited source leaf."""
     parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
@@ -1093,14 +1181,18 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
             cursor.execute(
                 "SELECT has_table_privilege(%s, 'evidence_head_events', 'SELECT'), "
                 "has_table_privilege(%s, 'evidence_head_events', 'INSERT'), "
+                "has_table_privilege(%s, 'decision_briefs', 'INSERT'), "
+                "has_table_privilege(%s, 'decision_brief_versions', 'INSERT'), "
                 "has_table_privilege(%s, 'decision_brief_option_citations', 'INSERT'), "
                 "has_table_privilege(%s, 'decision_brief_evidence_citations', 'INSERT'), "
                 "has_function_privilege(%s, "
                 "'public.archie_advance_evidence_head(bigint,bigint,integer,bigint,bigint,integer,text)', "
                 "'EXECUTE')",
-                (role_database.runtime_role,) * 5,
+                (role_database.runtime_role,) * 7,
             )
-            assert cursor.fetchone() == (True, False, False, False, True)
+            assert cursor.fetchone() == (
+                True, False, False, False, False, False, True
+            )
             cursor.execute(
                 "SELECT p.proname, pg_get_function_identity_arguments(p.oid) "
                 "FROM pg_proc p "
@@ -1121,9 +1213,10 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                     "p_receipt_id bigint, p_generation integer, p_claim_token text",
                 ),
                 (
-                    "archie_insert_decision_brief_citations",
-                    "p_brief_version_id bigint, p_actor_id bigint, "
-                    "p_receipt_id bigint, p_generation integer, p_claim_token text",
+                    "archie_freeze_decision_brief_version",
+                    "p_brief_id bigint, p_actor_id bigint, "
+                    "p_receipt_id bigint, p_generation integer, p_claim_token text, "
+                    "p_expected_revision integer, p_frozen_payload jsonb",
                 ),
             ])
 

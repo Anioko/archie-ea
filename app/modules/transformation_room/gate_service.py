@@ -769,6 +769,11 @@ class TransformationGateService:
             for rows in valid_by_candidate.values()
             for row in rows
         }
+        valid_waived_request_ids = {
+            _value(row, "id")
+            for row in snapshot.evidence_waivers
+            if cls._valid_evidence_waiver(snapshot, row)
+        }
         requests_complete = bool(snapshot.evidence_requests) and all(
             not _value(row, "required", False)
             or (
@@ -777,10 +782,8 @@ class TransformationGateService:
             )
             or (
                 _value(row, "status") in {"declined", "expired"}
-                and _value(row, "waiver_id")
-                and cls._valid_evidence_waiver(snapshot, row)
+                and _value(row, "id") in valid_waived_request_ids
             )
-            or (_value(row, "status") == "declined" and _value(row, "acknowledgement_id"))
             for row in snapshot.evidence_requests)
         if not requests_complete:
             block("required_evidence_incomplete", "Complete or explicitly acknowledge every required evidence request.", "workstream", workstream_id, f"{room}/evidence")

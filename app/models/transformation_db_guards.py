@@ -136,107 +136,862 @@ $$
 """
 
 
-_DECISION_CITATION_INSERT_SQL = r"""
-CREATE OR REPLACE FUNCTION public.archie_insert_decision_brief_citations(
-    p_brief_version_id bigint,
+_CANONICAL_JSON_FUNCTION_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_canonical_jsonb(p_value jsonb)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    rendered text;
+BEGIN
+    IF jsonb_typeof(p_value) = 'object' THEN
+        SELECT '{' || COALESCE(
+            string_agg(to_jsonb(entry.key)::text || ':' ||
+                       public.archie_canonical_jsonb(entry.value), ',' ORDER BY entry.key),
+            ''
+        ) || '}'
+          INTO rendered
+          FROM jsonb_each(p_value) AS entry;
+        RETURN rendered;
+    ELSIF jsonb_typeof(p_value) = 'array' THEN
+        SELECT '[' || COALESCE(
+            string_agg(public.archie_canonical_jsonb(entry.value), ',' ORDER BY entry.ordinality),
+            ''
+        ) || ']'
+          INTO rendered
+          FROM jsonb_array_elements(p_value) WITH ORDINALITY AS entry(value, ordinality);
+        RETURN rendered;
+    END IF;
+    RETURN p_value::text;
+END;
+$$
+"""
+
+
+_DECISION_BRIEF_FREEZE_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_freeze_decision_brief_version(
+    p_brief_id bigint,
     p_actor_id bigint,
     p_receipt_id bigint,
     p_generation integer,
-    p_claim_token text
+    p_claim_token text,
+    p_expected_revision integer,
+    p_frozen_payload jsonb
 )
-RETURNS void
+RETURNS TABLE (
+    decision_brief_version_id bigint,
+    decision_brief_version_number integer,
+    decision_brief_content_hash text,
+    decision_brief_created_at timestamptz
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 DECLARE
-    version_id bigint;
-    version_organization_id bigint;
-    version_brief_id bigint;
-    version_workstream_id bigint;
-    version_source_revision integer;
-    version_created_by_id bigint;
-    version_submitted_by_id bigint;
-    version_content_hash text;
-    version_option_ids jsonb;
-    version_evidence_ids jsonb;
-    version_payload jsonb;
-    stored_option_ids bigint[];
+    brief_organization_id bigint;
+    brief_workstream_id bigint;
+    brief_candidate_id bigint;
+    brief_recommendation_option_id bigint;
+    brief_decision_authority_id bigint;
+    brief_title text;
+    brief_unknowns jsonb;
+    brief_conflicts jsonb;
+    brief_expected_impacts jsonb;
+    brief_exception_type text;
+    brief_exception_name text;
+    brief_exception_reason text;
+    brief_exception_authority_id bigint;
+    workstream_programme_id bigint;
+    workstream_objective text;
+    workstream_scope jsonb;
+    receipt_digest text;
+    receipt_created_at timestamptz;
+    computed_request_digest text;
     payload_option_ids bigint[];
-    stored_evidence_ids bigint[];
+    latest_option_ids bigint[];
     payload_evidence_ids bigint[];
+    current_evidence_ids bigint[];
+    payload_outcome_ids bigint[];
+    current_outcome_ids bigint[];
+    payload_measure_ids bigint[];
+    current_measure_ids bigint[];
+    acknowledged_unknowns text[];
+    required_unknowns text[];
+    root_count integer;
+    next_version integer;
+    frozen_at timestamptz;
+    request_payload jsonb;
+    hash_envelope jsonb;
+    computed_hash text;
+    inserted_version_id bigint;
+    affected integer;
 BEGIN
-    SELECT id, organization_id, brief_id, workstream_id, source_revision,
-           created_by_id, submitted_by_id, content_hash,
-           option_version_ids::jsonb, cited_evidence_ids::jsonb,
-           frozen_payload::jsonb
-      INTO version_id, version_organization_id, version_brief_id,
-           version_workstream_id, version_source_revision,
-           version_created_by_id, version_submitted_by_id,
-           version_content_hash, version_option_ids, version_evidence_ids,
-           version_payload
-      FROM public.decision_brief_versions
-     WHERE id = p_brief_version_id
-     FOR KEY SHARE;
-
-    IF NOT FOUND
-       OR version_created_by_id IS DISTINCT FROM p_actor_id
-       OR version_submitted_by_id IS DISTINCT FROM p_actor_id
-       OR version_content_hash !~ '^[0-9a-f]{64}$'
-       OR NOT EXISTS (
-           SELECT 1
-             FROM public.decision_briefs AS brief
-             JOIN public.command_idempotency_records AS receipt
-               ON receipt.id = p_receipt_id
-              AND receipt.organization_id = brief.organization_id
-              AND receipt.actor_id = p_actor_id
-              AND receipt.operation = 'brief.freeze'
-              AND receipt.natural_key =
-                  'brief:' || brief.id::text || ':version:' ||
-                  version_source_revision::text
-              AND receipt.status = 'in_progress'
-              AND receipt.lease_generation = p_generation
-              AND receipt.claim_token = p_claim_token
-              AND receipt.lease_expires_at > clock_timestamp()
-            WHERE brief.id = version_brief_id
-              AND brief.organization_id = version_organization_id
-              AND brief.workstream_id = version_workstream_id
-              AND brief.status = 'draft'
-              AND brief.revision = version_source_revision
-       ) THEN
-        RAISE EXCEPTION 'decision brief citation command fence is invalid'
+    SELECT brief.organization_id, brief.workstream_id
+      INTO brief_organization_id, brief_workstream_id
+      FROM public.decision_briefs AS brief
+     WHERE brief.id = p_brief_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'decision brief draft does not exist'
             USING ERRCODE = '55000';
     END IF;
 
-    SELECT COALESCE(array_agg(value::bigint ORDER BY value::bigint), ARRAY[]::bigint[])
-      INTO stored_option_ids
-      FROM jsonb_array_elements_text(version_option_ids);
+    SELECT workstream.programme_id, workstream.objective,
+           workstream.scope_expression::jsonb
+      INTO workstream_programme_id, workstream_objective, workstream_scope
+      FROM public.programme_workstreams AS workstream
+      JOIN public.strategic_initiatives AS programme
+       ON programme.id = workstream.programme_id
+       AND programme.organization_id = workstream.organization_id
+       AND programme.record_kind = 'transformation_programme'
+       AND programme.status <> 'archived'
+       AND programme.archived_at IS NULL
+     WHERE workstream.id = brief_workstream_id
+       AND workstream.organization_id = brief_organization_id
+     FOR UPDATE OF workstream, programme;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'decision brief programme scope is not active'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT brief.organization_id, brief.workstream_id, brief.candidate_id,
+           brief.recommendation_option_id, brief.decision_authority_id,
+           brief.title, brief.unknown_codes::jsonb, brief.conflicts::jsonb,
+           brief.expected_impacts::jsonb, brief.option_exception_type,
+           brief.option_exception_name, brief.option_exception_reason,
+           brief.option_exception_authority_id
+      INTO brief_organization_id, brief_workstream_id, brief_candidate_id,
+           brief_recommendation_option_id, brief_decision_authority_id,
+           brief_title, brief_unknowns, brief_conflicts, brief_expected_impacts,
+           brief_exception_type, brief_exception_name, brief_exception_reason,
+           brief_exception_authority_id
+      FROM public.decision_briefs AS brief
+     WHERE brief.id = p_brief_id
+       AND brief.organization_id = brief_organization_id
+       AND brief.workstream_id = brief_workstream_id
+       AND brief.status = 'draft'
+       AND brief.revision = p_expected_revision
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'decision brief draft revision is not current'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT receipt.request_digest, receipt.created_at
+      INTO receipt_digest, receipt_created_at
+      FROM public.command_idempotency_records AS receipt
+     WHERE receipt.id = p_receipt_id
+       AND receipt.organization_id = brief_organization_id
+       AND receipt.actor_id = p_actor_id
+       AND receipt.operation = 'brief.freeze'
+       AND receipt.natural_key =
+           'brief:' || p_brief_id::text || ':version:' || p_expected_revision::text
+       AND receipt.status = 'in_progress'
+       AND receipt.lease_generation = p_generation
+       AND receipt.claim_token = p_claim_token
+       AND receipt.lease_expires_at > clock_timestamp()
+       AND receipt.operation_result_id IS NULL
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'decision brief command fence is invalid'
+            USING ERRCODE = '55000';
+    END IF;
+
+    PERFORM 1
+      FROM public.users AS governed_user
+     WHERE governed_user.organization_id = brief_organization_id
+       AND governed_user.id IN (
+           p_actor_id, brief_decision_authority_id,
+           COALESCE(brief_exception_authority_id, brief_decision_authority_id)
+       )
+     ORDER BY governed_user.id
+     FOR UPDATE;
+    PERFORM 1
+      FROM public.programme_role_assignments AS assignment
+     WHERE assignment.organization_id = brief_organization_id
+       AND assignment.programme_id = workstream_programme_id
+       AND assignment.user_id IN (
+           p_actor_id, brief_decision_authority_id,
+           COALESCE(brief_exception_authority_id, brief_decision_authority_id)
+       )
+       AND (assignment.workstream_id IS NULL OR
+            assignment.workstream_id = brief_workstream_id)
+     ORDER BY assignment.id
+     FOR UPDATE;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM public.users AS actor
+         WHERE actor.id = p_actor_id
+           AND actor.organization_id = brief_organization_id
+           AND (
+               actor.enterprise_role IN (
+                   'enterprise_architect', 'chief_architect', 'cto',
+                   'platform_admin', 'organization_admin', 'administrator'
+               )
+               OR actor.is_org_admin IS TRUE
+               OR actor.is_platform_admin IS TRUE
+               OR EXISTS (
+                   SELECT 1
+                     FROM public.programme_role_assignments AS assignment
+                    WHERE assignment.organization_id = brief_organization_id
+                      AND assignment.programme_id = workstream_programme_id
+                      AND assignment.user_id = p_actor_id
+                      AND (assignment.workstream_id IS NULL OR
+                           assignment.workstream_id = brief_workstream_id)
+                      AND assignment.role IN (
+                          'programme_owner', 'workstream_lead', 'decision_authority'
+                      )
+                      AND assignment.effective_from <= CURRENT_DATE
+                      AND (assignment.effective_to IS NULL OR
+                           assignment.effective_to >= CURRENT_DATE)
+               )
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief actor is not currently authorized'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM public.users AS authority
+         WHERE authority.id = brief_decision_authority_id
+           AND authority.organization_id = brief_organization_id
+           AND (
+               authority.enterprise_role IN (
+                   'chief_architect', 'cto', 'enterprise_architect',
+                   'platform_admin', 'organization_admin', 'administrator'
+               )
+               OR authority.is_org_admin IS TRUE
+               OR authority.is_platform_admin IS TRUE
+               OR EXISTS (
+                   SELECT 1
+                     FROM public.programme_role_assignments AS assignment
+                    WHERE assignment.organization_id = brief_organization_id
+                      AND assignment.programme_id = workstream_programme_id
+                      AND assignment.user_id = brief_decision_authority_id
+                      AND (assignment.workstream_id IS NULL OR
+                           assignment.workstream_id = brief_workstream_id)
+                      AND assignment.role = 'decision_authority'
+                      AND assignment.effective_from <= CURRENT_DATE
+                      AND (assignment.effective_to IS NULL OR
+                           assignment.effective_to >= CURRENT_DATE)
+               )
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief authority is not current'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF p_frozen_payload->>'schema_version' IS DISTINCT FROM 'decision-brief-r1.1'
+       OR (p_frozen_payload->>'organization_id')::bigint IS DISTINCT FROM brief_organization_id
+       OR (p_frozen_payload->>'brief_id')::bigint IS DISTINCT FROM p_brief_id
+       OR (p_frozen_payload->>'workstream_id')::bigint IS DISTINCT FROM brief_workstream_id
+       OR (p_frozen_payload->>'programme_id')::bigint IS DISTINCT FROM workstream_programme_id
+       OR (p_frozen_payload->>'source_revision')::integer IS DISTINCT FROM p_expected_revision
+       OR p_frozen_payload->>'title' IS DISTINCT FROM brief_title
+       OR p_frozen_payload->>'objective' IS DISTINCT FROM workstream_objective
+       OR p_frozen_payload->'scope_expression' IS DISTINCT FROM workstream_scope
+       OR p_frozen_payload->'unknowns' IS DISTINCT FROM brief_unknowns
+       OR p_frozen_payload->'conflicts' IS DISTINCT FROM brief_conflicts
+       OR p_frozen_payload->'expected_impacts' IS DISTINCT FROM brief_expected_impacts
+       OR p_frozen_payload->'candidate' IS DISTINCT FROM (CASE
+           WHEN brief_candidate_id IS NULL THEN 'null'::jsonb
+           ELSE (
+               SELECT jsonb_build_object(
+                   'id', candidate.id,
+                   'subject_type', candidate.subject_type,
+                   'subject_id', candidate.subject_id
+               )
+                 FROM public.transformation_candidates AS candidate
+                WHERE candidate.id = brief_candidate_id
+                  AND candidate.organization_id = brief_organization_id
+                  AND candidate.workstream_id = brief_workstream_id
+                  AND candidate.inclusion_status = 'accepted'
+           )
+       END)
+       OR p_frozen_payload->'option_exception' IS DISTINCT FROM (CASE
+           WHEN brief_exception_type IS NULL THEN 'null'::jsonb
+           ELSE jsonb_build_object(
+               'type', brief_exception_type,
+               'name', btrim(brief_exception_name),
+               'reason', btrim(brief_exception_reason),
+               'authority_id', brief_exception_authority_id
+           )
+       END)
+       OR (p_frozen_payload->>'decision_authority_id')::bigint
+          IS DISTINCT FROM brief_decision_authority_id
+       OR (p_frozen_payload->>'created_by_id')::bigint IS DISTINCT FROM p_actor_id
+       OR p_frozen_payload->>'policy_version' IS DISTINCT FROM 'transformation-r1.1'
+       OR COALESCE((p_frozen_payload->'human_assertions'->>'reviewed_ai_material')::boolean,
+                   FALSE) IS NOT TRUE THEN
+        RAISE EXCEPTION 'decision brief frozen payload does not match locked draft'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF brief_exception_type IS NOT NULL AND NOT EXISTS (
+        SELECT 1
+          FROM public.users AS authority
+         WHERE authority.id = brief_exception_authority_id
+           AND authority.organization_id = brief_organization_id
+           AND (
+               authority.enterprise_role IN (
+                   'chief_architect', 'cto', 'enterprise_architect',
+                   'platform_admin', 'organization_admin', 'administrator'
+               )
+               OR authority.is_org_admin IS TRUE
+               OR authority.is_platform_admin IS TRUE
+               OR EXISTS (
+                   SELECT 1
+                     FROM public.programme_role_assignments AS assignment
+                    WHERE assignment.organization_id = brief_organization_id
+                      AND assignment.programme_id = workstream_programme_id
+                      AND assignment.user_id = brief_exception_authority_id
+                      AND (assignment.workstream_id IS NULL OR
+                           assignment.workstream_id = brief_workstream_id)
+                      AND assignment.role = 'decision_authority'
+                      AND assignment.effective_from <= CURRENT_DATE
+                      AND (assignment.effective_to IS NULL OR
+                           assignment.effective_to >= CURRENT_DATE)
+               )
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief option exception authority is not current'
+            USING ERRCODE = '42501';
+    END IF;
+
     SELECT COALESCE(array_agg((item->>'id')::bigint ORDER BY (item->>'id')::bigint),
                     ARRAY[]::bigint[])
       INTO payload_option_ids
-      FROM jsonb_array_elements(version_payload->'option_versions') item;
-    SELECT COALESCE(array_agg(value::bigint ORDER BY value::bigint), ARRAY[]::bigint[])
-      INTO stored_evidence_ids
-      FROM jsonb_array_elements_text(version_evidence_ids);
-    SELECT COALESCE(array_agg((item->>'id')::bigint ORDER BY (item->>'id')::bigint),
-                    ARRAY[]::bigint[])
-      INTO payload_evidence_ids
-      FROM jsonb_array_elements(version_payload->'evidence') item;
-
-    IF stored_option_ids IS DISTINCT FROM payload_option_ids
-       OR cardinality(stored_option_ids) IS DISTINCT FROM
-          cardinality(ARRAY(SELECT DISTINCT unnest(stored_option_ids)))
-       OR stored_evidence_ids IS DISTINCT FROM payload_evidence_ids
-       OR cardinality(stored_evidence_ids) IS DISTINCT FROM
-          cardinality(ARRAY(SELECT DISTINCT unnest(stored_evidence_ids))) THEN
-        RAISE EXCEPTION 'decision brief citation membership does not match frozen hash payload'
+      FROM jsonb_array_elements(p_frozen_payload->'option_versions') item;
+    PERFORM 1
+      FROM public.transformation_options AS root
+     WHERE root.organization_id = brief_organization_id
+       AND root.workstream_id = brief_workstream_id
+       AND root.candidate_id IS NOT DISTINCT FROM brief_candidate_id
+     ORDER BY root.id
+     FOR UPDATE;
+    PERFORM 1
+      FROM public.transformation_option_versions AS version
+      JOIN public.transformation_options AS root
+        ON root.id = version.option_id
+       AND root.organization_id = version.organization_id
+     WHERE root.organization_id = brief_organization_id
+       AND root.workstream_id = brief_workstream_id
+       AND root.candidate_id IS NOT DISTINCT FROM brief_candidate_id
+     ORDER BY version.option_id, version.version, version.id
+     FOR UPDATE OF version;
+    SELECT count(*) INTO root_count
+      FROM public.transformation_options AS root
+     WHERE root.organization_id = brief_organization_id
+       AND root.workstream_id = brief_workstream_id
+       AND root.candidate_id IS NOT DISTINCT FROM brief_candidate_id;
+    SELECT COALESCE(array_agg(latest.id ORDER BY latest.id), ARRAY[]::bigint[])
+      INTO latest_option_ids
+      FROM (
+          SELECT DISTINCT ON (version.option_id)
+                 version.id, version.option_id
+            FROM public.transformation_option_versions AS version
+            JOIN public.transformation_options AS root
+              ON root.id = version.option_id
+             AND root.organization_id = version.organization_id
+           WHERE root.organization_id = brief_organization_id
+             AND root.workstream_id = brief_workstream_id
+             AND root.candidate_id IS NOT DISTINCT FROM brief_candidate_id
+           ORDER BY version.option_id, version.version DESC, version.id DESC
+      ) AS latest;
+    IF root_count = 0 OR cardinality(latest_option_ids) <> root_count THEN
+        RAISE EXCEPTION 'decision brief scoped option version is missing'
+            USING ERRCODE = '55000';
+    END IF;
+    IF payload_option_ids IS DISTINCT FROM latest_option_ids
+       OR cardinality(payload_option_ids) IS DISTINCT FROM
+          cardinality(ARRAY(SELECT DISTINCT unnest(payload_option_ids)))
+       OR NOT EXISTS (
+           SELECT 1
+             FROM public.transformation_option_versions AS recommendation
+            WHERE recommendation.id =
+                  (p_frozen_payload->>'recommendation_option_version_id')::bigint
+              AND recommendation.option_id = brief_recommendation_option_id
+              AND recommendation.id = ANY(payload_option_ids)
+       )
+       OR EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(p_frozen_payload->'option_versions') item
+            WHERE NOT EXISTS (
+                SELECT 1
+                  FROM public.transformation_option_versions AS version
+                 WHERE version.id = (item->>'id')::bigint
+                   AND version.organization_id = brief_organization_id
+                   AND version.workstream_id = brief_workstream_id
+                   AND version.candidate_id IS NOT DISTINCT FROM brief_candidate_id
+                   AND version.option_id = (item->>'option_id')::bigint
+                   AND version.version = (item->>'version')::integer
+                   AND version.content_hash = item->>'content_hash'
+                   AND version.content_json::jsonb = item->'content'
+            )
+       ) THEN
+        RAISE EXCEPTION 'decision brief option membership is not current and complete'
             USING ERRCODE = '55000';
     END IF;
 
+    PERFORM 1
+      FROM public.transformation_candidates AS candidate
+     WHERE candidate.organization_id = brief_organization_id
+       AND candidate.workstream_id = brief_workstream_id
+       AND candidate.inclusion_status = 'accepted'
+       AND (brief_candidate_id IS NULL OR candidate.id = brief_candidate_id)
+     ORDER BY candidate.id
+     FOR UPDATE;
+    PERFORM 1
+      FROM public.evidence_claim_heads AS head
+     WHERE head.organization_id = brief_organization_id
+       AND head.current_record_id IS NOT NULL
+       AND EXISTS (
+           SELECT 1
+             FROM public.transformation_candidates AS candidate
+            WHERE candidate.organization_id = brief_organization_id
+              AND candidate.workstream_id = brief_workstream_id
+              AND candidate.inclusion_status = 'accepted'
+              AND (brief_candidate_id IS NULL OR candidate.id = brief_candidate_id)
+              AND candidate.subject_type = head.subject_type
+              AND candidate.subject_id = head.subject_id
+       )
+     ORDER BY head.subject_type, head.subject_id, head.claim_key,
+              head.source_identity, head.id
+     FOR UPDATE;
+    SELECT COALESCE(array_agg((item->>'id')::bigint ORDER BY (item->>'id')::bigint),
+                    ARRAY[]::bigint[])
+      INTO payload_evidence_ids
+      FROM jsonb_array_elements(p_frozen_payload->'evidence') item;
+    PERFORM 1
+      FROM public.evidence_records AS record
+     WHERE record.organization_id = brief_organization_id
+       AND record.id = ANY(payload_evidence_ids)
+     ORDER BY record.id
+     FOR UPDATE;
+    PERFORM 1
+      FROM public.evidence_requests AS request
+     WHERE request.organization_id = brief_organization_id
+       AND EXISTS (
+           SELECT 1
+             FROM public.transformation_candidates AS candidate
+            WHERE candidate.id = request.candidate_id
+              AND candidate.organization_id = brief_organization_id
+              AND candidate.workstream_id = brief_workstream_id
+              AND candidate.inclusion_status = 'accepted'
+              AND (brief_candidate_id IS NULL OR candidate.id = brief_candidate_id)
+       )
+     ORDER BY request.candidate_id, request.claim_key, request.id
+     FOR UPDATE;
+    SELECT COALESCE(array_agg(DISTINCT head.current_record_id
+                              ORDER BY head.current_record_id), ARRAY[]::bigint[])
+      INTO current_evidence_ids
+      FROM public.evidence_claim_heads AS head
+     WHERE head.organization_id = brief_organization_id
+       AND head.current_record_id IS NOT NULL
+       AND EXISTS (
+           SELECT 1
+             FROM public.transformation_candidates AS candidate
+            WHERE candidate.organization_id = brief_organization_id
+              AND candidate.workstream_id = brief_workstream_id
+              AND candidate.inclusion_status = 'accepted'
+              AND (brief_candidate_id IS NULL OR candidate.id = brief_candidate_id)
+              AND candidate.subject_type = head.subject_type
+              AND candidate.subject_id = head.subject_id
+       );
+    IF cardinality(current_evidence_ids) = 0
+       OR NOT current_evidence_ids <@ payload_evidence_ids
+       OR cardinality(payload_evidence_ids) IS DISTINCT FROM
+          cardinality(ARRAY(SELECT DISTINCT unnest(payload_evidence_ids)))
+       OR EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(p_frozen_payload->'evidence') item
+            WHERE NOT EXISTS (
+                SELECT 1
+                  FROM public.evidence_records AS record
+                  JOIN public.evidence_claim_heads AS head
+                    ON head.id = (item->'head'->>'id')::bigint
+                   AND head.organization_id = record.organization_id
+                   AND head.subject_type = record.subject_type
+                   AND head.subject_id = record.subject_id
+                   AND head.claim_key = record.claim_key
+                   AND head.source_identity = record.source_identity
+                 WHERE record.id = (item->>'id')::bigint
+                   AND record.organization_id = brief_organization_id
+                   AND record.workstream_id = brief_workstream_id
+                   AND EXISTS (
+                       SELECT 1
+                         FROM public.transformation_candidates AS candidate
+                        WHERE candidate.id = record.candidate_id
+                          AND candidate.organization_id = brief_organization_id
+                          AND candidate.workstream_id = brief_workstream_id
+                          AND candidate.inclusion_status = 'accepted'
+                          AND (brief_candidate_id IS NULL OR
+                               candidate.id = brief_candidate_id)
+                   )
+                   AND record.subject_type = item->>'subject_type'
+                   AND record.subject_id = (item->>'subject_id')::bigint
+                   AND record.claim_key = item->>'claim_key'
+                   AND record.source_identity = item->>'source_identity'
+                   AND record.source_version = item->>'source_version'
+                   AND record.source_checksum = item->>'source_checksum'
+                   AND record.value_type = item->>'value_type'
+                   AND record.classification = item->>'classification'
+                   AND record.value_json::jsonb = item->'value'
+                   AND record.freshness_expires_at IS NOT DISTINCT FROM
+                       (item->>'freshness_expires_at')::timestamptz
+                   AND head.revision = (item->'head'->>'revision')::integer
+                   AND head.current_record_id =
+                       (item->'head'->>'current_record_id')::bigint
+                   AND head.source_identity = item->'head'->>'source_identity'
+                   AND (head.current_record_id = record.id) =
+                       (item->>'was_current')::boolean
+                   AND (item->>'acknowledged')::boolean = EXISTS (
+                       SELECT 1
+                         FROM jsonb_array_elements_text(
+                             p_frozen_payload->'human_assertions'->
+                             'acknowledged_superseded_evidence_ids'
+                         ) AS acknowledged(value)
+                        WHERE acknowledged.value::bigint = record.id
+                   )
+                   AND (
+                       (
+                           head.current_record_id = record.id
+                           AND record.freshness_status IN ('fresh', 'not_applicable')
+                           AND (record.freshness_expires_at IS NULL OR
+                                record.freshness_expires_at > clock_timestamp())
+                       )
+                       OR (item->>'acknowledged')::boolean IS TRUE
+                   )
+                   AND item->>'freshness_status' = CASE
+                       WHEN record.freshness_expires_at IS NOT NULL
+                            AND record.freshness_expires_at <= clock_timestamp()
+                           THEN 'expired'
+                       ELSE record.freshness_status
+                   END
+            )
+       ) THEN
+        RAISE EXCEPTION 'decision brief evidence membership is not current and complete'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+          FROM public.evidence_requests AS request
+         WHERE request.organization_id = brief_organization_id
+           AND request.required IS TRUE
+           AND EXISTS (
+               SELECT 1 FROM public.transformation_candidates AS candidate
+                WHERE candidate.id = request.candidate_id
+                  AND candidate.organization_id = brief_organization_id
+                  AND candidate.workstream_id = brief_workstream_id
+                  AND candidate.inclusion_status = 'accepted'
+                  AND (brief_candidate_id IS NULL OR candidate.id = brief_candidate_id)
+           )
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM public.evidence_records AS accepted
+                 JOIN public.evidence_claim_heads AS head
+                   ON head.organization_id = accepted.organization_id
+                  AND head.subject_type = accepted.subject_type
+                  AND head.subject_id = accepted.subject_id
+                  AND head.claim_key = accepted.claim_key
+                  AND head.source_identity = accepted.source_identity
+                  AND head.current_record_id = accepted.id
+                WHERE request.status = 'accepted'
+                  AND accepted.id = request.accepted_evidence_id
+                  AND accepted.organization_id = brief_organization_id
+                  AND accepted.classification <> 'conflict'
+                  AND accepted.subject_type = request.subject_type
+                  AND accepted.subject_id = request.subject_id
+                  AND accepted.claim_key = request.claim_key
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief required evidence is incomplete'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+          FROM public.evidence_claim_heads AS current_head
+          JOIN public.evidence_records AS current_record
+            ON current_record.id = current_head.current_record_id
+           AND current_record.organization_id = current_head.organization_id
+         WHERE current_head.organization_id = brief_organization_id
+           AND EXISTS (
+               SELECT 1
+                 FROM public.transformation_candidates AS candidate
+                WHERE candidate.organization_id = brief_organization_id
+                  AND candidate.workstream_id = brief_workstream_id
+                  AND candidate.inclusion_status = 'accepted'
+                  AND (brief_candidate_id IS NULL OR
+                       candidate.id = brief_candidate_id)
+                  AND candidate.subject_type = current_head.subject_type
+                  AND candidate.subject_id = current_head.subject_id
+           )
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM public.evidence_requests AS request
+                 JOIN public.evidence_records AS accepted
+                   ON accepted.id = request.accepted_evidence_id
+                  AND accepted.organization_id = request.organization_id
+                 JOIN public.evidence_claim_heads AS accepted_head
+                   ON accepted_head.organization_id = accepted.organization_id
+                  AND accepted_head.subject_type = accepted.subject_type
+                  AND accepted_head.subject_id = accepted.subject_id
+                  AND accepted_head.claim_key = accepted.claim_key
+                  AND accepted_head.source_identity = accepted.source_identity
+                  AND accepted_head.current_record_id = accepted.id
+                WHERE request.organization_id = brief_organization_id
+                  AND request.status = 'accepted'
+                  AND EXISTS (
+                      SELECT 1
+                        FROM public.transformation_candidates AS candidate
+                       WHERE candidate.id = request.candidate_id
+                         AND candidate.organization_id = brief_organization_id
+                         AND candidate.workstream_id = brief_workstream_id
+                         AND candidate.inclusion_status = 'accepted'
+                         AND (brief_candidate_id IS NULL OR
+                              candidate.id = brief_candidate_id)
+                  )
+                  AND accepted.classification <> 'conflict'
+                  AND request.subject_type = current_record.subject_type
+                  AND request.subject_id = current_record.subject_id
+                  AND request.claim_key = current_record.claim_key
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief current evidence is not accepted'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+          FROM public.evidence_claim_heads AS conflict_head
+          JOIN public.evidence_records AS conflict
+            ON conflict.id = conflict_head.current_record_id
+           AND conflict.organization_id = conflict_head.organization_id
+         WHERE conflict_head.organization_id = brief_organization_id
+           AND conflict.classification = 'conflict'
+           AND conflict.id = ANY(payload_evidence_ids)
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM public.evidence_claim_heads AS resolution_head
+                 JOIN public.evidence_records AS resolution
+                   ON resolution.id = resolution_head.current_record_id
+                  AND resolution.organization_id = resolution_head.organization_id
+                WHERE resolution_head.organization_id = brief_organization_id
+                  AND resolution.subject_type = conflict.subject_type
+                  AND resolution.subject_id = conflict.subject_id
+                  AND resolution.claim_key = conflict.claim_key
+                  AND resolution.source_type = 'governance_resolution'
+                  AND resolution.cited_evidence_ids::jsonb @>
+                      jsonb_build_array(conflict.id)
+                  AND resolution.id = ANY(payload_evidence_ids)
+           )
+    ) THEN
+        RAISE EXCEPTION 'decision brief current evidence conflict is unresolved'
+            USING ERRCODE = '55000';
+    END IF;
+
+    PERFORM 1
+      FROM public.programme_outcome_commitments AS outcome
+     WHERE outcome.organization_id = brief_organization_id
+       AND outcome.programme_id = workstream_programme_id
+       AND (outcome.workstream_id IS NULL OR
+            outcome.workstream_id = brief_workstream_id)
+     ORDER BY outcome.id
+     FOR UPDATE;
+    SELECT COALESCE(array_agg((item->>'id')::bigint ORDER BY (item->>'id')::bigint),
+                    ARRAY[]::bigint[])
+      INTO payload_outcome_ids
+      FROM jsonb_array_elements(p_frozen_payload->'outcomes') item;
+    SELECT COALESCE(array_agg(outcome.id ORDER BY outcome.id), ARRAY[]::bigint[])
+      INTO current_outcome_ids
+      FROM public.programme_outcome_commitments AS outcome
+     WHERE outcome.organization_id = brief_organization_id
+       AND outcome.programme_id = workstream_programme_id
+       AND (outcome.workstream_id IS NULL OR
+            outcome.workstream_id = brief_workstream_id);
+    PERFORM 1
+      FROM public.measure_definitions AS measure
+     WHERE measure.organization_id = brief_organization_id
+       AND measure.outcome_commitment_id = ANY(current_outcome_ids)
+     ORDER BY measure.id
+     FOR UPDATE;
+    SELECT COALESCE(array_agg((item->>'id')::bigint ORDER BY (item->>'id')::bigint),
+                    ARRAY[]::bigint[])
+      INTO payload_measure_ids
+      FROM jsonb_array_elements(p_frozen_payload->'measures') item;
+    SELECT COALESCE(array_agg(measure.id ORDER BY measure.id), ARRAY[]::bigint[])
+      INTO current_measure_ids
+      FROM public.measure_definitions AS measure
+     WHERE measure.organization_id = brief_organization_id
+       AND measure.outcome_commitment_id = ANY(current_outcome_ids);
+    IF payload_outcome_ids IS DISTINCT FROM current_outcome_ids
+       OR payload_measure_ids IS DISTINCT FROM current_measure_ids
+       OR EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(p_frozen_payload->'outcomes') item
+            WHERE NOT EXISTS (
+                SELECT 1
+                  FROM public.programme_outcome_commitments AS outcome
+                 WHERE outcome.id = (item->>'id')::bigint
+                   AND outcome.organization_id = brief_organization_id
+                   AND outcome.programme_id = workstream_programme_id
+                   AND (outcome.workstream_id IS NULL OR
+                        outcome.workstream_id = brief_workstream_id)
+                   AND outcome.statement = item->>'statement'
+                   AND outcome.owner_id = (item->>'owner_id')::bigint
+                   AND outcome.improvement_direction = item->>'improvement_direction'
+                   AND to_char(outcome.target_date, 'YYYY-MM-DD')
+                       IS NOT DISTINCT FROM item->>'target_date'
+                   AND outcome.lifecycle = item->>'lifecycle'
+            )
+       )
+       OR EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(p_frozen_payload->'measures') item
+            WHERE NOT EXISTS (
+                SELECT 1
+                  FROM public.measure_definitions AS measure
+                 WHERE measure.id = (item->>'id')::bigint
+                   AND measure.organization_id = brief_organization_id
+                   AND measure.outcome_commitment_id =
+                       (item->>'outcome_commitment_id')::bigint
+                   AND measure.metric_name = item->>'metric_name'
+                   AND measure.unit = item->>'unit'
+                   AND measure.currency IS NOT DISTINCT FROM item->>'currency'
+                   AND measure.aggregation = item->>'aggregation'
+                   AND measure.baseline_amount IS NOT DISTINCT FROM
+                       (item->>'baseline_amount')::numeric
+                   AND measure.target_amount IS NOT DISTINCT FROM
+                       (item->>'target_amount')::numeric
+                   AND measure.tolerance_amount IS NOT DISTINCT FROM
+                       (item->>'tolerance_amount')::numeric
+                   AND measure.baseline_value IS NOT DISTINCT FROM
+                       (item->>'baseline_value')::numeric
+                   AND measure.target_value IS NOT DISTINCT FROM
+                       (item->>'target_value')::numeric
+                   AND to_char(measure.baseline_date, 'YYYY-MM-DD')
+                       IS NOT DISTINCT FROM item->>'baseline_date'
+                   AND to_char(measure.target_date, 'YYYY-MM-DD')
+                       IS NOT DISTINCT FROM item->>'target_date'
+                   AND measure.cadence IS NOT DISTINCT FROM item->>'cadence'
+                   AND measure.source_adapter IS NOT DISTINCT FROM
+                       item->>'source_adapter'
+                   AND measure.source_key IS NOT DISTINCT FROM item->>'source_key'
+                   AND measure.tolerance IS NOT DISTINCT FROM
+                       (item->>'tolerance')::numeric
+                   AND measure.unavailable_reason IS NOT DISTINCT FROM
+                       item->>'unavailable_reason'
+            )
+       ) THEN
+        RAISE EXCEPTION 'decision brief outcome membership is not current and complete'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), ARRAY[]::text[])
+      INTO acknowledged_unknowns
+      FROM jsonb_array_elements_text(
+          p_frozen_payload->'human_assertions'->'acknowledged_unknown_codes'
+      ) value;
+    SELECT COALESCE(array_agg(value ORDER BY value), ARRAY[]::text[])
+      INTO required_unknowns
+      FROM jsonb_array_elements_text(brief_unknowns) value;
+    IF acknowledged_unknowns IS DISTINCT FROM required_unknowns THEN
+        RAISE EXCEPTION 'decision brief unknown acknowledgements are incomplete'
+            USING ERRCODE = '55000';
+    END IF;
+
+    request_payload := jsonb_build_object(
+        'brief_id', p_brief_id,
+        'workstream_id', brief_workstream_id,
+        'option_version_ids', to_jsonb(payload_option_ids),
+        'evidence_ids', to_jsonb(payload_evidence_ids),
+        'assertions', p_frozen_payload->'human_assertions',
+        'expected_revision', p_expected_revision
+    );
+    computed_request_digest := encode(
+        sha256(convert_to(public.archie_canonical_jsonb(request_payload), 'UTF8')),
+        'hex'
+    );
+    IF receipt_digest IS DISTINCT FROM computed_request_digest THEN
+        RAISE EXCEPTION 'decision brief request digest is invalid'
+            USING ERRCODE = '55000';
+    END IF;
+
+    SELECT COALESCE(max(version.version), 0) + 1
+      INTO next_version
+      FROM public.decision_brief_versions AS version
+     WHERE version.organization_id = brief_organization_id
+       AND version.brief_id = p_brief_id;
+    IF (p_frozen_payload->>'brief_version')::integer IS DISTINCT FROM next_version THEN
+        RAISE EXCEPTION 'decision brief version sequence changed'
+            USING ERRCODE = '55000';
+    END IF;
+    frozen_at := (p_frozen_payload->>'created_at')::timestamptz;
+    IF frozen_at < receipt_created_at OR
+       frozen_at > clock_timestamp() + interval '1 minute' THEN
+        RAISE EXCEPTION 'decision brief freeze timestamp is outside command lease'
+            USING ERRCODE = '55000';
+    END IF;
+
+    hash_envelope := jsonb_build_object(
+        'schema_version', 'decision-brief-hash-r1.1',
+        'organization_id', brief_organization_id,
+        'brief_id', p_brief_id,
+        'workstream_id', brief_workstream_id,
+        'version', next_version,
+        'source_revision', p_expected_revision,
+        'created_by_id', p_actor_id,
+        'created_at', p_frozen_payload->'created_at',
+        'frozen_payload', p_frozen_payload,
+        'recommendation_option_version_id',
+            (p_frozen_payload->>'recommendation_option_version_id')::bigint,
+        'option_version_ids', to_jsonb(payload_option_ids),
+        'cited_evidence_ids', to_jsonb(payload_evidence_ids),
+        'outcome_ids', to_jsonb(payload_outcome_ids),
+        'measure_ids', to_jsonb(payload_measure_ids),
+        'policy_version', p_frozen_payload->>'policy_version',
+        'submitted_by_id', p_actor_id,
+        'submitter_authorized', TRUE,
+        'decision_authority_id', brief_decision_authority_id,
+        'human_reviewed_ai', TRUE,
+        'blockers_cleared', TRUE,
+        'unknowns_acknowledged', TRUE
+    );
+    computed_hash := encode(
+        sha256(convert_to(public.archie_canonical_jsonb(hash_envelope), 'UTF8')),
+        'hex'
+    );
+
+    INSERT INTO public.decision_brief_versions (
+        organization_id, brief_id, workstream_id, version, source_revision,
+        frozen_payload, recommendation_option_version_id, option_version_ids,
+        cited_evidence_ids, outcome_ids, measure_ids, policy_version,
+        created_by_id, created_at, content_hash, submitted_by_id,
+        submitter_authorized, decision_authority_id, human_reviewed_ai,
+        blockers_cleared, unknowns_acknowledged
+    ) VALUES (
+        brief_organization_id, p_brief_id, brief_workstream_id, next_version,
+        p_expected_revision, p_frozen_payload,
+        (p_frozen_payload->>'recommendation_option_version_id')::bigint,
+        to_jsonb(payload_option_ids), to_jsonb(payload_evidence_ids),
+        to_jsonb(payload_outcome_ids), to_jsonb(payload_measure_ids),
+        p_frozen_payload->>'policy_version', p_actor_id, frozen_at,
+        computed_hash, p_actor_id, TRUE, brief_decision_authority_id, TRUE,
+        TRUE, TRUE
+    ) RETURNING id INTO inserted_version_id;
+
     INSERT INTO public.decision_brief_option_citations
         (organization_id, brief_version_id, option_version_id)
-    SELECT version_organization_id, version_id, option_id
-      FROM unnest(stored_option_ids) option_id
+    SELECT brief_organization_id, inserted_version_id, option_id
+      FROM unnest(payload_option_ids) option_id
      ORDER BY option_id;
 
     INSERT INTO public.decision_brief_evidence_citations
@@ -244,8 +999,8 @@ BEGIN
          evidence_head_id, head_revision_at_freeze,
          current_record_id_at_freeze, was_current, acknowledged,
          freshness_status)
-    SELECT version_organization_id,
-           version_id,
+    SELECT brief_organization_id,
+           inserted_version_id,
            (item->>'id')::bigint,
            (item->'head'->>'id')::bigint,
            (item->'head'->>'revision')::integer,
@@ -253,8 +1008,28 @@ BEGIN
            (item->>'was_current')::boolean,
            (item->>'acknowledged')::boolean,
            item->>'freshness_status'
-      FROM jsonb_array_elements(version_payload->'evidence') item
+      FROM jsonb_array_elements(p_frozen_payload->'evidence') item
      ORDER BY (item->>'id')::bigint;
+
+    UPDATE public.decision_briefs
+       SET status = 'frozen',
+           revision = p_expected_revision + 1,
+           updated_at = frozen_at
+     WHERE id = p_brief_id
+       AND organization_id = brief_organization_id
+       AND status = 'draft'
+       AND revision = p_expected_revision;
+    GET DIAGNOSTICS affected = ROW_COUNT;
+    IF affected <> 1 THEN
+        RAISE EXCEPTION 'decision brief draft transition lost its fence'
+            USING ERRCODE = '40001';
+    END IF;
+
+    decision_brief_version_id := inserted_version_id;
+    decision_brief_version_number := next_version;
+    decision_brief_content_hash := computed_hash;
+    decision_brief_created_at := frozen_at;
+    RETURN NEXT;
 END;
 $$
 """
@@ -972,6 +1747,7 @@ _IMMUTABLE_TABLES = (
 _COMMAND_TABLES = _IMMUTABLE_TABLES + (
     "command_idempotency_records",
     "evidence_claim_heads",
+    "decision_briefs",
 )
 
 
@@ -1061,32 +1837,59 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         if expected_search_path not in (advance.proconfig or []):
             drift.append("function_search_path:archie_advance_evidence_head")
 
-    citation_insert = connection.exec_driver_sql(
+    canonical_json = connection.exec_driver_sql(
         """
         SELECT proc.prosrc, proc.prosecdef, proc.proconfig
         FROM pg_proc proc
         JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
         WHERE namespace.nspname = %s
-          AND proc.proname = 'archie_insert_decision_brief_citations'
-          AND proc.pronargs = 5
-          AND proc.prorettype = 'void'::regtype
+          AND proc.proname = 'archie_canonical_jsonb'
+          AND proc.pronargs = 1
+          AND proc.prorettype = 'text'::regtype
         """,
         (schema,),
     ).first()
-    if citation_insert is None:
-        drift.append("function_missing:archie_insert_decision_brief_citations")
+    if canonical_json is None:
+        drift.append("function_missing:archie_canonical_jsonb")
     else:
-        rendered_insert = _render_guard_sql(
-            connection, _DECISION_CITATION_INSERT_SQL, quoted_schema
+        rendered_canonical = _render_guard_sql(
+            connection, _CANONICAL_JSON_FUNCTION_SQL, quoted_schema
         )
-        if _normalise_function_body(citation_insert.prosrc) != _expected_function_body(
-            rendered_insert
+        if _normalise_function_body(canonical_json.prosrc) != _expected_function_body(
+            rendered_canonical
         ):
-            drift.append("function_body:archie_insert_decision_brief_citations")
-        if citation_insert.prosecdef is not True:
-            drift.append("function_security:archie_insert_decision_brief_citations")
-        if expected_search_path not in (citation_insert.proconfig or []):
-            drift.append("function_search_path:archie_insert_decision_brief_citations")
+            drift.append("function_body:archie_canonical_jsonb")
+        if canonical_json.prosecdef is not True:
+            drift.append("function_security:archie_canonical_jsonb")
+        if expected_search_path not in (canonical_json.proconfig or []):
+            drift.append("function_search_path:archie_canonical_jsonb")
+
+    freeze_brief = connection.exec_driver_sql(
+        """
+        SELECT proc.prosrc, proc.prosecdef, proc.proconfig
+        FROM pg_proc proc
+        JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+        WHERE namespace.nspname = %s
+          AND proc.proname = 'archie_freeze_decision_brief_version'
+          AND proc.pronargs = 7
+          AND proc.prorettype = 'record'::regtype
+        """,
+        (schema,),
+    ).first()
+    if freeze_brief is None:
+        drift.append("function_missing:archie_freeze_decision_brief_version")
+    else:
+        rendered_freeze = _render_guard_sql(
+            connection, _DECISION_BRIEF_FREEZE_SQL, quoted_schema
+        )
+        if _normalise_function_body(freeze_brief.prosrc) != _expected_function_body(
+            rendered_freeze
+        ):
+            drift.append("function_body:archie_freeze_decision_brief_version")
+        if freeze_brief.prosecdef is not True:
+            drift.append("function_security:archie_freeze_decision_brief_version")
+        if expected_search_path not in (freeze_brief.proconfig or []):
+            drift.append("function_search_path:archie_freeze_decision_brief_version")
 
     for table_name, trigger_name, function_name in _TRIGGER_SPECS:
         qualified_table = _qualified_name(connection, quoted_schema, table_name)
@@ -1384,7 +2187,8 @@ def ensure_transformation_db_guards(
     for create_sql in (
         _IMMUTABILITY_FUNCTION_SQL,
         _DECISION_CITATION_MEMBERSHIP_SQL,
-        _DECISION_CITATION_INSERT_SQL,
+        _CANONICAL_JSON_FUNCTION_SQL,
+        _DECISION_BRIEF_FREEZE_SQL,
         _RECEIPT_FUNCTION_SQL,
         _EVIDENCE_HEAD_GUARD_SQL,
         _EVIDENCE_EVENT_BINDING_SQL,
@@ -1410,18 +2214,31 @@ def ensure_transformation_db_guards(
     qualified_advance = _qualified_name(
         connection, quoted_schema, "archie_advance_evidence_head"
     )
-    qualified_insert = _qualified_name(
-        connection, quoted_schema, "archie_insert_decision_brief_citations"
+    qualified_canonical = _qualified_name(
+        connection, quoted_schema, "archie_canonical_jsonb"
+    )
+    qualified_freeze = _qualified_name(
+        connection, quoted_schema, "archie_freeze_decision_brief_version"
     )
     advance_signature = (
         "bigint, bigint, integer, bigint, bigint, integer, text"
     )
-    insert_signature = "bigint, bigint, bigint, integer, text"
+    freeze_signature = "bigint, bigint, bigint, integer, text, integer, jsonb"
     connection.exec_driver_sql(
         f"REVOKE ALL ON FUNCTION {qualified_advance}({advance_signature}) FROM PUBLIC"
     )
     connection.exec_driver_sql(
-        f"REVOKE ALL ON FUNCTION {qualified_insert}({insert_signature}) FROM PUBLIC"
+        f"REVOKE ALL ON FUNCTION {qualified_canonical}(jsonb) FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON FUNCTION {qualified_freeze}({freeze_signature}) FROM PUBLIC"
+    )
+    legacy_insert = _qualified_name(
+        connection, quoted_schema, "archie_insert_decision_brief_citations"
+    )
+    connection.exec_driver_sql(
+        f"DROP FUNCTION IF EXISTS {legacy_insert}"
+        "(bigint, bigint, bigint, integer, text)"
     )
     runtime_role_exists = connection.exec_driver_sql(
         "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s)",
@@ -1444,7 +2261,7 @@ def ensure_transformation_db_guards(
             f"TO {runtime_role_identifier}"
         )
         connection.exec_driver_sql(
-            f"GRANT EXECUTE ON FUNCTION {qualified_insert}({insert_signature}) "
+            f"GRANT EXECUTE ON FUNCTION {qualified_freeze}({freeze_signature}) "
             f"TO {runtime_role_identifier}"
         )
     _repair_triggers(connection, schema, quoted_schema)
@@ -1475,6 +2292,8 @@ def ensure_transformation_db_guards(
                     if table_name
                     in {
                         "evidence_head_events",
+                        "decision_briefs",
+                        "decision_brief_versions",
                         "decision_brief_option_citations",
                         "decision_brief_evidence_citations",
                     }

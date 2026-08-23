@@ -461,6 +461,48 @@ def test_evidence_gate_treats_task6_waiver_as_explicit_request_completion(
     assert "required_evidence_incomplete" in {row.code for row in blockers}
 
 
+@pytest.mark.parametrize("projected_authority", (None, 999999))
+def test_evidence_gate_never_trusts_raw_request_waiver_outside_valid_projection(
+    projected_authority,
+):
+    """Catches raw waiver fields bypassing tenant and current-authority projection."""
+    snapshot = _policy_snapshot("evidence", "options")
+    original = snapshot.evidence_requests[-1]
+    raw_waiver = replace_namespace(
+        original,
+        organization_id=snapshot.programme.organization_id,
+        status="declined",
+        accepted_evidence_id=None,
+        acknowledgement_id=original.id,
+        waiver_id=original.id,
+        waiver_authority_id=7,
+        waiver_reason="A raw request row claims a waiver.",
+        waiver_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        interim_accountable_id=7,
+        waived_at=datetime.now(timezone.utc),
+    )
+    projected = (
+        ()
+        if projected_authority is None
+        else (
+            replace_namespace(
+                raw_waiver,
+                waiver_authority_id=projected_authority,
+            ),
+        )
+    )
+    blockers, _, _ = TransformationGateService.evaluate_requirements(
+        replace(
+            snapshot,
+            evidence_requests=(*snapshot.evidence_requests[:-1], raw_waiver),
+            evidence_waivers=projected,
+        ),
+        TransformationGateService.require_valid_transition("evidence", "options"),
+    )
+
+    assert "required_evidence_incomplete" in {row.code for row in blockers}
+
+
 def test_options_gate_counts_latest_version_per_logical_option_only():
     """Catches two revisions of one option masquerading as two alternatives."""
     snapshot = _policy_snapshot("options", "decision_ready")

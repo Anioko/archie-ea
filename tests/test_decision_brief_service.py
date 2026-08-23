@@ -49,7 +49,11 @@ from tests.test_transformation_evidence_service import (
     _record_inventory,
     evidence_scope,
 )
-from tests.test_transformation_option_service import DecisionScope, decision_scope
+from tests.test_transformation_option_service import (
+    DecisionScope,
+    _option_values,
+    decision_scope,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -362,6 +366,33 @@ def test_freeze_rejects_a_stale_option_version_and_an_incomplete_latest_set(
         )
 
 
+def test_freeze_rejects_scoped_option_root_without_any_frozen_version(
+    decision_scope,
+):
+    """Catches an eligible draft alternative disappearing from the selected set."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    with Session(db.engine) as session, session.begin():
+        unversioned = TransformationOption(
+            **_option_values(
+                scope,
+                title="Retain with remediation",
+                action_type="retain",
+                ordinal=3,
+            )
+        )
+        session.add(unversioned)
+        session.flush()
+        unversioned_id = unversioned.id
+
+    with pytest.raises(CommandConflict, match="option_version_missing"):
+        _freeze_brief(
+            scope,
+            option_version_ids,
+            key=f"reject-unversioned-option-root-{unversioned_id}",
+        )
+
+
 def test_new_option_version_and_brief_freeze_serialize_on_scope_lock(
     app, decision_scope
 ):
@@ -650,10 +681,12 @@ def test_freeze_rejects_duplicate_ids_client_totals_and_unreviewed_ai(decision_s
 def test_single_option_requires_persisted_named_policy_or_legal_exception(decision_scope):
     """Catches a one-option brief with an ephemeral or unnamed exception."""
     scope = decision_scope
+    with Session(db.engine) as session, session.begin():
+        session.delete(session.get(TransformationOption, scope.option_ids[0]))
     one_version = (
         TransformationOptionService.freeze_version(
             actor=scope.actor,
-            option_id=scope.option_ids[0],
+            option_id=scope.option_ids[1],
             expected_revision=1,
             command_key="single-option-version",
         ).object_ids["option_version_id"],
@@ -671,7 +704,7 @@ def test_single_option_requires_persisted_named_policy_or_legal_exception(decisi
         brief.option_exception_name = "Contractual exit restriction"
         brief.option_exception_reason = "The current contract legally prohibits migration."
         brief.option_exception_authority_id = scope.actor_id
-        brief.recommendation_option_id = scope.option_ids[0]
+        brief.recommendation_option_id = scope.option_ids[1]
 
     result = _freeze_brief(
         scope, one_version, key="single-option-with-exception", revision=2
