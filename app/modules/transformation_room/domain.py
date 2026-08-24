@@ -199,8 +199,9 @@ class StageView:
     programme: ProgrammeView
     workstream_id: int
     stage: str
-    gate: GateResult
+    gate: GateResult | None
     resources: Mapping[str, Sequence[Mapping[str, Any]]]
+    resource_states: Mapping[str, Mapping[str, str | None]]
     unavailable_reasons: Mapping[str, str]
 
 
@@ -209,6 +210,7 @@ class TransformationPortfolioView:
     programmes: Sequence[ProgrammeView]
     evidence_debt: Mapping[str, int | None]
     decision_ageing: Mapping[str, Decimal | None]
+    cross_domain_dependencies: Mapping[str, int | None]
     delivery_confidence: Mapping[str, Decimal | None]
     outcome_variance: Mapping[str, Decimal | None]
 

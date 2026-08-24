@@ -8,7 +8,7 @@ Pages:
     GET  /solutions/programmes/<id>          — governance cockpit
 
 APIs:
-    POST   /solutions/programmes                          — create programme
+    POST   /solutions/programmes                          — retired legacy intake
     GET    /solutions/programmes/<id>/api/rollup          — rollup JSON
     POST   /solutions/programmes/<id>/solutions           — assign member solution
     DELETE /solutions/programmes/<id>/solutions/<sid>     — unassign member
@@ -17,7 +17,7 @@ APIs:
 
 import logging
 
-from flask import jsonify, render_template, request
+from flask import g, jsonify, redirect, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
@@ -27,9 +27,6 @@ from app.models.strategic import StrategicInitiative
 from .solution_design_routes import solution_design_bp
 
 logger = logging.getLogger(__name__)
-
-VALID_TYPES = ("greenfield", "brownfield")
-
 
 # =============================================================================
 # PAGES
@@ -85,7 +82,22 @@ def architect_synthesis():
         ChiefArchitectService,
     )
 
+    from app.modules.transformation_room.domain import TransformationError
+    from app.modules.transformation_room.read_models import (
+        ChiefArchitectTransformationReadModel,
+    )
+    from app.modules.transformation_room.routes import actor_from_request
+
     synthesis = ChiefArchitectService.portfolio_synthesis()
+    try:
+        transformation = ChiefArchitectTransformationReadModel.portfolio(
+            actor=actor_from_request()
+        )
+        synthesis["transformation"] = (
+            ChiefArchitectTransformationReadModel.to_template(transformation)
+        )
+    except TransformationError as error:
+        synthesis["transformation"] = _unavailable_transformation_posture(error.reason)
     return render_template("solutions/architect_synthesis.html", synthesis=synthesis)
 
 
@@ -96,7 +108,37 @@ def architect_synthesis_api():
         ChiefArchitectService,
     )
 
-    return jsonify(ChiefArchitectService.portfolio_synthesis())
+    from app.modules.transformation_room.domain import TransformationError
+    from app.modules.transformation_room.read_models import (
+        ChiefArchitectTransformationReadModel,
+    )
+    from app.modules.transformation_room.routes import actor_from_request
+
+    synthesis = ChiefArchitectService.portfolio_synthesis()
+    try:
+        transformation = ChiefArchitectTransformationReadModel.portfolio(
+            actor=actor_from_request()
+        )
+        synthesis["transformation"] = (
+            ChiefArchitectTransformationReadModel.to_template(transformation)
+        )
+    except TransformationError as error:
+        synthesis["transformation"] = _unavailable_transformation_posture(error.reason)
+    return jsonify(synthesis)
+
+
+def _unavailable_transformation_posture(reason):
+    unavailable = {"value": None, "reason": reason}
+    return {
+        "state": "not_authorised",
+        "programme_count": None,
+        "non_solution_programmes": None,
+        "evidence_debt": dict(unavailable),
+        "decision_ageing": dict(unavailable),
+        "cross_domain_dependencies": dict(unavailable),
+        "delivery_confidence": dict(unavailable),
+        "outcome_variance": dict(unavailable),
+    }
 
 
 # ── AI-6: Escalate an AI finding to the ARB ──────────────────────────── #
@@ -359,6 +401,14 @@ def programme_drift(initiative_id):
 @login_required
 def programme_cockpit(initiative_id):
     """Programme governance cockpit."""
+    canonical = StrategicInitiative.query.filter(
+        StrategicInitiative.id == initiative_id,
+        StrategicInitiative.organization_id == getattr(g, "current_org_id", None),
+        StrategicInitiative.record_kind == "transformation_programme",
+    ).first()
+    if canonical is not None:
+        return redirect(f"/solutions/programmes/{canonical.id}/overview", code=302)
+
     from app.modules.solutions_strategic.v2.services.programme_governance_service import (
         ProgrammeGovernanceService,
     )
@@ -385,29 +435,12 @@ def programme_cockpit(initiative_id):
 @solution_design_bp.route("/programmes", methods=["POST"])
 @login_required
 def create_programme_entity():
-    """Create a Transformation Programme (StrategicInitiative)."""
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"success": False, "error": "Programme name is required."}), 400
-    itype = (data.get("initiative_type") or "brownfield").lower()
-    if itype not in VALID_TYPES:
-        return jsonify({"success": False, "error": "initiative_type must be greenfield or brownfield."}), 400
-
-    initiative = StrategicInitiative(
-        name=name,
-        description=data.get("description") or "",
-        initiative_type=itype,
-        target_platform=(data.get("target_platform") or "").strip() or None,
-        vendor_key=(data.get("vendor_key") or "").strip().upper() or None,
-        status=data.get("status") or "in_progress",
-        priority=data.get("priority") or "high",
-        owner_id=current_user.id,
-    )
-    db.session.add(initiative)
-    db.session.commit()
-    logger.info("Programme created: id=%s name=%s type=%s", initiative.id, name, itype)
-    return jsonify({"success": True, "id": initiative.id}), 201
+    """Retire the technology-first bypass; canonical intake owns creation."""
+    return jsonify({
+        "success": False,
+        "error": "Use the governed transformation programme intake.",
+        "redirect_url": "/solutions/new-programme",
+    }), 410
 
 
 @solution_design_bp.route("/programmes/<int:initiative_id>/api/rollup", methods=["GET"])
@@ -651,3 +684,13 @@ def programme_unassigned_solutions():
             for s in rows
         ]
     })
+
+
+# The Transformation Room shares the established solution-design URL space so
+# canonical programme links remain stable without introducing a competing
+# blueprint or breadcrumb hierarchy.
+from app.modules.transformation_room.routes import (  # noqa: E402
+    register_transformation_room_routes,
+)
+
+register_transformation_room_routes(solution_design_bp)

@@ -1,0 +1,9 @@
+{% extends "solutions/transformation_room/layout.html" %}
+{% block room_content %}
+<section class="rounded-lg border border-border bg-card p-5" aria-labelledby="outcomes-heading" data-resource-state="{{ room.stage_view.resource_states.stage.state }}">
+  <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Not available in this release</p>
+  <h2 id="outcomes-heading" class="mt-1 text-lg font-semibold text-foreground">Measured outcomes</h2>
+  <p class="mt-2 text-sm text-muted-foreground">{{ room.stage_view.unavailable_reasons.stage }}</p>
+  <p class="mt-4 text-sm text-muted-foreground">Outcome commitments remain visible in the programme context; measured actuals are not available.</p>
+</section>
+{% endblock %}

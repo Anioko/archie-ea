@@ -370,6 +370,7 @@ _MY_WORK_LINKS = {
         _link("Programmes", "solution_design.programmes_list", "git-merge"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
+        _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),
         # BA-A3 (21 Aug 2026): the /business-architecture landing page is
         # deliberately NOT here. enterprise_architect renders 26 sidebar links,
         # which is the `sidebar_links` ratchet's baseline exactly — adding a
@@ -383,7 +384,6 @@ _MY_WORK_LINKS = {
         # retires one of its existing 13 My-work links.
         _link("Portfolio", "portfolio.index", "layout-dashboard"),
         _link("Capability Map", "capability_map.index", "map"),
-        _link("Elements", "archimate_crud.dashboard", "table"),
         _link("Roadmaps", "main.capability_roadmap", "map"),
         # Fix round: both were reachable from nowhere in the sidebar.
         _link("ArchiMate Composer", "archimate.composer_page", "pen-tool"),
@@ -412,6 +412,7 @@ _MY_WORK_LINKS = {
         _link("Tech Radar", "tech_radar.index", "radar"),
     ],
     ROLE_CTO: [
+        _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),
         _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
         _link("Investment Analysis", "architecture.investment_priorities", "target"),

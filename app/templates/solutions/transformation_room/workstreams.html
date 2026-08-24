@@ -1,0 +1,16 @@
+{% extends "solutions/transformation_room/layout.html" %}
+{% block room_content %}
+<section class="rounded-lg border border-border bg-card p-5" aria-labelledby="workstreams-heading">
+  <h2 id="workstreams-heading" class="text-lg font-semibold text-foreground">Programme workstreams</h2>
+  {% if room.workstreams %}
+  <div class="mt-4 divide-y divide-border">
+    {% for workstream in room.workstreams %}
+    <a href="/solutions/programmes/{{ room.programme.id }}/workstreams/{{ workstream.id }}/objective" class="flex flex-col gap-2 py-4 hover:text-primary sm:flex-row sm:items-center sm:justify-between">
+      <div><p class="text-sm font-medium text-foreground">{{ workstream.workstream_type|replace('_', ' ')|title }}</p><p class="mt-1 text-sm text-muted-foreground">{{ workstream.objective or '—' }}</p></div>
+      <span class="text-xs text-muted-foreground">{{ (workstream.lifecycle_stage or '—')|replace('_', ' ')|title }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}<p class="mt-4 text-sm text-muted-foreground">No persisted workstreams are available.</p>{% endif %}
+</section>
+{% endblock %}

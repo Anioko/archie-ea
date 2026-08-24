@@ -49,6 +49,40 @@
         </div>
     </section>
 
+    {% call card.card(class='mb-6') %}
+    <section class="p-5 sm:p-6" aria-labelledby="transformation-posture-heading">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Business-first portfolio</p>
+                <h2 id="transformation-posture-heading" class="mt-1 text-lg font-semibold text-foreground">Transformation posture</h2>
+                <p class="mt-1 text-sm text-muted-foreground">Canonical transformation programmes are reported separately from Solution conformance.</p>
+            </div>
+            <p class="max-w-lg text-xs text-muted-foreground">Not available in this release: governed decision ageing, execution confidence and measured outcome variance.</p>
+        </div>
+        <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {{ metrics_card(
+                title='Non-Solution programmes',
+                value=synthesis.transformation.non_solution_programmes if synthesis.transformation.non_solution_programmes is not none else '—',
+                description='Canonical transformation programme records.'
+            ) }}
+            {% for key, label in [
+                ('evidence_debt', 'Evidence debt'),
+                ('decision_ageing', 'Decision ageing'),
+                ('cross_domain_dependencies', 'Cross-domain dependencies'),
+                ('delivery_confidence', 'Delivery confidence'),
+                ('outcome_variance', 'Outcome variance')
+            ] %}
+            {% set measure = synthesis.transformation[key] %}
+            {{ metrics_card(
+                title=label,
+                value=measure.value if measure.value is not none else '—',
+                description=measure.reason or 'Measured from persisted transformation records.'
+            ) }}
+            {% endfor %}
+        </div>
+    </section>
+    {% endcall %}
+
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {{ metrics_card(
             title='Programmes in flight',

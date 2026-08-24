@@ -12,17 +12,17 @@
       x-data="transformationProgrammeIntake()" x-init="init()">
   {{ page_header(
       title='New transformation programme',
-      subtitle='Start with a business objective, an accountable outcome and the first governed workstream.'
+      description='Start with a business objective, an accountable outcome and the first governed workstream.'
   ) }}
 
   <form class="mt-6 space-y-6" method="post"
         action="{{ url_for('solution_design.create_programme') }}"
-        @submit.prevent="submit" novalidate>
+        @submit.prevent="submit()" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="command_key" value="{{ programme_command_key }}">
 
     {% if programme_form_errors %}
-    <div class="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+    <div class="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis"
          role="alert" data-testid="programme-form-errors">
       <ul class="grid gap-1">
         {% for error in programme_form_errors %}<li>{{ error }}</li>{% endfor %}
@@ -57,17 +57,27 @@
                  value="{{ programme_form.owner_id }}">
           <input id="owner-search" class="mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
                  type="search" value="{{ programme_owner_label }}" x-model="ownerQuery"
-                 @input="ownerQueryChanged" @input.debounce.250ms="searchOwners"
+                 @input.debounce.250ms="ownerQueryChanged(); searchOwners()"
                  @focus="ownerOpen = true" autocomplete="off" role="combobox"
+                 aria-autocomplete="list"
                  readonly :readonly="false"
                  :aria-expanded="ownerOpen.toString()" aria-controls="owner-results"
+                 :aria-activedescendant="activeOwnerId"
+                 @keydown.arrow-down.prevent="moveOwner(1)"
+                 @keydown.arrow-up.prevent="moveOwner(-1)"
+                 @keydown.enter.prevent="chooseActiveOwner()"
+                 @keydown.escape="closeOwnerPicker()"
                  placeholder="Search people by name or email" required>
           <ul id="owner-results" x-show="ownerOpen && owners.length" x-cloak
               class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
               role="listbox">
-            <template x-for="person in owners" :key="person.id">
+            <template x-for="(person, index) in owners" :key="person.id">
               <li>
                 <button type="button" class="w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent"
+                        :id="'owner-option-' + person.id"
+                        :class="{'bg-accent': index === activeOwnerIndex}"
+                        :aria-selected="(form.owner_id === person.id).toString()"
+                        @mousemove="activeOwnerIndex = index"
                         @click="selectOwner(person)" role="option">
                   <span class="block font-medium" x-text="person.name"></span>
                   <span class="block text-xs text-muted-foreground" x-text="person.email"></span>
@@ -105,6 +115,11 @@
                  x-model.trim="form.target_date_unavailable_reason"
                  placeholder="Why the date is unavailable">
         </label>
+      </div>
+      <div x-show="form.workstream_type === 'technology'" x-cloak
+           class="mt-4 rounded-md border border-info/30 bg-info/10 p-4 text-sm text-info-emphasis">
+        <p class="font-medium">Technology elaboration follows the business decision.</p>
+        <p class="mt-1">A technology Solution may be added after programme approval. Platform and vendor choices belong to that governed Solution record and are not collected or discarded here.</p>
       </div>
     </section>
 
@@ -205,10 +220,10 @@
       </div>
     </section>
 
-    <div class="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+    <div class="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis"
          x-show="error" x-cloak role="alert" x-text="error"></div>
     <div class="flex justify-end">
-      <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+      <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
               :disabled="submitting">
         <span x-text="submitting ? 'Creating programme…' : 'Create programme'"></span>
       </button>
@@ -246,7 +261,7 @@ function transformationProgrammeIntake() {
     },
     ownerQuery: {{ programme_owner_label|tojson }},
     selectedOwnerName: {{ programme_owner_label|tojson }},
-    owners: [], ownerOpen: false, submitting: false, error: '',
+    owners: [], ownerOpen: false, activeOwnerIndex: -1, submitting: false, error: '',
     idempotencyKey: {{ programme_command_key|tojson }},
     init() {
       const storageKey = 'transformation-programme-intake-key';
@@ -255,6 +270,7 @@ function transformationProgrammeIntake() {
     },
     async searchOwners() {
       this.ownerOpen = true;
+      this.activeOwnerIndex = -1;
       try {
         const response = await fetch('/api/users', {headers: {'Accept': 'application/json'}});
         if (!response.ok) throw new Error('People search is unavailable.');
@@ -267,6 +283,24 @@ function transformationProgrammeIntake() {
         this.error = failure.message || 'People search is unavailable.';
         this.owners = [];
       }
+    },
+    get activeOwnerId() {
+      const person = this.owners[this.activeOwnerIndex];
+      return this.ownerOpen && person ? `owner-option-${person.id}` : null;
+    },
+    moveOwner(delta) {
+      this.ownerOpen = true;
+      if (!this.owners.length) { this.searchOwners(); return; }
+      const next = this.activeOwnerIndex + delta;
+      this.activeOwnerIndex = Math.max(0, Math.min(this.owners.length - 1, next));
+    },
+    chooseActiveOwner() {
+      const person = this.owners[this.activeOwnerIndex];
+      if (this.ownerOpen && person) this.selectOwner(person);
+    },
+    closeOwnerPicker() {
+      this.ownerOpen = false;
+      this.activeOwnerIndex = -1;
     },
     ownerQueryChanged() {
       if (this.ownerQuery.trim() !== this.selectedOwnerName.trim()) {
@@ -281,6 +315,7 @@ function transformationProgrammeIntake() {
       this.ownerQuery = person.name;
       this.selectedOwnerName = person.name;
       this.ownerOpen = false;
+      this.activeOwnerIndex = -1;
     },
     payload() {
       const measure = this.form.outcome.measure;
