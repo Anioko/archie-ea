@@ -38,6 +38,13 @@ from app.modules.transformation_room.domain import (
 )
 
 
+NATURAL_KEY_CONTENDER_REASON = "natural_key_contender_materialisation_conflict"
+
+
+class _NaturalKeyContenderConflict(CommandConflict):
+    """Exact immutable materialisation won by another receipt."""
+
+
 def _canonical_json_default(value: Any):
     if isinstance(value, Decimal):
         return str(value)
@@ -149,6 +156,7 @@ class CommandService:
     """Own the claim transaction and one atomic domain/result/finalise transaction."""
 
     DEFAULT_LEASE_SECONDS = 30.0
+    DEFAULT_CLAIM_CAPABILITY_SECONDS = 10.0
 
     @classmethod
     def request_digest(cls, payload: Mapping[str, Any]) -> str:
@@ -164,6 +172,37 @@ class CommandService:
                 )
             ),
         )
+
+    @classmethod
+    def _claim_capability_milliseconds(cls) -> int:
+        seconds = float(
+            current_app.config.get(
+                "TRANSFORMATION_COMMAND_CLAIM_CAPABILITY_SECONDS",
+                cls.DEFAULT_CLAIM_CAPABILITY_SECONDS,
+            )
+        )
+        return max(50, min(60_000, math.ceil(seconds * 1000.0)))
+
+    @classmethod
+    def _issue_claim_challenge(cls, actor: ActorContext) -> Mapping[str, Any]:
+        with Session(db.engine, expire_on_commit=False) as session, session.begin():
+            schema = session.scalar(text("SELECT current_schema()"))
+            quoted_schema = session.bind.dialect.identifier_preparer.quote(schema)
+            return dict(
+                session.execute(
+                    text(
+                        f"SELECT * FROM {quoted_schema}.archie_issue_command_claim_challenge("  # nosec B608 -- current schema is dialect-quoted; function name is literal; values are bound
+                        ":organization_id, :actor_id, :valid_for_milliseconds)"
+                    ),
+                    {
+                        "organization_id": actor.organization_id,
+                        "actor_id": actor.user_id,
+                        "valid_for_milliseconds": (
+                            cls._claim_capability_milliseconds()
+                        ),
+                    },
+                ).mappings().one()
+            )
 
     @staticmethod
     def _database_now(session: Session) -> datetime:
@@ -326,6 +365,11 @@ class CommandService:
                 actor=actor,
                 claim=claim_or_result,
                 error_class=type(error).__name__,
+                terminal_reason=(
+                    NATURAL_KEY_CONTENDER_REASON
+                    if isinstance(error, _NaturalKeyContenderConflict)
+                    else error.reason
+                ),
             )
             raise
         except Exception:
@@ -523,6 +567,10 @@ class CommandService:
             )
         except DBAPIError as error:
             message = str(error.orig).lower()
+            if NATURAL_KEY_CONTENDER_REASON in message:
+                raise _NaturalKeyContenderConflict(
+                    NATURAL_KEY_CONTENDER_REASON
+                ) from error
             if "outbox" in message and "mismatch" in message:
                 raise CommandConflict(
                     "operation_outbox_materialisation_mismatch"
@@ -637,6 +685,7 @@ class CommandService:
 
         token = cls._new_claim_token()
         lease_milliseconds = max(10, math.ceil(cls._lease_seconds() * 1000.0))
+        challenge = cls._issue_claim_challenge(actor)
         claim_document, claim_capability = cls._signed_capability(
             {
                 "schema_version": "transformation-command-claim-r1",
@@ -648,9 +697,15 @@ class CommandService:
                 "natural_key": natural_key,
                 "claim_token": token,
                 "claimant_request_id": actor.request_id,
+                "claim_nonce": challenge["claim_nonce"],
+                "claim_issued_at_ms": challenge["claim_issued_at_ms"],
+                "claim_expires_at_ms": challenge["claim_expires_at_ms"],
+                "contender_reason": NATURAL_KEY_CONTENDER_REASON,
                 "lease_milliseconds": lease_milliseconds,
             }
         )
+        conflict: tuple[str, dict[str, Any]] | None = None
+        outcome: CommandClaim | CommandResult | None = None
         with Session(db.engine, expire_on_commit=False) as session, session.begin():
             # Authorization is mandatory and precedes both receipt creation and
             # immutable-result reconciliation. Resolvers never carry hidden auth.
@@ -682,8 +737,10 @@ class CommandService:
                 )
                 if result is None:
                     raise CommandConflict("operation_result_missing_after_reconcile")
-                return cls.to_command_result(result, created=False, idempotent=True)
-            if row["claim_outcome"] == "conflict":
+                outcome = cls.to_command_result(
+                    result, created=False, idempotent=True
+                )
+            elif row["claim_outcome"] == "conflict":
                 details = {"receipt_id": row["command_receipt_id"]}
                 if row["conflict_error_class"] is not None:
                     details["error_class"] = row["conflict_error_class"]
@@ -692,29 +749,35 @@ class CommandService:
                     details["retry_after_seconds"] = row["retry_after_seconds"]
                 if row["operation_result_id"] is not None:
                     details["operation_result_id"] = row["operation_result_id"]
-                raise CommandConflict(row["conflict_reason"], **details)
-            if row["claim_outcome"] != "claimed":
+                conflict = (row["conflict_reason"], details)
+            elif row["claim_outcome"] != "claimed":
                 raise RuntimeError("command claim function returned an unknown outcome")
-            capability_document, capability_mac = cls._execution_capability(
-                actor=actor,
-                operation=operation,
-                idempotency_key=idempotency_key,
-                request_digest=request_digest,
-                natural_key=natural_key,
-                receipt_id=row["command_receipt_id"],
-                generation=row["command_generation"],
-                claim_token=row["command_claim_token"],
-                claimant_request_id=actor.request_id,
-            )
-            return CommandClaim(
-                receipt_id=row["command_receipt_id"],
-                generation=row["command_generation"],
-                claim_token=row["command_claim_token"],
-                request_digest=request_digest,
-                natural_key=natural_key,
-                capability_document=capability_document,
-                capability_mac=capability_mac,
-            )
+            else:
+                capability_document, capability_mac = cls._execution_capability(
+                    actor=actor,
+                    operation=operation,
+                    idempotency_key=idempotency_key,
+                    request_digest=request_digest,
+                    natural_key=natural_key,
+                    receipt_id=row["command_receipt_id"],
+                    generation=row["command_generation"],
+                    claim_token=row["command_claim_token"],
+                    claimant_request_id=actor.request_id,
+                )
+                outcome = CommandClaim(
+                    receipt_id=row["command_receipt_id"],
+                    generation=row["command_generation"],
+                    claim_token=row["command_claim_token"],
+                    request_digest=request_digest,
+                    natural_key=natural_key,
+                    capability_document=capability_document,
+                    capability_mac=capability_mac,
+                )
+        if conflict is not None:
+            raise CommandConflict(conflict[0], **conflict[1])
+        if outcome is None:
+            raise RuntimeError("command claim transaction produced no outcome")
+        return outcome
 
     @staticmethod
     def _find_result(
@@ -815,12 +878,14 @@ class CommandService:
         actor: ActorContext,
         claim: CommandClaim,
         error_class: str,
+        terminal_reason: str | None = None,
     ) -> bool:
         return cls._mark_failure(
             actor=actor,
             claim=claim,
             status="failed_non_retryable",
             error_class=error_class,
+            terminal_reason=terminal_reason or error_class,
         )
 
     @classmethod
@@ -831,6 +896,7 @@ class CommandService:
         claim: CommandClaim,
         status: str,
         error_class: str,
+        terminal_reason: str | None = None,
     ) -> bool:
         with Session(db.engine, expire_on_commit=False) as session, session.begin():
             receipt = session.execute(
@@ -854,13 +920,59 @@ class CommandService:
             ):
                 return False
             now = cls._database_now(session)
+            signed_contender = terminal_reason == NATURAL_KEY_CONTENDER_REASON
+            if signed_contender:
+                failure_document, failure_capability = cls._signed_capability(
+                    {
+                        "schema_version": "transformation-contender-failure-r1",
+                        "transaction_id": session.scalar(
+                            text("SELECT txid_current()")
+                        ),
+                        "receipt_id": receipt.id,
+                        "organization_id": receipt.organization_id,
+                        "actor_id": receipt.actor_id,
+                        "operation": receipt.operation,
+                        "idempotency_key": receipt.idempotency_key,
+                        "request_digest": receipt.request_digest,
+                        "natural_key": receipt.natural_key,
+                        "generation": receipt.lease_generation,
+                        "claim_token": receipt.claim_token,
+                        "claimant_request_id": receipt.claimant_request_id,
+                        "error_class": error_class,
+                        "contender_reason": terminal_reason,
+                    }
+                )
+                session.execute(
+                    text(
+                        "SELECT set_config("
+                        "'archie.contender_failure_document', :document, TRUE), "
+                        "set_config("
+                        "'archie.contender_failure_capability', :capability, TRUE)"
+                    ),
+                    {
+                        "document": failure_document,
+                        "capability": failure_capability,
+                    },
+                )
             receipt.status = status
             receipt.last_error_class = error_class
+            receipt.terminal_reason = (
+                terminal_reason if status == "failed_non_retryable" else None
+            )
             receipt.lease_expires_at = now if status == "retryable_failure" else None
             receipt.completed_at = (
                 None if status == "retryable_failure" else now
             )
             session.flush()
+            if signed_contender:
+                session.execute(
+                    text(
+                        "SELECT set_config("
+                        "'archie.contender_failure_document', '', TRUE), "
+                        "set_config("
+                        "'archie.contender_failure_capability', '', TRUE)"
+                    )
+                )
             return True
 
     @classmethod

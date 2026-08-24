@@ -53,6 +53,20 @@ CREATE TABLE IF NOT EXISTS public.archie_command_capability_keys (
 """
 
 
+_COMMAND_CLAIM_CHALLENGE_TABLE_SQL = r"""
+CREATE TABLE IF NOT EXISTS public.archie_command_claim_challenges (
+    nonce uuid PRIMARY KEY,
+    organization_id bigint NOT NULL,
+    actor_id bigint NOT NULL,
+    issued_at_ms bigint NOT NULL,
+    expires_at_ms bigint NOT NULL,
+    consumed_at timestamptz,
+    CONSTRAINT ck_command_claim_challenge_lifetime
+        CHECK (issued_at_ms > 0 AND expires_at_ms > issued_at_ms)
+)
+"""
+
+
 _HMAC_SHA256_FUNCTION_SQL = r"""
 CREATE OR REPLACE FUNCTION public.archie_hmac_sha256(p_data bytea, p_key bytea)
 RETURNS bytea
@@ -130,6 +144,51 @@ $$
 """
 
 
+_ISSUE_COMMAND_CLAIM_CHALLENGE_SQL = r"""
+CREATE OR REPLACE FUNCTION public.archie_issue_command_claim_challenge(
+    p_organization_id bigint,
+    p_actor_id bigint,
+    p_valid_for_milliseconds integer
+)
+RETURNS TABLE (
+    claim_nonce text,
+    claim_issued_at_ms bigint,
+    claim_expires_at_ms bigint
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    issued_at_milliseconds bigint := floor(
+        extract(epoch FROM clock_timestamp()) * 1000
+    )::bigint;
+    expires_at_milliseconds bigint;
+    issued_nonce uuid := gen_random_uuid();
+BEGIN
+    IF p_organization_id <= 0 OR p_actor_id <= 0
+       OR p_valid_for_milliseconds < 50
+       OR p_valid_for_milliseconds > 60000 THEN
+        RAISE EXCEPTION 'command claim challenge fields are invalid'
+            USING ERRCODE = '42501';
+    END IF;
+    expires_at_milliseconds :=
+        issued_at_milliseconds + p_valid_for_milliseconds;
+    DELETE FROM public.archie_command_claim_challenges AS expired
+     WHERE expired.expires_at_ms < issued_at_milliseconds - 86400000;
+    INSERT INTO public.archie_command_claim_challenges (
+        nonce, organization_id, actor_id, issued_at_ms, expires_at_ms
+    ) VALUES (
+        issued_nonce, p_organization_id, p_actor_id,
+        issued_at_milliseconds, expires_at_milliseconds
+    );
+    RETURN QUERY SELECT issued_nonce::text, issued_at_milliseconds,
+                        expires_at_milliseconds;
+END;
+$$
+"""
+
+
 _CLAIM_COMMAND_SQL = r"""
 CREATE OR REPLACE FUNCTION public.archie_claim_transformation_command(
     p_document text,
@@ -159,6 +218,10 @@ DECLARE
     command_natural_key text;
     new_claim_token text;
     new_claimant_request_id text;
+    claim_nonce uuid;
+    claim_issued_at_ms bigint;
+    claim_expires_at_ms bigint;
+    contender_reason text;
     lease_milliseconds integer;
     now_at_database timestamptz := clock_timestamp();
     expires_at timestamptz;
@@ -166,6 +229,7 @@ DECLARE
     result record;
     inserted_id bigint;
     reconciliation_secret bytea;
+    claim_challenge record;
 BEGIN
     document := public.archie_verify_command_capability(
         p_document, p_capability, 'transformation-command-claim-r1'
@@ -179,6 +243,10 @@ BEGIN
         command_natural_key := document->>'natural_key';
         new_claim_token := document->>'claim_token';
         new_claimant_request_id := document->>'claimant_request_id';
+        claim_nonce := (document->>'claim_nonce')::uuid;
+        claim_issued_at_ms := (document->>'claim_issued_at_ms')::bigint;
+        claim_expires_at_ms := (document->>'claim_expires_at_ms')::bigint;
+        contender_reason := document->>'contender_reason';
         lease_milliseconds := (document->>'lease_milliseconds')::integer;
     EXCEPTION WHEN OTHERS THEN
         RAISE EXCEPTION 'command capability fields are invalid' USING ERRCODE = '42501';
@@ -194,6 +262,10 @@ BEGIN
            'natural_key', command_natural_key,
            'claim_token', new_claim_token,
            'claimant_request_id', new_claimant_request_id,
+           'claim_nonce', claim_nonce::text,
+           'claim_issued_at_ms', claim_issued_at_ms,
+           'claim_expires_at_ms', claim_expires_at_ms,
+           'contender_reason', contender_reason,
            'lease_milliseconds', lease_milliseconds
        )
        OR command_org_id <= 0 OR command_actor_id <= 0
@@ -203,8 +275,30 @@ BEGIN
        OR length(command_request_digest) <> 64
        OR length(new_claim_token) <> 64
        OR new_claimant_request_id IS NULL OR new_claimant_request_id = ''
+       OR claim_issued_at_ms <= 0
+       OR claim_expires_at_ms <= claim_issued_at_ms
+       OR contender_reason <>
+           'natural_key_contender_materialisation_conflict'
        OR lease_milliseconds < 10 OR lease_milliseconds > 3600000 THEN
         RAISE EXCEPTION 'command capability fields are invalid' USING ERRCODE = '42501';
+    END IF;
+    UPDATE public.archie_command_claim_challenges AS challenge
+       SET consumed_at = now_at_database
+     WHERE challenge.nonce = claim_nonce
+       AND challenge.organization_id = command_org_id
+       AND challenge.actor_id = command_actor_id
+       AND challenge.issued_at_ms = claim_issued_at_ms
+       AND challenge.expires_at_ms = claim_expires_at_ms
+       AND challenge.consumed_at IS NULL
+       AND challenge.issued_at_ms <= floor(
+           extract(epoch FROM now_at_database) * 1000
+       )::bigint
+       AND challenge.expires_at_ms > floor(
+           extract(epoch FROM now_at_database) * 1000
+       )::bigint
+    RETURNING challenge.* INTO claim_challenge;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'command capability is invalid' USING ERRCODE = '42501';
     END IF;
     expires_at := now_at_database + make_interval(
         secs => lease_milliseconds::double precision / 1000.0
@@ -300,7 +394,8 @@ BEGIN
         END IF;
         IF receipt.status <> 'succeeded'
            OR receipt.operation_result_id IS DISTINCT FROM result.id THEN
-            IF receipt.status = 'failed_non_retryable' THEN
+            IF receipt.status = 'failed_non_retryable'
+               AND receipt.terminal_reason = contender_reason THEN
                 -- A failed natural-key contender can converge only through this
                 -- fresh signed claim.  The trigger validates an owner-secret,
                 -- transaction-bound fence before accepting the terminal repair.
@@ -315,6 +410,9 @@ BEGIN
                 END IF;
                 PERFORM set_config(
                     'archie.receipt_reconcile_key_id', document->>'key_id', TRUE
+                );
+                PERFORM set_config(
+                    'archie.receipt_reconcile_claim_nonce', claim_nonce::text, TRUE
                 );
                 PERFORM set_config(
                     'archie.receipt_reconcile_fence',
@@ -335,7 +433,11 @@ BEGIN
                                     'previous_generation', receipt.lease_generation,
                                     'claim_token', new_claim_token,
                                     'claimant_request_id', new_claimant_request_id,
-                                    'operation_result_id', result.id
+                                    'operation_result_id', result.id,
+                                    'claim_nonce', claim_nonce::text,
+                                    'claim_issued_at_ms', claim_issued_at_ms,
+                                    'claim_expires_at_ms', claim_expires_at_ms,
+                                    'contender_reason', contender_reason
                                 )::text,
                                 'UTF8'
                             ),
@@ -359,6 +461,16 @@ BEGIN
                 RETURNING * INTO receipt;
                 PERFORM set_config('archie.receipt_reconcile_fence', '', TRUE);
                 PERFORM set_config('archie.receipt_reconcile_key_id', '', TRUE);
+                PERFORM set_config(
+                    'archie.receipt_reconcile_claim_nonce', '', TRUE
+                );
+            ELSIF receipt.status = 'failed_non_retryable' THEN
+                RETURN QUERY SELECT 'conflict', receipt.id::bigint,
+                                    receipt.lease_generation, NULL::text,
+                                    result.id::bigint, 'failed_non_retryable',
+                                    receipt.last_error_class::text,
+                                    NULL::double precision;
+                RETURN;
             ELSE
                 UPDATE public.command_idempotency_records
                    SET status = 'succeeded', operation_result_id = result.id,
@@ -590,12 +702,15 @@ BEGIN
     IF FOUND THEN
         IF materialisation.actor_id IS DISTINCT FROM command_actor_id
            OR materialisation.request_digest IS DISTINCT FROM command_request_digest
-           OR materialisation.receipt_id IS DISTINCT FROM command_receipt_id
            OR materialisation.receipt_generation > command_generation
            OR materialisation.object_ids::jsonb IS DISTINCT FROM request->'object_ids'
            OR materialisation.response_json::jsonb IS DISTINCT FROM request->'response'
            OR materialisation.outbox_events::jsonb IS DISTINCT FROM request->'outbox_events' THEN
             RAISE EXCEPTION 'command materialisation identity mismatch'
+                USING ERRCODE = '23505';
+        END IF;
+        IF materialisation.receipt_id IS DISTINCT FROM command_receipt_id THEN
+            RAISE EXCEPTION 'natural_key_contender_materialisation_conflict'
                 USING ERRCODE = '23505';
         END IF;
         IF materialisation.receipt_generation IS DISTINCT FROM command_generation THEN
@@ -748,6 +863,10 @@ DECLARE
     command_natural_key text;
     command_claim_token text;
     command_claimant_request_id text;
+    claim_nonce uuid;
+    claim_issued_at_ms bigint;
+    claim_expires_at_ms bigint;
+    contender_reason text;
     lease_milliseconds integer;
     receipt record;
     origin_receipt record;
@@ -775,6 +894,10 @@ BEGIN
         command_natural_key := document->>'natural_key';
         command_claim_token := document->>'claim_token';
         command_claimant_request_id := document->>'claimant_request_id';
+        claim_nonce := (document->>'claim_nonce')::uuid;
+        claim_issued_at_ms := (document->>'claim_issued_at_ms')::bigint;
+        claim_expires_at_ms := (document->>'claim_expires_at_ms')::bigint;
+        contender_reason := document->>'contender_reason';
         lease_milliseconds := (document->>'lease_milliseconds')::integer;
     EXCEPTION WHEN OTHERS THEN
         RAISE EXCEPTION 'command repair capability fields are invalid'
@@ -791,6 +914,10 @@ BEGIN
            'natural_key', command_natural_key,
            'claim_token', command_claim_token,
            'claimant_request_id', command_claimant_request_id,
+           'claim_nonce', claim_nonce::text,
+           'claim_issued_at_ms', claim_issued_at_ms,
+           'claim_expires_at_ms', claim_expires_at_ms,
+           'contender_reason', contender_reason,
            'lease_milliseconds', lease_milliseconds
        ) THEN
         RAISE EXCEPTION 'command repair capability fields are invalid'
@@ -2649,6 +2776,8 @@ AS $$
 DECLARE
     now_at_database timestamptz := clock_timestamp();
     reconciliation_secret bytea;
+    reconciliation_challenge record;
+    contender_failure_document jsonb;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'command receipt identity and terminal result are immutable'
@@ -2681,6 +2810,7 @@ BEGIN
        AND NEW.operation_result_id IS NOT DISTINCT FROM OLD.operation_result_id
        AND NEW.attempt_count = OLD.attempt_count
        AND NEW.last_error_class IS NOT DISTINCT FROM OLD.last_error_class
+       AND NEW.terminal_reason IS NOT DISTINCT FROM OLD.terminal_reason
        AND NEW.completed_at IS NOT DISTINCT FROM OLD.completed_at
        AND NEW.lease_expires_at > OLD.lease_expires_at
        AND NEW.lease_expires_at > now_at_database THEN
@@ -2700,6 +2830,7 @@ BEGIN
        AND NEW.lease_expires_at > now_at_database
        AND NEW.operation_result_id IS NULL
        AND NEW.attempt_count = OLD.attempt_count + 1
+       AND NEW.terminal_reason IS NULL
        AND NEW.completed_at IS NULL THEN
         RETURN NEW;
     END IF;
@@ -2713,9 +2844,61 @@ BEGIN
        AND NEW.operation_result_id IS NULL
        AND NEW.attempt_count = OLD.attempt_count
        AND NEW.last_error_class IS NOT NULL
+       AND NEW.terminal_reason IS NULL
        AND NEW.lease_expires_at <= now_at_database
        AND NEW.completed_at IS NULL THEN
         RETURN NEW;
+    END IF;
+
+    -- Only the application-secret proof emitted for the exact materialisation
+    -- boundary may persist the contender marker used by later reconciliation.
+    IF OLD.status = 'in_progress'
+       AND NEW.status = 'failed_non_retryable'
+       AND NEW.lease_generation = OLD.lease_generation
+       AND NEW.claim_token = OLD.claim_token
+       AND NEW.claimant_request_id = OLD.claimant_request_id
+       AND NEW.operation_result_id IS NULL
+       AND NEW.attempt_count = OLD.attempt_count
+       AND NEW.last_error_class = '_NaturalKeyContenderConflict'
+       AND NEW.terminal_reason =
+           'natural_key_contender_materialisation_conflict'
+       AND NEW.lease_expires_at IS NULL
+       AND NEW.completed_at IS NOT NULL THEN
+        BEGIN
+            contender_failure_document :=
+                public.archie_verify_command_capability(
+                    current_setting(
+                        'archie.contender_failure_document', TRUE
+                    ),
+                    current_setting(
+                        'archie.contender_failure_capability', TRUE
+                    ),
+                    'transformation-contender-failure-r1'
+                );
+        EXCEPTION WHEN OTHERS THEN
+            contender_failure_document := NULL;
+        END;
+        IF contender_failure_document IS NOT NULL
+           AND contender_failure_document IS NOT DISTINCT FROM
+               jsonb_build_object(
+                   'schema_version', 'transformation-contender-failure-r1',
+                   'key_id', contender_failure_document->>'key_id',
+                   'transaction_id', txid_current(),
+                   'receipt_id', OLD.id,
+                   'organization_id', OLD.organization_id,
+                   'actor_id', OLD.actor_id,
+                   'operation', OLD.operation,
+                   'idempotency_key', OLD.idempotency_key,
+                   'request_digest', OLD.request_digest,
+                   'natural_key', OLD.natural_key,
+                   'generation', OLD.lease_generation,
+                   'claim_token', OLD.claim_token,
+                   'claimant_request_id', OLD.claimant_request_id,
+                   'error_class', NEW.last_error_class,
+                   'contender_reason', NEW.terminal_reason
+               ) THEN
+            RETURN NEW;
+        END IF;
     END IF;
 
     -- Validation/authorization failures are terminal but never business success.
@@ -2727,6 +2910,9 @@ BEGIN
        AND NEW.operation_result_id IS NULL
        AND NEW.attempt_count = OLD.attempt_count
        AND NEW.last_error_class IS NOT NULL
+       AND NEW.terminal_reason IS NOT NULL
+       AND NEW.terminal_reason <>
+           'natural_key_contender_materialisation_conflict'
        AND NEW.lease_expires_at IS NULL
        AND NEW.completed_at IS NOT NULL THEN
         RETURN NEW;
@@ -2741,6 +2927,7 @@ BEGIN
        AND NEW.claimant_request_id = OLD.claimant_request_id
        AND NEW.operation_result_id IS NOT NULL
        AND NEW.attempt_count = OLD.attempt_count
+       AND NEW.terminal_reason IS NOT DISTINCT FROM OLD.terminal_reason
        AND NEW.lease_expires_at IS NULL
        AND NEW.completed_at IS NOT NULL
        AND EXISTS (
@@ -2760,6 +2947,7 @@ BEGIN
     -- immutable result only while the signed claim function holds a fresh,
     -- owner-secret fence bound to this transaction and next generation.
     IF OLD.status = 'failed_non_retryable'
+       AND OLD.terminal_reason = 'natural_key_contender_materialisation_conflict'
        AND OLD.operation_result_id IS NULL
        AND NEW.status = 'succeeded'
        AND NEW.lease_generation = OLD.lease_generation + 1
@@ -2770,6 +2958,7 @@ BEGIN
        AND NEW.operation_result_id IS NOT NULL
        AND NEW.attempt_count = OLD.attempt_count + 1
        AND NEW.last_error_class IS NULL
+       AND NEW.terminal_reason IS NOT DISTINCT FROM OLD.terminal_reason
        AND NEW.lease_expires_at IS NULL
        AND NEW.completed_at IS NOT NULL
        AND EXISTS (
@@ -2782,14 +2971,33 @@ BEGIN
              AND result.natural_key = NEW.natural_key
              AND result.request_digest = NEW.request_digest
        ) THEN
-        SELECT capability.secret
-          INTO reconciliation_secret
-          FROM public.archie_command_capability_keys AS capability
-         WHERE capability.key_id = current_setting(
-                   'archie.receipt_reconcile_key_id', TRUE
+        SELECT challenge.*
+          INTO reconciliation_challenge
+          FROM public.archie_command_claim_challenges AS challenge
+         WHERE challenge.nonce::text = current_setting(
+                   'archie.receipt_reconcile_claim_nonce', TRUE
                )
-           AND capability.active IS TRUE;
-        IF FOUND AND current_setting(
+           AND challenge.organization_id = OLD.organization_id
+           AND challenge.actor_id = OLD.actor_id
+           AND challenge.consumed_at IS NOT NULL
+           AND challenge.consumed_at >= to_timestamp(
+               challenge.issued_at_ms::double precision / 1000.0
+           )
+           AND challenge.consumed_at < to_timestamp(
+               challenge.expires_at_ms::double precision / 1000.0
+           );
+        IF FOUND THEN
+            SELECT capability.secret
+              INTO reconciliation_secret
+              FROM public.archie_command_capability_keys AS capability
+             WHERE capability.key_id = current_setting(
+                       'archie.receipt_reconcile_key_id', TRUE
+                   )
+               AND capability.active IS TRUE;
+        END IF;
+        IF reconciliation_challenge.nonce IS NOT NULL
+           AND FOUND
+           AND current_setting(
                'archie.receipt_reconcile_fence', TRUE
            ) = encode(
                public.archie_hmac_sha256(
@@ -2808,7 +3016,13 @@ BEGIN
                            'previous_generation', OLD.lease_generation,
                            'claim_token', NEW.claim_token,
                            'claimant_request_id', NEW.claimant_request_id,
-                           'operation_result_id', NEW.operation_result_id
+                           'operation_result_id', NEW.operation_result_id,
+                           'claim_nonce', reconciliation_challenge.nonce::text,
+                           'claim_issued_at_ms',
+                               reconciliation_challenge.issued_at_ms,
+                           'claim_expires_at_ms',
+                               reconciliation_challenge.expires_at_ms,
+                           'contender_reason', OLD.terminal_reason
                        )::text,
                        'UTF8'
                    ),
@@ -3548,6 +3762,20 @@ def _provision_capability_keys(
     )
 
 
+def _provision_claim_challenges(connection, quoted_schema: str) -> None:
+    connection.exec_driver_sql(
+        _render_guard_sql(
+            connection, _COMMAND_CLAIM_CHALLENGE_TABLE_SQL, quoted_schema
+        )
+    )
+    qualified_challenges = _qualified_name(
+        connection, quoted_schema, "archie_command_claim_challenges"
+    )
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON TABLE {qualified_challenges} FROM PUBLIC"
+    )
+
+
 def inspect_transformation_db_guards(connection) -> list[str]:
     """Return semantic guard drift without changing database state."""
     if connection.dialect.name != "postgresql":
@@ -3562,6 +3790,13 @@ def inspect_transformation_db_guards(connection) -> list[str]:
         "SELECT to_regclass(%s) IS NOT NULL", (qualified_keys,)
     ).scalar():
         drift.append("table_missing:archie_command_capability_keys")
+    qualified_challenges = _qualified_name(
+        connection, quoted_schema, "archie_command_claim_challenges"
+    )
+    if not connection.exec_driver_sql(
+        "SELECT to_regclass(%s) IS NOT NULL", (qualified_challenges,)
+    ).scalar():
+        drift.append("table_missing:archie_command_claim_challenges")
     for function_name, create_sql in _FUNCTION_SPECS:
         row = connection.exec_driver_sql(
             """
@@ -3593,6 +3828,12 @@ def inspect_transformation_db_guards(connection) -> list[str]:
             _VERIFY_COMMAND_CAPABILITY_SQL,
             3,
             "jsonb",
+        ),
+        (
+            "archie_issue_command_claim_challenge",
+            _ISSUE_COMMAND_CLAIM_CHALLENGE_SQL,
+            3,
+            "record",
         ),
         ("archie_claim_transformation_command", _CLAIM_COMMAND_SQL, 2, "record"),
         (
@@ -4082,6 +4323,7 @@ def ensure_transformation_db_guards(
     )
     configured_secrets = _configured_capability_secrets(capability_secrets)
     _provision_capability_keys(connection, quoted_schema, configured_secrets)
+    _provision_claim_challenges(connection, quoted_schema)
     legacy_freeze = _qualified_name(
         connection, quoted_schema, "archie_freeze_decision_brief_version"
     )
@@ -4102,6 +4344,7 @@ def ensure_transformation_db_guards(
     for create_sql in (
         _HMAC_SHA256_FUNCTION_SQL,
         _VERIFY_COMMAND_CAPABILITY_SQL,
+        _ISSUE_COMMAND_CLAIM_CHALLENGE_SQL,
         _CLAIM_COMMAND_SQL,
         _COMMAND_ENVELOPE_INSERT_GUARD_SQL,
         _PERSIST_COMMAND_ENVELOPE_SQL,
@@ -4160,6 +4403,9 @@ def ensure_transformation_db_guards(
     qualified_claim = _qualified_name(
         connection, quoted_schema, "archie_claim_transformation_command"
     )
+    qualified_issue_challenge = _qualified_name(
+        connection, quoted_schema, "archie_issue_command_claim_challenge"
+    )
     qualified_persist_envelope = _qualified_name(
         connection, quoted_schema, "archie_persist_command_envelope"
     )
@@ -4186,6 +4432,10 @@ def ensure_transformation_db_guards(
     )
     connection.exec_driver_sql(
         f"REVOKE ALL ON FUNCTION {qualified_claim}({claim_signature}) FROM PUBLIC"
+    )
+    connection.exec_driver_sql(
+        f"REVOKE ALL ON FUNCTION {qualified_issue_challenge}"
+        "(bigint, bigint, integer) FROM PUBLIC"
     )
     connection.exec_driver_sql(
         f"REVOKE ALL ON FUNCTION {qualified_persist_envelope}(text, text, text) "
@@ -4227,8 +4477,15 @@ def ensure_transformation_db_guards(
         qualified_keys = _qualified_name(
             connection, quoted_schema, "archie_command_capability_keys"
         )
+        qualified_challenges = _qualified_name(
+            connection, quoted_schema, "archie_command_claim_challenges"
+        )
         connection.exec_driver_sql(
             f"REVOKE ALL ON TABLE {qualified_keys} FROM {runtime_role_identifier}"
+        )
+        connection.exec_driver_sql(
+            f"REVOKE ALL ON TABLE {qualified_challenges} "
+            f"FROM {runtime_role_identifier}"
         )
         for function_name in trigger_functions:
             qualified_function = _qualified_name(

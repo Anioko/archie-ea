@@ -40,6 +40,7 @@ class CommandIdempotencyRecord(TenantMixin, db.Model):
     operation_result_id = db.Column(db.Integer, nullable=True, index=True)
     attempt_count = db.Column(db.Integer, nullable=False, default=1, server_default="1")
     last_error_class = db.Column(db.String(255), nullable=True)
+    terminal_reason = db.Column(db.String(255), nullable=True)
     created_at = db.Column(
         db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
     )

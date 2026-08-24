@@ -31,7 +31,10 @@ from app.models.transformation_evidence import (
     EvidenceRecord,
 )
 from app.models.user import User
-from app.modules.transformation_room.command_service import CommandService
+from app.modules.transformation_room.command_service import (
+    CommandService,
+    NATURAL_KEY_CONTENDER_REASON,
+)
 from app.modules.transformation_room.domain import ActorContext, DomainMutationResult, StaleClaim
 from app.modules.transformation_room.evidence_service import TransformationEvidenceService
 
@@ -471,7 +474,8 @@ def test_receipt_guard_rejects_unsigned_failed_contender_reconciliation(
     assert CommandService.mark_non_retryable(
         actor=guard_fixture.actor,
         claim=failed_claim,
-        error_class="CommandConflict",
+        error_class="_NaturalKeyContenderConflict",
+        terminal_reason=NATURAL_KEY_CONTENDER_REASON,
     ) is True
 
     winner = CommandService.execute(
@@ -517,6 +521,40 @@ def test_receipt_guard_rejects_unsigned_failed_contender_reconciliation(
     assert failed_receipt.status == "failed_non_retryable"
     assert failed_receipt.operation_result_id is None
     assert failed_receipt.lease_generation == failed_claim.generation
+
+
+def test_receipt_guard_rejects_unsigned_contender_failure_marker(guard_fixture):
+    """Direct SQL cannot label an unrelated terminal failure as a contender."""
+    suffix = uuid.uuid4().hex[:12]
+    claim = CommandService.claim_or_reconcile(
+        actor=guard_fixture.actor,
+        operation="guard.reconcile",
+        idempotency_key=f"forged-marker-{suffix}",
+        request_digest=CommandService.request_digest({"marker": suffix}),
+        natural_key=f"guard-forged-marker:{suffix}",
+        authorizer=_allow_command,
+    )
+
+    with pytest.raises(Exception, match="invalid command receipt transition"):
+        _direct_driver_execute(
+            "UPDATE public.command_idempotency_records "
+            "SET status = 'failed_non_retryable', "
+            "last_error_class = '_NaturalKeyContenderConflict', "
+            "terminal_reason = %s, lease_expires_at = NULL, "
+            "completed_at = clock_timestamp() "
+            "WHERE id = %s AND organization_id = %s AND actor_id = %s",
+            (
+                NATURAL_KEY_CONTENDER_REASON,
+                claim.receipt_id,
+                guard_fixture.organization_id,
+                guard_fixture.actor.user_id,
+            ),
+        )
+
+    with Session(db.engine) as session:
+        receipt = session.get(CommandIdempotencyRecord, claim.receipt_id)
+    assert receipt.status == "in_progress"
+    assert receipt.terminal_reason is None
 
 
 def test_reconciliation_guard_can_be_reinstalled_without_changing_success(

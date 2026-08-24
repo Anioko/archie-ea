@@ -8,7 +8,12 @@ Flask application or its model metadata can be imported.
 from __future__ import annotations
 
 
-RUNTIME_NO_ACCESS_TABLES = frozenset({"archie_command_capability_keys"})
+RUNTIME_NO_ACCESS_TABLES = frozenset(
+    {
+        "archie_command_capability_keys",
+        "archie_command_claim_challenges",
+    }
+)
 
 # A standalone sequence must be named here before runtime can receive access.
 # The reviewed Wave 1 policy has no such exception: generated identifiers are
@@ -50,6 +55,7 @@ PROTECTED_RUNTIME_UPDATE_COLUMNS = {
         "operation_result_id",
         "attempt_count",
         "last_error_class",
+        "terminal_reason",
         "updated_at",
         "completed_at",
     ),
@@ -66,6 +72,7 @@ RUNTIME_EXECUTE_FUNCTIONS = (
         "archie_freeze_decision_brief_version",
         "bigint, bigint, bigint, integer, text, text, text, integer, text, jsonb, text",
     ),
+    ("archie_issue_command_claim_challenge", "bigint, bigint, integer"),
     ("archie_claim_transformation_command", "text, text"),
     ("archie_create_decision_brief", "text, text, text"),
     ("archie_persist_command_envelope", "text, text, text"),

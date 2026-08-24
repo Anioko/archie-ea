@@ -43,6 +43,11 @@ def _claim_runtime_command(
 ):
     """Exercise the same deployment-secret boundary as CommandService."""
     secret = bytes.fromhex(capability_secret)
+    cursor.execute(
+        "SELECT * FROM public.archie_issue_command_claim_challenge(%s, %s, %s)",
+        (organization_id, actor_id, 60000),
+    )
+    claim_nonce, claim_issued_at_ms, claim_expires_at_ms = cursor.fetchone()
     document = json.dumps(
         {
             "schema_version": "transformation-command-claim-r1",
@@ -55,6 +60,12 @@ def _claim_runtime_command(
             "natural_key": natural_key,
             "claim_token": claim_token,
             "claimant_request_id": request_id,
+            "claim_nonce": claim_nonce,
+            "claim_issued_at_ms": claim_issued_at_ms,
+            "claim_expires_at_ms": claim_expires_at_ms,
+            "contender_reason": (
+                "natural_key_contender_materialisation_conflict"
+            ),
             "lease_milliseconds": 60000,
         },
         sort_keys=True,
@@ -699,6 +710,7 @@ CREATE TABLE command_idempotency_records (
     operation_result_id integer,
     attempt_count integer NOT NULL,
     last_error_class varchar(255),
+    terminal_reason varchar(255),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     completed_at timestamptz,
@@ -1174,14 +1186,18 @@ def test_restricted_runtime_receipts_require_server_signed_claim(
                 "SELECT "
                 "has_table_privilege(%s, 'command_idempotency_records', 'INSERT'), "
                 "has_table_privilege(%s, 'archie_command_capability_keys', 'SELECT'), "
+                "has_table_privilege(%s, 'archie_command_claim_challenges', 'SELECT'), "
+                "has_function_privilege(%s, "
+                "'public.archie_issue_command_claim_challenge(bigint,bigint,integer)', "
+                "'EXECUTE'), "
                 "has_function_privilege(%s, "
                 "'public.archie_claim_transformation_command(text,text)', 'EXECUTE')",
-                (role_database.runtime_role,) * 3,
+                (role_database.runtime_role,) * 5,
             ).one()
     finally:
         deploy_engine.dispose()
 
-    assert privileges == (False, False, True)
+    assert privileges == (False, False, False, True, True)
 
     parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
     raw = psycopg2.connect(
@@ -2174,6 +2190,7 @@ def test_role_bootstrap_after_guards_preserves_exact_runtime_acl(
 
     expected_table_acl = {
         "archie_command_capability_keys": (False, False, False, False, False),
+        "archie_command_claim_challenges": (False, False, False, False, False),
         "command_idempotency_records": (True, False, False, False, False),
         "command_materialisations": (True, False, False, False, False),
         "operation_results": (True, False, False, False, False),
@@ -2230,6 +2247,9 @@ def test_role_bootstrap_after_guards_preserves_exact_runtime_acl(
 
             cursor.execute(
                 "SELECT has_function_privilege(%s, "
+                "'archie_issue_command_claim_challenge(bigint,bigint,integer)', "
+                "'EXECUTE'), "
+                "has_function_privilege(%s, "
                 "'archie_claim_transformation_command(text,text)', 'EXECUTE'), "
                 "has_function_privilege(%s, "
                 "'archie_create_decision_brief(text,text,text)', 'EXECUTE'), "
@@ -2249,10 +2269,10 @@ def test_role_bootstrap_after_guards_preserves_exact_runtime_acl(
                 "'archie_repair_command_envelope(text,text,bigint)', 'EXECUTE'), "
                 "has_function_privilege(%s, "
                 "'archie_persist_overlap_disposition(text,text,text)', 'EXECUTE')",
-                (role_database.runtime_role,) * 9,
+                (role_database.runtime_role,) * 10,
             )
             assert cursor.fetchone() == (
-                True, True, True, True, False, False, True, True, True
+                True, True, True, True, True, False, False, True, True, True
             )
     finally:
         maintenance.close()
@@ -4275,6 +4295,11 @@ def test_role_bootstrap_is_idempotent_and_runtime_cannot_bypass_guards(
                 (
                     "archie_claim_transformation_command",
                     "p_document text, p_capability text",
+                ),
+                (
+                    "archie_issue_command_claim_challenge",
+                    "p_organization_id bigint, p_actor_id bigint, "
+                    "p_valid_for_milliseconds integer",
                 ),
                 (
                     "archie_create_decision_brief",

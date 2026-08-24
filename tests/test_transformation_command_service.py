@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import uuid
@@ -10,6 +11,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 import pytest
+from flask import current_app
 from sqlalchemy import select, text
 from sqlalchemy import event
 from sqlalchemy.exc import DBAPIError
@@ -28,6 +30,7 @@ from app.models.transformation_db_guards import ensure_transformation_db_guards
 from app.models.user import User
 from app.modules.transformation_room.command_service import (
     CommandService,
+    NATURAL_KEY_CONTENDER_REASON,
     canonical_request_digest,
 )
 from app.modules.transformation_room.domain import (
@@ -37,6 +40,7 @@ from app.modules.transformation_room.domain import (
     DomainMutationResult,
     KnownPreCommitTransient,
     NotAuthorised,
+    NotFound,
     StaleClaim,
 )
 
@@ -444,6 +448,58 @@ def test_authorisation_failure_is_terminal_and_never_replayed_as_success(
     assert _counts(command_fixture) == (0, 0, 0)
 
 
+@pytest.mark.parametrize(
+    ("error_type", "reason"),
+    (
+        (NotAuthorised, "programme_create_not_authorised"),
+        (NotFound, "programme_owner_not_found"),
+        (CommandConflict, "programme_business_rule_conflict"),
+    ),
+)
+def test_terminal_business_failure_does_not_reconcile_a_later_exact_result(
+    command_fixture,
+    error_type,
+    reason,
+):
+    """Only a proven natural-key contender may leave terminal failure."""
+    payload = {"name": command_fixture.domain_name, "scope": {"a": 1}}
+    natural_key = f"programme-intake:terminal-{error_type.__name__.lower()}"
+    failed_key = f"terminal-{error_type.__name__.lower()}"
+
+    def execute(key, handler):
+        return CommandService.execute(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            idempotency_key=key,
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=_allow_command,
+            handler=handler,
+        )
+
+    with pytest.raises(error_type, match=reason):
+        execute(
+            failed_key,
+            lambda _session, _claim: (_ for _ in ()).throw(error_type(reason)),
+        )
+
+    winner = execute(f"winner-{failed_key}", _mutation(command_fixture))
+
+    with pytest.raises(CommandConflict) as replay:
+        execute(
+            failed_key,
+            lambda _session, _claim: pytest.fail(
+                "a business-terminal receipt reran the immutable operation"
+            ),
+        )
+
+    failed_receipt = _receipt(command_fixture, failed_key)
+    assert replay.value.reason == "failed_non_retryable"
+    assert failed_receipt.status == "failed_non_retryable"
+    assert failed_receipt.operation_result_id is None
+    assert winner.operation_result_id is not None
+
+
 def test_result_then_deferred_commit_failure_is_atomic(command_fixture):
     """Catches a result/outbox/domain row surviving a failure at COMMIT."""
     with _deferred_result_failure(command_fixture.organization_id):
@@ -564,7 +620,8 @@ def test_failed_contender_reconciles_exact_natural_result_on_retry(
     assert CommandService.mark_non_retryable(
         actor=command_fixture.actor,
         claim=failed_claim,
-        error_class="CommandConflict",
+        error_class="_NaturalKeyContenderConflict",
+        terminal_reason=NATURAL_KEY_CONTENDER_REASON,
     ) is True
 
     def execute(key, handler):
@@ -637,8 +694,155 @@ def test_failed_contender_reconciles_exact_natural_result_on_retry(
     assert failed_receipt.attempt_count == 2
     assert failed_receipt.claim_token != original_failed_token
     assert failed_receipt.last_error_class is None
+    assert failed_receipt.terminal_reason == NATURAL_KEY_CONTENDER_REASON
     assert result.receipt_id == materialisation.receipt_id == winner_receipt.id
     assert result.receipt_generation == materialisation.receipt_generation == 1
+
+
+def test_rejected_signed_claim_cannot_be_replayed_after_winner_appears(
+    command_fixture,
+    monkeypatch,
+):
+    """A rejected claim bearer is consumed before an exact result can appear."""
+    payload = {"name": command_fixture.domain_name, "scope": {"a": 1}}
+    natural_key = "programme-intake:consumed-contender-claim"
+    request_digest = canonical_request_digest(payload)
+    failed_claim = CommandService.claim_or_reconcile(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="consumed-contender",
+        request_digest=request_digest,
+        natural_key=natural_key,
+        authorizer=_allow_command,
+    )
+    assert CommandService.mark_non_retryable(
+        actor=command_fixture.actor,
+        claim=failed_claim,
+        error_class="_NaturalKeyContenderConflict",
+        terminal_reason=NATURAL_KEY_CONTENDER_REASON,
+    ) is True
+
+    captured = {}
+    real_signed_capability = CommandService._signed_capability
+
+    def capture_claim(payload_document):
+        document, capability = real_signed_capability(payload_document)
+        if (
+            payload_document.get("schema_version")
+            == "transformation-command-claim-r1"
+            and not captured
+        ):
+            captured.update(document=document, capability=capability)
+        return document, capability
+
+    monkeypatch.setattr(
+        CommandService, "_signed_capability", staticmethod(capture_claim)
+    )
+
+    with pytest.raises(CommandConflict, match="failed_non_retryable"):
+        CommandService.claim_or_reconcile(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            idempotency_key="consumed-contender",
+            request_digest=request_digest,
+            natural_key=natural_key,
+            authorizer=_allow_command,
+        )
+
+    assert json.loads(captured["document"])["contender_reason"] == (
+        NATURAL_KEY_CONTENDER_REASON
+    )
+
+    def replay_captured_claim():
+        with Session(db.engine) as session, session.begin():
+            session.execute(
+                text(
+                    "SELECT * FROM public.archie_claim_transformation_command("
+                    "CAST(:document AS text), CAST(:capability AS text))"
+                ),
+                captured,
+            ).all()
+
+    with pytest.raises(DBAPIError, match="command capability is invalid"):
+        replay_captured_claim()
+
+    winner = CommandService.execute(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="consumed-winner",
+        payload=payload,
+        natural_key=natural_key,
+        authorizer=_allow_command,
+        handler=_mutation(command_fixture),
+    )
+
+    with pytest.raises(DBAPIError, match="command capability is invalid"):
+        replay_captured_claim()
+
+    fresh = CommandService.execute(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="consumed-contender",
+        payload=payload,
+        natural_key=natural_key,
+        authorizer=_allow_command,
+        handler=lambda _session, _claim: pytest.fail(
+            "fresh contender reconciliation reran the immutable operation"
+        ),
+    )
+    assert fresh.operation_result_id == winner.operation_result_id
+    assert fresh.created is False and fresh.idempotent is True
+
+
+def test_database_rejects_an_expired_signed_claim(command_fixture, monkeypatch):
+    """Claim expiry is checked against database time, not caller wall time."""
+    original_seconds = current_app.config.get(
+        "TRANSFORMATION_COMMAND_CLAIM_CAPABILITY_SECONDS"
+    )
+    current_app.config["TRANSFORMATION_COMMAND_CLAIM_CAPABILITY_SECONDS"] = 0.1
+    real_signed_capability = CommandService._signed_capability
+
+    def delay_claim(payload_document):
+        document, capability = real_signed_capability(payload_document)
+        if payload_document.get("schema_version") == "transformation-command-claim-r1":
+            time.sleep(0.2)
+        return document, capability
+
+    monkeypatch.setattr(
+        CommandService, "_signed_capability", staticmethod(delay_claim)
+    )
+    try:
+        with pytest.raises(DBAPIError, match="command capability is invalid"):
+            CommandService.claim_or_reconcile(
+                actor=command_fixture.actor,
+                operation="programme.create",
+                idempotency_key="expired-signed-claim",
+                request_digest=canonical_request_digest(
+                    {"name": command_fixture.domain_name}
+                ),
+                natural_key="programme-intake:expired-signed-claim",
+                authorizer=_allow_command,
+            )
+    finally:
+        if original_seconds is None:
+            current_app.config.pop(
+                "TRANSFORMATION_COMMAND_CLAIM_CAPABILITY_SECONDS", None
+            )
+        else:
+            current_app.config[
+                "TRANSFORMATION_COMMAND_CLAIM_CAPABILITY_SECONDS"
+            ] = original_seconds
+
+    with Session(db.engine) as session:
+        receipt = session.scalar(
+            select(CommandIdempotencyRecord).where(
+                CommandIdempotencyRecord.organization_id
+                == command_fixture.organization_id,
+                CommandIdempotencyRecord.idempotency_key
+                == "expired-signed-claim",
+            )
+        )
+    assert receipt is None
 
 
 @pytest.mark.parametrize("deleted_ordinal", (0, None))
