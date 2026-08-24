@@ -73,7 +73,7 @@
           <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {% for value, label, description in layer_options %}
             <label class="cursor-pointer rounded-lg border p-3 transition-colors"
-              :class="layers.includes('{{ value }}') ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/40'">
+              :class="layers.indexOf('{{ value }}') >= 0 ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/40'">
               <input type="checkbox" value="{{ value }}" x-model="layers" class="sr-only">
               <span class="block text-sm font-medium text-foreground">{{ label }}</span>
               <span class="mt-1 block text-xs text-muted-foreground">{{ description }}</span>
