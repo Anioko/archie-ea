@@ -1,5 +1,7 @@
 {% extends "layouts/admin_base.html" %}
 {% from "components/page_header.html" import page_header %}
+{% from "components/empty_state.html" import empty_state %}
+{% import "components/card.html" as card %}
 
 {% block title %}Transformation Programmes{% endblock %}
 
@@ -20,8 +22,10 @@
   {% if programmes %}
   <div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
     {% for programme in programmes %}
-    <a href="{% if programme.is_transformation %}/solutions/programmes/{{ programme.id }}/overview{% else %}{{ url_for('solution_design.programme_cockpit', initiative_id=programme.id) }}{% endif %}"
-       class="group block rounded-lg border border-border bg-card p-5 transition-colors hover:border-primary/40">
+    <a href="{% if programme.is_transformation %}{{ url_for('solution_design.transformation_programme_overview', programme_id=programme.id) }}{% else %}{{ url_for('solution_design.programme_cockpit', initiative_id=programme.id) }}{% endif %}"
+       class="group block">
+      {% call card.card(class='h-full transition-colors group-hover:border-primary/40') %}
+      <div class="p-5">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <h2 class="truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary">{{ programme.name }}</h2>
@@ -48,19 +52,21 @@
         {% endif %}
         <span class="ml-auto rounded-md bg-muted px-2 py-0.5 text-muted-foreground">{{ (programme.status or '—')|replace('_', ' ')|title }}</span>
       </div>
+      </div>
+      {% endcall %}
     </a>
     {% endfor %}
   </div>
   {% else %}
-  <section class="mt-6 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-20 text-center">
-    <i data-lucide="layers" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
-    <h2 class="text-sm font-medium text-foreground">No transformation programmes</h2>
-    <p class="max-w-md text-sm text-muted-foreground">Create a programme when an accountable business objective and first outcome are ready to govern.</p>
-    <a href="{{ url_for('solution_design.new_programme') }}"
-       class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-      Create your first programme
-    </a>
-  </section>
+  {{ empty_state(
+      icon='layers',
+      title='No transformation programmes',
+      description='Create a programme when an accountable business objective and first outcome are ready to govern.',
+      cta_text='Create your first programme',
+      cta_href=url_for('solution_design.new_programme'),
+      cta_icon='plus',
+      class='mt-6 rounded-lg border border-dashed border-border'
+  ) }}
   {% endif %}
 </main>
 {% endblock %}

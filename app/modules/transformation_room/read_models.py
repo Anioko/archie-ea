@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import Any, Mapping
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import db
@@ -44,7 +45,9 @@ from app.modules.transformation_room.domain import (
     NotFound,
     StageView,
     TransformationPortfolioView,
+    TypedEvidenceValue,
 )
+from app.modules.transformation_room.evidence_service import sha256_canonical
 from app.modules.transformation_room.gate_service import TransformationGateService
 from app.modules.transformation_room.programme_service import TransformationProgrammeService
 
@@ -91,12 +94,10 @@ def _row(row: Any, *fields: str) -> dict[str, Any]:
 class TransformationRoomReadModel:
     """Build one room page without mutating domain state."""
 
-    _NEXT_STAGE = {
-        "objective": "discover",
-        "discover": "evidence",
-        "evidence": "options",
-        "options": "decision_ready",
-    }
+    @staticmethod
+    def next_stage(stage: str) -> str | None:
+        """Use the gate service as the single transition authority."""
+        return TransformationGateService.NEXT_STAGE.get(stage)
 
     @classmethod
     def stage(
@@ -114,12 +115,24 @@ class TransformationRoomReadModel:
         )
         if workstream_id not in programme.workstream_ids:
             raise NotFound("workstream_not_found")
-        resources = cls.load_stage_resources(
-            actor=actor, workstream_id=workstream_id, stage=stage
-        )
+        try:
+            resources, resource_states = cls.load_stage_resources(
+                actor=actor, workstream_id=workstream_id, stage=stage
+            )
+        except SQLAlchemyError:
+            reason = "Stage resources could not be loaded. Try again later."
+            return StageView(
+                programme=programme,
+                workstream_id=workstream_id,
+                stage=stage,
+                gate=None,
+                resources={},
+                resource_states={"stage": {"state": "failed", "reason": reason}},
+                unavailable_reasons={"stage": reason},
+            )
         current_stage = resources["workstream"][0]["lifecycle_stage"]
         gate = None
-        target_stage = cls._NEXT_STAGE.get(stage)
+        target_stage = cls.next_stage(stage)
         if stage in IMPLEMENTED_STAGES and current_stage == stage and target_stage:
             gate = TransformationGateService.evaluate(
                 actor=actor,
@@ -132,13 +145,19 @@ class TransformationRoomReadModel:
             stage=stage,
             gate=gate,
             resources=resources,
-            unavailable_reasons=cls.unavailable_reasons(stage, resources),
+            resource_states=resource_states,
+            unavailable_reasons=cls.unavailable_reasons(
+                stage, resources, resource_states
+            ),
         )
 
     @classmethod
     def load_stage_resources(
         cls, *, actor: ActorContext, workstream_id: int, stage: str
-    ) -> Mapping[str, tuple[Mapping[str, Any], ...]]:
+    ) -> tuple[
+        Mapping[str, tuple[Mapping[str, Any], ...]],
+        Mapping[str, Mapping[str, str | None]],
+    ]:
         """Dispatch through a closed map; every query repeats tenant membership."""
         loaders = {
             "objective": cls._objective_resources,
@@ -171,8 +190,9 @@ class TransformationRoomReadModel:
             )
             if programme is None:
                 raise NotFound("programme_not_found")
-            resources = loader(session, actor, workstream)
-            return {
+            loaded = loader(session, actor, workstream)
+            explicit_states = loaded.pop("_resource_states", {})
+            resources = {
                 "workstream": (
                     _row(
                         workstream,
@@ -188,8 +208,11 @@ class TransformationRoomReadModel:
                         "revision",
                     ),
                 ),
-                **resources,
+                **loaded,
             }
+            return resources, cls.resource_states(
+                stage, resources, explicit_states
+            )
 
     @staticmethod
     def _objective_resources(session, actor, workstream):
@@ -308,6 +331,9 @@ class TransformationRoomReadModel:
             )
             .order_by(EvidenceRecord.id)
         ).all()
+        evidence_rows, evidence_state = TransformationRoomReadModel.project_evidence(
+            evidence
+        )
         return {
             "requests": tuple(
                 _row(
@@ -321,23 +347,8 @@ class TransformationRoomReadModel:
                 )
                 for row in requests
             ),
-            "evidence": tuple(
-                {
-                    **_row(
-                        row,
-                        "id",
-                        "claim_key",
-                        "classification",
-                        "freshness_status",
-                        "observed_at",
-                        "source_system",
-                    ),
-                    # Evidence rows carry a source checksum, not a self-hash.
-                    # Do not call that proof that the whole record is verified.
-                    "verification": "source_checksum_recorded",
-                }
-                for row in evidence
-            ),
+            "evidence": evidence_rows,
+            "_resource_states": {"evidence": evidence_state},
         }
 
     @staticmethod
@@ -358,6 +369,20 @@ class TransformationRoomReadModel:
             )
             .order_by(TransformationOptionVersion.id)
         ).all()
+        version_rows, version_state = (
+            TransformationRoomReadModel.project_verified_versions(
+                versions,
+                fields=(
+                    "id",
+                    "option_id",
+                    "version",
+                    "currency",
+                    "technology_required",
+                ),
+                verifier=TransformationOptionService.verify_version_hash,
+                resource_label="option versions",
+            )
+        )
         return {
             "options": tuple(
                 _row(
@@ -371,20 +396,8 @@ class TransformationRoomReadModel:
                 )
                 for row in options
             ),
-            "option_versions": tuple(
-                {
-                    **_row(
-                        row,
-                        "id",
-                        "option_id",
-                        "version",
-                        "currency",
-                        "technology_required",
-                    ),
-                    "hash_verified": TransformationOptionService.verify_version_hash(row),
-                }
-                for row in versions
-            ),
+            "option_versions": version_rows,
+            "_resource_states": {"option_versions": version_state},
         }
 
     @staticmethod
@@ -405,18 +418,21 @@ class TransformationRoomReadModel:
             )
             .order_by(DecisionBriefVersion.id)
         ).all()
+        version_rows, version_state = (
+            TransformationRoomReadModel.project_verified_versions(
+                versions,
+                fields=("id", "brief_id", "version", "created_at"),
+                verifier=DecisionBriefService.verify_hash,
+                resource_label="decision brief versions",
+            )
+        )
         return {
             "briefs": tuple(
                 _row(row, "id", "title", "status", "decision_authority_id", "revision")
                 for row in briefs
             ),
-            "brief_versions": tuple(
-                {
-                    **_row(row, "id", "brief_id", "version", "created_at"),
-                    "hash_verified": DecisionBriefService.verify_hash(row),
-                }
-                for row in versions
-            ),
+            "brief_versions": version_rows,
+            "_resource_states": {"brief_versions": version_state},
         }
 
     @staticmethod
@@ -424,7 +440,81 @@ class TransformationRoomReadModel:
         return {}
 
     @staticmethod
-    def unavailable_reasons(stage, resources):
+    def project_evidence(rows):
+        projected = []
+        for row in rows:
+            value = TypedEvidenceValue(
+                row.value_type, row.value_json, row.unit, row.currency
+            )
+            if sha256_canonical(value) != row.source_checksum.lower():
+                return (), {
+                    "state": "unavailable",
+                    "reason": (
+                        "Evidence integrity verification failed; compromised "
+                        "records are hidden."
+                    ),
+                }
+            projected.append(
+                {
+                    **_row(
+                        row,
+                        "id",
+                        "claim_key",
+                        "classification",
+                        "freshness_status",
+                        "observed_at",
+                        "source_system",
+                    ),
+                    "verification": "integrity_verified",
+                }
+            )
+        state = "available" if projected else "empty"
+        reason = None if projected else "No evidence records are available."
+        return tuple(projected), {"state": state, "reason": reason}
+
+    @staticmethod
+    def project_verified_versions(rows, *, fields, verifier, resource_label):
+        rows = tuple(rows)
+        if any(not verifier(row) for row in rows):
+            return (), {
+                "state": "unavailable",
+                "reason": (
+                    f"Integrity verification failed for {resource_label}; "
+                    "compromised records are hidden."
+                ),
+            }
+        projected = tuple(
+            {**_row(row, *fields), "hash_verified": True} for row in rows
+        )
+        return projected, {
+            "state": "available" if projected else "empty",
+            "reason": None if projected else f"No {resource_label} are recorded.",
+        }
+
+    @staticmethod
+    def resource_states(stage, resources, explicit_states=None):
+        explicit_states = explicit_states or {}
+        if stage in {"execute", "outcomes"}:
+            return {
+                "stage": {
+                    "state": "unknown",
+                    "reason": LATER_STAGE_REASON,
+                }
+            }
+        states = {}
+        for key, rows in resources.items():
+            if key == "workstream":
+                continue
+            states[key] = explicit_states.get(key) or {
+                "state": "available" if rows else "empty",
+                "reason": None,
+            }
+        if stage == "decision":
+            states["stage"] = {"state": "unknown", "reason": LATER_STAGE_REASON}
+        return states
+
+    @staticmethod
+    def unavailable_reasons(stage, resources, resource_states=None):
         reasons: dict[str, str] = {}
         if stage in {"decision", "execute", "outcomes"}:
             reasons["stage"] = LATER_STAGE_REASON
@@ -443,9 +533,9 @@ class TransformationRoomReadModel:
         for key, reason in empty_copy.items():
             if key in resources and not resources[key]:
                 reasons[key] = reason
-        for key in ("option_versions", "brief_versions"):
-            if any(row.get("hash_verified") is False for row in resources.get(key, ())):
-                reasons[key] = "Integrity verification failed; this record is unavailable."
+        for key, state in (resource_states or {}).items():
+            if state.get("reason"):
+                reasons[key] = state["reason"]
         return reasons
 
     @classmethod
@@ -582,7 +672,13 @@ class TransformationRoomReadModel:
                     ),
                     "next_action_url": (
                         programme_view.next_action.action_url
-                        if programme_view.next_action
+                        if (
+                            programme_view.next_action
+                            and programme_view.next_action.action_url
+                            and programme_view.next_action.action_url.startswith(
+                                "/solutions/"
+                            )
+                        )
                         else None
                     ),
                     "evidence_posture": evidence_posture,
@@ -717,26 +813,13 @@ class ChiefArchitectTransformationReadModel:
         }
 
     @staticmethod
-    def cross_domain_dependencies(actor, programmes):
-        workstream_ids = {
-            workstream_id
-            for programme in programmes
-            for workstream_id in programme.workstream_ids
-        }
-        if not workstream_ids:
-            return {"value": None, "reason": "No programme workstreams are in scope."}
-        with Session(db.engine) as session:
-            options = session.scalars(
-                select(TransformationOption).where(
-                    TransformationOption.organization_id == actor.organization_id,
-                    TransformationOption.workstream_id.in_(workstream_ids),
-                )
-            ).all()
-        if not options:
-            return {"value": None, "reason": "No option dependencies are recorded."}
+    def cross_domain_dependencies(_actor, _programmes):
         return {
-            "value": sum(len(row.dependencies or ()) for row in options),
-            "reason": None,
+            "value": None,
+            "reason": (
+                "Dependencies are not yet classified by transformation domain; "
+                "a cross-domain count is unavailable."
+            ),
         }
 
     @staticmethod

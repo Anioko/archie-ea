@@ -153,13 +153,13 @@ def test_enterprise_architect_my_work_membership():
     Coordinator review of the sidebar rewrite; membership amended
     accordingly."""
     assert _my_work_labels(ROLE_ENTERPRISE_ARCHITECT) == [
+        "Transformation programmes",
         # BA-A3 (21 Aug 2026): "Business Architecture" is deliberately absent
         # here — this role renders 26 links, exactly the sidebar_links ratchet
         # baseline, so a 27th would trip the gate. See the comment on this
         # role's entry in app/utils/role_access.py.
         "Portfolio",
         "Capability Map",
-        "Elements",
         "Roadmaps",
         "ArchiMate Composer",
         "Traceability Matrix",
@@ -182,6 +182,7 @@ def test_enterprise_architect_my_work_membership():
 
 def test_cto_my_work_membership():
     assert _my_work_labels(ROLE_CTO) == [
+        "Transformation programmes",
         "Health Scorecard",
         "Rationalization",
         "Investment Analysis",

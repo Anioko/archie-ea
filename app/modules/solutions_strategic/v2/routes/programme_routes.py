@@ -8,7 +8,7 @@ Pages:
     GET  /solutions/programmes/<id>          — governance cockpit
 
 APIs:
-    POST   /solutions/programmes                          — create programme
+    POST   /solutions/programmes                          — retired legacy intake
     GET    /solutions/programmes/<id>/api/rollup          — rollup JSON
     POST   /solutions/programmes/<id>/solutions           — assign member solution
     DELETE /solutions/programmes/<id>/solutions/<sid>     — unassign member
@@ -27,9 +27,6 @@ from app.models.strategic import StrategicInitiative
 from .solution_design_routes import solution_design_bp
 
 logger = logging.getLogger(__name__)
-
-VALID_TYPES = ("greenfield", "brownfield")
-
 
 # =============================================================================
 # PAGES
@@ -438,29 +435,12 @@ def programme_cockpit(initiative_id):
 @solution_design_bp.route("/programmes", methods=["POST"])
 @login_required
 def create_programme_entity():
-    """Create a Transformation Programme (StrategicInitiative)."""
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"success": False, "error": "Programme name is required."}), 400
-    itype = (data.get("initiative_type") or "brownfield").lower()
-    if itype not in VALID_TYPES:
-        return jsonify({"success": False, "error": "initiative_type must be greenfield or brownfield."}), 400
-
-    initiative = StrategicInitiative(
-        name=name,
-        description=data.get("description") or "",
-        initiative_type=itype,
-        target_platform=(data.get("target_platform") or "").strip() or None,
-        vendor_key=(data.get("vendor_key") or "").strip().upper() or None,
-        status=data.get("status") or "in_progress",
-        priority=data.get("priority") or "high",
-        owner_id=current_user.id,
-    )
-    db.session.add(initiative)
-    db.session.commit()
-    logger.info("Programme created: id=%s name=%s type=%s", initiative.id, name, itype)
-    return jsonify({"success": True, "id": initiative.id}), 201
+    """Retire the technology-first bypass; canonical intake owns creation."""
+    return jsonify({
+        "success": False,
+        "error": "Use the governed transformation programme intake.",
+        "redirect_url": "/solutions/new-programme",
+    }), 410
 
 
 @solution_design_bp.route("/programmes/<int:initiative_id>/api/rollup", methods=["GET"])

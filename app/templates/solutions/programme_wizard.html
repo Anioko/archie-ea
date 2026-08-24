@@ -17,7 +17,7 @@
 
   <form class="mt-6 space-y-6" method="post"
         action="{{ url_for('solution_design.create_programme') }}"
-        @submit.prevent="submit" novalidate>
+        @submit.prevent="submit()" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="command_key" value="{{ programme_command_key }}">
 
@@ -57,7 +57,7 @@
                  value="{{ programme_form.owner_id }}">
           <input id="owner-search" class="mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
                  type="search" value="{{ programme_owner_label }}" x-model="ownerQuery"
-                 @input="ownerQueryChanged" @input.debounce.250ms="searchOwners"
+                 @input.debounce.250ms="ownerQueryChanged(); searchOwners()"
                  @focus="ownerOpen = true" autocomplete="off" role="combobox"
                  aria-autocomplete="list"
                  readonly :readonly="false"
@@ -65,8 +65,8 @@
                  :aria-activedescendant="activeOwnerId"
                  @keydown.arrow-down.prevent="moveOwner(1)"
                  @keydown.arrow-up.prevent="moveOwner(-1)"
-                 @keydown.enter.prevent="chooseActiveOwner"
-                 @keydown.escape="closeOwnerPicker"
+                 @keydown.enter.prevent="chooseActiveOwner()"
+                 @keydown.escape="closeOwnerPicker()"
                  placeholder="Search people by name or email" required>
           <ul id="owner-results" x-show="ownerOpen && owners.length" x-cloak
               class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
@@ -115,6 +115,11 @@
                  x-model.trim="form.target_date_unavailable_reason"
                  placeholder="Why the date is unavailable">
         </label>
+      </div>
+      <div x-show="form.workstream_type === 'technology'" x-cloak
+           class="mt-4 rounded-md border border-info/30 bg-info/10 p-4 text-sm text-info-emphasis">
+        <p class="font-medium">Technology elaboration follows the business decision.</p>
+        <p class="mt-1">A technology Solution may be added after programme approval. Platform and vendor choices belong to that governed Solution record and are not collected or discarded here.</p>
       </div>
     </section>
 

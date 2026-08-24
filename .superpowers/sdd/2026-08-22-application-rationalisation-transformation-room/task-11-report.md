@@ -49,3 +49,34 @@ Final evidence:
 ## Concern
 
 The new Playwright smoke test collected both 390px and 1024px cases, but the shared live-server harness returned no result for several minutes and the execution session ended before a pass/fail result was produced. This is not counted as a pass. The equivalent server-rendered accessibility/responsive contracts are covered by the green template tests, and boot/template/CSS gates are green, but browser-level evidence remains unavailable from this run.
+
+## Review fix round 1/5 — 24 August 2026
+
+All ten Important findings and the related Minor findings were addressed:
+
+- The legacy technology-first `POST /solutions/programmes` is retired with an explicit 410 response and canonical wizard URL; it cannot create a bypass record.
+- Evidence, option versions and decision-brief versions are checksum-verified on read. A compromised set is suppressed and rendered as an explicit integrity-unavailable state.
+- Cross-domain dependencies are now null with the honest explanation that persisted dependencies are not classified by transformation domain.
+- The canonical blocker `next_action_url` is rendered when it is a safe Transformation Room URL.
+- Technology workstreams alone explain that Solution/platform/vendor elaboration happens after programme approval; the wizard does not collect fields the canonical intake would discard.
+- Enterprise Architect and CTO navigation exposes Transformation programmes. The EA's duplicate ArchiMate Elements destination was retired so the sidebar ratchet remains at 26.
+- Resource projections distinguish available, empty, failed and unknown states. Synchronous server rendering has no transient client-side loading phase, so no fabricated loading state is emitted.
+- The smoke journey now performs real create-to-objective submission, stable deep-link refresh, keyboard combobox/focus interaction, later-stage honesty, a server error response, and axe checks at mobile and desktop widths. Converting it to the async Playwright API resolved the repository fixture's sync-in-async-loop failure and exposed three real defects: a duplicated owner input binding, handler expressions that did not invoke keyboard functions, and a submit expression that did not invoke submission. All three are fixed.
+- Central card, metric and empty-state macros replace compatible hand-built structures.
+- Stage navigation consumes `TransformationGateService.NEXT_STAGE`; links use `url_for` and expose `aria-current`.
+
+The 772-line read-model split is deferred because this review changed cohesive projection/integrity behavior and the file has focused coverage; splitting it during the correctness fix would add movement without changing risk.
+
+### Fix-round test evidence
+
+- Initial focused RED run: **7 failed, 10 passed**, covering the missing retired route, integrity suppression, authoritative transitions, blocker action, technology-only guidance, sidebar entry and explicit resource failure/unknown states.
+- `pytest -q tests/test_transformation_room_routes.py tests/test_transformation_room_templates.py tests/test_sidebar_budgets.py tests/test_transformation_gate_service.py tests/test_transformation_option_service.py tests/test_transformation_evidence_service.py --maxfail=10`: **149 passed** in 45.25 seconds.
+- Final route/template/sidebar regression after removing the duplicate EA link: **37 passed** in 26.33 seconds.
+- Scoped Ruff: **passed**.
+- `python scripts/verify.py --tag static`: **31 passed, 0 failed, 0 skipped** (including template syntax/references, fabricated data, sidebar links and rebuilt CSS).
+- `python scripts/verify.py --gate boot-health`: **1 passed, 0 failed, 0 skipped**.
+- `git diff --check`: **passed**.
+
+### Browser verification concern
+
+The async browser harness now launches and executes application behavior, but the final full run is **not counted green**. The shared host exhausted memory while Werkzeug served static assets (`MemoryError`) and zstd reported `Allocation error: not enough memory`; resulting asset requests returned 500. This is environmental rather than evidence of a passing product journey. The mandatory CI Playwright/axe job must pass before merge or deployment.

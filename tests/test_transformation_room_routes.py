@@ -156,3 +156,20 @@ def test_objective_form_posts_through_public_service_and_redirects(
         assert workstream.scope_expression == {
             "business_units": ["Claims", "Contact centre"]
         }
+
+
+def test_legacy_technology_first_programme_post_is_retired(
+    app, programme_fixture, login_as
+):
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+
+    response = client.post(
+        "/solutions/programmes",
+        json={"name": "Bypass", "initiative_type": "brownfield"},
+    )
+
+    assert response.status_code == 410
+    assert response.get_json()["redirect_url"] == "/solutions/new-programme"
+    with app.app_context():
+        assert StrategicInitiative.query.filter_by(name="Bypass").first() is None

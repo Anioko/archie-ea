@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from sqlalchemy.exc import SQLAlchemyError
+from app.models.user import ROLE_CTO, ROLE_ENTERPRISE_ARCHITECT
+from app.modules.transformation_room.domain import TypedEvidenceValue
+from app.modules.transformation_room.evidence_service import sha256_canonical
+from app.modules.transformation_room.gate_service import TransformationGateService
 from app.modules.transformation_room.programme_service import TransformationProgrammeService
+from app.modules.transformation_room.read_models import TransformationRoomReadModel
+from app.utils.role_access import SIDEBAR_ZONES
 
 from tests.test_transformation_programme_service import (
     _intake,
@@ -62,6 +71,7 @@ def test_stage_rail_is_directly_addressable_without_claiming_future_readiness(
         assert f"/solutions/programmes/{programme_id}/workstreams/{workstream_id}/{stage}" in body
         assert "Not available in this release" in body
         assert "Ready to advance" not in body
+        assert 'data-resource-state="unknown"' in body
 
 
 def test_non_technology_room_contains_no_solution_or_platform_claims(
@@ -89,8 +99,8 @@ def test_owner_picker_is_an_accessible_keyboard_combobox(
     assert 'aria-autocomplete="list"' in body
     assert '@keydown.arrow-down.prevent="moveOwner(1)"' in body
     assert '@keydown.arrow-up.prevent="moveOwner(-1)"' in body
-    assert '@keydown.enter.prevent="chooseActiveOwner"' in body
-    assert '@keydown.escape="closeOwnerPicker"' in body
+    assert '@keydown.enter.prevent="chooseActiveOwner()"' in body
+    assert '@keydown.escape="closeOwnerPicker()"' in body
     assert ':aria-activedescendant="activeOwnerId"' in body
     assert "this.form.owner_id = null" in body
 
@@ -122,3 +132,112 @@ def test_architect_synthesis_names_transformation_posture_without_relabelling_so
     ):
         assert label in body
     assert "Not available in this release" in body
+    assert (
+        "Dependencies are not yet classified by transformation domain; "
+        "a cross-domain count is unavailable."
+    ) in body
+
+
+def test_room_renders_canonical_next_action_link_and_central_cards(
+    app, programme_fixture, login_as
+):
+    response, body, programme_id, workstream_id = _room_page(
+        app, programme_fixture, login_as
+    )
+    programme = TransformationProgrammeService.get_programme(
+        actor=programme_fixture.actor, programme_id=programme_id
+    )
+
+    assert response.status_code == 200
+    assert programme.next_action.action_url
+    assert f'href="{programme.next_action.action_url}"' in body
+    assert 'data-slot="card"' in body
+    assert 'aria-current="step"' in body
+    assert f"/solutions/programmes/{programme_id}/workstreams/{workstream_id}/objective" in body
+
+
+def test_room_consumes_authoritative_gate_transition_map():
+    assert TransformationRoomReadModel.next_stage("objective") == (
+        TransformationGateService.NEXT_STAGE["objective"]
+    )
+    assert "_NEXT_STAGE" not in TransformationRoomReadModel.__dict__
+
+
+def test_integrity_projection_suppresses_compromised_records():
+    evidence = SimpleNamespace(
+        id=1,
+        claim_key="cost",
+        classification="observed",
+        freshness_status="fresh",
+        observed_at=None,
+        source_system="inventory",
+        value_type="decimal",
+        value_json="42",
+        unit="GBP",
+        currency="GBP",
+        source_checksum="0" * 64,
+    )
+    valid_value = TypedEvidenceValue("decimal", "42", "GBP", "GBP")
+    assert sha256_canonical(valid_value) != evidence.source_checksum
+
+    rows, state = TransformationRoomReadModel.project_evidence((evidence,))
+    versions, version_state = TransformationRoomReadModel.project_verified_versions(
+        (SimpleNamespace(id=2),),
+        fields=("id",),
+        verifier=lambda _row: False,
+        resource_label="option versions",
+    )
+
+    assert rows == ()
+    assert state == {
+        "state": "unavailable",
+        "reason": "Evidence integrity verification failed; compromised records are hidden.",
+    }
+    assert versions == ()
+    assert version_state["state"] == "unavailable"
+
+
+def test_stage_failure_state_is_explicit(app, programme_fixture, monkeypatch):
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="room-stage-failure-state",
+        request=_intake(programme_fixture.owner_id),
+    )
+    monkeypatch.setattr(
+        TransformationRoomReadModel,
+        "load_stage_resources",
+        classmethod(
+            lambda cls, **kwargs: (_ for _ in ()).throw(SQLAlchemyError("db down"))
+        ),
+    )
+
+    failed = TransformationRoomReadModel.stage(
+        actor=programme_fixture.actor,
+        programme_id=created.object_ids["programme_id"],
+        workstream_id=created.object_ids["workstream_id"],
+        stage="evidence",
+    )
+
+    assert failed.resource_states["stage"]["state"] == "failed"
+    assert "could not be loaded" in failed.resource_states["stage"]["reason"]
+
+
+def test_technology_intake_context_is_conditional_and_non_persisting(
+    app, programme_fixture, login_as
+):
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    body = client.get("/solutions/new-programme").get_data(as_text=True)
+
+    assert "form.workstream_type === 'technology'" in body
+    assert "A technology Solution may be added after programme approval" in body
+    assert 'name="target_platform"' not in body
+    assert 'name="vendor_key"' not in body
+
+
+def test_transformation_programmes_are_discoverable_for_architect_leaders():
+    for role in (ROLE_ENTERPRISE_ARCHITECT, ROLE_CTO):
+        links = [link for zone in SIDEBAR_ZONES[role] for link in zone["links"]]
+        assert any(
+            link["endpoint"] == "solution_design.programmes_list" for link in links
+        ), role

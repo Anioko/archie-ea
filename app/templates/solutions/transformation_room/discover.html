@@ -1,6 +1,6 @@
 {% extends "solutions/transformation_room/layout.html" %}
 {% block room_content %}
-<section class="rounded-lg border border-border bg-card p-5" aria-labelledby="discover-heading">
+<section class="rounded-lg border border-border bg-card p-5" aria-labelledby="discover-heading" data-resource-state="{{ room.stage_view.resource_states.candidates.state }}">
   <h2 id="discover-heading" class="text-lg font-semibold text-foreground">Accepted candidates</h2>
   <p class="mt-1 text-sm text-muted-foreground">Only persisted candidates and their recorded signals appear here.</p>
   {% if room.stage_view.resources.candidates %}

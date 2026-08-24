@@ -201,6 +201,7 @@ class StageView:
     stage: str
     gate: GateResult | None
     resources: Mapping[str, Sequence[Mapping[str, Any]]]
+    resource_states: Mapping[str, Mapping[str, str | None]]
     unavailable_reasons: Mapping[str, str]
 
 

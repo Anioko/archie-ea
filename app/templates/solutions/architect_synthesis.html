@@ -59,8 +59,12 @@
             </div>
             <p class="max-w-lg text-xs text-muted-foreground">Not available in this release: governed decision ageing, execution confidence and measured outcome variance.</p>
         </div>
-        <dl class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Non-Solution programmes</dt><dd class="mt-2 text-2xl font-bold text-foreground">{{ synthesis.transformation.non_solution_programmes if synthesis.transformation.non_solution_programmes is not none else '—' }}</dd></div>
+        <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {{ metrics_card(
+                title='Non-Solution programmes',
+                value=synthesis.transformation.non_solution_programmes if synthesis.transformation.non_solution_programmes is not none else '—',
+                description='Canonical transformation programme records.'
+            ) }}
             {% for key, label in [
                 ('evidence_debt', 'Evidence debt'),
                 ('decision_ageing', 'Decision ageing'),
@@ -69,13 +73,13 @@
                 ('outcome_variance', 'Outcome variance')
             ] %}
             {% set measure = synthesis.transformation[key] %}
-            <div>
-                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{{ label }}</dt>
-                <dd class="mt-2 text-2xl font-bold text-foreground">{{ measure.value if measure.value is not none else '—' }}</dd>
-                {% if measure.reason %}<p class="mt-1 text-xs text-muted-foreground">{{ measure.reason }}</p>{% endif %}
-            </div>
+            {{ metrics_card(
+                title=label,
+                value=measure.value if measure.value is not none else '—',
+                description=measure.reason or 'Measured from persisted transformation records.'
+            ) }}
             {% endfor %}
-        </dl>
+        </div>
     </section>
     {% endcall %}
 
