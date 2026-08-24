@@ -181,6 +181,57 @@ def test_existing_schema_reconciles_additive_columns_idempotently(app, _schema):
         db.metadata.remove(model_table)
 
 
+def test_existing_command_table_is_upgraded_before_new_guarded_tables(
+    app, pre_feature_transformation_schema
+):
+    """A guarded table create must not inspect an older peer prematurely."""
+    _schema_name, isolated_engine = pre_feature_transformation_schema
+    with isolated_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE command_idempotency_records (
+                    id SERIAL PRIMARY KEY,
+                    organization_id INTEGER NOT NULL,
+                    actor_id INTEGER NOT NULL,
+                    operation VARCHAR(120) NOT NULL,
+                    idempotency_key VARCHAR(255) NOT NULL,
+                    request_digest VARCHAR(64) NOT NULL,
+                    natural_key VARCHAR(512) NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'in_progress',
+                    lease_generation INTEGER NOT NULL DEFAULT 1,
+                    claim_token VARCHAR(64) NOT NULL,
+                    claimant_request_id VARCHAR(255) NOT NULL,
+                    lease_expires_at TIMESTAMPTZ,
+                    operation_result_id INTEGER,
+                    attempt_count INTEGER NOT NULL DEFAULT 1,
+                    last_error_class VARCHAR(255),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+                    completed_at TIMESTAMPTZ
+                )
+                """
+            )
+        )
+
+    with app.app_context():
+        added, failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert failed == []
+        assert any(
+            item.startswith("command_idempotency_records.terminal_reason ::")
+            for item in added
+        )
+        assert {
+            "terminal_reason",
+        } <= {
+            column["name"]
+            for column in inspect(db.engine).get_columns(
+                "command_idempotency_records"
+            )
+        }
+        assert "command_materialisations" in inspect(db.engine).get_table_names()
+
+
 def test_pre_task6_evidence_waiver_constraint_reconciles_idempotently(
     app, pre_feature_transformation_schema
 ):

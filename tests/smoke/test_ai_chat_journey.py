@@ -316,7 +316,7 @@ def test_approval_modal_distinguishes_loading_failure_stale_and_retry(page, live
     page.evaluate("() => { window.__approvalQueueMode = 'empty'; }")
     page.get_by_role("button", name="Retry approval queue").click()
     empty.wait_for(state="visible", timeout=state_timeout)
-    assert not unavailable.is_visible()
+    unavailable.wait_for(state="hidden", timeout=state_timeout)
 
 
 def test_exactly_one_sidebar_panel_is_visible_at_a_time(page, live_server, seeded):

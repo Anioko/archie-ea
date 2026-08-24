@@ -841,16 +841,6 @@ def _reconcile(dry_run=False):
     dialect = db.engine.dialect
     added, failed, missing_tables, blocking = [], [], [], []
 
-    _create_transformation_tables(
-        dry_run=dry_run,
-        existing_tables=existing_tables,
-        added=added,
-        failed=failed,
-    )
-    # Table creation changes the catalog; do not keep using a stale inspector.
-    insp = inspect(db.engine)
-    existing_tables = set(insp.get_table_names(schema=active_schema))
-
     for table in db.metadata.tables.values():
         if table.name not in existing_tables:
             continue
@@ -867,7 +857,6 @@ def _reconcile(dry_run=False):
     # .tables.values() (not sorted_tables) so FK-cycle tables are still checked.
     for table in db.metadata.tables.values():
         if table.name not in existing_tables:
-            missing_tables.append(table.name)
             continue
         live_cols = {c["name"] for c in insp.get_columns(table.name)}
         for col in table.columns:
@@ -893,6 +882,25 @@ def _reconcile(dry_run=False):
             except Exception as exc:  # noqa: BLE001 — keep going, report at end
                 db.session.rollback()
                 failed.append(f"{label}: {str(exc)[:120]}")
+
+    # Upgrade existing transformation tables before creating new ones.  Each
+    # guarded table installs the complete transformation guard set in its
+    # after_create hook; creating a new table while an older peer still lacks a
+    # newly introduced column makes that hook fail and rolls back the upgrade.
+    _create_transformation_tables(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    # Table creation changes the catalog; do not keep using a stale inspector.
+    insp = inspect(db.engine)
+    existing_tables = set(insp.get_table_names(schema=active_schema))
+    missing_tables.extend(
+        table.name
+        for table in db.metadata.tables.values()
+        if table.name not in existing_tables
+    )
 
     _backfill_roadmap_organizations(
         dry_run=dry_run,

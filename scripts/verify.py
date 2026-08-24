@@ -78,6 +78,12 @@ BASELINE_PATH = REPO_ROOT / "verification_baseline.json"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
+# The PostgreSQL-backed suite currently takes about 26 minutes on the supported
+# Windows development environment.  Keep a bounded subprocess, but do not let
+# the generic 15-minute command timeout turn a fully progressing suite into a
+# false release failure.
+TEST_SUITE_TIMEOUT_SECONDS = 1800
+
 
 @dataclass
 class Result:
@@ -1133,7 +1139,10 @@ def gate_tests() -> Result:
     ]
     summaries, failed = [], []
     for label, args in parts:
-        proc = _run([sys.executable, "-m", "pytest", "-q"] + args)
+        proc = _run(
+            [sys.executable, "-m", "pytest", "-q"] + args,
+            timeout=TEST_SUITE_TIMEOUT_SECONDS,
+        )
         tail = (proc.stdout + proc.stderr).strip().splitlines()[-12:]
         summaries.append("[%s] %s" % (label, tail[-1] if tail else "no output"))
         if proc.returncode != 0:

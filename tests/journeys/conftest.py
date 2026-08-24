@@ -21,6 +21,7 @@ import pytest
 @pytest.fixture(scope="module")
 def app():
     from app import create_app, db
+    from app.models.user import Role
 
     app = create_app("testing")
     app.config["TESTING"] = True
@@ -28,6 +29,7 @@ def app():
 
     with app.app_context():
         db.create_all()
+        Role.insert_roles()
 
     return app
 
@@ -88,9 +90,10 @@ def make_user(db, org_id, label, enterprise_role, role_name="Administrator"):
     if role_name:
         role = Role.query.filter_by(name=role_name).first()
         if role is None:
-            role = Role(name=role_name)
-            db.session.add(role)
-            db.session.flush()
+            Role.insert_roles()
+            role = Role.query.filter_by(name=role_name).first()
+        if role is None:
+            raise RuntimeError("Canonical role %r was not seeded" % role_name)
         user.role = role
 
     db.session.commit()
