@@ -104,7 +104,7 @@ def main() -> int:
     if _exercised():
         print(f"  exercised by a test       {len(run):>6}  ({len(run) / len(every) * 100:.1f}%)")
         print(f"  IN NAV and never tested   {len(nav - run):>6}   <- the ones that hurt")
-        for ep in sorted(nav - run)[:15]:
+        for ep in sorted(nav - run):
             print(f"      {ep}")
     else:
         print("  exercised by a test          n/a  (run pytest with -p scripts.route_verification_audit)")

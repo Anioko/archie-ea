@@ -303,7 +303,11 @@ def gate_nav_verified(baseline: int) -> Result:
         count = int(proc.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         return Result("nav-verified", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    return Result("nav-verified", PASS if count <= baseline else FAIL, "", count, baseline)
+    if count > baseline:
+        report = _run([sys.executable, "scripts/route_verification_audit.py"])
+        details = report.stdout.strip() or report.stderr.strip()
+        return Result("nav-verified", FAIL, details, count, baseline)
+    return Result("nav-verified", PASS, "", count, baseline)
 
 
 def gate_nav_coverage(baseline: int) -> Result:
