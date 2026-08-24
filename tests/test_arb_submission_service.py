@@ -433,6 +433,9 @@ def test_evidence_schema_is_nullable_compatible_and_reconcile_safe(app, _schema)
         added, failed, missing_tables, blocking = _reconcile(dry_run=True)
         first_apply = _reconcile(dry_run=False)
         second_apply = _reconcile(dry_run=False)
+        immutability_installed = evidence_immutability_is_installed(
+            db.session.connection()
+        )
 
     assert not [item for item in added if "evidence" in item]
     assert not [item for item in failed if "evidence" in item]
@@ -440,7 +443,7 @@ def test_evidence_schema_is_nullable_compatible_and_reconcile_safe(app, _schema)
     assert not [item for item in blocking if "evidence" in item]
     assert first_apply[1] == []
     assert second_apply[1] == []
-    assert evidence_immutability_is_installed(db.session.connection()) is True
+    assert immutability_installed is True
 
 
 def test_submit_is_idempotent_for_an_active_review(db_session, make_org, tenant_ctx, passing_gate):

@@ -71,6 +71,11 @@ APPLICATION_LIFECYCLE_STAGES = [
     "5. decommissioned",
 ]
 
+# Canonical assessed-value vocabularies. Null and any value outside these sets
+# mean "not assessed"; consumers must not present arbitrary strings as facts.
+APPLICATION_RISK_LEVELS = frozenset({"low", "medium", "high", "critical"})
+APPLICATION_HEALTH_STATUSES = frozenset({"healthy", "at_risk", "critical"})
+
 
 class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     """

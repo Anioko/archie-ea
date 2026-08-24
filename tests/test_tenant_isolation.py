@@ -42,6 +42,8 @@ Suite status when last run: 6 passed, 2 xfailed (the two documented gaps).
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 pytestmark = pytest.mark.usefixtures("db_session")
@@ -208,6 +210,327 @@ def test_explicit_org_on_insert_is_not_overwritten(db_session, make_org, tenant_
         assigned = row.organization_id
 
     assert assigned == org_b.id, "an explicit organization_id must not be overwritten"
+
+
+def test_transformation_workstream_select_is_tenant_scoped(
+    db_session, make_org, tenant_ctx
+):
+    """Transformation programme children obey the same tenant query policy."""
+    from app.models.strategic import StrategicInitiative
+    from app.models.transformation_programme import ProgrammeWorkstream
+
+    org_a, org_b = make_org("transformation-a"), make_org("transformation-b")
+    programme = StrategicInitiative(
+        name="Org A programme",
+        record_kind="transformation_programme",
+        organization_id=org_a.id,
+    )
+    db_session.add(programme)
+    db_session.flush()
+    stream = ProgrammeWorkstream(
+        organization_id=org_a.id,
+        programme_id=programme.id,
+        workstream_type="application_rationalisation",
+        objective="Reduce cost",
+        lifecycle_stage="objective",
+    )
+    db_session.add(stream)
+    db_session.flush()
+    stream_id = stream.id
+    db_session.expunge_all()
+
+    with tenant_ctx(org_b.id):
+        assert db_session.get(ProgrammeWorkstream, stream_id) is None
+
+
+def test_transformation_candidate_and_signal_selects_are_tenant_scoped(
+    db_session, make_org, tenant_ctx
+):
+    """Candidate decisions and their immutable citations never cross tenants."""
+    from datetime import datetime, timezone
+
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.strategic import StrategicInitiative
+    from app.models.transformation_evidence import CandidateSignal, TransformationCandidate
+    from app.models.transformation_programme import ProgrammeWorkstream
+    from app.models.user import User
+
+    org_a, org_b = make_org("candidate-a"), make_org("candidate-b")
+    actor = User(
+        email=f"candidate-{uuid.uuid4().hex[:10]}@example.test",
+        organization_id=org_a.id,
+        confirmed=True,
+        enterprise_role="enterprise_architect",
+    )
+    application = ApplicationComponent(
+        name="Candidate application", organization_id=org_a.id
+    )
+    programme = StrategicInitiative(
+        name="Candidate programme",
+        record_kind="transformation_programme",
+        organization_id=org_a.id,
+    )
+    db_session.add_all((actor, application, programme))
+    db_session.flush()
+    stream = ProgrammeWorkstream(
+        organization_id=org_a.id,
+        programme_id=programme.id,
+        workstream_type="application_rationalisation",
+        objective="Reduce duplication",
+        lifecycle_stage="discover",
+    )
+    db_session.add(stream)
+    db_session.flush()
+    candidate = TransformationCandidate(
+        organization_id=org_a.id,
+        workstream_id=stream.id,
+        subject_type="application",
+        subject_id=application.id,
+        inclusion_status="accepted",
+        inclusion_reason="Inspectable signals",
+        accepted_by_id=actor.id,
+        accepted_at=datetime.now(timezone.utc),
+        revision=1,
+    )
+    db_session.add(candidate)
+    db_session.flush()
+    signal = CandidateSignal(
+        organization_id=org_a.id,
+        candidate_id=candidate.id,
+        rule_code="cost",
+        rule_version="app-rationalisation-r1.1/cost/1",
+        payload_json={"observed_values": {"total_cost_of_ownership": None}},
+        source_record_ids={"application_components": [application.id]},
+        evaluated_at=datetime.now(timezone.utc),
+        content_hash="a" * 64,
+    )
+    db_session.add(signal)
+    db_session.flush()
+    candidate_id, signal_id = candidate.id, signal.id
+    db_session.expunge_all()
+
+    with tenant_ctx(org_b.id):
+        assert db_session.get(TransformationCandidate, candidate_id) is None
+        assert db_session.get(CandidateSignal, signal_id) is None
+
+
+def test_capability_reference_and_current_tenant_are_visible_but_foreign_tenant_is_hidden(
+    db_session, make_org, tenant_ctx
+):
+    """Hybrid capability reads expose reference plus own rows, never another tenant's rows."""
+    from app.models.unified_capability import UnifiedCapability
+
+    org_a, org_b = make_org("capability-a"), make_org("capability-b")
+    suffix = uuid.uuid4().hex[:10]
+    reference = UnifiedCapability(
+        name="Reference capability",
+        code=f"REF-{suffix}",
+        scope="reference",
+        organization_id=None,
+    )
+    own = UnifiedCapability(
+        name="Tenant A capability",
+        code=f"A-{suffix}",
+        scope="tenant",
+        organization_id=org_a.id,
+    )
+    foreign = UnifiedCapability(
+        name="Tenant B capability",
+        code=f"B-{suffix}",
+        scope="tenant",
+        organization_id=org_b.id,
+    )
+    db_session.add_all((reference, own, foreign))
+    db_session.flush()
+    wanted = {reference.id, own.id, foreign.id}
+    db_session.expunge_all()
+
+    with tenant_ctx(org_a.id):
+        visible = {
+            row.id
+            for row in UnifiedCapability.query.filter(UnifiedCapability.id.in_(wanted)).all()
+        }
+
+    assert reference.id in visible
+    assert own.id in visible
+    assert foreign.id not in visible
+
+
+def test_capability_reference_is_read_only_inside_a_tenant_request(
+    db_session, tenant_ctx, make_org
+):
+    """A tenant must not mutate the shared reference catalogue it can read."""
+    from app.models.unified_capability import UnifiedCapability
+
+    org = make_org("capability-writer")
+    reference = UnifiedCapability(
+        name="Immutable reference capability",
+        code=f"IMM-{uuid.uuid4().hex[:10]}",
+        scope="reference",
+        organization_id=None,
+    )
+    db_session.add(reference)
+    db_session.flush()
+    reference_id = reference.id
+    db_session.expunge_all()
+
+    with tenant_ctx(org.id):
+        loaded = db_session.get(UnifiedCapability, reference_id)
+        assert loaded is not None
+        loaded.name = "Tenant attempted edit"
+        with pytest.raises(PermissionError, match="reference capabilities are read-only"):
+            db_session.flush()
+
+
+def test_request_tenant_context_is_set_transaction_locally_in_postgresql(
+    app, db_session, make_org
+):
+    """The database trigger must receive the same tenant as the ORM middleware."""
+    from flask_login import login_user
+    from sqlalchemy import text
+
+    from app.models.user import User
+
+    org = make_org("db-context")
+    user = User(
+        email=f"db-context-{uuid.uuid4().hex[:10]}@example.com",
+        first_name="DB",
+        last_name="Context",
+        organization_id=org.id,
+        confirmed=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    with app.test_request_context("/"):
+        login_user(user)
+        handler = next(
+            callback
+            for callback in app.before_request_funcs[None]
+            if callback.__name__ == "set_tenant_context"
+        )
+        handler()
+        direct_actor_org = db_session.connection().execute(
+            text("SELECT current_setting('archie.organization_id', true)")
+        ).scalar_one()
+        actor_org = db_session.execute(
+            text("SELECT current_setting('archie.organization_id', true)")
+        ).scalar_one()
+
+    assert (direct_actor_org, actor_org) == (str(org.id), str(org.id))
+
+
+def test_database_tenant_setting_clears_at_transaction_boundary(app):
+    """A pooled PostgreSQL connection cannot carry one request's tenant onward."""
+    from sqlalchemy import text
+
+    from app import db
+    from app.middleware.tenant_isolation import set_database_tenant_context
+
+    with db.engine.connect() as connection:
+        transaction = connection.begin()
+        set_database_tenant_context(connection, 777001)
+        assert connection.execute(
+            text("SELECT current_setting('archie.organization_id', true)")
+        ).scalar_one() == "777001"
+        transaction.rollback()
+
+        with connection.begin():
+            cleared = connection.execute(
+                text("SELECT current_setting('archie.organization_id', true)")
+            ).scalar_one()
+    assert cleared in (None, "")
+
+
+def test_explicit_capability_identifier_loader_does_not_treat_missing_org_as_null_owner(
+    db_session,
+):
+    """A system caller without an org may load references, not unclassified NULL rows."""
+    from app.models.unified_capability import UnifiedCapability
+
+    suffix = uuid.uuid4().hex[:10]
+    legacy = UnifiedCapability(
+        name="Unclassified supplied identifier",
+        code=f"NULL-ID-{suffix}",
+        scope=None,
+        organization_id=None,
+    )
+    reference = UnifiedCapability(
+        name="Reference supplied identifier",
+        code=f"REF-ID-{suffix}",
+        scope="reference",
+        organization_id=None,
+    )
+    db_session.add_all((legacy, reference))
+    db_session.flush()
+
+    assert UnifiedCapability.visible_to_organization(legacy.id, None) is None
+    assert UnifiedCapability.visible_to_organization(reference.id, None) is reference
+
+
+def test_capability_api_identifier_lookup_rejects_warm_cached_foreign_tenant(
+    app, db_session, make_org, tenant_ctx
+):
+    """The API's supplied-ID fallback must not trust an identity-map hit."""
+    from app.api.v1.capabilities import get_capability
+    from app.models.unified_capability import UnifiedCapability
+
+    org_a, org_b = make_org("api-cap-a"), make_org("api-cap-b")
+    foreign = UnifiedCapability(
+        name="Foreign API capability",
+        code=f"API-B-{uuid.uuid4().hex[:10]}",
+        scope="tenant",
+        organization_id=org_b.id,
+    )
+    db_session.add(foreign)
+    db_session.flush()
+    foreign_id = foreign.id
+
+    with tenant_ctx(org_b.id):
+        assert db_session.get(UnifiedCapability, foreign_id) is foreign
+
+    with tenant_ctx(org_a.id):
+        response = get_capability.__wrapped__(str(foreign_id))
+    status = response[1] if isinstance(response, tuple) else response.status_code
+    assert status == 404
+
+
+def test_dual_mapping_service_identifier_lookup_rejects_warm_cached_foreign_tenant(
+    db_session, make_org, tenant_ctx
+):
+    """The compatibility service must explicitly scope supplied capability IDs."""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.unified_capability import UnifiedCapability
+    from app.modules.capabilities.services.dual_capability_mapping_service import (
+        DualCapabilityMappingService,
+    )
+
+    org_a, org_b = make_org("service-cap-a"), make_org("service-cap-b")
+    business = BusinessCapability(
+        name="Tenant A legacy capability",
+        code=f"BUS-A-{uuid.uuid4().hex[:10]}",
+        organization_id=org_a.id,
+    )
+    foreign = UnifiedCapability(
+        name="Tenant B replacement",
+        code=f"UNI-B-{uuid.uuid4().hex[:10]}",
+        scope="tenant",
+        organization_id=org_b.id,
+    )
+    db_session.add_all((business, foreign))
+    db_session.flush()
+    foreign_id = foreign.id
+
+    with tenant_ctx(org_b.id):
+        assert db_session.get(UnifiedCapability, foreign_id) is foreign
+
+    with tenant_ctx(org_a.id):
+        result = DualCapabilityMappingService.deprecate_business_capability(
+            business.id, foreign_id
+        )
+
+    assert result == {"status": "error", "message": "UnifiedCapability not found"}
+    assert business.is_deprecated is False
 
 
 # --------------------------------------------------------------- known gaps

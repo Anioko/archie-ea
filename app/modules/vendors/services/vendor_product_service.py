@@ -15,6 +15,7 @@ Features:
 - Vendor risk scoring and analysis
 """
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -558,7 +559,8 @@ class VendorProductService:
 
             # Check if mapping already exists
             existing = ApplicationVendorProductMapping.query.filter_by(
-                application_id=application_id, vendor_product_id=vendor_product_id
+                application_component_id=application_id,
+                vendor_product_id=vendor_product_id,
             ).first()
 
             if existing:
@@ -570,15 +572,19 @@ class VendorProductService:
 
             # Create new mapping
             mapping = ApplicationVendorProductMapping(
-                application_id=application_id,
+                application_component_id=application_id,
                 vendor_product_id=vendor_product_id,
-                confidence_score=confidence_score,
-                mapping_method=mapping_method,
-                deployment_type=deployment_type,
-                version_deployed=version_deployed,
-                license_type=license_type,
-                ai_extraction_rationale=f"AI extracted vendor-product mapping with confidence {confidence_score}",
-                created_by_id=user_id,
+                product_version=version_deployed,
+                deployment_model=deployment_type.lower(),
+                mapping_notes=json.dumps(
+                    {
+                        "confidence_score": confidence_score,
+                        "mapping_method": mapping_method,
+                        "license_type": license_type,
+                        "created_by_id": user_id,
+                    },
+                    sort_keys=True,
+                ),
             )
 
             db.session.add(mapping)

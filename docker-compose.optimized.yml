@@ -11,7 +11,7 @@ services:
     environment:
       POSTGRES_DB: flask_app
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -41,6 +41,61 @@ services:
     networks:
       - flask-network
 
+  database-bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: runtime
+    command: python scripts/database/configure_roles.py
+    environment:
+      - DATABASE_ADMIN_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      - DATABASE_NAMES=flask_app
+      - DATABASE_DEPLOY_PASSWORD=${DATABASE_DEPLOY_PASSWORD}
+      - DATABASE_RUNTIME_PASSWORD=${DATABASE_RUNTIME_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - flask-network
+    restart: "no"
+
+  schema-deploy:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: runtime
+    command: sh scripts/database/deploy-schema.sh
+    environment:
+      - FLASK_CONFIG=production
+      - DATABASE_URL=postgresql://archie_deploy:${DATABASE_DEPLOY_PASSWORD}@postgres:5432/flask_app
+      - SECRET_KEY=${SECRET_KEY}
+      - TRANSFORMATION_COMMAND_CAPABILITY_SECRET=${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}
+      - TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS=${TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS:-}
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - flask-network
+    restart: "no"
+
+  database-acl:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: runtime
+    command: python scripts/database/configure_roles.py
+    environment:
+      - DATABASE_ADMIN_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      - DATABASE_NAMES=flask_app
+      - DATABASE_DEPLOY_PASSWORD=${DATABASE_DEPLOY_PASSWORD}
+      - DATABASE_RUNTIME_PASSWORD=${DATABASE_RUNTIME_PASSWORD}
+    depends_on:
+      schema-deploy:
+        condition: service_completed_successfully
+    networks:
+      - flask-network
+    restart: "no"
+
   # Flask application (production)
   web:
     build:
@@ -51,15 +106,17 @@ services:
         - flask-app:latest
     container_name: flask-web
     depends_on:
-      postgres:
-        condition: service_healthy
+      database-acl:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     environment:
       - FLASK_ENV=production
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/flask_app
+      - DATABASE_URL=postgresql://archie_runtime:${DATABASE_RUNTIME_PASSWORD}@postgres:5432/flask_app
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-in-production}
+      - TRANSFORMATION_COMMAND_CAPABILITY_SECRET=${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}
+      - TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS=${TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     volumes:
@@ -85,15 +142,17 @@ services:
       target: development
     container_name: flask-web-dev
     depends_on:
-      postgres:
-        condition: service_healthy
+      database-acl:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     environment:
       - FLASK_ENV=development
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/flask_app
+      - DATABASE_URL=postgresql://archie_runtime:${DATABASE_RUNTIME_PASSWORD}@postgres:5432/flask_app
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=dev-secret-key
+      - TRANSFORMATION_COMMAND_CAPABILITY_SECRET=${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}
+      - TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS=${TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     volumes:
@@ -159,7 +218,7 @@ services:
       - PGHOST=postgres
       - PGPORT=5432
       - PGUSER=postgres
-      - PGPASSWORD=postgres
+      - PGPASSWORD=${POSTGRES_PASSWORD}
       - PGDATABASE=flask_app
       - BACKUP_RETENTION=${BACKUP_RETENTION:-30}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}

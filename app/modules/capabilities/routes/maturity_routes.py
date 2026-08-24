@@ -682,7 +682,7 @@ def frameworks_overview():
                        AVG(target_maturity_level)                            AS avg_target
                 FROM business_capability
                 WHERE category IN ({placeholders}){_org_filter}
-            """
+            """  # nosec B608 -- placeholder names are integer-generated; values are bound
                 ),
                 params,
             ).first()

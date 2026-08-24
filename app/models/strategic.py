@@ -34,6 +34,8 @@ class StrategicInitiative(TenantMixin, db.Model):
     id = Column(Integer, primary_key=True)
     name = Column(String(256), nullable=False, index=True)
     description = Column(Text)
+    # Nullable by design: existing initiatives are not silently reclassified.
+    record_kind = Column(String(40), nullable=True, index=True)
 
     # Status and priority
     status = Column(
@@ -73,6 +75,8 @@ class StrategicInitiative(TenantMixin, db.Model):
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    archived_at = Column(DateTime, nullable=True)
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
 
     # Relationships
     owner = relationship("User", backref="owned_strategic_initiatives", foreign_keys=[owner_id])
@@ -134,6 +138,7 @@ class StrategicInitiative(TenantMixin, db.Model):
             "id": self.id,
             "name": self.name,
             "description": self.description,
+            "record_kind": self.record_kind,
             "status": self.status,
             "priority": self.priority,
             "start_date": self.start_date.isoformat() if self.start_date else None,
@@ -269,7 +274,7 @@ class StrategicMilestone(db.Model):
         }
 
 
-class RoadmapItem(db.Model):
+class RoadmapItem(TenantMixin, db.Model):
     """
     Roadmap Item model for strategic roadmap visualization.
 
@@ -278,13 +283,29 @@ class RoadmapItem(db.Model):
     """
 
     __tablename__ = "strategic_roadmap_items"
-    __table_args__ = {"extend_existing": True}
-
     # Core fields
     id = Column(Integer, primary_key=True)
     initiative_id = Column(
-        Integer, ForeignKey("strategic_initiatives.id"), nullable=True, index=True
+        Integer,
+        ForeignKey("strategic_initiatives.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
+    programme_workstream_id = Column(
+        Integer,
+        ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    work_package_id = Column(
+        Integer,
+        ForeignKey("work_packages.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    # Task 5 installs the FK when decision_brief_versions becomes canonical.
+    decision_brief_version_id = Column(Integer, nullable=True, index=True)
+    materialisation_key = Column(String(64), nullable=True)
     title = Column(String(256), nullable=False, index=True)
     description = Column(Text)
 
@@ -319,6 +340,21 @@ class RoadmapItem(db.Model):
 
     # Relationships
     initiative = relationship("StrategicInitiative", back_populates="roadmap_items")
+    programme_workstream = relationship(
+        "ProgrammeWorkstream", foreign_keys=[programme_workstream_id]
+    )
+    work_package = relationship("WorkPackage", foreign_keys=[work_package_id])
+
+    __table_args__ = (
+        db.Index(
+            "uq_roadmap_item_materialisation",
+            "organization_id",
+            "materialisation_key",
+            unique=True,
+            postgresql_where=materialisation_key.isnot(None),
+        ),
+        {"extend_existing": True},
+    )
 
     def __repr__(self):
         return f"<RoadmapItem {self.title}>"
@@ -378,6 +414,10 @@ class RoadmapItem(db.Model):
         result = {
             "id": self.id,
             "initiative_id": self.initiative_id,
+            "programme_workstream_id": self.programme_workstream_id,
+            "work_package_id": self.work_package_id,
+            "decision_brief_version_id": self.decision_brief_version_id,
+            "materialisation_key": self.materialisation_key,
             "title": self.title,
             "description": self.description,
             "category": self.category,

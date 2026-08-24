@@ -34,6 +34,7 @@ function registerApprovalManager() {
         /** Polling handle */
         _pollHandle: null,
         _initialized: false,
+        _fetchSequence: 0,
 
         /* ------------------------------------------------------------------ */
         /*  Lifecycle                                                          */
@@ -61,6 +62,7 @@ function registerApprovalManager() {
         /* ------------------------------------------------------------------ */
 
         async fetchPending() {
+            const fetchSequence = ++this._fetchSequence;
             this.loading = true;
             try {
                 const res = await fetch("/ai-chat/approvals/queue", {
@@ -76,10 +78,16 @@ function registerApprovalManager() {
                 if (!data.success) {
                     throw new Error(data.error || "Approval queue was unavailable");
                 }
+                if (fetchSequence !== this._fetchSequence) {
+                    return;
+                }
                 this.approvals = data.approvals || [];
                 this.hasLoaded = true;
                 this.error = null;
             } catch (err) {
+                if (fetchSequence !== this._fetchSequence) {
+                    return;
+                }
                 console.error("[approvalManager] fetchPending failed:", err);
                 this.error = this.hasLoaded
                     ? "Unable to refresh approvals. Showing the last known results."
@@ -88,7 +96,9 @@ function registerApprovalManager() {
                 // failure: the visible error marks them as stale rather than
                 // presenting an empty queue as a fact.
             } finally {
-                this.loading = false;
+                if (fetchSequence === this._fetchSequence) {
+                    this.loading = false;
+                }
             }
         },
 

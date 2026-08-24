@@ -15,6 +15,7 @@ Provides utilities for:
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from flask import g, has_request_context
 
 from app.models import BusinessCapability, TechnicalCapability, UnifiedCapability, db
 
@@ -59,7 +60,10 @@ class DualCapabilityMappingService:
 
         # Link to UnifiedCapability (current)
         if unified_capability_id:
-            unified_cap = UnifiedCapability.query.get(unified_capability_id)
+            unified_cap = UnifiedCapability.visible_to_organization(
+                unified_capability_id,
+                getattr(g, "current_org_id", None) if has_request_context() else None,
+            )
             if unified_cap:
                 tech_cap.unified_capabilities.append(unified_cap)
                 result["current"] = {"unified_capability_id": unified_capability_id, "linked": True}
@@ -86,7 +90,10 @@ class DualCapabilityMappingService:
         if not bus_cap:
             return {"status": "error", "message": "BusinessCapability not found"}
 
-        unified_cap = UnifiedCapability.query.get(unified_capability_id)
+        unified_cap = UnifiedCapability.visible_to_organization(
+            unified_capability_id,
+            getattr(g, "current_org_id", None) if has_request_context() else None,
+        )
         if not unified_cap:
             return {"status": "error", "message": "UnifiedCapability not found"}
 

@@ -4,7 +4,7 @@ API v1 Capabilities Endpoints
 Standardized capability management API endpoints following PRD - 003.
 """
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 from flask_login import login_required
 from sqlalchemy import or_
 
@@ -162,7 +162,9 @@ def get_capability(capability_id):
         if not capability:
             try:
                 capability_id_int = int(capability_id)
-                capability = UnifiedCapability.query.get(capability_id_int)
+                capability = UnifiedCapability.visible_to_organization(
+                    capability_id_int, g.current_org_id
+                )
             except ValueError:
                 pass
 

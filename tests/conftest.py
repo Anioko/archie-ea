@@ -153,6 +153,12 @@ def tenant_ctx(app):
 
 
 @pytest.fixture
+def client(app):
+    """Repository-owned Flask client; do not depend on pytest-flask being installed."""
+    return app.test_client()
+
+
+@pytest.fixture
 def login_as(app):
     """Log a client in as ``user``, defeating flask_login's ``g`` cache.
 

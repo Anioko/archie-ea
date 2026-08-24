@@ -583,6 +583,7 @@ def create_capability_archimate_element(mapper, connection, target):
                 type="Capability",
                 layer="Strategy",
                 description=target.description or f"Business capability: {target.name}",
+                organization_id=target.organization_id,
             )
         )
         target.archimate_element_id = result.inserted_primary_key[0]

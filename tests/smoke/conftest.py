@@ -79,7 +79,7 @@ def _free_port():
 
 
 @pytest.fixture(scope="session")
-def live_server():
+def live_server(request):
     """Boot the real application on a free port and yield its base URL.
 
     Runs the app as a subprocess rather than via the test client, because a test
@@ -176,7 +176,11 @@ def live_server():
     except Exception as exc:
         print("[smoke] live_server at %s NOT serving: %s" % (base, exc))
 
-    yield SmokeServer(base, log_path)
+    server = SmokeServer(base, log_path)
+    yield server
+
+    if request.session.testsfailed:
+        print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
 
     proc.terminate()
     try:

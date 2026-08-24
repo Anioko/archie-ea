@@ -26,7 +26,8 @@ Note: 3 db.Table associations (actor_role_assignment, application_component_vend
 capability_compliance_requirements) cannot use mapper events — covered by backfill only.
 """
 
-from sqlalchemy import event
+from sqlalchemy import event, select
+from flask import g, has_request_context
 
 from app import db
 
@@ -45,7 +46,14 @@ def _get_element_id(instance_or_id, model_class=None):
     return getattr(instance_or_id, "archimate_element_id", None)
 
 
-def _ensure_relationship(session, rel_type, source_id, target_id, architecture_id=None):
+def _ensure_relationship(
+    session,
+    rel_type,
+    source_id,
+    target_id,
+    architecture_id=None,
+    expected_organization_id=None,
+):
     """Idempotent ArchiMateRelationship creator.
 
     Reuses the same logic as process_data.py:_ensure_archimate_relationship.
@@ -53,10 +61,33 @@ def _ensure_relationship(session, rel_type, source_id, target_id, architecture_i
     if not source_id or not target_id:
         return None
 
-    from app.models.archimate_core import ArchiMateRelationship
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+    endpoint_rows = session.execute(
+        select(
+            ArchiMateElement.__table__.c.id,
+            ArchiMateElement.__table__.c.organization_id,
+        ).where(ArchiMateElement.__table__.c.id.in_((source_id, target_id)))
+    ).all()
+    endpoint_tenants = {row.id: row.organization_id for row in endpoint_rows}
+    source_tenant = endpoint_tenants.get(source_id)
+    target_tenant = endpoint_tenants.get(target_id)
+    if source_tenant is None or target_tenant is None:
+        return None
+    if source_tenant != target_tenant:
+        raise ValueError("ArchiMate relationship endpoints must share a tenant")
+    request_tenant = (
+        getattr(g, "current_org_id", None) if has_request_context() else None
+    )
+    expected_tenant = expected_organization_id or request_tenant
+    if expected_tenant is not None and source_tenant != int(expected_tenant):
+        raise ValueError("ArchiMate relationship endpoints are outside the active tenant")
 
     query = session.query(ArchiMateRelationship).filter_by(
-        type=rel_type, source_id=source_id, target_id=target_id
+        type=rel_type,
+        source_id=source_id,
+        target_id=target_id,
+        organization_id=source_tenant,
     )
     if architecture_id is None:
         query = query.filter(ArchiMateRelationship.architecture_id.is_(None))
@@ -72,6 +103,7 @@ def _ensure_relationship(session, rel_type, source_id, target_id, architecture_i
         source_id=source_id,
         target_id=target_id,
         architecture_id=architecture_id,
+        organization_id=source_tenant,
     )
     session.add(rel)
     return rel
@@ -283,6 +315,7 @@ def _on_data_crud_insert(mapper, connection, target):
             "access",
             source_id=process.archimate_element_id,
             target_id=obj.archimate_element_id,
+            expected_organization_id=target.organization_id,
         )
 
 
@@ -474,6 +507,7 @@ def _on_data_object_storage_insert(mapper, connection, target):
             "access",
             source_id=app_element_id,
             target_id=obj.archimate_element_id,
+            expected_organization_id=target.organization_id,
         )
 
 
@@ -520,6 +554,7 @@ def _on_app_capability_mapping_insert(mapper, connection, target):
             "serving",
             source_id=app_comp.archimate_element_id,
             target_id=capability.archimate_element_id,
+            expected_organization_id=target.organization_id,
         )
 
 

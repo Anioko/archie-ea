@@ -14,6 +14,7 @@ background tasks, unauthenticated requests).
 import logging
 
 from flask import g
+from sqlalchemy import text
 from sqlalchemy.orm import with_loader_criteria
 
 from app.extensions import db
@@ -22,8 +23,29 @@ from app.models.mixins.core import TenantMixin
 logger = logging.getLogger(__name__)
 
 
+def set_database_tenant_context(connection, organization_id):
+    """Set the trigger-visible tenant for this transaction only.
+
+    ``set_config(..., true)`` is PostgreSQL's transaction-local equivalent of
+    ``SET LOCAL``.  Commit/rollback clears it before a pooled connection can be
+    reused by another request.
+    """
+
+    if organization_id is None:
+        return
+    connection.execute(
+        text("SELECT set_config('archie.organization_id', :organization_id, true)"),
+        {"organization_id": str(organization_id)},
+    )
+
+
 def install_tenant_filter(app):
     """Wire SQLAlchemy event listeners for automatic tenant scoping."""
+
+    @db.event.listens_for(db.session, "after_begin")
+    def _set_database_tenant_after_begin(session, transaction, connection):
+        if hasattr(g, "current_org_id") and g.current_org_id is not None:
+            set_database_tenant_context(connection, g.current_org_id)
 
     @db.event.listens_for(db.session, "do_orm_execute")
     def _add_soft_delete_filter(orm_execute_state):
@@ -68,6 +90,14 @@ def install_tenant_filter(app):
         if not hasattr(g, "current_org_id") or g.current_org_id is None:
             return
 
+        # The request middleware sets this eagerly.  Reasserting it here also
+        # covers tests/workers that establish ``g.current_org_id`` directly
+        # and sessions that move to a fresh transaction after a mid-request
+        # commit.
+        set_database_tenant_context(
+            orm_execute_state.session.connection(), g.current_org_id
+        )
+
         # SELECT plus ORM-enabled bulk UPDATE/DELETE. Inserts are handled by
         # before_flush below. This closes ADR-0003 gap 1: the early return for
         # non-SELECT statements meant Model.query.filter(...).update()/.delete()
@@ -96,6 +126,7 @@ def install_tenant_filter(app):
     def _set_tenant_on_new(session, flush_context, instances):
         if not hasattr(g, "current_org_id") or g.current_org_id is None:
             return
+        set_database_tenant_context(session.connection(), g.current_org_id)
         for obj in session.new:
             if isinstance(obj, TenantMixin) and getattr(obj, "organization_id", None) is None:
                 obj.organization_id = g.current_org_id

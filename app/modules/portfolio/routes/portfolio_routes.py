@@ -11,7 +11,7 @@ all carry TenantMixin, so do_orm_execute injects the organisation predicate.
 import logging
 
 from flask import Blueprint, abort, render_template
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from app import db
 
@@ -100,6 +100,7 @@ def index():
 @login_required
 def detail(initiative_id):
     """One initiative: money, benefits, RAID, and what it delivers."""
+    from app.models.strategic import StrategicInitiative
     from app.models.vendor.vendor_organization import EnterpriseInitiative
 
     initiative = db.session.get(EnterpriseInitiative, initiative_id)
@@ -111,6 +112,15 @@ def detail(initiative_id):
         initiative.assumptions, key=lambda a: (a.exposure is None, -(a.exposure or 0))
     )
     demands = list(initiative.demands)
+    transformation_programmes = (
+        db.session.query(StrategicInitiative)
+        .filter(
+            StrategicInitiative.organization_id == current_user.organization_id,
+            StrategicInitiative.record_kind == "transformation_programme",
+        )
+        .order_by(StrategicInitiative.name)
+        .all()
+    )
 
     # Financial benefits only — summing a monetary saving with an NPS point is
     # meaningless, so the two are reported separately.
@@ -136,6 +146,7 @@ def detail(initiative_id):
         assumptions=assumptions,
         demands=demands,
         work_packages=list(initiative.migration_work_packages),
+        transformation_programmes=transformation_programmes,
     )
 
 

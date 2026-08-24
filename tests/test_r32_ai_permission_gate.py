@@ -362,6 +362,20 @@ class TestV04RegressionProtections:
 
 
 class TestARBWriteRoutesDefaultDeny:
+    def test_review_numbers_are_globally_collision_resistant(self):
+        from datetime import datetime
+
+        from app.models.architecture_review_board import ARBReviewItem
+
+        first = ARBReviewItem.generate_review_number()
+        second = ARBReviewItem.generate_review_number()
+
+        prefix = f"REV-{datetime.utcnow():%Y}-"
+        assert first.startswith(prefix)
+        assert second.startswith(prefix)
+        assert len(first) == len(prefix) + 12
+        assert first != second
+
     def test_viewer_blocked_from_reviews_create(self, client, app, login_as, viewer):
         login_as(client, viewer)
         resp = client.post(

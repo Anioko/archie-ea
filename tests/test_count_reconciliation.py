@@ -508,19 +508,31 @@ def test_r02_application_count_increments_by_exactly_one_after_write(recon_clien
     )
 
 
-def test_r01_vendor_and_capability_totals_agree_db_and_api(recon_client, db_session, login_as):
-    """R-01 for the two global (non-tenant-scoped) catalog entity types.
+def test_r01_vendor_and_capability_totals_agree_db_and_api(
+    recon_client, db_session, login_as, make_org
+):
+    """R-01 for the global vendor and hybrid-scoped capability catalogues.
 
-    VendorOrganization and UnifiedCapability are platform-wide reference
-    data, not TenantMixin models, so "db_count" here is a direct, unscoped
-    count and is compared against the same unscoped API totals — there is no
-    tenant boundary to cross for these two types.
+    Vendors are platform-wide. Capabilities expose shared reference rows plus
+    the current organization's extensions, so the database comparison must
+    use that same visibility contract rather than counting other tenants.
     """
+    from app import db
     from app.models.unified_capability import UnifiedCapability
     from app.models.vendor.vendor_organization import VendorOrganization
 
     org, client, user = recon_client
     login_as(client, user)
+
+    other_org = make_org("recon-hidden-capability")
+    db_session.add(
+        UnifiedCapability(
+            name=f"Hidden capability {uuid.uuid4().hex[:8]}",
+            organization_id=other_org.id,
+            scope="tenant",
+        )
+    )
+    db_session.flush()
 
     vendor_db_count = VendorOrganization.query.count()
     vendor_resp = client.get("/api/vendors/list?per_page=100")
@@ -531,7 +543,12 @@ def test_r01_vendor_and_capability_totals_agree_db_and_api(recon_client, db_sess
         f"({vendor_db_count})"
     )
 
-    cap_db_count = UnifiedCapability.query.count()
+    cap_db_count = UnifiedCapability.query.filter(
+        db.or_(
+            UnifiedCapability.organization_id == org.id,
+            UnifiedCapability.organization_id.is_(None),
+        )
+    ).count()
     cap_resp = client.get("/api/v1/capabilities/?per_page=100")
     assert cap_resp.status_code == 200, cap_resp.get_data(as_text=True)
     cap_api_total = ((cap_resp.get_json() or {}).get("data") or {}).get("pagination", {}).get(
@@ -775,19 +792,31 @@ def test_r02_application_count_increments_by_exactly_one_after_write(recon_clien
     )
 
 
-def test_r01_vendor_and_capability_totals_agree_db_and_api(recon_client, db_session, login_as):
-    """R-01 for the two global (non-tenant-scoped) catalog entity types.
+def test_r01_vendor_and_capability_totals_agree_db_and_api(
+    recon_client, db_session, login_as, make_org
+):
+    """R-01 for the global vendor and hybrid-scoped capability catalogues.
 
-    VendorOrganization and UnifiedCapability are platform-wide reference
-    data, not TenantMixin models, so "db_count" here is a direct, unscoped
-    count and is compared against the same unscoped API totals — there is no
-    tenant boundary to cross for these two types.
+    Vendors are platform-wide. Capabilities expose shared reference rows plus
+    the current organization's extensions, so the database comparison must
+    use that same visibility contract rather than counting other tenants.
     """
+    from app import db
     from app.models.unified_capability import UnifiedCapability
     from app.models.vendor.vendor_organization import VendorOrganization
 
     org, client, user = recon_client
     login_as(client, user)
+
+    other_org = make_org("recon-hidden-capability")
+    db_session.add(
+        UnifiedCapability(
+            name=f"Hidden capability {uuid.uuid4().hex[:8]}",
+            organization_id=other_org.id,
+            scope="tenant",
+        )
+    )
+    db_session.flush()
 
     vendor_db_count = VendorOrganization.query.count()
     vendor_resp = client.get("/api/vendors/list?per_page=100")
@@ -798,7 +827,12 @@ def test_r01_vendor_and_capability_totals_agree_db_and_api(recon_client, db_sess
         f"({vendor_db_count})"
     )
 
-    cap_db_count = UnifiedCapability.query.count()
+    cap_db_count = UnifiedCapability.query.filter(
+        db.or_(
+            UnifiedCapability.organization_id == org.id,
+            UnifiedCapability.organization_id.is_(None),
+        )
+    ).count()
     cap_resp = client.get("/api/v1/capabilities/?per_page=100")
     assert cap_resp.status_code == 200, cap_resp.get_data(as_text=True)
     cap_api_total = ((cap_resp.get_json() or {}).get("data") or {}).get("pagination", {}).get(

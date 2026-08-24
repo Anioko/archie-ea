@@ -190,6 +190,18 @@ else:
     # Capability to Vendor/Application Mapping Models - Cross-specialization type relationships
     from .capability_to_vendor_mapping import *  # noqa - TechnicalCapabilityVendorMapping, UnifiedCapabilityApplicationMapping, UnifiedCapabilityVendorOrganizationMapping, ApplicationVendorProductMapping
 
+    # Register the complete vendor catalogue graph before a worker can serve a
+    # request. Without this eager import, a concurrent first request can
+    # configure VendorProductDetail while its string-related VendorProductAlias
+    # class is still being imported, leaving the worker's mapper registry
+    # permanently invalid. Keep this after the canonical capability mapping;
+    # vendor_product re-exports that mapping for legacy callers.
+    from .vendor.vendor_product import (  # noqa: F401
+        VendorProductAlias,
+        VendorProductDetail,
+        VendorProductFamily,
+    )
+
     # Consolidation Module - Application consolidation and savings tracking
     from .consolidation import *  # noqa - ConsolidationCandidate, ConsolidationOpportunity, SavingsRealization
 
@@ -254,6 +266,11 @@ else:
 
     # Strategic Module - Strategic initiatives, milestones, and roadmap management
     from .strategic import *  # noqa - StrategicInitiative, StrategicMilestone, RoadmapItem
+    from .transformation_programme import *  # noqa - canonical programme aggregate children
+    from .transformation_execution import *  # noqa - fenced commands and immutable results
+    from .transformation_evidence import *  # noqa - candidates, signals, and evidence requests
+    from .transformation_decision import *  # noqa - immutable options and decision briefs
+    from . import transformation_db_guards  # noqa: F401 - registers PostgreSQL guards
     from .strategy_layer import *  # noqa - StrategyResource, CourseOfAction, ValueStream (Strategy Layer completion)
     from .structural_elements import *  # noqa - Grouping, Junction, Location (Structural/Composite elements)
 

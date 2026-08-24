@@ -65,7 +65,7 @@ def _find_matches():
     # anything is deleted.
     rows = db.session.execute(
         text(
-            f"SELECT id, name, organization_id, created_at FROM application_components "
+            f"SELECT id, name, organization_id, created_at FROM application_components "  # nosec B608 -- SQL fragments are module literals
             f"WHERE {_NAME_PATTERNS_SQL} ORDER BY id"
         )
     ).fetchall()
