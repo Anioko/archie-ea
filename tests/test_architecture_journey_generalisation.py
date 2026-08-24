@@ -74,6 +74,7 @@ def test_hub_visibly_frames_non_solution_outcomes(app, ba_user, login_as):
     assert "No change recommended" in body
     assert "A solution is one possible outcome" in body
     assert "Business Architecture" not in body
+    assert "layers.includes" not in body
 
 
 def test_start_creates_journey_without_creating_solution(app, ba_user, login_as, db_session):
