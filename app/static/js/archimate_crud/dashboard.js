@@ -3,9 +3,9 @@ let APP_CONFIG = window.__APP_CONFIG__ || {};
 document.addEventListener('alpine:init', function() {
     Alpine.data('archDashboard', function() {
         return {
-            activeTab: 'motivation',
+            activeTab: APP_CONFIG.initialLayer || 'motivation',
             elements: [],
-            pagination: { page: 1, pages: 0, per_page: 25, total: 0, has_next: false, has_prev: false },
+            pagination: { page: 1, pages: 0, per_page: 25, total: null, has_next: false, has_prev: false },
             loading: false,
             loadError: null,   // referenced by x-show/x-text in the template; must exist to avoid Alpine ReferenceError
             searchQuery: '',
@@ -29,6 +29,7 @@ document.addEventListener('alpine:init', function() {
             },
             layerCounts: {},
             layerConfig: APP_CONFIG.layerConfig || {},
+            popstateHandler: null,
             // ARCH-064: fieldConfigs used to be inlined into every dashboard
             // response (~280KB of static, per-request-identical JSON). It is
             // now fetched once from fieldConfigsUrl in init() below and
@@ -90,7 +91,7 @@ document.addEventListener('alpine:init', function() {
             get currentViewMode() {
                 let saved = this.layerViewMode[this.activeTab];
                 if (saved) return saved;
-                return this.layerAltViews[this.activeTab] || 'table';
+                return 'table';
             },
 
             get hasAltView() {
@@ -113,7 +114,6 @@ document.addEventListener('alpine:init', function() {
             filterBuildingBlock: '',
             filterPlateau: '',
             filterHasRels: '',
-            filterHasSolutions: '',
 
             // ARC-006: element detail slide-out panel
             showDetailPanel: false,
@@ -160,12 +160,7 @@ document.addEventListener('alpine:init', function() {
             },
 
             get elementGroups() {
-                let filtered = Array.isArray(this.elements) ? this.elements : [];
-                if (this.cardFilter === 'orphaned') {
-                    filtered = filtered.filter(function(el) { return !el.rel_count || el.rel_count === 0; });
-                } else if (this.cardFilter === 'undocumented') {
-                    filtered = filtered.filter(function(el) { return !el.description || el.description.trim() === ''; });
-                }
+                let filtered = this.visibleElements;
                 let groups = {};
                 for (let i = 0; i < filtered.length; i++) {
                     let el = filtered[i];
@@ -175,6 +170,102 @@ document.addEventListener('alpine:init', function() {
                     groups[t].count++;
                 }
                 return Object.values(groups);
+            },
+
+            get visibleElements() {
+                let filtered = Array.isArray(this.elements) ? this.elements.slice() : [];
+                if (this.cardFilter === 'orphaned') {
+                    filtered = filtered.filter(function(el) { return el.rel_count === 0; });
+                } else if (this.cardFilter === 'undocumented') {
+                    filtered = filtered.filter(function(el) { return !el.description || el.description.trim() === ''; });
+                }
+                if (this.filterScope) {
+                    let wantedScope = this.filterScope.toLowerCase();
+                    filtered = filtered.filter(function(el) {
+                        let props = el.properties;
+                        if (typeof props === 'string') {
+                            try { props = JSON.parse(props); } catch (_) { props = {}; }
+                        }
+                        return String((props || {}).scope || '').toLowerCase() === wantedScope;
+                    });
+                }
+                if (this.filterBuildingBlock) {
+                    let wantedBlock = this.filterBuildingBlock.toLowerCase();
+                    filtered = filtered.filter(function(el) {
+                        let props = el.properties;
+                        if (typeof props === 'string') {
+                            try { props = JSON.parse(props); } catch (_) { props = {}; }
+                        }
+                        return String((props || {}).building_block || (props || {}).building_block_type || '').toLowerCase() === wantedBlock;
+                    });
+                }
+                if (this.filterPlateau) {
+                    let wantedPlateau = this.filterPlateau.toLowerCase();
+                    filtered = filtered.filter(function(el) {
+                        let props = el.properties;
+                        if (typeof props === 'string') {
+                            try { props = JSON.parse(props); } catch (_) { props = {}; }
+                        }
+                        return String((props || {}).plateau || (props || {}).lifecycle || '').toLowerCase() === wantedPlateau;
+                    });
+                }
+                if (this.filterHasRels === 'yes') {
+                    filtered = filtered.filter(function(el) { return typeof el.rel_count === 'number' && el.rel_count > 0; });
+                } else if (this.filterHasRels === 'no') {
+                    filtered = filtered.filter(function(el) { return el.rel_count === 0; });
+                }
+                return filtered;
+            },
+
+            get relationshipMetrics() {
+                let known = 0, connected = 0, orphaned = 0;
+                for (let i = 0; i < this.elements.length; i++) {
+                    let count = this.elements[i].rel_count;
+                    if (typeof count !== 'number') continue;
+                    known++;
+                    if (count > 0) connected++;
+                    else orphaned++;
+                }
+                return { known: known, connected: connected, orphaned: orphaned };
+            },
+
+            get relationshipHint() {
+                let metrics = this.relationshipMetrics;
+                if (!metrics.known) return 'Relationship data unavailable on this page';
+                return metrics.connected + ' of ' + metrics.known + ' measured on this page';
+            },
+
+            get documentationPercent() {
+                if (!this.pageCount) return null;
+                let documented = this.elements.filter(function(el) {
+                    return !!(el.description && el.description.trim());
+                }).length;
+                return Math.round(documented / this.pageCount * 100);
+            },
+
+            get documentationHint() {
+                if (!this.pageCount) return 'No page denominator available';
+                let documented = this.elements.filter(function(el) {
+                    return !!(el.description && el.description.trim());
+                }).length;
+                return documented + ' of ' + this.pageCount + ' shown on this page';
+            },
+
+            get validationSummary() {
+                if (!this.validationResults) return { value: '—', hint: 'Run validation to measure posture' };
+                let values = [
+                    this.validationResults.element_errors,
+                    this.validationResults.element_warnings,
+                    this.validationResults.relationship_errors,
+                    this.validationResults.relationship_warnings,
+                ];
+                if (values.some(function(value) { return typeof value !== 'number'; })) {
+                    return { value: '—', hint: 'Validation result unavailable' };
+                }
+                let issues = values.reduce(function(total, value) { return total + value; }, 0);
+                return issues === 0
+                    ? { value: 'Clear', hint: 'Latest validation found no issues' }
+                    : { value: issues, hint: 'Issues in the latest validation run' };
             },
 
             get sourceCounts() {
@@ -199,7 +290,13 @@ document.addEventListener('alpine:init', function() {
             },
 
             get layerTotal() {
-                return this.pagination ? (this.pagination.total || 0) : 0;
+                return this.pagination && typeof this.pagination.total === 'number'
+                    ? this.pagination.total
+                    : null;
+            },
+
+            get layerTotalKnown() {
+                return typeof this.layerTotal === 'number';
             },
 
             // D-03: sourceCounts/healthStats are computed from `this.elements`,
@@ -209,6 +306,16 @@ document.addEventListener('alpine:init', function() {
             // of mixing a page-scoped count with the repository-wide layerTotal.
             get pageCount() {
                 return this.elements.length;
+            },
+
+            get paginationStart() {
+                if (!this.pagination.total) return 0;
+                return ((this.pagination.page - 1) * this.pagination.per_page) + 1;
+            },
+
+            get paginationEnd() {
+                if (!this.pagination.total) return 0;
+                return Math.min(this.pagination.page * this.pagination.per_page, this.pagination.total);
             },
 
             toggleTypeGroup(type) {
@@ -228,13 +335,24 @@ document.addEventListener('alpine:init', function() {
                 this.searchQuery = '';
                 this.typeFilter = '';
                 this.sourceFilter = '';
+                this.viewpointKey = 'basic';
+                this.viewpointTypeFilter = [];
                 this.filterScope = '';
                 this.filterBuildingBlock = '';
                 this.filterPlateau = '';
                 this.filterHasRels = '';
-                this.filterHasSolutions = '';
+                this.cardFilter = '';
                 this.currentPage = 1;
                 this.loadElements();
+            },
+
+            hasActiveFilters() {
+                return !!(
+                    this.searchQuery || this.typeFilter || this.sourceFilter ||
+                    this.viewpointKey !== 'basic' || this.filterScope ||
+                    this.filterBuildingBlock || this.filterPlateau ||
+                    this.filterHasRels || this.cardFilter
+                );
             },
 
             get detailFormLayerTypes() {
@@ -256,40 +374,90 @@ document.addEventListener('alpine:init', function() {
                             console.error('Could not load element field configs', err);
                         });
                 }
-                let params = new URLSearchParams(window.location.search);
-                // The By-Layer navigation lands here with a layer and an element
-                // type. The query string wins over the server-rendered defaults so
-                // a bookmarked ?layer=… keeps working; both are re-checked against
-                // layerConfig, because an unrecognised value must not become an
-                // active filter that matches nothing.
-                let wantLayer = params.get('layer') || APP_CONFIG.initialLayer || null;
-                if (wantLayer && this.layerConfig[wantLayer]) {
-                    this.activeTab = wantLayer;
-                } else {
-                    wantLayer = null;
-                }
-                let wantType = params.get('element_type') || APP_CONFIG.initialElementType || null;
-                if (wantType && this.currentLayerTypes.indexOf(wantType) >= 0) {
-                    this.typeFilter = wantType;
-                }
+                this.restoreUrlState();
                 let urlPanel = new URLSearchParams(window.location.search).get('panel');
                 if (urlPanel === 'health') {
                     this.showHealthPanel = true;
                 }
-                this.loadElements();
-                this.loadAllLayerCounts().then(function(){
-                    // Default tab 'motivation' is usually empty; if the user didn't pick
-                    // a layer, land on the most-populated one so a populated estate does
-                    // not render as all-zero cards.
-                    if (!wantLayer) {
-                        var best = Object.entries(self.layerCounts || {})
-                            .sort(function(a, b){ return (b[1]||0) - (a[1]||0); })[0];
-                        if (best && best[1] > 0 && best[0] !== self.activeTab) {
-                            self.switchTab(best[0]);
-                        }
+                this.popstateHandler = function() {
+                    self.restoreUrlState();
+                    let viewpoint = self.availableViewpoints[self.viewpointKey];
+                    self.viewpointTypeFilter = viewpoint && Array.isArray(viewpoint.element_types)
+                        ? viewpoint.element_types
+                        : [];
+                    self.loadElements(false);
+                };
+                window.addEventListener('popstate', this.popstateHandler);
+                this.loadElements(false);
+                this.loadAllLayerCounts();
+                this.loadViewpoints().then(function() {
+                    let viewpoint = self.availableViewpoints[self.viewpointKey];
+                    if (viewpoint && Array.isArray(viewpoint.element_types)) {
+                        self.viewpointTypeFilter = viewpoint.element_types;
+                        self.loadElements(false);
                     }
                 });
-                this.loadViewpoints();
+            },
+
+            destroy() {
+                if (this.popstateHandler) {
+                    window.removeEventListener('popstate', this.popstateHandler);
+                }
+            },
+
+            restoreUrlState() {
+                let params = new URLSearchParams(window.location.search);
+                let wantedLayer = params.get('layer') || APP_CONFIG.initialLayer || 'motivation';
+                this.activeTab = this.layerConfig[wantedLayer] ? wantedLayer : 'motivation';
+
+                let wantedType = params.get('element_type') || APP_CONFIG.initialElementType || '';
+                this.typeFilter = this.currentLayerTypes.indexOf(wantedType) >= 0 ? wantedType : '';
+                this.searchQuery = params.get('search') || '';
+                this.sourceFilter = ['portfolio', 'architecture'].includes(params.get('source'))
+                    ? params.get('source')
+                    : '';
+                this.viewpointKey = params.get('viewpoint') || 'basic';
+                this.currentPage = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+                let wantedPageSize = parseInt(params.get('per_page') || '25', 10);
+                this.perPage = [25, 50, 100].includes(wantedPageSize) ? wantedPageSize : 25;
+                this.sortBy = ['name', 'element_type'].includes(params.get('sort_by'))
+                    ? params.get('sort_by')
+                    : 'name';
+                this.sortOrder = params.get('sort_order') === 'desc' ? 'desc' : 'asc';
+                this.filterScope = params.get('scope') || '';
+                this.filterBuildingBlock = params.get('building_block') || '';
+                this.filterPlateau = params.get('plateau') || '';
+                this.filterHasRels = params.get('has_relationships') || '';
+                this.groupByType = params.get('group') === 'type';
+            },
+
+            syncUrlState() {
+                let params = new URLSearchParams(window.location.search);
+                [
+                    'layer', 'search', 'element_type', 'source', 'viewpoint',
+                    'page', 'per_page', 'sort_by', 'sort_order', 'scope',
+                    'building_block', 'plateau', 'has_relationships', 'group',
+                ].forEach(function(key) { params.delete(key); });
+                params.set('layer', this.activeTab);
+                if (this.searchQuery) params.set('search', this.searchQuery);
+                if (this.typeFilter) params.set('element_type', this.typeFilter);
+                if (this.sourceFilter) params.set('source', this.sourceFilter);
+                if (this.viewpointKey !== 'basic') params.set('viewpoint', this.viewpointKey);
+                if (this.currentPage > 1) params.set('page', String(this.currentPage));
+                if (this.perPage !== 25) params.set('per_page', String(this.perPage));
+                if (this.sortBy !== 'name') params.set('sort_by', this.sortBy);
+                if (this.sortOrder !== 'asc') params.set('sort_order', this.sortOrder);
+                if (this.filterScope) params.set('scope', this.filterScope);
+                if (this.filterBuildingBlock) params.set('building_block', this.filterBuildingBlock);
+                if (this.filterPlateau) params.set('plateau', this.filterPlateau);
+                if (this.filterHasRels) params.set('has_relationships', this.filterHasRels);
+                if (this.groupByType) params.set('group', 'type');
+                let query = params.toString();
+                let nextUrl = window.location.pathname + (query ? '?' + query : '') + window.location.hash;
+                let currentUrl = window.location.pathname + window.location.search + window.location.hash;
+                if (nextUrl !== currentUrl) {
+                    window.history.pushState({ architectureRepository: true }, '', nextUrl);
+                }
             },
 
             switchTab(layerKey) {
@@ -300,11 +468,11 @@ document.addEventListener('alpine:init', function() {
                 this.currentPage = 1;
                 this.selectedIds = [];
                 this.selectAll = false;
-                history.replaceState(null, '', '?layer=' + layerKey);
                 this.loadElements();
             },
 
-            async loadElements() {
+            async loadElements(syncState) {
+                if (syncState !== false) this.syncUrlState();
                 this.loading = true;
                 this.loadError = null;
                 try {
@@ -335,13 +503,17 @@ document.addEventListener('alpine:init', function() {
                     if (!resp.ok) throw new Error('Server returned ' + resp.status + ' loading ' + this.activeTab + ' elements');
                     let data = await resp.json();
                     this.elements = data.elements || [];
-                    this.pagination = data.pagination;
-                    this.layerCounts[this.activeTab] = (data.pagination && data.pagination.total);
+                    this.pagination = data.pagination || { page: 1, pages: 0, per_page: this.perPage, total: null, has_next: false, has_prev: false };
+                    this.currentPage = this.pagination.page || this.currentPage;
+                    this.layerCounts[this.activeTab] = data.pagination && typeof data.pagination.total === 'number'
+                        ? data.pagination.total
+                        : null;
                 } catch (err) {
                     // The template already renders an error state + Retry button on
                     // `loadError` (dashboard.html); nothing ever set it until now.
                     this.loadError = err.message || 'Could not load elements for this layer';
                     this.elements = [];
+                    this.pagination = { page: this.currentPage, pages: 0, per_page: this.perPage, total: null, has_next: false, has_prev: false };
                     this.layerCounts[this.activeTab] = null;   // unknown, not zero
                     if (window.Platform && Platform.toast) Platform.toast.error(this.loadError);
                 } finally {
@@ -359,6 +531,7 @@ document.addEventListener('alpine:init', function() {
                 for (let i = 0; i < layerKeys.length; i++) {
                     let layerKey = layerKeys[i];
                     try {
+                        let count = null;
                         let resp = await fetch(
                             '/architecture/api/layer/' + layerKey + '/count',
                             { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
@@ -367,8 +540,9 @@ document.addEventListener('alpine:init', function() {
                             let data = await resp.json();
                             // Unwrap success_response wrapper if present (per CLAUDE.md convention)
                             let payload = data.data || data;
-                            self.layerCounts[layerKey] = payload.total || 0;
-                        } else {
+                            count = typeof payload.total === 'number' ? payload.total : null;
+                        }
+                        if (count === null) {
                             // Fallback: elements endpoint
                             let r2 = await fetch(
                                 '/architecture/api/layer/' + layerKey + '/elements?per_page=1',
@@ -376,8 +550,12 @@ document.addEventListener('alpine:init', function() {
                             );
                             if (!r2.ok) throw new Error('HTTP ' + r2.status);
                             let d2 = await r2.json();
-                            self.layerCounts[layerKey] = (d2.pagination && d2.pagination.total) || 0;
+                            count = d2.pagination && typeof d2.pagination.total === 'number'
+                                ? d2.pagination.total
+                                : null;
                         }
+                        if (count === null) throw new Error('Count response did not include a numeric total');
+                        self.layerCounts[layerKey] = count;
                         // totalCount is now a getter over layerCounts (see field
                         // definition above) — nothing to assign here any more.
                     } catch (e) {

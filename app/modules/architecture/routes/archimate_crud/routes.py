@@ -294,6 +294,57 @@ LAYER_CONFIG = {
     },
 }
 
+# User-facing layer language belongs beside the registry that defines the layer
+# keys, while the ORM-oriented LAYER_CONFIG remains stable for API consumers.
+# The colour values deliberately reference only the domain tokens already
+# declared in shadcn_tokens.css.  ArchiMate's Physical extension shares the
+# Technology layer's green family because the design system has no separate
+# physical-layer token.
+LAYER_PRESENTATION = {
+    "motivation": {
+        "title": "Motivation Architecture",
+        "short_name": "Motivation",
+        "description": "Goals, drivers, requirements and constraints that explain why the architecture changes",
+        "color_token": "--layer-motivation",
+    },
+    "strategy": {
+        "title": "Strategy Architecture",
+        "short_name": "Strategy",
+        "description": "Resources, capabilities, value streams and courses of action that shape strategic direction",
+        "color_token": "--layer-strategy",
+    },
+    "business": {
+        "title": "Business Architecture",
+        "short_name": "Business",
+        "description": "Actors, roles, processes, services and information that describe how the enterprise operates",
+        "color_token": "--layer-business",
+    },
+    "application": {
+        "title": "Application Architecture",
+        "short_name": "Application",
+        "description": "Components, services, interfaces, behaviours and data that support the enterprise",
+        "color_token": "--layer-application",
+    },
+    "technology": {
+        "title": "Technology Architecture",
+        "short_name": "Technology",
+        "description": "Nodes, platforms, networks, services and artifacts that provide the technical foundation",
+        "color_token": "--layer-technology",
+    },
+    "physical": {
+        "title": "Physical Architecture",
+        "short_name": "Physical",
+        "description": "Facilities, equipment, distribution networks and materials that anchor the physical estate",
+        "color_token": "--layer-technology",
+    },
+    "implementation": {
+        "title": "Implementation & Migration Architecture",
+        "short_name": "Implementation",
+        "description": "Work packages, deliverables, plateaus, events and gaps that govern architecture change",
+        "color_token": "--layer-implementation",
+    },
+}
+
 
 # JSON-serialisable typed field configs for every element type that has one,
 # keyed by element_type. Handed to the dashboard template so the create modal
@@ -447,9 +498,15 @@ def dashboard():
     initial_layer, initial_element_type = _validated_layer_filter(
         request.args.get("layer"), request.args.get("element_type")
     )
+    selected_key = initial_layer or "motivation"
+    presentation_config = {
+        key: {**config, **LAYER_PRESENTATION[key], "key": key}
+        for key, config in LAYER_CONFIG.items()
+    }
     return render_template(
         "archimate_crud/dashboard.html",
-        layer_config=LAYER_CONFIG,
+        layer_config=presentation_config,
+        selected_layer=presentation_config[selected_key],
         initial_layer=initial_layer,
         initial_element_type=initial_element_type,
     )

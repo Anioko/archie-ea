@@ -1,0 +1,367 @@
+{% from 'components/skeleton.html' import skeleton_table %}
+
+{% macro repository_metric(label, value_expression, hint_expression, icon) %}
+<div class="rounded-xl border border-border bg-card p-5 text-card-foreground" data-slot="metric-card">
+    <div class="flex items-start gap-3">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <i data-lucide="{{ icon }}" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+        </div>
+        <div class="min-w-0">
+            <p class="text-sm font-medium text-muted-foreground">{{ label }}</p>
+            <p class="mt-1 text-2xl font-semibold tabular-nums text-foreground" x-text="{{ value_expression }}">&mdash;</p>
+            <p class="mt-1 text-xs text-muted-foreground" x-text="{{ hint_expression }}"></p>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{# Applications-consistent page hierarchy. The single domain-colour rail is
+   the layer orientation signature; all surfaces and actions stay neutral. #}
+<section class="border-l-4 pl-4" style="border-left-color: hsl(var({{ selected_layer.color_token }}));" data-testid="architecture-page-header">
+    <nav aria-label="Breadcrumb" class="mb-3">
+        <ol class="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+            <li class="flex items-center gap-1.5">
+                <a href="{{ url_for('main.index') }}" class="transition-colors hover:text-foreground">Home</a>
+                <i data-lucide="chevron-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </li>
+            <li class="flex items-center gap-1.5">
+                <a href="{{ url_for('archimate_crud.dashboard') }}" class="transition-colors hover:text-foreground">Architecture</a>
+                <i data-lucide="chevron-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </li>
+            <li aria-current="page" class="font-medium text-foreground">{{ selected_layer.short_name }}</li>
+        </ol>
+    </nav>
+
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div class="min-w-0">
+            <h1 class="text-2xl font-bold text-foreground">{{ selected_layer.title }}</h1>
+            <p class="mt-1 max-w-3xl text-sm text-muted-foreground">
+                {{ selected_layer.description }}
+                <span aria-hidden="true">&mdash;</span>
+                <span x-text="layerTotalKnown ? layerTotal + ' repository ' + (layerTotal === 1 ? 'item' : 'items') : 'repository total unavailable'">repository total unavailable</span>
+            </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 xl:shrink-0" data-testid="architecture-page-actions">
+            <button type="button" data-testid="btn-create-element" @click="openCreateModal()"
+                    class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Create element">
+                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+                Create element
+            </button>
+            <div class="hidden h-6 border-l border-input sm:block" aria-hidden="true"></div>
+            <a href="{{ url_for('architect_ui.import_oef') }}" data-testid="btn-import-oef"
+               class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+               aria-label="Import Open Exchange Format architecture">
+                <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>Import
+            </a>
+            <a href="{{ url_for('architect_ui.export_oef') }}" data-testid="btn-export-oef"
+               class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+               aria-label="Export architecture as Open Exchange Format">
+                <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>Export
+            </a>
+            <div class="hidden h-6 border-l border-input sm:block" aria-hidden="true"></div>
+            <button type="button" data-testid="btn-run-validation" @click="runValidation()" :disabled="validating"
+                    class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Validate ArchiMate repository">
+                <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
+                <span x-text="validating ? 'Validating…' : 'Validate'">Validate</span>
+            </button>
+            <a href="{{ url_for('archimate_crud.repository_health') }}" data-testid="btn-repository-health"
+               class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+               aria-label="Open repository health">
+                <i data-lucide="activity" class="h-4 w-4" aria-hidden="true"></i>Health
+            </a>
+            <a href="{{ url_for('architecture.vendor_templates') }}" data-testid="btn-vendor-templates"
+               class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+               aria-label="Open vendor architecture templates">
+                <i data-lucide="building-2" class="h-4 w-4" aria-hidden="true"></i>Templates
+            </a>
+            <button type="button" data-testid="btn-ai-generate-element" @click="openAiGenerateModal()"
+                    class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Generate architecture element with AI">
+                <i data-lucide="sparkles" class="h-4 w-4" aria-hidden="true"></i>Generate with AI
+            </button>
+        </div>
+    </div>
+</section>
+
+<nav class="rounded-xl border border-border bg-card p-1.5" aria-label="Architecture layers" data-testid="layer-spine">
+    <div class="grid grid-cols-2 gap-1 sm:grid-cols-4 xl:grid-cols-7">
+        {% for layer_key, layer_info in layer_config.items() %}
+        <a href="{{ url_for('archimate_crud.dashboard', layer=layer_key) }}"
+           aria-label="Open {{ layer_info.title }}"
+           {% if layer_key == selected_layer.key %}aria-current="page"{% endif %}
+           {% if layer_key == selected_layer.key %}style="border-left-color: hsl(var({{ layer_info.color_token }}));"{% endif %}
+           class="flex min-w-0 items-center justify-between gap-2 rounded-md border-l-4 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {% if layer_key == selected_layer.key %}border-y border-r border-border bg-muted/50 text-foreground{% else %}border-transparent text-muted-foreground hover:bg-muted/30 hover:text-foreground{% endif %}">
+            <span class="truncate">{{ layer_info.short_name }}</span>
+            <span class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground"
+                  x-text="Object.prototype.hasOwnProperty.call(layerCounts, '{{ layer_key }}') ? (layerCounts['{{ layer_key }}'] ?? '—') : '—'">&mdash;</span>
+        </a>
+        {% endfor %}
+    </div>
+</nav>
+
+<section class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="{{ selected_layer.short_name }} repository metrics">
+    {{ repository_metric('Elements', "layerTotalKnown ? layerTotal : '—'", "layerTotalKnown ? 'Repository-wide in this layer' : 'Repository total unavailable'", 'layers') }}
+    {{ repository_metric('Connected', "relationshipMetrics.known ? relationshipMetrics.connected : '—'", "relationshipHint", 'git-branch') }}
+    {{ repository_metric('Documentation', "pageCount ? documentationPercent + '%' : '—'", "documentationHint", 'file-text') }}
+    {{ repository_metric('Validation posture', "validationSummary.value", "validationSummary.hint", 'shield-check') }}
+</section>
+
+<section class="overflow-hidden rounded-xl border border-border bg-card shadow-sm" aria-label="Architecture elements" data-testid="architecture-data-card">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div>
+            <h2 class="text-base font-semibold text-foreground">{{ selected_layer.short_name }} elements</h2>
+            <p class="text-xs text-muted-foreground">Names, provenance, documentation and connections for the selected layer.</p>
+        </div>
+        <span class="rounded-full bg-muted px-2.5 py-1 text-xs font-medium tabular-nums text-muted-foreground"
+              x-text="layerTotalKnown ? layerTotal + ' total' : '— total'">&mdash; total</span>
+    </div>
+
+    <div class="border-b border-border bg-muted/20 px-4 py-3" data-testid="architecture-filter-bar">
+        <div class="flex flex-wrap items-end gap-3">
+            <div class="min-w-[180px] flex-1 lg:max-w-sm">
+                <label for="architecture-search" class="mb-1 block text-xs font-medium text-muted-foreground">Search</label>
+                <div class="relative">
+                    <i data-lucide="search" class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true"></i>
+                    <input id="architecture-search" data-testid="filter-search" type="search" x-model="searchQuery"
+                           @input.debounce.400ms="currentPage = 1; loadElements()" placeholder="Name or description"
+                           class="flex h-9 w-full rounded-md border border-input bg-background py-2 pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                </div>
+            </div>
+            <div class="min-w-[150px] flex-1 sm:flex-none">
+                <label for="architecture-type" class="mb-1 block text-xs font-medium text-muted-foreground">Type</label>
+                <select id="architecture-type" data-testid="filter-type" x-model="typeFilter" @change="currentPage = 1; loadElements()"
+                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <option value="">All types</option>
+                    <template x-for="et in currentLayerTypes" :key="et">
+                        <option :value="et" x-text="formatTypeName(et)"></option>
+                    </template>
+                </select>
+            </div>
+            <div class="min-w-[145px] flex-1 sm:flex-none">
+                <label for="architecture-source" class="mb-1 block text-xs font-medium text-muted-foreground">Source</label>
+                <select id="architecture-source" data-testid="filter-source" x-model="sourceFilter" @change="currentPage = 1; loadElements()"
+                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <option value="">All sources</option>
+                    <option value="portfolio">Portfolio</option>
+                    <option value="architecture">Architecture</option>
+                </select>
+            </div>
+            <div class="min-w-[170px] flex-1 sm:flex-none">
+                <label for="architecture-viewpoint" class="mb-1 block text-xs font-medium text-muted-foreground">Viewpoint</label>
+                <select id="architecture-viewpoint" data-testid="filter-viewpoint" x-model="viewpointKey" @change="applyViewpoint()"
+                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <option value="basic">All elements</option>
+                    <template x-for="(vp, key) in availableViewpoints" :key="key">
+                        <option :value="key" x-text="vp.name"></option>
+                    </template>
+                </select>
+            </div>
+            <button type="button" data-testid="advanced-toggle" @click="showAdvanced = !showAdvanced"
+                    :aria-expanded="showAdvanced.toString()" aria-controls="architecture-advanced-filters"
+                    class="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Toggle advanced architecture filters">
+                <i data-lucide="sliders-horizontal" class="h-4 w-4" aria-hidden="true"></i>Advanced
+            </button>
+            <div class="ml-auto flex flex-wrap items-center gap-2">
+                <button type="button" @click="groupByType = !groupByType; collapsedTypes = {}"
+                        :aria-pressed="groupByType.toString()"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                        aria-label="Toggle grouping architecture elements by type">
+                    <i data-lucide="rows-3" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    <span x-text="groupByType ? 'Table' : 'Group'">Group</span>
+                </button>
+                <button type="button" x-cloak x-show="hasAltView" @click="toggleViewMode()"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                        :aria-label="currentViewMode === 'table' ? 'Open layer-specific architecture view' : 'Return to architecture table'">
+                    <i :data-lucide="currentViewMode === 'table' ? 'layout-grid' : 'list'" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    <span x-text="currentViewMode === 'table' ? 'Rich view' : 'Table'">Rich view</span>
+                </button>
+                <button type="button" @click="bulkMode = !bulkMode; if (!bulkMode) { selectedIds = []; selectAll = false; }"
+                        :aria-pressed="bulkMode.toString()"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                        aria-label="Toggle bulk selection">
+                    <i data-lucide="check-square" class="h-3.5 w-3.5" aria-hidden="true"></i>Bulk
+                </button>
+                <button type="button" x-cloak x-show="hasActiveFilters()" @click="clearAllFilters()"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                        aria-label="Clear architecture filters">
+                    <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>Clear
+                </button>
+            </div>
+        </div>
+
+        <div id="architecture-advanced-filters" data-testid="advanced-panel" x-cloak x-show="showAdvanced" x-transition
+             class="mt-3 grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+                <label for="architecture-scope" class="mb-1 block text-xs font-medium text-muted-foreground">Scope</label>
+                <select id="architecture-scope" x-model="filterScope" @change="currentPage = 1; loadElements()" class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Any scope</option><option value="core">Core</option><option value="composite">Composite</option><option value="specialisation">Specialisation</option>
+                </select>
+            </div>
+            <div>
+                <label for="architecture-building-block" class="mb-1 block text-xs font-medium text-muted-foreground">Building block</label>
+                <select id="architecture-building-block" x-model="filterBuildingBlock" @change="currentPage = 1; loadElements()" class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Any type</option><option value="SBB">SBB</option><option value="ABB">ABB</option>
+                </select>
+            </div>
+            <div>
+                <label for="architecture-plateau" class="mb-1 block text-xs font-medium text-muted-foreground">Plateau</label>
+                <select id="architecture-plateau" x-model="filterPlateau" @change="currentPage = 1; loadElements()" class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Any plateau</option><option value="current">Current</option><option value="transitional">Transitional</option><option value="target">Target</option>
+                </select>
+            </div>
+            <div>
+                <label for="architecture-relationships" class="mb-1 block text-xs font-medium text-muted-foreground">Relationships</label>
+                <select id="architecture-relationships" x-model="filterHasRels" @change="currentPage = 1; loadElements()" class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Any state</option><option value="yes">Connected</option><option value="no">Orphaned</option>
+                </select>
+            </div>
+            {# No "Solution linkage" filter: the layer elements endpoint returns no
+               solution references, so the control could only ever yield an empty
+               result the user would read as "nothing is linked". #}
+        </div>
+    </div>
+
+    <div x-cloak x-show="bulkMode && selectedIds.length" class="flex flex-wrap items-center gap-2 border-b border-border bg-primary/5 px-4 py-2.5" role="toolbar" aria-label="Selected architecture element actions">
+        <span class="text-sm font-medium text-foreground" x-text="selectedIds.length + ' selected'"></span>
+        <button type="button" @click="bulkExportSelected()" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" aria-label="Export selected architecture elements">
+            <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>Export
+        </button>
+        <button type="button" @click="bulkDeleteSelected()" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-destructive/30 bg-background px-3 text-xs font-medium text-destructive-emphasis hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50" aria-label="Delete selected architecture elements">
+            <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>Delete
+        </button>
+        <button type="button" @click="selectedIds = []; selectAll = false" class="ml-auto inline-flex h-8 items-center rounded-md px-3 text-xs font-medium text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50" aria-label="Clear selected architecture elements">Clear selection</button>
+    </div>
+
+    <div x-cloak x-show="loading" class="p-6" data-testid="architecture-loading-state" role="status" aria-label="Loading architecture elements">
+        {{ skeleton_table(rows=6, columns=6) }}
+    </div>
+
+    <div x-cloak x-show="!loading && loadError" class="flex flex-col items-center gap-4 px-6 py-14 text-center" data-testid="architecture-error-state" role="alert">
+        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+            <i data-lucide="alert-circle" class="h-6 w-6 text-destructive-emphasis" aria-hidden="true"></i>
+        </div>
+        <div>
+            <h3 class="font-semibold text-foreground">Architecture elements could not be loaded</h3>
+            <p class="mt-1 max-w-md text-sm text-muted-foreground" x-text="loadError"></p>
+        </div>
+        <button type="button" @click="loadElements()" class="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" aria-label="Retry loading architecture elements">
+            <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i>Retry
+        </button>
+    </div>
+
+    <div x-cloak x-show="!loading && !loadError && visibleElements.length === 0 && !hasActiveFilters()" class="px-6 py-14 text-center" data-testid="architecture-true-empty-state" role="status">
+        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted"><i data-lucide="layers" class="h-7 w-7 text-muted-foreground" aria-hidden="true"></i></div>
+        <h3 class="mt-4 font-semibold text-foreground">No {{ selected_layer.short_name|lower }} elements yet</h3>
+        <p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Create the first element to begin this layer of the enterprise repository.</p>
+        <button type="button" @click="openCreateModal()" class="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50" aria-label="Create element in {{ selected_layer.title }}">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Create element
+        </button>
+    </div>
+
+    <div x-cloak x-show="!loading && !loadError && visibleElements.length === 0 && hasActiveFilters()" class="px-6 py-14 text-center" data-testid="architecture-filtered-empty-state" role="status">
+        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted"><i data-lucide="search-x" class="h-7 w-7 text-muted-foreground" aria-hidden="true"></i></div>
+        <h3 class="mt-4 font-semibold text-foreground">No elements match these filters</h3>
+        <p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Clear the filters to return to the full {{ selected_layer.short_name|lower }} layer.</p>
+        <button type="button" @click="clearAllFilters()" class="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" aria-label="Clear filters">
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>Clear filters
+        </button>
+    </div>
+
+    <div x-cloak x-show="currentViewMode === 'table' && !loading && !loadError && visibleElements.length" class="hidden overflow-x-auto lg:block">
+        <table class="w-full border-collapse" data-testid="architecture-elements-table">
+            <caption class="sr-only">{{ selected_layer.title }} elements</caption>
+            <thead>
+                <tr class="border-b border-border bg-muted/40">
+                    <th x-cloak x-show="bulkMode" class="w-10 px-4 py-3 text-left"><input type="checkbox" x-model="selectAll" @change="toggleSelectAll()" class="h-4 w-4 rounded border-input" aria-label="Select all architecture elements on this page"></th>
+                    <th class="min-w-[190px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" :aria-sort="sortBy === 'name' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'">
+                        <button type="button" @click="toggleSort('name')" class="inline-flex h-8 items-center gap-1 rounded-md px-1 hover:text-foreground disabled:pointer-events-none disabled:opacity-50" aria-label="Sort architecture elements by name">Name<i data-lucide="arrow-up-down" class="h-3 w-3" aria-hidden="true"></i></button>
+                    </th>
+                    <th class="min-w-[150px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" :aria-sort="sortBy === 'element_type' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'">
+                        <button type="button" @click="toggleSort('element_type')" class="inline-flex h-8 items-center gap-1 rounded-md px-1 hover:text-foreground disabled:pointer-events-none disabled:opacity-50" aria-label="Sort architecture elements by type">Type<i data-lucide="arrow-up-down" class="h-3 w-3" aria-hidden="true"></i></button>
+                    </th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source</th>
+                    <th class="min-w-[230px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Documentation</th>
+                    <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Relationships</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</th>
+                </tr>
+            </thead>
+            <template x-for="group in elementGroups" :key="'group-' + group.type">
+                <tbody class="divide-y divide-border">
+                    <tr x-cloak x-show="groupByType" class="bg-muted/20">
+                        <td :colspan="bulkMode ? 7 : 6" class="px-4 py-2">
+                            <button type="button" @click="toggleTypeGroup(group.type)" class="inline-flex h-8 items-center gap-2 rounded-md px-1 text-sm font-semibold hover:text-primary disabled:pointer-events-none disabled:opacity-50" :aria-label="(collapsedTypes[group.type] ? 'Expand ' : 'Collapse ') + formatTypeName(group.type) + ' group'">
+                                <i :data-lucide="collapsedTypes[group.type] ? 'chevron-right' : 'chevron-down'" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                                <span x-text="formatTypeName(group.type)"></span><span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground" x-text="group.count"></span>
+                            </button>
+                        </td>
+                    </tr>
+                    <template x-for="el in group.elements" :key="group.type + '-' + el.source + '-' + el.id">
+                        <tr x-cloak x-show="!groupByType || !collapsedTypes[group.type]" class="transition-colors hover:bg-muted/20" @click="if (!$event.target.closest('a,button,input')) openDetailPanel(el)">
+                            <td x-cloak x-show="bulkMode" class="px-4 py-3"><input type="checkbox" :value="el.id + ':' + el.element_type" x-model="selectedIds" class="h-4 w-4 rounded border-input" :aria-label="'Select ' + el.name"></td>
+                            <td class="px-4 py-3" data-field="element-name"><button type="button" @click="openDetailPanel(el)" class="h-8 max-w-[240px] truncate rounded-md text-left text-sm font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-50" x-text="el.name" :aria-label="'Open details for ' + el.name"></button></td>
+                            <td class="px-4 py-3" data-field="element-type"><span class="rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground" x-text="formatTypeName(el.element_type)"></span></td>
+                            <td class="px-4 py-3" data-field="element-source"><span class="text-sm capitalize text-muted-foreground" x-text="el.source || '—'"></span></td>
+                            <td class="px-4 py-3" data-field="element-documentation"><p class="max-w-[300px] truncate text-sm text-muted-foreground" x-text="el.description ? truncate(el.description, 100) : 'No description'"></p></td>
+                            <td class="px-4 py-3 text-center" data-field="element-relationships"><span class="text-sm tabular-nums text-muted-foreground" x-text="el.rel_count === null || el.rel_count === undefined ? '—' : el.rel_count"></span></td>
+                            <td class="px-4 py-3" data-field="element-actions">
+                                <div class="flex items-center justify-end gap-1">
+                                    <a :href="detailUrl(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent" :aria-label="'Open full detail for ' + el.name">View</a>
+                                    <button type="button" @click="openEditModal(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" :aria-label="'Edit ' + el.name">Edit</button>
+                                    <button type="button" @click="confirmDelete(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium text-destructive-emphasis hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50" :aria-label="'Delete ' + el.name">Delete</button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </template>
+        </table>
+    </div>
+
+    <div x-cloak x-show="currentViewMode === 'table' && !loading && !loadError && visibleElements.length" class="divide-y divide-border lg:hidden" data-testid="architecture-mobile-cards">
+        <template x-for="el in visibleElements" :key="'mobile-' + el.source + '-' + el.element_type + '-' + el.id">
+            <article class="p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0" data-field="element-name"><h3 class="truncate text-base font-semibold text-foreground" x-text="el.name"></h3><p class="mt-1 text-xs text-muted-foreground" data-field="element-type" x-text="formatTypeName(el.element_type)"></p></div>
+                    <span class="shrink-0 rounded-md bg-muted px-2 py-1 text-xs capitalize text-muted-foreground" data-field="element-source" x-text="el.source || '—'"></span>
+                </div>
+                <p class="mt-3 text-sm text-muted-foreground" data-field="element-documentation" x-text="el.description ? truncate(el.description, 140) : 'No description'"></p>
+                <div class="mt-3 flex items-center justify-between gap-3">
+                    <p class="text-xs text-muted-foreground" data-field="element-relationships"><span class="font-medium text-foreground" x-text="el.rel_count === null || el.rel_count === undefined ? '—' : el.rel_count"></span> relationships</p>
+                    <div class="flex flex-wrap items-center justify-end gap-1" data-field="element-actions">
+                        <button type="button" @click="openDetailPanel(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" :aria-label="'Open details for ' + el.name">Details</button>
+                        <a :href="detailUrl(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent" :aria-label="'Open full detail for ' + el.name">View</a>
+                        <button type="button" @click="openEditModal(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" :aria-label="'Edit ' + el.name">Edit</button>
+                        <button type="button" @click="confirmDelete(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium text-destructive-emphasis hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50" :aria-label="'Delete ' + el.name">Delete</button>
+                    </div>
+                </div>
+            </article>
+        </template>
+    </div>
+
+    <div x-cloak x-show="!loading && !loadError && pagination.total > 0" class="border-t border-border bg-muted/20 px-4 py-3" data-testid="architecture-pagination" role="navigation" aria-label="Architecture element pagination">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-sm text-muted-foreground"><span x-text="paginationStart"></span>&ndash;<span x-text="paginationEnd"></span> of <span x-text="pagination.total"></span></p>
+            <div class="flex flex-wrap items-center gap-3">
+                <label for="architecture-page-size" class="text-sm text-muted-foreground">Rows</label>
+                <select id="architecture-page-size" x-model.number="perPage" @change="currentPage = 1; loadElements()" class="h-8 rounded-md border border-input bg-background px-2 text-sm">
+                    <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+                </select>
+                <button type="button" @click="goToPage(pagination.page - 1)" :disabled="!pagination.has_prev" class="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" aria-label="Previous architecture elements page">Previous</button>
+                <span class="min-w-[80px] text-center text-sm text-muted-foreground" x-text="'Page ' + pagination.page + ' of ' + Math.max(pagination.pages, 1)"></span>
+                <button type="button" @click="goToPage(pagination.page + 1)" :disabled="!pagination.has_next" class="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" aria-label="Next architecture elements page">Next</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if selected_layer.key == 'motivation' %}
+<div x-cloak x-show="currentViewMode === 'swimlane' && !loading && !loadError">{% include 'archimate_crud/partials/_motivation_swimlane.html' %}</div>
+{% elif selected_layer.key == 'strategy' %}
+<div x-cloak x-show="currentViewMode === 'cards' && !loading && !loadError">{% include 'archimate_crud/partials/_strategy_cards.html' %}</div>
+{% elif selected_layer.key == 'technology' %}
+<div x-cloak x-show="currentViewMode === 'lifecycle' && !loading && !loadError">{% include 'archimate_crud/partials/_technology_lifecycle.html' %}</div>
+{% endif %}
