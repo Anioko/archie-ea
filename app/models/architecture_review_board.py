@@ -24,6 +24,7 @@ ArchiMate 3.2 Viewpoints for Review:
 """
 
 import os
+import uuid
 from datetime import datetime, timedelta  # dead-code-ok
 from enum import Enum
 from typing import Any, Dict, List, Optional  # dead-code-ok
@@ -541,24 +542,15 @@ class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
 
     @staticmethod
     def generate_review_number():
-        """Generate next review item number."""
-        year = datetime.utcnow().year
-        last_item = (
-            ARBReviewItem.query.filter(ARBReviewItem.review_number.like(f"REV-{year}-%"))
-            .order_by(ARBReviewItem.id.desc())
-            .first()
-        )
+        """Generate a globally unique, non-enumerable review number.
 
-        if last_item:
-            try:
-                last_num = int(last_item.review_number.split("-")[-1])
-                next_num = last_num + 1
-            except ValueError:
-                next_num = 1
-        else:
-            next_num = 1
-
-        return f"REV-{year}-{next_num:03d}"
+        ``ARBReviewItem`` is tenant-scoped but ``review_number`` has a global
+        unique constraint. A sequential "last row + 1" query is filtered to
+        the current tenant and is also race-prone, so two organizations (or
+        concurrent submissions) can select the same number. Match the
+        canonical evidence-gated submission format instead.
+        """
+        return f"REV-{datetime.utcnow():%Y}-{uuid.uuid4().hex[:12].upper()}"
 
     def calculate_overall_score(self):
         """Calculate weighted overall score."""
