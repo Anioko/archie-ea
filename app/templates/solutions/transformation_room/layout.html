@@ -56,6 +56,8 @@
   <div class="mt-6">
     {% if room.stage_view and room.stage_view.resource_states.stage and room.stage_view.resource_states.stage.state == 'failed' %}
     <div class="mb-6 rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive-emphasis" role="alert" data-resource-state="failed">{{ room.stage_view.resource_states.stage.reason }}</div>
+    {% elif room.stage_view and room.stage_view.resource_states.stage and room.stage_view.resource_states.stage.state == 'loading' %}
+    <div class="mb-6 rounded-md border border-border bg-muted p-4 text-sm text-muted-foreground" role="status" aria-live="polite" data-resource-state="loading">{{ room.stage_view.resource_states.stage.reason }}</div>
     {% endif %}
     {% block room_content %}{% endblock %}
   </div>

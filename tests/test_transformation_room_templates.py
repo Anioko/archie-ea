@@ -262,6 +262,35 @@ def test_every_stage_loader_failure_renders_structurally_safe_error_page(
         assert 'data-resource-state="failed"' in body
 
 
+def test_loading_projection_is_complete_for_every_stage_template():
+    reason = "Stage resources are loading."
+    for stage, keys in TransformationRoomReadModel.STAGE_RESOURCE_KEYS.items():
+        resources, states, reasons = (
+            TransformationRoomReadModel.stage_resource_projection(
+                stage, state="loading", reason=reason
+            )
+        )
+        assert resources == {key: () for key in keys}
+        assert set(states) == {"stage", *keys}
+        assert all(value == {"state": "loading", "reason": reason} for value in states.values())
+        assert reasons == {key: reason for key in ("stage", *keys)}
+
+
+def test_objective_form_exposes_real_accessible_saving_state(
+    app, programme_fixture, login_as
+):
+    _response, body, _programme_id, _workstream_id = _room_page(
+        app, programme_fixture, login_as
+    )
+
+    assert 'x-data="{ submitting: false }"' in body
+    assert '@submit="submitting = true"' in body
+    assert '@pageshow.window="submitting = false"' in body
+    assert ':aria-busy="submitting"' in body
+    assert ':disabled="submitting"' in body
+    assert "Saving…" in body
+
+
 def test_technology_intake_context_is_conditional_and_non_persisting(
     app, programme_fixture, login_as
 ):

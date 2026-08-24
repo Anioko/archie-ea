@@ -104,3 +104,23 @@ The async browser harness now launches and executes application behavior, but th
 ### Concern update
 
 The prior browser-OOM concern is superseded by the successful synchronous full run above. CI remains the authoritative Linux/gunicorn execution, but there is no outstanding local browser failure in this round.
+
+## Review fix round 3/5 — 24 August 2026
+
+- Added a production-used loading state to the objective mutation form without a route flag or fabricated backend state. On real submit it sets `aria-busy`, disables repeat submission and announces “Saving…”. A normal server response replaces the document with the initial non-submitting state; `pageshow` also resets a restored document. The native method/action remains intact when Alpine is unavailable.
+- Added `stage_resource_projection`, which returns empty resources, complete resource states and explicit reasons for every key a given stage template can dereference. It is used by the failed projection and supports the explicit `loading` contract for any future asynchronous stage-resource enhancement.
+- Added generic room rendering for a projected `loading` stage as a polite status. No synchronous GET pretends to be loading.
+
+### Fix-round test evidence
+
+- RED: loading projection test failed with missing `stage_resource_projection`; rendered objective test failed because no accessible submission state existed.
+- New loading projection/objective contract tests: **2 passed**.
+- Focused routes/templates/sidebar: **40 passed** in 27.87 seconds.
+- Scoped Ruff: **passed**.
+- Browser rerun was attempted after the form change but the host exhausted memory during smoke fixture setup, before browser interaction: Werkzeug password hashing raised `ValueError: [digital envelope routines] malloc failure`. This run is not counted green. Round 2's full synchronous journey remains **2 passed**, and the changed server-rendered loading contract is covered by the focused render test.
+- `python scripts/verify.py --tag static`: **31 passed, 0 failed, 0 skipped**.
+- `python scripts/verify.py --gate boot-health`: **1 passed, 0 failed, 0 skipped**.
+
+### Concern
+
+The round-specific browser rerun is environmentally unverified due to host memory exhaustion during fixture seeding. CI's Playwright job remains mandatory; no browser assertion failed in this round.

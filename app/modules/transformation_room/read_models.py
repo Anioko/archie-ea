@@ -120,6 +120,16 @@ class TransformationRoomReadModel:
         return {key: () for key in cls.STAGE_RESOURCE_KEYS[stage]}
 
     @classmethod
+    def stage_resource_projection(cls, stage, *, state, reason):
+        """Build a structurally complete non-data projection for any stage."""
+        keys = ("stage", *cls.STAGE_RESOURCE_KEYS[stage])
+        return (
+            cls.empty_stage_resources(stage),
+            cls.stage_resource_states(stage, state=state, reason=reason),
+            {key: reason for key in keys},
+        )
+
+    @classmethod
     def stage(
         cls,
         *,
@@ -141,18 +151,17 @@ class TransformationRoomReadModel:
             )
         except SQLAlchemyError:
             reason = "Stage resources could not be loaded. Try again later."
+            resources, resource_states, unavailable_reasons = (
+                cls.stage_resource_projection(stage, state="failed", reason=reason)
+            )
             return StageView(
                 programme=programme,
                 workstream_id=workstream_id,
                 stage=stage,
                 gate=None,
-                resources=cls.empty_stage_resources(stage),
-                resource_states=cls.stage_resource_states(
-                    stage, state="failed", reason=reason
-                ),
-                unavailable_reasons={
-                    key: reason for key in ("stage", *cls.STAGE_RESOURCE_KEYS[stage])
-                },
+                resources=resources,
+                resource_states=resource_states,
+                unavailable_reasons=unavailable_reasons,
             )
         current_stage = resources["workstream"][0]["lifecycle_stage"]
         gate = None
