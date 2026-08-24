@@ -165,6 +165,30 @@ def test_archetype_signature_screen_works_on_mobile(archetype, page, live_server
         path, state["overflow"])
 
 
+@pytest.mark.parametrize("page", [320, 768, 1024], indirect=True)
+def test_motivation_repository_shell_is_accessible_and_responsive(page, live_server, seeded):
+    """The production acceptance layer has one hierarchy and no viewport-only workflow."""
+    _login(page, live_server, seeded["emails"]["enterprise_architect"])
+    page.console_errors.clear()
+    page.page_errors.clear()
+
+    response, state = _visit(page, live_server, "/architecture/dashboard?layer=motivation")
+    assert response.status < 400
+    assert page.locator("h1").count() == 1
+    assert page.locator('nav[aria-label="Breadcrumb"]').count() == 1
+    assert page.get_by_role("heading", name="Motivation Architecture", exact=True).count() == 1
+    primary = page.locator('[data-testid="btn-create-element"]')
+    assert primary.count() == 1
+    assert primary.get_attribute("aria-label") == "Create element"
+    assert page.locator('[data-testid="layer-spine"] [aria-current="page"]').count() == 1
+    assert page.locator('[aria-label="Action"]').count() == 0
+    assert state["overflow"] == 0, "Motivation repository overflows by %dpx at %dpx" % (
+        state["overflow"], page.viewport_size["width"]
+    )
+    errors = [e for e in (page.console_errors + page.page_errors) if "favicon" not in e.lower()]
+    assert not errors, "Motivation repository raised JavaScript errors: %s" % errors[:5]
+
+
 # ── Write journeys: the two archetypes that gained one ──────────────────────
 
 def test_procurement_completes_a_contract_and_licence(page, live_server, seeded):

@@ -1730,9 +1730,14 @@ def test_damaged_receipt_reconciles_natural_key_and_exact_response(command_fixtu
 
 
 def test_same_key_changed_digest_conflicts_and_active_lease_has_retry_metadata(
-    command_fixture,
+    command_fixture, app,
 ):
     """Catches key rebinding and blind retries while another worker owns a lease."""
+    # This assertion exercises an *active* lease, not expiry/reclaim.  The
+    # fixture's intentionally tiny 120 ms lease supports the separate expiry
+    # tests but can elapse between two PostgreSQL transactions under CI
+    # coverage instrumentation, turning this into a timing lottery.
+    app.config["TRANSFORMATION_COMMAND_LEASE_SECONDS"] = 1.0
     payload = {"name": command_fixture.domain_name}
     digest = canonical_request_digest(payload)
     claim = CommandService.claim_or_reconcile(

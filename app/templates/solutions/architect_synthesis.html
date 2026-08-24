@@ -1,97 +1,286 @@
 {% extends "layouts/admin_base.html" %}
 {% from "components/page_header.html" import page_header %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/metrics_card.html" import metrics_card %}
+{% import "components/card.html" as card %}
 
-{% block title %}Solution Conformance Roll-up{% endblock %}
+{% block title %}Chief Architect command centre{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl">
+<div class="container mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
     {{ page_header(
-        title='Solution Conformance Roll-up',
-        description='Current deterministic conformance controls and ARB record posture for the eligible solution records in scope. This is not an enterprise architecture health assessment.',
+        title='Chief Architect command centre',
+        description='Enterprise-wide line of sight across strategy, architecture evidence, governance decisions, solution delivery, risks and dependencies.',
         breadcrumbs=[
             {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Solution Conformance'}
+            {'label': 'Chief Architect command centre'}
         ]
     ) }}
 
-    <div class="flex items-center gap-2 mt-4 mb-6">
-        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
-            <i data-lucide="shield-check" class="h-3.5 w-3.5"></i> Deterministic controls · current scope
-        </span>
-        <span class="text-xs text-muted-foreground">As of {{ synthesis.generated_at[:16]|replace('T', ' ') }} UTC</span>
+    <section aria-label="Reporting scope" class="mb-6 rounded-lg border border-border bg-muted/30 p-4">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex items-start gap-3">
+                <span class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <i data-lucide="radar" class="h-4 w-4" aria-hidden="true"></i>
+                </span>
+                <div>
+                    <p class="text-sm font-medium text-foreground">As of {{ synthesis.generated_at[:16]|replace('T', ' ') }} UTC</p>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        Current organisation · {{ synthesis.scope.in_scope }} of {{ synthesis.scope.eligible }} eligible solution records
+                        {% if synthesis.scope.truncated %}· latest {{ synthesis.scope.limit }} in scope{% endif %}.
+                        Each measure keeps its own denominator; no composite enterprise-health score is inferred.
+                    </p>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ url_for('solution_design.programmes_list') }}"
+                   class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    <i data-lucide="layers" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                    View programmes
+                </a>
+                {% if 'arb.reviews' in flask.current_app.view_functions %}
+                <a href="{{ url_for('arb.reviews') }}"
+                   class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    <i data-lucide="gavel" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                    Open ARB queue
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {{ metrics_card(
+            title='Programmes in flight',
+            value=synthesis.strategic.programmes_in_flight if synthesis.strategic.programmes_in_flight is not none else '—',
+            icon='layers',
+            description=(synthesis.strategic.programmes_total|string ~ ' recorded programmes') if synthesis.strategic.programmes_total is not none else 'Programme posture unavailable'
+        ) }}
+        {{ metrics_card(
+            title='ARB reviews past SLA',
+            value=synthesis.arb.overdue_open,
+            icon='gavel',
+            description=synthesis.arb.dated_open|string ~ ' dated open reviews · ' ~ synthesis.arb.sla_days|string ~ '-day SLA'
+        ) }}
+        {{ metrics_card(
+            title='Solution conformance',
+            value=(synthesis.avg_conformance|string ~ '/100') if synthesis.avg_conformance is not none else '—',
+            icon='shield-check',
+            description=synthesis.coverage.evaluated|string ~ ' of ' ~ synthesis.coverage.in_scope|string ~ ' in-scope solutions evaluated'
+        ) }}
+        {{ metrics_card(
+            title='Material open risks',
+            value=synthesis.risk_dependency.risks.material_open if synthesis.risk_dependency.risks.material_open is not none else '—',
+            icon='triangle-alert',
+            description=(synthesis.risk_dependency.risks.unowned_material|string ~ ' without an owner') if synthesis.risk_dependency.risks.unowned_material is not none else 'Risk posture unavailable'
+        ) }}
     </div>
 
-    <div class="rounded-lg border border-border bg-muted/30 p-4 mb-6 text-sm text-muted-foreground">
-        <p><span class="font-medium text-foreground">Scope:</span> {{ synthesis.scope.in_scope }} of {{ synthesis.scope.eligible }} eligible solution records{% if synthesis.scope.truncated %} (latest {{ synthesis.scope.limit }} only){% endif %}. A conformance average is withheld when a required control was unavailable.</p>
+    {% call card.card(class='mb-6 overflow-hidden') %}
+    <div class="border-b border-border p-5 sm:p-6">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prioritised intervention</p>
+                <h2 class="mt-1 text-lg font-semibold text-foreground">Attention queue</h2>
+                <p class="mt-1 max-w-3xl text-sm text-muted-foreground">
+                    Unavailable controls, material risks, overdue or blocked ARB work, unassessed designs and scored findings—ordered by severity, then known age.
+                </p>
+            </div>
+            <p class="text-xs text-muted-foreground">
+                Showing {{ synthesis.attention_displayed }} of {{ synthesis.attention_total }}
+                {% if synthesis.attention_truncated %}· {{ synthesis.attention_total - synthesis.attention_displayed }} not shown{% endif %}
+            </p>
+        </div>
     </div>
+    {% if synthesis.attention %}
+    <ol class="divide-y divide-border" aria-label="Prioritised architecture attention items">
+        {% for item in synthesis.attention %}
+        <li class="p-5 sm:p-6">
+            <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start">
+                <div class="min-w-0 lg:col-span-5">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium
+                            {% if item.severity == 'critical' %}border-destructive/30 bg-destructive/10 text-destructive-emphasis
+                            {% elif item.severity == 'high' %}border-warning/30 bg-warning/10 text-warning-emphasis
+                            {% else %}border-info/30 bg-info/10 text-info-emphasis{% endif %}">
+                            {{ item.severity|title }}
+                        </span>
+                        <span class="text-xs text-muted-foreground">{{ item.source_label }}</span>
+                    </div>
+                    <p class="mt-2 text-sm font-semibold text-foreground">{{ item.name|truncate(80) }}</p>
+                    <p class="mt-1 text-xs text-muted-foreground">{{ item.title|truncate(120) }}</p>
+                </div>
+                <dl class="grid grid-cols-2 gap-3 text-xs lg:col-span-3">
+                    <div>
+                        <dt class="font-medium uppercase tracking-wide text-muted-foreground">State</dt>
+                        <dd class="mt-1 text-foreground">{{ item.status|replace('_', ' ')|title }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium uppercase tracking-wide text-muted-foreground">Age</dt>
+                        <dd class="mt-1 text-foreground">{% if item.age_days is not none %}{{ item.age_days }} days{% else %}—{% endif %}</dd>
+                    </div>
+                    <div class="col-span-2">
+                        <dt class="font-medium uppercase tracking-wide text-muted-foreground">Why it needs attention</dt>
+                        <dd class="mt-1 text-muted-foreground">{{ item.reason }}</dd>
+                    </div>
+                </dl>
+                <div class="flex flex-col items-start gap-2 lg:col-span-4 lg:items-end">
+                    <a href="{{ item.evidence_url }}"
+                       class="text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                        Review evidence
+                    </a>
+                    <a href="{{ item.action_url }}"
+                       class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                        {{ item.next_action }}
+                        <i data-lucide="arrow-right" class="ml-2 h-3.5 w-3.5" aria-hidden="true"></i>
+                    </a>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+        {{ empty_state(
+            icon='circle-check',
+            title='No current interventions in the measured scope',
+            description='No unavailable controls, overdue or blocked reviews, material open risks, unassessed designs, or scored conformance findings were found. Review the evidence coverage below before treating this as an all-clear.'
+        ) }}
+    {% endif %}
+    {% endcall %}
 
-    {# KPI strip — only deterministic inputs assembled by the service. #}
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="border border-border rounded-xl bg-card p-4">
-            <p class="text-xs uppercase tracking-wider text-muted-foreground">Conformance average</p>
-            {% if synthesis.avg_conformance is not none %}
-            <p class="text-2xl font-bold mt-1 {% if synthesis.avg_conformance >= 80 %}text-success{% elif synthesis.avg_conformance >= 50 %}text-warning{% else %}text-foreground{% endif %}">{{ synthesis.avg_conformance }}<span class="text-sm text-muted-foreground">/100</span></p>
+    {% call card.card(class='mb-6') %}
+    <div class="border-b border-border p-5 sm:p-6">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cross-domain evidence spine</p>
+                <h2 class="mt-1 text-lg font-semibold text-foreground">Architecture coverage</h2>
+                <p class="mt-1 text-sm text-muted-foreground">Solutions with at least one linked element in each architecture domain.</p>
+            </div>
+            <p class="text-xs text-muted-foreground">
+                {% if synthesis.architecture.state == 'unavailable' %}
+                    Not yet measured · element catalogue unavailable
+                {% elif synthesis.architecture.state == 'empty' %}
+                    No eligible solutions in scope
+                {% else %}
+                    {{ synthesis.architecture.measured }} of {{ synthesis.architecture.in_scope }} solutions measured
+                    {% if synthesis.architecture.unavailable %}· {{ synthesis.architecture.unavailable }} unavailable{% endif %}
+                {% endif %}
+            </p>
+        </div>
+    </div>
+    <div class="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-5">
+        {% for domain in synthesis.architecture.domains %}
+        <div class="p-5 sm:p-6 {% if not loop.first %}sm:border-l sm:border-border{% endif %}">
+            <div class="flex items-center justify-between gap-3">
+                <p class="text-sm font-semibold text-foreground">{{ domain.label }}</p>
+                <i data-lucide="{{ {'business': 'briefcase-business', 'data': 'database', 'application': 'boxes', 'technology': 'server', 'motivation': 'target'}[domain.key] }}"
+                   class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            {% if domain.covered is not none %}
+            <p class="mt-4 text-2xl font-bold tabular-nums text-foreground">
+                {{ domain.covered }}<span class="text-sm font-medium text-muted-foreground">/{{ domain.denominator }}</span>
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+                {% if domain.denominator %}{{ domain.percentage }}% of measured solutions{% else %}No measured solutions{% endif %}
+            </p>
             {% else %}
-            <p class="text-lg font-semibold text-muted-foreground mt-2">Unavailable</p>
-            {% endif %}
-            <p class="text-xs text-muted-foreground mt-1">{{ synthesis.coverage.evaluated }} evaluated{% if synthesis.coverage.unavailable %} · {{ synthesis.coverage.unavailable }} control failure{{ '' if synthesis.coverage.unavailable == 1 else 's' }}{% endif %}</p>
-        </div>
-        <div class="border border-border rounded-xl bg-card p-4">
-            <p class="text-xs uppercase tracking-wider text-muted-foreground">Coverage</p>
-            <p class="text-2xl font-bold text-foreground mt-1">{{ synthesis.coverage.evaluated }}<span class="text-sm text-muted-foreground">/{{ synthesis.coverage.in_scope }}</span></p>
-            <p class="text-xs text-muted-foreground mt-1">{{ synthesis.coverage.unassessed }} unassessed · {{ synthesis.coverage.unavailable }} unavailable</p>
-        </div>
-        <div class="border border-border rounded-xl bg-card p-4">
-            <p class="text-xs uppercase tracking-wider text-muted-foreground">Conformance issues</p>
-            {% if synthesis.flagged_total is not none %}
-            <p class="text-2xl font-bold {% if synthesis.flagged_total %}text-warning{% else %}text-foreground{% endif %} mt-1">{{ synthesis.flagged_total }}</p>
-            <p class="text-xs text-muted-foreground mt-1">Across {{ synthesis.flagged_evaluated }} evaluated review{{ '' if synthesis.flagged_evaluated == 1 else 's' }}</p>
-            {% else %}
-            <p class="text-lg font-semibold text-muted-foreground mt-2">Unavailable</p>
-            <p class="text-xs text-muted-foreground mt-1">No evaluated reviews; issue total has not been calculated.</p>
+            <p class="mt-4 text-lg font-semibold text-muted-foreground">—</p>
+            <p class="mt-1 text-xs text-muted-foreground">Not yet measured</p>
             {% endif %}
         </div>
-        <div class="border border-border rounded-xl bg-card p-4">
-            <p class="text-xs uppercase tracking-wider text-muted-foreground">ARB records</p>
-            <p class="text-2xl font-bold text-foreground mt-1">{{ synthesis.arb.open }}<span class="text-sm text-muted-foreground"> open</span></p>
-            <p class="text-xs text-muted-foreground mt-1">{{ synthesis.arb.decided }} decided · {{ synthesis.arb.blocked_or_not_ready }} awaiting info/deferred{% if synthesis.arb.oldest_open_age_days is not none %} · oldest {{ synthesis.arb.oldest_open_age_days }}d ({{ synthesis.arb.sla_days }}d SLA){% elif synthesis.arb.undated_open %} · age unavailable: {{ synthesis.arb.undated_open }} open record{{ '' if synthesis.arb.undated_open == 1 else 's' }} undated{% endif %}</p>
-        </div>
+        {% endfor %}
     </div>
+    {% endcall %}
 
-    {# The attention queue retains unassessed and unavailable reviews rather
-       than quietly treating them as clean. #}
-    <div class="border border-border rounded-xl bg-card overflow-hidden">
-        <div class="px-5 py-3 border-b border-border">
-            <h2 class="text-sm font-semibold text-foreground">Attention queue</h2>
-            <p class="text-xs text-muted-foreground mt-1">Unavailable controls and unassessed designs are listed before scored conformance findings. Showing {{ synthesis.attention_displayed }} of {{ synthesis.attention_total }} current attention item{{ '' if synthesis.attention_total == 1 else 's' }}{% if synthesis.attention_truncated %}; {{ synthesis.attention_total - synthesis.attention_displayed }} additional item{{ '' if synthesis.attention_total - synthesis.attention_displayed == 1 else 's' }} not displayed due to the queue limit{% endif %}.</p>
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {% call card.card() %}
+        <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-base font-semibold text-foreground">Strategic and programme posture</h2>
+                    <p class="mt-1 text-xs text-muted-foreground">Transformation programmes and solution alignment.</p>
+                </div>
+                <i data-lucide="waypoints" class="h-5 w-5 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            {% if synthesis.strategic.state == 'unavailable' %}
+            <p class="mt-6 text-sm text-muted-foreground">Programme posture is not yet available.</p>
+            {% else %}
+            <dl class="mt-6 space-y-4 text-sm">
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Programmes in flight</dt><dd class="font-semibold text-foreground">{{ synthesis.strategic.programmes_in_flight }}/{{ synthesis.strategic.programmes_total }}</dd></div>
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Solutions assigned</dt><dd class="font-semibold text-foreground">{{ synthesis.strategic.solutions_assigned }}/{{ synthesis.strategic.solutions_denominator }}</dd></div>
+            </dl>
+            {% endif %}
+            <a href="{{ url_for('solution_design.programmes_list') }}" class="mt-6 inline-flex items-center text-sm font-medium text-primary hover:underline">
+                Open programme portfolio <i data-lucide="arrow-right" class="ml-2 h-4 w-4" aria-hidden="true"></i>
+            </a>
         </div>
-        {% if synthesis.attention %}
-        <table class="min-w-full divide-y divide-border text-sm">
-            <thead class="bg-muted/30">
-                <tr>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Solution</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Review state</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Evidence</th>
-                    <th class="px-4 py-2"></th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-border">
-                {% for s in synthesis.attention %}
-                <tr class="hover:bg-accent/40">
-                    <td class="px-4 py-2 font-medium text-foreground">{{ s.name|truncate(50) }}</td>
-                    <td class="px-4 py-2">
-                        <span class="font-semibold {% if s.status == 'unavailable' %}text-destructive{% elif s.status == 'unassessed' %}text-warning{% else %}text-warning{% endif %}">{{ s.status|replace('_', ' ')|title }}</span>
-                        {% if s.score is not none %}<span class="text-xs text-muted-foreground"> · {{ s.score }}/100 · {{ s.flagged }} flagged</span>{% endif %}
-                    </td>
-                    <td class="px-4 py-2 text-muted-foreground text-xs">{{ s.reason }}</td>
-                    <td class="px-4 py-2 text-right"><a href="{{ s.evidence_url }}" class="text-xs text-primary hover:underline">Review evidence →</a></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="p-8 text-center"><p class="text-sm text-muted-foreground">No unavailable, unassessed, or not-ready reviews in the current scope.</p></div>
-        {% endif %}
+        {% endcall %}
+
+        {% call card.card() %}
+        <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-3">
+                <div><h2 class="text-base font-semibold text-foreground">Governance and ARB</h2><p class="mt-1 text-xs text-muted-foreground">Decision throughput and queue ageing.</p></div>
+                <i data-lucide="gavel" class="h-5 w-5 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            <dl class="mt-6 space-y-4 text-sm">
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Open reviews</dt><dd class="font-semibold text-foreground">{{ synthesis.arb.open }}</dd></div>
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Decisions recorded</dt><dd class="font-semibold text-foreground">{{ synthesis.arb.decided }}</dd></div>
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Blocked or not ready</dt><dd class="font-semibold text-foreground">{{ synthesis.arb.blocked_or_not_ready }}</dd></div>
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Oldest open</dt><dd class="font-semibold text-foreground">{% if synthesis.arb.oldest_open_age_days is not none %}{{ synthesis.arb.oldest_open_age_days }} days{% else %}—{% endif %}</dd></div>
+            </dl>
+            {% if synthesis.arb.undated_open %}<p class="mt-4 text-xs text-warning-emphasis">{{ synthesis.arb.undated_open }} open review{{ '' if synthesis.arb.undated_open == 1 else 's' }} cannot be aged because submission dates are missing.</p>{% endif %}
+        </div>
+        {% endcall %}
+
+        {% call card.card() %}
+        <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-3">
+                <div><h2 class="text-base font-semibold text-foreground">Delivery and execution</h2><p class="mt-1 text-xs text-muted-foreground">Current solution lifecycle signals, not delivery forecasts.</p></div>
+                <i data-lucide="route" class="h-5 w-5 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            {% if synthesis.delivery.state == 'empty' %}
+            <p class="mt-6 text-sm text-muted-foreground">No solution delivery records are in scope.</p>
+            {% else %}
+            <dl class="mt-6 grid grid-cols-2 gap-4 text-sm">
+                <div><dt class="text-muted-foreground">In progress</dt><dd class="mt-1 text-lg font-semibold text-foreground">{{ synthesis.delivery.in_progress }}</dd></div>
+                <div><dt class="text-muted-foreground">Production</dt><dd class="mt-1 text-lg font-semibold text-foreground">{{ synthesis.delivery.production }}</dd></div>
+                <div><dt class="text-muted-foreground">Planned</dt><dd class="mt-1 text-lg font-semibold text-foreground">{{ synthesis.delivery.planned }}</dd></div>
+                <div><dt class="text-muted-foreground">Blocked</dt><dd class="mt-1 text-lg font-semibold text-foreground">{{ synthesis.delivery.blocked }}</dd></div>
+            </dl>
+            <p class="mt-4 text-xs text-muted-foreground">ADM phases: {% if synthesis.delivery.phase_counts %}{% for phase, count in synthesis.delivery.phase_counts.items() %}{{ phase }} {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}—{% endif %}</p>
+            {% endif %}
+        </div>
+        {% endcall %}
+
+        {% call card.card(class='lg:col-span-2') %}
+        <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-3">
+                <div><h2 class="text-base font-semibold text-foreground">Solution conformance</h2><p class="mt-1 text-xs text-muted-foreground">Deterministic controls over the latest eligible solution scope.</p></div>
+                <i data-lucide="shield-check" class="h-5 w-5 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
+                <div><p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Average</p><p class="mt-2 text-2xl font-bold text-foreground">{% if synthesis.avg_conformance is not none %}{{ synthesis.avg_conformance }}/100{% else %}—{% endif %}</p><p class="mt-1 text-xs text-muted-foreground">Withheld when a required control is unavailable.</p></div>
+                <div><p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evaluation coverage</p><p class="mt-2 text-2xl font-bold text-foreground">{{ synthesis.coverage.evaluated }}/{{ synthesis.coverage.in_scope }}</p><p class="mt-1 text-xs text-muted-foreground">{{ synthesis.coverage.unassessed }} unassessed · {{ synthesis.coverage.unavailable }} unavailable</p></div>
+                <div><p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Flagged findings</p><p class="mt-2 text-2xl font-bold text-foreground">{% if synthesis.flagged_total is not none %}{{ synthesis.flagged_total }}{% else %}—{% endif %}</p><p class="mt-1 text-xs text-muted-foreground">Across {{ synthesis.flagged_evaluated }} evaluated review{{ '' if synthesis.flagged_evaluated == 1 else 's' }}.</p></div>
+            </div>
+        </div>
+        {% endcall %}
+
+        {% call card.card() %}
+        <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-3">
+                <div><h2 class="text-base font-semibold text-foreground">Risks and dependencies</h2><p class="mt-1 text-xs text-muted-foreground">Solution risks and transition ordering constraints.</p></div>
+                <i data-lucide="git-branch" class="h-5 w-5 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            <dl class="mt-6 space-y-4 text-sm">
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Open risks</dt><dd class="font-semibold text-foreground">{% if synthesis.risk_dependency.risks.open is not none %}{{ synthesis.risk_dependency.risks.open }}{% else %}—{% endif %}</dd></div>
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Material open risks</dt><dd class="font-semibold text-foreground">{% if synthesis.risk_dependency.risks.material_open is not none %}{{ synthesis.risk_dependency.risks.material_open }}{% else %}—{% endif %}</dd></div>
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Transition dependencies</dt><dd class="font-semibold text-foreground">{% if synthesis.risk_dependency.dependencies.recorded is not none %}{{ synthesis.risk_dependency.dependencies.recorded }}{% else %}—{% endif %}</dd></div>
+                <div class="flex items-center justify-between gap-3"><dt class="text-muted-foreground">Strict precedence</dt><dd class="font-semibold text-foreground">{% if synthesis.risk_dependency.dependencies.strict_precedence is not none %}{{ synthesis.risk_dependency.dependencies.strict_precedence }}{% else %}—{% endif %}</dd></div>
+            </dl>
+            {% if synthesis.risk_dependency.state in ['partial', 'unavailable'] %}<p class="mt-4 text-xs text-warning-emphasis">One or more risk/dependency sources are not yet available; unavailable counts are shown as —.</p>{% endif %}
+        </div>
+        {% endcall %}
     </div>
 </div>
 {% endblock %}
