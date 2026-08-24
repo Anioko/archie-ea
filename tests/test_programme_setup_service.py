@@ -286,7 +286,14 @@ def test_owner_picker_clears_hidden_identity_when_visible_query_diverges(
     body = client.get("/solutions/new-programme").get_data(as_text=True)
 
     assert 'readonly :readonly="false"' in body
-    assert '@input="ownerQueryChanged"' in body
+    owner_input = re.search(r'<input id="owner-search".*?>', body, re.DOTALL)
+    assert owner_input is not None
+    owner_input_markup = owner_input.group(0)
+    assert owner_input_markup.count("@input") == 1
+    assert (
+        '@input.debounce.250ms="ownerQueryChanged(); searchOwners()"'
+        in owner_input_markup
+    )
     assert "this.form.owner_id = null" in body
     assert "this.form.outcome.owner_id = null" in body
     assert "this.ownerQuery.trim() !== this.selectedOwnerName.trim()" in body

@@ -124,3 +124,14 @@ The prior browser-OOM concern is superseded by the successful synchronous full r
 ### Concern
 
 The round-specific browser rerun is environmentally unverified due to host memory exhaustion during fixture seeding. CI's Playwright job remains mandatory; no browser assertion failed in this round.
+
+## Post-review release-gate fix — 24 August 2026
+
+The sole full-verifier failure was a stale programme-setup markup assertion left behind when the owner picker’s duplicate `@input` attributes were correctly consolidated. The test now scopes itself to the owner search input and requires exactly one input handler containing both `ownerQueryChanged()` and `searchOwners()`. It continues to assert that divergent visible text clears both hidden owner identities.
+
+Evidence:
+
+- `pytest -q tests/test_programme_setup_service.py`: **10 passed** in 34.17 seconds.
+- Strict smoke collection with pytest-asyncio disabled: **2 synchronous functions collected**.
+- Scoped Ruff: **passed**.
+- `python scripts/verify.py --tag static`: **31 passed, 0 failed, 0 skipped**.
