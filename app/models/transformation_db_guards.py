@@ -165,6 +165,7 @@ DECLARE
     receipt record;
     result record;
     inserted_id bigint;
+    reconciliation_secret bytea;
 BEGIN
     document := public.archie_verify_command_capability(
         p_document, p_capability, 'transformation-command-claim-r1'
@@ -299,10 +300,72 @@ BEGIN
         END IF;
         IF receipt.status <> 'succeeded'
            OR receipt.operation_result_id IS DISTINCT FROM result.id THEN
-            UPDATE public.command_idempotency_records
-               SET status = 'succeeded', operation_result_id = result.id,
-                   lease_expires_at = NULL, completed_at = now_at_database
-             WHERE id = receipt.id;
+            IF receipt.status = 'failed_non_retryable' THEN
+                -- A failed natural-key contender can converge only through this
+                -- fresh signed claim.  The trigger validates an owner-secret,
+                -- transaction-bound fence before accepting the terminal repair.
+                SELECT capability.secret
+                  INTO reconciliation_secret
+                  FROM public.archie_command_capability_keys AS capability
+                 WHERE capability.key_id = document->>'key_id'
+                   AND capability.active IS TRUE;
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'command capability is invalid'
+                        USING ERRCODE = '42501';
+                END IF;
+                PERFORM set_config(
+                    'archie.receipt_reconcile_key_id', document->>'key_id', TRUE
+                );
+                PERFORM set_config(
+                    'archie.receipt_reconcile_fence',
+                    encode(
+                        public.archie_hmac_sha256(
+                            convert_to(
+                                jsonb_build_object(
+                                    'schema_version',
+                                    'transformation-receipt-reconcile-r1',
+                                    'transaction_id', txid_current(),
+                                    'receipt_id', receipt.id,
+                                    'organization_id', receipt.organization_id,
+                                    'actor_id', receipt.actor_id,
+                                    'operation', receipt.operation,
+                                    'idempotency_key', receipt.idempotency_key,
+                                    'request_digest', receipt.request_digest,
+                                    'natural_key', receipt.natural_key,
+                                    'previous_generation', receipt.lease_generation,
+                                    'claim_token', new_claim_token,
+                                    'claimant_request_id', new_claimant_request_id,
+                                    'operation_result_id', result.id
+                                )::text,
+                                'UTF8'
+                            ),
+                            reconciliation_secret
+                        ),
+                        'hex'
+                    ),
+                    TRUE
+                );
+                UPDATE public.command_idempotency_records
+                   SET status = 'succeeded',
+                       lease_generation = receipt.lease_generation + 1,
+                       claim_token = new_claim_token,
+                       claimant_request_id = new_claimant_request_id,
+                       lease_expires_at = NULL,
+                       operation_result_id = result.id,
+                       attempt_count = receipt.attempt_count + 1,
+                       last_error_class = NULL,
+                       completed_at = now_at_database
+                 WHERE id = receipt.id
+                RETURNING * INTO receipt;
+                PERFORM set_config('archie.receipt_reconcile_fence', '', TRUE);
+                PERFORM set_config('archie.receipt_reconcile_key_id', '', TRUE);
+            ELSE
+                UPDATE public.command_idempotency_records
+                   SET status = 'succeeded', operation_result_id = result.id,
+                       lease_expires_at = NULL, completed_at = now_at_database
+                 WHERE id = receipt.id
+                RETURNING * INTO receipt;
+            END IF;
         END IF;
         RETURN QUERY SELECT 'reconciled', receipt.id::bigint,
                             receipt.lease_generation, NULL::text, result.id::bigint,
@@ -2585,6 +2648,7 @@ SET search_path = pg_catalog, public
 AS $$
 DECLARE
     now_at_database timestamptz := clock_timestamp();
+    reconciliation_secret bytea;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'command receipt identity and terminal result are immutable'
@@ -2690,6 +2754,70 @@ BEGIN
              AND result.request_digest = NEW.request_digest
        ) THEN
         RETURN NEW;
+    END IF;
+
+    -- A previously failed contender may converge on another receipt's exact
+    -- immutable result only while the signed claim function holds a fresh,
+    -- owner-secret fence bound to this transaction and next generation.
+    IF OLD.status = 'failed_non_retryable'
+       AND OLD.operation_result_id IS NULL
+       AND NEW.status = 'succeeded'
+       AND NEW.lease_generation = OLD.lease_generation + 1
+       AND NEW.claim_token IS NOT NULL
+       AND length(NEW.claim_token) >= 32
+       AND NEW.claim_token IS DISTINCT FROM OLD.claim_token
+       AND NEW.claimant_request_id IS NOT NULL
+       AND NEW.operation_result_id IS NOT NULL
+       AND NEW.attempt_count = OLD.attempt_count + 1
+       AND NEW.last_error_class IS NULL
+       AND NEW.lease_expires_at IS NULL
+       AND NEW.completed_at IS NOT NULL
+       AND EXISTS (
+           SELECT 1
+           FROM public.operation_results result
+           WHERE result.id = NEW.operation_result_id
+             AND result.organization_id = NEW.organization_id
+             AND result.actor_id = NEW.actor_id
+             AND result.operation = NEW.operation
+             AND result.natural_key = NEW.natural_key
+             AND result.request_digest = NEW.request_digest
+       ) THEN
+        SELECT capability.secret
+          INTO reconciliation_secret
+          FROM public.archie_command_capability_keys AS capability
+         WHERE capability.key_id = current_setting(
+                   'archie.receipt_reconcile_key_id', TRUE
+               )
+           AND capability.active IS TRUE;
+        IF FOUND AND current_setting(
+               'archie.receipt_reconcile_fence', TRUE
+           ) = encode(
+               public.archie_hmac_sha256(
+                   convert_to(
+                       jsonb_build_object(
+                           'schema_version',
+                           'transformation-receipt-reconcile-r1',
+                           'transaction_id', txid_current(),
+                           'receipt_id', OLD.id,
+                           'organization_id', OLD.organization_id,
+                           'actor_id', OLD.actor_id,
+                           'operation', OLD.operation,
+                           'idempotency_key', OLD.idempotency_key,
+                           'request_digest', OLD.request_digest,
+                           'natural_key', OLD.natural_key,
+                           'previous_generation', OLD.lease_generation,
+                           'claim_token', NEW.claim_token,
+                           'claimant_request_id', NEW.claimant_request_id,
+                           'operation_result_id', NEW.operation_result_id
+                       )::text,
+                       'UTF8'
+                   ),
+                   reconciliation_secret
+               ),
+               'hex'
+           ) THEN
+            RETURN NEW;
+        END IF;
     END IF;
 
     RAISE EXCEPTION 'invalid command receipt transition or fence'
@@ -3992,6 +4120,12 @@ def ensure_transformation_db_guards(
         connection.exec_driver_sql(
             _render_guard_sql(connection, create_sql, quoted_schema)
         )
+    qualified_receipt_guard = _qualified_name(
+        connection, quoted_schema, "archie_guard_transformation_receipt"
+    )
+    connection.exec_driver_sql(
+        f"ALTER FUNCTION {qualified_receipt_guard}() OWNER TO CURRENT_USER"
+    )
     trigger_functions = (
         "archie_guard_command_envelope_insert",
         "archie_guard_overlap_disposition_insert",

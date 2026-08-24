@@ -452,6 +452,73 @@ def test_receipt_guard_rejects_result_owned_by_another_actor(guard_fixture):
         )
 
 
+def test_receipt_guard_rejects_unsigned_failed_contender_reconciliation(
+    guard_fixture,
+):
+    """Catches direct SQL imitating the signed failed-contender repair."""
+    suffix = uuid.uuid4().hex[:12]
+    payload = {"name": f"failed contender {suffix}"}
+    natural_key = f"guard-failed-contender:{suffix}"
+    request_digest = CommandService.request_digest(payload)
+    failed_claim = CommandService.claim_or_reconcile(
+        actor=guard_fixture.actor,
+        operation="guard.reconcile",
+        idempotency_key=f"failed-{suffix}",
+        request_digest=request_digest,
+        natural_key=natural_key,
+        authorizer=_allow_command,
+    )
+    assert CommandService.mark_non_retryable(
+        actor=guard_fixture.actor,
+        claim=failed_claim,
+        error_class="CommandConflict",
+    ) is True
+
+    winner = CommandService.execute(
+        actor=guard_fixture.actor,
+        operation="guard.reconcile",
+        idempotency_key=f"winner-{suffix}",
+        payload=payload,
+        natural_key=natural_key,
+        authorizer=_allow_command,
+        handler=lambda _session, _claim: DomainMutationResult(
+            object_ids={"guard_id": guard_fixture.organization_id},
+            response={"guard_id": guard_fixture.organization_id},
+            outbox_events=(),
+        ),
+    )
+
+    with pytest.raises(Exception, match="invalid command receipt transition"):
+        _direct_driver_execute(
+            "WITH forged_context AS ("
+            "SELECT set_config('archie.receipt_reconcile_key_id', 'forged', true), "
+            "set_config('archie.receipt_reconcile_fence', %s, true)) "
+            "UPDATE public.command_idempotency_records "
+            "SET status = 'succeeded', lease_generation = lease_generation + 1, "
+            "claim_token = %s, operation_result_id = %s, "
+            "attempt_count = attempt_count + 1, last_error_class = NULL, "
+            "lease_expires_at = NULL, completed_at = clock_timestamp() "
+            "FROM forged_context "
+            "WHERE id = %s AND organization_id = %s AND actor_id = %s",
+            (
+                "0" * 64,
+                "f" * 64,
+                winner.operation_result_id,
+                failed_claim.receipt_id,
+                guard_fixture.organization_id,
+                guard_fixture.actor.user_id,
+            ),
+        )
+
+    with Session(db.engine) as session:
+        failed_receipt = session.get(
+            CommandIdempotencyRecord, failed_claim.receipt_id
+        )
+    assert failed_receipt.status == "failed_non_retryable"
+    assert failed_receipt.operation_result_id is None
+    assert failed_receipt.lease_generation == failed_claim.generation
+
+
 def test_reconciliation_guard_can_be_reinstalled_without_changing_success(
     guard_fixture,
 ):

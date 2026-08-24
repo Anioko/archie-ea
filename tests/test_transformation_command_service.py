@@ -544,6 +544,103 @@ def test_new_idempotency_key_replays_one_natural_result_with_original_provenance
     assert result.receipt_generation == materialisation.receipt_generation == 1
 
 
+def test_failed_contender_reconciles_exact_natural_result_on_retry(
+    command_fixture,
+):
+    """A failed race receipt may converge only through a fresh signed claim."""
+    payload = {"name": command_fixture.domain_name, "scope": {"a": 1}}
+    natural_key = "programme-intake:failed-contender-reconcile"
+    request_digest = canonical_request_digest(payload)
+
+    failed_claim = CommandService.claim_or_reconcile(
+        actor=command_fixture.actor,
+        operation="programme.create",
+        idempotency_key="failed-contender",
+        request_digest=request_digest,
+        natural_key=natural_key,
+        authorizer=_allow_command,
+    )
+    original_failed_token = failed_claim.claim_token
+    assert CommandService.mark_non_retryable(
+        actor=command_fixture.actor,
+        claim=failed_claim,
+        error_class="CommandConflict",
+    ) is True
+
+    def execute(key, handler):
+        return CommandService.execute(
+            actor=command_fixture.actor,
+            operation="programme.create",
+            idempotency_key=key,
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=_allow_command,
+            handler=handler,
+        )
+
+    winner = execute("successful-contender", _mutation(command_fixture))
+    replay = execute(
+        "failed-contender",
+        lambda _session, _claim: pytest.fail(
+            "the failed contender reran the immutable natural operation"
+        ),
+    )
+    second_replay = execute(
+        "failed-contender",
+        lambda _session, _claim: pytest.fail(
+            "the reconciled contender reran the immutable natural operation"
+        ),
+    )
+
+    assert replay.created is False and replay.idempotent is True
+    assert second_replay.created is False and second_replay.idempotent is True
+    assert (
+        replay.operation_result_id
+        == second_replay.operation_result_id
+        == winner.operation_result_id
+    )
+    assert replay.object_ids == second_replay.object_ids == winner.object_ids
+    assert replay.response == second_replay.response == winner.response
+    assert _counts(command_fixture) == (1, 1, 1)
+
+    with Session(db.engine) as session:
+        result = session.get(OperationResult, winner.operation_result_id)
+        materialisation = session.scalar(
+            select(CommandMaterialisation).where(
+                CommandMaterialisation.organization_id
+                == command_fixture.organization_id,
+                CommandMaterialisation.operation == "programme.create",
+                CommandMaterialisation.natural_key == natural_key,
+            )
+        )
+        receipts = {
+            receipt.idempotency_key: receipt
+            for receipt in session.scalars(
+                select(CommandIdempotencyRecord).where(
+                    CommandIdempotencyRecord.organization_id
+                    == command_fixture.organization_id,
+                    CommandIdempotencyRecord.operation == "programme.create",
+                    CommandIdempotencyRecord.natural_key == natural_key,
+                )
+            ).all()
+        }
+
+    failed_receipt = receipts["failed-contender"]
+    winner_receipt = receipts["successful-contender"]
+    assert failed_receipt.status == winner_receipt.status == "succeeded"
+    assert (
+        failed_receipt.operation_result_id
+        == winner_receipt.operation_result_id
+        == result.id
+    )
+    assert failed_receipt.lease_generation == failed_claim.generation + 1
+    assert failed_receipt.attempt_count == 2
+    assert failed_receipt.claim_token != original_failed_token
+    assert failed_receipt.last_error_class is None
+    assert result.receipt_id == materialisation.receipt_id == winner_receipt.id
+    assert result.receipt_generation == materialisation.receipt_generation == 1
+
+
 @pytest.mark.parametrize("deleted_ordinal", (0, None))
 def test_replay_restores_exact_missing_outbox_documents(
     command_fixture, deleted_ordinal

@@ -31,6 +31,11 @@ from app.models.transformation_evidence import (
     EvidenceRecord,
     EvidenceRequest,
 )
+from app.models.transformation_execution import (
+    CommandIdempotencyRecord,
+    CommandMaterialisation,
+    OperationResult,
+)
 from app.models.user import User
 from app.models.transformation_db_guards import ensure_transformation_db_guards
 from app.modules.transformation_room.decision_service import (
@@ -239,6 +244,13 @@ def test_create_brief_concurrency_converges_on_one_draft(app, decision_scope):
     for key, _error in errors:
         results.append(_create_brief(scope, key=key))
 
+    second_replays = tuple(
+        _create_brief(scope, key=f"brief-race-{index}") for index in (1, 2)
+    )
+    natural_key = (
+        f"brief:workstream:{scope.workstream_id}:candidate:{scope.candidate_id}"
+    )
+
     with Session(db.engine) as session:
         brief_ids = tuple(
             session.scalars(
@@ -249,11 +261,47 @@ def test_create_brief_concurrency_converges_on_one_draft(app, decision_scope):
                 )
             ).all()
         )
+        operation_result = session.get(
+            OperationResult, results[0].operation_result_id
+        )
+        materialisation = session.scalar(
+            select(CommandMaterialisation).where(
+                CommandMaterialisation.organization_id == scope.organization_id,
+                CommandMaterialisation.operation == "brief.create",
+                CommandMaterialisation.natural_key == natural_key,
+            )
+        )
+        receipts = session.scalars(
+            select(CommandIdempotencyRecord).where(
+                CommandIdempotencyRecord.organization_id
+                == scope.organization_id,
+                CommandIdempotencyRecord.operation == "brief.create",
+                CommandIdempotencyRecord.natural_key == natural_key,
+            )
+        ).all()
     assert len(results) == 2
     assert len(brief_ids) == 1
-    assert {result.object_ids["decision_brief_id"] for result in results} == {
+    assert {
+        result.object_ids["decision_brief_id"]
+        for result in (*results, *second_replays)
+    } == {
         brief_ids[0]
     }
+    assert all(
+        replay.created is False and replay.idempotent is True
+        for replay in second_replays
+    )
+    assert len(receipts) == 2
+    assert all(receipt.status == "succeeded" for receipt in receipts)
+    assert {receipt.operation_result_id for receipt in receipts} == {
+        operation_result.id
+    }
+    assert operation_result.receipt_id == materialisation.receipt_id
+    assert (
+        operation_result.receipt_generation
+        == materialisation.receipt_generation
+        == 1
+    )
 
 
 def test_create_brief_definer_rejects_unsigned_execution_claim(
