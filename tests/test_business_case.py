@@ -13,8 +13,7 @@ Covers:
   resolve — mirrors tests/test_business_model.py.
 - aggregate_financials() pulling cost/value from linked
   StrategicInitiative / CapabilityCostAllocation / UnifiedCapability /
-  Solution, using the app fixture + db.create_all() pattern from
-  tests/test_motivation_bridge.py.
+  Solution, isolated by the shared rollback fixture.
 """
 
 import datetime
@@ -24,20 +23,9 @@ from decimal import Decimal
 import pytest
 
 
-@pytest.fixture(scope="session", autouse=True)
-def app():
-    from app import create_app, db
-
-    app = create_app("testing")
-    app.config["TESTING"] = True
-    app.config["WTF_CSRF_ENABLED"] = False
-
-    # New table (business_cases) — create_all() only creates missing tables,
-    # never touches existing ones, so this is safe against the shared test
-    # database's pre-existing schema.
-    with app.app_context():
-        db.create_all()
-
+@pytest.fixture(scope="module", autouse=True)
+def _full_app_boot(app):
+    """Load the canonical test app before model-only tests configure mappers."""
     return app
 
 
