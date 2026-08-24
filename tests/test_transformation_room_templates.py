@@ -222,6 +222,46 @@ def test_stage_failure_state_is_explicit(app, programme_fixture, monkeypatch):
     assert "could not be loaded" in failed.resource_states["stage"]["reason"]
 
 
+def test_every_stage_loader_failure_renders_structurally_safe_error_page(
+    app, programme_fixture, login_as, monkeypatch
+):
+    created = TransformationProgrammeService.create_programme(
+        actor=programme_fixture.actor,
+        command_key="room-every-stage-failure-render",
+        request=_intake(programme_fixture.owner_id),
+    )
+    monkeypatch.setattr(
+        TransformationRoomReadModel,
+        "load_stage_resources",
+        classmethod(
+            lambda cls, **kwargs: (_ for _ in ()).throw(SQLAlchemyError("db down"))
+        ),
+    )
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+
+    for stage in (
+        "objective",
+        "discover",
+        "evidence",
+        "options",
+        "decision",
+        "execute",
+        "outcomes",
+    ):
+        response = client.get(
+            "/solutions/programmes/{}/workstreams/{}/{}".format(
+                created.object_ids["programme_id"],
+                created.object_ids["workstream_id"],
+                stage,
+            )
+        )
+        body = response.get_data(as_text=True)
+        assert response.status_code == 200, stage
+        assert "Stage resources could not be loaded. Try again later." in body
+        assert 'data-resource-state="failed"' in body
+
+
 def test_technology_intake_context_is_conditional_and_non_persisting(
     app, programme_fixture, login_as
 ):

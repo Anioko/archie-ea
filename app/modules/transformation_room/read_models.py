@@ -99,6 +99,26 @@ class TransformationRoomReadModel:
         """Use the gate service as the single transition authority."""
         return TransformationGateService.NEXT_STAGE.get(stage)
 
+    STAGE_RESOURCE_KEYS = {
+        "objective": ("outcomes", "measures"),
+        "discover": ("candidates", "signals"),
+        "evidence": ("requests", "evidence"),
+        "options": ("options", "option_versions"),
+        "decision": ("briefs", "brief_versions"),
+        "execute": (),
+        "outcomes": (),
+    }
+
+    @classmethod
+    def stage_resource_states(cls, stage, *, state, reason):
+        """Return the complete shape every stage template may dereference."""
+        keys = ("stage", *cls.STAGE_RESOURCE_KEYS[stage])
+        return {key: {"state": state, "reason": reason} for key in keys}
+
+    @classmethod
+    def empty_stage_resources(cls, stage):
+        return {key: () for key in cls.STAGE_RESOURCE_KEYS[stage]}
+
     @classmethod
     def stage(
         cls,
@@ -126,9 +146,13 @@ class TransformationRoomReadModel:
                 workstream_id=workstream_id,
                 stage=stage,
                 gate=None,
-                resources={},
-                resource_states={"stage": {"state": "failed", "reason": reason}},
-                unavailable_reasons={"stage": reason},
+                resources=cls.empty_stage_resources(stage),
+                resource_states=cls.stage_resource_states(
+                    stage, state="failed", reason=reason
+                ),
+                unavailable_reasons={
+                    key: reason for key in ("stage", *cls.STAGE_RESOURCE_KEYS[stage])
+                },
             )
         current_stage = resources["workstream"][0]["lifecycle_stage"]
         gate = None

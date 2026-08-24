@@ -80,3 +80,27 @@ The 772-line read-model split is deferred because this review changed cohesive p
 ### Browser verification concern
 
 The async browser harness now launches and executes application behavior, but the final full run is **not counted green**. The shared host exhausted memory while Werkzeug served static assets (`MemoryError`) and zstd reported `Allocation error: not enough memory`; resulting asset requests returned 500. This is environmental rather than evidence of a passing product journey. The mandatory CI Playwright/axe job must pass before merge or deployment.
+
+## Review fix round 2/5 — 24 August 2026
+
+- Replaced the async smoke implementation and `pytest.mark.asyncio` dependency with the repository-supported package-scoped synchronous Playwright browser fixture. With the asyncio plugin explicitly disabled and strict markers enabled, the file collects two ordinary test functions.
+- Made failed stage projections structurally total: every stage now receives its complete template-facing resource-key map, empty resource tuples, a `failed` state and the explicit database-unavailable reason. There is no loading projection because these pages are synchronous server renders with no asynchronous resource-loading phase.
+- Added a route-render regression that forces the loader to raise `SQLAlchemyError` for all seven stages and proves each response is HTTP 200 with the failure alert rather than a Jinja exception.
+- The now-running browser test exposed and closed two accessibility defects: the mobile navigation opener's `aria-controls` lacked a matching sidebar ID, and explanatory paragraphs were invalid children of the programme-context definition list.
+- The smoke's deliberate stale-revision 409 is awaited through DOM completion and asserted through the rendered visible alert; its expected browser resource error is not misclassified as pre-error console noise.
+
+### Fix-round test evidence
+
+- RED: `pytest --collect-only -q -p no:asyncio --strict-markers tests/smoke/test_transformation_room_journeys.py` failed collection with `asyncio not found in markers`.
+- RED: forced objective-stage loader failure raised `jinja2.exceptions.UndefinedError: 'dict object' has no attribute 'outcomes'`.
+- Green strict collection without pytest-asyncio: **2 functions collected**.
+- Forced failure route render across objective, discover, evidence, options, decision, execute and outcomes: **1 passed**.
+- Focused routes/templates/sidebar: **38 passed** in 27.57 seconds.
+- Synchronous browser/axe journey at 390px and 1024px: **2 passed** in 69.70 seconds. This covers create to objective, stable refresh, keyboard owner selection/focus state, later-stage honesty, a rendered server conflict and axe serious/critical rules.
+- Scoped Ruff: **passed**.
+- `python scripts/verify.py --tag static`: **31 passed, 0 failed, 0 skipped**.
+- `python scripts/verify.py --gate boot-health`: **1 passed, 0 failed, 0 skipped**.
+
+### Concern update
+
+The prior browser-OOM concern is superseded by the successful synchronous full run above. CI remains the authoritative Linux/gunicorn execution, but there is no outstanding local browser failure in this round.
