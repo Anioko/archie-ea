@@ -1785,6 +1785,12 @@ def test_compose_paths_separate_database_deployment_from_runtime():
     for document, runtime_services in ((main, ("server", "worker")), (optimized, ("web", "web-dev"))):
         services = document["services"]
         assert {"database-bootstrap", "schema-deploy", "database-acl"} <= services.keys()
+        assert services["database-bootstrap"]["command"] == (
+            "python -m scripts.database.configure_roles"
+        )
+        assert services["database-acl"]["command"] == (
+            "python -m scripts.database.configure_roles"
+        )
         bootstrap_env = _environment(services["database-bootstrap"])
         deploy_env = _environment(services["schema-deploy"])
         acl_env = _environment(services["database-acl"])
