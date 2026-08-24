@@ -24,7 +24,7 @@ from decimal import Decimal
 import pytest
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session", autouse=True)
 def app():
     from app import create_app, db
 
@@ -54,17 +54,6 @@ def _make_org_and_user(db, suffix):
     db.session.flush()
 
     return org, user
-
-
-def _cleanup(db, **rows):
-    """Best-effort teardown so the shared test database doesn't accumulate rows."""
-    try:
-        for obj in rows.values():
-            if obj is not None:
-                db.session.delete(obj)
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
 
 
 class TestBusinessCaseModel:
@@ -210,7 +199,7 @@ class TestAggregateFinancials:
     """aggregate_financials() pulling from linked StrategicInitiative /
     CapabilityCostAllocation / UnifiedCapability / Solution."""
 
-    def test_aggregate_financials_pulls_from_all_linked_sources(self, app):
+    def test_aggregate_financials_pulls_from_all_linked_sources(self, app, db_session):
         from app import db
         from app.models.business_capabilities import BusinessCapability
         from app.models.business_case import BusinessCase
@@ -302,48 +291,35 @@ class TestAggregateFinancials:
             db.session.add(business_case)
             db.session.commit()
 
-            try:
-                report = service.aggregate_financials(business_case, apply_missing=True)
+            report = service.aggregate_financials(business_case, apply_missing=True)
 
-                # Every source resolved.
-                assert report["strategic_initiative"] is not None
-                assert report["capability_cost_allocation"] is not None
-                assert report["unified_capability"] is not None
-                assert report["solution"] is not None
+            # Every source resolved.
+            assert report["strategic_initiative"] is not None
+            assert report["capability_cost_allocation"] is not None
+            assert report["unified_capability"] is not None
+            assert report["solution"] is not None
 
-                # capex candidates: initiative.budget_allocated=100000, solution.actual_cost=35000 -> max = 100000
-                assert business_case.capex == Decimal("100000")
-                # opex candidates: allocation total_cost=15000, unified.annual_cost=20000 -> max = 20000
-                assert business_case.opex_annual == Decimal("20000")
-                # tco = capex + 3*opex = 100000 + 60000 = 160000
-                assert business_case.tco_3yr == Decimal("160000")
-                # benefit = allocation.business_value_generated = 50000
-                assert business_case.financial_benefit_annual == Decimal("50000")
-                # roi = average(allocation roi, unified roi=15, solution roi=25)
-                assert business_case.roi_percentage is not None
+            # capex candidates: initiative.budget_allocated=100000, solution.actual_cost=35000 -> max = 100000
+            assert business_case.capex == Decimal("100000")
+            # opex candidates: allocation total_cost=15000, unified.annual_cost=20000 -> max = 20000
+            assert business_case.opex_annual == Decimal("20000")
+            # tco = capex + 3*opex = 100000 + 60000 = 160000
+            assert business_case.tco_3yr == Decimal("160000")
+            # benefit = allocation.business_value_generated = 50000
+            assert business_case.financial_benefit_annual == Decimal("50000")
+            # roi = average(allocation roi, unified roi=15, solution roi=25)
+            assert business_case.roi_percentage is not None
 
-                assert set(report["applied_fields"]) == {
-                    "capex",
-                    "opex_annual",
-                    "tco_3yr",
-                    "roi_percentage",
-                    "financial_benefit_annual",
-                }
-                assert report["cross_checks"] == {}
-            finally:
-                _cleanup(
-                    db,
-                    business_case=business_case,
-                    allocation=allocation,
-                    solution=solution,
-                    unified=unified,
-                    capability=capability,
-                    initiative=initiative,
-                    user=user,
-                    org=org,
-                )
+            assert set(report["applied_fields"]) == {
+                "capex",
+                "opex_annual",
+                "tco_3yr",
+                "roi_percentage",
+                "financial_benefit_annual",
+            }
+            assert report["cross_checks"] == {}
 
-    def test_aggregate_financials_is_fault_tolerant_with_no_links(self, app):
+    def test_aggregate_financials_is_fault_tolerant_with_no_links(self, app, db_session):
         from app import db
         from app.models.business_case import BusinessCase
         from app.modules.business_case import service
@@ -360,20 +336,19 @@ class TestAggregateFinancials:
             db.session.add(business_case)
             db.session.commit()
 
-            try:
-                report = service.aggregate_financials(business_case)
-                assert report["strategic_initiative"] is None
-                assert report["capability_cost_allocation"] is None
-                assert report["unified_capability"] is None
-                assert report["solution"] is None
-                assert report["applied_fields"] == []
-                # Nothing to pull, so user-entered (here: unset) values are left alone.
-                assert business_case.capex is None
-                assert business_case.tco_3yr is None
-            finally:
-                _cleanup(db, business_case=business_case, user=user, org=org)
+            report = service.aggregate_financials(business_case)
+            assert report["strategic_initiative"] is None
+            assert report["capability_cost_allocation"] is None
+            assert report["unified_capability"] is None
+            assert report["solution"] is None
+            assert report["applied_fields"] == []
+            # Nothing to pull, so user-entered (here: unset) values are left alone.
+            assert business_case.capex is None
+            assert business_case.tco_3yr is None
 
-    def test_aggregate_financials_does_not_overwrite_user_entered_values(self, app):
+    def test_aggregate_financials_does_not_overwrite_user_entered_values(
+        self, app, db_session
+    ):
         """Fields the user already filled in must be left untouched; a
         cross-check delta is reported instead."""
         from app import db
@@ -409,12 +384,9 @@ class TestAggregateFinancials:
             db.session.add(business_case)
             db.session.commit()
 
-            try:
-                report = service.aggregate_financials(business_case)
-                # Untouched — still the user's value, not the initiative's 100000.
-                assert business_case.capex == Decimal("5000.00")
-                assert "capex" not in report["applied_fields"]
-                assert report["cross_checks"]["capex"]["current"] == 5000.0
-                assert report["cross_checks"]["capex"]["suggested"] == 100000.0
-            finally:
-                _cleanup(db, business_case=business_case, initiative=initiative, user=user, org=org)
+            report = service.aggregate_financials(business_case)
+            # Untouched — still the user's value, not the initiative's 100000.
+            assert business_case.capex == Decimal("5000.00")
+            assert "capex" not in report["applied_fields"]
+            assert report["cross_checks"]["capex"]["current"] == 5000.0
+            assert report["cross_checks"]["capex"]["suggested"] == 100000.0
