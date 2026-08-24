@@ -1,0 +1,198 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Architecture Journey{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto" x-data="architectureJourneyHub" x-cloak>
+  {{ page_header(
+    title='Architecture Journey',
+    description='Start with the change you need to make. Shape the architecture, evidence and decision path around it.',
+    breadcrumbs=[{'label': 'Home', 'href': url_for('main.index')}, {'label': 'Architecture Journey'}]
+  ) }}
+
+  <div class="p-4 sm:p-6 space-y-6">
+    <section class="relative overflow-hidden rounded-xl border border-border bg-card">
+      <div class="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true"></div>
+      <div class="grid gap-8 p-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(20rem,.7fr)] lg:p-8">
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Purpose before artefacts</p>
+          <h2 class="mt-2 max-w-3xl text-2xl font-bold tracking-tight text-foreground">
+            What needs to change—and what decision must this journey enable?
+          </h2>
+          <p class="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+            A journey can reshape a business, assess an estate, satisfy a regulation, create a roadmap or design a solution. A solution is one possible outcome, never the assumed destination.
+          </p>
+        </div>
+        <div class="rounded-lg border border-border bg-muted/30 p-4">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Journey rhythm</p>
+          <ol class="mt-3 grid grid-cols-5 gap-1 text-center text-xs" aria-label="Architecture journey stages">
+            {% for label in ['Frame', 'Discover', 'Shape', 'Decide', 'Deliver'] %}
+            <li class="rounded-md border border-border bg-card px-2 py-2 text-foreground">{{ label }}</li>
+            {% endfor %}
+          </ol>
+          <p class="mt-3 text-xs text-muted-foreground">Evidence and decisions remain traceable as the scope evolves.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <form class="space-y-6 rounded-xl border border-border bg-card p-5 sm:p-6" @submit.prevent="startJourney">
+        <div>
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-lg font-semibold text-foreground">Frame a new journey</h2>
+              <p class="mt-1 text-sm text-muted-foreground">Choose a purpose, scope and useful outputs. You can refine all three later.</p>
+            </div>
+            <span class="rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">Auto-saved</span>
+          </div>
+
+          <label for="journey-title" class="mt-5 block text-sm font-medium text-foreground">What are you trying to change?</label>
+          <input id="journey-title" type="text" x-model.trim="title" required maxlength="255"
+            class="mt-2 flex h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="For example: reduce customer onboarding from days to minutes">
+        </div>
+
+        <fieldset>
+          <legend class="text-sm font-medium text-foreground">Purpose</legend>
+          <div class="mt-3 grid gap-3 md:grid-cols-2">
+            {% for value, label, description in intent_options %}
+            <label class="cursor-pointer rounded-lg border p-4 transition-colors"
+              :class="intent === '{{ value }}' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/40'">
+              <input type="radio" name="intent" value="{{ value }}" x-model="intent" class="sr-only">
+              <span class="block text-sm font-semibold text-foreground">{{ label }}</span>
+              <span class="mt-1 block text-xs leading-5 text-muted-foreground">{{ description }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="text-sm font-medium text-foreground">Architecture scope</legend>
+          <p class="mt-1 text-xs text-muted-foreground">Select every perspective needed to make the decision—not every layer in the framework.</p>
+          <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {% for value, label, description in layer_options %}
+            <label class="cursor-pointer rounded-lg border p-3 transition-colors"
+              :class="layers.includes('{{ value }}') ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/40'">
+              <input type="checkbox" value="{{ value }}" x-model="layers" class="sr-only">
+              <span class="block text-sm font-medium text-foreground">{{ label }}</span>
+              <span class="mt-1 block text-xs text-muted-foreground">{{ description }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="text-sm font-medium text-foreground">Useful deliverables</legend>
+          <p class="mt-1 text-xs text-muted-foreground">These are working outputs within the journey, not disconnected destinations.</p>
+          <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {% for value, label, icon in deliverable_options %}
+            <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-background p-3 hover:bg-muted/40">
+              <input type="checkbox" value="{{ value }}" x-model="deliverables" class="h-4 w-4 rounded border-input text-primary focus:ring-ring">
+              <i data-lucide="{{ icon }}" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+              <span class="text-sm text-foreground">{{ label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div>
+            <label for="journey-outcome" class="block text-sm font-medium text-foreground">Likely outcome</label>
+            <select id="journey-outcome" x-model="outcomeType"
+              class="mt-2 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="undecided">Decide during the journey</option>
+              <option value="architecture_only">Architecture and documents only</option>
+              <option value="no_change_recommended">No change recommended</option>
+              <option value="decision">Governed decision</option>
+              <option value="roadmap">Transition roadmap</option>
+              <option value="programme">Transformation programme</option>
+              <option value="solution">Solution design</option>
+            </select>
+          </div>
+          <button type="submit" :disabled="starting || !canStart"
+            class="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
+            <span x-text="starting ? 'Opening journey…' : 'Start architecture journey'"></span>
+            <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+        </div>
+        <p x-show="error" x-cloak class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis" role="alert" x-text="error"></p>
+      </form>
+
+      <aside class="space-y-4">
+        <div class="rounded-xl border border-border bg-card p-5">
+          <h2 class="text-sm font-semibold text-foreground">Bring evidence with you</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">Add documents, links, observations and existing models in the workspace. Each stays attached to the question or decision it supports.</p>
+          <div class="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <i data-lucide="paperclip" class="h-4 w-4" aria-hidden="true"></i>
+            Evidence register included in every journey
+          </div>
+        </div>
+        <div class="rounded-xl border border-border bg-muted/30 p-5">
+          <h2 class="text-sm font-semibold text-foreground">Need a solution specifically?</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">The existing solution-design journey remains available as a specialised path.</p>
+          <button type="button" @click="startSolution" :disabled="startingSolution"
+            class="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50">
+            <i data-lucide="boxes" class="h-4 w-4" aria-hidden="true"></i>
+            <span x-text="startingSolution ? 'Opening…' : 'Start solution design'"></span>
+          </button>
+        </div>
+      </aside>
+    </section>
+
+    <section aria-labelledby="resume-journeys-title">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h2 id="resume-journeys-title" class="text-lg font-semibold text-foreground">Resume your architecture work</h2>
+          <p class="mt-1 text-sm text-muted-foreground">Continue from the latest saved stage, with scope and evidence intact.</p>
+        </div>
+      </div>
+      {% if architecture_journeys %}
+      <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {% for journey in architecture_journeys %}
+        <a href="{{ journey.resume_path }}" class="group rounded-xl border border-border bg-card p-5 hover:border-primary/40 hover:shadow-sm">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-foreground">{{ journey.title }}</p>
+              <p class="mt-1 text-xs text-muted-foreground">{{ journey.intent|replace('_', ' ')|title }}</p>
+            </div>
+            <span class="rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">{{ journey.current_stage|title }}</span>
+          </div>
+          <div class="mt-4 flex flex-wrap gap-1.5">
+            {% for layer in journey.selected_layers %}
+            <span class="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{{ layer|title }}</span>
+            {% endfor %}
+          </div>
+          <p class="mt-4 flex items-center gap-2 text-xs font-medium text-primary">
+            Continue journey <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+          </p>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="mt-4 rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center">
+        <i data-lucide="compass" class="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+        <p class="mt-3 text-sm font-medium text-foreground">No architecture journeys yet</p>
+        <p class="mt-1 text-sm text-muted-foreground">Frame the change above and your work will remain here to resume.</p>
+      </div>
+      {% endif %}
+
+      {% if solutions %}
+      <details class="mt-4 rounded-xl border border-border bg-card p-4">
+        <summary class="cursor-pointer text-sm font-medium text-foreground">Resume legacy solution journeys ({{ solutions|length }})</summary>
+        <div class="mt-4 grid gap-2 md:grid-cols-2">
+          {% for solution in solutions %}
+          <a href="{{ url_for('architecture_journey.journey_page', solution_id=solution.id) }}" class="rounded-lg border border-border p-3 text-sm text-foreground hover:bg-muted/40">{{ solution.name }}</a>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/architecture_assistant/architecture_journey_hub.js') }}"></script>
+{% endblock %}

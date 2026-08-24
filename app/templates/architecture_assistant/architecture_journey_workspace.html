@@ -1,0 +1,150 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}{{ journey.title }} — Architecture Journey{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto" x-data='architectureJourneyWorkspace({{ journey.id }}, {{ journey.evidence_manifest|tojson }}, {{ journey.current_stage|tojson }})' x-cloak>
+  {{ page_header(
+    title=journey.title,
+    description=journey.intent|replace('_', ' ')|title,
+    breadcrumbs=[
+      {'label': 'Home', 'href': url_for('main.index')},
+      {'label': 'Architecture Journey', 'href': url_for('architecture_journey.index')},
+      {'label': journey.title}
+    ]
+  ) }}
+
+  <div class="p-4 sm:p-6 space-y-6">
+    <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="journey-progress-title">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current focus</p>
+          <h2 id="journey-progress-title" class="mt-1 text-lg font-semibold text-foreground" x-text="stageLabel"></h2>
+          <p class="mt-1 text-sm text-muted-foreground" x-text="stageGuidance"></p>
+        </div>
+        <button type="button" @click="advance" :disabled="saving || currentStage === 'deliver'"
+          class="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
+          <span x-text="currentStage === 'deliver' ? 'Journey ready to close' : 'Complete this stage'"></span>
+          <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <ol class="mt-6 grid grid-cols-5 gap-2" aria-label="Journey progress">
+        <template x-for="(stage, index) in stages" :key="stage.key">
+          <li class="relative">
+            <div class="h-1 rounded-full" :class="index <= stageIndex ? 'bg-primary' : 'bg-muted'"></div>
+            <p class="mt-2 text-xs" :class="index === stageIndex ? 'font-semibold text-foreground' : 'text-muted-foreground'" x-text="stage.label"></p>
+          </li>
+        </template>
+      </ol>
+    </section>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <main class="space-y-6">
+        <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="scope-title">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="scope-title" class="text-lg font-semibold text-foreground">Architecture scope</h2>
+              <p class="mt-1 text-sm text-muted-foreground">The perspectives this journey must reconcile.</p>
+            </div>
+            <a href="{{ url_for('architecture_journey.index', intent=journey.intent|replace('_', '-')) }}" class="text-sm font-medium text-primary hover:underline">Start another</a>
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {% for value, label, description in layer_options %}
+            <div class="rounded-lg border p-3 {{ 'border-primary bg-primary/5' if value in journey.selected_layers else 'border-border bg-muted/20 opacity-60' }}">
+              <p class="text-sm font-medium text-foreground">{{ label }}</p>
+              <p class="mt-1 text-xs text-muted-foreground">{{ description }}</p>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="deliverables-title">
+          <h2 id="deliverables-title" class="text-lg font-semibold text-foreground">Working outputs</h2>
+          <p class="mt-1 text-sm text-muted-foreground">Use the right modelling tool when the journey needs it. Outputs stay governed by this purpose.</p>
+          <div class="mt-4 divide-y divide-border rounded-lg border border-border">
+            {% for value, label, icon in deliverable_options if value in journey.selected_deliverables %}
+            <div class="flex items-center justify-between gap-4 p-4">
+              <div class="flex min-w-0 items-center gap-3">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                  <i data-lucide="{{ icon }}" class="h-4 w-4" aria-hidden="true"></i>
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-foreground">{{ label }}</p>
+                  <p class="text-xs text-muted-foreground">Planned deliverable</p>
+                </div>
+              </div>
+              {% if deliverable_tool_urls.get(value) %}
+              <a href="{{ deliverable_tool_urls[value] }}" class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground hover:bg-accent">Open tool</a>
+              {% else %}
+              <span class="rounded-md bg-muted px-2.5 py-1 text-xs text-muted-foreground">Build in journey</span>
+              {% endif %}
+            </div>
+            {% else %}
+            <div class="p-6 text-center">
+              <p class="text-sm font-medium text-foreground">No deliverables selected yet</p>
+              <p class="mt-1 text-sm text-muted-foreground">Define outputs when the decision requires them.</p>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+      </main>
+
+      <aside class="space-y-6">
+        <section class="rounded-xl border border-border bg-card p-5" aria-labelledby="evidence-title">
+          <h2 id="evidence-title" class="text-sm font-semibold text-foreground">Evidence register</h2>
+          <p class="mt-1 text-xs leading-5 text-muted-foreground">Register the document, model, link or observation that supports this journey.</p>
+
+          <form class="mt-4 space-y-3" @submit.prevent="addEvidence">
+            <div>
+              <label for="evidence-name" class="text-xs font-medium text-foreground">Evidence name</label>
+              <input id="evidence-name" type="text" x-model.trim="evidenceName" required maxlength="255"
+                class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="Operating model v3">
+            </div>
+            <div>
+              <label for="evidence-reference" class="text-xs font-medium text-foreground">Document or reference</label>
+              <input id="evidence-reference" type="text" x-model.trim="evidenceReference" required maxlength="1000"
+                class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="File name, repository path or URL">
+            </div>
+            <button type="submit" :disabled="savingEvidence || !evidenceName || !evidenceReference"
+              class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50">
+              <i data-lucide="paperclip" class="h-4 w-4" aria-hidden="true"></i>
+              Add evidence
+            </button>
+          </form>
+
+          <ul class="mt-4 space-y-2" aria-live="polite">
+            <template x-for="(item, index) in evidence" :key="index">
+              <li class="rounded-lg border border-border bg-muted/20 p-3">
+                <p class="break-words text-xs font-medium text-foreground" x-text="item.name"></p>
+                <p class="mt-1 break-words text-xs text-muted-foreground" x-text="item.reference"></p>
+              </li>
+            </template>
+          </ul>
+          <p x-show="!evidence.length" x-cloak class="mt-4 text-center text-xs text-muted-foreground">No evidence attached yet.</p>
+        </section>
+
+        <section class="rounded-xl border border-border bg-muted/30 p-5">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outcome</p>
+          <p class="mt-2 text-sm font-semibold text-foreground">{{ journey.outcome_type|replace('_', ' ')|title }}</p>
+          {% if journey.solution_id %}
+          <a href="{{ url_for('architecture_journey.journey_page', solution_id=journey.solution_id) }}" class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">Open linked solution <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i></a>
+          {% else %}
+          <p class="mt-2 text-xs leading-5 text-muted-foreground">No solution has been assumed or created. The journey can conclude with its architecture, decision, roadmap or programme.</p>
+          {% endif %}
+        </section>
+      </aside>
+    </div>
+
+    <p x-show="error" x-cloak class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis" role="alert" x-text="error"></p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/architecture_assistant/architecture_journey_workspace.js') }}"></script>
+{% endblock %}

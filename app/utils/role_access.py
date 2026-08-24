@@ -429,7 +429,7 @@ _MY_WORK_LINKS = {
         # never that a page was missing, it was that twelve outputs were spread
         # over five generic zones with no page that presents them as one
         # practice. /business-architecture is that page.
-        _link("Business Architecture", "business_architecture.index", "compass"),
+        _link("Architecture Journey", "architecture_journey.index", "compass"),
         _link("Capability Map", "capability_map.index", "map"),
         # Points at the heatmap, NOT frameworks_overview. That was the only
         # maturity link this persona had, it is labelled "Frameworks" rather
@@ -512,7 +512,7 @@ _MY_WORK_LINKS = {
         # app/models/user.py), so a page that exists only for the two architect
         # roles is invisible to most real accounts. Rendered total for this
         # role goes 25 -> 26, still under SIDEBAR_LINK_BUDGET (27).
-        _link("Business Architecture", "business_architecture.index", "compass"),
+        _link("Architecture Journey", "architecture_journey.index", "compass"),
     ],
 }
 

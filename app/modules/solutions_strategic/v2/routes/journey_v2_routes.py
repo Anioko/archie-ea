@@ -6,12 +6,19 @@ Blueprint: architecture_journey_bp, url_prefix=/architecture-journey
 import logging
 from functools import wraps
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db
 from app.core.api.response import api_error, api_success
 from app.models.solution_models import Solution
+from app.models.architecture_journey import (
+    ARCHITECTURE_LAYERS,
+    JOURNEY_INTENTS,
+    JOURNEY_STAGES,
+    OUTCOME_TYPES,
+    ArchitectureJourney,
+)
 from app.models.solution_archimate_element import SolutionArchiMateElement
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 from app.models.architecture_inference_relationship import ArchitectureInferenceRelationship
@@ -23,6 +30,137 @@ architecture_journey_bp = Blueprint("architecture_journey", __name__, url_prefix
 
 # Legacy alias — keeps imports in __init__.py working during rename
 journey_v2_bp = architecture_journey_bp
+
+JOURNEY_INTENT_OPTIONS = (
+    ("business_transformation", "Transform how the business works", "Redesign capabilities, value streams, organisation and outcomes."),
+    ("operating_model", "Shape an operating model", "Align people, process, information, locations and governance."),
+    ("strategy_to_execution", "Turn strategy into execution", "Trace goals to capabilities, investments, work and measures."),
+    ("portfolio_change", "Change a portfolio", "Assess application, data or technology change across the estate."),
+    ("risk_and_compliance", "Respond to risk or regulation", "Frame obligations, controls, decisions and evidence."),
+    ("architecture_assessment", "Assess an architecture", "Understand current state, gaps, dependencies and options."),
+    ("solution_design", "Design a solution", "Use the specialised solution path through design and ARB review."),
+)
+
+JOURNEY_LAYER_OPTIONS = (
+    ("motivation", "Motivation", "Why change"),
+    ("strategy", "Strategy", "What direction"),
+    ("business", "Business", "How value is created"),
+    ("data", "Data", "What information matters"),
+    ("application", "Application", "What enables the work"),
+    ("technology", "Technology", "What the estate runs on"),
+    ("implementation", "Implementation", "How change is delivered"),
+    ("governance", "Governance", "How decisions are assured"),
+)
+
+JOURNEY_DELIVERABLE_OPTIONS = (
+    ("architecture_definition", "Architecture definition document", "file-text"),
+    ("capability_map", "Capability map", "map"),
+    ("capability_maturity", "Capability maturity assessment", "thermometer"),
+    ("value_stream", "Value-stream model", "waypoints"),
+    ("product_service_catalogue", "Product and service catalogue", "package"),
+    ("operating_model", "Operating-model assessment", "building-2"),
+    ("stakeholder_map", "Stakeholder map", "users"),
+    ("organisation_ownership", "Organisation and ownership model", "network"),
+    ("information_map", "Information and data map", "database"),
+    ("outcome_scorecard", "Outcome and KPI scorecard", "gauge"),
+    ("strategy_traceability", "Strategy-to-execution traceability", "git-branch"),
+    ("initiative_alignment", "Initiative and project alignment", "layout-dashboard"),
+    ("options_assessment", "Options and trade-off assessment", "scale"),
+    ("roadmap", "Transition roadmap", "milestone"),
+    ("decision_record", "Architecture decision record", "gavel"),
+    ("governance_pack", "Governance evidence pack", "shield-check"),
+    ("business_case", "Business case", "briefcase-business"),
+    ("solution_blueprint", "Solution blueprint", "boxes"),
+)
+
+DELIVERABLE_TOOL_ENDPOINTS = {
+    "capability_map": "capability_map.index",
+    "capability_maturity": "maturity_management.maturity_heatmap",
+    "value_stream": "value_stream.index",
+    "product_service_catalogue": "archimate_layers.business_products",
+    "operating_model": "business_model.index",
+    "stakeholder_map": "stakeholder_map.stakeholder_map_page",
+    "organisation_ownership": "organization.index",
+    "information_map": "data_architecture.data_architecture_dashboard",
+    "outcome_scorecard": "dashboard.health_scorecard",
+    "strategy_traceability": "enterprise.strategic_planning_dashboard",
+    "initiative_alignment": "portfolio.index",
+    "roadmap": "enterprise.gap_analysis",
+    "decision_record": "arch_decisions.list_decisions",
+    "governance_pack": "governance.dashboard",
+    "business_case": "business_case.index",
+}
+
+
+def _available_deliverable_tools():
+    """Build only links whose optional blueprint registered successfully."""
+    return {
+        deliverable: url_for(endpoint)
+        for deliverable, endpoint in DELIVERABLE_TOOL_ENDPOINTS.items()
+        if endpoint in current_app.view_functions
+    }
+
+
+def _validate_evidence_manifest(value):
+    from app.models.ai_chat_document import AIChatDocumentUpload
+
+    if not isinstance(value, list) or len(value) > 50:
+        return None, "Evidence must be a list of no more than 50 records"
+    cleaned = []
+    for item in value:
+        if not isinstance(item, dict):
+            return None, "Each evidence record must be an object"
+        kind = item.get("kind")
+        name = item.get("name")
+        reference = item.get("reference")
+        document_id = item.get("document_id")
+        if kind not in {"document_reference", "observation", "model", "decision"}:
+            return None, "Evidence kind is invalid"
+        if not isinstance(name, str) or not name.strip() or len(name) > 255:
+            return None, "Evidence name is required and must be 255 characters or fewer"
+        if reference is not None and (not isinstance(reference, str) or len(reference) > 1000):
+            return None, "Evidence reference must be 1000 characters or fewer"
+        if document_id is not None and not isinstance(document_id, int):
+            return None, "Evidence document_id must be an integer"
+        if document_id is not None:
+            document = AIChatDocumentUpload.query.filter_by(id=document_id).first()
+            if document is None:
+                return None, "Canonical evidence document was not found in this organization"
+            if document.uploaded_by_id != current_user.id and not current_user.is_admin():
+                return None, "Canonical evidence document is not available to this user"
+        if not reference and document_id is None:
+            return None, "Evidence needs a reference or canonical document_id"
+        cleaned.append({
+            "kind": kind,
+            "name": name.strip(),
+            "reference": reference.strip() if isinstance(reference, str) else None,
+            "document_id": document_id,
+        })
+    return cleaned, None
+
+
+def _validate_state(value):
+    import json
+    if not isinstance(value, dict):
+        return "Journey state must be an object"
+    if len(json.dumps(value)) > 65536:
+        return "Journey state exceeds the 64 KB limit"
+    return None
+
+
+def _require_journey_owner(view):
+    """Authorise access to a tenant-scoped journey owned by the current user."""
+    @wraps(view)
+    def decorated(journey_id, *args, **kwargs):
+        journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+        if (
+            journey.owner_id != current_user.id
+            and not current_user.is_admin()
+            and not getattr(current_user, "is_platform_admin", False)
+        ):
+            return api_error("Access denied: you do not own this journey", 403)
+        return view(journey_id, *args, **kwargs)
+    return decorated
 
 
 def _require_solution_owner(f):
@@ -97,7 +235,13 @@ def _advance_journey_state(solution_id, target_state_value):
 @journey_v2_bp.route("/")
 @login_required
 def index():
-    """Landing page — start or resume journey v2."""
+    """Purpose-led landing page — start or resume any architecture journey."""
+    journeys = (
+        ArchitectureJourney.query.filter_by(owner_id=current_user.id, status="active")
+        .order_by(ArchitectureJourney.updated_at.desc())
+        .limit(8)
+        .all()
+    )
     try:
         in_progress = (
             Solution.query.filter(
@@ -116,11 +260,150 @@ def index():
         db.session.rollback()
         in_progress = []
     return render_template(
-        "architecture_assistant/journey_v3.html",
+        "architecture_assistant/architecture_journey_hub.html",
+        architecture_journeys=journeys,
+        intent_options=JOURNEY_INTENT_OPTIONS,
+        layer_options=JOURNEY_LAYER_OPTIONS,
+        deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
+        requested_intent=(request.args.get("intent") or "").replace("-", "_"),
         solutions=in_progress,
         solution_id=None,
         has_acm_domains=False,
     )
+
+
+@journey_v2_bp.route("/start-architecture", methods=["POST"])
+@login_required
+def start_architecture_journey():
+    """Create a durable journey without creating a Solution."""
+    data = request.get_json(silent=True) or {}
+    title_value = data.get("title")
+    intent_value = data.get("intent")
+    outcome_value = data.get("outcome_type", "undecided")
+    title = title_value.strip() if isinstance(title_value, str) else ""
+    intent = intent_value.strip().replace("-", "_") if isinstance(intent_value, str) else ""
+    outcome_type = outcome_value.strip() if isinstance(outcome_value, str) else ""
+    raw_layers = data.get("selected_layers")
+    raw_deliverables = data.get("selected_deliverables", [])
+    if (
+        not isinstance(raw_layers, list)
+        or len(raw_layers) > len(ARCHITECTURE_LAYERS)
+        or any(not isinstance(item, str) for item in raw_layers)
+    ):
+        return api_error("Architecture scope must be a bounded list", 400)
+    if (
+        not isinstance(raw_deliverables, list)
+        or len(raw_deliverables) > len(JOURNEY_DELIVERABLE_OPTIONS)
+        or any(not isinstance(item, str) for item in raw_deliverables)
+    ):
+        return api_error("Deliverables must be a bounded list", 400)
+    layers = list(dict.fromkeys(raw_layers))
+    deliverables = list(dict.fromkeys(raw_deliverables))
+
+    valid_deliverables = {item[0] for item in JOURNEY_DELIVERABLE_OPTIONS}
+    if not title or len(title) > 255:
+        return api_error("Give this journey a clear purpose", 400)
+    if intent not in JOURNEY_INTENTS:
+        return api_error("Choose a valid architecture purpose", 400)
+    if not layers or any(layer not in ARCHITECTURE_LAYERS for layer in layers):
+        return api_error("Choose at least one valid architecture scope", 400)
+    if any(item not in valid_deliverables for item in deliverables):
+        return api_error("Choose valid journey deliverables", 400)
+    if outcome_type not in OUTCOME_TYPES:
+        return api_error("Choose a valid outcome", 400)
+
+    journey = ArchitectureJourney(
+        owner_id=current_user.id,
+        organization_id=current_user.organization_id,
+        title=title,
+        intent=intent,
+        selected_layers=layers,
+        selected_deliverables=deliverables,
+        outcome_type=outcome_type,
+        evidence_manifest=[],
+        journey_state={"framing": {"purpose": title}},
+    )
+    db.session.add(journey)
+    db.session.commit()
+    return api_success(data={"journey_id": journey.id, "redirect": journey.resume_path}, status_code=201)
+
+
+@journey_v2_bp.route("/work/<int:journey_id>")
+@login_required
+@_require_journey_owner
+def architecture_journey_workspace(journey_id):
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    return render_template(
+        "architecture_assistant/architecture_journey_workspace.html",
+        journey=journey,
+        intent_options=JOURNEY_INTENT_OPTIONS,
+        layer_options=JOURNEY_LAYER_OPTIONS,
+        deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
+        deliverable_tool_urls=_available_deliverable_tools(),
+    )
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/state", methods=["PATCH"])
+@login_required
+@_require_journey_owner
+def update_architecture_journey(journey_id):
+    """Persist framing, evidence, deliverables and resume position."""
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+    allowed = {
+        "title", "selected_layers", "selected_deliverables", "outcome_type",
+        "evidence_manifest", "journey_state", "current_stage",
+    }
+    unknown = set(data) - allowed
+    if unknown:
+        return api_error(f"Unsupported journey fields: {', '.join(sorted(unknown))}", 400)
+    if "title" in data and (
+        not isinstance(data["title"], str)
+        or not data["title"].strip()
+        or len(data["title"].strip()) > 255
+    ):
+        return api_error("Journey title cannot be empty", 400)
+    if "selected_layers" in data:
+        if (
+            not isinstance(data["selected_layers"], list)
+            or len(data["selected_layers"]) > len(ARCHITECTURE_LAYERS)
+            or any(not isinstance(item, str) for item in data["selected_layers"])
+        ):
+            return api_error("Architecture scope must be a bounded list", 400)
+        layers = list(dict.fromkeys(data["selected_layers"] or []))
+        if not layers or any(layer not in ARCHITECTURE_LAYERS for layer in layers):
+            return api_error("Choose at least one valid architecture scope", 400)
+        journey.selected_layers = layers
+    if "selected_deliverables" in data:
+        if (
+            not isinstance(data["selected_deliverables"], list)
+            or len(data["selected_deliverables"]) > len(JOURNEY_DELIVERABLE_OPTIONS)
+            or any(not isinstance(item, str) for item in data["selected_deliverables"])
+        ):
+            return api_error("Deliverables must be a bounded list", 400)
+        deliverables = list(dict.fromkeys(data["selected_deliverables"] or []))
+        valid_deliverables = {item[0] for item in JOURNEY_DELIVERABLE_OPTIONS}
+        if any(item not in valid_deliverables for item in deliverables):
+            return api_error("Choose valid journey deliverables", 400)
+        journey.selected_deliverables = deliverables
+    if "outcome_type" in data and data["outcome_type"] not in OUTCOME_TYPES:
+        return api_error("Choose a valid outcome", 400)
+    if "current_stage" in data and data["current_stage"] not in JOURNEY_STAGES:
+        return api_error("Choose a valid journey stage", 400)
+    if "journey_state" in data:
+        state_error = _validate_state(data["journey_state"])
+        if state_error:
+            return api_error(state_error, 400)
+    if "evidence_manifest" in data:
+        evidence, evidence_error = _validate_evidence_manifest(data["evidence_manifest"])
+        if evidence_error:
+            return api_error(evidence_error, 400)
+        journey.evidence_manifest = evidence
+    for field in allowed - {"selected_layers", "selected_deliverables", "evidence_manifest"}:
+        if field in data:
+            setattr(journey, field, str(data[field]).strip() if field == "title" else data[field])
+    db.session.commit()
+    return api_success(data={"journey_id": journey.id, "resume_path": journey.resume_path})
 
 
 @journey_v2_bp.route("/start", methods=["POST"])
