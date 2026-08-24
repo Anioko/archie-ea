@@ -192,10 +192,13 @@ def test_pre_task6_evidence_waiver_constraint_reconciles_idempotently(
         assert dry_failed
         assert all(
             item.startswith("transformation_db_guards:function_missing:")
-            or item == (
+            or item
+            in {
                 "transformation_db_guards:"
-                "table_missing:archie_command_capability_keys"
-            )
+                "table_missing:archie_command_capability_keys",
+                "transformation_db_guards:"
+                "table_missing:archie_command_claim_challenges",
+            }
             for item in dry_failed
         )
         assert f"{label} :: CHECK NOT VALID THEN VALIDATE" in dry_added
@@ -386,10 +389,13 @@ def test_genuine_pre_feature_schema_backfills_roadmap_and_repairs_delivery_fks(
         assert dry_failed
         assert all(
             item.startswith("transformation_db_guards:function_missing:")
-            or item == (
+            or item
+            in {
                 "transformation_db_guards:"
-                "table_missing:archie_command_capability_keys"
-            )
+                "table_missing:archie_command_capability_keys",
+                "transformation_db_guards:"
+                "table_missing:archie_command_claim_challenges",
+            }
             for item in dry_failed
         )
         assert any(
