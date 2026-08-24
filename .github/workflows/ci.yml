@@ -68,8 +68,11 @@ jobs:
   static-gates:
     name: Static gates (compile + ratchets)
     runs-on: ubuntu-latest
-    # No database, no app boot: seconds, not minutes. Fails fast on the cheapest
-    # signal before the heavier jobs spend time.
+    # The static tag includes route/navigation and CSRF coverage, which import
+    # the real app, plus the reproducible CSS build. Install the application
+    # dependencies and the exact standalone Tailwind binary those gates need;
+    # a minimal lint-only environment turns missing dependencies into false
+    # failures and silently skips CSS verification.
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -77,13 +80,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - name: Install gate tooling
-        # Ruff, pip-audit — and jinja2, because the check_* scripts are NOT all
-        # stdlib-only as this comment used to claim. Two gates parse templates.
-        # Without jinja2, check_template_syntax printed "0" and returned success,
-        # so a must-be-zero gate protecting against a template that 500s every
-        # page using it reported a clean measurement having parsed nothing. It
-        # now fails loudly instead, which is why this dependency is explicit.
-        run: python -m pip install --upgrade pip "ruff==${RUFF_VERSION}" pip-audit jinja2
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "ruff==${RUFF_VERSION}" pip-audit
+          mkdir -p scripts/bin
+          curl --fail --location --retry 3 \
+            --output scripts/bin/tailwindcss \
+            https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64
+          chmod +x scripts/bin/tailwindcss
       - name: Compile + lint ratchets + design tokens + air-gap
         run: python scripts/verify.py --tag static
       - name: Dependency CVE gate
