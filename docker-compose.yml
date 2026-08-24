@@ -3,7 +3,7 @@ services:
   database-bootstrap:
     build:
       context: .
-    command: python scripts/database/configure_roles.py
+    command: python -m scripts.database.configure_roles
     restart: "no"
     volumes:
       - './:/app'
@@ -36,7 +36,7 @@ services:
   database-acl:
     build:
       context: .
-    command: python scripts/database/configure_roles.py
+    command: python -m scripts.database.configure_roles
     restart: "no"
     volumes:
       - './:/app'

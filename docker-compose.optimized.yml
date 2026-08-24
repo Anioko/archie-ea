@@ -46,7 +46,7 @@ services:
       context: .
       dockerfile: Dockerfile.optimized
       target: runtime
-    command: python scripts/database/configure_roles.py
+    command: python -m scripts.database.configure_roles
     environment:
       - DATABASE_ADMIN_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       - DATABASE_NAMES=flask_app
@@ -83,7 +83,7 @@ services:
       context: .
       dockerfile: Dockerfile.optimized
       target: runtime
-    command: python scripts/database/configure_roles.py
+    command: python -m scripts.database.configure_roles
     environment:
       - DATABASE_ADMIN_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       - DATABASE_NAMES=flask_app
