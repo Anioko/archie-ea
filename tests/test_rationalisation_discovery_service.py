@@ -20,6 +20,8 @@ from app import db
 from app.models.application_capability import ApplicationCapabilityMapping
 from app.models.application_portfolio import ApplicationComponent
 from app.models.application_rationalization import ApplicationDependency
+from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+from app.models.archimate_relationship_sync import _ensure_relationship
 from app.models.business_capabilities import BusinessCapability
 from app.models.organization import Organization
 from app.models.transformation_db_guards import ensure_transformation_db_guards
@@ -213,6 +215,25 @@ def _justified_distinct(scope: DiscoveryScope):
     }
 
 
+def test_capability_archimate_element_inherits_tenant(db_session):
+    scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
+
+    capability = db_session.get(BusinessCapability, scope.capability_id)
+    element = db_session.get(ArchiMateElement, capability.archimate_element_id)
+
+    assert element is not None
+    assert element.organization_id == scope.organization_id
+    relationships = db_session.scalars(
+        select(ArchiMateRelationship).where(
+            ArchiMateRelationship.target_id == element.id,
+        )
+    ).all()
+    assert relationships
+    assert {relationship.organization_id for relationship in relationships} == {
+        scope.organization_id
+    }
+
+
 def test_discovery_exposes_seven_real_signals_and_writes_nothing(db_session):
     """Catches opaque scores, fabricated fallbacks, unstable order, or read-side writes."""
     scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
@@ -351,10 +372,10 @@ def test_supported_categories_are_normalized_before_digesting(db_session):
     assert signals["technical_health"].confidence == 1
 
 
-def test_capability_signal_excludes_corrupt_cross_tenant_mapping(
+def test_capability_signal_rejects_cross_tenant_mapping_and_excludes_it(
     db_session, make_org
 ):
-    """Catches a tenant-owned mapping leaking a foreign capability citation."""
+    """A cross-tenant mapping cannot commit or leak a foreign citation."""
     scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
     target_mapping = db_session.scalar(
         select(ApplicationCapabilityMapping).where(
@@ -379,8 +400,13 @@ def test_capability_signal_excludes_corrupt_cross_tenant_mapping(
         coverage_percentage=100,
         is_active=True,
     )
-    db_session.add(corrupt_mapping)
-    db_session.flush()
+    savepoint = db_session.begin_nested()
+    try:
+        db_session.add(corrupt_mapping)
+        with pytest.raises(ValueError, match="must share a tenant"):
+            db_session.flush()
+    finally:
+        savepoint.rollback()
 
     target = next(
         item for item in _discover(scope) if item.application_id == scope.application_id
@@ -402,6 +428,32 @@ def test_capability_signal_excludes_corrupt_cross_tenant_mapping(
     assert corrupt_mapping.id not in signal.source_record_ids.get(
         "application_capability_mapping", ()
     )
+
+
+def test_relationship_sync_rejects_foreign_same_tenant_endpoints(
+    db_session, make_org, tenant_ctx
+):
+    scope = _seed_scope(db_session, suffix=uuid.uuid4().hex[:10])
+    application = db_session.get(ApplicationComponent, scope.application_id)
+    capability = db_session.get(BusinessCapability, scope.capability_id)
+    active_org = make_org("relationship-active")
+
+    with tenant_ctx(active_org.id):
+        with pytest.raises(ValueError, match="outside the active tenant"):
+            _ensure_relationship(
+                db_session,
+                "serving",
+                application.archimate_element_id,
+                capability.archimate_element_id,
+            )
+    with pytest.raises(ValueError, match="outside the active tenant"):
+        _ensure_relationship(
+            db_session,
+            "serving",
+            application.archimate_element_id,
+            capability.archimate_element_id,
+            expected_organization_id=active_org.id,
+        )
 
 
 @pytest.fixture
