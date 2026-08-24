@@ -350,7 +350,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: smoke-failures
-          path: tests/smoke/_shots/
+          path: |
+            tests/smoke/_shots/
+            /tmp/smoke-server-*.log
           if-no-files-found: ignore
           retention-days: 7
 
