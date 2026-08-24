@@ -208,7 +208,7 @@ def test_business_architect_my_work_membership():
     link had removed frameworks_overview from every sidebar zone, regressing the
     S-11 finding above — the full suite caught it; the targeted runs did not."""
     assert _my_work_labels(ROLE_BUSINESS_ARCHITECT) == [
-        "Business Architecture",
+        "Architecture Journey",
         "Capability Map",
         "Capability Maturity",
         "Capability Frameworks",

@@ -816,6 +816,11 @@ def list_elements(layer, element_type):
         )
 
     initial_layer, initial_element_type = _validated_layer_filter(layer, element_type)
+    presentation_config = {
+        key: {**config, **LAYER_PRESENTATION[key], "key": key}
+        for key, config in LAYER_CONFIG.items()
+    }
+    selected_key = initial_layer or "motivation"
     return render_template(
         "archimate_crud/dashboard.html",
         layer=layer,
@@ -824,7 +829,8 @@ def list_elements(layer, element_type):
         pagination=pagination,
         search=search,
         view_mode=view_mode,
-        layer_config=LAYER_CONFIG,
+        layer_config=presentation_config,
+        selected_layer=presentation_config[selected_key],
         # dashboard.html is an Alpine app that fetches its own rows; without
         # these it would ignore the path it was reached by and open on the
         # default tab, showing a different layer than the URL asked for.

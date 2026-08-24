@@ -11,7 +11,7 @@ business_architecture_bp = Blueprint(
 
 @business_architecture_bp.route("/")
 @login_required
-def index():
+def redirect_to_architecture_journey():
     """Preserve bookmarked intent while moving work to Architecture Journey."""
     return redirect(
         url_for("architecture_journey.index", intent="business-transformation"),

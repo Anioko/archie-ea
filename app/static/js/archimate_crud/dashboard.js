@@ -532,15 +532,20 @@ document.addEventListener('alpine:init', function() {
                     let layerKey = layerKeys[i];
                     try {
                         let count = null;
-                        let resp = await fetch(
-                            '/architecture/api/layer/' + layerKey + '/count',
-                            { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
-                        );
-                        if (resp.ok) {
+                        try {
+                            let resp = await fetch( // raw-fetch-ok: raw status selects the legacy endpoint fallback
+                                '/architecture/api/layer/' + layerKey + '/count',
+                                { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+                            );
+                            if (!resp.ok) throw new Error('HTTP ' + resp.status);
                             let data = await resp.json();
                             // Unwrap success_response wrapper if present (per CLAUDE.md convention)
                             let payload = data.data || data;
                             count = typeof payload.total === 'number' ? payload.total : null;
+                        } catch (countError) {
+                            // A failed count request is explicitly handled by the
+                            // compatible elements endpoint immediately below.
+                            count = null;
                         }
                         if (count === null) {
                             // Fallback: elements endpoint
