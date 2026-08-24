@@ -20,11 +20,12 @@ import logging
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app import db
 from app.models.solution_models import Solution, SolutionFitGapEntry
 from app.models.strategic import StrategicInitiative
+from app.models.transformation_programme import ProgrammeWorkstream
 
 logger = logging.getLogger(__name__)
 
@@ -125,13 +126,28 @@ class ProgrammeGovernanceService:
                 func.count(Solution.id),
             )
             .outerjoin(Solution, Solution.initiative_id == StrategicInitiative.id)
-            .filter(StrategicInitiative.initiative_type.isnot(None))
+            .filter(
+                or_(
+                    StrategicInitiative.record_kind == "transformation_programme",
+                    StrategicInitiative.initiative_type.isnot(None),
+                )
+            )
             .group_by(StrategicInitiative.id)
             .order_by(StrategicInitiative.created_at.desc())
             .all()
         )
         out = []
         for initiative, member_count in rows:
+            is_transformation = (
+                initiative.record_kind == "transformation_programme"
+            )
+            workstream_count = None
+            if is_transformation:
+                workstream_count = ProgrammeWorkstream.query.filter(
+                    ProgrammeWorkstream.organization_id
+                    == initiative.organization_id,
+                    ProgrammeWorkstream.programme_id == initiative.id,
+                ).count()
             out.append({
                 "id": initiative.id,
                 "name": initiative.name,
@@ -147,6 +163,8 @@ class ProgrammeGovernanceService:
                     if initiative.target_completion_date else None
                 ),
                 "member_count": member_count,
+                "workstream_count": workstream_count,
+                "is_transformation": is_transformation,
             })
         return out
 

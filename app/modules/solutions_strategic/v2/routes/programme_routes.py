@@ -17,7 +17,7 @@ APIs:
 
 import logging
 
-from flask import jsonify, render_template, request
+from flask import g, jsonify, redirect, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
@@ -85,7 +85,22 @@ def architect_synthesis():
         ChiefArchitectService,
     )
 
+    from app.modules.transformation_room.domain import TransformationError
+    from app.modules.transformation_room.read_models import (
+        ChiefArchitectTransformationReadModel,
+    )
+    from app.modules.transformation_room.routes import actor_from_request
+
     synthesis = ChiefArchitectService.portfolio_synthesis()
+    try:
+        transformation = ChiefArchitectTransformationReadModel.portfolio(
+            actor=actor_from_request()
+        )
+        synthesis["transformation"] = (
+            ChiefArchitectTransformationReadModel.to_template(transformation)
+        )
+    except TransformationError as error:
+        synthesis["transformation"] = _unavailable_transformation_posture(error.reason)
     return render_template("solutions/architect_synthesis.html", synthesis=synthesis)
 
 
@@ -96,7 +111,37 @@ def architect_synthesis_api():
         ChiefArchitectService,
     )
 
-    return jsonify(ChiefArchitectService.portfolio_synthesis())
+    from app.modules.transformation_room.domain import TransformationError
+    from app.modules.transformation_room.read_models import (
+        ChiefArchitectTransformationReadModel,
+    )
+    from app.modules.transformation_room.routes import actor_from_request
+
+    synthesis = ChiefArchitectService.portfolio_synthesis()
+    try:
+        transformation = ChiefArchitectTransformationReadModel.portfolio(
+            actor=actor_from_request()
+        )
+        synthesis["transformation"] = (
+            ChiefArchitectTransformationReadModel.to_template(transformation)
+        )
+    except TransformationError as error:
+        synthesis["transformation"] = _unavailable_transformation_posture(error.reason)
+    return jsonify(synthesis)
+
+
+def _unavailable_transformation_posture(reason):
+    unavailable = {"value": None, "reason": reason}
+    return {
+        "state": "not_authorised",
+        "programme_count": None,
+        "non_solution_programmes": None,
+        "evidence_debt": dict(unavailable),
+        "decision_ageing": dict(unavailable),
+        "cross_domain_dependencies": dict(unavailable),
+        "delivery_confidence": dict(unavailable),
+        "outcome_variance": dict(unavailable),
+    }
 
 
 # ── AI-6: Escalate an AI finding to the ARB ──────────────────────────── #
@@ -359,6 +404,14 @@ def programme_drift(initiative_id):
 @login_required
 def programme_cockpit(initiative_id):
     """Programme governance cockpit."""
+    canonical = StrategicInitiative.query.filter(
+        StrategicInitiative.id == initiative_id,
+        StrategicInitiative.organization_id == getattr(g, "current_org_id", None),
+        StrategicInitiative.record_kind == "transformation_programme",
+    ).first()
+    if canonical is not None:
+        return redirect(f"/solutions/programmes/{canonical.id}/overview", code=302)
+
     from app.modules.solutions_strategic.v2.services.programme_governance_service import (
         ProgrammeGovernanceService,
     )
@@ -651,3 +704,13 @@ def programme_unassigned_solutions():
             for s in rows
         ]
     })
+
+
+# The Transformation Room shares the established solution-design URL space so
+# canonical programme links remain stable without introducing a competing
+# blueprint or breadcrumb hierarchy.
+from app.modules.transformation_room.routes import (  # noqa: E402
+    register_transformation_room_routes,
+)
+
+register_transformation_room_routes(solution_design_bp)

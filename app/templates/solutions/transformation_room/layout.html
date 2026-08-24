@@ -1,0 +1,55 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}{{ room.programme.name }} · Transformation Room{% endblock %}
+
+{% block content %}
+<main class="container mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+  {{ page_header(
+      title=room.programme.name,
+      description='Transformation Room · ' ~ room.stage_label,
+      breadcrumbs=[
+          {'label': 'Dashboard', 'href': url_for('main.index')},
+          {'label': 'Transformation programmes', 'href': url_for('solution_design.programmes_list')},
+          {'label': room.programme.name},
+          {'label': room.stage_label}
+      ]
+  ) }}
+
+  <nav aria-label="Transformation Room" class="mb-6 overflow-x-auto rounded-lg border border-border bg-card p-1">
+    <div class="flex min-w-max gap-1">
+      <a href="/solutions/programmes/{{ room.programme.id }}/overview" class="rounded-md px-3 py-2 text-sm font-medium {% if room.stage in [none, 'objective', 'discover', 'evidence', 'options'] %}bg-accent text-accent-foreground{% else %}text-muted-foreground hover:text-foreground{% endif %}">Transform</a>
+      {% if room.workstream %}
+      <a href="/solutions/programmes/{{ room.programme.id }}/workstreams/{{ room.workstream.id }}/decision" class="rounded-md px-3 py-2 text-sm font-medium {% if room.stage == 'decision' %}bg-accent text-accent-foreground{% else %}text-muted-foreground hover:text-foreground{% endif %}">Decisions</a>
+      <a href="/solutions/programmes/{{ room.programme.id }}/workstreams/{{ room.workstream.id }}/execute" class="rounded-md px-3 py-2 text-sm font-medium {% if room.stage == 'execute' %}bg-accent text-accent-foreground{% else %}text-muted-foreground hover:text-foreground{% endif %}">Execute</a>
+      <a href="/solutions/programmes/{{ room.programme.id }}/workstreams/{{ room.workstream.id }}/outcomes" class="rounded-md px-3 py-2 text-sm font-medium {% if room.stage == 'outcomes' %}bg-accent text-accent-foreground{% else %}text-muted-foreground hover:text-foreground{% endif %}">Outcomes</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  <section class="rounded-lg border border-border bg-card p-5 sm:p-6" aria-labelledby="programme-context-heading">
+    <h2 id="programme-context-heading" class="text-sm font-semibold text-foreground">Programme context</h2>
+    <dl class="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Objective</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.objective or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Lifecycle</dt><dd class="mt-1 text-sm text-foreground">{{ (room.header.lifecycle or '—')|replace('_', ' ')|title }}</dd></div>
+      <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Owner</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.owner or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next action</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.next_action or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence posture</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.evidence_posture or '—' }}</dd>{% if room.header.evidence_reason %}<p class="mt-1 text-xs text-muted-foreground">{{ room.header.evidence_reason }}</p>{% endif %}</div>
+      <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Expected outcome</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.expected_outcome or '—' }}</dd><p class="mt-1 text-xs text-muted-foreground">{{ room.header.expected_measure or 'No measure recorded.' }} · Baseline {{ room.header.baseline if room.header.baseline is not none else '—' }}</p>{% if room.header.baseline_reason %}<p class="mt-1 text-xs text-muted-foreground">{{ room.header.baseline_reason }}</p>{% endif %}</div>
+    </dl>
+  </section>
+
+  {% if room.workstream %}
+  <nav aria-label="Workstream stages" class="mt-6 overflow-x-auto border-b border-border">
+    <div class="flex min-w-max gap-5">
+      {% for item in room.stage_routes %}
+      <a href="/solutions/programmes/{{ room.programme.id }}/workstreams/{{ room.workstream.id }}/{{ item.key }}"
+         class="border-b-2 px-1 pb-3 text-sm font-medium {% if room.stage == item.key %}border-primary text-foreground{% else %}border-transparent text-muted-foreground hover:text-foreground{% endif %}">{{ item.label }}</a>
+      {% endfor %}
+    </div>
+  </nav>
+  {% endif %}
+
+  <div class="mt-6">{% block room_content %}{% endblock %}</div>
+</main>
+{% endblock %}
