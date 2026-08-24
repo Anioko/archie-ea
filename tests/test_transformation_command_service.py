@@ -94,7 +94,11 @@ def command_fixture(app, _schema):
         db.session.remove()
 
         original_lease = app.config.get("TRANSFORMATION_COMMAND_LEASE_SECONDS")
-        app.config["TRANSFORMATION_COMMAND_LEASE_SECONDS"] = 0.12
+        # Ordinary command tests must not turn into expiry tests merely because
+        # coverage instrumentation or a busy CI database takes over 120 ms.
+        # Tests that exercise reclamation expire their receipt explicitly via
+        # ``_wait_for_expiry`` below.
+        app.config["TRANSFORMATION_COMMAND_LEASE_SECONDS"] = 5.0
         fixture = CommandFixture(
             actor=ActorContext(
                 user_id=user_id,
@@ -216,20 +220,28 @@ def _receipt(fixture: CommandFixture, key="same"):
 
 
 def _wait_for_expiry(claim):
-    deadline = time.monotonic() + 2
-    while time.monotonic() < deadline:
-        with Session(db.engine) as session:
-            expired = session.scalar(
-                text(
-                    "SELECT lease_expires_at <= clock_timestamp() "
-                    "FROM command_idempotency_records WHERE id = :receipt_id"
-                ),
-                {"receipt_id": claim.receipt_id},
-            )
-        if expired:
-            return
-        time.sleep(0.02)
-    raise AssertionError("command lease did not expire")
+    with db.engine.begin() as connection:
+        # Test-only state construction: production guards correctly prohibit a
+        # caller from shortening its own live fence.  The database-owner test
+        # fixture bypasses triggers only to place this receipt in the state the
+        # reclamation path must handle.
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE command_idempotency_records "
+                "SET lease_expires_at = clock_timestamp() - interval '1 second' "
+                "WHERE id = :receipt_id"
+            ),
+            {"receipt_id": claim.receipt_id},
+        )
+        expired = connection.scalar(
+            text(
+                "SELECT lease_expires_at <= clock_timestamp() "
+                "FROM command_idempotency_records WHERE id = :receipt_id"
+            ),
+            {"receipt_id": claim.receipt_id},
+        )
+    assert expired is True
 
 
 @contextmanager
