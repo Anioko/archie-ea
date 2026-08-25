@@ -218,15 +218,16 @@ def _install_typed_schema(app):
 
 def _seed_org_user_model(cursor, label):
     suffix = uuid.uuid4().hex[:12]
+    safe_label = label[:20]
     cursor.execute(
         "INSERT INTO organizations (name, slug) VALUES (%s, %s) RETURNING id",
-        (f"Typed ARB {label} {suffix}", f"typed-arb-{label}-{suffix}"),
+        (f"Typed ARB {label} {suffix}", f"typed-arb-{safe_label}-{suffix}"),
     )
     organization_id = cursor.fetchone()[0]
     cursor.execute(
         "INSERT INTO users (organization_id, email, enterprise_role) "
         "VALUES (%s, %s, 'enterprise_architect') RETURNING id",
-        (organization_id, f"typed-arb-{label}-{suffix}@example.test"),
+        (organization_id, f"typed-arb-{safe_label}-{suffix}@example.test"),
     )
     user_id = cursor.fetchone()[0]
     cursor.execute(
@@ -306,6 +307,11 @@ def _insert_model_review(
     status="submitted",
 ):
     cursor.execute(
+        "SELECT review_number FROM arb_review_cycles WHERE id = %s",
+        (cycle_id,),
+    )
+    review_number = cursor.fetchone()[0]
+    cursor.execute(
         """
         INSERT INTO arb_review_items (
             organization_id, review_number, title, review_type, submitter_id,
@@ -318,13 +324,321 @@ def _insert_model_review(
         """,
         (
             organization_id,
-            f"REV-{uuid.uuid4().hex[:20]}",
+            review_number,
             user_id,
             model_id,
             model_id,
             snapshot_id,
             cycle_id,
             status,
+        ),
+    )
+    return cursor.fetchone()[0]
+
+
+def _seed_decision_brief(cursor, organization_id, user_id, label):
+    suffix = uuid.uuid4().hex[:10]
+    cursor.execute(
+        "INSERT INTO strategic_initiatives (organization_id, name, record_kind) "
+        "VALUES (%s, %s, 'transformation_programme') RETURNING id",
+        (organization_id, f"Typed programme {label} {suffix}"),
+    )
+    programme_id = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        INSERT INTO programme_workstreams (
+            organization_id, programme_id, workstream_type, objective,
+            scope_expression, lifecycle_stage, revision
+        ) VALUES (
+            %s, %s, 'application_rationalisation', %s, '{}'::json,
+            'decision_ready', 1
+        ) RETURNING id
+        """,
+        (organization_id, programme_id, f"Typed objective {suffix}"),
+    )
+    workstream_id = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        INSERT INTO transformation_options (
+            organization_id, workstream_id, title, action_type, description,
+            assumptions, dependencies, impacts, risks,
+            affected_capability_ids, affected_value_stream_ids, revision
+        ) VALUES (
+            %s, %s, %s, 'invest', 'Typed option', '[]'::json, '[]'::json,
+            '[]'::json, '[]'::json, '[]'::json, '[]'::json, 1
+        ) RETURNING id
+        """,
+        (organization_id, workstream_id, f"Typed option {suffix}"),
+    )
+    option_id = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        INSERT INTO transformation_option_versions (
+            organization_id, option_id, workstream_id, version, source_revision,
+            content_json, cost_min, cost_max, benefit_min, benefit_max,
+            risk_min, risk_max, currency, technology_required, captured_by_id,
+            content_hash
+        ) VALUES (
+            %s, %s, %s, 1, 1, '{}'::json, 0, 0, 0, 0, 0, 0, 'GBP',
+            false, %s, %s
+        ) RETURNING id
+        """,
+        (organization_id, option_id, workstream_id, user_id, "b" * 64),
+    )
+    option_version_id = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        INSERT INTO decision_briefs (
+            organization_id, workstream_id, title, recommendation_option_id,
+            decision_authority_id, unknown_codes, conflicts, expected_impacts,
+            status, revision
+        ) VALUES (
+            %s, %s, %s, %s, %s, '[]'::json, '[]'::json, '[]'::json,
+            'frozen', 1
+        ) RETURNING id
+        """,
+        (
+            organization_id,
+            workstream_id,
+            f"Typed brief {suffix}",
+            option_id,
+            user_id,
+        ),
+    )
+    brief_id = cursor.fetchone()[0]
+    cursor.execute(
+        """
+        INSERT INTO decision_brief_versions (
+            organization_id, brief_id, workstream_id, version, source_revision,
+            frozen_payload, recommendation_option_version_id,
+            option_version_ids, cited_evidence_ids, outcome_ids, measure_ids,
+            policy_version, created_by_id, content_hash, canonical_document,
+            submitted_by_id, submitter_authorized, decision_authority_id,
+            human_reviewed_ai, blockers_cleared, unknowns_acknowledged
+        ) VALUES (
+            %s, %s, %s, 1, 1, '{}'::json, %s, %s::json, '[]'::json,
+            '[]'::json, '[]'::json, 'typed-arb-r1', %s, %s, '{}', %s,
+            true, %s, true, true, true
+        ) RETURNING id
+        """,
+        (
+            organization_id,
+            brief_id,
+            workstream_id,
+            option_version_id,
+            f"[{option_version_id}]",
+            user_id,
+            "c" * 64,
+            user_id,
+            user_id,
+        ),
+    )
+    return {
+        "subject_type": "decision_brief",
+        "subject_id": brief_id,
+        "organization_id": organization_id,
+        "evidence_id": cursor.fetchone()[0],
+    }
+
+
+def _seed_subject_material(cursor, subject_type, organization_id, user_id, label):
+    suffix = uuid.uuid4().hex[:10]
+    if subject_type == "decision_brief":
+        return _seed_decision_brief(cursor, organization_id, user_id, label)
+    if subject_type == "solution":
+        cursor.execute(
+            "INSERT INTO solutions (organization_id, name) VALUES (%s, %s) RETURNING id",
+            (organization_id, f"Typed solution {label} {suffix}"),
+        )
+    elif subject_type == "architecture_model":
+        cursor.execute(
+            "INSERT INTO architecture_models (organization_id, name, version) "
+            "VALUES (%s, %s, '1.0') RETURNING id",
+            (organization_id, f"Typed model {label} {suffix}"),
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT INTO architecture_decision_records (
+                organization_id, adr_number, title, status, context,
+                decision, rationale, consequences
+            ) VALUES (
+                %s, %s, %s, 'proposed', 'Typed context', 'Typed decision',
+                'Typed rationale', 'Typed consequences'
+            ) RETURNING id
+            """,
+            (organization_id, int(uuid.uuid4().hex[:7], 16), f"Typed ADR {label} {suffix}"),
+        )
+    return {
+        "subject_type": subject_type,
+        "subject_id": cursor.fetchone()[0],
+        "organization_id": organization_id,
+        "evidence_id": None,
+    }
+
+
+def _insert_typed_graph(
+    cursor,
+    *,
+    organization_id,
+    user_id,
+    subject,
+    evidence_subject=None,
+    cycle_number=1,
+    predecessor_cycle_id=None,
+    cycle_status="submitted",
+    closed_at=None,
+    terminal_outcome=None,
+    review_status=None,
+    review_decision=None,
+    cycle_review_number=None,
+    item_review_number=None,
+):
+    evidence_subject = evidence_subject or subject
+    review_status = review_status or cycle_status
+    cycle_review_number = cycle_review_number or f"CYCLE-{uuid.uuid4().hex[:20]}"
+    item_review_number = item_review_number or cycle_review_number
+    subject_type = subject["subject_type"]
+    subject_id = subject["subject_id"]
+    subject_columns = {
+        "decision_brief": "decision_brief_id",
+        "solution": "solution_id",
+        "architecture_model": "architecture_model_id",
+        "adr": "adr_id",
+    }
+    subject_column = subject_columns[subject_type]
+    evidence_column = {
+        "decision_brief": "decision_brief_version_id",
+        "solution": "solution_evidence_snapshot_id",
+        "architecture_model": "subject_evidence_snapshot_id",
+        "adr": "subject_evidence_snapshot_id",
+    }[subject_type]
+
+    if subject_type == "solution":
+        cursor.execute(
+            f"""
+            INSERT INTO arb_review_items (
+                organization_id, review_number, title, review_type, submitter_id,
+                {subject_column}, status
+            ) VALUES (%s, %s, 'Typed review', 'solution_design', %s, %s, %s)
+            RETURNING id
+            """,
+            (organization_id, item_review_number, user_id, subject_id, review_status),
+        )
+        review_id = cursor.fetchone()[0]
+        cursor.execute(
+            """
+            INSERT INTO arb_submission_evidence_snapshots (
+                organization_id, review_item_id, solution_id, schema_version,
+                captured_at, checks, artifacts, governance_result,
+                request_assertions, content_hash
+            ) VALUES (
+                %s, %s, %s, 1, clock_timestamp(), '{}'::json, '{}'::json,
+                '{}'::json, '{}'::json, %s
+            ) RETURNING id
+            """,
+            (
+                evidence_subject["organization_id"],
+                review_id,
+                evidence_subject["subject_id"],
+                "d" * 64,
+            ),
+        )
+        evidence_id = cursor.fetchone()[0]
+    elif subject_type == "decision_brief":
+        evidence_id = evidence_subject["evidence_id"]
+        review_id = None
+    else:
+        evidence_id = _insert_subject_snapshot(cursor, evidence_subject)
+        review_id = None
+
+    cursor.execute(
+        f"""
+        INSERT INTO arb_review_cycles (
+            organization_id, subject_type, subject_id, {subject_column},
+            {evidence_column}, review_number, cycle_number,
+            predecessor_cycle_id, status, opened_at, closed_at, terminal_outcome
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, clock_timestamp(),
+            %s, %s
+        ) RETURNING id
+        """,
+        (
+            organization_id,
+            subject_type,
+            subject_id,
+            subject_id,
+            evidence_id,
+            cycle_review_number,
+            cycle_number,
+            predecessor_cycle_id,
+            cycle_status,
+            closed_at,
+            terminal_outcome,
+        ),
+    )
+    cycle_id = cursor.fetchone()[0]
+    if review_id is None:
+        cursor.execute(
+            f"""
+            INSERT INTO arb_review_items (
+                organization_id, review_number, title, review_type, submitter_id,
+                subject_type, subject_id, {subject_column}, {evidence_column},
+                review_cycle_id, status, decision
+            ) VALUES (
+                %s, %s, 'Typed review', 'architecture_change', %s, %s, %s,
+                %s, %s, %s, %s, %s
+            ) RETURNING id
+            """,
+            (
+                organization_id,
+                item_review_number,
+                user_id,
+                subject_type,
+                subject_id,
+                subject_id,
+                evidence_id,
+                cycle_id,
+                review_status,
+                review_decision,
+            ),
+        )
+        review_id = cursor.fetchone()[0]
+    else:
+        cursor.execute(
+            f"""
+            UPDATE arb_review_items
+            SET subject_type = %s, subject_id = %s, {evidence_column} = %s,
+                review_cycle_id = %s, decision = %s
+            WHERE id = %s
+            """,
+            (subject_type, subject_id, evidence_id, cycle_id, review_decision, review_id),
+        )
+    return cycle_id, review_id, evidence_id
+
+
+def _insert_subject_snapshot(cursor, subject):
+    subject_type = subject["subject_type"]
+    subject_column = (
+        "architecture_model_id" if subject_type == "architecture_model" else "adr_id"
+    )
+    cursor.execute(
+        f"""
+        INSERT INTO arb_subject_evidence_snapshots (
+            organization_id, subject_type, subject_id, {subject_column},
+            schema_version, policy_version, captured_at, payload, citations,
+            content_hash
+        ) VALUES (
+            %s, %s, %s, %s, 1, 'typed-arb-r1', clock_timestamp(),
+            '{{}}'::json, '[]'::json, %s
+        ) RETURNING id
+        """,
+        (
+            subject["organization_id"],
+            subject_type,
+            subject["subject_id"],
+            subject["subject_id"],
+            "e" * 64,
         ),
     )
     return cursor.fetchone()[0]
@@ -437,7 +751,7 @@ def test_direct_cycle_commit_requires_review_status_projection(app, _schema):
             cycle_id=cycle_id,
         )
         cursor.execute(
-            "UPDATE arb_review_items SET status = 'in_review' WHERE id = %s",
+            "UPDATE arb_review_items SET status = 'under_review' WHERE id = %s",
             (review_id,),
         )
         with pytest.raises(psycopg2.Error, match="cycle review projection"):
@@ -534,6 +848,7 @@ def test_historical_unverified_cycle_validates_without_fabricated_snapshot(app, 
     try:
         cursor = raw.cursor()
         org_id, user_id, model_id = _seed_org_user_model(cursor, "historical-gap")
+        review_number = f"HIST-{uuid.uuid4().hex[:20]}"
         cursor.execute(
             """
             INSERT INTO arb_review_cycles (
@@ -548,7 +863,7 @@ def test_historical_unverified_cycle_validates_without_fabricated_snapshot(app, 
                 'historical_unverified'
             ) RETURNING id
             """,
-            (org_id, model_id, model_id, f"HIST-{uuid.uuid4().hex[:20]}"),
+            (org_id, model_id, model_id, review_number),
         )
         cycle_id = cursor.fetchone()[0]
         cursor.execute(
@@ -565,7 +880,7 @@ def test_historical_unverified_cycle_validates_without_fabricated_snapshot(app, 
             """,
             (
                 org_id,
-                f"REV-HIST-{uuid.uuid4().hex[:16]}",
+                review_number,
                 user_id,
                 model_id,
                 model_id,
@@ -589,6 +904,7 @@ def test_historical_solution_cycle_also_validates_without_fabricated_snapshot(ap
             (org_id, f"Historical solution {uuid.uuid4().hex[:10]}"),
         )
         solution_id = cursor.fetchone()[0]
+        review_number = f"HIST-{uuid.uuid4().hex[:20]}"
         cursor.execute(
             """
             INSERT INTO arb_review_cycles (
@@ -603,7 +919,7 @@ def test_historical_solution_cycle_also_validates_without_fabricated_snapshot(ap
                 'historical_unverified'
             ) RETURNING id
             """,
-            (org_id, solution_id, solution_id, f"HIST-{uuid.uuid4().hex[:20]}"),
+            (org_id, solution_id, solution_id, review_number),
         )
         cycle_id = cursor.fetchone()[0]
         cursor.execute(
@@ -618,7 +934,7 @@ def test_historical_solution_cycle_also_validates_without_fabricated_snapshot(ap
             """,
             (
                 org_id,
-                f"REV-HIST-{uuid.uuid4().hex[:16]}",
+                review_number,
                 user_id,
                 solution_id,
                 solution_id,
@@ -676,3 +992,351 @@ def test_direct_sql_cannot_rewrite_typed_snapshot_or_history(app, _schema, state
     finally:
         raw.rollback()
         raw.close()
+
+
+@pytest.mark.parametrize("subject_type", sorted(SUBJECT_TYPES))
+def test_direct_commit_accepts_each_verified_typed_subject(app, _schema, subject_type):
+    """Every adapter shape has one valid direct-commit proof."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, f"valid-{subject_type}")
+        subject = _seed_subject_material(cursor, subject_type, org_id, user_id, "valid")
+        _insert_typed_graph(
+            cursor,
+            organization_id=org_id,
+            user_id=user_id,
+            subject=subject,
+        )
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+@pytest.mark.parametrize("subject_type", sorted(SUBJECT_TYPES))
+@pytest.mark.parametrize("invalidity", ("cross_tenant", "wrong_evidence"))
+def test_direct_commit_rejects_all_typed_membership_mismatches(
+    app, _schema, subject_type, invalidity
+):
+    """All adapters repeat tenant and pinned-evidence membership at commit."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_a, user_a, _model_a = _seed_org_user_model(
+            cursor, f"matrix-a-{subject_type}-{invalidity}"
+        )
+        if invalidity == "cross_tenant":
+            org_b, user_b, _model_b = _seed_org_user_model(
+                cursor, f"matrix-b-{subject_type}"
+            )
+            subject = _seed_subject_material(cursor, subject_type, org_b, user_b, "foreign")
+            evidence_subject = subject
+        else:
+            subject = _seed_subject_material(cursor, subject_type, org_a, user_a, "subject")
+            evidence_subject = _seed_subject_material(
+                cursor, subject_type, org_a, user_a, "wrong-evidence"
+            )
+        _insert_typed_graph(
+            cursor,
+            organization_id=org_a,
+            user_id=user_a,
+            subject=subject,
+            evidence_subject=evidence_subject,
+        )
+        with pytest.raises(psycopg2.Error, match="outside its tenant|does not belong"):
+            raw.commit()
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+@pytest.mark.parametrize("subject_type", sorted(SUBJECT_TYPES))
+def test_parent_subject_cannot_be_retenanted_away_from_committed_cycle(
+    app, _schema, subject_type
+):
+    """Changing a parent tenant must not silently invalidate committed typed history."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_a, user_a, _model_a = _seed_org_user_model(cursor, f"retenant-{subject_type}")
+        org_b, _user_b, _model_b = _seed_org_user_model(cursor, f"retenant-target-{subject_type}")
+        subject = _seed_subject_material(cursor, subject_type, org_a, user_a, "retenant")
+        _insert_typed_graph(
+            cursor,
+            organization_id=org_a,
+            user_id=user_a,
+            subject=subject,
+        )
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        table = {
+            "decision_brief": "decision_briefs",
+            "solution": "solutions",
+            "architecture_model": "architecture_models",
+            "adr": "architecture_decision_records",
+        }[subject_type]
+        with pytest.raises(psycopg2.Error, match="tenant.*typed ARB|typed ARB.*tenant"):
+            cursor.execute(
+                f"UPDATE {table} SET organization_id = %s WHERE id = %s",
+                (org_b, subject["subject_id"]),
+            )
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+@pytest.mark.parametrize(
+    ("terminal_outcome", "review_decision"),
+    (("approved", None), ("historical_unverified", "approved")),
+)
+def test_historical_unverified_cannot_carry_canonical_decision(
+    app, _schema, terminal_outcome, review_decision
+):
+    """Unverified imports cannot project an approval or other verified decision."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "historical-decision")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "historical")
+        with pytest.raises(psycopg2.Error):
+            _insert_historical_graph(
+                cursor,
+                organization_id=org_id,
+                user_id=user_id,
+                subject=subject,
+                terminal_outcome=terminal_outcome,
+                review_decision=review_decision,
+            )
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def _insert_historical_graph(
+    cursor,
+    *,
+    organization_id,
+    user_id,
+    subject,
+    terminal_outcome="historical_unverified",
+    review_decision=None,
+):
+    subject_type = subject["subject_type"]
+    subject_column = {
+        "solution": "solution_id",
+        "architecture_model": "architecture_model_id",
+        "adr": "adr_id",
+    }[subject_type]
+    review_number = f"HIST-{uuid.uuid4().hex[:20]}"
+    cursor.execute(
+        f"""
+        INSERT INTO arb_review_cycles (
+            organization_id, subject_type, subject_id, {subject_column},
+            review_number, cycle_number, status, migration_gap_reason,
+            legacy_source_type, legacy_source_id, opened_at, closed_at,
+            terminal_outcome
+        ) VALUES (
+            %s, %s, %s, %s, %s, 1, 'historical_unverified',
+            'legacy evidence unavailable', 'arb_review_item', 9911,
+            clock_timestamp(), clock_timestamp(), %s
+        ) RETURNING id
+        """,
+        (
+            organization_id,
+            subject_type,
+            subject["subject_id"],
+            subject["subject_id"],
+            review_number,
+            terminal_outcome,
+        ),
+    )
+    cycle_id = cursor.fetchone()[0]
+    cursor.execute(
+        f"""
+        INSERT INTO arb_review_items (
+            organization_id, review_number, title, review_type, submitter_id,
+            subject_type, subject_id, {subject_column}, review_cycle_id,
+            status, decision
+        ) VALUES (
+            %s, %s, 'Historical typed review', 'architecture_change', %s,
+            %s, %s, %s, %s, 'historical_unverified', %s
+        ) RETURNING id
+        """,
+        (
+            organization_id,
+            review_number,
+            user_id,
+            subject_type,
+            subject["subject_id"],
+            subject["subject_id"],
+            cycle_id,
+            review_decision,
+        ),
+    )
+    return cycle_id, cursor.fetchone()[0]
+
+
+def test_historical_unverified_adr_validates_without_fabricated_snapshot(app, _schema):
+    """ADR migration receives the same explicit, non-decision evidence-gap shape."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "historical-adr")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "historical")
+        _insert_historical_graph(
+            cursor, organization_id=org_id, user_id=user_id, subject=subject
+        )
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "title = 'Forged approval dossier'",
+        "decision = 'approved'",
+        "governance_checklist = '{}'::json",
+    ),
+)
+def test_linked_historical_review_rejects_every_post_insert_mutation(
+    app, _schema, mutation
+):
+    """Even non-projection edits cannot turn unverified history into governance truth."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "historical-mutation")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "historical")
+        _cycle_id, review_id = _insert_historical_graph(
+            cursor, organization_id=org_id, user_id=user_id, subject=subject
+        )
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        with pytest.raises(psycopg2.Error, match="historical.*immutable"):
+            cursor.execute(
+                f"UPDATE arb_review_items SET {mutation} WHERE id = %s",
+                (review_id,),
+            )
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def test_submitted_cycle_cannot_be_falsely_closed_to_open_successor(app, _schema):
+    """A closed timestamp alone cannot make an open-state cycle a valid predecessor."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "false-close")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "false-close")
+        with pytest.raises(psycopg2.Error, match="ck_arb_review_cycle_shape"):
+            _insert_typed_graph(
+                cursor,
+                organization_id=org_id,
+                user_id=user_id,
+                subject=subject,
+                closed_at=datetime.now(timezone.utc),
+                terminal_outcome="submitted",
+                review_decision="submitted",
+            )
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def test_terminal_cycle_and_verified_successor_commit_with_exact_projection(app, _schema):
+    """A real terminal decision, unlike false closure, is a valid successor boundary."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "terminal-successor")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "terminal")
+        first_cycle, _review_id, _snapshot_id = _insert_typed_graph(
+            cursor,
+            organization_id=org_id,
+            user_id=user_id,
+            subject=subject,
+            cycle_status="rejected",
+            closed_at=datetime.now(timezone.utc),
+            terminal_outcome="rejected",
+            review_decision="rejected",
+        )
+        _insert_typed_graph(
+            cursor,
+            organization_id=org_id,
+            user_id=user_id,
+            subject=subject,
+            cycle_number=2,
+            predecessor_cycle_id=first_cycle,
+        )
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def test_cycle_and_review_numbers_must_match(app, _schema):
+    """The cycle cannot carry a second review identity."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "review-number")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "number")
+        _insert_typed_graph(
+            cursor,
+            organization_id=org_id,
+            user_id=user_id,
+            subject=subject,
+            cycle_review_number=f"CYCLE-{uuid.uuid4().hex[:16]}",
+            item_review_number=f"REVIEW-{uuid.uuid4().hex[:16]}",
+        )
+        with pytest.raises(psycopg2.Error, match="review projection"):
+            raw.commit()
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+@pytest.mark.parametrize(
+    "damage_sql",
+    (
+        "ALTER TABLE arb_review_cycles DROP CONSTRAINT ck_arb_review_cycle_shape; "
+        "ALTER TABLE arb_review_cycles ADD CONSTRAINT ck_arb_review_cycle_shape CHECK (true)",
+        "ALTER TABLE arb_review_cycles DROP CONSTRAINT uq_arb_review_cycle_review_number; "
+        "CREATE INDEX uq_arb_review_cycle_review_number ON arb_review_cycles (status)",
+        "DROP TRIGGER trg_arb_cycle_membership ON arb_review_cycles; "
+        "CREATE TRIGGER trg_arb_cycle_membership BEFORE INSERT ON arb_review_cycles "
+        "FOR EACH ROW EXECUTE FUNCTION archie_guard_arb_cycle_history()",
+        "ALTER TABLE arb_review_items DROP CONSTRAINT fk_arb_review_item_decision_brief_version; "
+        "ALTER TABLE arb_review_items ADD CONSTRAINT fk_arb_review_item_decision_brief_version "
+        "FOREIGN KEY (decision_brief_version_id) REFERENCES decision_briefs(id)",
+        "ALTER TABLE arb_review_cycles DISABLE TRIGGER trg_arb_cycle_membership",
+        "DROP TRIGGER trg_arb_review_cycle_membership ON arb_review_items",
+        "CREATE OR REPLACE FUNCTION archie_validate_arb_cycle_membership() "
+        "RETURNS trigger LANGUAGE plpgsql AS 'BEGIN\nRETURN NEW;\nEND'",
+    ),
+)
+def test_reconcile_repairs_missing_disabled_and_malformed_typed_guards(
+    app, _schema, damage_sql
+):
+    """A guard's name alone is not proof that existing-database enforcement works."""
+    _raw = _install_typed_schema(app)
+    _raw.close()
+    from app import db
+    from app.models.architecture_review_board import (
+        ensure_arb_cycle_constraints,
+        inspect_arb_cycle_constraints,
+    )
+
+    with app.app_context(), db.engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            for statement in damage_sql.split("; "):
+                connection.exec_driver_sql(statement)
+            assert inspect_arb_cycle_constraints(connection)
+            ensure_arb_cycle_constraints(connection)
+            assert inspect_arb_cycle_constraints(connection) == []
+        finally:
+            transaction.rollback()
