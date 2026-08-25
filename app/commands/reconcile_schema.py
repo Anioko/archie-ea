@@ -57,6 +57,8 @@ _TRANSFORMATION_TABLES = (
     "decision_brief_option_citations",
     "decision_brief_evidence_citations",
     "decision_events",
+    "arb_subject_evidence_snapshots",
+    "arb_review_cycles",
 )
 
 _TRANSFORMATION_FOREIGN_KEYS = (
@@ -188,6 +190,134 @@ _TRANSFORMATION_FOREIGN_KEYS = (
         "id",
         "RESTRICT",
     ),
+    (
+        "fk_arb_subject_snapshot_architecture_model",
+        "arb_subject_evidence_snapshots",
+        "architecture_model_id",
+        "architecture_models",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_subject_snapshot_adr",
+        "arb_subject_evidence_snapshots",
+        "adr_id",
+        "architecture_decision_records",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_subject_snapshot_captured_by",
+        "arb_subject_evidence_snapshots",
+        "captured_by_id",
+        "users",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_cycle_decision_brief",
+        "arb_review_cycles",
+        "decision_brief_id",
+        "decision_briefs",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_cycle_solution",
+        "arb_review_cycles",
+        "solution_id",
+        "solutions",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_cycle_architecture_model",
+        "arb_review_cycles",
+        "architecture_model_id",
+        "architecture_models",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_cycle_adr",
+        "arb_review_cycles",
+        "adr_id",
+        "architecture_decision_records",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_cycle_decision_brief_version",
+        "arb_review_cycles",
+        "decision_brief_version_id",
+        "decision_brief_versions",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_cycle_solution_snapshot",
+        "arb_review_cycles",
+        "solution_evidence_snapshot_id",
+        "arb_submission_evidence_snapshots",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_cycle_subject_snapshot",
+        "arb_review_cycles",
+        "subject_evidence_snapshot_id",
+        "arb_subject_evidence_snapshots",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_cycle_predecessor",
+        "arb_review_cycles",
+        "predecessor_cycle_id",
+        "arb_review_cycles",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_item_decision_brief",
+        "arb_review_items",
+        "decision_brief_id",
+        "decision_briefs",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_item_decision_brief_version",
+        "arb_review_items",
+        "decision_brief_version_id",
+        "decision_brief_versions",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_item_solution_snapshot",
+        "arb_review_items",
+        "solution_evidence_snapshot_id",
+        "arb_submission_evidence_snapshots",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_item_subject_snapshot",
+        "arb_review_items",
+        "subject_evidence_snapshot_id",
+        "arb_subject_evidence_snapshots",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_review_item_cycle",
+        "arb_review_items",
+        "review_cycle_id",
+        "arb_review_cycles",
+        "id",
+        "RESTRICT",
+    ),
 )
 
 _MATERIALISATION_INDEXES = (
@@ -229,6 +359,14 @@ _EVIDENCE_WAIVER_CHECK = (
 
 def _create_transformation_tables(*, dry_run, existing_tables, added, failed):
     """Create only the new canonical tables when init-db has not run yet."""
+    # These modules are not guaranteed to be reached by every CLI bootstrap;
+    # import them before consulting metadata so fresh deployments cannot omit
+    # the typed ARB tables.
+    from app.models.architecture_review_board import ARBReviewCycle  # noqa: F401
+    from app.models.transformation_decision import (  # noqa: F401
+        ARBSubjectEvidenceSnapshot,
+    )
+
     for table_name in _TRANSFORMATION_TABLES:
         if table_name in existing_tables:
             continue
@@ -974,6 +1112,45 @@ def _reconcile(dry_run=False):
         except Exception as exc:  # noqa: BLE001 — report alongside column failures
             db.session.rollback()
             failed.append(f"evidence_immutability_triggers: {str(exc)[:120]}")
+
+    if dry_run:
+        # When either typed table is absent, dry-run already reports its CREATE
+        # action above.  Its functions/triggers cannot exist yet, so describing
+        # those dependent objects as failures would turn a repairable pre-feature
+        # schema into a false red gate.
+        required_arb_tables = {
+            "arb_subject_evidence_snapshots",
+            "arb_review_cycles",
+            "arb_review_items",
+        }
+        if required_arb_tables <= existing_tables:
+            try:
+                from app.models.architecture_review_board import (
+                    inspect_arb_cycle_constraints,
+                )
+
+                arb_drift = inspect_arb_cycle_constraints(db.session.connection())
+                failed.extend(f"typed_arb_constraints:{item}" for item in arb_drift)
+            except Exception as exc:  # noqa: BLE001 — report inspection failure
+                failed.append(
+                    f"typed_arb_constraints_inspection: {str(exc)[:120]}"
+                )
+    else:
+        try:
+            from app.models.architecture_review_board import (
+                ensure_arb_cycle_constraints,
+            )
+            from app.models.transformation_decision import (
+                ensure_arb_subject_snapshot_immutability,
+            )
+
+            connection = db.session.connection()
+            ensure_arb_subject_snapshot_immutability(connection)
+            ensure_arb_cycle_constraints(connection)
+            db.session.commit()
+        except Exception as exc:  # noqa: BLE001 — report alongside schema failures
+            db.session.rollback()
+            failed.append(f"typed_arb_constraints: {str(exc)[:120]}")
 
     return added, failed, missing_tables, blocking
 
