@@ -1417,23 +1417,30 @@ def test_terminal_review_requires_non_null_canonical_decision(app, _schema):
 
 
 def test_successor_rejects_predecessor_without_complete_terminal_projection(app, _schema):
-    """Closure alone cannot make an outcome-less predecessor eligible for succession."""
+    """The successor trigger independently rejects a damaged terminal predecessor."""
     raw = _install_typed_schema(app)
     try:
         cursor = raw.cursor()
         org_id, user_id, _model_id = _seed_org_user_model(cursor, "null-predecessor")
         subject = _seed_subject_material(cursor, "adr", org_id, user_id, "predecessor")
-        with pytest.raises(psycopg2.Error):
-            first_cycle, _review_id, _snapshot_id = _insert_typed_graph(
-                cursor,
-                organization_id=org_id,
-                user_id=user_id,
-                subject=subject,
-                cycle_status="rejected",
-                closed_at=datetime.now(timezone.utc),
-                terminal_outcome=None,
-                review_decision=None,
-            )
+        cursor.execute(
+            "ALTER TABLE arb_review_cycles DROP CONSTRAINT ck_arb_review_cycle_shape"
+        )
+        first_cycle, _review_id, _snapshot_id = _insert_typed_graph(
+            cursor,
+            organization_id=org_id,
+            user_id=user_id,
+            subject=subject,
+            cycle_status="rejected",
+            closed_at=datetime.now(timezone.utc),
+            terminal_outcome=None,
+            review_decision="rejected",
+        )
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+        with pytest.raises(
+            psycopg2.Error, match="cycle predecessor is not monotonic"
+        ):
             _insert_typed_graph(
                 cursor,
                 organization_id=org_id,
@@ -1585,6 +1592,9 @@ def test_parent_retenant_and_child_insert_share_subject_concurrency_fence(
         "fk_shadow_schema",
         "fk_action_deferrability",
         "trigger_wrong_update_column",
+        "check_regrouped_same_tokens",
+        "trigger_when_false",
+        "trigger_with_argument",
     ),
 )
 def test_reconcile_rejects_semantically_ineffective_same_named_guards(
@@ -1616,6 +1626,27 @@ def test_reconcile_rejects_semantically_ineffective_same_named_guards(
                 connection.exec_driver_sql(
                     "ALTER TABLE arb_review_cycles ADD CONSTRAINT "
                     f"ck_arb_review_cycle_shape CHECK (TRUE OR ({expression}))"
+                )
+            elif damage_kind == "check_regrouped_same_tokens":
+                definition = connection.exec_driver_sql(
+                    "SELECT pg_get_constraintdef(oid, true) FROM pg_constraint "
+                    "WHERE conname = 'ck_arb_review_cycle_shape' "
+                    "AND conrelid = 'arb_review_cycles'::regclass"
+                ).scalar_one()
+                expression = definition.removeprefix("CHECK (").removesuffix(")")
+                regrouped = expression.replace(
+                    "opened_at IS NOT NULL AND (cycle_number = 1",
+                    "(opened_at IS NOT NULL AND cycle_number = 1",
+                    1,
+                )
+                assert regrouped != expression
+                connection.exec_driver_sql(
+                    "ALTER TABLE arb_review_cycles DROP CONSTRAINT "
+                    "ck_arb_review_cycle_shape"
+                )
+                connection.exec_driver_sql(
+                    "ALTER TABLE arb_review_cycles ADD CONSTRAINT "
+                    f"ck_arb_review_cycle_shape CHECK ({regrouped})"
                 )
             elif damage_kind == "index_include":
                 connection.exec_driver_sql(
@@ -1667,7 +1698,7 @@ def test_reconcile_rejects_semantically_ineffective_same_named_guards(
                     "decision_brief_versions(id) ON DELETE CASCADE "
                     "DEFERRABLE INITIALLY DEFERRED"
                 )
-            else:
+            elif damage_kind == "trigger_wrong_update_column":
                 connection.exec_driver_sql(
                     "DROP TRIGGER trg_arb_decision_brief_tenant_history "
                     "ON decision_briefs"
@@ -1676,6 +1707,28 @@ def test_reconcile_rejects_semantically_ineffective_same_named_guards(
                     "CREATE TRIGGER trg_arb_decision_brief_tenant_history "
                     "BEFORE UPDATE OF title ON decision_briefs FOR EACH ROW "
                     "EXECUTE FUNCTION archie_guard_arb_subject_tenant()"
+                )
+            elif damage_kind == "trigger_when_false":
+                connection.exec_driver_sql(
+                    "DROP TRIGGER trg_arb_decision_brief_tenant_history "
+                    "ON decision_briefs"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TRIGGER trg_arb_decision_brief_tenant_history "
+                    "BEFORE UPDATE OF organization_id ON decision_briefs "
+                    "FOR EACH ROW WHEN (false) "
+                    "EXECUTE FUNCTION archie_guard_arb_subject_tenant()"
+                )
+            else:
+                connection.exec_driver_sql(
+                    "DROP TRIGGER trg_arb_decision_brief_tenant_history "
+                    "ON decision_briefs"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TRIGGER trg_arb_decision_brief_tenant_history "
+                    "BEFORE UPDATE OF organization_id ON decision_briefs "
+                    "FOR EACH ROW EXECUTE FUNCTION "
+                    "archie_guard_arb_subject_tenant('ignored')"
                 )
 
             drift = inspect_arb_cycle_constraints(connection)

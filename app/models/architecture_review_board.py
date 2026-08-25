@@ -1344,52 +1344,118 @@ _ARB_FK_SPECS = {
         "arb_review_items", ("review_cycle_id",), "arb_review_cycles", ("id",)
     ),
 }
+_ARB_TRIGGER_NO_FILTER = (None, 0, "")
 _ARB_TRIGGER_SPECS = {
     ("arb_subject_evidence_snapshots", "trg_arb_subject_snapshot_membership"):
-        ("archie_validate_arb_cycle_membership", 21, True, True, True, ()),
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, (),
+         *_ARB_TRIGGER_NO_FILTER),
     ("arb_review_cycles", "trg_arb_cycle_membership"):
-        ("archie_validate_arb_cycle_membership", 21, True, True, True, ()),
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, (),
+         *_ARB_TRIGGER_NO_FILTER),
     ("arb_review_cycles", "trg_arb_cycle_history"):
-        ("archie_guard_arb_cycle_history", 27, False, False, False, ()),
+        ("archie_guard_arb_cycle_history", 27, False, False, False, (),
+         *_ARB_TRIGGER_NO_FILTER),
     ("arb_review_items", "trg_arb_review_cycle_membership"):
-        ("archie_validate_arb_cycle_membership", 21, True, True, True, ()),
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, (),
+         *_ARB_TRIGGER_NO_FILTER),
     ("arb_review_items", "trg_arb_review_cycle_history"):
-        ("archie_guard_arb_cycle_history", 27, False, False, False, ()),
+        ("archie_guard_arb_cycle_history", 27, False, False, False, (),
+         *_ARB_TRIGGER_NO_FILTER),
     ("arb_subject_evidence_snapshots", "trg_reject_arb_subject_snapshot_mutation"):
-        ("archie_reject_arb_subject_snapshot_mutation", 27, False, False, False, ()),
+        ("archie_reject_arb_subject_snapshot_mutation", 27, False, False, False, (),
+         *_ARB_TRIGGER_NO_FILTER),
     ("decision_briefs", "trg_arb_decision_brief_tenant_history"):
         ("archie_guard_arb_subject_tenant", 19, False, False, False,
-         ("organization_id",)),
+         ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
     ("solutions", "trg_arb_solution_tenant_history"):
         ("archie_guard_arb_subject_tenant", 19, False, False, False,
-         ("organization_id",)),
+         ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
     ("architecture_models", "trg_arb_architecture_model_tenant_history"):
         ("archie_guard_arb_subject_tenant", 19, False, False, False,
-         ("organization_id",)),
+         ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
     ("architecture_decision_records", "trg_arb_adr_tenant_history"):
         ("archie_guard_arb_subject_tenant", 19, False, False, False,
-         ("organization_id",)),
+         ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
 }
 
 
-def _arb_sql_tokens(value):
-    """Canonical full-definition tokens for PostgreSQL's harmless rewrites."""
+def _arb_check_tokens(value):
+    """Retain boolean grouping while normalizing PostgreSQL's type/IN rewrites."""
     value = value.lower().replace('"', "")
     value = re.sub(r"::(?:character\s+varying|text)(?:\[\])?", "", value)
-    tokens = re.findall(
-        r"'(?:''|[^'])*'|<>|>=|<=|=|>|<|[a-z_][a-z0-9_]*|\d+",
+    value = re.sub(
+        r"\b([a-z_][a-z0-9_]*)\s*=\s*any\s*"
+        r"\(\s*array\s*\[(.*?)\]\s*\)",
+        lambda match: f"{match.group(1)} in ({match.group(2)})",
+        value,
+        flags=re.S,
+    )
+    return re.findall(
+        r"'(?:''|[^'])*'|<>|>=|<=|=|>|<|[(),]|[a-z_][a-z0-9_]*|\d+",
         value,
     )
-    canonical = []
-    index = 0
-    while index < len(tokens):
-        if tokens[index:index + 3] == ["=", "any", "array"]:
-            canonical.append("in")
-            index += 3
-        else:
-            canonical.append(tokens[index])
-            index += 1
-    return tuple(canonical)
+
+
+def _arb_check_structure(value):
+    tokens = _arb_check_tokens(value)
+    if tokens and tokens[0] == "check":
+        tokens = tokens[1:]
+    position = 0
+
+    def combine(operator, nodes):
+        flattened = []
+        for node in nodes:
+            if node[0] == operator:
+                flattened.extend(node[1])
+            else:
+                flattened.append(node)
+        return (operator, tuple(flattened))
+
+    def parse_or():
+        nonlocal position
+        nodes = [parse_and()]
+        while position < len(tokens) and tokens[position] == "or":
+            position += 1
+            nodes.append(parse_and())
+        return nodes[0] if len(nodes) == 1 else combine("or", nodes)
+
+    def parse_and():
+        nonlocal position
+        nodes = [parse_primary()]
+        while position < len(tokens) and tokens[position] == "and":
+            position += 1
+            nodes.append(parse_primary())
+        return nodes[0] if len(nodes) == 1 else combine("and", nodes)
+
+    def parse_primary():
+        nonlocal position
+        if position < len(tokens) and tokens[position] == "(":
+            position += 1
+            node = parse_or()
+            if position >= len(tokens) or tokens[position] != ")":
+                raise ValueError("unbalanced typed ARB check definition")
+            position += 1
+            return node
+        atom = []
+        nested = 0
+        while position < len(tokens):
+            token = tokens[position]
+            if nested == 0 and token in {"and", "or", ")"}:
+                break
+            if token == "(":
+                nested += 1
+            elif token == ")":
+                nested -= 1
+            atom.append(token)
+            position += 1
+        if not atom:
+            raise ValueError("empty typed ARB check expression")
+        return ("atom", tuple(atom))
+
+    structure = parse_or()
+    if position != len(tokens):
+        raise ValueError("unparsed typed ARB check definition")
+    return structure
 
 
 def _arb_normalize_catalog_definition(value):
@@ -1402,7 +1468,8 @@ def _arb_check_matches(row, table_name, expected_definition):
         and row.relname == table_name
         and row.contype == "c"
         and row.convalidated
-        and _arb_sql_tokens(row.definition) == _arb_sql_tokens(expected_definition)
+        and _arb_check_structure(row.definition)
+        == _arb_check_structure(expected_definition)
     )
 
 
@@ -1518,7 +1585,11 @@ def _arb_catalog_state(connection):
                          ON attribute.attrelid = trigger.tgrelid
                         AND attribute.attnum = update_column.attnum
                        ORDER BY update_column.ord
-                   ) AS update_columns
+                   ) AS update_columns,
+                   pg_get_expr(trigger.tgqual, trigger.tgrelid, true)
+                       AS predicate,
+                   trigger.tgnargs AS argument_count,
+                   encode(trigger.tgargs, 'hex') AS arguments_hex
             FROM pg_trigger trigger
             JOIN pg_class cls ON cls.oid = trigger.tgrelid
             JOIN pg_namespace namespace ON namespace.oid = cls.relnamespace
@@ -1542,6 +1613,9 @@ def _arb_catalog_state(connection):
             row.is_deferrable,
             row.is_deferred,
             tuple(row.update_columns),
+            row.predicate,
+            row.argument_count,
+            row.arguments_hex,
         )
         for row in rows
     }
@@ -1923,6 +1997,9 @@ def ensure_arb_cycle_constraints(connection):
             _is_deferrable,
             _is_deferred,
             _update_columns,
+            _predicate,
+            _argument_count,
+            _arguments_hex,
         ) = expected
         qualified_function = f"{quoted_schema}.{quote(function_name)}()"
         if is_constraint:
