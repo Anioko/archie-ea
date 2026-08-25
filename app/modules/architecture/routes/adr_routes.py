@@ -16,10 +16,12 @@ Routes:
 
 import logging
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
+from app import db
 from app.decorators import admin_required
+from app.models.adr import ArchitectureDecisionRecord
 from app.services.adr_service import ADRService
 
 logger = logging.getLogger(__name__)
@@ -128,6 +130,21 @@ def view_adr(adr_id: int):
         return redirect(url_for("adrs.list_adrs"))
     
     return render_template("architecture/adrs/detail.html", adr=adr)
+
+
+@adr_bp.route("/records/<int:adr_id>", methods=["GET"])
+@login_required
+def view_record(adr_id: int):
+    """View the canonical tenant-scoped ArchitectureDecisionRecord."""
+    adr = db.session.execute(
+        db.select(ArchitectureDecisionRecord).where(
+            ArchitectureDecisionRecord.id == adr_id,
+            ArchitectureDecisionRecord.organization_id == current_user.organization_id,
+        )
+    ).scalar_one_or_none()
+    if adr is None:
+        abort(404)
+    return jsonify({"adr": adr.to_dict(include_content=True)})
 
 
 @adr_bp.route("/<int:adr_id>/edit", methods=["GET"])

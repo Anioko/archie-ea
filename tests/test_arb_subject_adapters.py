@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app import db
 from app.models.adr import ArchitectureDecisionRecord
+from app.models.architecture_review_board import ARBGovernanceStandard, ARBReviewItem
 from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
+from app.models.audit_log import AuditLog
 from app.models.models import ArchitectureModel
 from app.models.solution_models import Solution
+from app.models.solution_governance import SolutionNotification
 from app.models.transformation_decision import (
     ARBSubjectEvidenceSnapshot,
 )
@@ -42,7 +46,10 @@ from tests.test_decision_brief_service import (
     _freeze_brief,
     _freeze_options,
 )
-from tests.test_transformation_evidence_service import evidence_scope  # noqa: F401
+from tests.test_transformation_evidence_service import (  # noqa: F401
+    _record_named_source,
+    evidence_scope,
+)
 from tests.test_transformation_option_service import decision_scope  # noqa: F401
 
 
@@ -79,6 +86,44 @@ def _gate(*, allowed=True, blockers=()):
         warnings=(),
         evidence_ids=(31, 37),
     )
+
+
+def _mandatory_standard_entries(review_type):
+    rows = db.session.execute(
+        db.select(ARBGovernanceStandard).where(
+            ARBGovernanceStandard.status == "active",
+            ARBGovernanceStandard.mandatory.is_(True),
+        )
+    ).scalars()
+    entries = []
+    for row in rows:
+        applies = row.applies_to_review_types
+        if not applies or review_type in applies:
+            entries.append(
+                {
+                    "standard_id": row.id,
+                    "standard_code": row.code,
+                    "satisfied": True,
+                }
+            )
+    return entries
+
+
+def _governance_dossier(policy_version, review_type, *, evidence_id=9001, expires_at=None):
+    expires_at = expires_at or datetime.now(timezone.utc) + timedelta(days=1)
+    return {
+        "policy_version": policy_version,
+        "standards": _mandatory_standard_entries(review_type),
+        "evidence": [
+            {
+                "evidence_id": evidence_id,
+                "evidence_type": "arb_supporting_document",
+                "content_hash": "a" * 64,
+                "captured_at": "2026-08-24T09:30:00+00:00",
+                "expires_at": expires_at.isoformat(),
+            }
+        ],
+    }
 
 
 def test_registry_exposes_exact_supported_adapters_and_fails_closed():
@@ -183,12 +228,19 @@ def test_model_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
 ):
     org, foreign_org = make_org("model-adapter"), make_org("model-adapter-foreign")
     actor_user, foreign_user = _user(db_session, org), _user(db_session, foreign_org)
+    model_document = {
+        "elements": ["Payment API"],
+        "relationships": [],
+        "arb_readiness": _governance_dossier(
+            "architecture-model-arb-r2", "technology_selection"
+        ),
+    }
     model = ArchitectureModel(
         organization_id=org.id,
         name="Payments target architecture",
         version="2.1",
         user_id=actor_user.id,
-        model_data=json.dumps({"elements": ["Payment API"], "relationships": []}),
+        model_data=json.dumps(model_document),
         is_default=False,
     )
     db_session.add(model)
@@ -211,22 +263,30 @@ def test_model_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
     assert evidence.content_hash == snapshot.content_hash == snapshot.recompute_content_hash()
     assert snapshot.subject_type == "architecture_model"
     assert snapshot.subject_id == snapshot.architecture_model_id == model.id
-    assert snapshot.policy_version == "architecture-model-arb-r1"
+    assert snapshot.policy_version == "architecture-model-arb-r2"
     assert snapshot.captured_by_id == actor_user.id
-    assert snapshot.payload == {
+    assert snapshot.payload["subject"] == {
         "id": model.id,
         "organization_id": org.id,
         "name": "Payments target architecture",
         "version": "2.1",
         "user_id": actor_user.id,
-        "model_data": json.dumps({"elements": ["Payment API"], "relationships": []}),
+        "model_data": json.dumps(model_document),
         "is_default": False,
         "solution_id": None,
         "technology_stack_id": None,
         "compliance_framework_id": None,
     }
+    assert snapshot.payload["readiness"]["evidence_ids"] == [9001]
     assert snapshot.citations == [
-        {"resource_type": "architecture_model", "resource_id": model.id}
+        {"resource_type": "architecture_model", "resource_id": model.id},
+        {
+            "resource_type": "arb_supporting_document",
+            "resource_id": 9001,
+            "content_hash": "a" * 64,
+            "captured_at": "2026-08-24T09:30:00+00:00",
+            "expires_at": model_document["arb_readiness"]["evidence"][0]["expires_at"],
+        },
     ]
 
     with pytest.raises(NotFound, match="arb_subject_not_found"):
@@ -252,6 +312,11 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
         alternatives_considered="[\"point-to-point APIs\"]",
         risks="[\"schema drift\"]",
         created_by=actor_user.email,
+        governance_blob={
+            "arb_readiness": _governance_dossier(
+                "adr-arb-r2", "architecture_change", evidence_id=9002
+            )
+        },
     )
     db_session.add(adr)
     db_session.flush()
@@ -264,23 +329,54 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
 
     assert subject == GovernedSubject("adr", adr.id, org.id, adr.title, None)
     assert readiness.ready is True
-    assert adapter.canonical_url(subject) == f"/architecture/adrs/{adr.id}"
+    assert adapter.canonical_url(subject) == f"/architecture/adrs/records/{adr.id}"
     assert evidence.content_hash == snapshot.content_hash == snapshot.recompute_content_hash()
     assert snapshot.subject_type == "adr"
     assert snapshot.subject_id == snapshot.adr_id == adr.id
-    assert snapshot.policy_version == "adr-arb-r1"
-    assert snapshot.payload["adr_number"] == 42
-    assert snapshot.payload["context"] == adr.context
-    assert snapshot.payload["decision"] == adr.decision
-    assert snapshot.payload["rationale"] == adr.rationale
-    assert snapshot.payload["consequences"] == adr.consequences
-    assert snapshot.payload["created_at"] == adr.created_at.isoformat()
-    assert snapshot.citations == [{"resource_type": "adr", "resource_id": adr.id}]
+    assert snapshot.policy_version == "adr-arb-r2"
+    assert snapshot.payload["subject"]["adr_number"] == 42
+    assert snapshot.payload["subject"]["context"] == adr.context
+    assert snapshot.payload["subject"]["decision"] == adr.decision
+    assert snapshot.payload["subject"]["rationale"] == adr.rationale
+    assert snapshot.payload["subject"]["consequences"] == adr.consequences
+    assert snapshot.payload["subject"]["created_at"] == adr.created_at.isoformat()
+    assert snapshot.payload["readiness"]["evidence_ids"] == [9002]
+    assert snapshot.citations[0] == {"resource_type": "adr", "resource_id": adr.id}
+    assert snapshot.citations[1]["resource_id"] == 9002
 
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(_actor(foreign_user, foreign_org), adr.id)
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(_actor(foreign_user, org), adr.id)
+
+
+def test_adr_record_detail_route_reads_canonical_tenant_table(
+    client, db_session, make_org, login_as
+):
+    org, foreign_org = make_org("adr-record-route"), make_org("adr-record-route-foreign")
+    actor_user, foreign_user = _user(db_session, org), _user(db_session, foreign_org)
+    actor_user.confirmed = foreign_user.confirmed = True
+    adr = ArchitectureDecisionRecord(
+        organization_id=org.id,
+        adr_number=91,
+        title="Canonical tenant ADR",
+        status="proposed",
+        context="Canonical route context",
+        decision="Canonical route decision",
+        rationale="Canonical route rationale",
+        consequences="Canonical route consequences",
+    )
+    db_session.add(adr)
+    db_session.flush()
+
+    login_as(client, actor_user)
+    own = client.get(f"/architecture/adrs/records/{adr.id}")
+    login_as(client, foreign_user)
+    foreign = client.get(f"/architecture/adrs/records/{adr.id}")
+
+    assert own.status_code == 200
+    assert b"Canonical tenant ADR" in own.data
+    assert foreign.status_code == 404
 
 
 @pytest.mark.parametrize(
@@ -329,6 +425,157 @@ def test_model_and_adr_policies_block_incomplete_evidence(
     assert readiness.ready is False
     assert expected_code in readiness.reason_codes
     with pytest.raises(BlockedByEvidence, match="arb_subject_not_ready"):
+        adapter.snapshot(actor, subject, readiness)
+
+
+def test_model_policy_rejects_invalid_json_and_absent_supporting_evidence(
+    db_session, make_org
+):
+    org = make_org("invalid-model-policy")
+    actor_user = _user(db_session, org)
+    model = ArchitectureModel(
+        organization_id=org.id,
+        name="Invalid model dossier",
+        version="1.0",
+        user_id=actor_user.id,
+        model_data="{not-json",
+    )
+    db_session.add(model)
+    db_session.flush()
+    adapter = ArchitectureModelARBAdapter()
+    actor = _actor(actor_user, org)
+
+    readiness = adapter.evaluate(actor, adapter.load(actor, model.id), {"human_reviewed": True})
+
+    assert readiness.ready is False
+    assert "architecture_model_json_invalid" in readiness.reason_codes
+    assert "supporting_evidence_required" in readiness.reason_codes
+
+
+def test_adr_policy_rejects_terminal_state_and_wrong_policy_version(db_session, make_org):
+    org = make_org("invalid-adr-policy")
+    actor_user = _user(db_session, org)
+    dossier = _governance_dossier("adr-arb-r1", "architecture_change", evidence_id=9101)
+    adr = ArchitectureDecisionRecord(
+        organization_id=org.id,
+        adr_number=92,
+        title="Already accepted ADR",
+        status="accepted",
+        context="Context",
+        decision="Decision",
+        rationale="Rationale",
+        consequences="Consequences",
+        governance_blob={"arb_readiness": dossier},
+    )
+    db_session.add(adr)
+    db_session.flush()
+    adapter = ADRARBAdapter()
+    actor = _actor(actor_user, org)
+
+    readiness = adapter.evaluate(actor, adapter.load(actor, adr.id), {"human_reviewed": True})
+
+    assert readiness.ready is False
+    assert "adr_state_not_submittable" in readiness.reason_codes
+    assert "arb_policy_version_mismatch" in readiness.reason_codes
+
+
+def test_subject_policy_requires_every_applicable_mandatory_standard(db_session, make_org):
+    org = make_org("mandatory-standard-policy")
+    actor_user = _user(db_session, org)
+    standard = ARBGovernanceStandard(
+        code=f"STD-TEST-{uuid.uuid4().hex[:10]}",
+        name="Mandatory test standard",
+        status="active",
+        mandatory=True,
+        applies_to_review_types=["technology_selection"],
+        checklist_items=[{"item": "Evidence attached", "required": True}],
+    )
+    db_session.add(standard)
+    db_session.flush()
+    dossier = _governance_dossier(
+        "architecture-model-arb-r2", "technology_selection", evidence_id=9102
+    )
+    dossier["standards"] = []
+    model = ArchitectureModel(
+        organization_id=org.id,
+        name="Model missing a mandatory standard",
+        version="1.0",
+        user_id=actor_user.id,
+        model_data=json.dumps({"elements": [], "relationships": [], "arb_readiness": dossier}),
+    )
+    db_session.add(model)
+    db_session.flush()
+    adapter = ArchitectureModelARBAdapter()
+    actor = _actor(actor_user, org)
+
+    readiness = adapter.evaluate(actor, adapter.load(actor, model.id), {"human_reviewed": True})
+
+    assert readiness.ready is False
+    assert "mandatory_standard_unsatisfied" in readiness.reason_codes
+    assert readiness.missing_evidence[-1]["standard_id"] == standard.id
+
+
+@pytest.mark.parametrize("subject_kind", ("architecture_model", "adr"))
+def test_subject_snapshot_rejects_forged_and_changed_readiness(
+    db_session, make_org, subject_kind
+):
+    org = make_org(f"stale-{subject_kind}")
+    actor_user = _user(db_session, org)
+    actor = _actor(actor_user, org)
+    if subject_kind == "architecture_model":
+        adapter = ArchitectureModelARBAdapter()
+        dossier = _governance_dossier(
+            "architecture-model-arb-r2", "technology_selection", evidence_id=9201
+        )
+        row = ArchitectureModel(
+            organization_id=org.id,
+            name="Mutable model readiness",
+            version="1.0",
+            user_id=actor_user.id,
+            model_data=json.dumps(
+                {"elements": ["A"], "relationships": [], "arb_readiness": dossier}
+            ),
+        )
+    else:
+        adapter = ADRARBAdapter()
+        dossier = _governance_dossier(
+            "adr-arb-r2", "architecture_change", evidence_id=9202
+        )
+        row = ArchitectureDecisionRecord(
+            organization_id=org.id,
+            adr_number=93,
+            title="Mutable ADR readiness",
+            status="proposed",
+            context="Context",
+            decision="Decision",
+            rationale="Rationale",
+            consequences="Consequences",
+            governance_blob={"arb_readiness": dossier},
+        )
+    db_session.add(row)
+    db_session.flush()
+    subject = adapter.load(actor, row.id)
+    readiness = adapter.evaluate(actor, subject, {"human_reviewed": True})
+    forged = ARBReadinessResult(
+        ready=True,
+        checks={"human_reviewed": True, "policy_version": adapter.policy_version},
+    )
+
+    with pytest.raises(CommandConflict, match="arb_readiness_stale"):
+        adapter.snapshot(actor, subject, forged)
+
+    dossier["evidence"][0]["expires_at"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=1)
+    ).isoformat()
+    if subject_kind == "architecture_model":
+        document = json.loads(row.model_data)
+        document["arb_readiness"] = dossier
+        row.model_data = json.dumps(document)
+    else:
+        row.governance_blob = {"arb_readiness": dossier}
+    db_session.flush()
+
+    with pytest.raises(CommandConflict, match="arb_readiness_stale"):
         adapter.snapshot(actor, subject, readiness)
 
 
@@ -382,6 +629,28 @@ def test_solution_adapter_preserves_existing_evaluator_and_snapshot_shape(
     assert snapshot.solution_id == solution.id
     assert snapshot.actor_id == actor_user.id
     assert snapshot.request_assertions == assertions
+    assert snapshot.review_item_id is None
+    assert db_session.scalar(
+        db.select(db.func.count()).select_from(ARBReviewItem).where(
+            ARBReviewItem.organization_id == org.id,
+            ARBReviewItem.solution_id == solution.id,
+        )
+    ) == 0
+    assert db_session.scalar(
+        db.select(db.func.count()).select_from(SolutionNotification).where(
+            SolutionNotification.solution_id == solution.id
+        )
+    ) == 0
+    assert db_session.scalar(
+        db.select(db.func.count()).select_from(AuditLog).where(
+            AuditLog.organization_id == org.id,
+            AuditLog.table_name == "arb_review_items",
+        )
+    ) == 0
+    db_session.refresh(solution)
+    assert solution.governance_status == "draft"
+    assert solution.arb_submission_date is None
+    assert solution.arb_review_item_id is None
     assert adapter.canonical_url(subject) == f"/solutions/{solution.id}?tab=governance"
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(_actor(foreign_user, foreign_org), solution.id)
@@ -405,6 +674,16 @@ def test_decision_brief_adapter_load_evaluate_snapshot_url_and_hash_tamper(
         decision_scope.actor, subject, {"human_reviewed": True, "ready": False}
     )
     evidence = adapter.snapshot(decision_scope.actor, subject, readiness)
+
+    forged = ARBReadinessResult(
+        ready=True,
+        checks={
+            "human_reviewed": True,
+            "gate_policy_version": readiness.checks["gate_policy_version"],
+        },
+    )
+    with pytest.raises(CommandConflict, match="arb_readiness_stale"):
+        adapter.snapshot(decision_scope.actor, subject, forged)
 
     from app.models.transformation_programme import ProgrammeWorkstream
     from app.modules.transformation_room.decision_service import DecisionBriefService
@@ -436,6 +715,24 @@ def test_decision_brief_adapter_load_evaluate_snapshot_url_and_hash_tamper(
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(non_member, decision_scope.brief_id)
 
+    _record_named_source(
+        decision_scope,
+        candidate_id=decision_scope.candidate_id,
+        adapter_key=f"adapter-stale-{uuid.uuid4().hex[:8]}",
+        source_identity=f"external:adapter-stale:{uuid.uuid4().hex}",
+        value="New evidence after adapter evaluation",
+    )
+    with pytest.raises(CommandConflict, match="arb_readiness_stale"):
+        adapter.snapshot(decision_scope.actor, subject, readiness)
+
+    # Re-evaluate so the readiness passed below reflects the named source recorded
+    # above. Without this the staleness guard fires first and the hash-integrity
+    # guard below is never reached.
+    current_readiness = adapter.evaluate(
+        decision_scope.actor, subject, {"human_reviewed": True, "ready": False}
+    )
+    assert current_readiness.ready is True
+
     version = DecisionBriefService.require_version_for_tenant(
         decision_scope.actor, subject.logical_version_id
     )
@@ -447,4 +744,4 @@ def test_decision_brief_adapter_load_evaluate_snapshot_url_and_hash_tamper(
     )
 
     with pytest.raises(CommandConflict, match="decision_brief_hash_mismatch"):
-        adapter.snapshot(decision_scope.actor, subject, readiness)
+        adapter.snapshot(decision_scope.actor, subject, current_readiness)

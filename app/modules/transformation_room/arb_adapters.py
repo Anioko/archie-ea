@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from copy import deepcopy
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
+import hashlib
+import json
 from typing import Any, Mapping, Protocol, runtime_checkable
 
 from app import db
 from app.models.adr import ArchitectureDecisionRecord
-from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
+from app.models.architecture_review_board import ARBGovernanceStandard
 from app.models.models import ArchitectureModel
 from app.models.solution_models import Solution
 from app.models.transformation_decision import ARBSubjectEvidenceSnapshot
@@ -106,6 +108,18 @@ def _blocker_document(blocker) -> dict[str, Any]:
         "resource_type": blocker.resource_type,
         "resource_id": blocker.resource_id,
         "action_url": blocker.action_url,
+    }
+
+
+def _readiness_document(readiness: ARBReadinessResult) -> dict[str, Any]:
+    return {
+        "ready": readiness.ready,
+        "reason_codes": deepcopy(readiness.reason_codes),
+        "missing_evidence": deepcopy(readiness.missing_evidence),
+        "workflow_type": readiness.workflow_type,
+        "checks": deepcopy(readiness.checks),
+        "artifacts": deepcopy(readiness.artifacts),
+        "governance_result": deepcopy(readiness.governance_result),
     }
 
 
@@ -216,6 +230,12 @@ class DecisionBriefARBAdapter:
             or not checks["gate_policy_version"]
         ):
             raise BlockedByEvidence("arb_subject_not_ready")
+        current = decision_brief_arb_readiness(
+            DecisionBriefService.evaluate(actor=actor, brief_id=subject.subject_id),
+            {"human_reviewed": checks["human_reviewed"]},
+        )
+        if not current.ready or _readiness_document(current) != _readiness_document(readiness):
+            raise CommandConflict("arb_readiness_stale")
         version = self._load_version(actor, subject.logical_version_id)
         if not DecisionBriefService.verify_hash(version):
             raise CommandConflict("decision_brief_hash_mismatch")
@@ -289,7 +309,7 @@ class SolutionARBAdapter:
         return result
 
     def snapshot(self, actor, subject, readiness):
-        self._require_current_subject(actor, subject)
+        self._require_current_subject(actor, subject, lock=True)
         if not readiness.ready:
             raise BlockedByEvidence("arb_subject_not_ready")
         context = self._evaluation_context.get()
@@ -299,23 +319,23 @@ class SolutionARBAdapter:
             or context["actor_id"] != actor.user_id
         ):
             raise CommandConflict("solution_readiness_context_missing")
-        submitted = ARBSubmissionService.submit(
+        current = ARBSubmissionService.evaluate(
             subject.subject_id,
             actor.user_id,
             context["workspace_id"],
             context["assertions"],
         )
-        if not submitted.success or submitted.snapshot_id is None:
-            reason = submitted.reason_codes[0] if submitted.reason_codes else "submission_failed"
-            raise CommandConflict(reason)
-        snapshot = db.session.execute(
-            db.select(ARBSubmissionEvidenceSnapshot).where(
-                ARBSubmissionEvidenceSnapshot.id == submitted.snapshot_id,
-                ARBSubmissionEvidenceSnapshot.organization_id == actor.organization_id,
-                ARBSubmissionEvidenceSnapshot.solution_id == subject.subject_id,
-            )
-        ).scalar_one_or_none()
-        if snapshot is None or snapshot.content_hash != snapshot.recompute_content_hash():
+        if not current.ready or _readiness_document(current) != _readiness_document(readiness):
+            raise CommandConflict("arb_readiness_stale")
+        snapshot = ARBSubmissionService.build_evidence_snapshot(
+            organization_id=actor.organization_id,
+            solution_id=subject.subject_id,
+            actor_id=actor.user_id,
+            workspace_id=context["workspace_id"],
+            assertions=context["assertions"],
+            readiness=readiness,
+        )
+        if snapshot.content_hash != snapshot.recompute_content_hash():
             raise CommandConflict("solution_evidence_hash_mismatch")
         return PinnedEvidence(
             "solution_evidence_snapshot", snapshot.id, snapshot.content_hash
@@ -326,26 +346,27 @@ class SolutionARBAdapter:
         return f"/solutions/{subject.subject_id}?tab=governance"
 
     @classmethod
-    def _load_row(cls, actor, subject_id):
+    def _load_row(cls, actor, subject_id, *, lock=False):
         _require_actor_membership(actor)
         if isinstance(subject_id, bool) or not isinstance(subject_id, int) or subject_id <= 0:
             raise _not_found()
-        row = db.session.execute(
-            db.select(Solution).where(
+        statement = db.select(Solution).where(
                 Solution.id == subject_id,
                 Solution.organization_id == actor.organization_id,
             )
-        ).scalar_one_or_none()
+        if lock:
+            statement = statement.with_for_update(of=Solution)
+        row = db.session.execute(statement).scalar_one_or_none()
         if row is None:
             raise _not_found()
         return row
 
     @classmethod
-    def _require_current_subject(cls, actor, subject):
+    def _require_current_subject(cls, actor, subject, *, lock=False):
         _require_subject(subject, cls.subject_type)
         if subject.organization_id != actor.organization_id:
             raise _not_found()
-        return cls._load_row(actor, subject.subject_id)
+        return cls._load_row(actor, subject.subject_id, lock=lock)
 
 
 def _canonical_value(value):
@@ -373,6 +394,7 @@ class _SubjectSnapshotAdapter:
     model_type = None
     subject_type = ""
     policy_version = ""
+    review_type = ""
     required_fields: tuple[str, ...] = ()
 
     def load(self, actor, subject_id):
@@ -383,6 +405,9 @@ class _SubjectSnapshotAdapter:
 
     def evaluate(self, actor, subject, assertions):
         row = self._require_current_subject(actor, subject)
+        return self._evaluate_row(row, assertions)
+
+    def _evaluate_row(self, row, assertions):
         reason_codes = []
         missing = []
         for field in self.required_fields:
@@ -391,6 +416,10 @@ class _SubjectSnapshotAdapter:
                 code = f"{self.subject_type}_{field}_required"
                 reason_codes.append(code)
                 missing.append({"code": code, "field": field})
+        dossier, subject_blockers = self._governance_dossier(row)
+        for blocker in subject_blockers:
+            reason_codes.append(blocker["code"])
+            missing.append(blocker)
         human_reviewed = (
             isinstance(assertions, Mapping) and assertions.get("human_reviewed") is True
         )
@@ -399,6 +428,62 @@ class _SubjectSnapshotAdapter:
             missing.append(
                 {"code": "human_review_required", "assertion": "human_reviewed"}
             )
+        supplied_policy = dossier.get("policy_version") if isinstance(dossier, Mapping) else None
+        if supplied_policy != self.policy_version:
+            reason_codes.append("arb_policy_version_mismatch")
+            missing.append(
+                {
+                    "code": "arb_policy_version_mismatch",
+                    "expected": self.policy_version,
+                    "actual": supplied_policy,
+                }
+            )
+        standards = self._mandatory_standards()
+        supplied_standards = dossier.get("standards") if isinstance(dossier, Mapping) else None
+        supplied_standards = supplied_standards if isinstance(supplied_standards, list) else []
+        satisfied_standard_ids = []
+        standard_results = []
+        for standard in standards:
+            satisfied = any(
+                isinstance(item, Mapping)
+                and item.get("standard_id") == standard.id
+                and item.get("standard_code") == standard.code
+                and item.get("satisfied") is True
+                for item in supplied_standards
+            )
+            standard_results.append(
+                {
+                    "standard_id": standard.id,
+                    "standard_code": standard.code,
+                    "satisfied": satisfied,
+                }
+            )
+            if satisfied:
+                satisfied_standard_ids.append(standard.id)
+            else:
+                reason_codes.append("mandatory_standard_unsatisfied")
+                missing.append(
+                    {
+                        "code": "mandatory_standard_unsatisfied",
+                        "standard_id": standard.id,
+                        "standard_code": standard.code,
+                    }
+                )
+        evidence, evidence_blockers = self._supporting_evidence(dossier)
+        for blocker in evidence_blockers:
+            reason_codes.append(blocker["code"])
+            missing.append(blocker)
+        reason_codes = list(dict.fromkeys(reason_codes))
+        subject_payload = _complete_payload(row)
+        subject_hash = hashlib.sha256(
+            json.dumps(
+                subject_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
         return ARBReadinessResult(
             ready=not reason_codes,
             reason_codes=reason_codes,
@@ -407,24 +492,30 @@ class _SubjectSnapshotAdapter:
                 "human_reviewed": human_reviewed,
                 "required_fields": list(self.required_fields),
                 "policy_version": self.policy_version,
+                "subject_hash": subject_hash,
+                "standard_ids": sorted(satisfied_standard_ids),
+                "evidence_ids": [item["resource_id"] for item in evidence],
+                "evidence_citations": evidence,
             },
-            governance_result={"policy_version": self.policy_version},
+            governance_result={
+                "policy_version": self.policy_version,
+                "review_type": self.review_type,
+                "mandatory_standards": standard_results,
+                "supporting_evidence_count": len(evidence),
+            },
         )
 
     def snapshot(self, actor, subject, readiness):
-        row = self._require_current_subject(actor, subject)
-        current_fields_complete = all(
-            value is not None and (not isinstance(value, str) or bool(value.strip()))
-            for value in (getattr(row, field, None) for field in self.required_fields)
-        )
+        row = self._require_current_subject(actor, subject, lock=True)
         checks = readiness.checks if isinstance(readiness.checks, Mapping) else {}
-        if (
-            not readiness.ready
-            or not current_fields_complete
-            or checks.get("human_reviewed") is not True
-            or checks.get("policy_version") != self.policy_version
-        ):
+        if not readiness.ready:
             raise BlockedByEvidence("arb_subject_not_ready")
+        current = self._evaluate_row(
+            row,
+            {"human_reviewed": checks.get("human_reviewed") is True},
+        )
+        if not current.ready or _readiness_document(current) != _readiness_document(readiness):
+            raise CommandConflict("arb_readiness_stale")
         # Use the database timestamp, including its rendered UTC offset, so the
         # immutable hash is identical before and after PostgreSQL round-trips.
         captured_at = db.session.scalar(db.select(db.func.clock_timestamp()))
@@ -440,9 +531,14 @@ class _SubjectSnapshotAdapter:
             "policy_version": self.policy_version,
             "captured_by_id": actor.user_id,
             "captured_at": captured_at,
-            "payload": _complete_payload(row),
+            "payload": {
+                "subject": _complete_payload(row),
+                "readiness": deepcopy(current.checks),
+                "governance_result": deepcopy(current.governance_result),
+            },
             "citations": [
-                {"resource_type": self.subject_type, "resource_id": row.id}
+                {"resource_type": self.subject_type, "resource_id": row.id},
+                *deepcopy(current.checks["evidence_citations"]),
             ],
         }
         snapshot = ARBSubjectEvidenceSnapshot(**values)
@@ -457,47 +553,170 @@ class _SubjectSnapshotAdapter:
         _require_subject(subject, self.subject_type)
         return self._canonical_url(subject.subject_id)
 
-    def _load_row(self, actor, subject_id):
+    def _load_row(self, actor, subject_id, *, lock=False):
         _require_actor_membership(actor)
         if isinstance(subject_id, bool) or not isinstance(subject_id, int) or subject_id <= 0:
             raise _not_found()
-        row = db.session.execute(
-            db.select(self.model_type).where(
+        statement = db.select(self.model_type).where(
                 self.model_type.id == subject_id,
                 self.model_type.organization_id == actor.organization_id,
             )
-        ).scalar_one_or_none()
+        if lock:
+            statement = statement.with_for_update(of=self.model_type)
+        row = db.session.execute(statement).scalar_one_or_none()
         if row is None:
             raise _not_found()
         return row
 
-    def _require_current_subject(self, actor, subject):
+    def _require_current_subject(self, actor, subject, *, lock=False):
         _require_subject(subject, self.subject_type)
         if subject.organization_id != actor.organization_id:
             raise _not_found()
-        return self._load_row(actor, subject.subject_id)
+        return self._load_row(actor, subject.subject_id, lock=lock)
+
+    def _mandatory_standards(self):
+        rows = db.session.execute(
+            db.select(ARBGovernanceStandard).where(
+                ARBGovernanceStandard.status == "active",
+                ARBGovernanceStandard.mandatory.is_(True),
+            )
+        ).scalars()
+        applicable = []
+        for row in rows:
+            types = row.applies_to_review_types
+            if not types or self.review_type in types:
+                applicable.append(row)
+        return sorted(applicable, key=lambda row: (row.code, row.id))
+
+    def _supporting_evidence(self, dossier):
+        raw = dossier.get("evidence") if isinstance(dossier, Mapping) else None
+        if not isinstance(raw, list) or not raw:
+            return [], [{"code": "supporting_evidence_required"}]
+        now = datetime.now(timezone.utc)
+        citations = []
+        blockers = []
+        seen = set()
+        for item in raw:
+            evidence_id = item.get("evidence_id") if isinstance(item, Mapping) else None
+            evidence_type = item.get("evidence_type") if isinstance(item, Mapping) else None
+            content_hash = item.get("content_hash") if isinstance(item, Mapping) else None
+            captured_at = self._parse_aware_datetime(item.get("captured_at")) if isinstance(item, Mapping) else None
+            expires_at = self._parse_aware_datetime(item.get("expires_at")) if isinstance(item, Mapping) else None
+            valid_id = (
+                not isinstance(evidence_id, bool)
+                and isinstance(evidence_id, (int, str))
+                and bool(str(evidence_id).strip())
+            )
+            valid_hash = (
+                isinstance(content_hash, str)
+                and len(content_hash) == 64
+                and all(character in "0123456789abcdef" for character in content_hash.lower())
+            )
+            if (
+                not valid_id
+                or evidence_id in seen
+                or not isinstance(evidence_type, str)
+                or not evidence_type.strip()
+                or not valid_hash
+                or captured_at is None
+                or expires_at is None
+            ):
+                blockers.append({"code": "supporting_evidence_invalid", "evidence_id": evidence_id})
+                continue
+            if expires_at <= now:
+                blockers.append({"code": "supporting_evidence_stale", "evidence_id": evidence_id})
+                continue
+            seen.add(evidence_id)
+            citations.append(
+                {
+                    "resource_type": evidence_type,
+                    "resource_id": evidence_id,
+                    "content_hash": content_hash.lower(),
+                    "captured_at": captured_at.isoformat(),
+                    "expires_at": expires_at.isoformat(),
+                }
+            )
+        if not citations and not blockers:
+            blockers.append({"code": "supporting_evidence_required"})
+        return citations, blockers
+
+    @staticmethod
+    def _parse_aware_datetime(value):
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+
+    def _governance_dossier(self, row):
+        raise NotImplementedError
 
 
 class ArchitectureModelARBAdapter(_SubjectSnapshotAdapter):
     subject_type = "architecture_model"
     model_type = ArchitectureModel
-    policy_version = "architecture-model-arb-r1"
+    policy_version = "architecture-model-arb-r2"
+    review_type = "technology_selection"
     required_fields = ("name", "version", "model_data")
 
     @staticmethod
     def _canonical_url(_subject_id):
         return "/architecture/models"
 
+    def _governance_dossier(self, row):
+        try:
+            document = json.loads(row.model_data)
+        except (TypeError, ValueError):
+            return {}, [{"code": "architecture_model_json_invalid", "field": "model_data"}]
+        if not isinstance(document, Mapping):
+            return {}, [{"code": "architecture_model_json_invalid", "field": "model_data"}]
+        dossier = document.get("arb_readiness")
+        return (dossier if isinstance(dossier, Mapping) else {}), []
+
 
 class ADRARBAdapter(_SubjectSnapshotAdapter):
     subject_type = "adr"
     model_type = ArchitectureDecisionRecord
-    policy_version = "adr-arb-r1"
+    policy_version = "adr-arb-r2"
+    review_type = "architecture_change"
     required_fields = ("title", "context", "decision", "rationale", "consequences")
 
     @staticmethod
     def _canonical_url(subject_id):
-        return f"/architecture/adrs/{subject_id}"
+        return f"/architecture/adrs/records/{subject_id}"
+
+    def _governance_dossier(self, row):
+        blockers = []
+        if row.status != "proposed" or row.review_status not in {None, "pending", "changes-requested"}:
+            blockers.append(
+                {
+                    "code": "adr_state_not_submittable",
+                    "status": row.status,
+                    "review_status": row.review_status,
+                }
+            )
+        for field in (
+            "alternatives_considered",
+            "stakeholders",
+            "affected_systems",
+            "related_adr_ids",
+            "tags",
+            "risks",
+        ):
+            value = getattr(row, field, None)
+            if value is None or not str(value).strip():
+                continue
+            try:
+                json.loads(value)
+            except (TypeError, ValueError):
+                blockers.append({"code": "adr_json_invalid", "field": field})
+        governance = row.governance_blob if isinstance(row.governance_blob, Mapping) else {}
+        dossier = governance.get("arb_readiness")
+        return (dossier if isinstance(dossier, Mapping) else {}), blockers
 
 
 _ADAPTERS: dict[str, ARBSubjectAdapter] = {
