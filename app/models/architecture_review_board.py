@@ -461,6 +461,7 @@ _ARB_REVIEW_CYCLE_SHAPE = (
     "AND ((status = 'historical_unverified' "
     "AND migration_gap_reason IS NOT NULL AND legacy_source_type IS NOT NULL "
     "AND legacy_source_id IS NOT NULL AND closed_at IS NOT NULL "
+    "AND terminal_outcome IS NOT NULL "
     "AND terminal_outcome = 'historical_unverified' "
     "AND decision_brief_version_id IS NULL "
     "AND solution_evidence_snapshot_id IS NULL "
@@ -505,7 +506,8 @@ _ARB_REVIEW_CYCLE_SHAPE = (
     f"AND ((status IN ({_ARB_OPEN_CYCLE_SQL}) "
     "AND closed_at IS NULL AND terminal_outcome IS NULL) "
     f"OR (status IN ({_ARB_TERMINAL_CYCLE_SQL}) "
-    "AND closed_at IS NOT NULL AND terminal_outcome = status))))"
+    "AND closed_at IS NOT NULL AND terminal_outcome IS NOT NULL "
+    "AND terminal_outcome = status))))"
 )
 
 
@@ -651,7 +653,8 @@ _ARB_TYPED_REVIEW_SHAPE = (
     "AND solution_evidence_snapshot_id IS NULL "
     "AND subject_evidence_snapshot_id IS NOT NULL)) "
     f"AND ((status IN ({_ARB_OPEN_CYCLE_SQL}) AND decision IS NULL) "
-    f"OR (status IN ({_ARB_TERMINAL_CYCLE_SQL}) AND decision = status)))"
+    f"OR (status IN ({_ARB_TERMINAL_CYCLE_SQL}) "
+    "AND decision IS NOT NULL AND decision = status)))"
 )
 
 
@@ -911,6 +914,12 @@ def _arb_membership_function_sql(quoted_schema):
     DECLARE
         matching_review_id integer;
     BEGIN
+        IF NEW.subject_type IS NOT NULL AND NEW.subject_id IS NOT NULL THEN
+            PERFORM pg_advisory_xact_lock(hashtextextended(
+                'archie-arb-subject:' || NEW.subject_type || ':' || NEW.subject_id::text,
+                0
+            ));
+        END IF;
         IF TG_TABLE_NAME = 'arb_subject_evidence_snapshots' THEN
             IF NEW.subject_type = 'architecture_model' AND NOT EXISTS (
                 SELECT 1 FROM architecture_models model
@@ -1014,8 +1023,19 @@ def _arb_membership_function_sql(quoted_schema):
                   AND predecessor.subject_type = NEW.subject_type
                   AND predecessor.subject_id = NEW.subject_id
                   AND predecessor.cycle_number = NEW.cycle_number - 1
+                  AND predecessor.status IN ({_ARB_TERMINAL_CYCLE_SQL})
                   AND predecessor.closed_at IS NOT NULL
+                  AND predecessor.terminal_outcome IS NOT NULL
+                  AND predecessor.terminal_outcome = predecessor.status
                   AND predecessor.closed_at <= NEW.opened_at
+                  AND EXISTS (
+                      SELECT 1 FROM arb_review_items predecessor_review
+                      WHERE predecessor_review.review_cycle_id = predecessor.id
+                        AND predecessor_review.organization_id = predecessor.organization_id
+                        AND predecessor_review.status = predecessor.status
+                        AND predecessor_review.decision IS NOT NULL
+                        AND predecessor_review.decision = predecessor.status
+                  )
             ) THEN
                 RAISE EXCEPTION 'ARB cycle predecessor is not monotonic for its typed subject'
                     USING ERRCODE = '23514';
@@ -1184,6 +1204,10 @@ def _arb_parent_tenant_function_sql(quoted_schema):
             WHEN 'architecture_models' THEN 'architecture_model'
             WHEN 'architecture_decision_records' THEN 'adr'
         END;
+        PERFORM pg_advisory_xact_lock(hashtextextended(
+            'archie-arb-subject:' || typed_subject || ':' || OLD.id::text,
+            0
+        ));
         IF EXISTS (
             SELECT 1 FROM arb_review_cycles cycle
             WHERE cycle.subject_type = typed_subject
@@ -1219,31 +1243,6 @@ _ARB_CHECK_SPECS = {
     ),
     "ck_arb_review_cycle_shape": ("arb_review_cycles", "ARBReviewCycle"),
     "ck_arb_review_item_typed_shape": ("arb_review_items", "ARBReviewItem"),
-}
-_ARB_CHECK_TOKEN_SIGNATURES = {
-    "ck_arb_subject_evidence_snapshot_shape": (
-        ("schema_version", "is", "not", "null"),
-        ("length", "content_hash"),
-        ("subject_type", "architecture_model"),
-        ("subject_type", "adr"),
-    ),
-    "ck_arb_review_cycle_shape": (
-        ("terminal_outcome", "historical_unverified"),
-        ("migration_gap_reason", "is", "not", "null"),
-        ("cycle_number", "1"),
-        ("predecessor_cycle_id", "is", "null"),
-        ("status", "any", "array", "submitted"),
-        ("returned_for_evidence", "returned_for_options"),
-        ("terminal_outcome", "status"),
-    ),
-    "ck_arb_review_item_typed_shape": (
-        ("review_cycle_id", "is", "null"),
-        ("status", "historical_unverified"),
-        ("decision", "is", "null"),
-        ("governance_checklist", "is", "null"),
-        ("status", "any", "array", "submitted"),
-        ("decision", "status"),
-    ),
 }
 _ARB_INDEX_SPECS = {
     "uq_arb_review_cycle_number": (
@@ -1347,72 +1346,156 @@ _ARB_FK_SPECS = {
 }
 _ARB_TRIGGER_SPECS = {
     ("arb_subject_evidence_snapshots", "trg_arb_subject_snapshot_membership"):
-        ("archie_validate_arb_cycle_membership", 21, True, True, True),
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, ()),
     ("arb_review_cycles", "trg_arb_cycle_membership"):
-        ("archie_validate_arb_cycle_membership", 21, True, True, True),
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, ()),
     ("arb_review_cycles", "trg_arb_cycle_history"):
-        ("archie_guard_arb_cycle_history", 27, False, False, False),
+        ("archie_guard_arb_cycle_history", 27, False, False, False, ()),
     ("arb_review_items", "trg_arb_review_cycle_membership"):
-        ("archie_validate_arb_cycle_membership", 21, True, True, True),
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, ()),
     ("arb_review_items", "trg_arb_review_cycle_history"):
-        ("archie_guard_arb_cycle_history", 27, False, False, False),
+        ("archie_guard_arb_cycle_history", 27, False, False, False, ()),
     ("arb_subject_evidence_snapshots", "trg_reject_arb_subject_snapshot_mutation"):
-        ("archie_reject_arb_subject_snapshot_mutation", 27, False, False, False),
+        ("archie_reject_arb_subject_snapshot_mutation", 27, False, False, False, ()),
     ("decision_briefs", "trg_arb_decision_brief_tenant_history"):
-        ("archie_guard_arb_subject_tenant", 19, False, False, False),
+        ("archie_guard_arb_subject_tenant", 19, False, False, False,
+         ("organization_id",)),
     ("solutions", "trg_arb_solution_tenant_history"):
-        ("archie_guard_arb_subject_tenant", 19, False, False, False),
+        ("archie_guard_arb_subject_tenant", 19, False, False, False,
+         ("organization_id",)),
     ("architecture_models", "trg_arb_architecture_model_tenant_history"):
-        ("archie_guard_arb_subject_tenant", 19, False, False, False),
+        ("archie_guard_arb_subject_tenant", 19, False, False, False,
+         ("organization_id",)),
     ("architecture_decision_records", "trg_arb_adr_tenant_history"):
-        ("archie_guard_arb_subject_tenant", 19, False, False, False),
-}
-_ARB_FUNCTION_SIGNATURES = {
-    "archie_validate_arb_cycle_membership": (
-        "cycle review projection is missing or disagrees",
-        "cycle predecessor is not monotonic",
-        "version does not belong to its brief and tenant",
-    ),
-    "archie_guard_arb_cycle_history": (
-        "historical unverified arb review is immutable",
-        "closed arb review cycle history is immutable",
-    ),
-    "archie_guard_arb_subject_tenant": (
-        "subject tenant change would invalidate typed arb history",
-    ),
-    "archie_reject_arb_subject_snapshot_mutation": (
-        "arb subject evidence snapshots are append-only",
-    ),
+        ("archie_guard_arb_subject_tenant", 19, False, False, False,
+         ("organization_id",)),
 }
 
 
 def _arb_sql_tokens(value):
-    value = re.sub(r"::[a-z_][a-z0-9_ ]*(?:\[\])?", "", value.lower())
-    return re.findall(r"'[^']*'|[a-z_][a-z0-9_]*|\d+", value)
+    """Canonical full-definition tokens for PostgreSQL's harmless rewrites."""
+    value = value.lower().replace('"', "")
+    value = re.sub(r"::(?:character\s+varying|text)(?:\[\])?", "", value)
+    tokens = re.findall(
+        r"'(?:''|[^'])*'|<>|>=|<=|=|>|<|[a-z_][a-z0-9_]*|\d+",
+        value,
+    )
+    canonical = []
+    index = 0
+    while index < len(tokens):
+        if tokens[index:index + 3] == ["=", "any", "array"]:
+            canonical.append("in")
+            index += 3
+        else:
+            canonical.append(tokens[index])
+            index += 1
+    return tuple(canonical)
 
 
-def _arb_has_token_sequence(tokens, sequence):
-    normalized = tuple(token.strip("'") for token in tokens)
-    expected = tuple(token.strip("'") for token in sequence)
-    size = len(expected)
-    return any(normalized[index:index + size] == expected for index in range(len(tokens)))
+def _arb_normalize_catalog_definition(value):
+    return " ".join(value.lower().replace('"', "").split())
 
 
-def _arb_check_matches(row, table_name, constraint_name):
-    if row is None or row.relname != table_name or not row.convalidated:
-        return False
-    tokens = _arb_sql_tokens(row.definition)
-    return all(
-        _arb_has_token_sequence(tokens, sequence)
-        for sequence in _ARB_CHECK_TOKEN_SIGNATURES[constraint_name]
+def _arb_check_matches(row, table_name, expected_definition):
+    return bool(
+        row is not None
+        and row.relname == table_name
+        and row.contype == "c"
+        and row.convalidated
+        and _arb_sql_tokens(row.definition) == _arb_sql_tokens(expected_definition)
     )
 
 
-def _arb_trigger_matches(state, expected):
+def _arb_trigger_matches(state, expected, schema_name):
     if state is None or state[0] != "O":
         return False
-    actual = (state[2], state[1], *state[3:])
+    if state[3] != schema_name:
+        return False
+    actual = (state[2], state[1], *state[4:])
     return actual == expected
+
+
+def _arb_function_body(function_sql):
+    match = re.search(r"\bAS\s+\$\$(.*?)\$\$\s*$", function_sql, re.I | re.S)
+    if not match:
+        raise RuntimeError("typed ARB function SQL has no canonical body")
+    return match.group(1).strip()
+
+
+def _arb_normalize_function_body(value):
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _arb_expected_function_state(quoted_schema, schema_name):
+    from app.models.transformation_decision import (
+        _ARB_SUBJECT_SNAPSHOT_IMMUTABILITY_BODY,
+    )
+
+    schema_search_path = f"search_path=pg_catalog, {schema_name}"
+    return {
+        "archie_validate_arb_cycle_membership": (
+            _arb_function_body(_arb_membership_function_sql(quoted_schema)),
+            (schema_search_path,),
+        ),
+        "archie_guard_arb_cycle_history": (
+            _arb_function_body(_arb_history_function_sql(quoted_schema)),
+            (schema_search_path,),
+        ),
+        "archie_guard_arb_subject_tenant": (
+            _arb_function_body(_arb_parent_tenant_function_sql(quoted_schema)),
+            (schema_search_path,),
+        ),
+        "archie_reject_arb_subject_snapshot_mutation": (
+            _ARB_SUBJECT_SNAPSHOT_IMMUTABILITY_BODY,
+            ("search_path=pg_catalog",),
+        ),
+    }
+
+
+def _arb_model_check_definitions():
+    model_tables = {
+        "ARBSubjectEvidenceSnapshot": db.metadata.tables[
+            "arb_subject_evidence_snapshots"
+        ],
+        "ARBReviewCycle": ARBReviewCycle.__table__,
+        "ARBReviewItem": ARBReviewItem.__table__,
+    }
+    definitions = {}
+    for name, (_table_name, model_name) in _ARB_CHECK_SPECS.items():
+        constraint = next(
+            item for item in model_tables[model_name].constraints if item.name == name
+        )
+        definitions[name] = f"CHECK ({constraint.sqltext})"
+    return definitions
+
+
+def _arb_expected_index_definition(schema_name, name, table_name, columns, predicate):
+    definition = (
+        f"CREATE UNIQUE INDEX {name} ON {schema_name}.{table_name} "
+        f"USING btree ({', '.join(columns)})"
+    )
+    if predicate:
+        definition += f" WHERE ({predicate})"
+    return definition
+
+
+def _arb_fk_matches(row, schema_name, expected):
+    source_table, source_columns, target_table, target_columns = expected
+    return bool(
+        row is not None
+        and row.contype == "f"
+        and row.source_table == source_table
+        and tuple(row.source_columns) == source_columns
+        and row.target_schema == schema_name
+        and row.target_table == target_table
+        and tuple(row.target_columns) == target_columns
+        and row.confupdtype == "a"
+        and row.confdeltype == "r"
+        and row.confmatchtype == "s"
+        and not row.condeferrable
+        and not row.condeferred
+        and row.convalidated
+    )
 
 
 def _arb_catalog_state(connection):
@@ -1423,13 +1506,25 @@ def _arb_catalog_state(connection):
             """
             SELECT cls.relname, trigger.tgname, trigger.tgenabled,
                    trigger.tgtype, procedure.proname,
+                   procedure_namespace.nspname AS procedure_schema,
                    (trigger.tgconstraint <> 0) AS is_constraint,
                    COALESCE(constraint_row.condeferrable, false) AS is_deferrable,
-                   COALESCE(constraint_row.condeferred, false) AS is_deferred
+                   COALESCE(constraint_row.condeferred, false) AS is_deferred,
+                   ARRAY(
+                       SELECT attribute.attname
+                       FROM unnest(trigger.tgattr::smallint[])
+                            WITH ORDINALITY update_column(attnum, ord)
+                       JOIN pg_attribute attribute
+                         ON attribute.attrelid = trigger.tgrelid
+                        AND attribute.attnum = update_column.attnum
+                       ORDER BY update_column.ord
+                   ) AS update_columns
             FROM pg_trigger trigger
             JOIN pg_class cls ON cls.oid = trigger.tgrelid
             JOIN pg_namespace namespace ON namespace.oid = cls.relnamespace
             JOIN pg_proc procedure ON procedure.oid = trigger.tgfoid
+            JOIN pg_namespace procedure_namespace
+              ON procedure_namespace.oid = procedure.pronamespace
             LEFT JOIN pg_constraint constraint_row
               ON constraint_row.oid = trigger.tgconstraint
             WHERE namespace.nspname = current_schema()
@@ -1442,9 +1537,11 @@ def _arb_catalog_state(connection):
             row.tgenabled,
             row.tgtype,
             row.proname,
+            row.procedure_schema,
             row.is_constraint,
             row.is_deferrable,
             row.is_deferred,
+            tuple(row.update_columns),
         )
         for row in rows
     }
@@ -1456,8 +1553,9 @@ def _arb_check_state(connection, schema_name):
     rows = connection.execute(
         text(
             """
-            SELECT constraint_row.conname, cls.relname, constraint_row.convalidated,
-                   pg_get_constraintdef(constraint_row.oid) AS definition
+            SELECT constraint_row.conname, cls.relname, constraint_row.contype,
+                   constraint_row.convalidated,
+                   pg_get_constraintdef(constraint_row.oid, true) AS definition
             FROM pg_constraint constraint_row
             JOIN pg_class cls ON cls.oid = constraint_row.conrelid
             JOIN pg_namespace namespace ON namespace.oid = cls.relnamespace
@@ -1482,7 +1580,8 @@ def _arb_index_state(connection, schema_name):
                        SELECT pg_get_indexdef(index_row.indexrelid, ordinal, true)
                        FROM generate_series(1, index_row.indnkeyatts) ordinal
                    ) AS columns,
-                   pg_get_expr(index_row.indpred, index_row.indrelid) AS predicate
+                   pg_get_expr(index_row.indpred, index_row.indrelid) AS predicate,
+                   pg_get_indexdef(index_row.indexrelid, 0, false) AS definition
             FROM pg_index index_row
             JOIN pg_class index_cls ON index_cls.oid = index_row.indexrelid
             JOIN pg_class table_cls ON table_cls.oid = index_row.indrelid
@@ -1502,8 +1601,13 @@ def _arb_fk_state(connection, schema_name):
     rows = connection.execute(
         text(
             """
-            SELECT constraint_row.conname, source.relname AS source_table,
+            SELECT constraint_row.conname, constraint_row.contype,
+                   source.relname AS source_table,
+                   target_namespace.nspname AS target_schema,
                    target.relname AS target_table, constraint_row.convalidated,
+                   constraint_row.confupdtype, constraint_row.confdeltype,
+                   constraint_row.confmatchtype, constraint_row.condeferrable,
+                   constraint_row.condeferred,
                    ARRAY(
                        SELECT attribute.attname
                        FROM unnest(constraint_row.conkey) WITH ORDINALITY key(attnum, ord)
@@ -1522,10 +1626,11 @@ def _arb_fk_state(connection, schema_name):
                    ) AS target_columns
             FROM pg_constraint constraint_row
             JOIN pg_class source ON source.oid = constraint_row.conrelid
-            JOIN pg_class target ON target.oid = constraint_row.confrelid
+            LEFT JOIN pg_class target ON target.oid = constraint_row.confrelid
+            LEFT JOIN pg_namespace target_namespace
+              ON target_namespace.oid = target.relnamespace
             JOIN pg_namespace namespace ON namespace.oid = source.relnamespace
             WHERE namespace.nspname = :schema_name
-              AND constraint_row.contype = 'f'
               AND constraint_row.conname = ANY(:names)
             """
         ),
@@ -1557,11 +1662,12 @@ def inspect_arb_cycle_constraints(connection):
         return drift
 
     check_state = _arb_check_state(connection, schema_name)
+    check_definitions = _arb_model_check_definitions()
     for name, (table_name, _model_name) in _ARB_CHECK_SPECS.items():
         row = check_state.get(name)
         if row is None:
             drift.append(f"constraint_missing:{name}")
-        elif not _arb_check_matches(row, table_name, name):
+        elif not _arb_check_matches(row, table_name, check_definitions[name]):
             drift.append(f"constraint_malformed:{name}")
 
     index_state = _arb_index_state(connection, schema_name)
@@ -1570,15 +1676,16 @@ def inspect_arb_cycle_constraints(connection):
         if row is None:
             drift.append(f"index_missing:{name}")
             continue
-        actual_predicate = " ".join(_arb_sql_tokens(row.predicate or "")) or None
-        expected_predicate = " ".join(_arb_sql_tokens(predicate or "")) or None
+        expected_definition = _arb_expected_index_definition(
+            schema_name, name, table_name, columns, predicate
+        )
         if (
             row.table_name != table_name
             or not row.indisunique
             or not row.indisvalid
             or not row.indisready
-            or tuple(row.columns) != columns
-            or actual_predicate != expected_predicate
+            or _arb_normalize_catalog_definition(row.definition)
+            != _arb_normalize_catalog_definition(expected_definition)
         ):
             drift.append(f"index_malformed:{name}")
 
@@ -1589,12 +1696,10 @@ def inspect_arb_cycle_constraints(connection):
         row = fk_state.get(name)
         if row is None:
             drift.append(f"foreign_key_missing:{name}")
-        elif (
-            row.source_table != source_table
-            or tuple(row.source_columns) != source_columns
-            or row.target_table != target_table
-            or tuple(row.target_columns) != target_columns
-            or not row.convalidated
+        elif not _arb_fk_matches(
+            row,
+            schema_name,
+            (source_table, source_columns, target_table, target_columns),
         ):
             drift.append(f"foreign_key_malformed:{name}")
 
@@ -1605,27 +1710,39 @@ def inspect_arb_cycle_constraints(connection):
             drift.append(f"trigger_missing:{key[0]}.{key[1]}")
         elif state[0] != "O":
             drift.append(f"trigger_disabled:{key[0]}.{key[1]}")
-        elif not _arb_trigger_matches(state, expected):
+        elif not _arb_trigger_matches(state, expected, schema_name):
             drift.append(f"trigger_malformed:{key[0]}.{key[1]}")
 
+    quote = connection.dialect.identifier_preparer.quote
+    expected_functions = _arb_expected_function_state(quote(schema_name), schema_name)
     function_rows = connection.execute(
         text(
             """
-            SELECT procedure.proname, pg_get_functiondef(procedure.oid) AS definition
+            SELECT procedure.proname, procedure.prosrc AS source,
+                   procedure.proconfig, language.lanname,
+                   format_type(procedure.prorettype, NULL) AS result_type
             FROM pg_proc procedure
             JOIN pg_namespace namespace ON namespace.oid = procedure.pronamespace
+            JOIN pg_language language ON language.oid = procedure.prolang
             WHERE namespace.nspname = :schema_name
               AND procedure.proname = ANY(:names)
+              AND procedure.pronargs = 0
             """
         ),
-        {"schema_name": schema_name, "names": list(_ARB_FUNCTION_SIGNATURES)},
+        {"schema_name": schema_name, "names": list(expected_functions)},
     ).all()
-    functions = {row.proname: row.definition.lower() for row in function_rows}
-    for name, signatures in _ARB_FUNCTION_SIGNATURES.items():
-        definition = functions.get(name)
-        if definition is None:
+    functions = {row.proname: row for row in function_rows}
+    for name, (expected_body, expected_config) in expected_functions.items():
+        row = functions.get(name)
+        if row is None:
             drift.append(f"function_missing:{name}")
-        elif any(signature not in definition for signature in signatures):
+        elif (
+            _arb_normalize_function_body(row.source)
+            != _arb_normalize_function_body(expected_body)
+            or tuple(row.proconfig or ()) != expected_config
+            or row.lanname != "plpgsql"
+            or row.result_type != "trigger"
+        ):
             drift.append(f"function_malformed:{name}")
     return sorted(drift)
 
@@ -1666,7 +1783,8 @@ def ensure_arb_cycle_constraints(connection):
             if item.name == constraint_name
         )
         row = check_state.get(constraint_name)
-        if row and not _arb_check_matches(row, table_name, constraint_name):
+        expected_definition = f"CHECK ({constraint.sqltext})"
+        if row and not _arb_check_matches(row, table_name, expected_definition):
             actual_table = f"{quoted_schema}.{quote(row.relname)}"
             connection.exec_driver_sql(
                 f"ALTER TABLE {actual_table} DROP CONSTRAINT {quote(constraint_name)}"
@@ -1690,12 +1808,10 @@ def ensure_arb_cycle_constraints(connection):
         if source_table not in tables or target_table not in tables:
             continue
         row = fk_state.get(name)
-        correct = row and (
-            row.source_table == source_table
-            and tuple(row.source_columns) == source_columns
-            and row.target_table == target_table
-            and tuple(row.target_columns) == target_columns
-            and row.convalidated
+        correct = _arb_fk_matches(
+            row,
+            schema_name,
+            (source_table, source_columns, target_table, target_columns),
         )
         if correct:
             continue
@@ -1711,7 +1827,8 @@ def ensure_arb_cycle_constraints(connection):
         connection.exec_driver_sql(
             f"ALTER TABLE {qualified_source} ADD CONSTRAINT {quote(name)} "
             f"FOREIGN KEY ({local_sql}) REFERENCES {qualified_target} ({remote_sql}) "
-            "ON DELETE RESTRICT NOT VALID"
+            "MATCH SIMPLE ON UPDATE NO ACTION ON DELETE RESTRICT "
+            "NOT DEFERRABLE NOT VALID"
         )
         connection.exec_driver_sql(
             f"ALTER TABLE {qualified_source} VALIDATE CONSTRAINT {quote(name)}"
@@ -1722,17 +1839,16 @@ def ensure_arb_cycle_constraints(connection):
         if table_name not in tables:
             continue
         row = index_state.get(name)
-        actual_predicate = (
-            " ".join(_arb_sql_tokens(row.predicate or "")) or None if row else None
+        expected_definition = _arb_expected_index_definition(
+            schema_name, name, table_name, columns, predicate
         )
-        expected_predicate = " ".join(_arb_sql_tokens(predicate or "")) or None
         correct = row and (
             row.table_name == table_name
             and row.indisunique
             and row.indisvalid
             and row.indisready
-            and tuple(row.columns) == columns
-            and actual_predicate == expected_predicate
+            and _arb_normalize_catalog_definition(row.definition)
+            == _arb_normalize_catalog_definition(expected_definition)
         )
         if correct:
             continue
@@ -1794,13 +1910,20 @@ def ensure_arb_cycle_constraints(connection):
             continue
         qualified_table = f"{quoted_schema}.{quote(table_name)}"
         state = trigger_state.get((table_name, trigger_name))
-        if _arb_trigger_matches(state, expected):
+        if _arb_trigger_matches(state, expected, schema_name):
             continue
         if state:
             connection.exec_driver_sql(
                 f"DROP TRIGGER {quote(trigger_name)} ON {qualified_table}"
             )
-        function_name, _tgtype, is_constraint, _is_deferrable, _is_deferred = expected
+        (
+            function_name,
+            _tgtype,
+            is_constraint,
+            _is_deferrable,
+            _is_deferred,
+            _update_columns,
+        ) = expected
         qualified_function = f"{quoted_schema}.{quote(function_name)}()"
         if is_constraint:
             connection.exec_driver_sql(

@@ -16,6 +16,13 @@ from app.models.transformation_programme import ISO_4217_CURRENCIES
 OPTION_EXCEPTION_TYPES = ("policy", "legal")
 BRIEF_STATUSES = ("draft", "frozen", "in_governance", "terminal")
 
+_ARB_SUBJECT_SNAPSHOT_IMMUTABILITY_BODY = """
+BEGIN
+    RAISE EXCEPTION 'ARB subject evidence snapshots are append-only'
+        USING ERRCODE = '55000';
+END;
+""".strip()
+
 
 def _sql_values(values):
     return ", ".join(f"'{value}'" for value in values)
@@ -118,15 +125,12 @@ def ensure_arb_subject_snapshot_immutability(connection):
         "'archie_arb_subject_snapshot_immutability'))"
     )
     connection.exec_driver_sql(
-        """
+        f"""
         CREATE OR REPLACE FUNCTION archie_reject_arb_subject_snapshot_mutation()
         RETURNS trigger LANGUAGE plpgsql
         SET search_path = pg_catalog
         AS $$
-        BEGIN
-            RAISE EXCEPTION 'ARB subject evidence snapshots are append-only'
-                USING ERRCODE = '55000';
-        END;
+        {_ARB_SUBJECT_SNAPSHOT_IMMUTABILITY_BODY}
         $$
         """
     )

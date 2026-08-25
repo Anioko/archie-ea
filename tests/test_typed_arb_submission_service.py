@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import importlib
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 import uuid
 
 import pytest
 import psycopg2
+from psycopg2 import sql
 from sqlalchemy.orm import configure_mappers
 
 from app.models.architecture_review_board import ARBReviewItem
@@ -305,6 +307,7 @@ def _insert_model_review(
     snapshot_id,
     cycle_id,
     status="submitted",
+    decision=None,
 ):
     cursor.execute(
         "SELECT review_number FROM arb_review_cycles WHERE id = %s",
@@ -316,10 +319,10 @@ def _insert_model_review(
         INSERT INTO arb_review_items (
             organization_id, review_number, title, review_type, submitter_id,
             subject_type, subject_id, architecture_model_id,
-            subject_evidence_snapshot_id, review_cycle_id, status
+            subject_evidence_snapshot_id, review_cycle_id, status, decision
         ) VALUES (
             %s, %s, 'Typed architecture review', 'architecture_change', %s,
-            'architecture_model', %s, %s, %s, %s, %s
+            'architecture_model', %s, %s, %s, %s, %s, %s
         ) RETURNING id
         """,
         (
@@ -331,6 +334,7 @@ def _insert_model_review(
             snapshot_id,
             cycle_id,
             status,
+            decision,
         ),
     )
     return cursor.fetchone()[0]
@@ -783,6 +787,7 @@ def test_direct_cycle_commit_rejects_non_monotonic_predecessor(app, _schema):
             snapshot_id=snapshot_id,
             cycle_id=first_cycle,
             status="returned_for_evidence",
+            decision="returned_for_evidence",
         )
         third_cycle = _insert_model_cycle(
             cursor,
@@ -1304,7 +1309,7 @@ def test_cycle_and_review_numbers_must_match(app, _schema):
     (
         "ALTER TABLE arb_review_cycles DROP CONSTRAINT ck_arb_review_cycle_shape; "
         "ALTER TABLE arb_review_cycles ADD CONSTRAINT ck_arb_review_cycle_shape CHECK (true)",
-        "ALTER TABLE arb_review_cycles DROP CONSTRAINT uq_arb_review_cycle_review_number; "
+        "DROP INDEX uq_arb_review_cycle_review_number; "
         "CREATE INDEX uq_arb_review_cycle_review_number ON arb_review_cycles (status)",
         "DROP TRIGGER trg_arb_cycle_membership ON arb_review_cycles; "
         "CREATE TRIGGER trg_arb_cycle_membership BEFORE INSERT ON arb_review_cycles "
@@ -1336,6 +1341,345 @@ def test_reconcile_repairs_missing_disabled_and_malformed_typed_guards(
             for statement in damage_sql.split("; "):
                 connection.exec_driver_sql(statement)
             assert inspect_arb_cycle_constraints(connection)
+            ensure_arb_cycle_constraints(connection)
+            assert inspect_arb_cycle_constraints(connection) == []
+        finally:
+            transaction.rollback()
+
+
+def test_historical_unverified_requires_non_null_terminal_outcome(app, _schema):
+    """SQL NULL must not bypass the explicit unverified terminal marker."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "historical-null")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "historical")
+        with pytest.raises(psycopg2.Error, match="ck_arb_review_cycle_shape"):
+            _insert_historical_graph(
+                cursor,
+                organization_id=org_id,
+                user_id=user_id,
+                subject=subject,
+                terminal_outcome=None,
+            )
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def test_terminal_cycle_requires_non_null_canonical_outcome(app, _schema):
+    """A terminal status without an outcome must fail instead of evaluating UNKNOWN."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "terminal-null-outcome")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "terminal")
+        with pytest.raises(psycopg2.Error, match="ck_arb_review_cycle_shape"):
+            _insert_typed_graph(
+                cursor,
+                organization_id=org_id,
+                user_id=user_id,
+                subject=subject,
+                cycle_status="rejected",
+                closed_at=datetime.now(timezone.utc),
+                terminal_outcome=None,
+                review_decision="rejected",
+            )
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def test_terminal_review_requires_non_null_canonical_decision(app, _schema):
+    """A terminal review without its canonical decision must fail SQL validation."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "terminal-null-decision")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "terminal")
+        with pytest.raises(psycopg2.Error, match="ck_arb_review_item_typed_shape"):
+            _insert_typed_graph(
+                cursor,
+                organization_id=org_id,
+                user_id=user_id,
+                subject=subject,
+                cycle_status="rejected",
+                closed_at=datetime.now(timezone.utc),
+                terminal_outcome="rejected",
+                review_decision=None,
+            )
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def test_successor_rejects_predecessor_without_complete_terminal_projection(app, _schema):
+    """Closure alone cannot make an outcome-less predecessor eligible for succession."""
+    raw = _install_typed_schema(app)
+    try:
+        cursor = raw.cursor()
+        org_id, user_id, _model_id = _seed_org_user_model(cursor, "null-predecessor")
+        subject = _seed_subject_material(cursor, "adr", org_id, user_id, "predecessor")
+        with pytest.raises(psycopg2.Error):
+            first_cycle, _review_id, _snapshot_id = _insert_typed_graph(
+                cursor,
+                organization_id=org_id,
+                user_id=user_id,
+                subject=subject,
+                cycle_status="rejected",
+                closed_at=datetime.now(timezone.utc),
+                terminal_outcome=None,
+                review_decision=None,
+            )
+            _insert_typed_graph(
+                cursor,
+                organization_id=org_id,
+                user_id=user_id,
+                subject=subject,
+                cycle_number=2,
+                predecessor_cycle_id=first_cycle,
+            )
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    finally:
+        raw.rollback()
+        raw.close()
+
+
+def _purge_concurrency_test_organizations(connection, organization_ids):
+    """Remove only committed fixtures created for a multi-transaction race."""
+    connection.rollback()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SET session_replication_role = replica")
+        cursor.execute(
+            """
+            SELECT column_row.table_name
+            FROM information_schema.columns column_row
+            JOIN information_schema.tables table_row
+              ON table_row.table_schema = column_row.table_schema
+             AND table_row.table_name = column_row.table_name
+            WHERE column_row.table_schema = current_schema()
+              AND column_row.column_name = 'organization_id'
+              AND table_row.table_type = 'BASE TABLE'
+            """
+        )
+        for (table_name,) in cursor.fetchall():
+            cursor.execute(
+                sql.SQL("DELETE FROM {} WHERE organization_id = ANY(%s)").format(
+                    sql.Identifier(table_name)
+                ),
+                (list(organization_ids),),
+            )
+        cursor.execute(
+            "DELETE FROM organizations WHERE id = ANY(%s)",
+            (list(organization_ids),),
+        )
+        cursor.execute("SET session_replication_role = origin")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+
+
+@pytest.mark.parametrize("subject_type", sorted(SUBJECT_TYPES))
+def test_parent_retenant_and_child_insert_share_subject_concurrency_fence(
+    app, _schema, subject_type
+):
+    """A child commit racing an uncommitted re-tenant must block, then fail."""
+    setup = _install_typed_schema(app)
+    parent = None
+    child = None
+    organization_ids = ()
+    try:
+        setup_cursor = setup.cursor()
+        org_a, user_a, _model_a = _seed_org_user_model(
+            setup_cursor, f"race-source-{subject_type}"
+        )
+        org_b, _user_b, _model_b = _seed_org_user_model(
+            setup_cursor, f"race-target-{subject_type}"
+        )
+        organization_ids = (org_a, org_b)
+        subject = _seed_subject_material(
+            setup_cursor, subject_type, org_a, user_a, "race"
+        )
+        setup.commit()
+
+        from app import db
+
+        with app.app_context():
+            parent = db.engine.raw_connection()
+            child = db.engine.raw_connection()
+        parent_cursor = parent.cursor()
+        child_cursor = child.cursor()
+        table = {
+            "decision_brief": "decision_briefs",
+            "solution": "solutions",
+            "architecture_model": "architecture_models",
+            "adr": "architecture_decision_records",
+        }[subject_type]
+        parent_cursor.execute(
+            f"UPDATE {table} SET organization_id = %s WHERE id = %s",
+            (org_b, subject["subject_id"]),
+        )
+        _insert_typed_graph(
+            child_cursor,
+            organization_id=org_a,
+            user_id=user_a,
+            subject=subject,
+        )
+
+        def commit_child():
+            try:
+                child.commit()
+            except psycopg2.Error as error:
+                child.rollback()
+                return error
+            return None
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending_commit = executor.submit(commit_child)
+            try:
+                early_result = pending_commit.result(timeout=0.5)
+            except FutureTimeout:
+                early_result = "blocked"
+            if early_result != "blocked":
+                parent.rollback()
+                assert isinstance(early_result, psycopg2.Error), (
+                    "child committed while the parent re-tenant was uncommitted"
+                )
+            else:
+                parent.commit()
+                child_error = pending_commit.result(timeout=10)
+                assert isinstance(child_error, psycopg2.Error)
+
+        verification = setup.cursor()
+        verification.execute(
+            "SELECT count(*) FROM arb_review_cycles "
+            "WHERE subject_type = %s AND subject_id = %s",
+            (subject_type, subject["subject_id"]),
+        )
+        assert verification.fetchone()[0] == 0
+    finally:
+        if parent is not None:
+            parent.rollback()
+            parent.close()
+        if child is not None:
+            child.rollback()
+            child.close()
+        if organization_ids:
+            _purge_concurrency_test_organizations(setup, organization_ids)
+        else:
+            setup.rollback()
+        setup.close()
+
+
+@pytest.mark.parametrize(
+    "damage_kind",
+    (
+        "check_true_or_canonical",
+        "index_include",
+        "function_noop_with_messages",
+        "fk_shadow_schema",
+        "fk_action_deferrability",
+        "trigger_wrong_update_column",
+    ),
+)
+def test_reconcile_rejects_semantically_ineffective_same_named_guards(
+    app, _schema, damage_kind
+):
+    """Catalog equality must cover complete semantics, not selected signature tokens."""
+    raw = _install_typed_schema(app)
+    raw.close()
+    from app import db
+    from app.models.architecture_review_board import (
+        ensure_arb_cycle_constraints,
+        inspect_arb_cycle_constraints,
+    )
+
+    with app.app_context(), db.engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            if damage_kind == "check_true_or_canonical":
+                definition = connection.exec_driver_sql(
+                    "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conname = 'ck_arb_review_cycle_shape' "
+                    "AND conrelid = 'arb_review_cycles'::regclass"
+                ).scalar_one()
+                expression = definition.removeprefix("CHECK (").removesuffix(")")
+                connection.exec_driver_sql(
+                    "ALTER TABLE arb_review_cycles DROP CONSTRAINT "
+                    "ck_arb_review_cycle_shape"
+                )
+                connection.exec_driver_sql(
+                    "ALTER TABLE arb_review_cycles ADD CONSTRAINT "
+                    f"ck_arb_review_cycle_shape CHECK (TRUE OR ({expression}))"
+                )
+            elif damage_kind == "index_include":
+                connection.exec_driver_sql(
+                    "DROP INDEX uq_arb_review_cycle_open_subject"
+                )
+                connection.exec_driver_sql(
+                    "CREATE UNIQUE INDEX uq_arb_review_cycle_open_subject "
+                    "ON arb_review_cycles (organization_id, subject_type, subject_id) "
+                    "INCLUDE (status) WHERE closed_at IS NULL"
+                )
+            elif damage_kind == "function_noop_with_messages":
+                connection.exec_driver_sql(
+                    "CREATE OR REPLACE FUNCTION archie_validate_arb_cycle_membership() "
+                    "RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                    "PERFORM 'cycle review projection is missing or disagrees'; "
+                    "PERFORM 'cycle predecessor is not monotonic'; "
+                    "PERFORM 'version does not belong to its brief and tenant'; "
+                    "RETURN NEW; END; $$"
+                )
+            elif damage_kind == "fk_shadow_schema":
+                connection.exec_driver_sql("CREATE SCHEMA arb_guard_shadow")
+                connection.exec_driver_sql(
+                    "CREATE TABLE arb_guard_shadow.decision_brief_versions "
+                    "(id integer PRIMARY KEY)"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO arb_guard_shadow.decision_brief_versions (id) "
+                    "SELECT id FROM decision_brief_versions"
+                )
+                connection.exec_driver_sql(
+                    "ALTER TABLE arb_review_items DROP CONSTRAINT "
+                    "fk_arb_review_item_decision_brief_version"
+                )
+                connection.exec_driver_sql(
+                    "ALTER TABLE arb_review_items ADD CONSTRAINT "
+                    "fk_arb_review_item_decision_brief_version "
+                    "FOREIGN KEY (decision_brief_version_id) REFERENCES "
+                    "arb_guard_shadow.decision_brief_versions(id)"
+                )
+            elif damage_kind == "fk_action_deferrability":
+                connection.exec_driver_sql(
+                    "ALTER TABLE arb_review_items DROP CONSTRAINT "
+                    "fk_arb_review_item_decision_brief_version"
+                )
+                connection.exec_driver_sql(
+                    "ALTER TABLE arb_review_items ADD CONSTRAINT "
+                    "fk_arb_review_item_decision_brief_version "
+                    "FOREIGN KEY (decision_brief_version_id) REFERENCES "
+                    "decision_brief_versions(id) ON DELETE CASCADE "
+                    "DEFERRABLE INITIALLY DEFERRED"
+                )
+            else:
+                connection.exec_driver_sql(
+                    "DROP TRIGGER trg_arb_decision_brief_tenant_history "
+                    "ON decision_briefs"
+                )
+                connection.exec_driver_sql(
+                    "CREATE TRIGGER trg_arb_decision_brief_tenant_history "
+                    "BEFORE UPDATE OF title ON decision_briefs FOR EACH ROW "
+                    "EXECUTE FUNCTION archie_guard_arb_subject_tenant()"
+                )
+
+            drift = inspect_arb_cycle_constraints(connection)
+            assert drift, f"{damage_kind} was accepted as canonical"
             ensure_arb_cycle_constraints(connection)
             assert inspect_arb_cycle_constraints(connection) == []
         finally:
