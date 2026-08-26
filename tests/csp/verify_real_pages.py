@@ -23,9 +23,33 @@ PAGES = ["/archimate/composer", "/dashboard/", "/capability-map/", "/solutions/"
 
 
 def _boot_app():
+    # Follow the database the suite is actually using. This used to hardcode
+    # port 5439 and a database name that exists on no machine here, so when it
+    # ran under pytest the app fell back to DevelopmentConfig's default of
+    # .../5432/archie -- the PRODUCTION database name, absent locally.
     os.environ.setdefault("FLASK_CONFIG", "development")
-    os.environ.setdefault("DATABASE_URL", "postgresql://postgres@127.0.0.1:5439/archie_test")
+    if os.environ.get("TEST_DATABASE_URL"):
+        os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
     os.environ.setdefault("SECRET_KEY", "devkey")
+    # A development app starts the job queue worker: a daemon thread that
+    # outlives this function and keeps retrying a connection for the rest of the
+    # pytest process, logging a WARNING each time. That is what made
+    # test_boot_health::test_boot_warnings_are_allowlisted fail in a full run
+    # and pass in isolation. This helper only renders pages; it never needs the
+    # queue.
+    os.environ.setdefault("DISABLE_JOB_QUEUE_WORKER", "1")
+    # Override the CONFIG CLASS, before create_app. Two things make anything
+    # later too late:
+    #   - config.py binds SQLALCHEMY_DATABASE_URI at class-definition time, and
+    #     conftest imported config long before this runs, so mutating os.environ
+    #     here cannot reach it;
+    #   - create_app touches the database during boot, so the engine is already
+    #     built by the time app.config could be reassigned.
+    # Without this the app fell back to DevelopmentConfig's default database
+    # name, "archie", which is the PRODUCTION name and exists on no dev machine.
+    if os.environ.get("TEST_DATABASE_URL"):
+        import config as _config
+        _config.DevelopmentConfig.SQLALCHEMY_DATABASE_URI = os.environ["TEST_DATABASE_URL"]
     from app import create_app
     app = create_app("development")
     app.config["WTF_CSRF_ENABLED"] = False

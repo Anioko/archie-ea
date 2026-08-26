@@ -32,8 +32,19 @@ PAGES = [
 
 def _boot_app():
     os.environ.setdefault("FLASK_CONFIG", "development")
-    os.environ.setdefault("DATABASE_URL", "postgresql://postgres@127.0.0.1:5439/archie_test")
+    # Follow the suite's database. The hardcoded port 5439 / archie_test here
+    # matched no machine, so the app silently fell back to DevelopmentConfig's
+    # default of .../5432/archie -- the production database name.
+    if os.environ.get("TEST_DATABASE_URL"):
+        os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
+    # A development app starts the job queue worker, whose daemon thread
+    # outlives this helper and logs a connection WARNING for the rest of the
+    # process, polluting later tests. These helpers only render pages.
+    os.environ.setdefault("DISABLE_JOB_QUEUE_WORKER", "1")
     os.environ.setdefault("SECRET_KEY", "devkey")
+    if os.environ.get("TEST_DATABASE_URL"):
+        import config as _config
+        _config.DevelopmentConfig.SQLALCHEMY_DATABASE_URI = os.environ["TEST_DATABASE_URL"]
     from app import create_app
     app = create_app("development")
     app.config["WTF_CSRF_ENABLED"] = False
