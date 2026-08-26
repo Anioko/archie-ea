@@ -70,6 +70,34 @@ def test_transformation_create_to_objective_deep_link_is_accessible_and_honest(
         response = _visit(page, live_server, "/solutions/new-programme")
 
         assert response.status < 400
+
+        # The intake is a six-step wizard. Each step only reveals its own fields,
+        # and Continue stays disabled until that step's required fields are
+        # filled -- so walking it is also the assertion that the gating works.
+        advance = page.get_by_test_id("wizard-next")
+
+        def _advance(from_step, to_step):
+            """Advance one step, waiting for the destination to actually show.
+
+            Clicking blind and asserting only at the end tells you a step was
+            missed but not which one, and races Alpine at narrow viewports where
+            the step nav reflows.
+            """
+            page.get_by_test_id(f"step-{from_step}").wait_for(
+                state="visible", timeout=PAGE_TIMEOUT
+            )
+            advance.click()
+            page.get_by_test_id(f"step-{to_step}").wait_for(
+                state="visible", timeout=PAGE_TIMEOUT
+            )
+
+        # Step 1: intent
+        page.locator('input[name="name"]').fill(f"Smoke transformation {viewport_width}")
+        page.locator('textarea[name="objective"]').fill("Reduce avoidable hand-offs")
+        _advance("intent", "ownership")
+
+        # Step 2: ownership -- the owner picker keeps its full combobox keyboard
+        # contract (arrow key moves aria-activedescendant, Enter selects).
         owner = page.get_by_role("combobox", name="Programme owner")
         owner.fill("Smoke")
         page.wait_for_selector('#owner-results [role="option"]', timeout=PAGE_TIMEOUT)
@@ -77,21 +105,38 @@ def test_transformation_create_to_objective_deep_link_is_accessible_and_honest(
         assert owner.get_attribute("aria-activedescendant")
         owner.press("Enter")
         assert page.locator('input[name="owner_id"]').input_value()
-
-        page.locator('input[name="name"]').fill(f"Smoke transformation {viewport_width}")
-        page.locator('textarea[name="objective"]').fill("Reduce avoidable hand-offs")
-        page.locator('select[name="workstream_type"]').select_option("process")
         page.locator('input[name="target_date"]').fill("2027-12-31")
+        _advance("ownership", "workstream")
+
+        # Step 3: workstream
+        page.locator('select[name="workstream_type"]').select_option("process")
         page.locator('input[name="scope_expression"]').fill("Operations")
+        _advance("workstream", "outcome")
+
+        # Step 4: outcome
         page.locator('input[name="outcome"]').fill("Fewer customer hand-offs")
+        _advance("outcome", "measure")
+
+        # Step 5: measure -- no baseline, so the reason carries it rather than a
+        # zero that would read as a measured value.
         page.locator('input[name="metric_name"]').fill("Hand-offs")
         page.locator('input[name="unit"]').fill("count")
         page.locator('input[name="unavailable_reason"]').fill("Baseline requested")
         page.locator('input[name="target_value"]').fill("10")
+        _advance("measure", "review")
+
+        # Step 6: review reads back what will actually be sent.
+        assert page.get_by_test_id("step-review").is_visible()
+        assert (
+            page.get_by_test_id("review-name").inner_text().strip()
+            == f"Smoke transformation {viewport_width}"
+        )
+        # An absent baseline shows its reason, never 0.
+        assert page.get_by_test_id("review-baseline").inner_text().strip() == "Baseline requested"
         with page.expect_response(
             lambda item: item.url.endswith("/solutions/create-programme")
         ) as creation:
-            page.get_by_role("button", name="Create programme").click()
+            page.get_by_test_id("wizard-submit").click()
         creation_response = creation.value
         assert creation_response.status < 400, creation_response.text()
         page.wait_for_url("**/workstreams/*/objective", timeout=PAGE_TIMEOUT)

@@ -1,0 +1,19 @@
+<section class="rounded-lg border border-border bg-card p-6" aria-labelledby="programme-heading"
+         x-show="currentStep === 0" x-cloak data-testid="step-intent">
+  <h2 id="programme-heading" class="text-lg font-semibold text-foreground">Programme intent</h2>
+  <p class="mt-1 text-sm text-muted-foreground">Name the programme and state the business objective it exists to achieve.</p>
+  <div class="mt-4 grid gap-4">
+    <label class="grid gap-2 text-sm font-medium text-foreground">
+      Programme name
+      <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
+             name="name" value="{{ programme_form.name }}"
+             x-model.trim="form.name" required autocomplete="off" data-testid="field-name">
+    </label>
+    <label class="grid gap-2 text-sm font-medium text-foreground">
+      Business objective
+      <textarea class="min-h-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                name="objective" x-model.trim="form.objective"
+                required data-testid="field-objective">{{ programme_form.objective }}</textarea>
+    </label>
+  </div>
+</section>
