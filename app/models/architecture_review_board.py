@@ -23,6 +23,7 @@ ArchiMate 3.2 Viewpoints for Review:
 - Implementation & Migration Viewpoints
 """
 
+import logging
 import os
 import re
 import uuid
@@ -35,6 +36,8 @@ from sqlalchemy.ext.hybrid import hybrid_property  # dead-code-ok
 
 from .. import db
 from .mixins import OptimisticLockMixin, TenantMixin
+
+logger = logging.getLogger(__name__)
 
 _FAST_INIT = os.getenv("APP_FAST_INIT", "0") == "1"
 
@@ -1821,6 +1824,46 @@ def inspect_arb_cycle_constraints(connection):
     return sorted(drift)
 
 
+def _arb_unreconciled_shape(connection, schema_name, model_tables):
+    """Return a description of typed ARB columns the live schema is still missing.
+
+    These guards presuppose the fully reconciled column shape: the CHECK
+    constraints, foreign keys and indexes all name columns that reconcile-schema
+    ADDs to the long-lived arb_review_items table.
+
+    create_all() reaches this function through ARBReviewCycle's after_create
+    hook, and the deploy chain runs init-db BEFORE reconcile-schema. On every
+    existing database that ordering puts us here while arb_review_items still
+    lacks review_cycle_id and its six siblings, so ADD CONSTRAINT fails with
+    UndefinedColumn, create_all() aborts, init-db exits non-zero and the
+    container never reaches gunicorn.
+
+    So report the gap instead of installing a half-built guard set. Whichever
+    columns are missing, reconcile-schema adds them and then calls this function
+    again -- at which point the shape is complete and every guard installs.
+    """
+    from sqlalchemy import text
+
+    missing = []
+    for table in model_tables.values():
+        live_columns = set(
+            connection.scalars(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = :schema_name AND table_name = :table_name"
+                ),
+                {"schema_name": schema_name, "table_name": table.name},
+            )
+        )
+        if not live_columns:
+            missing.append(f"{table.name} (table absent)")
+            continue
+        absent = {column.name for column in table.columns} - live_columns
+        if absent:
+            missing.append(f"{table.name}.({','.join(sorted(absent))})")
+    return missing
+
+
 def ensure_arb_cycle_constraints(connection):
     """Reconcile commit-time membership and immutable typed ARB history."""
     if connection.dialect.name != "postgresql":
@@ -1847,6 +1890,15 @@ def ensure_arb_cycle_constraints(connection):
         "ARBReviewCycle": ARBReviewCycle.__table__,
         "ARBReviewItem": ARBReviewItem.__table__,
     }
+    unreconciled = _arb_unreconciled_shape(connection, schema_name, model_tables)
+    if unreconciled:
+        # Not an error: reconcile-schema adds these columns and calls us again.
+        logger.info(
+            "typed ARB guards deferred until reconcile-schema adds: %s",
+            "; ".join(unreconciled),
+        )
+        return
+
     check_state = _arb_check_state(connection, schema_name)
     for constraint_name, (table_name, model_name) in _ARB_CHECK_SPECS.items():
         if table_name not in tables:
