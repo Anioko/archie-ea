@@ -1206,7 +1206,20 @@ def _arb_parent_tenant_function_sql(quoted_schema):
             WHEN 'solutions' THEN 'solution'
             WHEN 'architecture_models' THEN 'architecture_model'
             WHEN 'architecture_decision_records' THEN 'adr'
+            -- Fail closed: a NULL typed_subject would make every EXISTS below
+            -- match nothing, so an unlisted table would silently be granted the
+            -- tenant change this guard exists to refuse.
+            ELSE NULL
         END;
+        IF typed_subject IS NULL THEN
+            -- The offending table goes in DETAIL rather than a format
+            -- placeholder: this body ships through exec_driver_sql, where a bare
+            -- percent sign is read as a DBAPI parameter marker.
+            RAISE EXCEPTION 'guard attached to unsupported table'
+                USING ERRCODE = '23514',
+                      DETAIL = 'archie_guard_arb_subject_tenant on '
+                               || TG_TABLE_NAME;
+        END IF;
         PERFORM pg_advisory_xact_lock(hashtextextended(
             'archie-arb-subject:' || typed_subject || ':' || OLD.id::text,
             0
@@ -1382,6 +1395,11 @@ _ARB_TRIGGER_SPECS = {
 }
 
 
+_ARB_CHECK_TOKEN_PATTERN = re.compile(
+    r"'(?:''|[^'])*'|<>|>=|<=|=|>|<|[(),]|[a-z_][a-z0-9_]*|\d+"
+)
+
+
 def _arb_check_tokens(value):
     """Retain boolean grouping while normalizing PostgreSQL's type/IN rewrites."""
     value = value.lower().replace('"', "")
@@ -1393,10 +1411,26 @@ def _arb_check_tokens(value):
         value,
         flags=re.S,
     )
-    return re.findall(
-        r"'(?:''|[^'])*'|<>|>=|<=|=|>|<|[(),]|[a-z_][a-z0-9_]*|\d+",
-        value,
-    )
+    tokens = []
+    position = 0
+    for match in _ARB_CHECK_TOKEN_PATTERN.finditer(value):
+        # Anything skipped between tokens is a character the pattern cannot
+        # express (arithmetic, regex or subscript operators). Dropping it would
+        # let a weaker predicate normalize to the canonical token stream and be
+        # accepted as equivalent, so refuse to compare rather than guess.
+        if value[position:match.start()].strip():
+            raise ValueError(
+                "unrecognized token in ARB check constraint: "
+                f"{value[position:match.start()].strip()!r}"
+            )
+        tokens.append(match.group(0))
+        position = match.end()
+    if value[position:].strip():
+        raise ValueError(
+            "unrecognized token in ARB check constraint: "
+            f"{value[position:].strip()!r}"
+        )
+    return tokens
 
 
 def _arb_check_structure(value):
@@ -1466,14 +1500,22 @@ def _arb_normalize_catalog_definition(value):
 
 
 def _arb_check_matches(row, table_name, expected_definition):
-    return bool(
+    if not (
         row is not None
         and row.relname == table_name
         and row.contype == "c"
         and row.convalidated
-        and _arb_check_structure(row.definition)
-        == _arb_check_structure(expected_definition)
-    )
+    ):
+        return False
+    # The expected definition is ours, so an untokenizable one is a bug here and
+    # must surface. The live definition is not ours: a predicate the strict
+    # tokenizer cannot read is drift to be rebuilt, not a reason to fail boot.
+    expected_structure = _arb_check_structure(expected_definition)
+    try:
+        actual_structure = _arb_check_structure(row.definition)
+    except ValueError:
+        return False
+    return actual_structure == expected_structure
 
 
 def _arb_trigger_matches(state, expected, schema_name):
@@ -1642,7 +1684,9 @@ def _arb_check_state(connection, schema_name):
         ),
         {"schema_name": schema_name, "names": list(_ARB_CHECK_SPECS)},
     ).all()
-    return {row.conname: row for row in rows}
+    # conname is unique per table, not per schema: a same-named decoy on another
+    # table would otherwise evict the real constraint from this dict.
+    return {(row.relname, row.conname): row for row in rows}
 
 
 def _arb_index_state(connection, schema_name):
@@ -1713,7 +1757,8 @@ def _arb_fk_state(connection, schema_name):
         ),
         {"schema_name": schema_name, "names": list(_ARB_FK_SPECS)},
     ).all()
-    return {row.conname: row for row in rows}
+    # Keyed by (table, name) for the same reason as _arb_check_state.
+    return {(row.source_table, row.conname): row for row in rows}
 
 
 def inspect_arb_cycle_constraints(connection):
@@ -1741,7 +1786,7 @@ def inspect_arb_cycle_constraints(connection):
     check_state = _arb_check_state(connection, schema_name)
     check_definitions = _arb_model_check_definitions()
     for name, (table_name, _model_name) in _ARB_CHECK_SPECS.items():
-        row = check_state.get(name)
+        row = check_state.get((table_name, name))
         if row is None:
             drift.append(f"constraint_missing:{name}")
         elif not _arb_check_matches(row, table_name, check_definitions[name]):
@@ -1770,7 +1815,7 @@ def inspect_arb_cycle_constraints(connection):
     for name, (source_table, source_columns, target_table, target_columns) in (
         _ARB_FK_SPECS.items()
     ):
-        row = fk_state.get(name)
+        row = fk_state.get((source_table, name))
         if row is None:
             drift.append(f"foreign_key_missing:{name}")
         elif not _arb_fk_matches(
@@ -1908,7 +1953,7 @@ def ensure_arb_cycle_constraints(connection):
             for item in model_tables[model_name].constraints
             if item.name == constraint_name
         )
-        row = check_state.get(constraint_name)
+        row = check_state.get((table_name, constraint_name))
         expected_definition = f"CHECK ({constraint.sqltext})"
         if row and not _arb_check_matches(row, table_name, expected_definition):
             actual_table = f"{quoted_schema}.{quote(row.relname)}"
@@ -1933,7 +1978,7 @@ def ensure_arb_cycle_constraints(connection):
     ):
         if source_table not in tables or target_table not in tables:
             continue
-        row = fk_state.get(name)
+        row = fk_state.get((source_table, name))
         correct = _arb_fk_matches(
             row,
             schema_name,
