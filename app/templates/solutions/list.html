@@ -9,7 +9,7 @@
 {% block title %}All Solutions{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="solutionListCompare()">
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="solutionListCompare()">
     {# ─ PAGE HEADER — screen system: one primary action whose label matches
        where it actually goes. Was: three competing creation CTAs, with the
        visually-primary one ("New Programme") not matching the page's job
@@ -22,7 +22,7 @@
          class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layers" class="h-4 w-4" aria-hidden="true"></i>New Programme
       </a>
-      <button type="button" data-testid="btn-new-from-template" onclick="openTemplateModal()"
+      <button type="button" data-testid="btn-new-from-template" @click="openTemplateModal()"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>New from Template
       </button>

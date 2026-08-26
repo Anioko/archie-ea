@@ -1,14 +1,12 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Capability Consolidation - Abacus Integration{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8" x-data="consolidationManager()">
+<div class="p-6 space-y-6 mx-auto" x-data="consolidationManager()">
     <!-- Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground mb-2">Capability Consolidation</h1>
-        <p class="text-muted-foreground">Review and merge duplicate capabilities from Abacus and manual sources</p>
-    </div>
+    {{ page_shell(title='Capability Consolidation', subtitle='Review and merge duplicate capabilities from Abacus and manual sources') }}
 
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

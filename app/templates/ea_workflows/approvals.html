@@ -110,7 +110,9 @@ async function approveWorkflow(instanceId) {
 }
 
 async function rejectWorkflow(instanceId) {
-    const reason = prompt('Reason for cancellation:');
+    const reason = await Platform.modal.promptText('Reason for cancellation:', {
+        title: 'Cancel workflow', multiline: true, confirmLabel: 'Cancel workflow'
+    });
     if (!reason) return;
 
     try {

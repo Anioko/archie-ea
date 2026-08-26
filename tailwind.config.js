@@ -64,6 +64,39 @@ module.exports = {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",
         },
+        // ArchiMate layer hues. The DEFAULT is the fill/border colour; the
+        // `-emphasis` twin is the only one legible as text on a /10 tint.
+        // See DESIGN.md "ArchiMate Layer Colors".
+        layer: {
+          motivation: {
+            DEFAULT: "hsl(var(--layer-motivation) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-motivation-emphasis) / <alpha-value>)",
+          },
+          strategy: {
+            DEFAULT: "hsl(var(--layer-strategy) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-strategy-emphasis) / <alpha-value>)",
+          },
+          business: {
+            DEFAULT: "hsl(var(--layer-business) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-business-emphasis) / <alpha-value>)",
+          },
+          application: {
+            DEFAULT: "hsl(var(--layer-application) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-application-emphasis) / <alpha-value>)",
+          },
+          technology: {
+            DEFAULT: "hsl(var(--layer-technology) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-technology-emphasis) / <alpha-value>)",
+          },
+          implementation: {
+            DEFAULT: "hsl(var(--layer-implementation) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-implementation-emphasis) / <alpha-value>)",
+          },
+          risk: {
+            DEFAULT: "hsl(var(--layer-risk) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-risk-emphasis) / <alpha-value>)",
+          },
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

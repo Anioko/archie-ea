@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Custom Field Management{% endblock %}
 
@@ -7,17 +8,14 @@
     <div class="max-w-4xl mx-auto">
         <!-- Header -->
         <div class="mb-8">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold text-foreground">Custom Field Management</h1>
-                    <p class="text-muted-foreground mt-2">Manage custom fields for applications</p>
-                </div>
-                <a href="{{ url_for('unified_applications.application_list') }}"
+            {% macro _ps_actions() %}
+<a href="{{ url_for('unified_applications.application_list') }}"
                    class="inline-flex items-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-muted-foreground bg-card hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring">
                     <i data-lucide="arrow-left" class="w-4 h-4 mr-2" aria-hidden="true"></i>
                     Back to Applications
                 </a>
-            </div>
+            {% endmacro %}
+            {{ page_shell(title='Custom Field Management', subtitle='Manage custom fields for applications', actions_caller=_ps_actions) }}
         </div>
 
         <!-- Custom Field Form -->

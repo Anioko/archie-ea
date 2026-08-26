@@ -1,6 +1,6 @@
 {
   "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
-  "_note": "updated 2026-08-26 (raw_fetch_sites 640 -> 492: Platform.fetch wave 2)",
+  "_note": "updated 2026-08-27 (merge: raw_fetch_sites 640->492, design_tokens_extended 12->0, ui_contract 27->0, shell_conformance 158->47, console_reporting gate added)",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -14,10 +14,10 @@
     "fetch_guards": 0,
     "sidebar_links": 26,
     "nav_coverage": 4,
-    "design_tokens_extended": 12,
-    "shell_conformance": 158,
+    "design_tokens_extended": 0,
+    "shell_conformance": 47,
     "raw_fetch_sites": 492,
-    "ui_contract": 27,
+    "ui_contract": 0,
     "nav_verified": 16,
     "console_reporting": 458
   }

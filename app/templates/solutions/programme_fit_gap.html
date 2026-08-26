@@ -4,7 +4,7 @@
 {% block title %}{{ rollup.programme.name }} — Fit-Gap Workbench{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+<div class="p-6 space-y-6 mx-auto max-w-7xl"
      x-data="fitGapWorkbench({{ rollup.programme.id }})">
     {{ page_header(
         title=rollup.programme.name ~ ' — Fit-Gap Workbench',

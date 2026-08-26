@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Implementation Plateaus{% endblock %}
 
@@ -13,10 +14,7 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground">Implementation Plateaus</h1>
-        <p class="text-muted-foreground mt-2">TOGAF architecture plateaus for phased implementation</p>
-    </div>
+    {{ page_shell(title='Implementation Plateaus', subtitle='TOGAF architecture plateaus for phased implementation') }}
 
     <!-- KPI summary row -->
     {% set total = plateaus|length %}

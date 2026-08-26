@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/metrics_card.html' import metrics_card %}
 
 {% block title %}Data Validation - Response Comparison{% endblock %}
@@ -29,12 +30,8 @@
       <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
       <span class="text-foreground font-medium">Data Validation</span>
     </nav>
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold">Response Validation</h1>
-        <p class="text-muted-foreground mt-1">Compare and resolve data discrepancies between sources</p>
-      </div>
-      <div class="flex gap-3">
+    {% macro _ps_actions() %}
+<div class="flex gap-3">
         <select id="app-selector" class="px-3 py-2 border rounded-lg" @change="loadComparison()" aria-label="Select Application...">
           <option value="">Select Application...</option>
           {% for app in applications %}
@@ -45,7 +42,8 @@
           Resolve All
         </button>
       </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Response Validation', subtitle='Compare and resolve data discrepancies between sources', actions_caller=_ps_actions) }}
   </div>
 
   <!-- Summary Stats -->

@@ -1,13 +1,11 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Policy Enforcement Monitoring{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6" x-data="policyMonitoring()">
-    <div class="mb-6">
-        <h1 class="text-3xl font-bold text-foreground mb-2">Policy Enforcement Monitoring</h1>
-        <p class="text-muted-foreground">Monitor LLM policy enforcement system status and violations</p>
-    </div>
+<div class="p-6 space-y-6 mx-auto" x-data="policyMonitoring()">
+    {{ page_shell(title='Policy Enforcement Monitoring', subtitle='Monitor LLM policy enforcement system status and violations') }}
 
     <!-- Fetch Error Banner -->
     <div x-show="fetchError" x-cloak class="bg-destructive/10 border border-destructive text-destructive-emphasis rounded-lg px-4 py-3 mb-6 flex items-center gap-2">

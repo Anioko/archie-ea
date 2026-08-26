@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}{{ initiative.name }}{% endblock %}
 
@@ -12,16 +13,9 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-6 space-y-6">
+<div class="p-6 space-y-6 mx-auto">
 
-  <div>
-    <h1 class="text-3xl font-bold">{{ initiative.name }}</h1>
-    <p class="text-muted-foreground mt-2">
-      {{ initiative.current_phase or 'Phase not set' }}
-      &middot; Sponsor: {{ initiative.executive_sponsor or '—' }}
-      &middot; Programme manager: {{ initiative.program_manager or '—' }}
-    </p>
-  </div>
+  {{ page_shell(title=(initiative.name), subtitle=(initiative.current_phase or 'Phase not set') ~ ' · Sponsor: ' ~ (initiative.executive_sponsor or '—') ~ ' · Programme manager: ' ~ (initiative.program_manager or '—')) }}
 
   {# ── Money ─────────────────────────────────────────────────────────────── #}
   <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -281,8 +275,8 @@
       <input type="text" name="note" placeholder="What happened (required to invalidate)"
              class="flex-1 min-w-[14rem] h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground"
              aria-label="Resolution note">
-      <button name="status" value="validated" class="h-9 px-3 rounded-md text-sm bg-success/10 text-success-emphasis hover:bg-success/20">Validated</button>
-      <button name="status" value="invalidated" class="h-9 px-3 rounded-md text-sm bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20">Invalidated</button>
+      <button type="submit" name="status" value="validated" class="h-9 px-3 rounded-md text-sm bg-success/10 text-success-emphasis hover:bg-success/20">Validated</button>
+      <button type="submit" name="status" value="invalidated" class="h-9 px-3 rounded-md text-sm bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20">Invalidated</button>
     </form>
     {% endfor %}
 

@@ -2540,7 +2540,7 @@
     }
     
     // Save current filters as preset
-    function saveCurrentFilters() {
+    async function saveCurrentFilters() {
         const filters = {
             search: getEl('roadmap-search')?.value || '',
             status: getEl('filter-status')?.value || '',
@@ -2552,7 +2552,9 @@
         };
     
         // Save to localStorage
-        const presetName = prompt('Enter a name for this filter preset:');
+        const presetName = await Platform.modal.promptText('Enter a name for this filter preset:', {
+            title: 'Save filter preset'
+        });
         if (presetName) {
             const savedPresets = JSON.parse(localStorage.getItem('roadmapFilterPresets') || '{}');
             savedPresets[presetName] = filters;

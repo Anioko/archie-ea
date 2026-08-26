@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}System Settings{% endblock %}
 
@@ -188,7 +189,7 @@ input:checked + .slider:before {
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8">
+<div class="p-6 space-y-6 mx-auto">
     <!-- Settings info banner -->
     <div id="settings-saved-banner" class="mb-6 rounded-lg border border-success/50 bg-success/5 px-4 py-3 flex items-center gap-3 hidden">
         <svg class="h-5 w-5 text-success flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -198,12 +199,8 @@ input:checked + .slider:before {
     </div>
 
     <!-- Header -->
-    <div class="flex justify-between items-center mb-8">
-        <div>
-            <h1 class="text-3xl font-bold text-foreground">System Settings</h1>
-            <p class="text-muted-foreground mt-2">Configure application settings, security, and user preferences</p>
-        </div>
-        <div class="flex gap-3">
+    {% macro _ps_actions() %}
+<div class="flex gap-3">
             <button type="button" id="btn-export-settings" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80" data-testid="btn-export-settings" aria-label="Export settings to file">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -223,7 +220,8 @@ input:checked + .slider:before {
                 Save All Changes
             </button>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='System Settings', subtitle='Configure application settings, security, and user preferences', actions_caller=_ps_actions) }}
 
     <!-- Settings Tabs -->
     <div class="mb-6">

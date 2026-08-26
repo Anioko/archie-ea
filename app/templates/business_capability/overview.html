@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Business Capabilities{% endblock %}
 
@@ -27,12 +28,8 @@
 <div class="mx-auto px-4 py-6">
     <!-- Header -->
     <div class="mb-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-bold text-foreground mb-2">Business Capabilities</h1>
-                <p class="text-muted-foreground">Manage and organize business capability taxonomy</p>
-            </div>
-            <div class="flex space-x-3">
+        {% macro _ps_actions() %}
+<div class="flex space-x-3">
                 <a href="{{ url_for('capability_map.simple_view') }}"
                    class="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                     <i data-lucide="layers" class="w-4 h-4 mr-2" aria-hidden="true"></i>
@@ -49,7 +46,8 @@
                     Analytics
                 </a>
             </div>
-        </div>
+        {% endmacro %}
+        {{ page_shell(title='Business Capabilities', subtitle='Manage and organize business capability taxonomy', actions_caller=_ps_actions) }}
     </div>
 
     <!-- Quick Actions -->

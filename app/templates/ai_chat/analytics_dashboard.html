@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}AI Chat Analytics - {{ config.APP_NAME }}{% endblock %}
 
@@ -7,12 +8,8 @@
 
 <div class="flex-1 overflow-y-auto p-6 bg-background" role="region" aria-label="AI Chat Analytics Content" x-data="aiChatAnalytics()" x-init="init()">
   <!-- Page header -->
-  <div class="mb-6 flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">AI Chat Analytics</h1>
-      <p class="text-sm text-muted-foreground mt-1">Feedback, usage and provider metrics</p>
-    </div>
-    <div class="flex items-center gap-3">
+  {% macro _ps_actions() %}
+<div class="flex items-center gap-3">
       <label for="date-range" class="text-sm font-medium text-muted-foreground">Period</label>
       <select id="date-range"
               x-model="days"
@@ -23,7 +20,8 @@
         <option value="90">Last 90 days</option>
       </select>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='AI Chat Analytics', subtitle='Feedback, usage and provider metrics', actions_caller=_ps_actions) }}
 
   <!-- Loading state -->
   <template x-if="loading">

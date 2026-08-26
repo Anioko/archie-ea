@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Framework Management{% endblock %}
 
 {% block breadcrumb %}
@@ -10,10 +11,7 @@
 {% endblock %}
 {% block content %}
 <div class="space-y-6 p-6">
-  <div>
-    <h1 class="text-2xl font-semibold text-foreground">Framework Management</h1>
-    <p class="text-muted-foreground mt-1">Manage capability frameworks, extensions, and deployment templates.</p>
-  </div>
+  {{ page_shell(title='Framework Management', subtitle='Manage capability frameworks, extensions, and deployment templates.') }}
 
   <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
     <a href="{{ url_for('main.framework_management.framework_dashboard') }}"

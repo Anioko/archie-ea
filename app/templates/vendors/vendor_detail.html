@@ -29,7 +29,7 @@
 {% endif %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-7xl vendor-detail" data-vendor="{{ vendor.id }}" x-data="{ analyzerOpen: false }">
+<div class="p-6 space-y-6 mx-auto max-w-7xl vendor-detail" data-vendor="{{ vendor.id }}" x-data="{ analyzerOpen: false }">
     {{ page_header(
         title=vendor.name,
         description=vendor.description or 'Vendor lifecycle, product portfolio, and architecture relationships.',

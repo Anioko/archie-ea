@@ -1971,8 +1971,10 @@
                 }).catch(function (e) { self.error = 'Reject failed: ' + (e.message || 'Unknown'); });
             },
 
-            waiveDomainElement: function (code, elementId) {
-                const reason = prompt('Justification for waiving this baseline element:');
+            waiveDomainElement: async function (code, elementId) {
+                const reason = await Platform.modal.promptText('Justification for waiving this baseline element:', {
+                    title: 'Waive baseline element', multiline: true, confirmLabel: 'Waive'
+                });
                 if (!reason) return;
                 let self = this;
                 _fetch(API_BASE + '/' + self.solutionId + '/proposals/' + elementId + '/reject', {
@@ -2157,8 +2159,10 @@
                 });
             },
 
-            markDomainNA: function (code) {
-                const justification = prompt('Justification for marking ' + this.getDomainName(code) + ' as Not Applicable:');
+            markDomainNA: async function (code) {
+                const justification = await Platform.modal.promptText('Justification for marking ' + this.getDomainName(code) + ' as Not Applicable:', {
+                    title: 'Mark not applicable', multiline: true
+                });
                 if (!justification) return;
                 let self = this;
 

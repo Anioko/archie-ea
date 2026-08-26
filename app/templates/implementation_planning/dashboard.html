@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/modal.html' import modal %}
 
 {% block title %}Implementation Planning Dashboard{% endblock %}
@@ -19,10 +20,7 @@
     <!-- Header -->
     <div class="space-y-6 mb-6">
         <!-- Title Section (Jumbotron-style) -->
-        <div class="text-center py-8 bg-primary/10 rounded-lg border border-border">
-            <h1 class="text-4xl font-bold text-foreground mb-3">Implementation Planning</h1>
-            <p class="text-lg text-muted-foreground max-w-3xl mx-auto">Enterprise Architecture Migration & Implementation Roadmap</p>
-        </div>
+        {{ page_shell(title='Implementation Planning', subtitle='Enterprise Architecture Migration & Implementation Roadmap') }}
 
         {# A failed load must be visible on the page, not only in a toast that
            has already faded by the time the user reads the roadmap. #}

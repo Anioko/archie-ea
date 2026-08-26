@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Architecture Decision Records{% endblock %}
 
@@ -12,16 +13,13 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-6 space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-3xl font-bold">Architecture Decision Records</h1>
-            <p class="text-muted-foreground mt-2">Documented architecture decisions and their rationale</p>
-        </div>
-        <button type="button" class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+<div class="p-6 space-y-6 mx-auto">
+    {% macro _ps_actions() %}
+<button type="button" class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> New ADR
         </button>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Architecture Decision Records', subtitle='Documented architecture decisions and their rationale', actions_caller=_ps_actions) }}
     
     <div class="rounded-lg border bg-card p-6">
         <p class="text-sm text-muted-foreground">ADR list and management</p>

@@ -2331,13 +2331,15 @@ let ComposerPersistence = (function() {
             });
         },
 
-        saveSnapshot: function() {
+        saveSnapshot: async function() {
             let self = this;
             if (!self.currentSavedVpId) {
                 self.statusText = 'Save the viewpoint first before creating a snapshot';
                 return;
             }
-            let name = prompt('Snapshot name:', 'v' + (self.snapshots.length + 1));
+            let name = await Platform.modal.promptText('Snapshot name:', {
+                title: 'Create snapshot', defaultValue: 'v' + (self.snapshots.length + 1)
+            });
             if (!name || !name.trim()) return;
 
             self.statusText = 'Creating snapshot...';
@@ -2489,7 +2491,7 @@ let ComposerPersistence = (function() {
             .catch(function(err) { self.statusText = 'Restore error: ' + (err.message || ''); _toast('error', 'Restore failed'); });
         },
 
-        saveAsTemplate: function() {
+        saveAsTemplate: async function() {
             let self = this;
             let elements = self.graph.getElements();
             if (elements.length === 0) {
@@ -2497,7 +2499,7 @@ let ComposerPersistence = (function() {
                 return;
             }
 
-            let name = prompt('Template name:');
+            let name = await Platform.modal.promptText('Template name:', { title: 'Save as template' });
             if (!name || !name.trim()) return;
 
             /* Extract layout structure: types + positions, strip element IDs */
@@ -2599,9 +2601,9 @@ let ComposerPersistence = (function() {
             self._scheduleMiniMapUpdate();
         },
 
-        instantiateTemplate: function(tid) {
+        instantiateTemplate: async function(tid) {
             let self = this;
-            let name = prompt('New viewpoint name:');
+            let name = await Platform.modal.promptText('New viewpoint name:', { title: 'Create from template' });
             if (!name || !name.trim()) return;
 
             self.templateListOpen = false;

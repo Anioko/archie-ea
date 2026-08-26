@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}ArchiMate Roadmap{% endblock %}
 
@@ -15,10 +16,7 @@
 {% block content %}
 <div x-data="archimateRoadmapApp()">
     <!-- Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground mb-2">ArchiMate Roadmap</h1>
-        <p class="text-muted-foreground">Strategic ArchiMate capability evolution and work package planning</p>
-    </div>
+    {{ page_shell(title='ArchiMate Roadmap', subtitle='Strategic ArchiMate capability evolution and work package planning') }}
 
     <!-- Filters Section -->
     <div class="bg-background rounded-lg shadow-md p-6 mb-8">

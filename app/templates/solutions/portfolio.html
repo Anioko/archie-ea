@@ -1,21 +1,19 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/status_badge.html' import status_badge_auto as status_badge %}
 {% block title %}Solution Portfolio{% endblock %}
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+<div class="p-6 space-y-6 mx-auto max-w-7xl"
      x-data="portfolioFilter()"
      x-init="init()">
 
-  <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">Solution Portfolio</h1>
-      <p class="mt-1 text-sm text-muted-foreground">{{ total_count }} solution(s) across {{ domains|length }} domain(s)</p>
-    </div>
-    <a href="/architecture-journey/"
+  {% macro _ps_actions() %}
+<a href="/architecture-journey/"
        class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg">
       + New Solution
     </a>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Solution Portfolio', subtitle=(total_count) ~ ' solution(s) across ' ~ (domains|length) ~ ' domain(s)', actions_caller=_ps_actions) }}
 
   <!-- ENH-022: Filters with group-by toggle -->
   <div class="flex flex-wrap gap-3 mb-6">
