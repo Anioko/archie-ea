@@ -93,10 +93,9 @@
     <div x-data="{ debtOpen: false, debtLoading: false, debtLoaded: false, debtScores: [], debtSummary: {}, debtError: '' }" class="mb-4">
         <button type="button" @click="debtOpen = !debtOpen; if(debtOpen && !debtLoaded) {
             debtLoading = true;
-            fetch('/api/ea/phase-d/debt-scores', { credentials: 'same-origin' })
-                .then(r => r.json())
+            Platform.fetch('/api/ea/phase-d/debt-scores', { silent: true })
                 .then(d => { debtScores = (d.scores || []).sort((a,b) => (b.debt_score||0) - (a.debt_score||0)); debtSummary = d.summary || {}; debtLoaded = true; debtLoading = false; })
-                .catch(e => { debtError = e.message; debtLoading = false; });
+                .catch(e => { debtError = e.message || 'Could not load debt scores.'; debtLoading = false; });
         }"
             :class="debtOpen ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
@@ -640,9 +639,9 @@ document.addEventListener('alpine:init', () => {
             let url = '/api/archimate/viewpoints/' + vpKey + '/diagram?limit=30';
             if (this.activeLayer) url += '&layer=' + this.activeLayer;
             try {
-                let resp = await fetch(url, { credentials: 'same-origin' });
-                let data = await resp.json();
-                if (!data.success || !data.elements.length) return;
+                let data = await Platform.fetch(url, { silent: true });
+                if (!data.success) throw new Error(data.error || data.message || 'the viewpoint diagram could not be built');
+                if (!data.elements.length) return;
                 this.diagramViewpointName = data.viewpoint_name;
                 this.diagramElementCount = data.count;
                 this.diagramRelCount = data.relationship_count;
@@ -656,15 +655,19 @@ document.addEventListener('alpine:init', () => {
             } catch(e) {
                 // Optional viewpoint diagram alongside the element list/table; a failed
                 // load just leaves the diagram panel unrendered — the list is unaffected.
-                console.warn('[BIZBOK] diagram load failed', e);
+                // It is still reported: an empty panel is indistinguishable from
+                // "no elements to draw" unless the user is told the load failed.
+                this.diagramLoaded = false;
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Viewpoint diagram not loaded: ' + (e.message || 'request failed'));
+                }
             }
         },
 
         async fetchLayers() {
             try {
-                const statsResp = await fetch('/capability-map/api/archimate/relationship-health');
-                if (!statsResp.ok) throw new Error('Could not load layer counts (HTTP ' + statsResp.status + ')');
-                const statsJson = await statsResp.json();
+                const statsJson = await Platform.fetch('/capability-map/api/archimate/relationship-health',
+                    { silent: true, errorMsg: 'Could not load layer counts.' });
                 const byLayer = statsJson.by_layer || [];
                 const layerCounts = {};
                 byLayer.forEach(l => { layerCounts[(l.layer || '').toLowerCase()] = l.element_count || 0; });
@@ -699,9 +702,7 @@ document.addEventListener('alpine:init', () => {
                 if (this.filterHasRels) url += '&has_rels=' + encodeURIComponent(this.filterHasRels);
                 if (this.filterHasSolutions) url += '&has_solutions=' + encodeURIComponent(this.filterHasSolutions);
                 if (this.filterNoDesc) url += '&has_desc=' + encodeURIComponent(this.filterNoDesc === 'no' ? 'no' : 'yes');
-                const resp = await fetch(url);
-                if (!resp.ok) throw new Error('Could not load elements (HTTP ' + resp.status + ')');
-                const json = await resp.json();
+                const json = await Platform.fetch(url, { silent: true, errorMsg: 'Could not load elements.' });
                 this.elements = json.data || [];
                 // Approximate pagination (search endpoint doesn't return total)
                 this.totalPages = this.elements.length < this.perPage ? this.page : this.page + 1;
@@ -806,9 +807,7 @@ document.addEventListener('alpine:init', () => {
             this.relationships = [];
             this.relationshipsError = false;
             try {
-                const resp = await fetch('/architecture/api/elements/' + el.id + '/relationships');
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const json = await resp.json();
+                const json = await Platform.fetch('/architecture/api/elements/' + el.id + '/relationships', { silent: true });
                 const incoming = (json.incoming || []).map(r => ({...r, direction: 'incoming'}));
                 const outgoing = (json.outgoing || []).map(r => ({...r, direction: 'outgoing'}));
                 this.relationships = [...outgoing, ...incoming];
@@ -848,32 +847,23 @@ document.addEventListener('alpine:init', () => {
                     ? '/architecture/elements/' + this.createForm._editId
                     : '/architecture/elements';
                 const method = isEdit ? 'PUT' : 'POST';
-                const csrf = document.querySelector('meta[name=csrf-token]')?.content;
-                const resp = await fetch(url, {
+                await Platform.fetch(url, {
                     method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(csrf ? {'X-CSRFToken': csrf} : {})
-                    },
-                    body: JSON.stringify({
+                    body: {
                         name: this.createForm.name,
                         element_type: this.createForm.element_type,
                         layer: this.createForm.layer,
                         description: this.createForm.description
-                    })
+                    },
+                    silent: true
                 });
-                const json = await resp.json();
-                if (resp.ok) {
-                    this.showCreateModal = false;
-                    this.createForm = { name: '', element_type: '', layer: '', description: '' };
-                    delete this.createForm._editId;
-                    await this.fetchLayers();
-                    await this.fetchElements();
-                } else {
-                    this.createError = json.error || json.message || 'Failed to save.';
-                }
+                this.showCreateModal = false;
+                this.createForm = { name: '', element_type: '', layer: '', description: '' };
+                delete this.createForm._editId;
+                await this.fetchLayers();
+                await this.fetchElements();
             } catch (e) {
-                this.createError = 'Network error: ' + e.message;
+                this.createError = e.message || 'Failed to save.';
             }
             this.createSubmitting = false;
         },
@@ -915,25 +905,15 @@ document.addEventListener('alpine:init', () => {
 
         async deleteElement(el) {
             if (!(await Platform.modal.confirm('Delete element "' + el.name + '"? This cannot be undone.'))) return;
-            const csrf = document.querySelector('meta[name=csrf-token]')?.content;
             try {
-                const resp = await fetch('/architecture/elements/' + el.id, {
-                    method: 'DELETE',
-                    headers: csrf ? { 'X-CSRFToken': csrf } : {},
-                });
-                if (resp.ok || resp.status === 204) {
-                    this.elements = this.elements.filter(e => e.id !== el.id);
-                    if (this.selectedElement?.id === el.id) this.selectedElement = null;
-                    this.totalCount = Math.max(0, this.totalCount - 1);
-                } else {
-                    let msg = 'Could not delete that element.';
-                    // Error body is not guaranteed to be JSON; fall back to the generic message above.
-                    try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch (e) { /* swallow-ok: the error body need not be JSON; the generic message above is toasted either way, so a parse failure must not replace the real failure the user is about to be told about */ }
-                    Platform.toast.error(msg);
-                }
+                // Platform.fetch already prefers the JSON error body's message and
+                // falls back to the status text when the error page is not JSON.
+                await Platform.fetch.delete('/architecture/elements/' + el.id, { silent: true });
+                this.elements = this.elements.filter(e => e.id !== el.id);
+                if (this.selectedElement?.id === el.id) this.selectedElement = null;
+                this.totalCount = Math.max(0, this.totalCount - 1);
             } catch (e) {
-                console.error('Delete failed:', e);
-                Platform.toast.error('Could not delete that element.');
+                Platform.toast.error(e.message || 'Could not delete that element.');
             }
         }
     }));

@@ -435,21 +435,18 @@ function archimateRoadmapApp() {
         async loadData() {
             try {
                 // Load work packages
-                const workPackagesResponse = await fetch('/api/archimate-work-packages');
-                if (!workPackagesResponse.ok) throw new Error('work packages request failed (HTTP ' + workPackagesResponse.status + ')');
-                const wpData = await workPackagesResponse.json();
+                const wpData = await Platform.fetch('/api/archimate-work-packages',
+                    { silent: true, errorMsg: 'work packages request failed' });
                 this.workPackages = wpData.work_packages || wpData;
 
                 // Load capabilities
-                const capabilitiesResponse = await fetch('/api/capabilities');
-                if (!capabilitiesResponse.ok) throw new Error('capabilities request failed (HTTP ' + capabilitiesResponse.status + ')');
-                const capData = await capabilitiesResponse.json();
+                const capData = await Platform.fetch('/api/capabilities',
+                    { silent: true, errorMsg: 'capabilities request failed' });
                 this.capabilities = capData.capabilities || capData;
 
                 // Load users
-                const usersResponse = await fetch('/api/users');
-                if (!usersResponse.ok) throw new Error('users request failed (HTTP ' + usersResponse.status + ')');
-                const usersData = await usersResponse.json();
+                const usersData = await Platform.fetch('/api/users',
+                    { silent: true, errorMsg: 'users request failed' });
                 this.users = usersData.users || usersData;
 
                 // Recompute derived data after loading
@@ -685,43 +682,25 @@ function archimateRoadmapApp() {
 
                 const method = this.editingWorkPackage ? 'PUT' : 'POST';
 
-                const response = await fetch(url, {
+                await Platform.fetch(url, {
                     method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(this.workPackageForm)
+                    body: this.workPackageForm,
+                    silent: true
                 });
-
-                if (response.ok) {
-                    this.closeWorkPackageModal();
-                    this.loadData();
-                } else {
-                    console.error('Error saving work package:', await response.text());
-                    Platform.toast.error('Failed to save work package — your changes were not saved');
-                }
+                this.closeWorkPackageModal();
+                this.loadData();
             } catch (error) {
-                console.error('Error saving work package:', error);
-                Platform.toast.error('Failed to save work package — your changes were not saved');
+                Platform.toast.error('Failed to save work package — your changes were not saved: ' + (error.message || 'request failed'));
             }
         },
 
         async deleteWorkPackage(id) {
             if ((await Platform.modal.confirm('Are you sure you want to delete this work package?'))) {
                 try {
-                    const response = await fetch(`/api/archimate-work-packages/${id}`, {
-                        method: 'DELETE'
-                    });
-
-                    if (response.ok) {
-                        this.loadData();
-                    } else {
-                        console.error('Error deleting work package:', await response.text());
-                        Platform.toast.error('Failed to delete work package');
-                    }
+                    await Platform.fetch.delete(`/api/archimate-work-packages/${id}`, { silent: true });
+                    this.loadData();
                 } catch (error) {
-                    console.error('Error deleting work package:', error);
-                    Platform.toast.error('Failed to delete work package');
+                    Platform.toast.error('Failed to delete work package: ' + (error.message || 'request failed'));
                 }
             }
         },
@@ -729,7 +708,12 @@ function archimateRoadmapApp() {
         async exportData(format) {
             try {
                 if (format === 'csv') {
-                    const response = await fetch('/api/archimate-export/export/capability-map?format=csv');
+                    // raw-fetch-ok: the download needs the raw Response to call .blob();
+                    // Platform.fetch returns a parsed body.
+                    const response = await fetch('/api/archimate-export/export/capability-map?format=csv'); // raw-fetch-ok: .blob() needs the raw Response
+                    // Unchecked before: a 500 HTML error page was saved to disk as
+                    // archimate-roadmap.csv and read as a successful export.
+                    if (!response.ok) throw new Error('Export failed (HTTP ' + response.status + ')');
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -750,7 +734,6 @@ function archimateRoadmapApp() {
                     }
                 }
             } catch (error) {
-                console.error('Error exporting data:', error);
                 Platform.toast.error('Export failed: ' + (error.message || 'Unable to export. Please try again.'));
             }
         }

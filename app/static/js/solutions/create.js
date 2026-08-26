@@ -506,25 +506,19 @@ document.addEventListener('alpine:init', function() {
             this.isGeneratingRequirements = true;
 
             try {
-                let response = await fetch('/solutions/ai-generate-requirements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        description: this.formData.description,
-                        solution_type: this.formData.solution_type,
-                        business_domain: this.formData.business_domain,
-                        capabilities: this.selectedCapabilities
-                    })
+                let data = await Platform.fetch.post('/solutions/ai-generate-requirements', {
+                    description: this.formData.description,
+                    solution_type: this.formData.solution_type,
+                    business_domain: this.formData.business_domain,
+                    capabilities: this.selectedCapabilities
                 });
 
-                let data = await response.json();
                 if (data.success && data.requirements) {
                     this.requirements = data.requirements;
                 } else {
                     Platform.toast.error('Failed to generate requirements: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
-                console.error('Error generating requirements:', error);
                 Platform.toast.error('Failed to generate requirements. Please try again.');
             } finally {
                 this.isGeneratingRequirements = false;
@@ -541,25 +535,19 @@ document.addEventListener('alpine:init', function() {
             this.isGeneratingRoadmap = true;
 
             try {
-                let response = await fetch('/solutions/ai-generate-roadmap', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        description: this.formData.description,
-                        solution_type: this.formData.solution_type,
-                        capabilities: this.selectedCapabilities,
-                        archimate_elements: this.selectedArchiMateElements
-                    })
+                let data = await Platform.fetch.post('/solutions/ai-generate-roadmap', {
+                    description: this.formData.description,
+                    solution_type: this.formData.solution_type,
+                    capabilities: this.selectedCapabilities,
+                    archimate_elements: this.selectedArchiMateElements
                 });
 
-                let data = await response.json();
                 if (data.success && data.roadmap_items) {
                     this.roadmapItems = data.roadmap_items;
                 } else {
                     Platform.toast.error('Failed to generate roadmap: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
-                console.error('Error generating roadmap:', error);
                 Platform.toast.error('Failed to generate roadmap. Please try again.');
             } finally {
                 this.isGeneratingRoadmap = false;
@@ -576,17 +564,12 @@ document.addEventListener('alpine:init', function() {
 
             try {
                 // Suggest capabilities via AI
-                let capResponse = await fetch('/solutions/ai-suggest-capabilities', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        description: this.formData.description,
-                        solution_type: this.formData.solution_type,
-                        business_domain: this.formData.business_domain
-                    })
+                let capData = await Platform.fetch.post('/solutions/ai-suggest-capabilities', {
+                    description: this.formData.description,
+                    solution_type: this.formData.solution_type,
+                    business_domain: this.formData.business_domain
                 });
 
-                let capData = await capResponse.json();
                 if (capData.success && capData.capabilities) {
                     this.selectedCapabilities = capData.capabilities.map(function(c) {
                         return {
@@ -602,39 +585,28 @@ document.addEventListener('alpine:init', function() {
                 this.addSampleArchiMateElements();
 
                 // Generate requirements using AI
-                let reqResponse = await fetch('/solutions/ai-generate-requirements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        description: this.formData.description,
-                        solution_type: this.formData.solution_type,
-                        business_domain: this.formData.business_domain,
-                        capabilities: this.selectedCapabilities
-                    })
+                let reqData = await Platform.fetch.post('/solutions/ai-generate-requirements', {
+                    description: this.formData.description,
+                    solution_type: this.formData.solution_type,
+                    business_domain: this.formData.business_domain,
+                    capabilities: this.selectedCapabilities
                 });
-                let reqData = await reqResponse.json();
                 if (reqData.success && reqData.requirements) {
                     this.requirements = reqData.requirements;
                 }
 
                 // Generate roadmap using AI
-                let roadmapResponse = await fetch('/solutions/ai-generate-roadmap', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        description: this.formData.description,
-                        solution_type: this.formData.solution_type,
-                        capabilities: this.selectedCapabilities,
-                        archimate_elements: this.selectedArchiMateElements
-                    })
+                let roadmapData = await Platform.fetch.post('/solutions/ai-generate-roadmap', {
+                    description: this.formData.description,
+                    solution_type: this.formData.solution_type,
+                    capabilities: this.selectedCapabilities,
+                    archimate_elements: this.selectedArchiMateElements
                 });
-                let roadmapData = await roadmapResponse.json();
                 if (roadmapData.success && roadmapData.roadmap_items) {
                     this.roadmapItems = roadmapData.roadmap_items;
                 }
 
             } catch (error) {
-                console.error('Error in AI population:', error);
                 Platform.toast.error('Failed to get AI suggestions. Please try again.');
             } finally {
                 this.isAIPopulating = false;
@@ -678,13 +650,7 @@ document.addEventListener('alpine:init', function() {
                     roadmap_items: this.roadmapItems
                 });
 
-                let response = await fetch(APP_CONFIG.createSolutionUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData)
-                });
-
-                let result = await response.json();
+                let result = await Platform.fetch.post(APP_CONFIG.createSolutionUrl, formData);
 
                 if (result.success) {
                     this.clearSessionStorage();
@@ -693,7 +659,6 @@ document.addEventListener('alpine:init', function() {
                     Platform.toast.error('Error: ' + (result.error || 'Failed to create solution'));
                 }
             } catch (error) {
-                console.error('Error submitting form:', error);
                 Platform.toast.error('Failed to create solution. Please try again.');
             } finally {
                 this.isSubmitting = false;

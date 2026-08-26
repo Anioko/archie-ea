@@ -1222,11 +1222,9 @@ function sessionDetail() {
         async loadAnalysisResults() {
             if (this.analysisLoaded) return;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/analysis-results', {
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.has_results) {
+                const data = await Platform.fetch('/solutions/architect/api/sessions/{{ session.id }}/analysis-results', { silent: true });
+                if (!data.success) throw new Error(data.error || data.message || 'Failed to load analysis results');
+                if (data.has_results) {
                     this.analysisResults = data.recommendations.map(rec => ({
                         ...rec,
                         _showPros: false,
@@ -1235,8 +1233,11 @@ function sessionDetail() {
                 }
                 this.analysisLoaded = true;
             } catch (err) {
-                console.error('Failed to load analysis results:', err);
+                // Marked loaded either way so the panel stops spinning, but the
+                // user is told: an empty options list from a failed load is
+                // indistinguishable from a session with no recommendations.
                 this.analysisLoaded = true;
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to load analysis results');
             }
         },
 
@@ -1244,11 +1245,7 @@ function sessionDetail() {
             this.analysisLoading = true;
             this.analysisError = null;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/run-analysis', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/run-analysis', undefined, { silent: true });
                 if (data.success) {
                     this.analysisResults = data.recommendations.map((rec, idx) => ({
                         option_type: rec.option_type,
@@ -1269,8 +1266,7 @@ function sessionDetail() {
                     this.analysisError = data.error || 'Analysis failed. Please try again.';
                 }
             } catch (err) {
-                this.analysisError = 'Network error. Please check your connection and try again.';
-                console.error('Options analysis error:', err);
+                this.analysisError = err.message || 'Analysis failed. Please try again.';
             } finally {
                 this.analysisLoading = false;
             }
@@ -1279,19 +1275,17 @@ function sessionDetail() {
         async generateAIElements() {
             this.aiLoading.elements = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-elements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.suggestions) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-elements', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.suggestions) throw new Error(data.error || data.message || 'Failed to generate AI elements');
+                {
                     this.aiElements = data.suggestions;
                     this.aiElementsSource = data.source || 'unknown';
                     this.aiGenerated.elements = true;
                 }
             } catch (err) {
-                console.error('AI elements generation error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI elements');
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI elements');
             } finally {
                 this.aiLoading.elements = false;
             }
@@ -1300,19 +1294,17 @@ function sessionDetail() {
         async detectAIPatterns() {
             this.aiLoading.patterns = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-patterns', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.patterns) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-patterns', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.patterns) throw new Error(data.error || data.message || 'Failed to detect patterns');
+                {
                     this.aiPatterns = data.patterns;
                     this.aiPatternMatchCount = data.match_count || 0;
                     this.aiGenerated.patterns = true;
                 }
             } catch (err) {
-                console.error('Pattern detection error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to detect patterns');
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to detect patterns');
             } finally {
                 this.aiLoading.patterns = false;
             }
@@ -1321,19 +1313,17 @@ function sessionDetail() {
         async generateAIRequirements() {
             this.aiLoading.requirements = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-requirements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.requirements) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-requirements', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.requirements) throw new Error(data.error || data.message || 'Failed to generate AI requirements');
+                {
                     this.aiRequirements = data.requirements;
                     this.aiRequirementsSource = data.source || 'unknown';
                     this.aiGenerated.requirements = true;
                 }
             } catch (err) {
-                console.error('AI requirements generation error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI requirements');
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI requirements');
             } finally {
                 this.aiLoading.requirements = false;
             }
@@ -1342,19 +1332,17 @@ function sessionDetail() {
         async generateAIRoadmap() {
             this.aiLoading.roadmap = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-roadmap', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.roadmap_items) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-roadmap', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.roadmap_items) throw new Error(data.error || data.message || 'Failed to generate AI roadmap');
+                {
                     this.aiRoadmap = data.roadmap_items;
                     this.aiRoadmapSource = data.source || 'unknown';
                     this.aiGenerated.roadmap = true;
                 }
             } catch (err) {
-                console.error('AI roadmap generation error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI roadmap');
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI roadmap');
             } finally {
                 this.aiLoading.roadmap = false;
             }
